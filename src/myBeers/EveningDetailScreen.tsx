@@ -18,6 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -579,7 +580,7 @@ function EditDrinkNameForm({
         value={name}
         onChangeText={setName}
         placeholder={cs.myBeers.editDrinkPlaceholder}
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         style={styles.nameInput}
         autoCapitalize="words"
         autoCorrect

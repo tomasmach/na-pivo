@@ -81,6 +81,7 @@ import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
@@ -143,7 +144,7 @@ function RenamePubModal({
             onChangeText={onChange}
             style={styles.renameInput}
             placeholder={cs.compass.renamePlaceholder}
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             maxLength={200}
             autoFocus
             autoCorrect={false}

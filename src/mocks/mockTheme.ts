@@ -23,7 +23,7 @@
  * and they are most of what still made the mocks read as the current app.
  */
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 
 export const MockType = {
   /** Screen title, top left. Packeta `titleXL`. */
@@ -91,6 +91,19 @@ export const MockColors = {
   accent: Colors.amber,
   /** A running session. The only time the app changes colour. */
   live: '#35D07F',
+  /**
+   * Every text field, everywhere.
+   *
+   * Fields were drawn on `surface`, which on a sheet whose ground is also
+   * `surface` made the search box invisible — a pill you could only find by
+   * reading the placeholder inside it. A field has to look like a hole you can
+   * type into, so it is lighter than whatever it sits on and carries a hairline.
+   */
+  field: Colors.stout3,
+  fieldBorder: withAlpha(Colors.foam, 0.1),
+  /** Placeholders sat in the muted BROWN, which on a dark field is barely
+   *  legible. Foam at 55 % is quiet without disappearing. */
+  fieldHint: withAlpha(Colors.foam, 0.55),
 } as const;
 
 export const HEADER_GRADIENT = ['#5A3418', '#2A1A0C', MockColors.bg] as const;

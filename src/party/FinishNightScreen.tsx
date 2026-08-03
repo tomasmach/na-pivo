@@ -212,7 +212,7 @@ export default function FinishNightScreen() {
               value={title}
               onChangeText={setTitle}
               placeholder={fallbackTitle}
-              placeholderTextColor={Colors.mutedText}
+              placeholderTextColor={MockColors.fieldHint}
               style={styles.input}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
@@ -251,7 +251,7 @@ export default function FinishNightScreen() {
             value={note}
             onChangeText={setNote}
             placeholder="Co se stalo, co se nesmí opakovat…"
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             style={[styles.input, styles.noteInput]}
             multiline
             maxFontSizeMultiplier={FontScaleCap.body}

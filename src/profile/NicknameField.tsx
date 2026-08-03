@@ -18,6 +18,7 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, ActivityIndicator, StyleSheet, type TextStyle } from 'react-native';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -175,7 +176,7 @@ export const NicknameField = memo(function NicknameField({
           value={value}
           onChangeText={onChangeText}
           placeholder={cs.profile.form.nicknamePlaceholder}
-          placeholderTextColor={Colors.mutedText}
+          placeholderTextColor={MockColors.fieldHint}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"

@@ -21,6 +21,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 
 import { Radius, Spacing } from '@/theme/layout';
@@ -221,7 +222,7 @@ export default function ReportScreen() {
             value={message}
             onChangeText={setMessage}
             placeholder={cs.report.messagePlaceholder}
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             multiline
             textAlignVertical="top"
             maxLength={4000}
@@ -304,7 +305,7 @@ export default function ReportScreen() {
             value={contact}
             onChangeText={setContact}
             placeholder={CONTACT_PLACEHOLDERS[contactType]}
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             keyboardType={contactType === 'email' ? 'email-address' : 'default'}
             autoCapitalize="none"
             autoCorrect={false}

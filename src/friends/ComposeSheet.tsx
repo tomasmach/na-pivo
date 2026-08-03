@@ -55,6 +55,7 @@ import { cs } from '@/i18n/cs';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -534,7 +535,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
                     value={groupName}
                     onChangeText={setGroupName}
                     placeholder={cs.friends.recipientGroupPlaceholder}
-                    placeholderTextColor={Colors.mutedText}
+                    placeholderTextColor={MockColors.fieldHint}
                     style={styles.groupNameInput}
                     maxLength={28}
                     maxFontSizeMultiplier={FontScaleCap.body}
@@ -655,7 +656,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
                 value={message}
                 onChangeText={setMessage}
                 placeholder={cs.friends.composeMsgPlaceholder}
-                placeholderTextColor={Colors.mutedText}
+                placeholderTextColor={MockColors.fieldHint}
                 style={styles.messageInput}
                 multiline
                 maxLength={MESSAGE_MAX}

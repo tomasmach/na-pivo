@@ -46,6 +46,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -215,7 +216,7 @@ export function AddFriendTools({
               value={query}
               onChangeText={setQuery}
               placeholder={cs.friends.searchPlaceholder}
-              placeholderTextColor={Colors.mutedText}
+              placeholderTextColor={MockColors.fieldHint}
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.searchInput}

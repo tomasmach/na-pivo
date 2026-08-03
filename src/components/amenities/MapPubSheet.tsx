@@ -43,6 +43,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
@@ -800,7 +801,7 @@ export function MapPubSheet({
                 onChangeText={setRenameDraft}
                 style={styles.renameInput}
                 placeholder={cs.compass.renamePlaceholder}
-                placeholderTextColor={Colors.mutedText}
+                placeholderTextColor={MockColors.fieldHint}
                 maxLength={200}
                 autoFocus
                 autoCorrect={false}

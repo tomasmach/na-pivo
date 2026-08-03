@@ -8,6 +8,7 @@ import React from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { normalizeEditableHhMm } from '@/data/communityHours';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -50,7 +51,7 @@ export function SplitTimeInput({
         onChangeText={(part) => onChange(withTimePart(value, 0, part))}
         onBlur={normalize}
         placeholder="11"
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus
@@ -66,7 +67,7 @@ export function SplitTimeInput({
         onChangeText={(part) => onChange(withTimePart(value, 1, part))}
         onBlur={normalize}
         placeholder="00"
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus

@@ -32,6 +32,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
@@ -461,7 +462,7 @@ function BeerFormBody({
                 value={name}
                 onChangeText={onChangeName}
                 placeholder={cs.counter.drinkNamePlaceholder(drinkType)}
-                placeholderTextColor={Colors.mutedText}
+                placeholderTextColor={MockColors.fieldHint}
                 maxLength={80}
                 autoFocus
                 accessibilityLabel={cs.counter.drinkNamePlaceholder(drinkType)}
@@ -559,7 +560,7 @@ function BeerFormBody({
                   setPriceText(sanitizePriceInput(value, priceCurrency))
                 }
                 placeholder={placeholder}
-                placeholderTextColor={Colors.mutedText}
+                placeholderTextColor={MockColors.fieldHint}
                 keyboardType={
                   currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'
                 }
@@ -630,7 +631,7 @@ function BeerFormBody({
                     setCustomMl(value.replace(/[^0-9]/g, '').slice(0, 4))
                   }
                   placeholder={cs.counter.volumeCustomPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
+                  placeholderTextColor={MockColors.fieldHint}
                   keyboardType="number-pad"
                   maxLength={4}
                   autoFocus

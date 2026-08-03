@@ -1357,6 +1357,18 @@ nedává.
 jednoznačné. Ve hře je „Parťák" (hospodštější, ale svádí k tomu, že je to
 vzájemné, což follow není).
 
+### 18.8 Textová pole
+
+Pole je díra, do které se píše — musí být **světlejší než to, na čem leží**, a
+nést vlásečnicový okraj. Search v Hospodách byl `surface` na sheetu, jehož
+podklad je taky `surface`; pilulku šlo najít jen podle placeholderu uvnitř.
+
+Tokeny (`MockColors`): `field`, `fieldBorder`, `fieldHint`. Placeholder je
+foam na 55 %, ne hnědý `mutedText` — ten je na tmavém poli sotva čitelný.
+
+Platí to na **všechna** pole: search, sheety, dialogy. Nekresli si vlastní
+podklad pole ve screenu.
+
 ### 18.6 Velká čísla se neklikají
 
 Blok velkých numerálů je nadpis, ne ovládací prvek. Nedávej pod něj `Pressable`

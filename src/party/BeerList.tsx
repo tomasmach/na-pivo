@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { BeerIcon, MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -151,7 +151,7 @@ export function BeerList({
             value={draft}
             onChangeText={setDraft}
             placeholder="Značka a stupně"
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             style={styles.input}
             autoFocus
             returnKeyType="done"
@@ -235,7 +235,9 @@ const styles = StyleSheet.create({
     height: MockLayout.buttonHeight,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
+    backgroundColor: MockColors.field,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: MockColors.fieldBorder,
     color: Colors.foam,
     fontSize: 16,
     fontWeight: '600',

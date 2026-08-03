@@ -47,6 +47,7 @@ import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -228,7 +229,7 @@ export function BeerPhotoComposeSheet({
               value={caption}
               onChangeText={setCaption}
               placeholder={cs.photoDiary.captionPlaceholder}
-              placeholderTextColor={Colors.mutedText}
+              placeholderTextColor={MockColors.fieldHint}
               style={styles.captionInput}
               multiline
               maxLength={CAPTION_MAX}

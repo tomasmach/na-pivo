@@ -22,6 +22,7 @@ import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggesti
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -325,7 +326,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                         onFocus={() => setActiveBeerLineId(line.id)}
                         onChangeText={(value) => onChangeBeerName(line.id, value)}
                         placeholder={index === 0 ? cs.beerCheckins.beerPlaceholder : cs.myBeers.historicalNextBeerPlaceholder}
-                        placeholderTextColor={Colors.mutedText}
+                        placeholderTextColor={MockColors.fieldHint}
                         style={[styles.input, styles.beerNameInput]}
                         maxLength={80}
                         maxFontSizeMultiplier={FontScaleCap.body}
@@ -368,7 +369,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                             updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
                           }
                           placeholder="1"
-                          placeholderTextColor={Colors.mutedText}
+                          placeholderTextColor={MockColors.fieldHint}
                           style={[styles.input, styles.compactInput, !parsed.quantityValid && styles.inputError]}
                           keyboardType="number-pad"
                           maxFontSizeMultiplier={FontScaleCap.body}
@@ -383,7 +384,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                               updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
                             }
                             placeholder={cs.myBeers.historicalPricePlaceholder}
-                            placeholderTextColor={Colors.mutedText}
+                            placeholderTextColor={MockColors.fieldHint}
                             style={styles.priceInput}
                             keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
                             maxFontSizeMultiplier={FontScaleCap.body}
@@ -404,7 +405,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
               value={pubName}
               onChangeText={setPubName}
               placeholder={cs.myBeers.historicalPubPlaceholder}
-              placeholderTextColor={Colors.mutedText}
+              placeholderTextColor={MockColors.fieldHint}
               style={styles.input}
               maxLength={120}
               maxFontSizeMultiplier={FontScaleCap.body}
@@ -420,7 +421,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                     setDateText(value);
                   }}
                   placeholder={cs.myBeers.historicalDatePlaceholder}
-                  placeholderTextColor={Colors.mutedText}
+                  placeholderTextColor={MockColors.fieldHint}
                   style={[styles.input, dateError && styles.inputError]}
                   keyboardType="numbers-and-punctuation"
                   maxFontSizeMultiplier={FontScaleCap.body}
@@ -435,7 +436,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                     setStartTimeText(value);
                   }}
                   placeholder={cs.myBeers.historicalTimePlaceholder}
-                  placeholderTextColor={Colors.mutedText}
+                  placeholderTextColor={MockColors.fieldHint}
                   style={[styles.input, dateError && styles.inputError]}
                   keyboardType="numbers-and-punctuation"
                   maxFontSizeMultiplier={FontScaleCap.body}
@@ -450,7 +451,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                     setEndTimeText(value);
                   }}
                   placeholder={cs.myBeers.historicalTimeToPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
+                  placeholderTextColor={MockColors.fieldHint}
                   style={[styles.input, styles.timeInput, dateError && styles.inputError]}
                   keyboardType="numbers-and-punctuation"
                   maxFontSizeMultiplier={FontScaleCap.body}
@@ -468,7 +469,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
               value={note}
               onChangeText={setNote}
               placeholder={cs.beerCheckins.notePlaceholder}
-              placeholderTextColor={Colors.mutedText}
+              placeholderTextColor={MockColors.fieldHint}
               style={[styles.input, styles.noteInput]}
               multiline
               maxLength={1000}

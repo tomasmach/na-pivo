@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -99,7 +100,7 @@ export function PasswordSheet({
                     value={email}
                     onChangeText={onChangeEmail}
                     placeholder={cs.account.emailPlaceholder}
-                    placeholderTextColor={Colors.mutedText}
+                    placeholderTextColor={MockColors.fieldHint}
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="email-address"
@@ -115,7 +116,7 @@ export function PasswordSheet({
                   value={password}
                   onChangeText={onChangePassword}
                   placeholder={cs.account.passwordPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
+                  placeholderTextColor={MockColors.fieldHint}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry

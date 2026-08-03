@@ -16,6 +16,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -194,7 +195,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
         value={noteDraft}
         onChangeText={changeNote}
         placeholder={cs.myBeers.notePlaceholder}
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         multiline
         maxLength={NOTE_MAX_LENGTH}
         textAlignVertical="top"

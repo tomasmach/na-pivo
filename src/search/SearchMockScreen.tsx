@@ -32,7 +32,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { PeopleSuggestions } from '@/community/PeopleSuggestions';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { MOCK_PUBS } from '@/pubs/mockPubs';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
@@ -85,7 +85,7 @@ export default function SearchMockScreen() {
             value={query}
             onChangeText={setQuery}
             placeholder="Hospodu, pivo nebo pivaře"
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             style={styles.input}
             autoFocus
             returnKeyType="search"
@@ -277,7 +277,9 @@ const styles = StyleSheet.create({
     height: HitArea.min,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
+    backgroundColor: MockColors.field,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: MockColors.fieldBorder,
   },
   input: { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.foam },
   cancel: { fontSize: 16, fontWeight: '600', color: Colors.amber },

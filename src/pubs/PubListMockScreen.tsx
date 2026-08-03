@@ -50,7 +50,7 @@ import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
 import { MOCK_PUBS, shuffled, type MockPub } from '@/pubs/mockPubs';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -574,9 +574,11 @@ const styles = StyleSheet.create({
     height: 46,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
+    backgroundColor: MockColors.field,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: MockColors.fieldBorder,
   },
-  searchPlaceholder: { ...MockType.body, color: Colors.mutedText },
+  searchPlaceholder: { ...MockType.body, color: MockColors.fieldHint },
   // `flexGrow: 0` matters: a horizontal ScrollView inside a column otherwise
   // takes a full flex slot, which is where the band of dead space under the
   // filters came from.
