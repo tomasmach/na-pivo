@@ -159,10 +159,12 @@ export function RowMenu({
   repeat,
   destructive,
 }: {
-  value: string;
-  options: readonly string[];
+  value?: string;
+  /** Omitted when there is nothing to choose between — a photo is a photo, and
+   *  then the menu is just its actions. */
+  options?: readonly string[];
   title: string;
-  onChange: (next: string) => void;
+  onChange?: (next: string) => void;
   /** The obvious thing to do with a beer you already had: have it again. */
   repeat?: { label: string; onPress: () => void };
   /** The one item that is not a choice — "Smazat". */
@@ -183,20 +185,22 @@ export function RowMenu({
               <UIText>{repeat.label}</UIText>
             </Button>
           ) : null}
-          <Picker
-            label={title}
-            selection={value}
-            onSelectionChange={(next) => {
-              if (typeof next === 'string') onChange(next);
-            }}
-            modifiers={[pickerStyle('inline')]}
-          >
-            {options.map((option) => (
-              <UIText key={option} modifiers={[tag(option)]}>
-                {option}
-              </UIText>
-            ))}
-          </Picker>
+          {options && options.length > 0 ? (
+            <Picker
+              label={title}
+              selection={value}
+              onSelectionChange={(next) => {
+                if (typeof next === 'string') onChange?.(next);
+              }}
+              modifiers={[pickerStyle('inline')]}
+            >
+              {options.map((option) => (
+                <UIText key={option} modifiers={[tag(option)]}>
+                  {option}
+                </UIText>
+              ))}
+            </Picker>
+          ) : null}
           {destructive ? (
             <Button role="destructive" onPress={destructive.onPress}>
               <UIText>{destructive.label}</UIText>
@@ -209,19 +213,21 @@ export function RowMenu({
 
   const open = () => {
     const extras = repeat ? [repeat.label] : [];
-    const labels = [...extras, ...options, ...(destructive ? [destructive.label] : []), 'Zrušit'];
+    const choices = options ?? [];
+    const labels = [...extras, ...choices, ...(destructive ? [destructive.label] : []), 'Zrušit'];
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options: labels,
         cancelButtonIndex: labels.length - 1,
-        destructiveButtonIndex: destructive ? extras.length + options.length : undefined,
+        destructiveButtonIndex: destructive ? extras.length + choices.length : undefined,
         title,
         userInterfaceStyle: 'dark',
       },
       (index) => {
         if (repeat && index === 0) repeat.onPress();
-        else if (index < extras.length + options.length) onChange(options[index - extras.length]);
-        else if (destructive && index === extras.length + options.length) destructive.onPress();
+        else if (index < extras.length + choices.length)
+          onChange?.(choices[index - extras.length]);
+        else if (destructive && index === extras.length + choices.length) destructive.onPress();
       },
     );
   };

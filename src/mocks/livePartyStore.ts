@@ -137,6 +137,9 @@ interface LivePartyState {
    *  WHICH one was wrong, so it is where correcting it belongs. */
   editBeer: (beerId: string, beer: string) => void;
   dropBeer: (beerId: string) => void;
+  /** Take back anything else you put in the thread — a photo, a game. Only your
+   *  own; the row menu is not offered on somebody else's entry. */
+  dropEvent: (eventId: string) => void;
   addPhoto: () => void;
   addGame: (key: string, name: string) => void;
   finishGame: (key: string, result: GameResult) => void;
@@ -275,6 +278,19 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
       beers: s.beers.filter((entry) => entry.id !== beerId),
       log: s.log.filter((event) => event.beerId !== beerId),
     })),
+
+  dropEvent: (eventId) =>
+    set((s) => {
+      const event = s.log.find((entry) => entry.id === eventId);
+      if (!event) return s;
+      return {
+        log: s.log.filter((entry) => entry.id !== eventId),
+        // The side effects go with it, or the counters keep claiming a photo
+        // that is no longer in the thread.
+        photos: event.kind === 'photo' ? Math.max(0, s.photos - 1) : s.photos,
+        games: event.gameKey ? s.games.filter((game) => game.key !== event.gameKey) : s.games,
+      };
+    }),
 
   addPhoto: () =>
     set((s) => ({

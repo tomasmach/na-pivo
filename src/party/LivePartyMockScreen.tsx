@@ -85,6 +85,13 @@ const SHEET_RADIUS = 28;
  *  and the live store only keeps the key. */
 const gameDef = (key: string) => GAME_CATALOG.find((game) => game.key === key) ?? GAME_CATALOG[0];
 
+/** What "take it back" is called, per kind of thing. */
+const REMOVE_LABEL: Partial<Record<LogKind, string>> = {
+  photo: 'Smazat fotku',
+  game: 'Sundat ze stolu',
+  join: 'Odebrat ze stolu',
+};
+
 /** What the row menu offers instead of the entry you logged. */
 const MENU_BEERS = TAPS.map((tap) => tap.name);
 
@@ -163,6 +170,7 @@ export default function LivePartyMockScreen() {
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
   const editBeer = useLivePartyStore((s) => s.editBeer);
   const dropBeer = useLivePartyStore((s) => s.dropBeer);
+  const dropEvent = useLivePartyStore((s) => s.dropEvent);
   const addGame = useLivePartyStore((s) => s.addGame);
   const invite = useLivePartyStore((s) => s.invite);
 
@@ -180,11 +188,6 @@ export default function LivePartyMockScreen() {
   const mapHeight = live
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
     : MAP_IDLE;
-
-  // Faces in the thread must match the faces in the header — same person, same
-  // colour, wherever they show up.
-  const tintOf = (name: string) =>
-    name === 'Ty' ? Colors.amber : (people.find((p) => p.name === name)?.tint ?? Colors.mutedText);
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -390,7 +393,6 @@ export default function LivePartyMockScreen() {
                               cover is the thing, and a caption under it read as
                               a footnote to a picture. */}
                           <View style={styles.logWho}>
-                            <Face name={event.by} tint={tintOf(event.by)} size={16} />
                             <Text
                               style={styles.logWhoName}
                               maxFontSizeMultiplier={FontScaleCap.body}
@@ -484,16 +486,15 @@ export default function LivePartyMockScreen() {
                         </Text>
                       )}
 
-                      {/* Who put it there. A face because a name alone in 12pt
-                          grey is not something you notice at a loud table. The
-                          game block prints its own, above its cover. */}
+                      {/* Who put it there. Just the name — a 16pt avatar beside
+                          every row made a column of confetti down the thread,
+                          and the glyph on the rail is already the row's
+                          picture. The game block prints its own, above its
+                          cover. */}
                       {game ? null : (
-                      <View style={styles.logWho}>
-                        <Face name={event.by} tint={tintOf(event.by)} size={16} />
                         <Text style={styles.logWhoName} maxFontSizeMultiplier={FontScaleCap.body}>
                           {event.by}
                         </Text>
-                      </View>
                       )}
                     </View>
 
@@ -512,22 +513,35 @@ export default function LivePartyMockScreen() {
                         rows that have a menu, it shoved their timestamps left
                         and the column of times zig-zagged down the thread. */}
                     <View style={styles.logMenuSlot}>
-                    {event.beerId ? (
-                      <RowMenu
-                        title="Co to bylo?"
-                        value={event.text}
-                        options={MENU_BEERS}
-                        onChange={(next) => editBeer(event.beerId as string, next)}
-                        // The thing you most often want from a beer you already
-                        // had is another one of it — and this row is the only
-                        // place that knows WHICH one you mean.
-                        repeat={{ label: 'Ještě jedno', onPress: () => addBeer(event.text) }}
-                        destructive={{
-                          label: 'Smazat pivo',
-                          onPress: () => dropBeer(event.beerId as string),
-                        }}
-                      />
-                    ) : null}
+                      {event.beerId ? (
+                        <RowMenu
+                          title="Co to bylo?"
+                          value={event.text}
+                          options={MENU_BEERS}
+                          onChange={(next) => editBeer(event.beerId as string, next)}
+                          // The thing you most often want from a beer you
+                          // already had is another one of it — and this row is
+                          // the only place that knows WHICH one you mean.
+                          repeat={{ label: 'Ještě jedno', onPress: () => addBeer(event.text) }}
+                          destructive={{
+                            label: 'Smazat pivo',
+                            onPress: () => dropBeer(event.beerId as string),
+                          }}
+                        />
+                      ) : event.by === 'Ty' && event.kind !== 'pub' ? (
+                        // Everything YOU put in the thread can come back out —
+                        // a photo you did not mean to post, a game nobody
+                        // played. Not somebody else's row, and not the pub: the
+                        // place you are in is changed by moving, not by
+                        // deleting the line that says you arrived.
+                        <RowMenu
+                          title={REMOVE_LABEL[event.kind] ?? 'Smazat'}
+                          destructive={{
+                            label: REMOVE_LABEL[event.kind] ?? 'Smazat',
+                            onPress: () => dropEvent(event.id),
+                          }}
+                        />
+                      ) : null}
                     </View>
                   </Animated.View>
                 );
@@ -861,7 +875,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   logMenuSlot: { width: 30, alignItems: 'flex-end' },
-  logWho: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  logWho: { marginTop: 4 },
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
   logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
