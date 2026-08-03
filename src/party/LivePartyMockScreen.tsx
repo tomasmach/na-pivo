@@ -987,6 +987,11 @@ const styles = StyleSheet.create({
     height: 60,
     borderTopLeftRadius: Radius.pill,
     borderBottomLeftRadius: Radius.pill,
+    // A hair of a radius on the seam side too. Dead square, the two halves read
+    // as a capsule someone cut with scissors; 6pt and it reads as one object
+    // with a joint in it.
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
     backgroundColor: Colors.amber,
     overflow: 'hidden',
   },
@@ -1008,6 +1013,8 @@ const styles = StyleSheet.create({
   primaryPick: {
     width: 52,
     height: 60,
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
     borderTopRightRadius: Radius.pill,
     borderBottomRightRadius: Radius.pill,
     alignItems: 'center',
