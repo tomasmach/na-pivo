@@ -64,7 +64,7 @@ import {
 } from '@/mocks/livePartyStore';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 const STOPS = [{ name: 'U Fleků', lat: 50.0785, lng: 14.42 }];
@@ -424,6 +424,14 @@ export default function LivePartyMockScreen() {
                           numberOfLines={2}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
+                          {/* "+1" in the same language as the button that made
+                              it: two identical rows are two beers, not one beer
+                              mentioned twice. */}
+                          {event.kind === 'beer' ? (
+                            <Text style={styles.logPlus} allowFontScaling={false}>
+                              +1{'  '}
+                            </Text>
+                          ) : null}
                           {event.text}
                         </Text>
                       )}
@@ -738,6 +746,7 @@ const styles = StyleSheet.create({
   },
   logWho: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
+  logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam, paddingTop: 8 },
   logTime: {
     marginTop: 10,
