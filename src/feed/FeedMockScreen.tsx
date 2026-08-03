@@ -24,7 +24,8 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
 
-import { MessageSquareIcon } from "@/components/shared/IconGlyph";
+import { MessageSquareIcon, SearchIcon } from "@/components/shared/IconGlyph";
+import { GlassIconButton } from "@/components/shared/GlassIconButton";
 import { CheersButton } from "@/feed/CheersButton";
 import { cs } from "@/i18n/cs";
 import { MOCK_FEED, type FeedEntry } from "@/feed/mockFeed";
@@ -35,7 +36,7 @@ import { StatGrid } from "@/mocks/StatGrid";
 import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from "@/theme/colors";
-import { FontScaleCap } from "@/theme/fonts";
+import { FontScaleCap, Fonts } from "@/theme/fonts";
 import { HitArea, Radius, Spacing } from "@/theme/layout";
 
 /** "Honza, Petr a ty" — the table, named the way you would say it out loud. */
@@ -246,6 +247,7 @@ export function FeedCard({
 
 export default function FeedMockScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const published = usePublishedStore((s) => s.entries);
 
   return (
@@ -258,10 +260,31 @@ export default function FeedMockScreen() {
         styles.content,
         { paddingBottom: insets.bottom + TAB_CHROME },
       ]}
-      contentInsetAdjustmentBehavior="automatic"
+      contentInsetAdjustmentBehavior="never"
     >
-      {/* No hand-rolled header: the native stack owns the large title, its
-            collapse onto the blurred bar and the floating glass search button. */}
+      {/* The brand, as CONTENT. It scrolls away with the first post instead of
+          sitting on a bar forever — you know which app you opened. The spacer
+          on the left is the width of the search button, so the mark is centred
+          on the SCREEN rather than on what is left over beside the button. */}
+      <View style={[styles.brandRow, { paddingTop: insets.top + Spacing.sm }]}>
+        <View style={styles.brandSpacer} />
+        <View style={styles.brand}>
+          <Image
+            source={require("../../assets/images/icon.png")}
+            style={styles.mark}
+          />
+          <Text style={styles.wordmark} allowFontScaling={false}>
+            Na pivo
+          </Text>
+        </View>
+        <GlassIconButton
+          size={40}
+          accessibilityLabel="Hledat"
+          onPress={() => router.push("/search" as Href)}
+        >
+          <SearchIcon size={19} color={Colors.amber} />
+        </GlassIconButton>
+      </View>
 
       {/* Yours first. A night you just published has to be the thing you land
           on, or "Zveřejnit" is a button that appears to do nothing. */}
@@ -279,6 +302,18 @@ export default function FeedMockScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
   content: { paddingHorizontal: MockLayout.screenPad },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: Spacing.md,
+  },
+  brandSpacer: { width: 40 },
+  brand: { flexDirection: "row", alignItems: "center", gap: 8 },
+  mark: { width: 28, height: 28, borderRadius: 7 },
+  // Baloo, the one place a display face belongs: a wordmark is a picture of the
+  // name, not text. Everything else on the screen is the system font (§3).
+  wordmark: { fontFamily: Fonts.numeral, fontSize: 19, color: Colors.foam },
   grow: { flex: 1 },
   pressed: { opacity: 0.6 },
 

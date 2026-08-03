@@ -1,30 +1,20 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Stack, useRouter, type Href } from 'expo-router';
+import { Stack } from 'expo-router';
 
-import { SearchIcon } from '@/components/shared/IconGlyph';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
 
 /**
  * Native stack for the Kocoviny tab.
  *
- * This one IS a list, so it gets the full iOS 26 treatment: a large title that
- * scrolls away with the content and re-forms small and centred on the bar, with
- * the trailing action floating on the system's own glass capsule.
- *
- * Deliberately NOT `headerTransparent` + `headerBlurEffect`. Setting those tells
- * the platform "I will supply the material" — and then supplying a flat colour
- * is why the bar read as a hand-drawn band rather than an iOS 26 one. A plain
- * native bar already IS glass on 26; it mostly needs to be left alone. Spendee's
- * `MoreStackNavigator` does exactly this: large title, no shadow, fonts
- * overridden, and transparency reserved for pushed small-title screens.
+ * The home screen has NO bar. Its title is the app's own logo, and a logo is
+ * content — it belongs at the top of the feed, scrolling away with it, not
+ * welded to a 52pt band that follows you down the list. The pushed screens
+ * below still get the platform's own bar, because a pushed screen needs a back
+ * control and that control is the system's job.
  *
  * A folder (not a route group) so the URL stays `/friends` — it is a deep-link
  * target and is named in telemetry and `appReviewPolicy`.
  */
 export default function FeedLayout() {
-  const router = useRouter();
-
   return (
     <Stack
       screenOptions={{
@@ -44,46 +34,11 @@ export default function FeedLayout() {
         name="index"
         options={{
           title: 'Na pivo',
-          // The logo IS the title here. Kocoviny is the screen you land on, so
-          // it carries the name of the app the way Instagram's home does — and
-          // the tab under it already says which section you are in, which is
-          // what the large title was repeating.
-          //
-          // Everywhere else stays title-only: a wordmark on every screen is
-          // chrome nobody asked for.
-          headerLargeTitle: false,
-          // Without the large title the bar falls back to the system's LIGHT
-          // chrome material, which on a stout app is a white plank across the
-          // top. Asking for the dark chrome material keeps it real glass —
-          // this is not the "flat colour behind headerTransparent" mistake the
-          // note above warns about; it is the platform's own material, named.
-          headerTransparent: true,
-          headerBlurEffect: 'systemChromeMaterialDark',
-          headerStyle: { backgroundColor: 'transparent' },
-          headerTitle: () => (
-            <View style={styles.brand}>
-              <Image
-                source={require('../../../assets/images/icon.png')}
-                style={styles.mark}
-              />
-              <Text style={styles.wordmark} allowFontScaling={false}>
-                Na pivo
-              </Text>
-            </View>
-          ),
-          // No custom glass wrapper here: on iOS 26 the system already floats
-          // bar buttons on their own capsule. Adding ours would be two glass
-          // layers, one of them a fake.
-          headerRight: () => (
-            <Pressable
-              onPress={() => router.push('/search' as Href)}
-              accessibilityRole="button"
-              accessibilityLabel="Hledat"
-              hitSlop={10}
-            >
-              <SearchIcon size={20} color={Colors.amber} />
-            </Pressable>
-          ),
+          // No bar at all on the home screen. The logo is content, not chrome:
+          // it sits at the top of the feed and scrolls away with it, the way
+          // the large title used to. A pinned wordmark is a band that eats
+          // 52pt of a phone forever to say something you already know.
+          headerShown: false,
         }}
       />
       {/* Declared INSIDE the tab's stack, so the push happens under the tab
@@ -104,12 +59,3 @@ export default function FeedLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  // Rounded like an app icon, because that is what it is — squared off in a bar
-  // it reads as a photo of a logo rather than the logo.
-  mark: { width: 28, height: 28, borderRadius: 7 },
-  // Baloo, the one place a display face belongs: a wordmark is a picture of the
-  // name, not text. Everything else on the screen is the system font (§3).
-  wordmark: { fontFamily: Fonts.numeral, fontSize: 19, color: Colors.foam },
-});
