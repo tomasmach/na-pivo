@@ -335,20 +335,18 @@ export default function LivePartyMockScreen() {
                 "who and where" row, and that is what asking someone to join
                 changes. Down in the control row it sat among the things you do
                 over and over all evening; you invite people once. */}
-            {live ? (
-              // With a word on it. A bare glyph in a corner is a guess — and
-              // this is the one control on the screen whose job ("get someone
-              // else in here") no icon says on its own.
-              <GlassPill
-                accessibilityLabel="Přizvat ke stolu"
-                onPress={() => setInviteOpen(true)}
-              >
-                <UserPlusIcon size={17} color={Colors.amber} />
-                <Text style={styles.invitePill} allowFontScaling={false}>
-                  Pozvat
-                </Text>
-              </GlassPill>
-            ) : null}
+            {/* Before the night starts too. Getting people to the pub is the
+                thing you do BEFORE the first beer, so hiding this until one is
+                poured hid it at exactly the moment it is useful.
+
+                With a word on it: a bare glyph in a corner is a guess, and this
+                is the one control here whose job no icon says on its own. */}
+            <GlassPill accessibilityLabel="Přizvat ke stolu" onPress={() => setInviteOpen(true)}>
+              <UserPlusIcon size={17} color={Colors.amber} />
+              <Text style={styles.invitePill} allowFontScaling={false}>
+                Pozvat
+              </Text>
+            </GlassPill>
             </View>
 
             {/* The table, once there is one. Before the night the pill is the
