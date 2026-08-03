@@ -117,6 +117,13 @@ const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
 };
 
 
+/**
+ * A round action in the bottom row.
+ *
+ * No caption under it. The captions made the discs taller than the amber button
+ * beside them, so nothing in the row lined up — and "Foto" under a camera is a
+ * label reading out the picture above it.
+ */
 function CircleButton({
   label,
   children,
@@ -161,9 +168,6 @@ function CircleButton({
           </View>
         ) : null}
       </Pressable>
-      <Text style={styles.circleLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-        {label}
-      </Text>
     </View>
   );
 }
@@ -625,7 +629,7 @@ export default function LivePartyMockScreen() {
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#controlsFade)" />
           </Svg>
-          <CircleButton label={photos > 0 ? `Foto ${photos}` : 'Foto'} onPress={addPhoto}>
+          <CircleButton label={photos > 0 ? `Foto, ${photos}` : 'Foto'} onPress={addPhoto}>
             <CameraIcon size={20} color={Colors.foam} />
           </CircleButton>
 
@@ -636,6 +640,10 @@ export default function LivePartyMockScreen() {
 
               Two targets in one shape: the body logs a beer, the chevron at the
               end changes which. Same split as before, just no longer stacked. */}
+          {/* The button and its picker are ONE thing with a seam, not two
+              controls sharing a row: 4pt apart against 12 to the discs, so the
+              chevron reads as belonging to the amber beside it. */}
+          <View style={styles.primaryGroup}>
           <View style={styles.primaryWrap}>
             <Pressable
               onPress={() => (live ? addBeer(houseBeer) : setBeersOpen(true))}
@@ -669,6 +677,7 @@ export default function LivePartyMockScreen() {
               <ChevronDownIcon size={18} color={Colors.amber} />
             </Pressable>
           ) : null}
+          </View>
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
             <SoccerBallIcon size={20} color={Colors.foam} />
@@ -959,14 +968,15 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.sm,
     // Overlaps the thread it fades out — the scroll runs under it.
     marginTop: -Spacing.xl,
   },
   controlsLive: { paddingBottom: Spacing.sm },
-  circleWrap: { alignItems: 'center', gap: 5 },
+  circleWrap: { alignItems: 'center' },
+  primaryGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
   primaryWrap: {
     flex: 1,
     flexDirection: 'row',
@@ -1023,7 +1033,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   circleSolid: { backgroundColor: MockColors.surfaceHigh },
-  circleLabel: { fontWeight: '500', fontSize: 12, color: Colors.mutedText },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
   primaryLabel: {
     flexShrink: 1,
