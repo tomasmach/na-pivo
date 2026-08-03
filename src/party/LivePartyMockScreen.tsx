@@ -486,6 +486,11 @@ export default function LivePartyMockScreen() {
                 accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
                 hitSlop={6}
               >
+                {/* A spacer the width of the chevron, so the NAME is centred on
+                    the disc rather than the name-plus-chevron block. Without it
+                    a two-line label sat visibly left of the button it belongs
+                    to. */}
+                <View style={styles.chipSpacer} />
                 <Text
                   style={styles.primaryLabel}
                   numberOfLines={2}
@@ -792,6 +797,7 @@ const styles = StyleSheet.create({
     marginTop: -12,
   },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
+  chipSpacer: { width: 16 },
   primaryLabel: {
     flexShrink: 1,
     fontWeight: '700',

@@ -35,7 +35,7 @@ import { BeerIcon } from '@/components/shared/IconGlyph';
 import { formatStopwatch, useLivePartyStore, useNightSeconds } from '@/mocks/livePartyStore';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const GLASS = isLiquidGlassAvailable();
@@ -51,12 +51,17 @@ function beersLabel(count: number): string {
 /**
  * The clock, ticking, on its own — the same trick the hub uses: only this line
  * re-renders every second, not the whole bar and everything under it.
+ *
+ * It also sits in its OWN slot at the end of the row rather than in front of
+ * the beer count. Sharing a line, every rollover past the hour ("59:04" →
+ * "1:00:04") grew the clock by a character and shoved the count sideways, which
+ * on a strip that redraws every second reads as a twitch.
  */
-function BarMeta({ startedAt, count }: { startedAt: number; count: number }) {
+function BarClock({ startedAt }: { startedAt: number }) {
   const seconds = useNightSeconds(startedAt);
   return (
-    <Text style={styles.meta} numberOfLines={1} allowFontScaling={false}>
-      {formatStopwatch(seconds)} · {beersLabel(count)}
+    <Text style={styles.clock} allowFontScaling={false} numberOfLines={1}>
+      {formatStopwatch(seconds)}
     </Text>
   );
 }
@@ -101,14 +106,15 @@ export function LivePartyBar() {
           <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {pubName}
           </Text>
-          {startedAt === null ? (
-            <Text style={styles.meta} numberOfLines={1} allowFontScaling={false}>
-              {beersLabel(count)}
-            </Text>
-          ) : (
-            <BarMeta startedAt={startedAt} count={count} />
-          )}
+          <Text style={styles.meta} numberOfLines={1} allowFontScaling={false}>
+            {beersLabel(count)}
+          </Text>
         </View>
+
+        {/* The width the strip was wasting: the clock takes the middle, big
+            enough to read without stopping, and grows leftwards into empty
+            space instead of pushing anything. */}
+        {startedAt === null ? null : <BarClock startedAt={startedAt} />}
       </Pressable>
 
       <Pressable
@@ -147,13 +153,19 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
   body: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   text: { flex: 1 },
-  pub: { fontSize: 15, fontWeight: '700', color: Colors.foam },
+  pub: { fontSize: 16, fontWeight: '700', color: Colors.foam },
   meta: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: withAlpha(Colors.foam, 0.72),
     marginTop: 1,
+  },
+  clock: {
+    fontFamily: Fonts.numeral,
+    fontSize: 20,
+    color: Colors.foam,
     fontVariant: ['tabular-nums'],
+    marginRight: Spacing.xs,
   },
 
   cta: {
