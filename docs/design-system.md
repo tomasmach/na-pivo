@@ -1335,6 +1335,21 @@ Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
 „Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
 v něm.
 
+### 18.12 Jedna smyčka v celé app
+
+Tab bar je na každé obrazovce, takže cokoliv, co v něm běží ve smyčce, běží
+pořád. §10 to zakazuje a ten zákaz platí dál — **s jednou výjimkou**: prstenec
+kolem Party ikony při běžícím večeru.
+
+Proč zrovna tenhle: běžící večer je jediná věc v appce, která se **opravdu děje**,
+zatímco se díváš na něco jiného. Statický prstenec říká „je zapnutý režim",
+pulzující říká „běží to". „Kamarád je live" tuhle výjimku nedostane — to je cizí
+novinka a ta počká na pohled.
+
+Podmínky: **2,4 s na cyklus**, tam a zpět (skok zpátky na malý je bliknutí a
+blikající tab bar je alarm), hýbe se **jen prstenec, nikdy glyf**, a při reduced
+motion se nehýbe nic.
+
 ### 18.11 Rekvizity vypadají jako rekvizity
 
 Kostka je **kostka**, ne číslo na čtverci. Celé kouzlo házení je v tom, že

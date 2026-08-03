@@ -34,7 +34,9 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withRepeat,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
@@ -179,7 +181,11 @@ const TabBadge = memo(function TabBadge({ count, dot, live }: TabBadgeState) {
     <Animated.View style={[styles.badgeDotWrap, appearStyle]} pointerEvents="none">
       {/* Static, never breathing: this badge rides the tab bar, so a looping
           dot would put permanent ambient motion on every rebuilt screen (§10).
-          A dot versus a numbered pill is already signal enough. */}
+          A dot versus a numbered pill is already signal enough.
+
+          The one loop this bar is allowed is `LiveRing`, and only because a
+          running evening is genuinely still happening while you look elsewhere.
+          "A friend is live" is somebody else's news; it can wait for a glance. */}
       <View style={styles.badgeDotStatic} />
     </Animated.View>
   );
@@ -193,6 +199,43 @@ interface TabItemProps {
   badge: TabBadgeState | null;
   /** A night is running right now. Only the party item cares. */
   running?: boolean;
+}
+
+/**
+ * The ring around the party disc, breathing, while a night is running.
+ *
+ * This is a deliberate exception to the rule two lines down in `TabBadge`, which
+ * says nothing on this bar may loop: the bar is on every screen, so a loop here
+ * runs all the time. It is allowed exactly once, for exactly one state, because
+ * "there is an evening happening right now" is the only thing in this app that
+ * is genuinely still going while you are looking at something else — and a
+ * static ring says "there is a mode", not "it is running".
+ *
+ * Kept as quiet as a pulse can be: 2.4 seconds a cycle, the RING only and never
+ * the glyph, and nothing moves at all under reduced motion.
+ */
+function LiveRing() {
+  const reduceMotion = useReducedMotion();
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) return undefined;
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      // Reverses rather than restarting: a ring that snaps back to small is a
+      // blink, and a blinking tab bar is an alert.
+      true,
+    );
+    return () => cancelAnimation(pulse);
+  }, [reduceMotion, pulse]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + pulse.value * 0.1 }],
+    opacity: 1 - pulse.value * 0.55,
+  }));
+
+  return <Animated.View style={[styles.liveRing, style]} pointerEvents="none" />;
 }
 
 const TabItem = memo(function TabItem({
@@ -240,7 +283,7 @@ const TabItem = memo(function TabItem({
           disc, one ring — a different icon would make it read as a different
           destination. */}
       <View style={[styles.iconWrap, meta.accent && styles.accentWrap]}>
-        {running && meta.accent ? <View style={styles.liveRing} pointerEvents="none" /> : null}
+        {running && meta.accent ? <LiveRing /> : null}
         <Icon size={24} color={iconColor} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
