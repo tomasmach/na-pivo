@@ -99,6 +99,9 @@ export interface LogEvent {
   gameKey?: string;
   /** Only on `beer` rows: which entry to correct when you tap it. */
   beerId?: string;
+  /** Only on `photo` rows: the shot itself, so the thread shows it rather than
+   *  reporting that it exists. */
+  photo?: string;
 }
 
 interface LivePartyState {
@@ -172,13 +175,22 @@ const EMPTY = {
 /** Whoever is holding the phone. */
 const ME = 'Ty';
 
+/** Stand-ins so the thread can show a picture. `picsum.photos` is a placeholder
+ *  service and MUST NOT ship — real ones come from `BeerPhoto`. */
+const MOCK_PHOTOS = [
+  'https://picsum.photos/seed/napivo-1/400/400',
+  'https://picsum.photos/seed/napivo-2/400/400',
+  'https://picsum.photos/seed/napivo-3/400/400',
+  'https://picsum.photos/seed/napivo-4/400/400',
+];
+
 function logged(
   state: { log: LogEvent[] },
   at: number,
   kind: LogKind,
   text: string,
   by: string = ME,
-  extra?: { gameKey?: string; beerId?: string },
+  extra?: { gameKey?: string; beerId?: string; photo?: string },
 ): LogEvent[] {
   return [...state.log, { id: nextId('ev'), at, kind, text, by, ...extra }];
 }
@@ -264,7 +276,9 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
   addPhoto: () =>
     set((s) => ({
       photos: s.photos + 1,
-      log: logged(s, Date.now(), 'photo', 'Fotka'),
+      log: logged(s, Date.now(), 'photo', 'Fotka', ME, {
+        photo: MOCK_PHOTOS[s.photos % MOCK_PHOTOS.length],
+      }),
     })),
 
   addGame: (key, name) =>

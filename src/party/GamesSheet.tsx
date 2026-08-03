@@ -28,7 +28,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
-const COVER_H = 96;
+const COVER_H = 118;
 
 export function GamesSheet({
   visible,
@@ -53,7 +53,7 @@ export function GamesSheet({
               Hry
             </Text>
             <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-              Vyber hru, objeví se ve večeru a odtud se spouští.
+              Objeví se ve večeru a spustíš ji odtud.
             </Text>
           </View>
           <CloseButton onPress={onClose} />
@@ -100,13 +100,9 @@ export function GamesSheet({
                 >
                   {game.name}
                 </Text>
-                <Text
-                  style={styles.how}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {game.how}
-                </Text>
+                {/* No rules under every tile. Sixteen lines of instructions on
+                    one sheet is a manual, and the rules are on the game's own
+                    screen where you read them when you actually play. */}
               </Pressable>
             );
           })}
@@ -147,7 +143,6 @@ const styles = StyleSheet.create({
   },
   tile: { width: '47%', gap: 6 },
   name: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam },
-  how: { fontSize: 12, fontWeight: '400', color: Colors.mutedText, lineHeight: 16 },
 
   /** How it ends, on the cover — the one thing worth knowing before you pick. */
   badge: {

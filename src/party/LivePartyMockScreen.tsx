@@ -26,7 +26,7 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -41,6 +41,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   MapPinIcon,
+  PlayIcon,
   PlusIcon,
   SoccerBallIcon,
   SparklesIcon,
@@ -48,6 +49,8 @@ import {
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
 import { BeerSheet } from '@/party/BeerSheet';
+import { GameCover } from '@/party/GameCover';
+import { GAME_CATALOG } from '@/party/gameCatalog';
 import { Face } from '@/feed/FeedMockScreen';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
@@ -77,6 +80,10 @@ const TAPS = [
 
 /** How far the sheet overlaps the map, which is also its corner radius. */
 const SHEET_RADIUS = 28;
+
+/** The catalogue entry behind a game on the table — the cover art lives there,
+ *  and the live store only keeps the key. */
+const gameDef = (key: string) => GAME_CATALOG.find((game) => game.key === key) ?? GAME_CATALOG[0];
 
 /** What the row menu offers instead of the entry you logged. */
 const MENU_BEERS = TAPS.map((tap) => tap.name);
@@ -377,16 +384,42 @@ export default function LivePartyMockScreen() {
 
                     <View style={styles.grow}>
                       {game ? (
-                        <Pressable
-                          onPress={() => router.push(`/party-game?key=${game.key}` as Href)}
-                          style={({ pressed }) => [styles.game, pressed && styles.pressed]}
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            game.result ? `${game.name}, výsledek` : `Spustit ${game.name}`
-                          }
-                        >
-                          <View style={styles.gameHead}>
-                            <View style={styles.grow}>
+                        <View style={styles.gameBlock}>
+                          {/* Who put it on the table goes ABOVE the cover: the
+                              cover is the thing, and a caption under it read as
+                              a footnote to a picture. */}
+                          <View style={styles.logWho}>
+                            <Face name={event.by} tint={tintOf(event.by)} size={16} />
+                            <Text
+                              style={styles.logWhoName}
+                              maxFontSizeMultiplier={FontScaleCap.body}
+                            >
+                              {event.by === 'Ty'
+                                ? `Hodil jsi na stůl ${game.name}`
+                                : `${event.by} hodil na stůl ${game.name}`}
+                            </Text>
+                          </View>
+
+                          <Pressable
+                            onPress={() => router.push(`/party-game?key=${game.key}` as Href)}
+                            style={({ pressed }) => [styles.gameCover, pressed && styles.pressed]}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              game.result ? `${game.name}, výsledek` : `Spustit ${game.name}`
+                            }
+                          >
+                            <GameCover game={gameDef(game.key)} height={132} glyph={38} />
+                            {/* A play disc, so there is no question what the
+                                card does. A chevron on a picture is a link; a
+                                play button is a game waiting to be started. */}
+                            <View style={styles.playDisc} pointerEvents="none">
+                              {game.result ? (
+                                <TrophyIcon size={22} color={Colors.stout} />
+                              ) : (
+                                <PlayIcon size={22} color={Colors.stout} />
+                              )}
+                            </View>
+                            <View style={styles.gameCaption} pointerEvents="none">
                               <Text
                                 style={styles.gameTitle}
                                 numberOfLines={1}
@@ -405,15 +438,8 @@ export default function LivePartyMockScreen() {
                                   : 'Ťukni a hraj'}
                               </Text>
                             </View>
-                            {game.result ? (
-                              <TrophyIcon size={16} color={Colors.amber} />
-                            ) : (
-                              <ChevronRightIcon size={16} color={Colors.mutedText} />
-                            )}
-                          </View>
+                          </Pressable>
 
-                          {/* A finished game IS a leaderboard — that is the
-                              whole thing the recap and the feed lead with. */}
                           {game.result ? (
                             <View style={styles.board}>
                               {game.result.scores.slice(0, 4).map((row, rank) => (
@@ -435,7 +461,10 @@ export default function LivePartyMockScreen() {
                               ))}
                             </View>
                           ) : null}
-                        </Pressable>
+                        </View>
+                      ) : event.photo ? (
+                        // The picture, not a line saying a picture exists.
+                        <Image source={{ uri: event.photo }} style={styles.logPhoto} />
                       ) : (
                         <Text
                           style={styles.logText}
@@ -455,13 +484,16 @@ export default function LivePartyMockScreen() {
                       )}
 
                       {/* Who put it there. A face because a name alone in 12pt
-                          grey is not something you notice at a loud table. */}
+                          grey is not something you notice at a loud table. The
+                          game block prints its own, above its cover. */}
+                      {game ? null : (
                       <View style={styles.logWho}>
                         <Face name={event.by} tint={tintOf(event.by)} size={16} />
                         <Text style={styles.logWhoName} maxFontSizeMultiplier={FontScaleCap.body}>
                           {event.by}
                         </Text>
                       </View>
+                      )}
                     </View>
 
                     {/* When is the least interesting part, so it goes last and
@@ -788,6 +820,34 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.1),
+  },
+  gameBlock: { gap: Spacing.sm },
+  gameCover: { borderRadius: 18, overflow: 'hidden' },
+  playDisc: {
+    position: 'absolute',
+    top: 42,
+    left: '50%',
+    marginLeft: -24,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+  },
+  gameCaption: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    bottom: Spacing.sm,
+    // The cover art runs under the words, so they need their own ground.
+    textShadowColor: Colors.stout,
+  },
+  logPhoto: {
+    width: 140,
+    height: 140,
+    borderRadius: 16,
+    backgroundColor: Colors.stout3,
   },
   logWho: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },

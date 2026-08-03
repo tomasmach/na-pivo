@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import type { GameDef } from '@/party/gameCatalog';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -38,6 +38,26 @@ export function GameCover({
           </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#cover-${game.key})`} />
+        {/* Rings, offset by the game's own name so no two covers sit at the
+            same angle. Flat gradients read as coloured rectangles; a bit of
+            geometry behind the glyph reads as a cover. Cheap, and it does not
+            need eight commissioned illustrations to ship. */}
+        <Circle
+          cx={`${20 + (game.key.length * 13) % 60}%`}
+          cy={`${15 + (game.name.length * 17) % 60}%`}
+          r="46%"
+          stroke={withAlpha(Colors.foam, 0.09)}
+          strokeWidth={12}
+          fill="none"
+        />
+        <Circle
+          cx={`${70 - (game.key.length * 11) % 50}%`}
+          cy={`${80 - (game.name.length * 7) % 50}%`}
+          r="30%"
+          stroke={withAlpha(Colors.foam, 0.07)}
+          strokeWidth={20}
+          fill="none"
+        />
       </Svg>
       <Icon size={glyph} color={withAlpha(Colors.foam, 0.92)} />
     </View>

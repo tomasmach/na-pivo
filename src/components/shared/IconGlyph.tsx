@@ -64,6 +64,7 @@ import {
   Accessibility,
   Target,
   CircleDot,
+  Play,
   Radio,
   Mic,
   Tv,
@@ -256,6 +257,7 @@ export const CreditCardIcon = wrap(CreditCard, 'CreditCardIcon');
 export const AccessibilityIcon = wrap(Accessibility, 'AccessibilityIcon');
 export const TargetIcon = wrap(Target, 'TargetIcon');
 export const CircleDotIcon = wrap(CircleDot, 'CircleDotIcon');
+export const PlayIcon = wrap(Play, 'PlayIcon');
 // Soccer ball — lucide ships no soccer/football glyph, so this is a deliberate
 // hand-rolled exception (owner wanted a real football for "stolní fotbal"):
 // outer circle + central pentagon + radial seams, drawn to match the lucide look.
