@@ -49,6 +49,9 @@ from .party_views import (
     PartyEveningDrinkView,
     PartyEveningEndView,
     PartyEveningJoinView,
+    PartyGameCollectionView,
+    PartyGameEventView,
+    party_game_stream,
 )
 from .pub_event_views import PubEventView
 from .views import (
@@ -157,6 +160,23 @@ urlpatterns = [
         "party-evenings/<str:code>/drinks",
         PartyEveningDrinkView.as_view(),
         name="party-evening-drinks",
+    ),
+    # Games. Additive: released apps do not call these, and the evening detail
+    # they DO call is unchanged.
+    path(
+        "party-evenings/<str:code>/games",
+        PartyGameCollectionView.as_view(),
+        name="party-evening-games",
+    ),
+    path(
+        "party-evenings/<str:code>/games/stream",
+        party_game_stream,
+        name="party-evening-games-stream",
+    ),
+    path(
+        "party-evenings/<str:code>/games/<str:game_id>/events",
+        PartyGameEventView.as_view(),
+        name="party-evening-game-events",
     ),
     path(
         "party-evenings/<str:code>",
@@ -291,7 +311,11 @@ urlpatterns = [
     path("account", AccountView.as_view(), name="account"),
     path("account/me", AccountMeView.as_view(), name="account-me"),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
-    path("account/me/purchases/restore", RestorePurchasesView.as_view(), name="account-restore-purchases"),
+    path(
+        "account/me/purchases/restore",
+        RestorePurchasesView.as_view(),
+        name="account-restore-purchases",
+    ),
     path("account/export", AccountExportView.as_view(), name="account-export"),
     path(
         "account/nickname-available",

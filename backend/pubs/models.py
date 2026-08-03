@@ -965,7 +965,9 @@ class FriendPubActivity(models.Model):
         on_delete=models.CASCADE,
         related_name="friend_pub_activities",
     )
-    client_id = models.UUIDField(help_text="Client-generated idempotency key for the shared pub session.")
+    client_id = models.UUIDField(
+        help_text="Client-generated idempotency key for the shared pub session."
+    )
     cache_key = models.CharField(max_length=12, db_index=True)
     name = models.TextField(help_text="Pub name as the client saw it.")
     lat = models.FloatField()
@@ -1236,7 +1238,9 @@ class PartyEvening(models.Model):
     """One explicit shared pub evening, separate from private diary visits."""
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
-    client_id = models.UUIDField(help_text="Host-generated idempotency key for offline create retries.")
+    client_id = models.UUIDField(
+        help_text="Host-generated idempotency key for offline create retries."
+    )
     join_code = models.CharField(max_length=8, unique=True, db_index=True)
     host = models.ForeignKey(
         "pubs.Account", on_delete=models.CASCADE, related_name="hosted_party_evenings"
@@ -1292,7 +1296,9 @@ class PartyEveningMember(models.Model):
 class PartyEveningDrink(models.Model):
     """A drink shared explicitly into a party evening, not a private diary copy."""
 
-    evening = models.ForeignKey(PartyEvening, on_delete=models.CASCADE, related_name="shared_drinks")
+    evening = models.ForeignKey(
+        PartyEvening, on_delete=models.CASCADE, related_name="shared_drinks"
+    )
     account = models.ForeignKey(
         "pubs.Account", on_delete=models.CASCADE, related_name="party_evening_drinks"
     )
@@ -1907,12 +1913,8 @@ class AuthIdentity(models.Model):
         verbose_name = "Auth identity"
         verbose_name_plural = "Auth identities"
         constraints = [
-            models.UniqueConstraint(
-                fields=["provider", "subject"], name="uniq_provider_subject"
-            ),
-            models.UniqueConstraint(
-                fields=["account", "provider"], name="uniq_account_provider"
-            ),
+            models.UniqueConstraint(fields=["provider", "subject"], name="uniq_provider_subject"),
+            models.UniqueConstraint(fields=["account", "provider"], name="uniq_account_provider"),
         ]
 
     def __str__(self) -> str:
@@ -2068,7 +2070,9 @@ class PubNameCorrection(models.Model):
         verbose_name_plural = "Pub Name Corrections"
         ordering = ["-updated_at"]
         indexes = [
-            models.Index(fields=["active", "cache_key", "updated_at"], name="pubname_active_key_upd_idx"),
+            models.Index(
+                fields=["active", "cache_key", "updated_at"], name="pubname_active_key_upd_idx"
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -2078,7 +2082,9 @@ class PubNameCorrection(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubNameCorrection({self.original_name} -> {self.suggested_name} [{self.cache_key}])"
+        return (
+            f"PubNameCorrection({self.original_name} -> {self.suggested_name} [{self.cache_key}])"
+        )
 
 
 class UserAddedPub(models.Model):
@@ -2635,8 +2641,7 @@ class PubCommunityData(models.Model):
         default=list,
         blank=True,
         help_text=(
-            'List of beers on tap: '
-            '[{"name": str, "price_czk": int|null, "volume_ml": int|null}].'
+            'List of beers on tap: [{"name": str, "price_czk": int|null, "volume_ml": int|null}].'
         ),
     )
     historical_beers = models.JSONField(
@@ -3460,7 +3465,9 @@ class PubSearchCache(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"PubSearchCache({self.cache_key} @ {self.radius_bucket}km — {len(self.items)} items)"
+        return (
+            f"PubSearchCache({self.cache_key} @ {self.radius_bucket}km — {len(self.items)} items)"
+        )
 
 
 class PubContributionLog(models.Model):
@@ -3625,10 +3632,16 @@ class PubAmenityVote(models.Model):
     # truncates silently, Postgres raises DataError). Bound enforced in the
     # serializer. name is also the geohash-8 collision guard (§2.6).
     name = models.TextField(blank=True, default="", help_text="Pub name as the client saw it.")
-    lat = models.FloatField(help_text="Server-side only: derives cache_key; never exposed in reads.")
-    lng = models.FloatField(help_text="Server-side only: derives cache_key; never exposed in reads.")
+    lat = models.FloatField(
+        help_text="Server-side only: derives cache_key; never exposed in reads."
+    )
+    lng = models.FloatField(
+        help_text="Server-side only: derives cache_key; never exposed in reads."
+    )
     city = models.TextField(blank=True, default="")
-    external_id = models.TextField(blank=True, default="", help_text="Client provider id (Mapy item id).")
+    external_id = models.TextField(
+        blank=True, default="", help_text="Client provider id (Mapy item id)."
+    )
     value = models.CharField(
         max_length=3,
         choices=Value.choices,
@@ -3991,6 +4004,103 @@ class ExternalApiDailyUsage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}/{self.operation}/{self.day}: {self.request_count}"
+
+
+class PartyGame(models.Model):
+    """
+    One game a table put on the table, during one party evening.
+
+    The catalogue itself never travels. `catalog_key` is all the wire carries —
+    an app that does not know the key still has `name` and the scoreboard, so a
+    phone one release behind can watch a game it has never heard of instead of
+    rendering a blank. That is the same additive rule the rest of this API
+    follows: new keys are not a breaking change.
+
+    `scoring` is copied onto the row rather than looked up, because it decides
+    whether the result may name a winner, and that answer must not change under
+    an old result when the catalogue is edited later.
+    """
+
+    class Scoring(models.TextChoices):
+        POINTS = "points", "Points"
+        DRINKS = "drinks", "Drinks"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    client_id = models.UUIDField(help_text="Client-generated idempotency key for offline retries.")
+    evening = models.ForeignKey(PartyEvening, on_delete=models.CASCADE, related_name="games")
+    started_by = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="started_party_games"
+    )
+    catalog_key = models.CharField(max_length=40)
+    name = models.CharField(max_length=80)
+    scoring = models.CharField(max_length=8, choices=Scoring.choices, default=Scoring.POINTS)
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["started_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["evening", "client_id"], name="unique_party_game_client"
+            )
+        ]
+        indexes = [models.Index(fields=["evening", "started_at"], name="party_game_evening_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.name} @ {self.evening.join_code}"
+
+
+class PartyGameEvent(models.Model):
+    """
+    Append-only. The score is the SUM of these rows, never a stored total.
+
+    Two people at one table tap a point at the same moment; with a stored total
+    the second write silently overwrites the first and a point disappears. As
+    events they simply both land. It also means a phone that was offline can
+    post what it recorded whenever it gets signal, in any order, without
+    reconciling anything.
+
+    `id` is the cursor. Clients ask for everything after the last id they saw,
+    which is what makes catch-up after a dropped connection the same code path
+    as the live stream — a reconnect is a `since`, not a special case.
+    """
+
+    class Kind(models.TextChoices):
+        SCORE = "score", "Score"
+        FINISH = "finish", "Finish"
+
+    game = models.ForeignKey(PartyGame, on_delete=models.CASCADE, related_name="events")
+    account = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="party_game_events"
+    )
+    client_id = models.UUIDField(
+        help_text="Idempotency key; a retried event must not double-count."
+    )
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    #: Whose score moved. Their own account, or another member at the table —
+    #: at a pub one phone often keeps score for everybody.
+    subject = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="party_game_scores",
+        null=True,
+        blank=True,
+    )
+    #: Signed, so taking a point back is another event rather than a deletion.
+    delta = models.SmallIntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "client_id"], name="unique_party_game_event_client"
+            )
+        ]
+        indexes = [models.Index(fields=["game", "id"], name="party_game_event_cursor_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.kind}:{self.delta} on {self.game_id}"
 
 
 from .community_events import CommunityEvent, CommunityEventMembership  # noqa: E402,F401
