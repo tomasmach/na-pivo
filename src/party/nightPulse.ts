@@ -99,6 +99,32 @@ export interface PulseStat {
 }
 
 /**
+ * The numbers beside the stopwatch, chosen by the situation.
+ *
+ * "U stolu" is only a fact when there IS a table — alone it repeats your own
+ * count in a second column and the hub reads as a bug. So: yours always, then
+ * whichever of "the table" or "the tempo" is true right now, and nothing at all
+ * if neither is. Two honest numbers beat three with a dash in them.
+ */
+export function hubStats({
+  beerTimes,
+  now,
+  mine,
+  table,
+  others,
+}: PulseInput & { mine: number; table: number; others: number }): PulseStat[] {
+  const stats: PulseStat[] = [{ label: others > 0 ? 'tvoje piva' : 'piva', value: String(mine) }];
+  if (others > 0) {
+    stats.push({ label: 'u stolu', value: String(table) });
+    return stats;
+  }
+  // Drinking alone this is a tracker, so the second number is your rhythm.
+  // Under two beers there is none, and the stopwatch already answers "how long".
+  if (beerTimes.length >= 2) stats.push(fourthStat({ beerTimes, now }));
+  return stats;
+}
+
+/**
  * The fourth stat, chosen by what is worth knowing at this moment rather than
  * being one fixed label that is a dash half the evening.
  */

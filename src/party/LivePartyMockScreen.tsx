@@ -10,11 +10,14 @@
  * So the map collapses to a band the moment the night starts, and the evening
  * takes the space. What you get instead, top to bottom:
  *
- *   stats        yours, the table's, the clock, and time since the last one
- *   timeline     the beers as clips, so the night has a shape
- *   what you're  the running order, per kind, with counters you can correct
- *   drinking
- *   sections     Statistiky / Aktivity / Log
+ *   stats        two or three big numbers, whichever are true right now
+ *   controls     invite, photo, +1 beer, games, move on
+ *   log          everything that happened, as one thread
+ *
+ * There are no charts here. A night in progress is a thing you are IN — you
+ * glance at the phone to see what just happened, not to study a bar chart of
+ * your own evening. The graphs live in the recap, after you finish and post,
+ * where looking back is the whole point.
  *
  * Ending the night sits top right, away from "+1 pivo": those two buttons must
  * never be neighbours, because one of them is undoable and the other is not.
@@ -43,21 +46,17 @@ import { Face } from '@/feed/FeedMockScreen';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
-import { buildPulse, fourthStat } from '@/party/nightPulse';
-import { MenuChip } from '@/mocks/MenuChip';
-import { NightChart, type ChartShape } from '@/mocks/NightChart';
+import { hubStats } from '@/party/nightPulse';
 import { NightRoute } from '@/mocks/NightRoute';
 import {
   beersByType,
   clockAt,
-  hourlyFrom,
   minutesBetween,
   useLivePartyStore,
   useNightClock,
   type LogKind,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockType } from '@/mocks/mockTheme';
-import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -74,14 +73,11 @@ const SHEET_RADIUS = 28;
 
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
-const MAP_LIVE = 128;
+/** Below the notch and the floating chrome: at a fixed 128 the sheet's top edge
+ *  cut through the back chevron and "Ukončit" on a tall phone. */
+const MAP_LIVE_MIN = 128;
+const TOP_BAR_H = HitArea.min + Spacing.sm * 2;
 
-/**
- * Two sections, because there are two questions: how is it going, and what
- * happened. The beer list used to be a third tab, but it is not a section of
- * the night — it is the thing the "+1 pivo" control writes into, so it moved
- * behind the chip under that control where you are already looking.
- */
 /** One glyph per kind of thing that happens in an evening. */
 const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
   beer: <BeerIcon size={17} color={Colors.amber} />,
@@ -91,8 +87,6 @@ const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
   pub: <MapPinIcon size={17} color={Colors.amber} />,
 };
 
-const SECTIONS = ['Statistiky', 'Log'] as const;
-const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
 
 function CircleButton({
   label,
@@ -145,10 +139,11 @@ export default function LivePartyMockScreen() {
 
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Statistiky');
-  const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
-  const [shape, setShape] = React.useState<ChartShape>('bar');
   const [beersOpen, setBeersOpen] = React.useState(false);
+
+  const mapHeight = live
+    ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
+    : MAP_IDLE;
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -159,16 +154,9 @@ export default function LivePartyMockScreen() {
   // Derived from the ticking clock, not `Date.now()` — calling that in render is
   // impure and the lint rule is right to stop it.
   const nowStamp = startedAt === null ? 0 : startedAt + minutes * 60_000;
-  const pulse = buildPulse({ beerTimes, now: minutes });
-  const fourth = fourthStat({ beerTimes, now: minutes });
-
-  const chartRows =
-    chart === 'V čase'
-      ? hourlyFrom(beers, nowStamp).map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
-      : chart === 'Podle piva'
-        ? byType.map((row) => ({ label: row.beer, value: row.count }))
-        : [{ label: 'Ty', value: mine }, ...people.map((p) => ({ label: p.name, value: p.beers }))]
-            .sort((a, b) => b.value - a.value);
+  const stats = live
+    ? hubStats({ beerTimes, now: minutes, mine, table, others: people.length })
+    : [{ label: 'piva', value: '0' }];
 
   return (
     <View style={styles.screen}>
@@ -178,7 +166,7 @@ export default function LivePartyMockScreen() {
         <NightRoute
           stops={STOPS}
           live={live}
-          height={live ? MAP_LIVE : MAP_IDLE}
+          height={mapHeight}
           caption={false}
         />
       </View>
@@ -225,7 +213,7 @@ export default function LivePartyMockScreen() {
           {
             // Pulled UP over the map by the radius, or the rounded corners have
             // nothing behind them to reveal and the edge reads as square.
-            marginTop: (live ? MAP_LIVE : MAP_IDLE) - SHEET_RADIUS,
+            marginTop: mapHeight - SHEET_RADIUS,
             paddingBottom: insets.bottom + Spacing.md,
           },
         ]}
@@ -301,56 +289,18 @@ export default function LivePartyMockScreen() {
           {/* Shown even before the first beer, as zeroes. An empty stopwatch is
               still a stopwatch — the shape tells you what the night will collect,
               which a paragraph explaining it never did. */}
+          {/* Which numbers these are is a product rule with tests, not a fixed
+              row: alone the table is your own count twice over. */}
           <PulsePanel
-            pulse={pulse}
             startedAt={startedAt}
-            stats={[
-              // Whose, how many at the table, how fast. The labels say which is
-              // which — "piv" alone next to "u stolu" left you guessing whether
-              // the first number was yours or everyone's.
-              { value: String(mine), unit: 'tvoje piva' },
-              { value: String(live ? table : 0), unit: 'u stolu' },
-              // Dropped entirely until there are two beers: with one, the only
-              // duration worth showing is the stopwatch.
-              ...(beers.length >= 2 ? [{ value: fourth.value, unit: fourth.label }] : []),
-            ]}
+            stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
           />
 
           <>
-              <UnderlineTabs
-                options={SECTIONS}
-                value={section}
-                onChange={setSection}
-                inset={Spacing.md}
-              />
-
-              {section === 'Statistiky' ? (
-                <View style={styles.sectionBody}>
-                  {/* A segment, not three more tabs: one chart, three questions
-                      you can ask of it. */}
-                  {/* One row: a chip says WHAT is measured, the icons say how it
-                      is drawn. A full-width segment above a right-aligned pair
-                      of icons was two controls on two lines for one chart. */}
-                  <NightChart
-                    rows={chartRows}
-                    shape={shape}
-                    onShape={setShape}
-                    control={
-                      <MenuChip
-                        value={chart}
-                        options={CHARTS}
-                        title="Podle čeho"
-                        onChange={(next) => setChart(next as (typeof CHARTS)[number])}
-                      />
-                    }
-                  />
-                </View>
-              ) : null}
-
               {/* Games sit ABOVE the chronology: an unplayed game is the one
                   thing in this list you can still act on, and burying it among
                   timestamps makes it read as something that already happened. */}
-              {section === 'Log' && games.length > 0 ? (
+              {games.length > 0 ? (
                 <View style={styles.sectionBody}>
                   {games.map((game) => (
                       <Pressable
@@ -417,7 +367,7 @@ export default function LivePartyMockScreen() {
                 </View>
               ) : null}
 
-              {section === 'Log' ? (
+              {log.length > 0 ? (
                 <View style={styles.sectionBody}>
                   {[...log]
                     .reverse()
@@ -520,7 +470,6 @@ export default function LivePartyMockScreen() {
         onPick={(key, name) => {
           addGame(key, name);
           setGamesOpen(false);
-          setSection('Log');
         }}
       />
 

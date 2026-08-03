@@ -51,10 +51,12 @@ import { Face } from '@/feed/FeedMockScreen';
 import { Leaderboard } from '@/mocks/Leaderboard';
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { SectionBreak } from '@/mocks/SectionBreak';
-import { TempoChart } from '@/mocks/TempoChart';
+import { MenuChip } from '@/mocks/MenuChip';
+import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
   formatElapsed,
+  beersByType,
   hourlyFrom,
   useLivePartyStore,
   useNightClock,
@@ -123,8 +125,12 @@ function SectionTitle({ children }: { children: string }) {
   return <SectionBreak title={children} inset={20} />;
 }
 
+const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
+
 export default function PartyRecapScreen() {
   const insets = useSafeAreaInsets();
+  const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
+  const [shape, setShape] = React.useState<ChartShape>('bar');
   // The recap reads what the party mode actually produced, and only falls back
   // to the canned night for the parts a mock evening has not made yet. Before
   // this, playing a game and taking photos changed nothing here — the loop was
@@ -161,6 +167,13 @@ export default function PartyRecapScreen() {
       }
     : MOCK_PARTY;
   const route = party.stops.map((s) => s.pubName).join('  →  ');
+
+  const chartRows =
+    chart === 'V čase'
+      ? party.hourly.map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
+      : chart === 'Podle piva'
+        ? beersByType(liveBeers).map((row) => ({ label: row.beer, value: row.count }))
+        : party.people.map((person) => ({ label: person.name, value: person.beers }));
 
   /** Does any of tonight's records mention this? Cheap, and it keeps the badge
    *  honest — no record in the list, no PR on the number. */
@@ -298,9 +311,25 @@ export default function PartyRecapScreen() {
           </View>
         </View>
 
+        {/* The night's numbers, drawn. This is where the charts moved to from
+            the running hub: while the evening is happening you glance at the
+            phone to see what just happened, and only afterwards do you want to
+            look at its shape. One chart, three questions you can ask of it. */}
         <View style={styles.section}>
-          <SectionTitle>Piva po hodinách</SectionTitle>
-          <TempoChart hourly={party.hourly} height={140} />
+          <SectionTitle>Jak to šlo</SectionTitle>
+          <NightChart
+            rows={chartRows}
+            shape={shape}
+            onShape={setShape}
+            control={
+              <MenuChip
+                value={chart}
+                options={CHARTS}
+                title="Podle čeho"
+                onChange={(next) => setChart(next as (typeof CHARTS)[number])}
+              />
+            }
+          />
         </View>
 
         {/* The richest thing a night makes. Only rendered when one was played —

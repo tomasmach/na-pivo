@@ -1,4 +1,4 @@
-import { buildPulse, fourthStat } from '@/party/nightPulse';
+import { buildPulse, fourthStat, hubStats } from '@/party/nightPulse';
 
 describe('buildPulse', () => {
   it('says nothing has happened before the first beer', () => {
@@ -63,5 +63,25 @@ describe('fourthStat', () => {
     // One beer's "time since" IS the stopwatch, and the hub shows that already.
     expect(fourthStat({ beerTimes: [0], now: 26 }).value).toBe('—');
     expect(fourthStat({ beerTimes: [], now: 0 }).value).toBe('—');
+  });
+});
+
+describe('hubStats', () => {
+  it('shows the table only when someone else is at it', () => {
+    const stats = hubStats({ beerTimes: [0, 20], now: 25, mine: 2, table: 5, others: 2 });
+    expect(stats.map((stat) => stat.label)).toEqual(['tvoje piva', 'u stolu']);
+    expect(stats[1].value).toBe('5');
+  });
+
+  it('turns into a personal tracker when you are alone', () => {
+    // "U stolu 2" beside "tvoje piva 2" is the same number twice.
+    const stats = hubStats({ beerTimes: [0, 20], now: 25, mine: 2, table: 2, others: 0 });
+    expect(stats.map((stat) => stat.label)).toEqual(['piva', 'pivo po']);
+  });
+
+  it('stands on one number rather than inventing a second', () => {
+    const stats = hubStats({ beerTimes: [0], now: 12, mine: 1, table: 1, others: 0 });
+    expect(stats).toHaveLength(1);
+    expect(stats[0].value).toBe('1');
   });
 });

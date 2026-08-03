@@ -1258,6 +1258,28 @@ nutně poloviční a v 17 pt z nich je šmouha.
 
 ---
 
+### 18.4 Živý večer nemá grafy
+
+Běžící večer a jeho recap jsou dvě různé obrazovky s různou prací.
+
+Hub (`/party`) je **co se právě děje**: pár velkých čísel, ovládání a log. Žádné
+taby, žádné grafy. Do telefonu se během večera kouká vestoje, na tři vteřiny —
+graf vlastního večera je věc, kterou nikdo nestuduje uprostřed hospody.
+
+Statistiky, grafy a rozbor patří do **recapu** (`/party-recap`), po ukončení a
+odeslání. Tam je ohlédnutí celý smysl obrazovky.
+
+### 18.5 Velká čísla se neklikají
+
+Blok velkých numerálů je nadpis, ne ovládací prvek. Nedávej pod něj `Pressable`
+ani "rozklikni pro víc" — vypadá jako obsah, chová se jako tlačítko, a uživatel
+to najde omylem.
+
+Které číslo se ukáže, je **produktové pravidlo s testy**, ne pevný řádek. „U
+stolu" dává smysl jen když u stolu někdo je; sám sobě by uživatel četl vlastní
+počet dvakrát. Radši dvě pravdivá čísla než tři s pomlčkou. Viz
+`src/party/nightPulse.ts` (`hubStats`).
+
 ## 20. Otevřená rozhodnutí 3.0
 
 Mocky v `src/mocks/`, `src/feed/`, `src/party/`, `src/pubs/`, `src/community/`, `src/profile/`
