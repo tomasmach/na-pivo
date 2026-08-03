@@ -228,9 +228,6 @@ export default function LivePartyMockScreen() {
 
   // The pulse rules work in minutes from the start; the stamps are epoch.
   const beerTimes = startedAt === null ? [] : beers.map((e) => minutesBetween(startedAt, e.at));
-  // Derived from the ticking clock, not `Date.now()` — calling that in render is
-  // impure and the lint rule is right to stop it.
-  const nowStamp = startedAt === null ? 0 : startedAt + minutes * 60_000;
   const stats = live
     ? hubStats({ beerTimes, now: minutes, mine, table, others: people.length })
     : [{ label: 'piva', value: '0' }];
@@ -494,7 +491,23 @@ export default function LivePartyMockScreen() {
                                 <PlayIcon size={22} color={Colors.stout} />
                               )}
                             </View>
+                            {/* A finished game says so ON its cover. The result
+                                under the picture was a caption; over it, the
+                                cover IS the result — which is what you want to
+                                see when you scroll past it later. */}
+                            {game.result ? (
+                              <View style={styles.gameScrim} pointerEvents="none" />
+                            ) : null}
                             <View style={styles.gameCaption} pointerEvents="none">
+                              {game.result?.winner ? (
+                                <Text
+                                  style={styles.gameWinner}
+                                  numberOfLines={1}
+                                  maxFontSizeMultiplier={FontScaleCap.heading}
+                                >
+                                  Vyhrál {game.result.winner}
+                                </Text>
+                              ) : null}
                               <Text
                                 style={styles.gameTitle}
                                 numberOfLines={1}
@@ -508,8 +521,8 @@ export default function LivePartyMockScreen() {
                               >
                                 {game.result
                                   ? game.result.winner
-                                    ? `Vyhrál ${game.result.winner}`
-                                    : 'Odehráno'
+                                    ? 'Odehráno'
+                                    : 'Odehráno — bez vítěze'
                                   : 'Ťukni a hraj'}
                               </Text>
                             </View>
@@ -854,6 +867,22 @@ const styles = StyleSheet.create({
   // — Games on the table —
   game: { padding: Spacing.md, borderRadius: 22, backgroundColor: MockColors.surfaceHigh },
   gameHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  // A wash over the art so the words on it stay readable, darkest at the bottom
+  // where they sit.
+  gameScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '70%',
+    backgroundColor: withAlpha(Colors.stout, 0.55),
+  },
+  gameWinner: {
+    fontFamily: Fonts.numeral,
+    fontSize: 22,
+    color: Colors.amber,
+    marginBottom: 2,
+  },
   gameTitle: { ...MockType.bodySemibold, color: Colors.foam },
   gameMeta: { fontSize: 12, fontWeight: '500', color: Colors.mutedText, marginTop: 1 },
   board: {

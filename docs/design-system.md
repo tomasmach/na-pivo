@@ -1335,6 +1335,35 @@ Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
 „Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
 v něm.
 
+### 18.9 Hry: tři skořápky, ne devět obrazovek
+
+Hra je **obsah plus skořápka**, nikdy vlastní obrazovka. Desátá hra má být řádek
+v `gameCatalog.ts` a seznam promptů, ne další složka.
+
+| skořápka | co to je | hry |
+|---|---|---|
+| `score` | ťukni na jméno, dostane bod | Pub kvíz |
+| `prompt` | balíček kartiček, jedna po druhé | Nikdy jsem…, Kategorie, Pravidlo, Palec |
+| `draw` | náhoda i s napětím | Kostky, Flaška, Runda, King's Cup |
+
+Drží to i backend generický: každá skořápka píše ty samé dvě události, takže
+hraní nepotřebuje endpoint na hru.
+
+**Napětí je ta hra.** Losování nikdy jen nevypíše výsledek — kostky se kutálí,
+jména proběhnou a zpomalí, karta se otočí. Ta půlvteřina je důvod, proč se kvůli
+tomu tahá telefon. Výsledek se ale **vybere první a teprve pak se k němu
+animuje**, aby reduced motion nebyla druhá implementace, co se rozejde.
+
+Balíček se **zamíchá jednou a rozdává se**, nenáhodně se nelosuje pokaždé.
+Náhoda se opakuje, a opakování dvě karty po sobě je moment, kdy stůl usoudí, že
+je appka rozbitá.
+
+**Hra na pití nevede žádnou tabulku.** Jediná, kterou by vést mohla, je kdo
+nejvíc pil.
+
+**Dohraná hra nese výsledek na svém coveru** — pod obrázkem to byl popisek, na
+něm je cover samotný ten výsledek.
+
 ### 18.7 Cizí profil
 
 Cizí profil je **stejná obrazovka jako tvoje**, jen zvenku. Člověk má vypadat

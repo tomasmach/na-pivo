@@ -36,6 +36,23 @@ import {
 /** How a game ends. See the note above — this is a product rule, not a flag. */
 export type GameScoring = 'points' | 'drinks';
 
+/**
+ * WHICH SCREEN a game is, of the three that exist.
+ *
+ * Eight games, three shells. A game is content plus a shell, never its own
+ * screen — the ninth game should be a row in this file and a list of prompts,
+ * not another folder. It is also what keeps every game feeding the same event
+ * log, so sharing a game with the table needed no per-game backend.
+ *
+ *   `score`   a tally: tap a name, they get a point
+ *   `prompt`  a deck: one big card at a time, and a way to the next one
+ *   `draw`    chance: dice, a bottle, a card off the top
+ */
+export type GameShell = 'score' | 'prompt' | 'draw';
+
+/** What `draw` draws. */
+export type GameDraw = 'dice' | 'person' | 'card';
+
 export interface GameDef {
   key: string;
   name: string;
@@ -43,6 +60,10 @@ export interface GameDef {
   /** One line of rules, so nobody has to remember how it goes. */
   how: string;
   scoring: GameScoring;
+  shell: GameShell;
+  draw?: GameDraw;
+  /** The line the shell shows before the first tap. Short — it is read once. */
+  intro?: string;
   /** Cover gradient, top-left → bottom-right. */
   cover: readonly [string, string];
   Icon: ComponentType<{ size?: number; color: string }>;
@@ -54,6 +75,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Pub kvíz',
     blurb: 'Deset otázek, kdo víc.',
     how: 'Někdo čte otázky, ostatní hádají. Bod za správnou odpověď.',
+    shell: 'score',
     scoring: 'points',
     cover: ['#8A5A18', '#3A2410'],
     Icon: TrophyIcon,
@@ -63,6 +85,9 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Kostky',
     blurb: 'Klasika. Nejvyšší bere.',
     how: 'Každý hodí. Nejvyšší bere bod, nejnižší platí rundu.',
+    shell: 'draw',
+    draw: 'dice',
+    intro: 'Každý hodí. Nejvyšší bere bod, nejnižší platí rundu.',
     scoring: 'points',
     cover: ['#7A4E18', '#2E1D0E'],
     Icon: CoinsIcon,
@@ -72,6 +97,8 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Kategorie',
     blurb: 'Kdo se zasekne, pije.',
     how: 'Někdo řekne kategorii. Dokola jmenujete, kdo se zasekne, pije.',
+    shell: 'prompt',
+    intro: 'Kdo se zasekne, ťukne si.',
     scoring: 'drinks',
     cover: ['#6B4A22', '#2A1C10'],
     Icon: SparklesIcon,
@@ -81,6 +108,8 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Nikdy jsem…',
     blurb: 'Kdo to udělal, pije.',
     how: 'Řekneš, co jsi nikdy nedělal. Kdo ano, ťukne si.',
+    shell: 'prompt',
+    intro: 'Kdo to udělal, ťukne si.',
     scoring: 'drinks',
     cover: ['#5E4326', '#241A10'],
     Icon: HandMetalIcon,
@@ -90,15 +119,33 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'King’s Cup',
     blurb: 'Karty a pravidla, co si vymyslíte.',
     how: 'Taháte karty, každá má pravidlo. Král doprostřed, čtvrtý pije.',
+    shell: 'draw',
+    draw: 'card',
+    intro: 'Táhni kartu. Co je na ní, to platí.',
     scoring: 'drinks',
     cover: ['#7A3E2A', '#2C1A12'],
     Icon: CrownIcon,
+  },
+  {
+    key: 'round',
+    name: 'Kdo platí rundu',
+    blurb: 'Někdo to zaplatit musí.',
+    how: 'Appka vybere jednoho od stolu. Ten platí další rundu.',
+    scoring: 'drinks',
+    shell: 'draw',
+    draw: 'person',
+    intro: 'Někdo to zaplatit musí. Ať to není pořád ten samý.',
+    cover: ['#7A5A20', '#2C2010'],
+    Icon: CoinsIcon,
   },
   {
     key: 'bottle',
     name: 'Flaška',
     blurb: 'Točí se, ukáže, ptá se.',
     how: 'Roztoč. Na koho ukáže, odpovídá — nebo pije.',
+    shell: 'draw',
+    draw: 'person',
+    intro: 'Roztoč. Na koho ukáže, ten je na řadě.',
     scoring: 'drinks',
     cover: ['#4E4A24', '#1E1C10'],
     Icon: BeerIcon,
@@ -108,6 +155,8 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Palec',
     blurb: 'Kdo si všimne poslední, pije.',
     how: 'Nenápadně polož palec na stůl. Poslední, kdo si všimne, pije.',
+    shell: 'prompt',
+    intro: 'Jedno pravidlo. Platí od teď.',
     scoring: 'drinks',
     cover: ['#3F4A2E', '#191E12'],
     Icon: UsersIcon,
@@ -117,6 +166,8 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Pravidlo večera',
     blurb: 'Jedno pravidlo, platí do rána.',
     how: 'Vymyslete pravidlo — třeba „žádná jména“. Kdo ho poruší, pije.',
+    shell: 'prompt',
+    intro: 'Jedno pravidlo, platí do rána.',
     scoring: 'drinks',
     cover: ['#6A3550', '#281426'],
     Icon: SparklesIcon,

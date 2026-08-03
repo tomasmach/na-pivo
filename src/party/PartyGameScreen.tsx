@@ -10,10 +10,21 @@
  * game to log a beer is how a night's data ends up half-recorded. So the top
  * strip carries your tally and a `+1` that never leaves the screen.
  *
- * The scoring itself is deliberately dumb — tap a name, they get a point. Every
- * one of these games is really "keep score while humans play", and the shape
- * that has to be right is what it LEAVES BEHIND: a scoreboard the recap and the
- * feed can lead with.
+ * This screen is a RUNTIME, not a game. Nine games, three shells:
+ *
+ *   `score`   a tally — tap a name, they get a point (Pub kvíz)
+ *   `prompt`  a deck of cards, one at a time (Nikdy jsem…, Kategorie, Pravidlo)
+ *   `draw`    chance, with the suspense left in (Kostky, Flaška, Runda, King's)
+ *
+ * The tenth game should be a row in `gameCatalog.ts` and a list of prompts, not
+ * another screen. That is also what let the shared-game backend stay generic:
+ * every shell writes the same two events, so nothing about playing needs a
+ * per-game endpoint.
+ *
+ * What a game leaves behind is the part that has to be right: a scoreboard the
+ * recap and the feed can lead with — but only for `points` games. A drinking
+ * game keeps no tally, because the only tally it could keep is who drank most,
+ * and that is the one scoreboard this product must never print.
  */
 
 import React from 'react';
@@ -22,12 +33,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { BeerIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
-import { findGame } from '@/party/gameCatalog';
+import { findGame, type GameDraw } from '@/party/gameCatalog';
+import { GAME_PROMPTS } from '@/party/gameContent';
+import { DrawShell } from '@/party/shells/DrawShell';
+import { PromptShell } from '@/party/shells/PromptShell';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+/** The verb IS the game — "roztoč" and "hoď" are different promises. */
+const DRAW_ACTION: Record<GameDraw, string> = {
+  dice: 'Hoď',
+  person: 'Roztoč',
+  card: 'Táhni kartu',
+};
 
 export default function PartyGameScreen() {
   const insets = useSafeAreaInsets();
@@ -45,6 +66,11 @@ export default function PartyGameScreen() {
   const name = def?.name ?? games.find((entry) => entry.key === key)?.name ?? 'Hra';
   // Points games crown someone; sip games do not. See `gameCatalog`.
   const onPoints = def?.scoring !== 'drinks';
+  const shell = def?.shell ?? 'score';
+  const prompts = key ? (GAME_PROMPTS[key] ?? []) : [];
+  // Varies the deal per game without calling `Math.random()` in render, which
+  // is impure and the lint rule is right to stop.
+  const [seed] = React.useState(() => Date.now() & 0xffff);
 
   const players = React.useMemo(
     () => ['Ty', ...people.map((person) => person.name)],
@@ -62,11 +88,13 @@ export default function PartyGameScreen() {
   const played = ranked.some((row) => row.score > 0);
 
   const finish = () => {
-    if (played && key) {
+    if (key) {
       finishGame(key, {
         game: name,
-        winner: onPoints ? leader.name : null,
-        scores: ranked,
+        // A drinking game names nobody, and keeps no tally: the only tally it
+        // could keep is who drank most.
+        winner: onPoints && played ? leader.name : null,
+        scores: onPoints ? ranked : [],
       });
     }
     router.back();
@@ -105,6 +133,20 @@ export default function PartyGameScreen() {
         </Pressable>
       </View>
 
+      {shell === 'prompt' ? (
+        <PromptShell prompts={prompts} intro={def?.intro} seed={seed} />
+      ) : null}
+
+      {shell === 'draw' ? (
+        <DrawShell
+          kind={def?.draw ?? 'dice'}
+          players={players}
+          intro={def?.intro}
+          action={DRAW_ACTION[def?.draw ?? 'dice']}
+        />
+      ) : null}
+
+      {shell === 'score' ? (
       <ScrollView
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
@@ -145,6 +187,7 @@ export default function PartyGameScreen() {
           </Pressable>
         ))}
       </ScrollView>
+      ) : null}
 
       <View style={[styles.foot, { paddingBottom: insets.bottom + Spacing.md }]}>
         <Pressable
@@ -154,11 +197,7 @@ export default function PartyGameScreen() {
           accessibilityLabel={played ? 'Uložit výsledek' : 'Zavřít hru'}
         >
           <Text style={styles.finishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {!played
-              ? 'Zavřít'
-              : onPoints
-                ? `Konec — vyhrává ${leader.name}`
-                : 'Konec'}
+            {onPoints && played ? `Konec — vyhrává ${leader.name}` : 'Konec'}
           </Text>
         </Pressable>
       </View>
