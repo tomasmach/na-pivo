@@ -48,7 +48,7 @@ export type GameScoring = 'points' | 'drinks';
  *   `prompt`  a deck: one big card at a time, and a way to the next one
  *   `draw`    chance: dice, a bottle, a card off the top
  */
-export type GameShell = 'score' | 'prompt' | 'draw';
+export type GameShell = 'score' | 'prompt' | 'draw' | 'turns';
 
 /** What `draw` draws. */
 export type GameDraw = 'dice' | 'person' | 'card';

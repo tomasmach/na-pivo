@@ -40,6 +40,14 @@ export interface GameResult {
    */
   winner: string | null;
   scores: { name: string; score: number }[];
+  /**
+   * Who ended up buying, when the game was about that.
+   *
+   * Separate from `winner` because it is a different fact: the winner is who
+   * played best, the payer is who is at the bar. In Kostky they are never the
+   * same person, and the payer is the line worth leading with.
+   */
+  paying?: string | null;
 }
 
 /** A game someone put on the table. It exists in the hub BEFORE it has a

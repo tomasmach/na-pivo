@@ -499,7 +499,17 @@ export default function LivePartyMockScreen() {
                               <View style={styles.gameScrim} pointerEvents="none" />
                             ) : null}
                             <View style={styles.gameCaption} pointerEvents="none">
-                              {game.result?.winner ? (
+                              {/* Who is buying beats who won: it is the fact the
+                                  table will still be talking about. */}
+                              {game.result?.paying ? (
+                                <Text
+                                  style={styles.gameWinner}
+                                  numberOfLines={1}
+                                  maxFontSizeMultiplier={FontScaleCap.heading}
+                                >
+                                  Platí {game.result.paying}
+                                </Text>
+                              ) : game.result?.winner ? (
                                 <Text
                                   style={styles.gameWinner}
                                   numberOfLines={1}

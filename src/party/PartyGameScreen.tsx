@@ -35,7 +35,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { BeerIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { findGame, type GameDraw } from '@/party/gameCatalog';
 import { GAME_PROMPTS } from '@/party/gameContent';
+import { DiceDuelShell } from '@/party/shells/DiceDuelShell';
 import { DrawShell } from '@/party/shells/DrawShell';
+import { GameLobby } from '@/party/shells/GameLobby';
 import { PromptShell } from '@/party/shells/PromptShell';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
@@ -60,6 +62,7 @@ export default function PartyGameScreen() {
   const people = useLivePartyStore((s) => s.people);
   const addBeer = useLivePartyStore((s) => s.addBeer);
   const finishGame = useLivePartyStore((s) => s.finishGame);
+  const invite = useLivePartyStore((s) => s.invite);
   const games = useLivePartyStore((s) => s.games);
 
   const def = key ? findGame(key) : undefined;
@@ -72,9 +75,21 @@ export default function PartyGameScreen() {
   // is impure and the lint rule is right to stop.
   const [seed] = React.useState(() => Date.now() & 0xffff);
 
-  const players = React.useMemo(
-    () => ['Ty', ...people.map((person) => person.name)],
+  // Who is at the night, you first. The lobby turns this into who is PLAYING —
+  // the two are not the same, and starting a game with everyone in the evening
+  // is how the first round becomes an argument about whose turn it is.
+  const table = React.useMemo(
+    () => [
+      { name: 'Ty', tint: Colors.amber },
+      ...people.map((person) => ({ name: person.name, tint: person.tint })),
+    ],
     [people],
+  );
+  const [roster, setRoster] = React.useState<{ name: string; tint: string }[] | null>(null);
+
+  const players = React.useMemo(
+    () => (roster ?? table).map((person) => person.name),
+    [roster, table],
   );
   const [scores, setScores] = React.useState<Record<string, number>>({});
 
@@ -119,25 +134,55 @@ export default function PartyGameScreen() {
           {name}
         </Text>
 
-        <Pressable
-          onPress={() => addBeer(houseBeer)}
-          style={({ pressed }) => [styles.counter, pressed && styles.counterPressed]}
-          accessibilityRole="button"
-          accessibilityLabel={`Máš ${beers.length} piv. Přidat další.`}
-        >
-          <BeerIcon size={16} color={Colors.stout} />
-          <Text style={styles.counterText} allowFontScaling={false}>
-            {beers.length}
-          </Text>
-          <PlusIcon size={14} color={Colors.stout} />
-        </Pressable>
+        {/* Ending is up here, as far from everything you tap during a game as
+            the screen allows — and it is text, not a full-width amber bar
+            competing with the button you actually press. */}
+        {roster ? (
+          <Pressable
+            onPress={finish}
+            style={({ pressed }) => [styles.end, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Ukončit hru"
+            hitSlop={8}
+          >
+            <Text style={styles.endText} allowFontScaling={false}>
+              Konec
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      {shell === 'prompt' ? (
+      {roster === null ? (
+        <GameLobby
+          def={def}
+          table={table}
+          onStart={setRoster}
+          onInvite={(name) => invite(name)}
+        />
+      ) : null}
+
+      {roster && shell === 'turns' ? (
+        <DiceDuelShell
+          players={roster}
+          onFinished={(result) => {
+            if (!key) return;
+            finishGame(key, {
+              game: name,
+              // The board is round wins. "Who paid" is the story, and it is the
+              // line the recap and the feed lead with.
+              winner: result.standings[0]?.name ?? null,
+              scores: result.standings,
+              paying: result.paying,
+            });
+          }}
+        />
+      ) : null}
+
+      {roster && shell === 'prompt' ? (
         <PromptShell prompts={prompts} intro={def?.intro} seed={seed} />
       ) : null}
 
-      {shell === 'draw' ? (
+      {roster && shell === 'draw' ? (
         <DrawShell
           kind={def?.draw ?? 'dice'}
           players={players}
@@ -146,7 +191,7 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {shell === 'score' ? (
+      {roster && shell === 'score' ? (
       <ScrollView
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
@@ -189,18 +234,27 @@ export default function PartyGameScreen() {
       </ScrollView>
       ) : null}
 
-      <View style={[styles.foot, { paddingBottom: insets.bottom + Spacing.md }]}>
+      {/* The counter floats bottom-right rather than sitting in the header: the
+          one thing you do mid-game besides play is log a beer, and that belongs
+          under your thumb, not up by the exit. */}
+      {roster ? (
         <Pressable
-          onPress={finish}
-          style={({ pressed }) => [styles.finish, pressed && styles.pressed]}
+          onPress={() => addBeer(houseBeer)}
+          style={({ pressed }) => [
+            styles.counter,
+            { bottom: insets.bottom + Spacing.md },
+            pressed && styles.counterPressed,
+          ]}
           accessibilityRole="button"
-          accessibilityLabel={played ? 'Uložit výsledek' : 'Zavřít hru'}
+          accessibilityLabel={`Máš ${beers.length} piv. Přidat další.`}
         >
-          <Text style={styles.finishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {onPoints && played ? `Konec — vyhrává ${leader.name}` : 'Konec'}
+          <BeerIcon size={17} color={Colors.stout} />
+          <Text style={styles.counterText} allowFontScaling={false}>
+            {beers.length}
           </Text>
+          <PlusIcon size={14} color={Colors.stout} />
         </Pressable>
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -227,11 +281,15 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.08),
   },
   topTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: Colors.foam },
+  end: { paddingHorizontal: Spacing.sm, paddingVertical: 6 },
+  endText: { fontSize: 16, fontWeight: '700', color: Colors.amber },
   counter: {
+    position: 'absolute',
+    right: MockLayout.screenPad,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    height: 38,
+    height: 48,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,

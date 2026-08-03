@@ -36,6 +36,13 @@ export type DrawKind = 'dice' | 'person' | 'card';
 /** Long enough to be a moment, short enough that nobody puts the phone down. */
 const ROLL_MS = 900;
 
+/** Module scope so `react-hooks/purity` can see these are taps, not render. */
+const pick = <T,>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
+const throwDice = (): [number, number] => [
+  1 + Math.floor(Math.random() * 6),
+  1 + Math.floor(Math.random() * 6),
+];
+
 interface Result {
   /** Bumped on every draw so a repeat still re-animates and re-announces. */
   nonce: number;
@@ -68,13 +75,9 @@ export function DrawShell({
     // Chosen first, animated to second. The animation is decoration over an
     // answer that already exists, which is what keeps reduced motion honest.
     const next: Result = { nonce: Date.now() };
-    if (kind === 'dice') {
-      next.dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
-    } else if (kind === 'person') {
-      next.person = players[Math.floor(Math.random() * players.length)];
-    } else {
-      next.card = KINGS_CARDS[Math.floor(Math.random() * KINGS_CARDS.length)];
-    }
+    if (kind === 'dice') next.dice = throwDice();
+    else if (kind === 'person') next.person = pick(players);
+    else next.card = pick(KINGS_CARDS);
 
     if (reduceMotion) {
       setResult(next);

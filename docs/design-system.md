@@ -1335,6 +1335,31 @@ Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
 „Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
 v něm.
 
+### 18.10 Hra má sestavu, kolo a konec
+
+**Sestava napřed.** Stůl není parta: někdo je u baru, někdo nehraje, někdo si
+právě sedl. Před každou hrou je lobby se jmény z večera — předzaškrtnutými,
+protože běžný případ je, že hrají všichni — a s možností někoho přizvat rovnou
+odtud. Bez toho se první kolo změní v hádku, kdo je na řadě.
+
+**Obrazovka během hry říká jednu věc: kdo je na tahu.** Jméno 34pt, kostky ve
+velikosti skutečných. Žebříček je pod tím a potichu — je to kontext, ne otázka.
+
+**Hra musí skončit sama.** Tabulka, která jen roste, nemá konec a někdo u stolu
+musí říct „tak dost". Kostky proto vítěze **odebírají**: třikrát vyhrané kolo a
+jsi z obliga, hra se zrychluje a kdo zbude poslední, platí rundu. Napětí jde
+nahoru, ne dolů.
+
+Kdo platí, přebíjí kdo vyhrál — je to ta věta, o které stůl bude ještě mluvit.
+
+**Pravidla žijí mimo komponentu.** `diceDuel.ts` je čistá data a funkce
+s testy; skořápka je jen kreslí. Hra se špatným koncem je horší než žádná hra a
+tohle se neověřuje klikáním v simulátoru.
+
+**Konec je nahoře**, co nejdál od všeho, na co se během hry ťuká, a je to text —
+ne druhý jantarový pruh soupeřící s tlačítkem, které se opravdu mačká. Počítadlo
+piv naopak plave dole u palce.
+
 ### 18.9 Hry: tři skořápky, ne devět obrazovek
 
 Hra je **obsah plus skořápka**, nikdy vlastní obrazovka. Desátá hra má být řádek
