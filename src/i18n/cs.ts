@@ -429,8 +429,15 @@ export const cs = {
 
   settings: {
     title: 'Nastavení',
-    compassSection: 'Co ti kompas najde',
+    // "Co ti kompas najde" named the whole screen after one feature. The
+    // compass is a cell in the pub list now, not the product.
+    compassSection: 'Hledání hospod',
     notificationsSection: 'Kdy se ozvu',
+    privacySection: 'Soukromí',
+    privacyDoor: {
+      title: 'Kdo tě vidí',
+      subtitle: 'Neviditelný režim, sdílení piv s partou a klid v noci',
+    },
     locationPrivacy: 'Domov i trasu nechávám v telefonu. Historii polohy neukládám.',
     // Section group labels — one clear meaning per group.
     sections: {

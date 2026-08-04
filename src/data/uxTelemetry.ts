@@ -70,6 +70,7 @@ export const UI_INTERACTION_TARGETS = [
   'profile_leaderboards_open',
   'profile_friends_manage_open',
   'settings_more_open',
+  'settings_privacy_open',
   'settings_distance_change',
   'settings_hide_closed',
   'settings_prefer_rated',

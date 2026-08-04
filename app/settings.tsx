@@ -38,6 +38,7 @@ import {
   ShieldIcon,
   StarIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@/components/shared/IconGlyph';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
@@ -675,7 +676,88 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel>{cs.settings.compassSection}</SectionLabel>
+        {/* Privacy first, because this app publishes evenings, pubs and a
+            drinking history, and until now there was no door to any of that
+            from the place people look for it. The switches themselves already
+            exist on the Parta screen — this is a door, not a second copy. */}
+        <SectionLabel>{cs.settings.privacySection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <Pressable
+            onPress={() => {
+              trackUiInteraction('settings_privacy_open');
+              router.push('/friends?settings=1' as Href);
+            }}
+            style={({ pressed }) => [styles.privacyRow, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.settings.privacyDoor.title}
+          >
+            <View style={styles.privacyText}>
+              <Text style={styles.privacyTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.settings.privacyDoor.title}
+              </Text>
+              <Text style={styles.privacySub} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.settings.privacyDoor.subtitle}
+              </Text>
+            </View>
+            <ChevronRightIcon size={18} color={Colors.mutedText} />
+          </Pressable>
+        </View>
+
+        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
+        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <PreferenceRow
+            title={cs.settings.pubReminders.title}
+            subtitle={cs.settings.pubReminders.subtitle}
+            value={pubReminderEnabled}
+            onToggle={() => void togglePubReminders()}
+            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <BeerCountReminderRow
+            enabled={beerCountReminderEnabled}
+            intervalMinutes={beerCountReminderIntervalMinutes}
+            onToggle={() => void toggleBeerCountReminder()}
+            onIntervalChange={changeBeerCountReminderInterval}
+          />
+          <PreferenceRow
+            title={cs.settings.haptics.title}
+            subtitle={cs.settings.haptics.subtitle}
+            value={hapticEnabled}
+            onToggle={toggleHaptic}
+            toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.sound.title}
+            subtitle={cs.settings.sound.subtitle}
+            value={soundEnabled}
+            onToggle={toggleSound}
+            toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.waterNudge.title}
+            subtitle={cs.settings.waterNudge.subtitle}
+            value={waterNudgeEnabled}
+            onToggle={toggleWaterNudge}
+            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.marketingEmails.title}
+            subtitle={cs.settings.marketingEmails.subtitle}
+            value={marketingEmailsEnabled}
+            onToggle={toggleMarketingEmails}
+            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+        </View>
+
+        {/* Search settings last. They are the compass MVP's screen, and two of
+            these three toggles are the same filters the Hospody screen already
+            has on it — kept here only because deleting a stored preference
+            silently changes what shipped users see. */}
+        <SectionLabel spaced>{cs.settings.compassSection}</SectionLabel>
         <View style={styles.distanceCard}>
           <Text
             style={[
@@ -730,54 +812,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <PreferenceRow
-            title={cs.settings.pubReminders.title}
-            subtitle={cs.settings.pubReminders.subtitle}
-            value={pubReminderEnabled}
-            onToggle={() => void togglePubReminders()}
-            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-          />
-          <BeerCountReminderRow
-            enabled={beerCountReminderEnabled}
-            intervalMinutes={beerCountReminderIntervalMinutes}
-            onToggle={() => void toggleBeerCountReminder()}
-            onIntervalChange={changeBeerCountReminderInterval}
-          />
-          <PreferenceRow
-            title={cs.settings.haptics.title}
-            subtitle={cs.settings.haptics.subtitle}
-            value={hapticEnabled}
-            onToggle={toggleHaptic}
-            toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={cs.settings.sound.title}
-            subtitle={cs.settings.sound.subtitle}
-            value={soundEnabled}
-            onToggle={toggleSound}
-            toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={cs.settings.waterNudge.title}
-            subtitle={cs.settings.waterNudge.subtitle}
-            value={waterNudgeEnabled}
-            onToggle={toggleWaterNudge}
-            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={cs.settings.marketingEmails.title}
-            subtitle={cs.settings.marketingEmails.subtitle}
-            value={marketingEmailsEnabled}
-            onToggle={toggleMarketingEmails}
-            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-        </View>
 
         <View style={styles.footer}>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1063,6 +1097,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     includeFontPadding: false,
   },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 68,
+    paddingHorizontal: 16,
+  },
+  privacyText: { flex: 1 },
+  privacyTitle: { fontSize: 16, fontWeight: '600', color: Colors.foam },
+  privacySub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
   footerTagline: {
     fontWeight: '500',
     fontSize: 11,

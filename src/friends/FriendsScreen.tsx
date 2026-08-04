@@ -53,7 +53,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
@@ -384,7 +384,10 @@ export default function FriendsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+  // Opened straight from Nastavení: the privacy switches live here, but nobody
+  // looks for "kdo mě vidí" on the Parta screen. `?settings=1` is the door.
+  const settingsParam = useLocalSearchParams<{ settings?: string }>().settings;
+  const [settingsVisible, setSettingsVisible] = useState(settingsParam === '1');
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
