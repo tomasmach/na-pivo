@@ -46,6 +46,8 @@ export const cs = {
         few: `${n} už znáš`,
         many: `${n} už znáš`,
       }),
+    // Nothing visited in view — the quiet line would otherwise sit empty.
+    viewportKnownNone: 'Nic z toho ještě neznáš',
     liveShort: (n: number) =>
       n === 0
         ? 'Nikdo z party není na pivu'

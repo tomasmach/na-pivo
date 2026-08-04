@@ -916,7 +916,11 @@ export default function BeerMapScreen({
       ? cs.map.liveShort(visibleLivePubs.length)
       : cs.map.viewportPubs(visiblePoints.length);
   const viewportDetail =
-    layer === 'friends' || visitedInView === 0 ? null : cs.map.viewportKnown(visitedInView);
+    layer === 'friends' || visiblePoints.length === 0
+      ? null
+      : visitedInView === 0
+        ? cs.map.viewportKnownNone
+        : cs.map.viewportKnown(visitedInView);
 
   const cardState = useMemo(() => {
     if (selectedPub) {
