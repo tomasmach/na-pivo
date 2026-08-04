@@ -51,7 +51,7 @@ export type GameScoring = 'points' | 'drinks';
 export type GameShell = 'score' | 'prompt' | 'draw' | 'turns';
 
 /** What `draw` draws. */
-export type GameDraw = 'dice' | 'person' | 'card';
+export type GameDraw = 'person' | 'card';
 
 export interface GameDef {
   key: string;
@@ -83,11 +83,10 @@ export const GAME_CATALOG: readonly GameDef[] = [
   {
     key: 'dice',
     name: 'Kostky',
-    blurb: 'Klasika. Nejvyšší bere.',
-    how: 'Každý hodí. Nejvyšší bere bod, nejnižší platí rundu.',
-    shell: 'draw',
-    draw: 'dice',
-    intro: 'Každý hodí. Nejvyšší bere bod, nejnižší platí rundu.',
+    blurb: 'Kdo zůstane, platí.',
+    how: 'Každý hodí. Nejvyšší bere kolo. Kdo vyhraje třikrát, je z obliga — a kdo zbude poslední, platí rundu.',
+    shell: 'turns',
+    intro: 'Třikrát vyhraješ kolo a máš klid.',
     scoring: 'points',
     cover: ['#7A4E18', '#2E1D0E'],
     Icon: CoinsIcon,

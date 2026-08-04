@@ -25,29 +25,24 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { Die3D } from '@/party/Die3D';
 import { KINGS_CARDS } from '@/party/gameContent';
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-export type DrawKind = 'dice' | 'person' | 'card';
+/** Kostky has its own turn-based table now, so nothing draws dice here. */
+export type DrawKind = 'person' | 'card';
 
 /** Long enough to be a moment, short enough that nobody puts the phone down. */
 const ROLL_MS = 900;
 
 /** Module scope so `react-hooks/purity` can see these are taps, not render. */
 const pick = <T,>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
-const throwDice = (): [number, number] => [
-  1 + Math.floor(Math.random() * 6),
-  1 + Math.floor(Math.random() * 6),
-];
 
 interface Result {
   /** Bumped on every draw so a repeat still re-animates and re-announces. */
   nonce: number;
-  dice?: [number, number];
   person?: string;
   card?: (typeof KINGS_CARDS)[number];
 }
@@ -76,8 +71,7 @@ export function DrawShell({
     // Chosen first, animated to second. The animation is decoration over an
     // answer that already exists, which is what keeps reduced motion honest.
     const next: Result = { nonce: Date.now() };
-    if (kind === 'dice') next.dice = throwDice();
-    else if (kind === 'person') next.person = pick(players);
+    if (kind === 'person') next.person = pick(players);
     else next.card = pick(KINGS_CARDS);
 
     if (reduceMotion) {
@@ -113,21 +107,6 @@ export function DrawShell({
       ) : null}
 
       <View style={styles.stage}>
-        {kind === 'dice' ? (
-          <View style={styles.dice}>
-            {(result?.dice ?? [1, 1]).map((pips, index) => (
-              <Die3D
-                key={index}
-                value={pips}
-                nonce={result?.nonce ?? 0}
-                rolling={rolling}
-                offset={index}
-                size={92}
-              />
-            ))}
-          </View>
-        ) : null}
-
         {kind === 'person' ? (
           <Animated.View style={settleStyle}>
             {rolling ? (
@@ -212,7 +191,6 @@ const styles = StyleSheet.create({
   },
   stage: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
 
-  dice: { flexDirection: 'row', gap: Spacing.lg },
 
   person: {
     fontSize: 40,

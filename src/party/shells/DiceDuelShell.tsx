@@ -24,7 +24,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
-import { Die3D } from '@/party/Die3D';
+import { DiceCanvas, type DiceCanvasHandle } from '@/party/DiceCanvas';
 import {
   isOver,
   recordRoll,
@@ -43,15 +43,12 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-const ROLL_MS = 850;
-
 /**
- * Two dice, thrown.
+ * The fallback roll, for reduced motion only.
  *
- * Module scope, not inside the component: `react-hooks/purity` flags
- * `Math.random()` anywhere in a component body, and it is right to — it cannot
- * tell a handler from render. Out here it is plainly a side effect that only
- * runs when somebody taps.
+ * Everywhere else the physics decides — see `DiceCanvas`. Module scope because
+ * `react-hooks/purity` flags `Math.random()` anywhere in a component body, and
+ * it is right to: it cannot tell a handler from render.
  */
 function throwDice(): [number, number] {
   return [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
@@ -81,22 +78,26 @@ export function DiceDuelShell({
     }
   }, [over, state, onFinished]);
 
+  const canvas = React.useRef<DiceCanvasHandle>(null);
+
   const roll = () => {
     if (rolling || !turn) return;
-    const dice = throwDice();
-
     if (reduceMotion) {
-      setState((current) => recordRoll(current, turn, dice));
+      // No throw to watch, so no throw to wait for.
+      setState((current) => recordRoll(current, turn, throwDice()));
       return;
     }
-
-    // The cubes own their own tumble; this only says "in flight" and then
-    // hands them the value to land on.
     setRolling(true);
-    setTimeout(() => {
-      setState((current) => recordRoll(current, turn, dice));
-      setRolling(false);
-    }, ROLL_MS);
+    canvas.current?.roll();
+  };
+
+  // What the dice actually landed on, straight from the simulation. Nothing
+  // decided these numbers in advance, which is the whole point.
+  const settled = (dice: number[]) => {
+    const thrower = whoseTurn(state);
+    if (!thrower) return;
+    setState((current) => recordRoll(current, thrower, [dice[0] ?? 1, dice[1] ?? 1]));
+    setRolling(false);
   };
 
   const last = state.round[state.round.length - 1];
@@ -173,20 +174,12 @@ export function DiceDuelShell({
         </Text>
       </View>
 
-      {/* Two real cubes. They keep their last faces while the next thrower is
-          deciding, which is what a table looks like — dice do not vanish
-          between throws. */}
+      {/* A real table: the dice fall, bounce off the rails and come to rest
+          crooked, and whatever is on top is the answer. They stay where they
+          landed while the next thrower decides — dice do not vanish between
+          throws. */}
       <View style={styles.dice}>
-        {[0, 1].map((index) => (
-          <Die3D
-            key={index}
-            value={last ? last.dice[index] : 1}
-            nonce={state.round.length}
-            rolling={rolling}
-            offset={index}
-            size={92}
-          />
-        ))}
+        <DiceCanvas ref={canvas} count={2} onSettled={settled} />
       </View>
 
       {/* Smaller than the dice, because the dice ARE the screen. A full-width
@@ -302,7 +295,7 @@ const styles = StyleSheet.create({
   turn: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },
   turnName: { fontSize: 34, fontWeight: '800', color: Colors.foam, letterSpacing: -0.6 },
 
-  dice: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.xl },
+  dice: { alignSelf: 'stretch', height: 260, marginTop: Spacing.md },
   roll: {
     height: 54,
     paddingHorizontal: 44,

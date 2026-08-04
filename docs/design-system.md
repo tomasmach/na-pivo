@@ -1350,6 +1350,31 @@ Podmínky: **2,4 s na cyklus**, tam a zpět (skok zpátky na malý je bliknutí 
 blikající tab bar je alarm), hýbe se **jen prstenec, nikdy glyf**, a při reduced
 motion se nehýbe nic.
 
+### 18.11b Fyzické hry žijí ve WebView
+
+Devět her je obsah plus skořápka v React Native. **Výjimka je jedna: hra, jejíž
+podstata je fyzika.** Kostky, které se odrazí od mantinelu a dokutálí se nakřivo,
+se v RN nedají udělat bez `expo-gl` + three + fyzikálního enginu, tedy tří
+nativních závislostí a megabajtů v binárce.
+
+Ve WebView stojí three.js i cannon-es **nulu navíc**, protože jsou to jen skripty
+na stránce. `react-native-webview` obaluje systémový WKWebView, takže do velikosti
+appky nepřidává engine — a od té chvíle je každá další fyzická hra jen HTML
+soubor, co jde ven přes `eas update`.
+
+Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
+
+1. **Do WebView jde jen plátno.** Texty, seznamy, počítadla a jména zůstávají
+   v RN — to je UI aplikace, ne hra.
+2. **Most je dvě zprávy.** Sem „hoď", ven „padlo tohle". Nic víc; jakmile se most
+   rozroste, je to špatná hranice.
+3. **Simulace JE náhoda.** Čísla jdou ven, ne dovnitř. Nic si předem nevybere
+   výsledek a neanimuje se k němu — hod je opravdu spravedlivý, což předstíraný
+   hod nikdy není.
+4. **Žádná síť.** Hra se sestaví do jednoho HTML s vloženými knihovnami
+   (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
+5. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
+
 ### 18.11 Rekvizity vypadají jako rekvizity
 
 Kostka je **kostka**, ne číslo na čtverci. Celé kouzlo házení je v tom, že

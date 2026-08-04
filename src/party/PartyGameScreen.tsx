@@ -47,7 +47,6 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** The verb IS the game — "roztoč" and "hoď" are different promises. */
 const DRAW_ACTION: Record<GameDraw, string> = {
-  dice: 'Hoď',
   person: 'Roztoč',
   card: 'Táhni kartu',
 };
@@ -184,10 +183,10 @@ export default function PartyGameScreen() {
 
       {roster && shell === 'draw' ? (
         <DrawShell
-          kind={def?.draw ?? 'dice'}
+          kind={def?.draw ?? 'person'}
           players={players}
           intro={def?.intro}
-          action={DRAW_ACTION[def?.draw ?? 'dice']}
+          action={DRAW_ACTION[def?.draw ?? 'person']}
         />
       ) : null}
 
