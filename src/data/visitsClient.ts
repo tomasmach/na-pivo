@@ -38,6 +38,8 @@ export interface VisitEntry {
   started_at: string;
   /** ISO-8601 of the last beer, or null while the evening is still open. */
   ended_at?: string | null;
+  /** Explicit "Dopito" time. Missing keeps compatibility with older clients. */
+  closed_at?: string | null;
   /** ISO-8601 of the last local change — drives last-write-wins on the server. */
   updated_at: string;
 }
@@ -53,6 +55,7 @@ export interface WireVisit {
   external_id: string | null;
   started_at: string;
   ended_at: string | null;
+  closed_at?: string | null;
   updated_at: string;
 }
 

@@ -85,6 +85,8 @@ export interface TallySession {
   placeContext?: PlaceContext;
   /** ISO-8601 timestamp of when the session started (first drink). */
   startedAt: string;
+  /** Explicit local close time. Missing on older persisted evenings. */
+  closedAt?: string;
   drinks: TallyDrink[];
   /** Set only on archived (history) sessions — why the evening was closed. The
    *  live `current` session never carries it. Drives the resume affordance. */
@@ -124,6 +126,11 @@ interface TallyState {
   current: TallySession | null;
   history: TallySession[];
   /**
+   * Remove-wins set of drink UUIDs. A delayed offline add with one of these IDs
+   * must remain removed even when it arrives after undo / correction.
+   */
+  removedDrinkIds: string[];
+  /**
    * Count one beer at `pub`. Starts a new session when there is none, when the
    * pub changed, or when the drinking day rolled over (04:00 cutoff) — archiving
    * the previous session into history first.
@@ -134,16 +141,41 @@ interface TallyState {
    * `current` session. The drink lands in the archived history session that
    * matches the pub + drinking-day of its timestamp; if none exists a fresh
    * archived session is created. Returns the session the drink landed in (so the
-   * caller can sync the right visit). Used when a backdated timestamp would
-   * otherwise roll over and clobber the active evening.
+   * caller can sync the right visit), or null when a remove-wins tombstone
+   * suppresses a delayed add. Used when a backdated timestamp would otherwise
+   * roll over and clobber the active evening.
    */
-  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession;
+  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession | null;
   /**
    * Append a missed drink to one exact existing evening without reopening it or
    * routing by pub/day. The stable session clientId matters when somebody left
    * and later returned to the same pub on the same drinking day.
    */
   addDrinkToSession: (sessionClientId: string, beer: TallyBeerInput) => TallySession | null;
+  /**
+   * Apply a phone/watch drink while preserving the sender's evening UUID.
+   * Same-pub/same-day starts alias to the existing current evening; a different
+   * pub/day archives the current evening and opens the supplied UUID exactly.
+   */
+  addExternalDrink: (
+    pub: TallyPub,
+    beer: TallyBeerInput,
+    eveningClientId: string,
+  ) => TallySession | null;
+  /**
+   * Preserve a conflicting external evening in history without switching the
+   * live current evening. Used when phone and watch started at different pubs.
+   */
+  addExternalDrinkToHistory: (
+    pub: TallyPub,
+    beer: TallyBeerInput,
+    eveningClientId: string,
+    closedAt?: string,
+  ) => TallySession | null;
+  /** True when a drink UUID exists in the live or archived tally. */
+  hasDrink: (id: string) => boolean;
+  /** True when a drink UUID has a durable remove-wins tombstone. */
+  isDrinkRemoved: (id: string) => boolean;
   /**
    * Remove the most recently counted drink from the current session and return
    * its id (so the caller can also remove the queued payload). Returns null when
@@ -158,6 +190,8 @@ interface TallyState {
    * removed id, or null when no drink matched. A no-op on the empty session.
    */
   removeDrink: (id: string) => string | null;
+  /** Remove one immutable drink fact across current/history and tombstone it. */
+  removeDrinkById: (id: string) => RemovedDrinkResult | null;
   /**
    * Remove a specific drink from the selected evening, including archived
    * history sessions. Empty archived evenings are dropped; an empty current
@@ -178,6 +212,8 @@ interface TallyState {
    * pinned session object so the counter resets cleanly.
    */
   archiveCurrent: (reason: ArchivedReason) => void;
+  /** Close one exact current or archived session with a supplied durable time. */
+  archiveSession: (sessionClientId: string, closedAt: string) => boolean;
   /**
    * Auto-complete the current session IFF it has gone idle (no drink within
    * IDLE_TIMEOUT_MS). Archives it with reason 'timeout' so it stays resumable.
@@ -237,6 +273,71 @@ function sortSessionsNewestFirst(sessions: TallySession[]): TallySession[] {
   return sessions.slice().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 
+function sessionsInState(
+  state: Pick<TallyState, 'current' | 'history'>,
+): TallySession[] {
+  return state.current ? [state.current, ...state.history] : state.history;
+}
+
+export function tallyContainsDrinkId(
+  state: Pick<TallyState, 'current' | 'history'>,
+  id: string,
+): boolean {
+  return sessionsInState(state).some((session) =>
+    session.drinks.some((drink) => drink.id === id),
+  );
+}
+
+function sessionContainingDrink(
+  state: Pick<TallyState, 'current' | 'history'>,
+  id: string,
+): TallySession | null {
+  return (
+    sessionsInState(state).find((session) =>
+      session.drinks.some((drink) => drink.id === id),
+    ) ?? null
+  );
+}
+
+function appendRemovedDrinkId(removedDrinkIds: string[], id: string): string[] {
+  return removedDrinkIds.includes(id) ? removedDrinkIds : [...removedDrinkIds, id];
+}
+
+function buildTallyDrink(beer: TallyBeerInput, at: string): TallyDrink {
+  const drink: TallyDrink = {
+    id: beer.id,
+    beerName: beer.beerName,
+    at,
+    syncStatus: 'pending',
+  };
+  if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
+  if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
+  if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
+  if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
+  return drink;
+}
+
+function deduplicatePersistedSessions(
+  current: TallySession | null,
+  history: TallySession[],
+  removedDrinkIds: string[],
+): { current: TallySession | null; history: TallySession[] } {
+  const seen = new Set<string>();
+  const removed = new Set(removedDrinkIds);
+  const clean = (session: TallySession): TallySession => ({
+    ...session,
+    drinks: session.drinks.filter((drink) => {
+      if (!drink?.id || removed.has(drink.id) || seen.has(drink.id)) return false;
+      seen.add(drink.id);
+      return true;
+    }),
+  });
+  return {
+    current: current ? clean(current) : null,
+    history: history.map(clean),
+  };
+}
+
 /** Ensure a persisted session carries a stable `clientId`, minting one when an
  *  older build wrote it without (v0 → v1). Exported for unit tests. */
 function ensureSessionClientId(session: TallySession | null): TallySession | null {
@@ -247,44 +348,54 @@ function ensureSessionClientId(session: TallySession | null): TallySession | nul
 
 /**
  * Migrate persisted tally state to the current shape. v0 sessions predate the
- * per-session `clientId` used as the /v1/pub-visits idempotency key, so v1
- * backfills one for the current session and every archived session. Exported so
- * the migration is unit-testable in isolation.
+ * per-session `clientId`; v2 introduces a global remove-wins set and removes
+ * any duplicate legacy drink UUIDs. Exported so the migration is unit-testable
+ * in isolation.
  */
 export function migrateTally(persisted: unknown, version: number): TallyState {
   const base = (persisted ?? {}) as Partial<TallyState>;
-  if (version >= 1) return base as TallyState;
+  if (version >= 2) return base as TallyState;
 
-  const current = ensureSessionClientId((base.current as TallySession | null) ?? null);
+  const current =
+    version < 1
+      ? ensureSessionClientId((base.current as TallySession | null) ?? null)
+      : ((base.current as TallySession | null) ?? null);
   const history = Array.isArray(base.history)
     ? (base.history as TallySession[])
-        .map((session) => ensureSessionClientId(session))
+        .map((session) => (version < 1 ? ensureSessionClientId(session) : session))
         .filter((session): session is TallySession => session != null)
     : [];
+  const removedDrinkIds = Array.isArray(base.removedDrinkIds)
+    ? [...new Set(base.removedDrinkIds.filter((id): id is string => typeof id === 'string' && !!id))]
+    : [];
+  const deduplicated = deduplicatePersistedSessions(current, history, removedDrinkIds);
 
-  return { ...(base as TallyState), current, history };
+  return {
+    ...(base as TallyState),
+    current: deduplicated.current,
+    history: deduplicated.history,
+    removedDrinkIds,
+  };
 }
 
 export const useTallyStore = create<TallyState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       current: null,
       history: [],
+      removedDrinkIds: [],
 
       addDrink: (pub, beer) =>
         set((state) => {
+          if (
+            state.removedDrinkIds.includes(beer.id) ||
+            tallyContainsDrinkId(state, beer.id)
+          ) {
+            return state;
+          }
           const at = beer.at ?? new Date().toISOString();
           const atDate = new Date(at);
-          const drink: TallyDrink = {
-            id: beer.id,
-            beerName: beer.beerName,
-            at,
-            syncStatus: 'pending',
-          };
-          if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
-          if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
-          if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
-          if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
+          const drink = buildTallyDrink(beer, at);
 
           const rollover = shouldStartNewSession(state.current, pub.pubKey, atDate);
 
@@ -296,7 +407,10 @@ export const useTallyStore = create<TallyState>()(
               state.current && state.current.pubKey !== pub.pubKey ? 'pub-change' : 'day-rollover';
             const history =
               state.current && state.current.drinks.length > 0
-                ? [{ ...state.current, archivedReason: reason }, ...state.history].slice(0, MAX_HISTORY)
+                ? [
+                    { ...state.current, archivedReason: reason, closedAt: at },
+                    ...state.history,
+                  ].slice(0, MAX_HISTORY)
                 : state.history;
             return {
               current: {
@@ -338,18 +452,24 @@ export const useTallyStore = create<TallyState>()(
         set((state) => {
           const at = beer.at ?? new Date().toISOString();
           const atDate = new Date(at);
-          const drink: TallyDrink = {
-            id: beer.id,
-            beerName: beer.beerName,
-            at,
-            syncStatus: 'pending',
-          };
-          if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
-          if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
-          if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
-          if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
-
           const dayKey = drinkingDayKey(atDate);
+          const existing = sessionContainingDrink(state, beer.id);
+          if (existing) {
+            box.session = existing;
+            return state;
+          }
+          if (state.removedDrinkIds.includes(beer.id)) {
+            box.session =
+              state.history.find(
+                (session) =>
+                  session.pubKey === pub.pubKey &&
+                  drinkingDayKey(new Date(session.startedAt)) === dayKey,
+              ) ??
+              (state.current?.pubKey === pub.pubKey ? state.current : null);
+            return state;
+          }
+          const drink = buildTallyDrink(beer, at);
+
           // Append to the archived evening at the same pub + drinking day, if any.
           let matched = false;
           const history = state.history.map((session) => {
@@ -394,23 +514,21 @@ export const useTallyStore = create<TallyState>()(
             history: sortSessionsNewestFirst([created, ...state.history]).slice(0, MAX_HISTORY),
           };
         });
-        return box.session as TallySession;
+        return box.session;
       },
 
       addDrinkToSession: (sessionClientId, beer) => {
         const box: { session: TallySession | null } = { session: null };
         set((state) => {
+          const existing = sessionContainingDrink(state, beer.id);
+          if (existing) {
+            box.session = existing;
+            return state;
+          }
+          if (state.removedDrinkIds.includes(beer.id)) return state;
+
           const at = beer.at ?? new Date().toISOString();
-          const drink: TallyDrink = {
-            id: beer.id,
-            beerName: beer.beerName,
-            at,
-            syncStatus: 'pending',
-          };
-          if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
-          if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
-          if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
-          if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
+          const drink = buildTallyDrink(beer, at);
 
           if (state.current?.clientId === sessionClientId) {
             const updated = { ...state.current, drinks: [...state.current.drinks, drink] };
@@ -431,6 +549,196 @@ export const useTallyStore = create<TallyState>()(
         return box.session;
       },
 
+      addExternalDrink: (pub, beer, eveningClientId) => {
+        if (!eveningClientId) return null;
+        const box: { session: TallySession | null } = { session: null };
+        set((state) => {
+          const existingDrinkSession = sessionContainingDrink(state, beer.id);
+          if (existingDrinkSession) {
+            box.session = existingDrinkSession;
+            return state;
+          }
+          if (state.removedDrinkIds.includes(beer.id)) return state;
+
+          const at = beer.at ?? new Date().toISOString();
+          const atDate = new Date(at);
+          if (!Number.isFinite(atDate.getTime())) return state;
+          const drink = buildTallyDrink(beer, at);
+
+          // A replay may target an evening that has already moved to history.
+          if (state.current?.clientId === eveningClientId) {
+            if (
+              state.current.pubKey !== pub.pubKey ||
+              drinkingDayKey(new Date(state.current.startedAt)) !== drinkingDayKey(atDate)
+            ) {
+              return state;
+            }
+            const updated: TallySession = {
+              ...state.current,
+              pubName: pub.pubName,
+              ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+              ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+              startedAt:
+                Date.parse(at) < Date.parse(state.current.startedAt)
+                  ? at
+                  : state.current.startedAt,
+              drinks: [...state.current.drinks, drink],
+            };
+            box.session = updated;
+            return { current: updated };
+          }
+          const existingHistoryIndex = state.history.findIndex(
+            (session) => session.clientId === eveningClientId,
+          );
+          if (existingHistoryIndex >= 0) {
+            const existing = state.history[existingHistoryIndex];
+            if (
+              existing.pubKey !== pub.pubKey ||
+              drinkingDayKey(new Date(existing.startedAt)) !== drinkingDayKey(atDate)
+            ) {
+              return state;
+            }
+            const updated: TallySession = {
+              ...existing,
+              startedAt:
+                Date.parse(at) < Date.parse(existing.startedAt) ? at : existing.startedAt,
+              drinks: [...existing.drinks, drink],
+            };
+            const history = state.history.slice();
+            history[existingHistoryIndex] = updated;
+            box.session = updated;
+            return { history: sortSessionsNewestFirst(history) };
+          }
+
+          // A concurrently minted evening at the same place/day aliases to the
+          // live canonical clientId. The caller learns that ID from the return.
+          if (
+            state.current &&
+            state.current.pubKey === pub.pubKey &&
+            drinkingDayKey(new Date(state.current.startedAt)) === drinkingDayKey(atDate)
+          ) {
+            const updated: TallySession = {
+              ...state.current,
+              pubName: pub.pubName,
+              ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+              ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+              startedAt:
+                Date.parse(at) < Date.parse(state.current.startedAt)
+                  ? at
+                  : state.current.startedAt,
+              drinks: [...state.current.drinks, drink],
+            };
+            box.session = updated;
+            return { current: updated };
+          }
+
+          const reason: ArchivedReason =
+            state.current && state.current.pubKey !== pub.pubKey
+              ? 'pub-change'
+              : 'day-rollover';
+          const history =
+            state.current && state.current.drinks.length > 0
+              ? [
+                  { ...state.current, archivedReason: reason, closedAt: at },
+                  ...state.history,
+                ].slice(0, MAX_HISTORY)
+              : state.history;
+          const created: TallySession = {
+            clientId: eveningClientId,
+            pubKey: pub.pubKey,
+            pubName: pub.pubName,
+            ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+            ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+            ...(pub.placeContext && pub.placeContext !== 'pub'
+              ? { placeContext: pub.placeContext }
+              : {}),
+            startedAt: at,
+            drinks: [drink],
+          };
+          box.session = created;
+          return { current: created, history };
+        });
+        return box.session;
+      },
+
+      addExternalDrinkToHistory: (pub, beer, eveningClientId, closedAt) => {
+        if (
+          !eveningClientId ||
+          (closedAt !== undefined && !Number.isFinite(Date.parse(closedAt)))
+        ) {
+          return null;
+        }
+        const box: { session: TallySession | null } = { session: null };
+        set((state) => {
+          const existingDrinkSession = sessionContainingDrink(state, beer.id);
+          if (existingDrinkSession) {
+            box.session = existingDrinkSession;
+            return state;
+          }
+          if (
+            state.removedDrinkIds.includes(beer.id) ||
+            state.current?.clientId === eveningClientId
+          ) {
+            return state;
+          }
+
+          const at = beer.at ?? new Date().toISOString();
+          const atDate = new Date(at);
+          if (!Number.isFinite(atDate.getTime())) return state;
+          const drink = buildTallyDrink(beer, at);
+          const existingIndex = state.history.findIndex(
+            (session) => session.clientId === eveningClientId,
+          );
+          if (existingIndex >= 0) {
+            const existing = state.history[existingIndex];
+            if (
+              existing.pubKey !== pub.pubKey ||
+              drinkingDayKey(new Date(existing.startedAt)) !== drinkingDayKey(atDate)
+            ) {
+              return state;
+            }
+            const updated: TallySession = {
+              ...existing,
+              startedAt:
+                Date.parse(at) < Date.parse(existing.startedAt) ? at : existing.startedAt,
+              ...(closedAt ? { closedAt } : {}),
+              drinks: [...existing.drinks, drink],
+            };
+            const history = state.history.slice();
+            history[existingIndex] = updated;
+            box.session = updated;
+            return { history: sortSessionsNewestFirst(history) };
+          }
+
+          const created: TallySession = {
+            clientId: eveningClientId,
+            pubKey: pub.pubKey,
+            pubName: pub.pubName,
+            ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+            ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+            ...(pub.placeContext && pub.placeContext !== 'pub'
+              ? { placeContext: pub.placeContext }
+              : {}),
+            startedAt: at,
+            ...(closedAt ? { closedAt } : {}),
+            drinks: [drink],
+            archivedReason: 'manual',
+          };
+          box.session = created;
+          return {
+            history: sortSessionsNewestFirst([created, ...state.history]).slice(
+              0,
+              MAX_HISTORY,
+            ),
+          };
+        });
+        return box.session;
+      },
+
+      hasDrink: (id) => tallyContainsDrinkId(get(), id),
+
+      isDrinkRemoved: (id) => get().removedDrinkIds.includes(id),
+
       undoLast: (expectedId) => {
         let removedId: string | null = null;
         set((state) => {
@@ -439,7 +747,11 @@ export const useTallyStore = create<TallyState>()(
           if (expectedId && drinks[drinks.length - 1]?.id !== expectedId) return state;
           const removed = drinks.pop();
           removedId = removed?.id ?? null;
-          return { current: { ...state.current, drinks } };
+          if (!removedId) return state;
+          return {
+            current: { ...state.current, drinks },
+            removedDrinkIds: appendRemovedDrinkId(state.removedDrinkIds, removedId),
+          };
         });
         return removedId;
       },
@@ -447,7 +759,10 @@ export const useTallyStore = create<TallyState>()(
       removeDrink: (id) => {
         let removedId: string | null = null;
         set((state) => {
-          if (!state.current) return state;
+          const removedDrinkIds = appendRemovedDrinkId(state.removedDrinkIds, id);
+          if (!state.current) {
+            return removedDrinkIds === state.removedDrinkIds ? state : { removedDrinkIds };
+          }
           const drinks = state.current.drinks.filter((drink) => {
             if (drink.id === id && removedId === null) {
               removedId = id;
@@ -455,15 +770,69 @@ export const useTallyStore = create<TallyState>()(
             }
             return true;
           });
-          if (removedId === null) return state;
-          return { current: { ...state.current, drinks } };
+          if (removedId === null) {
+            return removedDrinkIds === state.removedDrinkIds ? state : { removedDrinkIds };
+          }
+          return {
+            current: { ...state.current, drinks },
+            removedDrinkIds,
+          };
         });
         return removedId;
+      },
+
+      removeDrinkById: (id) => {
+        let result: RemovedDrinkResult | null = null;
+        set((state) => {
+          const removedDrinkIds = appendRemovedDrinkId(state.removedDrinkIds, id);
+          let current = state.current;
+          if (current) {
+            const drinks = current.drinks.filter((drink) => drink.id !== id);
+            if (drinks.length !== current.drinks.length) {
+              result = {
+                drinkId: id,
+                sessionClientId: current.clientId,
+                remainingDrinks: drinks.length,
+              };
+              current = { ...current, drinks };
+            }
+          }
+
+          let removedHistorySession = false;
+          const history = state.history.flatMap((session) => {
+            const drinks = session.drinks.filter((drink) => drink.id !== id);
+            if (drinks.length === session.drinks.length) return [session];
+            if (!result) {
+              result = {
+                drinkId: id,
+                sessionClientId: session.clientId,
+                remainingDrinks: drinks.length,
+              };
+            }
+            removedHistorySession = true;
+            return drinks.length > 0 ? [{ ...session, drinks }] : [];
+          });
+
+          if (
+            result === null &&
+            removedDrinkIds === state.removedDrinkIds &&
+            !removedHistorySession
+          ) {
+            return state;
+          }
+          return {
+            ...(current !== state.current ? { current } : {}),
+            ...(removedHistorySession ? { history } : {}),
+            removedDrinkIds,
+          };
+        });
+        return result;
       },
 
       removeDrinkFromSession: (startedAt, drinkId) => {
         let result: RemovedDrinkResult | null = null;
         set((state) => {
+          const removedDrinkIds = appendRemovedDrinkId(state.removedDrinkIds, drinkId);
           if (state.current?.startedAt === startedAt) {
             let removed = false;
             const drinks = state.current.drinks.filter((drink) => {
@@ -473,13 +842,15 @@ export const useTallyStore = create<TallyState>()(
               }
               return true;
             });
-            if (!removed) return state;
+            if (!removed) {
+              return removedDrinkIds === state.removedDrinkIds ? state : { removedDrinkIds };
+            }
             result = {
               drinkId,
               sessionClientId: state.current.clientId,
               remainingDrinks: drinks.length,
             };
-            return { current: { ...state.current, drinks } };
+            return { current: { ...state.current, drinks }, removedDrinkIds };
           }
 
           let changed = false;
@@ -502,8 +873,10 @@ export const useTallyStore = create<TallyState>()(
             };
             return drinks.length > 0 ? [{ ...session, drinks }] : [];
           });
-          if (!changed) return state;
-          return { history };
+          if (!changed) {
+            return removedDrinkIds === state.removedDrinkIds ? state : { removedDrinkIds };
+          }
+          return { history, removedDrinkIds };
         });
         return result;
       },
@@ -572,9 +945,46 @@ export const useTallyStore = create<TallyState>()(
           if (!state.current) return state;
           // An empty pinned session is not an evening — just drop it.
           if (state.current.drinks.length === 0) return { current: null };
-          const archived: TallySession = { ...state.current, archivedReason: reason };
+          const archived: TallySession = {
+            ...state.current,
+            archivedReason: reason,
+            closedAt: new Date().toISOString(),
+          };
           return { current: null, history: [archived, ...state.history].slice(0, MAX_HISTORY) };
         }),
+
+      archiveSession: (sessionClientId, closedAt) => {
+        if (!sessionClientId || !Number.isFinite(Date.parse(closedAt))) return false;
+        let archived = false;
+        set((state) => {
+          if (state.current?.clientId === sessionClientId) {
+            archived = true;
+            if (state.current.drinks.length === 0) return { current: null };
+            const closed: TallySession = {
+              ...state.current,
+              archivedReason: 'manual',
+              closedAt,
+            };
+            return {
+              current: null,
+              history: [closed, ...state.history].slice(0, MAX_HISTORY),
+            };
+          }
+
+          let changed = false;
+          const history = state.history.map((session) => {
+            if (session.clientId !== sessionClientId) return session;
+            archived = true;
+            if (session.closedAt === closedAt && session.archivedReason === 'manual') {
+              return session;
+            }
+            changed = true;
+            return { ...session, archivedReason: 'manual' as const, closedAt };
+          });
+          return changed ? { history } : state;
+        });
+        return archived;
+      },
 
       maybeAutoArchive: (nowMs = Date.now()) => {
         let archived = false;
@@ -582,7 +992,11 @@ export const useTallyStore = create<TallyState>()(
           if (!state.current || state.current.drinks.length === 0) return state;
           if (nowMs - sessionLastActivityMs(state.current) < IDLE_TIMEOUT_MS) return state;
           archived = true;
-          const arch: TallySession = { ...state.current, archivedReason: 'timeout' };
+          const arch: TallySession = {
+            ...state.current,
+            archivedReason: 'timeout',
+            closedAt: new Date(nowMs).toISOString(),
+          };
           return { current: null, history: [arch, ...state.history].slice(0, MAX_HISTORY) };
         });
         return archived;
@@ -601,7 +1015,7 @@ export const useTallyStore = create<TallyState>()(
             return state;
           }
           resumed = true;
-          const { archivedReason: _omit, ...restored } = last;
+          const { archivedReason: _omit, closedAt: _closedAt, ...restored } = last;
           return { current: restored, history: state.history.slice(1) };
         });
         return resumed;
@@ -629,14 +1043,26 @@ export const useTallyStore = create<TallyState>()(
               // still proceeds; the backend reconciles on the next launch.
             }
           }
-          return { current: null, history: [] };
+          const removedDrinkIds = sessions.reduce(
+            (ids, session) =>
+              session.drinks.reduce(
+                (all, drink) => appendRemovedDrinkId(all, drink.id),
+                ids,
+              ),
+            state.removedDrinkIds,
+          );
+          return { current: null, history: [], removedDrinkIds };
         }),
     }),
     {
       name: 'na-pivo-tally',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ current: state.current, history: state.history }),
+      partialize: (state) => ({
+        current: state.current,
+        history: state.history,
+        removedDrinkIds: state.removedDrinkIds,
+      }),
       migrate: migrateTally,
     },
   ),

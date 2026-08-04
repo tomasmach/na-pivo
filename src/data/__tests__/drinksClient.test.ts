@@ -56,6 +56,15 @@ afterEach(() => {
 });
 
 describe('buildDrinkEntry', () => {
+  it('keeps the optional wearable evening UUID in the retry-stable payload', () => {
+    const entry = buildDrinkEntry(
+      { ...INPUT, eveningClientId: '2ab55c31-5eb8-4f20-b0bb-60d8d70ecf20' },
+      'client-1',
+    );
+
+    expect(entry.evening_client_id).toBe('2ab55c31-5eb8-4f20-b0bb-60d8d70ecf20');
+  });
+
   it('maps camelCase → snake_case with required beer fields', () => {
     const entry = buildDrinkEntry(INPUT, 'client-1');
     expect(entry).toEqual({

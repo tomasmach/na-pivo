@@ -5,10 +5,14 @@
  * geohash-8 `cacheKey` to a COARSE cell centre (≈19 m, never raw GPS) and drops
  * it here; the compass screen consumes it to point the needle, then clears it.
  *
- * In-memory only — a one-shot handoff, nothing to persist.
+ * The screen handoff remains in-memory. The same explicit target is mirrored
+ * into the public-POI-only wearable target store so a paired watch and a phone
+ * restart keep aiming at the user's choice.
  */
 
 import { create } from 'zustand';
+
+import { useWearableTargetStore } from './wearableTargetStore';
 
 export interface FocusedPub {
   lat: number;
@@ -28,6 +32,17 @@ interface FocusedPubState {
 
 export const useFocusedPubStore = create<FocusedPubState>((set) => ({
   pub: null,
-  setFocusedPub: (pub) => set({ pub }),
-  clear: () => set({ pub: null }),
+  setFocusedPub: (pub) => {
+    useWearableTargetStore.getState().setManualTarget({
+      pubKey: pub.cacheKey,
+      name: pub.name,
+      latitude: pub.lat,
+      longitude: pub.lng,
+    });
+    set({ pub });
+  },
+  clear: () => {
+    useWearableTargetStore.getState().clearManualTarget();
+    set({ pub: null });
+  },
 }));

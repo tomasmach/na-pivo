@@ -45,6 +45,7 @@ import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { isHeadingAccuracyLow } from '@/compass/headingAccuracy';
+import { haversineMeters } from '@/compass/distance';
 import { openHomeInMaps, openPubInMaps } from '@/utils/maps';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
@@ -78,7 +79,9 @@ import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { FocusedPub } from '@/stores/focusedPubStore';
+import { useWearableTargetStore } from '@/stores/wearableTargetStore';
 import { useToastStore } from '@/stores/toastStore';
+import type { WearableDrinkChoice, WearablePubRef } from '@/wearables/protocol';
 import BeerMapScreen from '@/map/BeerMapScreen';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -98,6 +101,44 @@ const ARROW_SPRING_CONFIG = {
   mass: 1,
   overshootClamping: true,
 } as const;
+
+function wearablePubRef(pub: Pub): WearablePubRef {
+  return {
+    pubKey: geohash8(pub.lat, pub.lng),
+    name: pub.name,
+    latitude: pub.lat,
+    longitude: pub.lng,
+    ...(pub.city ? { city: pub.city } : {}),
+    ...(pub.id ? { externalId: pub.id } : {}),
+  };
+}
+
+function wearableMenuChoices(pub: Pub): WearableDrinkChoice[] {
+  return (pub.beers ?? [])
+    .map((beer, index): WearableDrinkChoice | null => {
+      const name = beer.name.trim();
+      if (!name) return null;
+      return {
+        choiceId: `menu:${geohash8(pub.lat, pub.lng)}:${index}:${name.toLocaleLowerCase('cs')}`.slice(
+          0,
+          128,
+        ),
+        name,
+        drinkType: 'beer',
+        volumeMl:
+          typeof beer.volumeMl === 'number' && Number.isInteger(beer.volumeMl)
+            ? beer.volumeMl
+            : null,
+        priceCzk:
+          typeof beer.priceCzk === 'number' && Number.isInteger(beer.priceCzk)
+            ? beer.priceCzk
+            : null,
+        servingType: 'unknown',
+      };
+    })
+    .filter((choice): choice is WearableDrinkChoice => choice !== null)
+    .slice(0, 20);
+}
 
 interface RenamePubModalProps {
   visible: boolean;
@@ -618,6 +659,42 @@ export default function CompassScreen() {
     !mapOpen,
     pubFilters.includeOtherPlaces === true,
   );
+
+  useEffect(() => {
+    if (!pub) return;
+    const origin = currentPosition ?? pub;
+    const loadedPubs = getAllLoadedPubs();
+    const nearbyPubs = loadedPubs
+      .filter(
+        (candidate) =>
+          candidate.venueKind !== 'not_pub' &&
+          (pubFilters.includeOtherPlaces === true ||
+            candidate.discoveryKind === undefined ||
+            candidate.discoveryKind === 'pub'),
+      )
+      .slice()
+      .sort(
+        (a, b) =>
+          haversineMeters(origin, a) - haversineMeters(origin, b),
+      )
+      .slice(0, 10)
+    const nearestPub = mode === 'nearest' ? pub : (nearbyPubs[0] ?? pub);
+    const nearest = wearablePubRef(nearestPub);
+    const targetStore = useWearableTargetStore.getState();
+    targetStore.setNearbySnapshot(nearest, nearbyPubs.map(wearablePubRef));
+
+    const selectedPubKey = targetStore.manualTarget?.pubKey ?? nearest.pubKey;
+    const selectedPub =
+      loadedPubs.find(
+        (candidate) => geohash8(candidate.lat, candidate.lng) === selectedPubKey,
+      ) ?? (geohash8(pub.lat, pub.lng) === selectedPubKey ? pub : null);
+    if (selectedPub) {
+      targetStore.setMenuSnapshot(
+        selectedPubKey,
+        wearableMenuChoices(selectedPub),
+      );
+    }
+  }, [currentPosition, mode, pub, pubFilters.includeOtherPlaces]);
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const homePoint = useSettingsStore((s) => s.homePoint);

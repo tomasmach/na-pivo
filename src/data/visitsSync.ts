@@ -61,7 +61,8 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
     ...(session.pubExternalId ? { external_id: session.pubExternalId } : {}),
     started_at: session.startedAt,
     ended_at: endedAt,
-    updated_at: updatedAt ?? endedAt ?? session.startedAt,
+    ...(session.closedAt ? { closed_at: session.closedAt } : {}),
+    updated_at: updatedAt ?? session.closedAt ?? endedAt ?? session.startedAt,
   };
   return entry;
 }

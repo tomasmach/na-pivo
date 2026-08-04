@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      Wear OS masks application icons into its round launcher treatment. Keep
+      the exact canonical phone artwork instead of inventing a second,
+      artificially transparent silhouette only to satisfy the generic handset
+      icon heuristic.
+    -->
+    <issue id="IconLauncherShape">
+        <ignore path="src/main/res/drawable-nodpi/ic_na_pivo_launcher.png" />
+    </issue>
+</lint>

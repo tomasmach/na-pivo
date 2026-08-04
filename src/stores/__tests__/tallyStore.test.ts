@@ -53,7 +53,7 @@ function beer(over: Partial<{ beerName: string; priceCzk: number; volumeMl: numb
 beforeEach(() => {
   idSeq = 0;
   (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, unknown> }).__INTERNAL_MOCK_STORAGE__ = {};
-  useTallyStore.setState({ current: null, history: [] });
+  useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] });
 });
 
 describe('addDrink', () => {
@@ -100,6 +100,16 @@ describe('addDrink', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
     useTallyStore.getState().addDrink({ ...PUB_A, pubName: 'U Zlatého Tygra (přejmenováno)' }, beer());
     expect(useTallyStore.getState().current?.pubName).toBe('U Zlatého Tygra (přejmenováno)');
+  });
+
+  it('does not append the same drink UUID twice', () => {
+    const input = { ...beer(), id: 'same-id' };
+    useTallyStore.getState().addDrink(PUB_A, input);
+    useTallyStore.getState().addDrink(PUB_A, { ...input, beerName: 'Changed replay body' });
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+    expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Pilsner Urquell');
+    expect(useTallyStore.getState().hasDrink('same-id')).toBe(true);
   });
 });
 
@@ -158,7 +168,19 @@ describe('addBackdatedDrink', () => {
     const { history } = useTallyStore.getState();
     expect(history).toHaveLength(1);
     expect(history[0].drinks).toHaveLength(2);
-    expect(landed.drinks).toHaveLength(2);
+    expect(landed?.drinks).toHaveLength(2);
+  });
+
+  it('returns null and creates no evening for a tombstoned delayed backdate', () => {
+    useTallyStore.getState().removeDrinkById('removed-backdate');
+    const landed = useTallyStore.getState().addBackdatedDrink(PUB_A, {
+      ...beer({ at: '2026-06-12T20:00:00' }),
+      id: 'removed-backdate',
+    });
+
+    expect(landed).toBeNull();
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history).toEqual([]);
   });
 });
 
@@ -205,6 +227,173 @@ describe('addDrinkToSession', () => {
     expect(useTallyStore.getState().addDrinkToSession('missing', beer())).toBeNull();
     expect(useTallyStore.getState().current).toBe(before.current);
     expect(useTallyStore.getState().history).toBe(before.history);
+  });
+
+  it('treats a replayed UUID as a no-op across all evenings', () => {
+    useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'global-id' });
+    const first = useTallyStore.getState().current;
+    useTallyStore.getState().addDrink(PUB_B, beer());
+    const currentId = useTallyStore.getState().current?.clientId as string;
+
+    const landed = useTallyStore
+      .getState()
+      .addDrinkToSession(currentId, { ...beer(), id: 'global-id' });
+
+    expect(landed?.clientId).toBe(first?.clientId);
+    expect(
+      [useTallyStore.getState().current, ...useTallyStore.getState().history]
+        .flatMap((session) => session?.drinks ?? [])
+        .filter((drink) => drink.id === 'global-id'),
+    ).toHaveLength(1);
+  });
+});
+
+describe('addExternalDrink', () => {
+  it('opens the first external evening with the supplied clientId', () => {
+    const landed = useTallyStore.getState().addExternalDrink(
+      PUB_A,
+      { ...beer({ at: '2026-06-12T19:00:00' }), id: 'watch-drink' },
+      'watch-evening',
+    );
+
+    expect(landed?.clientId).toBe('watch-evening');
+    expect(useTallyStore.getState().current?.clientId).toBe('watch-evening');
+    expect(useTallyStore.getState().current?.drinks.map((drink) => drink.id)).toEqual([
+      'watch-drink',
+    ]);
+  });
+
+  it('aliases a same-pub same-day external evening to the canonical current one', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    const canonicalId = useTallyStore.getState().current?.clientId;
+
+    const landed = useTallyStore.getState().addExternalDrink(
+      PUB_A,
+      { ...beer({ at: '2026-06-12T20:00:00' }), id: 'watch-drink' },
+      'concurrent-watch-evening',
+    );
+
+    expect(landed?.clientId).toBe(canonicalId);
+    expect(useTallyStore.getState().current?.clientId).toBe(canonicalId);
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
+    expect(useTallyStore.getState().history).toEqual([]);
+  });
+
+  it('keeps old drinks at the old pub and opens the supplied evening at a new pub', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    const oldDrinkId = useTallyStore.getState().current?.drinks[0].id;
+
+    const landed = useTallyStore.getState().addExternalDrink(
+      PUB_B,
+      { ...beer({ at: '2026-06-12T20:00:00' }), id: 'new-pub-drink' },
+      'new-pub-evening',
+    );
+
+    expect(landed?.clientId).toBe('new-pub-evening');
+    expect(useTallyStore.getState().current?.pubKey).toBe(PUB_B.pubKey);
+    expect(useTallyStore.getState().history[0].pubKey).toBe(PUB_A.pubKey);
+    expect(useTallyStore.getState().history[0].drinks[0].id).toBe(oldDrinkId);
+    expect(useTallyStore.getState().history[0].archivedReason).toBe('pub-change');
+  });
+
+  it('applies a delayed drink to an exact archived evening without reopening it', () => {
+    useTallyStore.getState().addExternalDrink(
+      PUB_A,
+      { ...beer({ at: '2026-06-12T19:00:00' }), id: 'first' },
+      'watch-evening',
+    );
+    useTallyStore.getState().archiveSession(
+      'watch-evening',
+      '2026-06-12T22:00:00.000Z',
+    );
+
+    const landed = useTallyStore.getState().addExternalDrink(
+      PUB_A,
+      { ...beer({ at: '2026-06-12T21:00:00' }), id: 'delayed' },
+      'watch-evening',
+    );
+
+    expect(landed?.clientId).toBe('watch-evening');
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history[0].drinks.map((drink) => drink.id)).toEqual([
+      'first',
+      'delayed',
+    ]);
+    expect(useTallyStore.getState().history[0].closedAt).toBe(
+      '2026-06-12T22:00:00.000Z',
+    );
+  });
+
+  it('does not resurrect an externally replayed tombstoned drink', () => {
+    useTallyStore.getState().removeDrinkById('removed-before-arrival');
+    const landed = useTallyStore.getState().addExternalDrink(
+      PUB_A,
+      { ...beer(), id: 'removed-before-arrival' },
+      'watch-evening',
+    );
+
+    expect(landed).toBeNull();
+    expect(useTallyStore.getState().current).toBeNull();
+  });
+});
+
+describe('addExternalDrinkToHistory', () => {
+  it('preserves a different-pub conflict in history without switching current', () => {
+    useTallyStore.getState().addDrink(PUB_A, {
+      ...beer({ at: '2026-06-12T19:00:00' }),
+      id: 'phone-drink',
+    });
+    const currentBefore = useTallyStore.getState().current;
+
+    const conflict = useTallyStore.getState().addExternalDrinkToHistory(
+      PUB_B,
+      { ...beer({ at: '2026-06-12T19:30:00' }), id: 'watch-drink' },
+      'watch-conflict-evening',
+    );
+
+    expect(conflict).toMatchObject({
+      clientId: 'watch-conflict-evening',
+      pubKey: PUB_B.pubKey,
+      archivedReason: 'manual',
+    });
+    expect(useTallyStore.getState().current).toBe(currentBefore);
+    expect(useTallyStore.getState().current?.drinks.map((drink) => drink.id)).toEqual([
+      'phone-drink',
+    ]);
+    expect(useTallyStore.getState().history[0].drinks.map((drink) => drink.id)).toEqual([
+      'watch-drink',
+    ]);
+  });
+
+  it('appends to the exact conflict history UUID and preserves an explicit close', () => {
+    useTallyStore.getState().addExternalDrinkToHistory(
+      PUB_B,
+      { ...beer({ at: '2026-06-12T19:30:00' }), id: 'watch-1' },
+      'watch-conflict-evening',
+    );
+    const closedAt = '2026-06-12T23:00:00.000Z';
+    const updated = useTallyStore.getState().addExternalDrinkToHistory(
+      PUB_B,
+      { ...beer({ at: '2026-06-12T20:00:00' }), id: 'watch-2' },
+      'watch-conflict-evening',
+      closedAt,
+    );
+
+    expect(updated?.drinks.map((drink) => drink.id)).toEqual(['watch-1', 'watch-2']);
+    expect(updated?.closedAt).toBe(closedAt);
+    expect(useTallyStore.getState().history).toHaveLength(1);
+  });
+
+  it('does not create history for a tombstoned external drink', () => {
+    useTallyStore.getState().removeDrinkById('removed-conflict');
+    expect(
+      useTallyStore.getState().addExternalDrinkToHistory(
+        PUB_B,
+        { ...beer(), id: 'removed-conflict' },
+        'watch-conflict-evening',
+      ),
+    ).toBeNull();
+    expect(useTallyStore.getState().history).toEqual([]);
   });
 });
 
@@ -301,12 +490,43 @@ describe('removeDrink', () => {
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
   });
 
-  it('removes only the first matching drink when ids collide', () => {
-    // Mirrors the screen, where a fixed test uuid can repeat: only one row goes.
+  it('suppresses a colliding add and removes the one immutable fact', () => {
     useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'dup' });
     useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'dup' });
     expect(useTallyStore.getState().removeDrink('dup')).toBe('dup');
-    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
+    expect(useTallyStore.getState().isDrinkRemoved('dup')).toBe(true);
+  });
+
+  it('keeps remove-wins when the remove arrives before the add', () => {
+    expect(useTallyStore.getState().removeDrink('future-id')).toBeNull();
+    expect(useTallyStore.getState().isDrinkRemoved('future-id')).toBe(true);
+
+    useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'future-id' });
+    expect(useTallyStore.getState().current).toBeNull();
+  });
+});
+
+describe('removeDrinkById', () => {
+  it('removes an archived drink without needing a startedAt lookup', () => {
+    useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'archived-drink' });
+    const sessionClientId = useTallyStore.getState().current?.clientId;
+    useTallyStore.getState().archiveCurrent('manual');
+
+    const removed = useTallyStore.getState().removeDrinkById('archived-drink');
+
+    expect(removed).toEqual({
+      drinkId: 'archived-drink',
+      sessionClientId,
+      remainingDrinks: 0,
+    });
+    expect(useTallyStore.getState().history).toEqual([]);
+    expect(useTallyStore.getState().removedDrinkIds).toContain('archived-drink');
+  });
+
+  it('records a remove-wins tombstone even when the add has not arrived', () => {
+    expect(useTallyStore.getState().removeDrinkById('future-watch-id')).toBeNull();
+    expect(useTallyStore.getState().isDrinkRemoved('future-watch-id')).toBe(true);
   });
 });
 
@@ -569,6 +789,36 @@ describe('archiveCurrent (Dopito)', () => {
   });
 });
 
+describe('archiveSession', () => {
+  it('archives the exact current evening with the supplied close time', () => {
+    useTallyStore.getState().addExternalDrink(
+      PUB_A,
+      { ...beer(), id: 'watch-drink' },
+      'watch-evening',
+    );
+    const closedAt = '2026-06-12T23:00:00.000Z';
+
+    expect(useTallyStore.getState().archiveSession('watch-evening', closedAt)).toBe(true);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history[0]).toMatchObject({
+      clientId: 'watch-evening',
+      archivedReason: 'manual',
+      closedAt,
+    });
+    expect(useTallyStore.getState().archiveSession('watch-evening', closedAt)).toBe(true);
+    expect(useTallyStore.getState().history).toHaveLength(1);
+  });
+
+  it('rejects an unknown session or invalid close time', () => {
+    expect(useTallyStore.getState().archiveSession('missing', 'not-a-date')).toBe(false);
+    expect(
+      useTallyStore
+        .getState()
+        .archiveSession('missing', '2026-06-12T23:00:00.000Z'),
+    ).toBe(false);
+  });
+});
+
 describe('resumeLast', () => {
   // Open a session, then auto-archive it as a timeout so it is resumable.
   function openThenTimeout(at: string) {
@@ -638,7 +888,7 @@ describe('resumableSession', () => {
   });
 });
 
-describe('migrateTally — v0 → v1 backfills clientId', () => {
+describe('migrateTally — v0/v1 → v2', () => {
   it('mints a clientId for the current and every history session', () => {
     const v0 = {
       current: { pubKey: 'aaaaaaaa', pubName: 'A', startedAt: 't', drinks: [] },
@@ -655,14 +905,52 @@ describe('migrateTally — v0 → v1 backfills clientId', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('passes already-current (v1) state through untouched', () => {
+  it('adds a remove-wins set to v1 state', () => {
     const v1 = { current: null, history: [] };
-    expect(migrateTally(v1, 1)).toBe(v1);
+    expect(migrateTally(v1, 1)).toMatchObject({
+      current: null,
+      history: [],
+      removedDrinkIds: [],
+    });
+  });
+
+  it('drops duplicate and tombstoned legacy drink IDs globally', () => {
+    const duplicate = { id: 'same', beerName: 'Plzeň', at: '2026-06-12T19:00:00' };
+    const v1 = {
+      current: {
+        clientId: 'current',
+        pubKey: PUB_A.pubKey,
+        pubName: PUB_A.pubName,
+        startedAt: duplicate.at,
+        drinks: [duplicate, { ...duplicate, id: 'removed' }],
+      },
+      history: [
+        {
+          clientId: 'history',
+          pubKey: PUB_B.pubKey,
+          pubName: PUB_B.pubName,
+          startedAt: duplicate.at,
+          drinks: [duplicate],
+        },
+      ],
+      removedDrinkIds: ['removed'],
+    };
+
+    const migrated = migrateTally(v1, 1);
+    expect(migrated.current?.drinks.map((drink) => drink.id)).toEqual(['same']);
+    expect(migrated.history[0].drinks).toEqual([]);
+    expect(migrated.removedDrinkIds).toEqual(['removed']);
+  });
+
+  it('passes already-current v2 state through untouched', () => {
+    const v2 = { current: null, history: [], removedDrinkIds: [] };
+    expect(migrateTally(v2, 2)).toBe(v2);
   });
 
   it('tolerates missing input', () => {
     const migrated = migrateTally(undefined, 0);
     expect(migrated.current).toBeNull();
     expect(migrated.history).toEqual([]);
+    expect(migrated.removedDrinkIds).toEqual([]);
   });
 });

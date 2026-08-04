@@ -70,6 +70,7 @@ from rest_framework.views import APIView
 from pubs import accounts, emailer
 from pubs.accounts import AccountError
 from pubs.beer_catalog import (
+    ALLOWED_BEER_VOLUMES_ML,
     BeerCatalogMatchCache,
     match_beer_brand,
     match_beer_identity,
@@ -133,6 +134,7 @@ from pubs.models import (
     FriendPubActivityRecipient,
     Friendship,
     NightRound,
+    OfflineMutationTombstone,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
@@ -335,12 +337,45 @@ def _idempotent_delete(queryset, *, scope: str, key_label: str, key_value) -> Re
         deleted_count, _ = queryset.delete()
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "%s: unexpected error deleting %s %r: %s",
+            "%s: unexpected error deleting offline %s (%s)",
             scope,
             key_label,
-            key_value,
-            exc,
-            exc_info=True,
+            type(exc).__name__,
+        )
+        return _internal_error()
+    return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+
+
+def _idempotent_delete_with_tombstone(
+    queryset,
+    *,
+    account: Account,
+    resource: str,
+    scope: str,
+    key_label: str,
+    key_value,
+) -> Response:
+    """Atomically delete a private offline fact and retain its remove-wins UUID.
+
+    Locking the account row matches DrinksView's POST serialization and gives
+    PubVisit POST the same race-free boundary: either POST wins before DELETE,
+    or DELETE's tombstone makes the later POST a successful no-op.
+    """
+    try:
+        with transaction.atomic():
+            locked_account = Account.objects.select_for_update().get(pk=account.pk)
+            deleted_count, _ = queryset.delete()
+            OfflineMutationTombstone.objects.get_or_create(
+                account=locked_account,
+                resource=resource,
+                client_id=key_value,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "%s: unexpected error deleting offline %s (%s)",
+            scope,
+            key_label,
+            type(exc).__name__,
         )
         return _internal_error()
     return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
@@ -1962,6 +1997,9 @@ class DrinksView(APIView):
             items = [
                 {
                     "client_id": str(drink.client_id),
+                    "evening_client_id": (
+                        str(drink.evening_client_id) if drink.evening_client_id else None
+                    ),
                     "cache_key": drink.cache_key,
                     "name": drink.name,
                     "lat": drink.lat,
@@ -2016,6 +2054,32 @@ class DrinksView(APIView):
                 # check strictly before flag evaluation as required by offline
                 # idempotency retries.
                 account = Account.objects.select_for_update().get(pk=request.user.pk)
+                tombstoned = OfflineMutationTombstone.objects.filter(
+                    account=account,
+                    resource=OfflineMutationTombstone.Resource.DRINK,
+                    client_id=data["client_id"],
+                ).exists()
+                if tombstoned:
+                    # Additive `removed` lets new clients explain the no-op.
+                    # Released clients already treat accepted+duplicate 200 as
+                    # success and dequeue the stale payload.
+                    DrinkLog.objects.filter(
+                        account=account,
+                        client_id=data["client_id"],
+                    ).delete()
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": True,
+                            "removed": True,
+                            "cache_key": cache_key,
+                            "place_context": data["place_context"],
+                            "serving_type": beer["serving_type"],
+                            "menu_updated": False,
+                            "pivar": _pivar_envelope(account, 0),
+                        },
+                        status=status.HTTP_200_OK,
+                    )
                 drink = DrinkLog.objects.filter(
                     account=account,
                     client_id=data["client_id"],
@@ -2072,6 +2136,7 @@ class DrinksView(APIView):
                 drink = DrinkLog.objects.create(
                     account=account,
                     client_id=data["client_id"],
+                    evening_client_id=data.get("evening_client_id"),
                     cache_key=cache_key,
                     name=data.get("name") or "",
                     lat=data.get("lat") if is_pub else None,
@@ -2105,7 +2170,11 @@ class DrinksView(APIView):
                 }
 
                 menu_updated = False
-                if is_pub and is_beer:
+                if (
+                    is_pub
+                    and is_beer
+                    and beer.get("volume_ml") in ALLOWED_BEER_VOLUMES_ML
+                ):
                     menu_updated = self._merge_into_community(
                         cache_key,
                         {
@@ -2204,10 +2273,8 @@ class DrinksView(APIView):
                     )
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "drinks: unexpected error updating drink %r: %s",
-                client_id,
-                exc,
-                exc_info=True,
+                "drinks: unexpected error updating drink (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
@@ -2221,8 +2288,10 @@ class DrinksView(APIView):
         # menu (PubCommunityData) is deliberately left untouched — the price was
         # real community data and stays. Pivař XP is a monotonic lifetime score
         # and is deliberately not rolled back here; hard daily caps bound abuse.
-        return _idempotent_delete(
+        return _idempotent_delete_with_tombstone(
             DrinkLog.objects.filter(account=request.user, client_id=client_id),
+            account=request.user,
+            resource=OfflineMutationTombstone.Resource.DRINK,
             scope="drinks",
             key_label="drink",
             key_value=client_id,
@@ -2825,6 +2894,7 @@ def _visit_item(visit: PubVisit) -> dict:
         "external_id": visit.external_id,
         "started_at": visit.started_at.isoformat(),
         "ended_at": visit.ended_at.isoformat() if visit.ended_at else None,
+        "closed_at": visit.closed_at.isoformat() if visit.closed_at else None,
         "updated_at": visit.client_updated_at.isoformat(),
     }
 
@@ -2867,9 +2937,30 @@ class PubVisitView(APIView):
 
         try:
             with transaction.atomic():
+                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                tombstoned = OfflineMutationTombstone.objects.filter(
+                    account=account,
+                    resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+                    client_id=data["client_id"],
+                ).exists()
+                if tombstoned:
+                    PubVisit.objects.filter(
+                        account=account,
+                        client_id=data["client_id"],
+                    ).delete()
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": True,
+                            "cache_key": cache_key,
+                            "applied": False,
+                            "removed": True,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
                 existing = (
                     PubVisit.objects.select_for_update()
-                    .filter(account=request.user, client_id=data["client_id"])
+                    .filter(account=account, client_id=data["client_id"])
                     .first()
                 )
                 if existing is not None and existing.client_updated_at > data["updated_at"]:
@@ -2884,7 +2975,7 @@ class PubVisitView(APIView):
                     )
 
                 _, created = PubVisit.objects.update_or_create(
-                    account=request.user,
+                    account=account,
                     client_id=data["client_id"],
                     defaults={
                         "cache_key": cache_key,
@@ -2895,15 +2986,18 @@ class PubVisitView(APIView):
                         "external_id": data.get("external_id") or "",
                         "started_at": data["started_at"],
                         "ended_at": data.get("ended_at"),
+                        # Dopito is monotonic. A released client does not know
+                        # this additive field, so a later legacy upsert must not
+                        # silently reopen a watch-closed evening.
+                        "closed_at": data.get("closed_at")
+                        or (existing.closed_at if existing is not None else None),
                         "client_updated_at": data["updated_at"],
                     },
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "pub-visits: unexpected error saving visit %r: %s",
-                data.get("client_id"),
-                exc,
-                exc_info=True,
+                "pub-visits: unexpected error saving visit (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
@@ -2920,8 +3014,10 @@ class PubVisitView(APIView):
     def delete(self, request: Request, client_id) -> Response:
         # Idempotent delete scoped to the account (a foreign / missing / already
         # deleted client_id matches nothing → deleted: false, never a 404).
-        return _idempotent_delete(
+        return _idempotent_delete_with_tombstone(
             PubVisit.objects.filter(account=request.user, client_id=client_id),
+            account=request.user,
+            resource=OfflineMutationTombstone.Resource.PUB_VISIT,
             scope="pub-visits",
             key_label="visit",
             key_value=client_id,

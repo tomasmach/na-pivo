@@ -3071,6 +3071,14 @@ class DrinkLog(models.Model):
     client_id = models.UUIDField(
         help_text="Client-generated UUID; idempotency key for offline retries.",
     )
+    evening_client_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Optional client-generated evening UUID (PubVisit.client_id). "
+            "Released clients omit it."
+        ),
+    )
     cache_key = models.CharField(
         max_length=12,
         null=True,
@@ -3227,6 +3235,10 @@ class DrinkLog(models.Model):
                 fields=["account", "place_context"],
                 name="pubs_drink_account_context_idx",
             ),
+            models.Index(
+                fields=["account", "evening_client_id", "drank_at"],
+                name="pubs_drink_evening_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -3381,6 +3393,14 @@ class PubVisit(models.Model):
         blank=True,
         help_text="When the evening ended (None = still open / unknown).",
     )
+    closed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Explicit client-confirmed Dopito time. Null for active visits and "
+            "released clients that only send ended_at."
+        ),
+    )
     client_updated_at = models.DateTimeField(
         help_text="Client's local updatedAt; the last-write-wins conflict key.",
     )
@@ -3407,6 +3427,42 @@ class PubVisit(models.Model):
 
     def __str__(self) -> str:
         return f"PubVisit({self.name} [{self.cache_key}] @ {self.started_at:%Y-%m-%d %H:%M})"
+
+
+class OfflineMutationTombstone(models.Model):
+    """
+    Remove-wins marker for at-least-once mobile and wearable mutations.
+
+    A delayed POST may arrive after the user already undid a drink or deleted a
+    visit. Keeping only the account-scoped resource + client UUID prevents that
+    stale replay from resurrecting private data without retaining its payload.
+    """
+
+    class Resource(models.TextChoices):
+        DRINK = "drink", "Drink"
+        PUB_VISIT = "pub_visit", "Pub visit"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="offline_mutation_tombstones",
+    )
+    resource = models.CharField(max_length=16, choices=Resource.choices)
+    client_id = models.UUIDField()
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Offline mutation tombstone"
+        verbose_name_plural = "Offline mutation tombstones"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "resource", "client_id"],
+                name="unique_offline_tombstone",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"OfflineMutationTombstone({self.resource})"
 
 
 class PubSearchCache(models.Model):

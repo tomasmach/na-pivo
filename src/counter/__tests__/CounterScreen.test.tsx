@@ -291,7 +291,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUuidCounter = 0;
   fetchPubHours.mockImplementation(() => new Promise(() => undefined) as never);
-  useTallyStore.setState({ current: null, history: [] });
+  useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] });
   useCommunityStore.setState({ overrides: {} });
   useSettingsStore.setState({ priceCurrency: 'CZK', waterNudgeEnabled: false });
 });

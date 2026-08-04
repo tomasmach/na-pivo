@@ -82,6 +82,7 @@ import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
+import { initializeMobileWearableSync } from '@/wearables/mobileSync';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -294,6 +295,9 @@ export default function RootLayout() {
         // sync existed. Seed only after account initialization has settled so
         // the private history cannot race a session rotation.
         void seedDrinksFromHistory();
+        // Watches own a durable offline outbox. Start the bridge only after the
+        // matching phone account and persisted tally have both hydrated.
+        void initializeMobileWearableSync();
       });
   }, []);
 

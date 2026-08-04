@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
-from pubs.models import Account, PubVisit
+from pubs.models import Account, OfflineMutationTombstone, PubVisit
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11112222-3333-4444-5555-666677778888"
@@ -175,6 +175,35 @@ def test_post_with_ended_at(client):
     assert PubVisit.objects.get().ended_at.isoformat() == "2026-06-12T21:30:00+00:00"
 
 
+@pytest.mark.django_db
+def test_explicit_closed_at_round_trips_without_changing_ended_at(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-visits",
+        data=_payload(closed_at="2026-06-12T23:45:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_201_CREATED
+    visit = PubVisit.objects.get()
+    assert visit.ended_at is None
+    assert visit.closed_at.isoformat() == "2026-06-12T21:45:00+00:00"
+
+    item = client.get("/v1/pub-visits", **_auth(token)).json()["visits"][0]
+    assert item["closed_at"] == "2026-06-12T21:45:00+00:00"
+
+    # A released client does not send closed_at. Its later routine visit upsert
+    # must not reopen an evening explicitly closed from a watch.
+    legacy_update = client.post(
+        "/v1/pub-visits",
+        data=_payload(updated_at="2026-06-13T00:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+    assert legacy_update.status_code == status.HTTP_200_OK
+    assert PubVisit.objects.get().closed_at.isoformat() == "2026-06-12T21:45:00+00:00"
+
+
 # ---------------------------------------------------------------------------
 # Idempotent upsert
 # ---------------------------------------------------------------------------
@@ -307,6 +336,7 @@ def test_get_lists_all_visits(client):
     assert first["cache_key"] == _KEY
     assert first["started_at"] == "2026-06-12T17:00:00+00:00"
     assert first["ended_at"] is None
+    assert first["closed_at"] is None
     assert first["updated_at"] == "2026-06-12T17:00:00+00:00"
 
 
@@ -333,6 +363,10 @@ def test_delete_removes_visit(client):
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": True}
     assert PubVisit.objects.count() == 0
+    assert OfflineMutationTombstone.objects.filter(
+        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+        client_id=_CLIENT_ID,
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -341,6 +375,44 @@ def test_delete_unknown_client_id_is_idempotent_success(client):
     resp = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token))
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": False}
+    assert OfflineMutationTombstone.objects.filter(
+        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+        client_id=_CLIENT_ID,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_stale_visit_post_after_delete_is_successful_remove_wins_noop(client):
+    token = _register(client)
+    created = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+    assert client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token)).json() == {
+        "deleted": True
+    }
+
+    stale = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert stale.status_code == status.HTTP_200_OK
+    assert stale.json() == {
+        "accepted": True,
+        "duplicate": True,
+        "cache_key": _KEY,
+        "applied": False,
+        "removed": True,
+    }
+    assert PubVisit.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_visit_delete_before_first_post_is_remove_wins(client):
+    token = _register(client)
+    assert client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token)).json() == {
+        "deleted": False
+    }
+
+    delayed = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert delayed.status_code == status.HTTP_200_OK
+    assert delayed.json()["removed"] is True
+    assert PubVisit.objects.count() == 0
 
 
 @pytest.mark.django_db

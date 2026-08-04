@@ -1,0 +1,713 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://napivo.app/contracts/wearable-sync-v1.schema.json",
+  "title": "Na pivo wearable sync protocol v1",
+  "description": "Canonical transport-neutral contract shared by the phone, Apple Watch and Wear OS applications.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/commandEnvelope"
+    },
+    {
+      "$ref": "#/$defs/stateSnapshotEnvelope"
+    },
+    {
+      "$ref": "#/$defs/ackEnvelope"
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "isoDateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "actorKind": {
+      "type": "string",
+      "enum": [
+        "phone",
+        "watchos",
+        "wearos"
+      ]
+    },
+    "commonEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "messageId",
+        "accountEpoch",
+        "actorId",
+        "actorKind",
+        "actorSequence",
+        "baseRevision",
+        "sentAt",
+        "kind",
+        "payload"
+      ],
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "messageId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "accountEpoch": {
+          "$ref": "#/$defs/uuid"
+        },
+        "actorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "actorKind": {
+          "$ref": "#/$defs/actorKind"
+        },
+        "actorSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "baseRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sentAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "payload": {}
+      }
+    },
+    "pubRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pubKey",
+        "name",
+        "latitude",
+        "longitude"
+      ],
+      "properties": {
+        "pubKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Public point-of-interest coordinate of the pub, never the user's observed location."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Public point-of-interest coordinate of the pub, never the user's observed location."
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "externalId": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "drinkSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "drinkType",
+        "volumeMl",
+        "priceCzk",
+        "servingType",
+        "recordedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "A concrete confirmed drink name. Generic category labels are rejected by application validation."
+        },
+        "drinkType": {
+          "type": "string",
+          "enum": [
+            "beer",
+            "soft_drink",
+            "wine",
+            "shot"
+          ]
+        },
+        "volumeMl": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 3000
+        },
+        "priceCzk": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "servingType": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "draft",
+            "bottle",
+            "can",
+            "plastic_bottle",
+            "other"
+          ]
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "drinkType": {
+                "const": "shot"
+              }
+            },
+            "required": [
+              "drinkType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "volumeMl": {
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 200
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drinkChoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "choiceId",
+        "name",
+        "drinkType",
+        "volumeMl",
+        "priceCzk",
+        "servingType"
+      ],
+      "properties": {
+        "choiceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Stable UI identity only. A new drink fact must always mint a new UUID."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "drinkType": {
+          "type": "string",
+          "enum": [
+            "beer",
+            "soft_drink",
+            "wine",
+            "shot"
+          ]
+        },
+        "volumeMl": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 3000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priceCzk": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "servingType": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "draft",
+            "bottle",
+            "can",
+            "plastic_bottle",
+            "other"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "drinkType": {
+                "const": "shot"
+              }
+            },
+            "required": [
+              "drinkType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "volumeMl": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "targetState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selection",
+        "pub"
+      ],
+      "properties": {
+        "selection": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "nearest"
+          ]
+        },
+        "pub": {
+          "$ref": "#/$defs/pubRef"
+        }
+      }
+    },
+    "eveningState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eveningId",
+        "pub",
+        "drinkingDayKey",
+        "startedAt",
+        "status",
+        "drinks",
+        "removedDrinkIds"
+      ],
+      "properties": {
+        "eveningId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "pub": {
+          "$ref": "#/$defs/pubRef"
+        },
+        "drinkingDayKey": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "startedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "closedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "closed",
+            "conflict"
+          ]
+        },
+        "drinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/drinkSpec"
+          },
+          "maxItems": 500
+        },
+        "removedDrinkIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "uniqueItems": true,
+          "maxItems": 1000
+        }
+      }
+    },
+    "setTargetCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "target"
+      ],
+      "properties": {
+        "type": {
+          "const": "set_target"
+        },
+        "target": {
+          "$ref": "#/$defs/targetState"
+        }
+      }
+    },
+    "clearTargetCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "clear_target"
+        }
+      }
+    },
+    "startEveningAndAddDrinkCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "eveningId",
+        "pub",
+        "drinkingDayKey",
+        "drink"
+      ],
+      "properties": {
+        "type": {
+          "const": "start_evening_and_add_drink"
+        },
+        "eveningId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "pub": {
+          "$ref": "#/$defs/pubRef"
+        },
+        "drinkingDayKey": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "drink": {
+          "$ref": "#/$defs/drinkSpec"
+        }
+      }
+    },
+    "addDrinkCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "eveningId",
+        "drink"
+      ],
+      "properties": {
+        "type": {
+          "const": "add_drink"
+        },
+        "eveningId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "drink": {
+          "$ref": "#/$defs/drinkSpec"
+        }
+      }
+    },
+    "removeDrinkCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "eveningId",
+        "drinkId",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "remove_drink"
+        },
+        "eveningId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "drinkId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "undo",
+            "correction"
+          ]
+        }
+      }
+    },
+    "closeEveningCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "eveningId",
+        "closedAt"
+      ],
+      "properties": {
+        "type": {
+          "const": "close_evening"
+        },
+        "eveningId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "closedAt": {
+          "$ref": "#/$defs/isoDateTime"
+        }
+      }
+    },
+    "resolveEveningConflictCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "activeEveningId"
+      ],
+      "properties": {
+        "type": {
+          "const": "resolve_evening_conflict"
+        },
+        "activeEveningId": {
+          "$ref": "#/$defs/uuid"
+        }
+      }
+    },
+    "command": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/setTargetCommand"
+        },
+        {
+          "$ref": "#/$defs/clearTargetCommand"
+        },
+        {
+          "$ref": "#/$defs/startEveningAndAddDrinkCommand"
+        },
+        {
+          "$ref": "#/$defs/addDrinkCommand"
+        },
+        {
+          "$ref": "#/$defs/removeDrinkCommand"
+        },
+        {
+          "$ref": "#/$defs/closeEveningCommand"
+        },
+        {
+          "$ref": "#/$defs/resolveEveningConflictCommand"
+        }
+      ]
+    },
+    "commandEnvelope": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commonEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "$ref": "#/$defs/command"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "stateSnapshotEnvelope": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commonEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "state_snapshot"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "revision",
+                "target",
+                "activeEvening",
+                "otherEvenings",
+                "nearbyPubs",
+                "recentDrinks",
+                "frequentDrinks",
+                "menuDrinks",
+                "pendingCommandCount",
+                "isStale"
+              ],
+              "properties": {
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/targetState"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "activeEvening": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/eveningState"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "otherEvenings": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/eveningState"
+                  },
+                  "maxItems": 10
+                },
+                "nearbyPubs": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/pubRef"
+                  },
+                  "maxItems": 10
+                },
+                "recentDrinks": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/drinkChoice"
+                  },
+                  "maxItems": 20
+                },
+                "frequentDrinks": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/drinkChoice"
+                  },
+                  "maxItems": 20
+                },
+                "menuDrinks": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/drinkChoice"
+                  },
+                  "maxItems": 30
+                },
+                "pendingCommandCount": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "isStale": {
+                  "type": "boolean"
+                },
+                "lastPhoneContactAt": {
+                  "$ref": "#/$defs/isoDateTime"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ackEnvelope": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/commonEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "ack"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "acknowledgedMessageIds",
+                "revision"
+              ],
+              "properties": {
+                "acknowledgedMessageIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/uuid"
+                  },
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "uniqueItems": true
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

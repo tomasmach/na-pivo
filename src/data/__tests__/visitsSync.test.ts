@@ -56,6 +56,14 @@ beforeEach(async () => {
 });
 
 describe('buildVisitEntry', () => {
+  it('carries an explicit wearable close time and uses it as the latest update', () => {
+    const closedAt = '2026-06-14T22:00:00.000Z';
+    const entry = buildVisitEntry(session({ closedAt }));
+
+    expect(entry?.closed_at).toBe(closedAt);
+    expect(entry?.updated_at).toBe(closedAt);
+  });
+
   it('derives lat/lng from the pubKey cell that re-encodes to the same key', () => {
     const entry = buildVisitEntry(session());
     expect(entry).not.toBeNull();

@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearDeleteDrinksQueue, enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import {
+  clearDeleteDrinksQueue,
+  enqueueDelete,
+  ensureDeleteQueued,
+  flushDeleteDrinksQueue,
+} from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
 import type { SubmitDrinkResult } from '../drinksClient';
 
@@ -47,6 +52,25 @@ beforeEach(async () => {
 });
 
 describe('enqueueDelete', () => {
+  it('can persist without starting network delivery', async () => {
+    await ensureDeleteQueued('watch-delete');
+
+    expect(await readQueue()).toEqual(['watch-delete']);
+    expect(deleteDrink).not.toHaveBeenCalled();
+  });
+
+  it('rejects when a wearable tombstone cannot be persisted', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
+
+    await expect(ensureDeleteQueued('not-durable')).rejects.toThrow(
+      'Offline deletion queue is unavailable',
+    );
+    expect(await readQueue()).toEqual([]);
+    expect(deleteDrink).not.toHaveBeenCalled();
+  });
+
   it('sends the deletion and drops it from the queue on success', async () => {
     await enqueueDelete('a');
     expect(deleteDrink).toHaveBeenCalledWith('a');
@@ -70,6 +94,15 @@ describe('enqueueDelete', () => {
     await enqueueDelete('a');
     await enqueueDelete('a');
     expect(await readQueue()).toEqual(['a']);
+  });
+
+  it('does not evict an older tombstone when the legacy queue limit is exceeded', async () => {
+    const existing = Array.from({ length: 200 }, (_, index) => `delete-${index}`);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+
+    await ensureDeleteQueued('delete-200');
+
+    expect(await readQueue()).toEqual([...existing, 'delete-200']);
   });
 });
 
