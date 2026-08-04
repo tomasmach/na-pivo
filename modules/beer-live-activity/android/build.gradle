@@ -18,4 +18,7 @@ dependencies {
   // 1.18.0 is the newest stable Core compatible with Expo 56's compileSdk 36.
   // Core 1.19.0 requires compileSdk 37 and cannot be consumed by this release.
   implementation 'androidx.core:core-ktx:1.18.0'
+  // The app already ships expo-notifications. Compile against its scheduler so
+  // a background Live Activity action can move the existing reminder alarm.
+  compileOnly project(':expo-notifications')
 }

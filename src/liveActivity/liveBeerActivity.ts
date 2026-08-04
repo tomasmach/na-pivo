@@ -60,6 +60,26 @@ let pendingReconciliationQueue: Promise<void> = Promise.resolve();
 let lastPayloadSignature: string | null | undefined;
 let lastPayload: BeerEveningLiveActivityProps | null | undefined;
 
+function installIosInteractionListener(): void {
+  if (Platform.OS !== 'ios') return;
+
+  try {
+    // Keep expo-widgets lazy so Expo Go and unit-test harnesses without its
+    // native module can still initialize the rest of the beer counter.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { addUserInteractionListener } = require('expo-widgets') as {
+      addUserInteractionListener(listener: (event: { target?: string }) => void): {
+        remove(): void;
+      };
+    };
+    addUserInteractionListener((event) => {
+      if (event.target === 'add-beer') void reconcilePendingLiveBeerAdds();
+    });
+  } catch {
+    // Foreground reconciliation remains the fallback when widgets are absent.
+  }
+}
+
 function serialize(operation: () => Promise<void>): void {
   operationQueue = operationQueue.then(operation, operation).catch(() => undefined);
 }
@@ -386,7 +406,9 @@ async function reconcilePendingLiveBeerAddsInternal(): Promise<void> {
   if (committedIds.length > 0) {
     const current = useTallyStore.getState().current;
     syncVisit(current);
-    if (current) void refreshBeerCountReminderAfterBeer(current.clientId);
+    // Do not finish the native interaction reconciliation until the old local
+    // reminder is cancelled and a fresh one is anchored to this beer.
+    if (current) await refreshBeerCountReminderAfterBeer(current.clientId);
     await flushDrinksQueue();
     await Promise.all(
       committedIds.map(async (id) => {
@@ -429,6 +451,7 @@ export async function initializeLiveBeerActivity(): Promise<void> {
   await Promise.all([waitForTallyHydration(), waitForSettingsHydration()]);
 
   const isNativeActivityPlatform = Platform.OS === 'ios' || Platform.OS === 'android';
+  installIosInteractionListener();
   await reconcileLiveBeerActivityAndAutoArchive();
 
   if (!isNativeActivityPlatform) return;
