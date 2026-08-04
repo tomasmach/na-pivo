@@ -233,6 +233,14 @@ function BeerFormBody({
   // Initialized once at mount from props (the body is remounted per open).
   const [name, setName] = useState(beer?.name ?? '');
 
+  // A ScrollView never reports its content height to its parent, so the sheet
+  // could not size itself around the form and stayed at the 56% floor with the
+  // last fields clipped. Measuring the content and giving the list that exact
+  // height lets the card grow (capped by `maxHeight`) — with the keyboard down
+  // the whole form is visible, with the keyboard up the cap shrinks it and the
+  // list scrolls as before.
+  const [contentHeight, setContentHeight] = useState(0);
+
   // Beer-name autocomplete (only in 'add' mode; 'price'/'edit' lock the name).
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -415,11 +423,12 @@ function BeerFormBody({
           </View>
 
           <KeyboardAwareScrollView
-            style={styles.list}
+            style={[styles.list, contentHeight > 0 ? { height: contentHeight } : null]}
             keyboardAvoidedExternally
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.cardContent}
+            onContentSizeChange={(_width, height) => setContentHeight(height)}
             bounces={false}
           >
             {mode === 'add' ? (
@@ -718,9 +727,14 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: '56%',
     maxHeight: '92%',
+    // Height follows the content and is only capped by the inline maxHeight, so
+    // with the keyboard down the sheet expands and shows the whole form; with
+    // the keyboard up the cap shrinks it back and the list scrolls.
+    flexShrink: 1,
   },
   card: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -743,6 +757,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     marginBottom: Spacing.sm,
+    flexShrink: 0,
   },
   closeButton: {
     width: HitArea.min,
@@ -755,7 +770,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   list: {
-    flex: 1,
+    // Grows into the leftover space (short forms keep the actions pinned to the
+    // bottom) and shrinks when the measured content does not fit the cap.
+    flexGrow: 1,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   cardContent: {
@@ -962,6 +980,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: 4,
+    flexShrink: 0,
     paddingTop: Spacing.md,
     marginTop: Spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
