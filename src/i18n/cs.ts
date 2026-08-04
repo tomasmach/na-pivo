@@ -125,9 +125,10 @@ export const cs = {
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
 
-    // Rename row — the counter's entry point for fixing a pub's name.
-    renameRowLabel: 'Název hospody',
+    // Detail actions — kept visible at the end of the mapping scroll.
+    renameRowLabel: 'Přejmenovat hospodu',
     renameRowHint: 'Přejmenuj nebo oprav překlep',
+    reportRowLabel: 'Nahlásit hospodu',
 
     // Sections (uppercase, matching the statsHeader convention). Merged to 3 so
     // no section is a single row: games+atmosphere → ZÁBAVA, payment+wifi/parking
@@ -185,10 +186,6 @@ export const cs = {
     tileHoursOpenDays: (n: number) =>
       czechPlural(n, { one: 'otevřeno 1 den', few: `otevřeno ${n} dny`, many: `otevřeno ${n} dní` }),
     tileA11y: (label: string, detail: string) => `${label}, ${detail}. Uprav.`,
-
-    // Overflow — edge actions (rename / report) tucked behind one "···" row.
-    moreLabel: 'Přejmenovat · nahlásit',
-    moreA11y: 'Další možnosti: přejmenovat hospodu nebo ji nahlásit',
 
     // Amenity labels / chips (mirror the catalogue in src/data/amenities.ts)
     amenities: {
@@ -251,9 +248,10 @@ export const cs = {
     openInMaps: 'Otevřít v mapách',
     reportTitle: 'Chybí nebo nesedí?',
     reportBody: (pubName: string) =>
-      `Přidej jinou hospodu, nebo oprav „${pubName}“.`,
+      `Přidej jinou hospodu, oprav „${pubName}“, nebo nahlas problém.`,
     reportRename: 'Opravit název',
-    reportRemove: 'Není tu nebo už nefunguje',
+    reportNotPub: 'Není to hospoda',
+    reportClosed: 'Hospoda už nefunguje',
     reportAddMissing: 'Přidat jinou hospodu',
     renameTitle: 'Jak se jmenuje?',
     renameBody: (pubName: string) =>

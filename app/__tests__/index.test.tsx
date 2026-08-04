@@ -456,6 +456,42 @@ describe('CompassScreen', () => {
     expect(sheet.pubName).toBe('U Testu');
   });
 
+  it('opens report choices from the pub mapping detail', () => {
+    jest.useFakeTimers();
+    try {
+      useCompass.mockReturnValue({
+        ...baseCompassState(),
+        revealed: true,
+      });
+
+      act(() => {
+        TestRenderer.create(React.createElement(CompassScreen));
+      });
+
+      act(() => {
+        latestProps(CompassCardMock).onPressFooter();
+      });
+
+      const sheet = latestProps(MapPubSheetMock);
+      expect(sheet.onReport).toEqual(expect.any(Function));
+
+      act(() => {
+        sheet.onReport();
+      });
+
+      expect(latestProps(MapPubSheetMock).visible).toBe(false);
+      expect(latestProps(ReportPubModalMock).visible).toBe(false);
+
+      act(() => {
+        jest.advanceTimersByTime(250);
+      });
+
+      expect(latestProps(ReportPubModalMock).visible).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('opens add-pub from the report modal reached through the more sheet', () => {
     const push = jest.fn();
     mockedUseRouter.mockReturnValue({ push });
