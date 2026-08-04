@@ -52,16 +52,30 @@ else
   (cd "$BACKEND_DIR" && exec uv run python manage.py runserver "0.0.0.0:$BACKEND_PORT") &
   BACKEND_PID=$!
   STARTED_BACKEND=1
+  BACKEND_READY=0
   for _ in $(seq 1 30); do
-    if curl -fsS "http://127.0.0.1:$BACKEND_PORT/v1/health" >/dev/null; then
+    # -fs, not -fsS: a refused connection is the normal state of the first second
+    # or two, and printing "curl: (7)" once a second reads like a failure.
+    if curl -fs "http://127.0.0.1:$BACKEND_PORT/v1/health" >/dev/null; then
+      BACKEND_READY=1
       break
     fi
-    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    # `$!` is the `uv run` wrapper, not necessarily the process that ends up
+    # holding the port, so a dead PID on its own is not proof of a dead backend
+    # — it used to kill runs whose server was already printing its banner. Give
+    # up only when nothing is listening either.
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null &&
+      ! lsof -ti "tcp:$BACKEND_PORT" >/dev/null 2>&1; then
       echo "Backend failed to start" >&2
       exit 1
     fi
     sleep 1
   done
+  if [ "$BACKEND_READY" != 1 ]; then
+    # Never build the app against a backend that never answered.
+    echo "Backend did not answer /v1/health on port $BACKEND_PORT within 30s" >&2
+    exit 1
+  fi
 fi
 
 echo "==> Syncing native iOS configuration"
