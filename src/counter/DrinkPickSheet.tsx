@@ -9,9 +9,10 @@
  */
 
 import React from 'react';
-import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -126,17 +127,9 @@ export function DrinkPickSheet({
   const addBeerLabel = isEmpty ? cs.counter.pickFirstBeer : cs.counter.pickAddBeer;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <BottomSheetModal visible={visible} onClose={onClose}>
       {/* The backdrop is a dismiss target, not an announced control: the real
           close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <View style={styles.backdrop}>
         {/* The backdrop is a dismiss target behind the card, not its parent —
             wrapping the card would stop it from sitting flush on the bottom
             edge and would swallow the sheet's own gestures. */}
@@ -223,8 +216,7 @@ export function DrinkPickSheet({
             </View>
           </Pressable>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 

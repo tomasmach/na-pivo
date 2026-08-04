@@ -14,11 +14,12 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { XIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -103,15 +104,7 @@ export function DiaryStatsSheet({
     ) : null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose}>
         {/* The backdrop is a dismiss target behind the card, not its parent —
             wrapping the card would stop it from sitting flush on the bottom
             edge and would swallow the sheet's own gestures. It stays out of the
@@ -187,8 +180,7 @@ export function DiaryStatsSheet({
             </View>
           </Pressable>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 

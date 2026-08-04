@@ -233,12 +233,23 @@ function surfaceText(renderer: any): string {
 }
 
 /** The <Modal> of the sheet whose header carries `title`. */
+/**
+ * The sheet with this title, or undefined when it is not on screen.
+ *
+ * Since the sheets moved onto the shared `BottomSheetModal`, a closed sheet is
+ * not mounted at all rather than mounted with `visible={false}` — so presence IS
+ * the assertion, and `sheetOpen` below says that in one word.
+ */
 function sheet(renderer: any, title: string): any {
   return renderer.root
     .findAll((n: any) => n.type === 'Modal')
     .find(
       (m: any) => m.findAll((n: any) => n.type === 'Text' && n.props.children === title).length > 0,
     );
+}
+
+function sheetOpen(renderer: any, title: string): boolean {
+  return sheet(renderer, title) !== undefined;
 }
 
 function sheetButton(renderer: any, title: string, accessibilityLabel: string): any {
@@ -342,11 +353,11 @@ describe('CounterScreen CTA state machine', () => {
     const renderer = render();
 
     expect(surfaceText(renderer)).toContain(copy.counter.ctaPick);
-    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
+    expect(sheetOpen(renderer, copy.counter.pickTitle)).toBe(false);
 
     act(() => surface(renderer, copy.counter.ctaPick).props.onPress());
 
-    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(true);
+    expect(sheetOpen(renderer, copy.counter.pickTitle)).toBe(true);
     expect(useTallyStore.getState().current).toBeNull();
     expect(enqueueDrink).not.toHaveBeenCalled();
   });
@@ -502,7 +513,12 @@ describe('CounterScreen counting', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
     expect(lastProps(BeerFormModal).visible).toBe(false);
-    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
+    // The sheet leaves rather than blinking out, so it is still on screen for
+    // the length of its exit before it unmounts.
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+    expect(sheetOpen(renderer, copy.counter.pickTitle)).toBe(false);
   });
 });
 
@@ -574,7 +590,7 @@ describe('CounterScreen undo', () => {
     flushDrinksQueue.mockClear();
 
     act(() => surface(renderer, copy.a11y.counterReceiptChip).props.onPress());
-    expect(sheet(renderer, copy.counter.receiptTitle).props.visible).toBe(true);
+    expect(sheetOpen(renderer, copy.counter.receiptTitle)).toBe(true);
 
     // The payload is no longer pullable → the removal has to be delivered.
     removeQueuedDrink.mockResolvedValueOnce(false);

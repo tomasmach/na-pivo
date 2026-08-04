@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { CheckIcon, KeyRoundIcon, XIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -134,15 +134,7 @@ export function LoginMethodsSheet({
   const hasApple = providers.includes('apple');
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
@@ -222,8 +214,7 @@ export function LoginMethodsSheet({
             </ScrollView>
           </Pressable>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 

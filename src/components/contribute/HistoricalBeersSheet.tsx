@@ -1,11 +1,12 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { CommunityBeer } from '@/data/communityClient';
 import { normalizeBeerName } from '@/data/communityHours';
 import { cs, formatVolume } from '@/i18n/cs';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -32,15 +33,7 @@ export function HistoricalBeersSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
@@ -128,8 +121,7 @@ export function HistoricalBeersSheet({
             </ScrollView>
           </Pressable>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 

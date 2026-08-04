@@ -37,18 +37,16 @@ import { Colors, withAlpha } from '@/theme/colors';
 /** Matches the app's other sheet springs (`PlacesSheet`). */
 const SPRING = { damping: 24, stiffness: 240, mass: 0.8 } as const;
 const FADE_MS = 180;
+const EXIT_MS = 220;
 
 export function BottomSheetModal({
   visible,
   onClose,
   children,
-  /** Label for the tap-outside target. */
-  closeLabel = 'Zavřít',
 }: {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
-  closeLabel?: string;
 }) {
   const { height } = useWindowDimensions();
   // Mounted separately from `visible`, so the leaving animation has something
@@ -73,10 +71,17 @@ export function BottomSheetModal({
       return;
     }
     scrim.value = withTiming(0, { duration: FADE_MS });
-    translateY.value = withTiming(height, { duration: 220 }, (finished) => {
+    translateY.value = withTiming(height, { duration: EXIT_MS }, (finished) => {
       'worklet';
       if (finished) runOnJS(setMounted)(false);
     });
+
+    // A backstop, not a duplicate. If the animation callback never arrives —
+    // interrupted, or an environment without frames — the Modal would stay
+    // mounted invisibly over the screen forever. Unmounting is the thing that
+    // must happen; the animation is only how it looks on the way there.
+    const timer = setTimeout(() => setMounted(false), EXIT_MS + 60);
+    return () => clearTimeout(timer);
   }, [visible, height, mounted, scrim, translateY]);
 
   // Android's back gesture has to close the sheet, not the screen behind it.
@@ -104,11 +109,15 @@ export function BottomSheetModal({
       onRequestClose={onClose}
     >
       <Animated.View style={[styles.scrim, scrimStyle]}>
+        {/* A dismiss target, not an announced control. Every card in this app
+            carries its own close button, and labelling the scrim too made
+            VoiceOver read "Zavřít" twice on one sheet — which is also what the
+            hand-rolled sheets were careful about before they were migrated. */}
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={closeLabel}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
         />
       </Animated.View>
 

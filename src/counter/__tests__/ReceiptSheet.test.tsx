@@ -286,12 +286,14 @@ describe('ReceiptSheet — controls', () => {
 
     // The backdrop dismisses but is hidden from screen readers — only the real
     // close button announces itself, so VoiceOver hears "Zavřít" exactly once.
-    const backdrop = renderer.root.find(
+    // The first one is the scrim: `BottomSheetModal` renders it before the card,
+    // and the card has a hidden press-swallower of its own further down.
+    const backdrop = renderer.root.findAll(
       (node) =>
         typeof node.type === 'string' &&
         node.props.importantForAccessibility === 'no' &&
         typeof node.props.onPress === 'function',
-    );
+    )[0];
     press(backdrop);
 
     expect(props.onClose).toHaveBeenCalledTimes(1);

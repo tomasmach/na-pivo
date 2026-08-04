@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -15,6 +14,7 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { MockColors } from '@/mocks/mockTheme';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -48,15 +48,7 @@ export function PasswordSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
+    <BottomSheetModal visible={visible} onClose={onClose}>
         <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onClose}
@@ -145,8 +137,7 @@ export function PasswordSheet({
             </Pressable>
           </View>
         </KeyboardAvoidingView>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
