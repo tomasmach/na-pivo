@@ -222,12 +222,10 @@ const styles = StyleSheet.create({
   },
   ctaText: { ...MockType.buttonLabel, color: Colors.stout },
 
-  totals: {
-    marginTop: MockLayout.sectionGap,
-    paddingTop: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.12),
-  },
+  // No rule and no section gap here: the tabs above already draw a baseline and
+  // own their own bottom margin, so a second hairline 32pt below the first read
+  // as an empty band with a stray line across it.
+  totals: { marginTop: Spacing.xs },
   window: { fontSize: 13, fontWeight: '700', color: Colors.amber, marginBottom: Spacing.sm },
   chart: { marginTop: Spacing.xl },
   periodRow: { marginTop: Spacing.lg },
