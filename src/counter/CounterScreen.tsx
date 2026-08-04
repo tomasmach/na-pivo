@@ -44,6 +44,8 @@ import {
   CameraIcon,
   InfoIcon,
   GlassWaterIcon,
+  WineIcon,
+  CircleDotIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -204,6 +206,15 @@ function beerLine(beer: { name: string; volumeMl?: number; servingType?: Serving
   return [beer.name, serving, beer.volumeMl ? formatVolume(beer.volumeMl) : null]
     .filter(Boolean)
     .join(' · ');
+}
+
+/** Leading glyph of the "counted" toast — the drink you just logged, not a
+ *  generic beer, so a shot doesn't get confirmed with a half-litre. */
+function DrinkToastIcon({ drinkType }: { drinkType: DrinkType }) {
+  if (drinkType === 'soft_drink') return <GlassWaterIcon size={18} color={Colors.amber} />;
+  if (drinkType === 'wine') return <WineIcon size={18} color={Colors.amber} />;
+  if (drinkType === 'shot') return <CircleDotIcon size={18} color={Colors.amber} />;
+  return <BeerIcon size={18} color={Colors.amber} />;
 }
 
 // ─── Permission gate ──────────────────────────────────────────────────────────
@@ -816,18 +827,26 @@ function Tacek({
       const liveSession = useTallyStore.getState().current;
       const liveCount = sessionCount(liveSession);
       const nudgeKey = liveSession ? `${liveSession.clientId}:${liveCount}` : '';
-      if (
+      const waterNudged =
         !atOverride &&
         drinkType === 'beer' &&
         waterNudgeEnabled &&
         liveCount > 0 &&
         liveCount % 4 === 0 &&
-        waterNudgeKeyRef.current !== nudgeKey
-      ) {
+        waterNudgeKeyRef.current !== nudgeKey;
+      if (waterNudged) {
         waterNudgeKeyRef.current = nudgeKey;
         showToast(cs.counter.waterNudge(liveCount), {
           icon: <GlassWaterIcon size={20} color={Colors.amber} />,
         });
+      } else if (!atOverride) {
+        // The small pat on the back for the tap itself. One toast slot, so the
+        // water nudge wins whenever both would fire — and a backdated entry gets
+        // neither, it isn't "the beer you just had".
+        showToast(
+          drinkType === 'beer' ? cs.counter.countedToast(liveCount) : cs.counter.countedToastOther,
+          { icon: <DrinkToastIcon drinkType={drinkType} /> },
+        );
       }
     },
     [

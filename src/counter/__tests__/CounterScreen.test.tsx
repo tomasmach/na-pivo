@@ -756,6 +756,7 @@ describe('CounterScreen water nudge', () => {
   });
 
   it('stays quiet when the local opt-in is disabled', async () => {
+    useSettingsStore.setState({ waterNudgeEnabled: false });
     const showToast = jest.fn();
     useToastStore.setState({ show: showToast });
     useNearbyPub.mockReturnValue(nearbyState());
@@ -767,7 +768,34 @@ describe('CounterScreen water nudge', () => {
       await Promise.resolve();
     });
 
-    expect(showToast).not.toHaveBeenCalled();
+    // The counted toast still confirms the tap — it is not the water nudge, and
+    // it must never carry the water copy.
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      copy.counter.countedToast(4),
+      expect.objectContaining({ icon: expect.anything() }),
+    );
+  });
+
+  it('lets the water nudge take the slot instead of the counted toast', async () => {
+    useSettingsStore.setState({ waterNudgeEnabled: true });
+    const showToast = jest.fn();
+    useToastStore.setState({ show: showToast });
+    useNearbyPub.mockReturnValue(nearbyState());
+    seedSession('session-both', 3);
+    const renderer = render();
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
+      await Promise.resolve();
+    });
+
+    // One toast slot, so the 4th beer gets the nudge and nothing else.
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      copy.counter.waterNudge(4),
+      expect.objectContaining({ icon: expect.anything() }),
+    );
   });
 });
 

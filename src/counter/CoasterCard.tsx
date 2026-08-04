@@ -12,6 +12,10 @@
  * were taking went to things that do something: a beer that isn't the last one,
  * mapping the pub, the parta, the boards.
  *
+ * The one bit of motion here is the reaction to a beer landing: the numeral pops
+ * once and an amber glow blooms behind it for the same 130/180 ms. Both are
+ * one-shot, both skip when the count drops and when reduced motion is on.
+ *
  * The numeral is sized from the measured card rather than from the fixed
  * four-step scale, so the display step is a floor here, not a ceiling: it grows
  * into whatever the rows below leave it, and never past `COUNT_MAX`.
@@ -28,6 +32,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
+import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
@@ -41,6 +46,8 @@ const COUNT_MIN = 44;
 const COUNT_FALLBACK = 88;
 /** Room the letterspaced noun needs under the numeral (its -8 overlap included). */
 const NOUN_ROOM = 14;
+/** Diameter of the one-shot glow behind the numeral, relative to the numeral. */
+const BLOOM_SCALE = 2.6;
 /**
  * Rough advance width of one Baloo 2 ExtraBold digit as a share of its size.
  * Keeps "128" inside the card instead of trusting `adjustsFontSizeToFit`, which
@@ -99,6 +106,10 @@ export function CoasterCard({
 }: CoasterCardProps) {
   const reducedMotion = useReducedMotion();
   const countScale = useSharedValue(1);
+  // Same one-shot as the numeral pop, one layer behind it: a glow blooms out of
+  // the digits and is gone again in under half a second (§10 — one pop per user
+  // action, 130/180 ms, nothing that repeats).
+  const bloom = useSharedValue(0);
   const prevCountRef = useRef(count);
 
   // The peak moment of the app: a beer just landed, so the number pops once.
@@ -111,11 +122,20 @@ export function CoasterCard({
         withTiming(1.12, { duration: 130 }),
         withTiming(1, { duration: 180 }),
       );
+      bloom.value = withSequence(
+        withTiming(1, { duration: 130 }),
+        withTiming(0, { duration: 180 }),
+      );
     }
-  }, [count, reducedMotion, countScale]);
+  }, [count, reducedMotion, countScale, bloom]);
 
   const countAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: countScale.value }],
+  }));
+
+  const bloomAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: bloom.value,
+    transform: [{ scale: 0.8 + bloom.value * 0.3 }],
   }));
 
   // The numeral is sized from the card, never the other way round: on a short
@@ -145,6 +165,16 @@ export function CoasterCard({
       <CardSheen />
 
       <View style={styles.body} onLayout={handleBodyLayout}>
+        {/* Sits behind the numeral and is invisible at rest, so it costs the
+            layout nothing and the reader never meets it. */}
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.bloom, bloomAnimatedStyle]}
+        >
+          <SoftGlow size={Math.round(numeralSize * BLOOM_SCALE)} color={Colors.glow} opacity={0.42} />
+        </Animated.View>
         <Animated.View style={countAnimatedStyle}>
           <Text
             style={[
@@ -215,6 +245,15 @@ const styles = StyleSheet.create({
   // Number and noun are one object, centred in whatever height the card got.
   body: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bloom: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

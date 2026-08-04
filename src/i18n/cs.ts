@@ -2288,6 +2288,23 @@ export const cs = {
     // One-shot toast after the very first count, ever. The only teaching copy.
     undoHint: 'Ťukni na Účet, když chceš něco vrátit.',
 
+    // Toast right after a beer lands. The undo strip below states the fact
+    // ("Máš to tam. 3. pivo."), so this one only carries the mood — short,
+    // genderless, and it rotates so the tenth beer doesn't read like the second.
+    // `n` is the beer's ordinal in tonight's tally.
+    countedToast: (n: number) => {
+      if (n === 1) return 'První dneska. Ať ti chutná!';
+      const lines = [
+        'Čárka na tácku přibyla.',
+        'Zapsáno, večer běží.',
+        'Máš to v deníčku.',
+        'A je tam další.',
+      ];
+      return lines[(n - 2) % lines.length];
+    },
+    // Same moment, but the drink wasn't a beer — no beer-counting flavour.
+    countedToastOther: 'Zapsáno, mám to.',
+
     // "Tvůj účet" sheet — the one place that removes and closes.
     receiptTitle: 'Tvůj účet',
     receiptChip: 'Účet',
