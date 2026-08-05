@@ -57,9 +57,12 @@ function labelPlate(text: string, ink: string, angle: number, radius: number): T
       depthWrite: false,
     }),
   );
-  // Flat on the wheel, reading outwards from the hub.
+  // Flat on the wheel, and NOTHING else. The first build added an in-plane
+  // rotation to make the names read outwards; Euler order applies that before
+  // the tilt, which turned the plate over and printed every name mirrored.
+  // Laid flat and left alone, the front face points at the camera and the text
+  // runs across its wedge the way a real wheel is painted.
   plane.rotation.x = -Math.PI / 2;
-  plane.rotation.z = Math.PI / 2;
   plane.position.set(0, 0.19, radius);
 
   const group = new THREE.Group();
@@ -142,20 +145,24 @@ class Wheel {
     });
     this.scene.add(this.disc);
 
-    // The pointer sits at the FAR edge. The bottom of the screen belongs to the
+    // The pointer sits at the FAR edge — the bottom of the screen belongs to the
     // app's own button, and a marker down there is a marker nobody can see.
+    //
+    // A flat plate, not a cone: seen from above a cone is a circle with a smear
+    // of shadow and reads as a blob, while a triangle lying on the table reads
+    // as an arrow from any angle. Barely thick enough to catch the light.
+    const arrow = new THREE.Shape();
+    arrow.moveTo(-0.42, 0);
+    arrow.lineTo(0.42, 0);
+    arrow.lineTo(0, 0.78);
+    arrow.closePath();
     const pointer = new THREE.Mesh(
-      new THREE.ConeGeometry(0.34, 0.95, 20),
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(theme.ink),
-        roughness: 0.35,
-        emissive: new THREE.Color(theme.ink),
-        emissiveIntensity: 0.18,
-      }),
+      new THREE.ExtrudeGeometry(arrow, { depth: 0.07, bevelEnabled: false }),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.ink), roughness: 0.4 }),
     );
-    // Tip down, aimed at the rim it is reading.
-    pointer.rotation.x = Math.PI;
-    pointer.position.set(0, 0.62, -(RADIUS + 0.34));
+    // Lying flat, tip aimed at the hub it is reading.
+    pointer.rotation.x = Math.PI / 2;
+    pointer.position.set(0, 0.24, -(RADIUS + 0.62));
     pointer.castShadow = true;
     this.scene.add(pointer);
 
