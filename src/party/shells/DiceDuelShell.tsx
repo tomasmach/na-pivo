@@ -30,6 +30,7 @@ import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanim
 
 import { Face } from '@/feed/FeedMockScreen';
 import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
+import { GameResult } from '@/games/GameResult';
 import {
   isOver,
   recordRoll,
@@ -77,10 +78,13 @@ function callFor(name: string, sum: number): string | null {
 export function DiceDuelShell({
   players,
   onFinished,
+  onDone,
 }: {
   players: DicePlayer[];
   /** Fired once, when the bill has an owner. */
   onFinished: (result: { paying: string | null; standings: { name: string; score: number }[] }) => void;
+  /** Leaving the finished game — the platform decides where that goes. */
+  onDone: () => void;
 }) {
   const reduceMotion = useReducedMotion();
   const [state, setState] = React.useState<DiceState>(() => startDice(players));
@@ -137,7 +141,26 @@ export function DiceDuelShell({
 
 
   if (over) {
-    return <DiceOver state={state} tintOf={tintOf} />;
+    // The shared ending — the same screen every game lands on, chosen from the
+    // data rather than drawn again here.
+    return (
+      <GameResult
+        players={players}
+        outcome={{
+          scores: standings(state).map((row) => ({ playerId: row.name, score: row.score })),
+          winnerId: null,
+          payingId: state.paying,
+        }}
+        // Who got out, in the order they managed it. The ladder is the story of
+        // this game, not the raw win counts.
+        board={state.safe.map((name, index) => ({
+          name,
+          score: index + 1,
+          suffix: `${index + 1}.`,
+        }))}
+        onDone={onDone}
+      />
+    );
   }
 
   if (roundDone) {
@@ -298,50 +321,6 @@ function Ladder({ state, tintOf }: { state: DiceState; tintOf: (name: string) =>
   );
 }
 
-function DiceOver({ state, tintOf }: { state: DiceState; tintOf: (name: string) => string }) {
-  return (
-    <Animated.View entering={FadeIn.duration(260)} style={styles.body}>
-      <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
-        Dohráno
-      </Text>
-
-      {state.paying ? (
-        <View style={styles.payer}>
-          <Face name={state.paying} tint={tintOf(state.paying)} size={72} />
-          <Text style={styles.payerName} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {state.paying === 'Ty' ? 'Platíš ty' : `Platí ${state.paying}`}
-          </Text>
-          <Text style={styles.payerSub} maxFontSizeMultiplier={FontScaleCap.body}>
-            Rundu pro stůl. Zasloužil sis to.
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.payer}>
-          <Text style={styles.payerName} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Nikdo neplatí
-          </Text>
-          <Text style={styles.payerSub} maxFontSizeMultiplier={FontScaleCap.body}>
-            Dostali jste se z toho všichni. To se jen tak nevidí.
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.rolls}>
-        {state.safe.map((name, index) => (
-          <View key={name} style={styles.rollRow}>
-            <Face name={name} tint={tintOf(name)} size={30} />
-            <Text style={styles.rollName} numberOfLines={1}>
-              {name}
-            </Text>
-            <Text style={styles.rollTotal} allowFontScaling={false}>
-              {index + 1}.
-            </Text>
-          </View>
-        ))}
-      </View>
-    </Animated.View>
-  );
-}
 
 
 const styles = StyleSheet.create({

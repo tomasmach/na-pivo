@@ -1396,6 +1396,27 @@ Tři pravidla, která ty tvary vynucují:
 Appka pošle `init` **až po `ready`**. Dřív by dorazil, než se SDK stihne
 přihlásit, a tiše by se ztratil.
 
+### 18.11d Konec hry patří platformě
+
+Hra ohlásí `result` a skončí; obrazovku kreslí **`GameResult`**, jedna pro
+všechny hry. Výsledek nese jména a tváře, musí vypadat stejně napříč hrami a ta
+samá data pak čte thread, recap i feed.
+
+**Tvar se odvozuje z dat, ne z příznaku, který hra pošle.** Jedno jméno nahoře
+vzniká z `payingId` nebo `winnerId`; tabulka pod ním se objeví, když hra vrátila
+**víc než jedno skóre**, a nezobrazí se, když ne. Hra, která vybírá jednoho
+člověka, pošle prázdné skóre a dostane jednu tvář; kvíz pošle pět a dostane
+žebříček s vítězem vypsaným nad ním. Ani jedna neříká, co chce.
+
+`variant` prop je věc, kterou může hra splést. „Je tu `payingId`, takže někdo
+platí" splést nejde.
+
+Hra na pití dojde k „Dohráno" nebo „Platí X", **nikdy k vítězi** — jediná
+tabulka, kterou by mohla vyrobit, je kdo nejvíc pil.
+
+Plátno si přesto smí konec **oslavit** — konfety, rozsvícená vítězná výseč. To je
+zdobení, ne vyprávění.
+
 ### 18.11c Hry, které máme
 
 | hra | plátno | co vrací |

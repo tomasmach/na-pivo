@@ -164,6 +164,7 @@ export default function PartyGameScreen() {
       {roster && shell === 'turns' ? (
         <DiceDuelShell
           players={roster}
+          onDone={finish}
           onFinished={(result) => {
             if (!key) return;
             finishGame(key, {
@@ -192,6 +193,7 @@ export default function PartyGameScreen() {
           }
           // Only the round game ends on the first spin; the bottle keeps going
           // until the table has had enough.
+          onDone={key === 'round' ? finish : undefined}
           onFinished={
             key === 'round'
               ? (paying) => {

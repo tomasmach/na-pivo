@@ -16,6 +16,7 @@ import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
 import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
+import { GameResult, type GameOutcome } from '@/games/GameResult';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -37,6 +38,7 @@ export function PickShell({
   /** What to say once somebody has been chosen. */
   verdict,
   onFinished,
+  onDone,
 }: {
   /** Which page to host: `bottle`, `wheel`. */
   game: string;
@@ -45,11 +47,15 @@ export function PickShell({
   verdict: (name: string) => string;
   /** Only for games that end on the first pick. */
   onFinished?: (payingName: string) => void;
+  /** Leaving a finished game. Absent for games that never end, like Flaška. */
+  onDone?: () => void;
 }) {
   const reduceMotion = useReducedMotion();
   const host = React.useRef<GameHostHandle>(null);
   const [picked, setPicked] = React.useState<string | null>(null);
   const [spinning, setSpinning] = React.useState(false);
+  /** Set only by games that end — Flaška never does. */
+  const [outcome, setOutcome] = React.useState<GameOutcome | null>(null);
 
   const canvas = GAME_HOST_AVAILABLE && !reduceMotion;
 
@@ -60,6 +66,7 @@ export function PickShell({
       const name = pickOne(players);
       setPicked(name);
       onFinished?.(name);
+      if (onDone) setOutcome({ scores: [], winnerId: null, payingId: name });
       return;
     }
     setSpinning(true);
@@ -69,6 +76,12 @@ export function PickShell({
 
   const tintOf = (name: string) =>
     players.find((player) => player.name === name)?.tint ?? Colors.amber;
+
+  // A game that ended hands over to the platform's ending, the same one the
+  // dice land on.
+  if (outcome && onDone) {
+    return <GameResult players={players} outcome={outcome} onDone={onDone} />;
+  }
 
   return (
     <View style={styles.body}>
@@ -90,6 +103,7 @@ export function PickShell({
               setPicked((payload as { playerId: string }).playerId);
             }}
             onResult={(result) => {
+              setOutcome(result);
               if (result.payingId) onFinished?.(result.payingId);
             }}
           />
