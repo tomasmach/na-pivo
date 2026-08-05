@@ -390,8 +390,11 @@ export const cs = {
     slide1Title: 'Vítej Na pivu',
     slide1Body: 'Pivní deníček do kapsy.',
     slide1Bullets: [
+      // The compass leads, because it is the thing this app is still known for
+      // and the one line that says WHERE you are going. The diary comes second:
+      // it is what you do once you are there.
+      'Kompas na mapě tě dovede do nejbližší otevřené',
       'Zapíšeš pivo dvěma ťuknutími',
-      'Kompas tě dovede do nejbližší otevřené',
       'Statistiky a rekordy naskakují samy',
     ],
     slide2Title: 'Večer s partou',

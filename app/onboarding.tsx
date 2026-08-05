@@ -75,7 +75,7 @@ const SLIDES: Slide[] = [
     title: cs.onboarding.slide1Title,
     body: cs.onboarding.slide1Body,
     bullets: cs.onboarding.slide1Bullets,
-    icons: [BeerIcon, CompassIcon, ChartColumnIcon],
+    icons: [CompassIcon, BeerIcon, ChartColumnIcon],
     image: require('../assets/images/onboarding/slide-compass.png'),
   },
   {
