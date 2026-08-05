@@ -58,22 +58,51 @@ import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
+  clockAt,
   formatElapsed,
   useLivePartyStore,
   useNightClock,
 } from '@/mocks/livePartyStore';
 import {
+  nightBrokenRecords,
   nightByBeer,
   nightHourly,
   nightMvp,
   nightStandings,
+  nightStops,
   nightTally,
 } from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
+import { nightBestFrom } from '@/party/nightBuilder';
+import { drinkingDayKey, useTallyStore } from '@/stores/tallyStore';
 import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+/**
+ * What a record is called, and the line under it.
+ *
+ * Short and loud — "Osobní rekord", not "Gratulujeme, dosáhl jsi…". The detail
+ * says what it beat, because a record with no previous number is a compliment
+ * rather than a fact.
+ */
+const RECORD_TITLE: Record<'beers' | 'minutes' | 'stops', string> = {
+  beers: 'Nejvíc piv za večer',
+  minutes: 'Nejdelší večer',
+  stops: 'Nejvíc štací',
+};
+
+const RECORD_DETAIL: Record<'beers' | 'minutes' | 'stops', (value: number, previous: number) => string> = {
+  beers: (value, previous) =>
+    previous > 0 ? `${value} — dosud ${previous}.` : `${value}. Zatím nejvíc.`,
+  minutes: (value, previous) =>
+    previous > 0
+      ? `${formatElapsed(value)} — dosud ${formatElapsed(previous)}.`
+      : `${formatElapsed(value)}. Zatím nejdéle.`,
+  stops: (value, previous) =>
+    previous > 0 ? `${value} — dosud ${previous}.` : `${value}. Zatím nejvíc.`,
+};
 
 /** Air between top-level sections. Deliberately far larger than the 12pt the
  *  Tácek surface uses — the density is most of what makes this feel native. */
@@ -152,8 +181,8 @@ export default function PartyRecapScreen() {
   const liveGames = useLivePartyStore((s) => s.games);
   const liveStartedAt = useLivePartyStore((s) => s.startedAt);
   const liveMinutes = useNightClock(liveStartedAt);
-  const livePub = useLivePartyStore((s) => s.pubName);
   const hasLive = useLivePartyStore((s) => s.live);
+  const history = useTallyStore((s) => s.history);
 
   // Derived from the beer list rather than stored: one source of truth for the
   // night, read three different ways.
@@ -166,6 +195,29 @@ export default function PartyRecapScreen() {
     tint: person.tint,
     ...(person.avatarUrl ? { avatar: person.avatarUrl } : {}),
     ...(mvp?.id === person.id ? { mvp: true } : {}),
+  }));
+
+  // Tonight's own instant, from the ticking clock rather than `Date.now()` in a
+  // component body — which is impure, and the lint rule is right about it.
+  const nowMs = (liveStartedAt ?? 0) + liveMinutes * 60000;
+
+  // What tonight beat, measured against YOUR own history and nobody else's.
+  const best = nightBestFrom(history, drinkingDayKey(new Date(night.startedAt)));
+  const liveRecords = nightBrokenRecords(night, best, nowMs).map((broken) => ({
+    id: broken.kind,
+    title: RECORD_TITLE[broken.kind],
+    detail: RECORD_DETAIL[broken.kind](broken.value, broken.previous),
+    by: 'Ty',
+  }));
+
+  const liveStops = nightStops(night, nowMs).map((stop) => ({
+    id: stop.id,
+    pubName: stop.pubName,
+    arrivedAt: clockAt(new Date(stop.arrivedAt).getTime()),
+    beers: stop.beers,
+    ...(stop.lat !== undefined && stop.lng !== undefined
+      ? { lat: stop.lat, lng: stop.lng }
+      : { lat: 50.0785, lng: 14.42 }),
   }));
 
   const liveHourly = nightHourly(night).map((bucket) => ({
@@ -184,18 +236,10 @@ export default function PartyRecapScreen() {
         duration: formatElapsed(liveMinutes),
         photos: livePhotos,
         hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
-        stops: livePub
-          ? [
-              {
-                id: 'live',
-                pubName: livePub,
-                arrivedAt: '20:00',
-                beers: liveBeerCount,
-                lat: 50.0785,
-                lng: 14.42,
-              },
-            ]
-          : MOCK_PARTY.stops,
+        stops: liveStops.length > 0 ? liveStops : MOCK_PARTY.stops,
+        // Only what tonight actually beat. An empty list is the honest answer
+        // most nights, and the section simply does not draw.
+        records: liveRecords,
         // Who was actually there, with what they actually drank. The canned
         // night used to lend its faces your count, which read fine and meant
         // nothing.
@@ -440,6 +484,7 @@ export default function PartyRecapScreen() {
           </View>
         ) : null}
 
+        {party.records.length === 0 ? null : (
         <View style={styles.section}>
           <SectionTitle>Padlo tenhle večer</SectionTitle>
           {party.records.map((record) => (
@@ -472,6 +517,7 @@ export default function PartyRecapScreen() {
             </View>
           ))}
         </View>
+        )}
 
         <View style={styles.mockNote}>
           <ClockIcon size={13} color={Colors.mutedText} />

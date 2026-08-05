@@ -8,7 +8,17 @@
  * different, inflated total.
  */
 
-import { buildNightRecord, peopleOf, tintFor, ME_TINT } from '@/party/nightBuilder';
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+import {
+  buildNightRecord,
+  nightBestFrom,
+  peopleOf,
+  tintFor,
+  ME_TINT,
+} from '@/party/nightBuilder';
 import { nightStandings, nightTally } from '@/party/nightRecord';
 import type { PartyEvening } from '@/data/partyClient';
 import type { TallySession } from '@/stores/tallyStore';
@@ -167,5 +177,65 @@ describe('tintFor', () => {
     expect(tintFor('h-id')).toBe(tintFor('h-id'));
     // And does not repaint the table when somebody joins.
     expect(tintFor('a')).not.toBe(ME_TINT);
+  });
+});
+
+describe('nightBestFrom', () => {
+  const sitting = (startedAt: string, pubKey: string, drinks: string[]): TallySession => ({
+    clientId: `s-${startedAt}-${pubKey}`,
+    pubKey,
+    pubName: pubKey,
+    startedAt,
+    drinks: drinks.map((at, index) => ({ id: `${startedAt}-${index}`, beerName: 'Plzeň', at })),
+  });
+
+  it('counts a pub crawl as one night, not three', () => {
+    // Three sittings on one drinking day: six beers, three stops, and the night
+    // is as long as the whole crawl — not as long as the last pub.
+    const best = nightBestFrom([
+      sitting('2026-07-30T18:00:00.000Z', 'a', [
+        '2026-07-30T18:00:00.000Z',
+        '2026-07-30T18:30:00.000Z',
+      ]),
+      sitting('2026-07-30T20:00:00.000Z', 'b', [
+        '2026-07-30T20:00:00.000Z',
+        '2026-07-30T20:30:00.000Z',
+      ]),
+      sitting('2026-07-30T22:00:00.000Z', 'c', [
+        '2026-07-30T22:00:00.000Z',
+        '2026-07-30T23:00:00.000Z',
+      ]),
+    ]);
+
+    expect(best).toEqual({ beers: 6, minutes: 300, stops: 3 });
+  });
+
+  it('keeps tonight out of its own comparison', () => {
+    // Otherwise every night ties with itself and nothing is ever a record.
+    const tonight = sitting('2026-07-30T20:00:00.000Z', 'a', ['2026-07-30T20:00:00.000Z']);
+
+    expect(nightBestFrom([tonight], '2026-07-30')).toEqual({ beers: 0, minutes: 0, stops: 0 });
+  });
+
+  it('takes the best of each thing separately', () => {
+    // The longest night and the most beers need not be the same night.
+    const best = nightBestFrom([
+      sitting('2026-07-28T18:00:00.000Z', 'a', [
+        '2026-07-28T18:00:00.000Z',
+        '2026-07-28T18:10:00.000Z',
+        '2026-07-28T18:20:00.000Z',
+      ]),
+      sitting('2026-07-29T18:00:00.000Z', 'b', [
+        '2026-07-29T18:00:00.000Z',
+        '2026-07-30T01:00:00.000Z',
+      ]),
+    ]);
+
+    expect(best.beers).toBe(3);
+    expect(best.minutes).toBe(420);
+  });
+
+  it('has nothing to beat on a first night', () => {
+    expect(nightBestFrom([])).toEqual({ beers: 0, minutes: 0, stops: 0 });
   });
 });

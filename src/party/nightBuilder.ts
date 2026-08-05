@@ -26,8 +26,10 @@
  */
 
 import type { PartyEvening } from '@/data/partyClient';
-import type { TallyDrink, TallySession } from '@/stores/tallyStore';
+import { drinkingDayKey, type TallyDrink, type TallySession } from '@/stores/tallyStore';
+import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import type {
+  NightBest,
   NightGame,
   NightPerson,
   NightPhoto,
@@ -177,4 +179,47 @@ export function buildNightRecord({
     games,
     photos,
   };
+}
+
+/**
+ * Your own best night so far, from the counter's history.
+ *
+ * A record is measured against YOURSELF and nobody else — this app does not
+ * tell anyone they drank less than their friends. The numbers come from the
+ * sessions already on the phone, so no request is needed to know whether tonight
+ * beat anything.
+ *
+ * Sessions are grouped by DRINKING DAY, not by sitting: a pub crawl is three
+ * sessions and one night, and counting them separately would mean the longest
+ * night on record is however long you sat in the last pub.
+ *
+ * `excludeDay` keeps tonight out of its own comparison; without it every night
+ * ties with itself and nothing is ever a record.
+ */
+export function nightBestFrom(sessions: TallySession[], excludeDay?: string): NightBest {
+  const byDay = new Map<string, TallySession[]>();
+  for (const session of sessions) {
+    const day = drinkingDayKey(new Date(session.startedAt));
+    if (day === excludeDay) continue;
+    const bucket = byDay.get(day);
+    if (bucket) bucket.push(session);
+    else byDay.set(day, [session]);
+  }
+
+  const best: NightBest = { beers: 0, minutes: 0, stops: 0 };
+  for (const nights of byDay.values()) {
+    const drinks = nights.flatMap((session) => session.drinks);
+    const beers = drinks.filter(
+      (drink) => normalizeDrinkType(drink.drinkType) === 'beer',
+    ).length;
+    const stamps = drinks.map((drink) => new Date(drink.at).getTime()).sort((a, b) => a - b);
+    const minutes =
+      stamps.length > 1 ? Math.round((stamps[stamps.length - 1] - stamps[0]) / 60000) : 0;
+    const stops = new Set(nights.map((session) => session.pubKey)).size;
+
+    best.beers = Math.max(best.beers, beers);
+    best.minutes = Math.max(best.minutes, minutes);
+    best.stops = Math.max(best.stops, stops);
+  }
+  return best;
 }
