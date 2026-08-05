@@ -56,6 +56,7 @@ import { Face } from '@/feed/FeedMockScreen';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
+import { JoinTableSheet } from '@/party/JoinTableSheet';
 import { RowMenu } from '@/mocks/MenuChip';
 import { hubStats } from '@/party/nightPulse';
 import { NightRoute } from '@/mocks/NightRoute';
@@ -68,6 +69,7 @@ import {
   type LogKind,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -196,6 +198,35 @@ export default function LivePartyMockScreen() {
   const addGame = useLivePartyStore((s) => s.addGame);
   const invite = useLivePartyStore((s) => s.invite);
 
+  // The real shared evening, which is what makes the code, the games and the
+  // quiz reach anybody else's phone. The hub's own state stays local and
+  // instant; this runs alongside it and is allowed to be slow or to fail.
+  const evening = usePartyEveningStore((s) => s.evening);
+  const startEvening = usePartyEveningStore((s) => s.start);
+  const joinEvening = usePartyEveningStore((s) => s.join);
+  const joiningTable = usePartyEveningStore((s) => s.busy);
+  const joinError = usePartyEveningStore((s) => s.error);
+  const clearJoinError = usePartyEveningStore((s) => s.clearError);
+  const refreshEvening = usePartyEveningStore((s) => s.refresh);
+
+  // On the way in, ask whether this account is already sitting somewhere — you
+  // may have started the night on a different phone, or reinstalled mid-evening.
+  React.useEffect(() => {
+    void refreshEvening();
+  }, [refreshEvening]);
+
+  /**
+   * Start the night: locally first, on the server after.
+   *
+   * The local start is instant and unconditional, because the counter must work
+   * in a cellar with no signal. The evening is a best-effort extra — when it
+   * lands there is a code to read out, and when it does not the night still runs.
+   */
+  const beginNight = (beer: string) => {
+    startParty(pubName, beer);
+    if (!evening) void startEvening(pubName);
+  };
+
   // Rows already on screen at first paint must NOT animate — the log would deal
   // itself out like a hand of cards every time you open the hub. Stamping the
   // mount (in the state initialiser, so render stays pure) lets each row decide
@@ -205,6 +236,7 @@ export default function LivePartyMockScreen() {
 
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [joinOpen, setJoinOpen] = React.useState(false);
   const [beersOpen, setBeersOpen] = React.useState(false);
 
   const mapHeight = live
@@ -380,6 +412,23 @@ export default function LivePartyMockScreen() {
                 </Text>
               </View>
             ) : null}
+
+            {/* The other door. Before a night there are two ways in and only one
+                was on screen: you could start a table, but not sit down at one
+                somebody else had already started. It disappears once the night
+                is running — you are at a table, that is the answer. */}
+            {live ? null : (
+              <Pressable
+                onPress={() => setJoinOpen(true)}
+                style={({ pressed }) => [styles.joinRow, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Přisednout ke stolu kódem"
+              >
+                <Text style={styles.joinText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  Někdo už stůl založil? <Text style={styles.joinLink}>Přisednout kódem</Text>
+                </Text>
+              </Pressable>
+            )}
           </View>
 
           {/* Shown even before the first beer, as zeroes. An empty stopwatch is
@@ -735,14 +784,36 @@ export default function LivePartyMockScreen() {
         // order a beer, you log a beer.
         onAdd={(beer) => {
           if (live) addBeer(beer);
-          else startParty(pubName, beer);
+          else beginNight(beer);
           setBeersOpen(false);
+        }}
+      />
+
+      <JoinTableSheet
+        visible={joinOpen}
+        busy={joiningTable}
+        error={joinError}
+        onJoin={async (code) => {
+          const joined = await joinEvening(code);
+          if (!joined) return;
+          // Sitting down at a running table: the local night starts too, so the
+          // counter, the thread and the games have something to run on.
+          if (!live) startParty(joined.pubName || pubName, houseBeer);
+          setJoinOpen(false);
+        }}
+        onClose={() => {
+          clearJoinError();
+          setJoinOpen(false);
         }}
       />
 
       <InviteSheet
         visible={inviteOpen}
         present={people.map((person) => person.name)}
+        // The real thing, or nothing. The evening is created when the night
+        // starts; until the server answers there is no code to read out.
+        code={evening?.joinCode ?? null}
+        link={evening?.joinUrl ?? null}
         onClose={() => setInviteOpen(false)}
         onInvite={invite}
       />
@@ -786,6 +857,9 @@ const styles = StyleSheet.create({
   hub: { gap: Spacing.sm, marginBottom: Spacing.lg },
   hubTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   invitePill: { fontSize: 14, fontWeight: '700', color: Colors.amber },
+  joinRow: { marginTop: Spacing.md, alignSelf: 'flex-start' },
+  joinText: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
+  joinLink: { color: Colors.amber, fontWeight: '700' },
   // A pill, not a heading with a chevron bolted on: it is a control, and it
   // should look like one before you tap it.
   hubPub: {

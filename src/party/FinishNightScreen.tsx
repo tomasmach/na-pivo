@@ -26,6 +26,7 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { CameraIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { buildRoast } from '@/feed/roast';
 import { usePublishedStore } from '@/mocks/publishedStore';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
   beersByType,
@@ -58,6 +59,9 @@ export default function FinishNightScreen() {
   const games = useLivePartyStore((s) => s.games);
   const pubName = useLivePartyStore((s) => s.pubName);
   const endParty = useLivePartyStore((s) => s.end);
+  // Closing the shared evening too, when there is one. Leaving it open would
+  // leave the table joinable by a code for a night that is already published.
+  const endEvening = usePartyEveningStore((s) => s.end);
   const publishNight = usePublishedStore((s) => s.publish);
 
   const [title, setTitle] = React.useState('');
@@ -125,6 +129,7 @@ export default function FinishNightScreen() {
       visitsToSamePub: 1,
     });
     endParty();
+    void endEvening();
     // Into Kocoviny, not back to a recap: you published to a feed, so the feed
     // with your night at the top of it is the proof that it worked.
     router.replace('/friends' as Href);

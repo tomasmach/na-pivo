@@ -38,18 +38,26 @@ const FRIENDS = [
   { name: 'Verča', tint: '#7DD66B' },
 ];
 
-const CODE = "PIVO-4271";
-const LINK = `napivo://party/${CODE}`;
-
 export function InviteSheet({
   visible,
   present,
+  code,
+  link,
   onClose,
   onInvite,
 }: {
   visible: boolean;
   /** Who is already at the table — they get a tick instead of a button. */
   present: string[];
+  /**
+   * The real join code, or null while the evening is still being created.
+   *
+   * No placeholder: a code somebody reads across the table and that opens
+   * nothing is worse than a moment of "zakládá se". This is the one thing in
+   * the sheet that has to be true.
+   */
+  code: string | null;
+  link: string | null;
   onClose: () => void;
   onInvite: (name: string) => void;
 }) {
@@ -77,39 +85,52 @@ export function InviteSheet({
           {/* White quiet zone, because a QR on a dark surface is a QR that does
                 not scan — the contrast has to be the code's, not the app's. */}
           <View style={styles.qrWrap}>
-            <View style={styles.qr}>
-              <QRCode
-                value={LINK}
-                size={148}
-                backgroundColor="#FFFFFF"
-                color="#000000"
-              />
-            </View>
-            <Text style={styles.code} allowFontScaling={false}>
-              {CODE}
-            </Text>
-            <Text
-              style={styles.codeHint}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              Nasnímej, nebo si kód přečti nahlas.
-            </Text>
+            {code && link ? (
+              <>
+                <View style={styles.qr}>
+                  <QRCode
+                    value={link}
+                    size={148}
+                    backgroundColor="#FFFFFF"
+                    color="#000000"
+                  />
+                </View>
+                <Text style={styles.code} allowFontScaling={false}>
+                  {code}
+                </Text>
+                <Text
+                  style={styles.codeHint}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  Nasnímej, nebo si kód přečti nahlas.
+                </Text>
+              </>
+            ) : (
+              <Text
+                style={styles.codeHint}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                Kód se zakládá. Chvilku.
+              </Text>
+            )}
           </View>
 
-          <Pressable
-            style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Zkopírovat odkaz"
-          >
-            <Text
-              style={styles.link}
-              numberOfLines={1}
-              allowFontScaling={false}
+          {link ? (
+            <Pressable
+              style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Zkopírovat odkaz"
             >
-              {LINK}
-            </Text>
-            <CopyIcon size={17} color={Colors.amber} />
-          </Pressable>
+              <Text
+                style={styles.link}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
+                {link}
+              </Text>
+              <CopyIcon size={17} color={Colors.amber} />
+            </Pressable>
+          ) : null}
 
           <Text
             style={styles.section}
