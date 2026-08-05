@@ -48,7 +48,7 @@ export type GameScoring = 'points' | 'drinks';
  *   `prompt`  a deck: one big card at a time, and a way to the next one
  *   `draw`    chance: dice, a bottle, a card off the top
  */
-export type GameShell = 'score' | 'prompt' | 'draw' | 'turns';
+export type GameShell = 'score' | 'prompt' | 'draw' | 'turns' | 'pick';
 
 /** What `draw` draws. */
 export type GameDraw = 'person' | 'card';
@@ -128,11 +128,10 @@ export const GAME_CATALOG: readonly GameDef[] = [
   {
     key: 'round',
     name: 'Kdo platí rundu',
-    blurb: 'Někdo to zaplatit musí.',
-    how: 'Appka vybere jednoho od stolu. Ten platí další rundu.',
+    blurb: 'Kolo štěstí. Někdo to zaplatit musí.',
+    how: 'Na kole je každý od stolu. Roztoč — na koho ukáže šipka, ten platí rundu.',
     scoring: 'drinks',
-    shell: 'draw',
-    draw: 'person',
+    shell: 'pick',
     intro: 'Někdo to zaplatit musí. Ať to není pořád ten samý.',
     cover: ['#7A5A20', '#2C2010'],
     Icon: CoinsIcon,
@@ -142,8 +141,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
     name: 'Flaška',
     blurb: 'Točí se, ukáže, ptá se.',
     how: 'Roztoč. Na koho ukáže, odpovídá — nebo pije.',
-    shell: 'draw',
-    draw: 'person',
+    shell: 'pick',
     intro: 'Roztoč. Na koho ukáže, ten je na řadě.',
     scoring: 'drinks',
     cover: ['#4E4A24', '#1E1C10'],

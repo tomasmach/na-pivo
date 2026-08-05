@@ -32,8 +32,19 @@ export const GAME_PROTOCOL_VERSION = 1;
 export interface GamePlayer {
   /** Stable within one game. The app maps it back to a person. */
   id: string;
-  /** What this player's pieces look like. The only thing a game knows of them. */
+  /** What this player's pieces look like. */
   colour: string;
+  /**
+   * A short label to draw ON an object — a name on a wheel wedge, initials on a
+   * counter. Optional, and games that do not need it must not use it.
+   *
+   * This is the one place words cross, and the distinction matters: a label
+   * PAINTED ON a spinning object is part of the object, like the number on a
+   * roulette pocket. UI text is not — the sentence that says who was chosen is
+   * still drawn in React Native, where it has the app's type, Dynamic Type and
+   * a voice. A canvas may decorate; it may not narrate.
+   */
+  label?: string;
 }
 
 /** The app's palette, so a canvas never looks like a foreign web page. */

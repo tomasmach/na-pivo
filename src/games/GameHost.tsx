@@ -41,6 +41,8 @@ import { Colors } from '@/theme/colors';
  */
 const GAME_PAGES: Record<string, number> = {
   dice: require('../../assets/games/dice.html'),
+  bottle: require('../../assets/games/bottle.html'),
+  wheel: require('../../assets/games/wheel.html'),
 };
 
 const WebView: typeof WebViewType | null = (() => {

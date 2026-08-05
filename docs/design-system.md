@@ -1384,14 +1384,33 @@ build bez WebView). Jedna pravidla, dva hostitelé, nikdy dvě implementace.
 
 Tři pravidla, která ty tvary vynucují:
 
-1. **Jména nepřecházejí.** Hráč je `id` a `barva`. Cokoliv se slovy patří do RN,
-   klidně jako vrstva nad hrou.
+1. **Plátno smí zdobit, ne vyprávět.** Hráč je `id`, `barva` a — jen tam, kde je
+   popsaný sám předmět, třeba jméno na výseči kola — krátký `label`. Popisek
+   **namalovaný na** točícím se předmětu je jeho součást, jako číslo v ruletové
+   kapse. Věta, která říká, kdo byl vybrán, se pořád kreslí v RN, kde má typografii
+   aplikace, Dynamic Type a hlas.
 2. **Hra je zdroj náhody.** Výsledky jdou ven, ne dovnitř.
 3. **Hra končí tím, že to řekne.** `result` má stejný tvar pro všechny hry —
    je to to, co konzumuje recap, feed i sdílený backend.
 
 Appka pošle `init` **až po `ready`**. Dřív by dorazil, než se SDK stihne
 přihlásit, a tiše by se ztratil.
+
+### 18.11c Hry, které máme
+
+| hra | plátno | co vrací |
+|---|---|---|
+| Kostky | 3D, fyzika (three + cannon) | `state` po každém hodu, `result` na konci |
+| Flaška | 3D, roztočená láhev | `picked` po každém zastavení, nikdy nekončí |
+| Kdo platí rundu | 3D kolo štěstí se jmény | `picked` a rovnou `result` — runda má jednoho plátce |
+
+Kostky a Flaška se točí dál, dokud stůl nemá dost. Kolo **končí prvním
+zastavením**, protože runda má právě jednoho plátce — a přesně kvůli tomuhle
+rozdílu je v protokolu `result` a nestačí `event`.
+
+Každá hra je jeden HTML soubor (~520–600 kB s vloženými knihovnami). Tři.js je
+v každém zvlášť; při osmi hrách to bude stát za sdílený chunk, do té doby je
+samostatnost souboru cennější než ušetřené megabajty.
 
 ### 18.11b Fyzické hry žijí ve WebView
 

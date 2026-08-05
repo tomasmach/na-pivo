@@ -38,6 +38,7 @@ import { GAME_PROMPTS } from '@/party/gameContent';
 import { DiceDuelShell } from '@/party/shells/DiceDuelShell';
 import { DrawShell } from '@/party/shells/DrawShell';
 import { GameLobby } from '@/party/shells/GameLobby';
+import { PickShell } from '@/party/shells/PickShell';
 import { PromptShell } from '@/party/shells/PromptShell';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
@@ -174,6 +175,36 @@ export default function PartyGameScreen() {
               paying: result.paying,
             });
           }}
+        />
+      ) : null}
+
+      {roster && shell === 'pick' ? (
+        <PickShell
+          game={key === 'bottle' ? 'bottle' : 'wheel'}
+          players={roster}
+          action="Roztoč"
+          verdict={(name) =>
+            key === 'bottle'
+              ? `${name} je na řadě`
+              : name === 'Ty'
+                ? 'Platíš ty'
+                : `Platí ${name}`
+          }
+          // Only the round game ends on the first spin; the bottle keeps going
+          // until the table has had enough.
+          onFinished={
+            key === 'round'
+              ? (paying) => {
+                  if (!key) return;
+                  finishGame(key, {
+                    game: name,
+                    winner: null,
+                    scores: [],
+                    paying,
+                  });
+                }
+              : undefined
+          }
         />
       ) : null}
 

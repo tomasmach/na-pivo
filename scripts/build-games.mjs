@@ -27,7 +27,11 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const GAMES = [{ key: 'dice', entry: 'src/games/web/dice/main.ts' }];
+const GAMES = [
+  { key: 'dice', entry: 'src/games/web/dice/main.ts' },
+  { key: 'bottle', entry: 'src/games/web/bottle/main.ts' },
+  { key: 'wheel', entry: 'src/games/web/wheel/main.ts' },
+];
 
 /** No margins, no scroll, no text selection — it is a table, not a document. */
 const CSS = `
