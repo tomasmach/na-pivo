@@ -11,6 +11,12 @@
  * Run it whenever anything under `src/games/web/` changes. It is deliberately
  * not wired into `npm run dev`: a build step that runs on every start is a build
  * step people learn to wait for.
+ *
+ * If a game route ever dies with "Cannot read property 'ErrorBoundary' of
+ * undefined", that is Metro holding a cache from before `.html` was added to
+ * `assetExts` in `metro.config.js`. The route's import fails and expo-router
+ * reports it as that, which points nowhere near the cause. `npx expo start
+ * --clear` fixes it.
  */
 
 import { build } from 'esbuild';

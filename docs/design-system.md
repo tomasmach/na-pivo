@@ -1375,6 +1375,12 @@ Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
    (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
 5. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
 
+Past, na kterou se přijde těžko: hra se načítá jako asset (`.html` v
+`assetExts`). Když Metro drží cache z doby před tou změnou konfigurace, import
+routy selže a expo-router to nahlásí jako **„Cannot read property 'ErrorBoundary'
+of undefined"** — hláška, která nemíří ani zdaleka k příčině. Řeší to
+`npx expo start --clear`.
+
 ### 18.11 Rekvizity vypadají jako rekvizity
 
 Kostka je **kostka**, ne číslo na čtverci. Celé kouzlo házení je v tom, že
