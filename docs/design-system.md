@@ -1366,14 +1366,20 @@ Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
 
 1. **Do WebView jde jen plátno.** Texty, seznamy, počítadla a jména zůstávají
    v RN — to je UI aplikace, ne hra.
-2. **Most je dvě zprávy.** Sem „hoď", ven „padlo tohle". Nic víc; jakmile se most
-   rozroste, je to špatná hranice.
-3. **Simulace JE náhoda.** Čísla jdou ven, ne dovnitř. Nic si předem nevybere
+2. **Most je úzký.** Sem „hoď" a „obarvi se", ven „padlo tohle". Barva je
+   jediná věc, kterou plátno o hráčích ví — **žádná jména dovnitř**. U telefonu,
+   co koluje kolem stolu, se „tyhle jsou Honzovy" přečte z barvy dřív, než by
+   kdo četl popisek.
+3. **Text zůstává v RN, i když leží přes plátno.** Zvolání po dosednutí je
+   vrstva nad WebView, ne text ve stránce — tím zůstane skutečným textem
+   s Dynamic Type, VoiceOver a písmem aplikace, a přitom vypadá, že dopadlo na
+   sukno.
+4. **Simulace JE náhoda.** Čísla jdou ven, ne dovnitř. Nic si předem nevybere
    výsledek a neanimuje se k němu — hod je opravdu spravedlivý, což předstíraný
    hod nikdy není.
-4. **Žádná síť.** Hra se sestaví do jednoho HTML s vloženými knihovnami
+5. **Žádná síť.** Hra se sestaví do jednoho HTML s vloženými knihovnami
    (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
-5. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
+6. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
 
 **Hra se ladí v prohlížeči, ne v simulátoru.** `npm run games:dev` ji sestaví a
 otevře jako obyčejnou stránku; když si všimne, že na druhé straně není most,

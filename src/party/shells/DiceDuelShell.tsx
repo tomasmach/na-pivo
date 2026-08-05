@@ -21,7 +21,7 @@
 
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
 import { DICE_CANVAS_AVAILABLE, DiceCanvas, type DiceCanvasHandle } from '@/party/DiceCanvas';
@@ -54,6 +54,20 @@ function throwDice(): [number, number] {
   return [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
 }
 
+/**
+ * What the table shouts when the dice stop.
+ *
+ * Only the two ends get a line — a twelve and a snake eyes are events, and
+ * everything between them is just a number. Saying something every single throw
+ * is how a game starts feeling like a slot machine.
+ */
+function callFor(name: string, sum: number): string | null {
+  if (sum === 12) return `${name} má dvanáct!`;
+  if (sum === 2) return `${name}… dvě. Au.`;
+  if (sum >= 10) return `${name} ${sum}`;
+  return null;
+}
+
 export function DiceDuelShell({
   players,
   onFinished,
@@ -79,6 +93,7 @@ export function DiceDuelShell({
   }, [over, state, onFinished]);
 
   const canvas = React.useRef<DiceCanvasHandle>(null);
+  const [cheer, setCheer] = React.useState<string | null>(null);
 
   const roll = () => {
     if (rolling || !turn) return;
@@ -97,13 +112,29 @@ export function DiceDuelShell({
   const settled = (dice: number[]) => {
     const thrower = whoseTurn(state);
     if (!thrower) return;
+    const sum = (dice[0] ?? 1) + (dice[1] ?? 1);
     setState((current) => recordRoll(current, thrower, [dice[0] ?? 1, dice[1] ?? 1]));
     setRolling(false);
+    // Say what happened, out loud, for a beat. A number that appears in a list
+    // is a record; a number called over the table is a moment.
+    setCheer(callFor(thrower, sum));
+    setTimeout(() => setCheer(null), 1600);
   };
 
   const last = state.round[state.round.length - 1];
   const tintOf = (name: string) =>
     players.find((player) => player.name === name)?.tint ?? Colors.amber;
+
+  // The dice wear the thrower's colour. Set before the throw, not after, so the
+  // table already belongs to them while they are picking the phone up.
+  React.useEffect(() => {
+    if (!turn || !DICE_CANVAS_AVAILABLE) return;
+    canvas.current?.tint(tintOf(turn), Colors.stout);
+    // `tintOf` is derived from props and stable enough; re-running on every
+    // render would rebuild six textures for nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turn]);
+
 
   if (over) {
     return <DiceOver state={state} tintOf={tintOf} />;
@@ -186,6 +217,23 @@ export function DiceDuelShell({
           <Text style={styles.fallbackDice} allowFontScaling={false}>
             {last.dice[0]} + {last.dice[1]}
           </Text>
+        ) : null}
+
+        {/* The call, over the table. An RN layer rather than text inside the
+            page: it stays real text — Dynamic Type, VoiceOver, the app's own
+            font — while looking like it landed on the felt. */}
+        {cheer ? (
+          <Animated.View
+            key={cheer}
+            entering={FadeIn.duration(180)}
+            exiting={FadeOut.duration(220)}
+            style={styles.cheer}
+            pointerEvents="none"
+          >
+            <Text style={styles.cheerText} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cheer}
+            </Text>
+          </Animated.View>
         ) : null}
       </View>
 
@@ -299,6 +347,21 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.8 },
   kicker: { fontSize: 13, fontWeight: '700', color: Colors.mutedText },
   fallbackDice: { fontFamily: Fonts.numeral, fontSize: 56, color: Colors.foam },
+  cheer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: Spacing.md,
+    alignItems: 'center',
+  },
+  cheerText: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: Colors.foam,
+    letterSpacing: -0.4,
+    textShadowColor: MockColors.bg,
+    textShadowRadius: 12,
+  },
 
   turn: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },
   turnName: { fontSize: 34, fontWeight: '800', color: Colors.foam, letterSpacing: -0.6 },

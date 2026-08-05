@@ -41,6 +41,17 @@ interface Theme {
   pip: string;
 }
 
+/**
+ * Whose dice these are, right now.
+ *
+ * The page still knows no names — it takes a colour, nothing more. That keeps
+ * the bridge two messages wide and the table dumb, while the dice on it belong
+ * to somebody: at a passed-around phone, "those are Honza's" is read from the
+ * colour long before anyone reads a label.
+ */
+let pipColour = '#15120F';
+let faceColour = '#FBF6EA';
+
 const DIE_SIZE = 1;
 const HALF = DIE_SIZE / 2;
 /** How still a die has to be before we call it landed. */
@@ -85,14 +96,14 @@ function post(message: OutMessage): void {
  * Textures rather than geometry for the pips: six little spheres per die is
  * twelve more bodies for the renderer to sort, and at this size nobody can tell.
  */
-function faceTexture(value: number, theme: Theme): THREE.CanvasTexture {
+function faceTexture(value: number, face: string, pip: string): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = theme.face;
+  ctx.fillStyle = face;
   ctx.fillRect(0, 0, size, size);
 
   const layouts: Record<number, [number, number][]> = {
@@ -129,7 +140,7 @@ function faceTexture(value: number, theme: Theme): THREE.CanvasTexture {
     ],
   };
 
-  ctx.fillStyle = theme.pip;
+  ctx.fillStyle = pip;
   for (const [x, y] of layouts[value] ?? []) {
     ctx.beginPath();
     ctx.arc(x * size, y * size, size * 0.085, 0, Math.PI * 2);
@@ -204,14 +215,9 @@ class DiceTable {
     wall(-4.2, 0, Math.PI / 2);
     wall(4.2, 0, -Math.PI / 2);
 
-    const materials = FACE_VALUES.map(
-      (value) =>
-        new THREE.MeshStandardMaterial({
-          map: faceTexture(value, theme),
-          roughness: 0.42,
-          metalness: 0.02,
-        }),
-    );
+    faceColour = theme.face;
+    pipColour = theme.pip;
+    const materials = this.buildMaterials();
 
     for (let index = 0; index < count; index += 1) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE), materials);
@@ -239,6 +245,32 @@ class DiceTable {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+  }
+
+  private buildMaterials(): THREE.MeshStandardMaterial[] {
+    return FACE_VALUES.map(
+      (value) =>
+        new THREE.MeshStandardMaterial({
+          map: faceTexture(value, faceColour, pipColour),
+          roughness: 0.42,
+          metalness: 0.02,
+        }),
+    );
+  }
+
+  /**
+   * Recolour the dice for whoever is throwing.
+   *
+   * Textures are rebuilt rather than tinted: a tint over an ivory face muddies
+   * the pips, and the pips are the only thing on a die that has to stay legible
+   * across a table.
+   */
+  setTint(face: string, pip: string): void {
+    if (face === faceColour && pip === pipColour) return;
+    faceColour = face;
+    pipColour = pip;
+    const materials = this.buildMaterials();
+    for (const mesh of this.meshes) mesh.material = materials;
   }
 
   /** Throw them. The physics decides what comes up. */
@@ -365,7 +397,12 @@ function boot(): void {
   document.body.style.background = theme.bg;
 
   const table = new DiceTable(theme, Number(params.get('count') ?? 2));
-  (window as unknown as { napivoRoll(): void }).napivoRoll = () => table.roll();
+  const api = window as unknown as {
+    napivoRoll(): void;
+    napivoTint(face: string, pip: string): void;
+  };
+  api.napivoRoll = () => table.roll();
+  api.napivoTint = (face, pip) => table.setTint(face, pip);
 
   const inApp = Boolean(
     (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView,

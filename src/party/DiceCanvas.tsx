@@ -51,6 +51,8 @@ const WebView: typeof WebViewType | null = (() => {
 
 export interface DiceCanvasHandle {
   roll: () => void;
+  /** Recolour the dice for whoever is about to throw. */
+  tint: (face: string, pip: string) => void;
 }
 
 /** Whether this build can draw the table at all. */
@@ -83,6 +85,10 @@ export const DiceCanvas = React.forwardRef<
 
   React.useImperativeHandle(ref, () => ({
     roll: () => webRef.current?.injectJavaScript('window.napivoRoll && window.napivoRoll();true;'),
+    tint: (face, pip) =>
+      webRef.current?.injectJavaScript(
+        `window.napivoTint && window.napivoTint(${JSON.stringify(face)}, ${JSON.stringify(pip)});true;`,
+      ),
   }));
 
   const handleMessage = (event: WebViewMessageEvent) => {
