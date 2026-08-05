@@ -356,3 +356,36 @@ async def test_the_stream_delivers_an_event_that_lands_after_it_opened(monkeypat
             break
     assert b"event: game_event" in seen
     assert b'"delta": 1' in seen
+
+
+@pytest.mark.django_db
+def test_an_answer_carries_its_own_detail(client):
+    """
+    A quiz answer is a question and a choice, not a number.
+
+    The server stores the payload without reading it: the rules live in the app,
+    and a server that parses game payloads is a server that needs deploying every
+    time a game changes.
+    """
+    host_token, _host, guest_token, _guest, code = _table(client)
+    game = _start_game(client, host_token, code, catalog_key="quiz", name="Pub kvíz").json()
+
+    sent = _send(
+        client,
+        host_token,
+        code,
+        game["id"],
+        [
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "answer",
+                "payload": {"questionId": "q-plzen", "option": 0},
+            }
+        ],
+    )
+
+    assert sent.status_code == status.HTTP_201_CREATED
+    body = client.get(f"/v1/party-evenings/{code}/games", **_auth(guest_token)).json()
+    answer = [event for event in body["events"] if event["kind"] == "answer"][0]
+    assert answer["payload"] == {"questionId": "q-plzen", "option": 0}
+    assert answer["account"]["nickname"] == "host"

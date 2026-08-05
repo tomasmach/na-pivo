@@ -4068,6 +4068,10 @@ class PartyGameEvent(models.Model):
     class Kind(models.TextChoices):
         SCORE = "score", "Score"
         FINISH = "finish", "Finish"
+        #: An answer in a quiz. The detail lives in `payload`, because a score is
+        #: one number and an answer is a question plus a choice — and inventing
+        #: two more columns for one game is how an events table stops being one.
+        ANSWER = "answer", "Answer"
 
     game = models.ForeignKey(PartyGame, on_delete=models.CASCADE, related_name="events")
     account = models.ForeignKey(
@@ -4088,6 +4092,11 @@ class PartyGameEvent(models.Model):
     )
     #: Signed, so taking a point back is another event rather than a deletion.
     delta = models.SmallIntegerField(default=0)
+    #: Whatever this kind of event needs beyond a delta — the question and the
+    #: chosen option for an answer, nothing at all for a score. Opaque to the
+    #: server: the rules that read it live in the app, and a server that parses
+    #: game payloads is a server that needs deploying whenever a game changes.
+    payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
 
     class Meta:

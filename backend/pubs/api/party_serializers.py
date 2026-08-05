@@ -46,11 +46,21 @@ class PartyGameEventSerializer(serializers.Serializer):
     """
 
     client_id = serializers.UUIDField()
-    kind = serializers.ChoiceField(choices=["score", "finish"])
+    kind = serializers.ChoiceField(choices=["score", "finish", "answer"])
     #: Public id of the member whose score moved. Absent on `finish`.
     subject_id = serializers.UUIDField(required=False, allow_null=True)
     delta = serializers.IntegerField(required=False, default=0, min_value=-10, max_value=10)
+    #: Game-specific detail. Bounded, not validated: the server does not know
+    #: what a game means, but it must not become a place to park arbitrary data.
+    payload = serializers.JSONField(required=False, default=dict)
     created_at = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate_payload(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Payload musí být objekt.")
+        if len(value) > 12:
+            raise serializers.ValidationError("Payload je moc velký.")
+        return value
 
 
 class PartyGameEventBatchSerializer(serializers.Serializer):

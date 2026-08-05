@@ -29,6 +29,40 @@ všechno po něm. **Reconnect je `since`**, ne zvláštní případ.
 
 Kurzor je `id` řádku `PartyGameEvent`. Klient si drží největší, který viděl.
 
+### Druhy událostí
+
+| kind | co nese | kdo to čte |
+|---|---|---|
+| `score` | `subject_id` + `delta` | platforma (výsledkovka) |
+| `answer` | `payload` | hra sama |
+| `finish` | nic | platforma (ukončí hru) |
+
+`payload` je JSON objekt (max 12 klíčů) a server ho **nečte**. U pub kvízu je to
+`{"questionId": "...", "option": 2}`. Pravidla žijí v appce (§18.11a), takže
+server, který rozumí hrám, je server, který se musí nasazovat s každou novou hrou.
+
+## Mobilní klient
+
+| soubor | co dělá |
+|---|---|
+| `src/data/partyGamesClient.ts` | tři HTTP volání, parsování, wire tvary |
+| `src/data/partyGamesQueue.ts` | offline fronta událostí, dávka na hru, expirace po 6 h |
+| `src/data/partyGamesStream.ts` | `subscribeToPartyGames` — dohnání → stream → dohnání |
+
+Obrazovka nesahá na spojení, jen si předplatí evening. `subscribeToPartyGames`
+drží invariant, na kterém všechno stojí: **kurzor nikdy nevydá dvakrát**.
+
+Dvě věci, které je dobré vědět, než to někdo bude upravovat:
+
+- Je to `XMLHttpRequest`, ne `EventSource` ani `fetch`. React Native nemá
+  EventSource a jeho `fetch` nemá čitelné tělo — `await resp.text()` čeká na
+  konec odpovědi, která končit nemá. XHR jako jediné v RN vydává bajty průběžně
+  (`readyState === 3`) a navíc unese bearer token.
+- Po dvou spojeních, ze kterých nepřišel ani rámec, klient **přestane streamovat
+  a přejde na polling** téhož `?since=` endpointu. To je zároveň chování při
+  rollbacku na `config.wsgi`: stůl je pomalejší, ne rozbitý, a žádná obrazovka
+  nemusí vědět, ve kterém režimu je.
+
 ### Vrstvy parametrů
 
 - **definice hry** (`key`, pravidla, cover) — nikdy neputuje, žije v appce;

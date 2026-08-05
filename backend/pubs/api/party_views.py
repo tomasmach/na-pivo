@@ -418,6 +418,7 @@ def _serialize_game_event(event: PartyGameEvent) -> dict:
         "account": _profile(event.account),
         "subject": _profile(event.subject) if event.subject else None,
         "delta": event.delta,
+        "payload": event.payload,
         "at": event.created_at.isoformat(),
     }
 
@@ -546,6 +547,7 @@ class PartyGameEventView(APIView):
                         kind=item["kind"],
                         subject=subject,
                         delta=item.get("delta") or 0,
+                        payload=item.get("payload") or {},
                         created_at=item.get("created_at") or timezone.now(),
                     )
             except IntegrityError:
