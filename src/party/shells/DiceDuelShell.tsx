@@ -24,7 +24,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
-import { DICE_CANVAS_AVAILABLE, DiceCanvas, type DiceCanvasHandle } from '@/party/DiceCanvas';
+import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
 import {
   isOver,
   recordRoll,
@@ -92,19 +92,19 @@ export function DiceDuelShell({
     }
   }, [over, state, onFinished]);
 
-  const canvas = React.useRef<DiceCanvasHandle>(null);
+  const canvas = React.useRef<GameHostHandle>(null);
   const [cheer, setCheer] = React.useState<string | null>(null);
 
   const roll = () => {
     if (rolling || !turn) return;
     // No table to watch — reduced motion, or a build without the WebView — so
     // no throw to wait for. The game still plays; it just does not show off.
-    if (reduceMotion || !DICE_CANVAS_AVAILABLE) {
+    if (reduceMotion || !GAME_HOST_AVAILABLE) {
       setState((current) => recordRoll(current, turn, throwDice()));
       return;
     }
     setRolling(true);
-    canvas.current?.roll();
+    canvas.current?.command('roll');
   };
 
   // What the dice actually landed on, straight from the simulation. Nothing
@@ -127,12 +127,10 @@ export function DiceDuelShell({
 
   // The dice wear the thrower's colour. Set before the throw, not after, so the
   // table already belongs to them while they are picking the phone up.
+  // Whose turn it is goes to the game as a protocol message; the page turns
+  // that into the colour of the dice. It never learns the name.
   React.useEffect(() => {
-    if (!turn || !DICE_CANVAS_AVAILABLE) return;
-    canvas.current?.tint(tintOf(turn), Colors.stout);
-    // `tintOf` is derived from props and stable enough; re-running on every
-    // render would rebuild six textures for nothing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (turn && GAME_HOST_AVAILABLE) canvas.current?.turn(turn);
   }, [turn]);
 
 
@@ -211,8 +209,18 @@ export function DiceDuelShell({
           landed while the next thrower decides — dice do not vanish between
           throws. */}
       <View style={styles.dice}>
-        {DICE_CANVAS_AVAILABLE ? (
-          <DiceCanvas ref={canvas} count={2} onSettled={settled} />
+        {GAME_HOST_AVAILABLE ? (
+          <GameHost
+            ref={canvas}
+            game="dice"
+            // The id IS the name here: this game is local to one phone, and the
+            // shell already guarantees names are unique at a table.
+            players={players.map((player) => ({ id: player.name, colour: player.tint }))}
+            options={{ count: 2 }}
+            onEvent={(name, payload) => {
+              if (name === 'settled') settled((payload as { dice: number[] }).dice);
+            }}
+          />
         ) : last ? (
           <Text style={styles.fallbackDice} allowFontScaling={false}>
             {last.dice[0]} + {last.dice[1]}

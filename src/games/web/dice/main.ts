@@ -28,26 +28,18 @@
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
 
-/** The RN side listens for these. Keep in step with `WebGame.tsx`. */
-type OutMessage =
-  | { type: 'ready' }
-  | { type: 'settled'; dice: number[] }
-  | { type: 'error'; message: string };
-
-interface Theme {
-  bg: string;
-  felt: string;
-  face: string;
-  pip: string;
-}
+// Talks to the app only through the SDK — see `src/games/protocol.ts`. Nothing
+// here knows about `ReactNativeWebView`, query strings or message shapes, which
+// is what makes the next game a copy of this file's STRUCTURE rather than a
+// copy of its plumbing.
+import { connect, type GameSession } from '@/games/web/sdk';
 
 /**
  * Whose dice these are, right now.
  *
- * The page still knows no names — it takes a colour, nothing more. That keeps
- * the bridge two messages wide and the table dumb, while the dice on it belong
- * to somebody: at a passed-around phone, "those are Honza's" is read from the
- * colour long before anyone reads a label.
+ * The page knows no names — it takes a colour, nothing more. The dice on the
+ * table still belong to somebody: at a passed-around phone, "those are Honza's"
+ * is read from the colour long before anyone reads a label.
  */
 let pipColour = '#15120F';
 let faceColour = '#FBF6EA';
@@ -76,19 +68,6 @@ const FACE_NORMALS = [
   new THREE.Vector3(0, 0, -1),
 ];
 
-function post(message: OutMessage): void {
-  const bridge = (window as unknown as { ReactNativeWebView?: { postMessage(s: string): void } })
-    .ReactNativeWebView;
-  if (bridge) {
-    bridge.postMessage(JSON.stringify(message));
-    return;
-  }
-  // No app on the other end: hand it to the browser harness instead, so the
-  // page behaves identically in both places.
-  (window as unknown as { __napivoOnMessage?: (m: OutMessage) => void }).__napivoOnMessage?.(
-    message,
-  );
-}
 
 /**
  * A die face, drawn to a canvas.
@@ -162,8 +141,10 @@ class DiceTable {
   private still = 0;
   private frames = 0;
   private rolling = false;
+  /** Set by the game once the app has said who is playing. */
+  onSettled: ((dice: number[]) => void) | null = null;
 
-  constructor(private readonly theme: Theme, count: number) {
+  constructor(face: string, pip: string, count: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -215,8 +196,8 @@ class DiceTable {
     wall(-4.2, 0, Math.PI / 2);
     wall(4.2, 0, -Math.PI / 2);
 
-    faceColour = theme.face;
-    pipColour = theme.pip;
+    faceColour = face;
+    pipColour = pip;
     const materials = this.buildMaterials();
 
     for (let index = 0; index < count; index += 1) {
@@ -339,7 +320,7 @@ class DiceTable {
       // game that hangs on a stuck die is worse than one that reads it early.
       if (this.still >= REST_FRAMES || this.frames > MAX_FRAMES) {
         this.rolling = false;
-        post({ type: 'settled', dice: this.meshes.map((mesh) => this.valueOf(mesh)) });
+        this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
       }
     }
 
@@ -348,72 +329,37 @@ class DiceTable {
 }
 
 /**
- * The browser harness: a throw button and a readout, only when nothing is
- * listening on the bridge.
+ * Kostky, as the platform sees it: one command, one event.
  *
- * Guarded on `ReactNativeWebView` rather than a build flag, so there is exactly
- * one build and no way for the harness to reach the app.
+ * The app owns the rounds, the ladder and who ends up paying — see
+ * `src/party/diceDuel.ts`, which has the rules and their tests. This page owns
+ * a table and two cubes, and reports what they landed on. That split is why the
+ * scoreboard survives a phone being passed around and why the rules can be
+ * tested without rendering anything.
  */
-function attachDevHarness(table: DiceTable): void {
-  const bar = document.createElement('div');
-  bar.style.cssText =
-    'position:fixed;left:0;right:0;bottom:0;display:flex;gap:12px;align-items:center;' +
-    'justify-content:center;padding:16px;font:600 15px -apple-system,system-ui,sans-serif;';
+connect({
+  commands: [{ name: 'roll', label: 'Hoď' }],
+  start(session: GameSession) {
+    const count = Number(session.options.count ?? 2);
+    const table = new DiceTable(session.theme.ink, session.theme.bg, count);
 
-  const button = document.createElement('button');
-  button.textContent = 'Hoď';
-  button.style.cssText =
-    'padding:14px 44px;border:0;border-radius:999px;background:#E8A317;color:#15120F;' +
-    'font:800 17px -apple-system,system-ui,sans-serif;';
-  button.onclick = () => table.roll();
+    const paint = () => {
+      const player = session.currentPlayer();
+      // The thrower's colour, on the faces. Set on every turn rather than every
+      // throw, so the table already belongs to them while they pick the phone up.
+      if (player) table.setTint(player.colour, session.theme.bg);
+    };
 
-  const readout = document.createElement('span');
-  readout.style.cssText = 'color:#FBF6EA;opacity:.75;min-width:90px;';
-  readout.textContent = '—';
+    table.onSettled = (dice) => {
+      session.emit('settled', { dice, playerId: session.currentPlayer()?.id ?? null });
+    };
 
-  bar.append(button, readout);
-  document.body.appendChild(bar);
+    paint();
+    document.body.style.background = session.theme.bg;
 
-  // Same channel the app listens on, so the harness proves the real contract
-  // rather than a parallel one that can quietly diverge.
-  (window as unknown as { __napivoOnMessage?: (m: OutMessage) => void }).__napivoOnMessage = (
-    message,
-  ) => {
-    if (message.type === 'settled') {
-      const sum = message.dice.reduce((a, b) => a + b, 0);
-      readout.textContent = `${message.dice.join(' + ')} = ${sum}`;
-    }
-  };
-}
-
-function boot(): void {
-  const params = new URLSearchParams(window.location.search);
-  const theme: Theme = {
-    bg: params.get('bg') ?? '#15120F',
-    felt: params.get('felt') ?? '#1C1815',
-    face: params.get('face') ?? '#FBF6EA',
-    pip: params.get('pip') ?? '#15120F',
-  };
-  document.body.style.background = theme.bg;
-
-  const table = new DiceTable(theme, Number(params.get('count') ?? 2));
-  const api = window as unknown as {
-    napivoRoll(): void;
-    napivoTint(face: string, pip: string): void;
-  };
-  api.napivoRoll = () => table.roll();
-  api.napivoTint = (face, pip) => table.setTint(face, pip);
-
-  const inApp = Boolean(
-    (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView,
-  );
-  if (!inApp) attachDevHarness(table);
-
-  post({ type: 'ready' });
-}
-
-try {
-  boot();
-} catch (error) {
-  post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
-}
+    return (name) => {
+      if (name === '__turn') paint();
+      else if (name === 'roll') table.roll();
+    };
+  },
+});

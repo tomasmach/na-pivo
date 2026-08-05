@@ -41,6 +41,9 @@ for (const game of GAMES) {
   const result = await build({
     entryPoints: [resolve(root, game.entry)],
     bundle: true,
+    // The game imports the shared protocol and SDK by alias, exactly as the app
+    // does, so one definition serves both sides and neither can drift.
+    alias: { '@': resolve(root, 'src') },
     minify: true,
     format: 'iife',
     target: ['safari15', 'chrome90'],

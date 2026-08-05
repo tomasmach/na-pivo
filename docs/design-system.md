@@ -1350,6 +1350,35 @@ Podmínky: **2,4 s na cyklus**, tam a zpět (skok zpátky na malý je bliknutí 
 blikající tab bar je alarm), hýbe se **jen prstenec, nikdy glyf**, a při reduced
 motion se nehýbe nic.
 
+### 18.11a Herní vrstva
+
+Mezi appkou a hrou je **definovaná vrstva**, ne most šitý na míru jedné hře.
+Tři soubory, a desátá hra nepřidá čtvrtý:
+
+| soubor | čí je | co dělá |
+|---|---|---|
+| `src/games/protocol.ts` | **obou stran** | tvary zpráv a verze |
+| `src/games/web/sdk.ts` | hra | obálka, verze, dev harness |
+| `src/games/GameHost.tsx` | appka | jeden WebView hostitel pro všechny hry |
+
+Protokol importují **obě strany** — RN i stránka přes esbuild alias — takže když
+se tvar zprávy změní, nepřeloží se ani jedna. To je ten smysl.
+
+**Zprávy do hry:** `init` (hráči, téma, options), `turn` (kdo je na řadě),
+`command` (sloveso, které si hra deklaruje — „roll", „spin", „draw").
+**Ven:** `ready`, `event` (průběh), `result` (skóre, vítěz, kdo platí), `error`.
+
+Tři pravidla, která ty tvary vynucují:
+
+1. **Jména nepřecházejí.** Hráč je `id` a `barva`. Cokoliv se slovy patří do RN,
+   klidně jako vrstva nad hrou.
+2. **Hra je zdroj náhody.** Výsledky jdou ven, ne dovnitř.
+3. **Hra končí tím, že to řekne.** `result` má stejný tvar pro všechny hry —
+   je to to, co konzumuje recap, feed i sdílený backend.
+
+Appka pošle `init` **až po `ready`**. Dřív by dorazil, než se SDK stihne
+přihlásit, a tiše by se ztratil.
+
 ### 18.11b Fyzické hry žijí ve WebView
 
 Devět her je obsah plus skořápka v React Native. **Výjimka je jedna: hra, jejíž
