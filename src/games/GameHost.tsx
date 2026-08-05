@@ -40,7 +40,6 @@ import { Colors } from '@/theme/colors';
  * named. Adding a game is a line here plus an entry in `scripts/build-games.mjs`.
  */
 const GAME_PAGES: Record<string, number> = {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   dice: require('../../assets/games/dice.html'),
 };
 
@@ -70,6 +69,8 @@ export const GameHost = React.forwardRef<
     game: string;
     players: GamePlayer[];
     options?: Record<string, unknown>;
+    /** The game's full state, after every change. Cast it to the game's shape. */
+    onState?: (state: unknown) => void;
     onEvent?: (name: string, payload?: unknown) => void;
     onResult?: (result: {
       scores: GameScore[];
@@ -78,7 +79,7 @@ export const GameHost = React.forwardRef<
     }) => void;
     onError?: (message: string) => void;
   }
->(function GameHost({ game, players, options, onEvent, onResult, onError }, ref) {
+>(function GameHost({ game, players, options, onState, onEvent, onResult, onError }, ref) {
   const webRef = React.useRef<WebViewType>(null);
   const [uri, setUri] = React.useState<string | null>(null);
 
@@ -131,6 +132,9 @@ export const GameHost = React.forwardRef<
           },
           options,
         });
+        break;
+      case 'state':
+        onState?.(message.state);
         break;
       case 'event':
         onEvent?.(message.name, message.payload);

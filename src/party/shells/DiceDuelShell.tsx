@@ -14,9 +14,14 @@
  *   result   the dice land, the round's rolls line up, highest and lowest named
  *   over     who is safe, and who is buying
  *
- * The rules live in `diceDuel.ts` with tests. This file only draws them — a game
- * whose ending is wrong is worse than no game, and that is not something to
- * verify by playing it in a simulator.
+ * The rules live WITH the game, in `src/games/web/dice/rules.ts`, and the page
+ * runs them. This file draws words from the state snapshots the game sends —
+ * whose turn it is, the round's rolls, the ladder — so the logic is in one
+ * place and the text is still real text.
+ *
+ * The same rules module is imported here for one case only: when there is no
+ * canvas at all (reduced motion, or a build without the WebView). One set of
+ * rules, two hosts, never two implementations.
  */
 
 import React from 'react';
@@ -31,13 +36,14 @@ import {
   roundLoser,
   roundWinners,
   settleRound,
+  standings,
   startDice,
   total,
   whoseTurn,
   TARGET_WINS,
   type DicePlayer,
   type DiceState,
-} from '@/party/diceDuel';
+} from '@/games/web/dice/rules';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -88,18 +94,19 @@ export function DiceDuelShell({
   React.useEffect(() => {
     if (over && !reported.current) {
       reported.current = true;
-      onFinished({ paying: state.paying, standings: standingsOf(state) });
+      onFinished({ paying: state.paying, standings: standings(state) });
     }
   }, [over, state, onFinished]);
 
   const canvas = React.useRef<GameHostHandle>(null);
   const [cheer, setCheer] = React.useState<string | null>(null);
 
+  /** Canvas-less play: the same rules, run here, because there is no page. */
+  const localOnly = reduceMotion || !GAME_HOST_AVAILABLE;
+
   const roll = () => {
     if (rolling || !turn) return;
-    // No table to watch — reduced motion, or a build without the WebView — so
-    // no throw to wait for. The game still plays; it just does not show off.
-    if (reduceMotion || !GAME_HOST_AVAILABLE) {
+    if (localOnly) {
       setState((current) => recordRoll(current, turn, throwDice()));
       return;
     }
@@ -107,17 +114,19 @@ export function DiceDuelShell({
     canvas.current?.command('roll');
   };
 
-  // What the dice actually landed on, straight from the simulation. Nothing
-  // decided these numbers in advance, which is the whole point.
-  const settled = (dice: number[]) => {
-    const thrower = whoseTurn(state);
-    if (!thrower) return;
-    const sum = (dice[0] ?? 1) + (dice[1] ?? 1);
-    setState((current) => recordRoll(current, thrower, [dice[0] ?? 1, dice[1] ?? 1]));
+  const nextRound = () => {
+    if (localOnly) {
+      setState((current) => settleRound(current));
+      return;
+    }
+    canvas.current?.command('next');
+  };
+
+  // A beat of noise for what just landed. The state itself arrives separately.
+  const settled = (payload: { dice: number[]; playerId: string }) => {
+    const sum = (payload.dice[0] ?? 1) + (payload.dice[1] ?? 1);
     setRolling(false);
-    // Say what happened, out loud, for a beat. A number that appears in a list
-    // is a record; a number called over the table is a moment.
-    setCheer(callFor(thrower, sum));
+    setCheer(callFor(payload.playerId, sum));
     setTimeout(() => setCheer(null), 1600);
   };
 
@@ -125,13 +134,6 @@ export function DiceDuelShell({
   const tintOf = (name: string) =>
     players.find((player) => player.name === name)?.tint ?? Colors.amber;
 
-  // The dice wear the thrower's colour. Set before the throw, not after, so the
-  // table already belongs to them while they are picking the phone up.
-  // Whose turn it is goes to the game as a protocol message; the page turns
-  // that into the colour of the dice. It never learns the name.
-  React.useEffect(() => {
-    if (turn && GAME_HOST_AVAILABLE) canvas.current?.turn(turn);
-  }, [turn]);
 
 
   if (over) {
@@ -178,7 +180,7 @@ export function DiceDuelShell({
         </View>
 
         <Pressable
-          onPress={() => setState((current) => settleRound(current))}
+          onPress={nextRound}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Další kolo"
@@ -217,8 +219,10 @@ export function DiceDuelShell({
             // shell already guarantees names are unique at a table.
             players={players.map((player) => ({ id: player.name, colour: player.tint }))}
             options={{ count: 2 }}
+            // The game runs the rules; this is where its state arrives.
+            onState={(next) => setState(next as DiceState)}
             onEvent={(name, payload) => {
-              if (name === 'settled') settled((payload as { dice: number[] }).dice);
+              if (name === 'settled') settled(payload as { dice: number[]; playerId: string });
             }}
           />
         ) : last ? (
@@ -339,11 +343,6 @@ function DiceOver({ state, tintOf }: { state: DiceState; tintOf: (name: string) 
   );
 }
 
-function standingsOf(state: DiceState) {
-  return state.players
-    .map((player) => ({ name: player.name, score: state.wins[player.name] ?? 0 }))
-    .sort((a, b) => b.score - a.score);
-}
 
 const styles = StyleSheet.create({
   body: {

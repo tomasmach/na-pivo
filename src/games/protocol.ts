@@ -70,9 +70,18 @@ export type FromGame =
   /** Loaded and listening. The app sends `init` only after this. */
   | { v: typeof GAME_PROTOCOL_VERSION; type: 'ready' }
   /**
-   * Something happened worth reacting to, mid-game. The app decides what it
-   * means — the game does not keep score.
+   * The game's whole state, after every change.
+   *
+   * The game owns its rules and its progression; this is how the app draws the
+   * words. Opaque to this layer — the host passes it straight through and the
+   * screen that hosts a given game knows its shape — which is what lets all the
+   * text stay in React Native while none of the logic does.
+   *
+   * A snapshot rather than a diff: a game that is rendered from a full state
+   * cannot get out of step with one that missed a frame.
    */
+  | { v: typeof GAME_PROTOCOL_VERSION; type: 'state'; state: unknown }
+  /** Something worth a noise, mid-game. Never state — state has its own frame. */
   | { v: typeof GAME_PROTOCOL_VERSION; type: 'event'; name: string; payload?: unknown }
   /** Over. This is what the recap and the feed lead with. */
   | {
@@ -93,6 +102,7 @@ export function parseFromGame(raw: string): FromGame | null {
     if (value?.v !== GAME_PROTOCOL_VERSION) return null;
     if (
       value.type === 'ready' ||
+      value.type === 'state' ||
       value.type === 'event' ||
       value.type === 'result' ||
       value.type === 'error'

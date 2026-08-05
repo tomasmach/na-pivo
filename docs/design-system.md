@@ -1364,9 +1364,23 @@ Tři soubory, a desátá hra nepřidá čtvrtý:
 Protokol importují **obě strany** — RN i stránka přes esbuild alias — takže když
 se tvar zprávy změní, nepřeloží se ani jedna. To je ten smysl.
 
-**Zprávy do hry:** `init` (hráči, téma, options), `turn` (kdo je na řadě),
-`command` (sloveso, které si hra deklaruje — „roll", „spin", „draw").
-**Ven:** `ready`, `event` (průběh), `result` (skóre, vítěz, kdo platí), `error`.
+**Zprávy do hry:** `init` (hráči, téma, options), `turn`, `command` (sloveso,
+které si hra deklaruje — „roll", „spin", „draw").
+**Ven:** `ready`, `state` (celý stav po každé změně), `event` (jednorázová
+novinka), `result` (skóre, vítěz, kdo platí), `error`.
+
+**Pravidla vlastní hra, ne platforma.** Hra si počítá kola, pořadí i konec a po
+každé změně pošle **snímek celého stavu**. Appka z něj kreslí všechen text —
+„Honza hází", žebříček, výsledky kola. Logika je tak na jednom místě vedle věci,
+kterou řídí, a texty zůstávají skutečnými texty s Dynamic Type a VoiceOverem.
+
+Snímek, ne rozdíl: obrazovka, která se kreslí z celého stavu, se nemůže rozejít
+s hrou, když jí unikne jeden rámec.
+
+Pravidla jsou obyčejný TypeScript v repu (`src/games/web/dice/rules.ts`), takže
+je jest testuje jako cokoliv jiného — sedm testů hlídá konec hry. Appka si ten
+samý modul importuje **jen pro případ, kdy plátno není vůbec** (reduced motion,
+build bez WebView). Jedna pravidla, dva hostitelé, nikdy dvě implementace.
 
 Tři pravidla, která ty tvary vynucují:
 

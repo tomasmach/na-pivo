@@ -33,6 +33,15 @@ import * as THREE from 'three';
 // is what makes the next game a copy of this file's STRUCTURE rather than a
 // copy of its plumbing.
 import { connect, type GameSession } from '@/games/web/sdk';
+import {
+  isOver,
+  recordRoll,
+  settleRound,
+  standings,
+  startDice,
+  whoseTurn,
+  type DiceState,
+} from '@/games/web/dice/rules';
 
 /**
  * Whose dice these are, right now.
@@ -338,28 +347,55 @@ class DiceTable {
  * tested without rendering anything.
  */
 connect({
-  commands: [{ name: 'roll', label: 'Hoď' }],
+  commands: [
+    { name: 'roll', label: 'Hoď' },
+    { name: 'next', label: 'Další kolo' },
+  ],
   start(session: GameSession) {
     const count = Number(session.options.count ?? 2);
     const table = new DiceTable(session.theme.ink, session.theme.bg, count);
+    document.body.style.background = session.theme.bg;
 
-    const paint = () => {
-      const player = session.currentPlayer();
-      // The thrower's colour, on the faces. Set on every turn rather than every
-      // throw, so the table already belongs to them while they pick the phone up.
-      if (player) table.setTint(player.colour, session.theme.bg);
+    // The game owns its own progression. The app draws the words from the
+    // snapshots below and never recomputes any of this — one set of rules,
+    // in one place, next to the thing it governs.
+    let state: DiceState = startDice(
+      session.players.map((player) => ({ name: player.id, tint: player.colour })),
+    );
+
+    const colourOf = (id: string | null) =>
+      session.players.find((player) => player.id === id)?.colour ?? session.theme.accent;
+
+    const publish = () => {
+      session.push(state);
+      // The dice wear whoever is up next, so the table already belongs to them
+      // while they are picking the phone up.
+      table.setTint(colourOf(whoseTurn(state)), session.theme.bg);
+      if (isOver(state)) {
+        session.finish({
+          scores: standings(state).map((row) => ({ playerId: row.name, score: row.score })),
+          winnerId: standings(state)[0]?.name ?? null,
+          payingId: state.paying,
+        });
+      }
     };
 
     table.onSettled = (dice) => {
-      session.emit('settled', { dice, playerId: session.currentPlayer()?.id ?? null });
+      const thrower = whoseTurn(state);
+      if (!thrower) return;
+      state = recordRoll(state, thrower, [dice[0] ?? 1, dice[1] ?? 1]);
+      session.emit('settled', { dice, playerId: thrower });
+      publish();
     };
 
-    paint();
-    document.body.style.background = session.theme.bg;
+    publish();
 
     return (name) => {
-      if (name === '__turn') paint();
-      else if (name === 'roll') table.roll();
+      if (name === 'roll' && whoseTurn(state)) table.roll();
+      else if (name === 'next') {
+        state = settleRound(state);
+        publish();
+      }
     };
   },
 });

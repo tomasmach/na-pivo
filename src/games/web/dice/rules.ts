@@ -1,6 +1,13 @@
 /**
  * Kostky, as a game with an ending — the rules, with no React in them.
  *
+ * These live WITH the game, not with the app: a game that computes its own
+ * progression is one thing to read and one thing to change, and the platform
+ * stays a host that knows nothing about dice. The page runs them; the app
+ * imports the same module only for the case where there is no canvas at all
+ * (reduced motion, or a build without the WebView), so there is one set of
+ * rules and never two that drift.
+ *
  * Rounds. Everyone still in rolls once, in order. The highest roll takes the
  * round. Three rounds and you are SAFE: you sit out the rest and you are not
  * paying. Keep going until one player is left, and that one buys the round.

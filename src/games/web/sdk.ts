@@ -34,7 +34,9 @@ export interface GameSession {
   options: Record<string, unknown>;
   /** Whose turn it is, or null before the first `turn`. */
   currentPlayer(): GamePlayer | null;
-  /** Mid-game news. The app decides what it means. */
+  /** The whole state, after every change. The app draws its text from this. */
+  push(state: unknown): void;
+  /** Something worth a noise. Never state — state has its own frame. */
   emit(name: string, payload?: unknown): void;
   /** Over. Scores are per player id; `winnerId` is null for drinking games. */
   finish(result: { scores: GameScore[]; winnerId: string | null; payingId?: string | null }): void;
@@ -57,7 +59,6 @@ function send(message: FromGame): void {
     bridge.postMessage(text);
     return;
   }
-  // eslint-disable-next-line no-console
   console.info('[game →]', text);
   harnessLog?.(message);
 }
@@ -115,7 +116,8 @@ function buildHarness(definition: GameDefinition, dispatch: CommandHandler, turn
   bar.appendChild(readout);
 
   harnessLog = (message) => {
-    if (message.type === 'event') readout.textContent = JSON.stringify(message.payload);
+    if (message.type === 'state') readout.textContent = JSON.stringify(message.state).slice(0, 90);
+    else if (message.type === 'event') readout.textContent = JSON.stringify(message.payload);
     else if (message.type === 'result') readout.textContent = `konec: ${JSON.stringify(message.scores)}`;
     else if (message.type === 'error') readout.textContent = `chyba: ${message.message}`;
   };
@@ -142,6 +144,7 @@ export function connect(definition: GameDefinition): void {
       return options;
     },
     currentPlayer: () => players.find((player) => player.id === currentId) ?? null,
+    push: (state) => send({ v: GAME_PROTOCOL_VERSION, type: 'state', state }),
     emit: (name, payload) => send({ v: GAME_PROTOCOL_VERSION, type: 'event', name, payload }),
     finish: (result) => send({ v: GAME_PROTOCOL_VERSION, type: 'result', ...result }),
     fail: (message) => send({ v: GAME_PROTOCOL_VERSION, type: 'error', message }),

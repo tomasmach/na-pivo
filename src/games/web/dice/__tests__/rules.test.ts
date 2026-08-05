@@ -8,7 +8,7 @@ import {
   startDice,
   whoseTurn,
   TARGET_WINS,
-} from '@/party/diceDuel';
+} from '@/games/web/dice/rules';
 
 const PLAYERS = [
   { name: 'Ty', tint: '#E8A317' },
