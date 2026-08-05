@@ -4,7 +4,13 @@
  * app/_layout.tsx redirects here when onboardingStore decides 'show').
  *
  * Three slides in a horizontally paged FlatList: welcome + compass → beer
- * diary + parta → account nudge. No permission prompts here on purpose:
+ * diary + parta → account nudge.
+ *
+ * Each slide is an illustration, one line, and THREE concrete things the app
+ * does — drawn with the app's own glyphs and medallions, so the first screen a
+ * person sees already looks like the product rather than a generic welcome
+ * pager. It used to be a paragraph per slide: well written, and skipped. Three
+ * short lines get read standing up with a thumb on "další"; a block does not. No permission prompts here on purpose:
  * the compass has its own location priming screen, and asking twice in a row
  * is worse than asking once in context. The account slide nudges toward
  * sign-in but never forces it (the product is local-first and an anonymous
@@ -31,6 +37,17 @@ import {
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  BeerIcon,
+  CameraIcon,
+  ChartColumnIcon,
+  CompassIcon,
+  DicesIcon,
+  RefreshCwIcon,
+  ShieldIcon,
+  TrophyIcon,
+  UsersIcon,
+} from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -44,6 +61,9 @@ interface Slide {
   key: string;
   title: string;
   body: string;
+  /** What the app actually does. Three, always — a fourth stops being scanned. */
+  bullets: readonly string[];
+  icons: readonly React.ComponentType<{ size?: number; color: string }>[];
   /** Full-bleed illustration on the stout background (generated brand art —
    *  the PNG background matches Colors.stout exactly, so it blends edge-free). */
   image: number;
@@ -54,18 +74,24 @@ const SLIDES: Slide[] = [
     key: 'compass',
     title: cs.onboarding.slide1Title,
     body: cs.onboarding.slide1Body,
+    bullets: cs.onboarding.slide1Bullets,
+    icons: [BeerIcon, CompassIcon, ChartColumnIcon],
     image: require('../assets/images/onboarding/slide-compass.png'),
   },
   {
     key: 'diary',
     title: cs.onboarding.slide2Title,
     body: cs.onboarding.slide2Body,
+    bullets: cs.onboarding.slide2Bullets,
+    icons: [UsersIcon, DicesIcon, CameraIcon],
     image: require('../assets/images/onboarding/slide-diary.png'),
   },
   {
     key: 'account',
     title: cs.onboarding.slide3Title,
     body: cs.onboarding.slide3Body,
+    bullets: cs.onboarding.slide3Bullets,
+    icons: [RefreshCwIcon, TrophyIcon, ShieldIcon],
     image: require('../assets/images/onboarding/slide-account.png'),
   },
 ];
@@ -74,10 +100,10 @@ const LAST_INDEX = SLIDES.length - 1;
 
 function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
   const [artHeight, setArtHeight] = useState(0);
+  // Smaller than it was: the art is the mood, the three lines under it are the
+  // reason to keep the app, and the art used to take half the screen.
   const illustrationSide =
-    artHeight > 0
-      ? Math.max(160, Math.min(320, Math.min(width * 0.78, artHeight - 24)))
-      : 240;
+    artHeight > 0 ? Math.max(120, Math.min(210, Math.min(width * 0.5, artHeight - 16))) : 180;
 
   const handleArtLayout = useCallback((event: LayoutChangeEvent) => {
     setArtHeight(event.nativeEvent.layout.height);
@@ -101,6 +127,28 @@ function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
           ? cs.onboarding.slide3BodyAndroid
           : item.body}
       </Text>
+
+      <View style={styles.bullets}>
+        {(item.key === 'account' && Platform.OS === 'android'
+          ? cs.onboarding.slide3BulletsAndroid
+          : item.bullets
+        ).map((line, index) => {
+          const Icon = item.icons[index] ?? BeerIcon;
+          return (
+            <View key={line} style={styles.bullet}>
+              {/* The same 12 % amber medallion the app uses for an icon in a
+                  row (§2.2), so this reads as the product and not as a
+                  marketing page bolted on the front. */}
+              <View style={styles.bulletIcon}>
+                <Icon size={17} color={Colors.amber} />
+              </View>
+              <Text style={styles.bulletText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {line}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -288,6 +336,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
     includeFontPadding: false,
+  },
+  // Left-aligned on purpose, under a centred title: a list you scan needs its
+  // words to start in the same place, and centred bullets are decoration.
+  bullets: { alignSelf: 'stretch', marginTop: Spacing.xl, gap: Spacing.md },
+  bullet: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  bulletIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 21,
+    color: Colors.foam,
   },
 
   // ── Dots ──

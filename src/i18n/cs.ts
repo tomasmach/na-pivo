@@ -384,17 +384,36 @@ export const cs = {
   onboarding: {
     skip: 'Přeskočit',
     next: 'Co dál?',
+    // Short lines, not paragraphs. Onboarding is read standing up with a thumb
+    // on "další" — three concrete things beat one well-written block nobody
+    // finishes. Each line is something the app actually does; no promises.
     slide1Title: 'Vítej Na pivu',
-    slide1Body:
-      'Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš. Šipka tě dovede do nejbližší otevřené hospody.',
-    slide2Title: 'Čárkuj si večer',
-    slide2Body:
-      'Piva si čárkuješ jako na tácku, statistiky a odznaky naskakují samy. Přidáš kamarády, uvidíš, kdo zrovna sedí v hospodě, a cinknete si na dálku.',
+    slide1Body: 'Pivní deníček do kapsy.',
+    slide1Bullets: [
+      'Zapíšeš pivo dvěma ťuknutími',
+      'Kompas tě dovede do nejbližší otevřené',
+      'Statistiky a rekordy naskakují samy',
+    ],
+    slide2Title: 'Večer s partou',
+    slide2Body: 'Ne tabulka, ale večer.',
+    slide2Bullets: [
+      'Vidíš, kdo sedí u stolu',
+      'Hry rozhodnou, kdo platí rundu',
+      'Z večera je post, ne výkaz',
+    ],
     slide3Title: 'Ať o nic nepřijdeš',
-    slide3Body:
-      'Deník se ti neztratí, ani když vyměníš telefon, a parta tě najde. Bez účtu to jde taky, doplníš ho kdykoli.',
-    slide3BodyAndroid:
-      'Deník se ti neztratí, ani když vyměníš telefon. Věk může ověřit Google Play; datum narození ani doklady nevidím.',
+    slide3Body: 'Bez účtu to jde taky.',
+    slide3Bullets: [
+      'Deník přežije výměnu telefonu',
+      'Odznaky, série a žebříčky',
+      'Účet doplníš kdykoliv později',
+    ],
+    slide3BodyAndroid: 'Bez účtu to jde taky.',
+    slide3BulletsAndroid: [
+      'Deník přežije výměnu telefonu',
+      'Věk může ověřit Google Play',
+      'Datum narození ani doklady nevidím',
+    ],
     slide3Cta: 'Založit účet',
     slide3Later: 'Zatím bez účtu',
   },
