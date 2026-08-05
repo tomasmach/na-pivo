@@ -44,6 +44,8 @@ export interface NightPerson {
   avatarUrl: string | null;
   /** Colour seed for the initials avatar. */
   tint: string;
+  /** When they sat down. Absent for a night nobody shared. */
+  joinedAt?: string;
 }
 
 export interface NightStop {
@@ -359,4 +361,126 @@ export function nightPerHour(night: NightRecord, now: number): number | null {
   const minutes = nightMinutes(night, now);
   if (minutes < 20) return null;
   return nightTally(night).beers / (minutes / 60);
+}
+
+/**
+ * The thread: everything that happened, in order, with who did it.
+ *
+ * This is the hub's log and the recap's timeline — one function, because they
+ * are the same list read at two moments. Derived rather than appended to, so a
+ * beer taken back leaves the thread as well as the totals; a stored log would
+ * keep the row and quietly disagree with the numbers above it.
+ *
+ * At a table of four, an entry with no name is the app talking to itself, so
+ * every entry carries its author.
+ */
+export type NightThreadKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
+
+export interface NightThreadEntry {
+  id: string;
+  at: string;
+  kind: NightThreadKind;
+  /** `NightPerson.id`, or null for something the night did rather than a person. */
+  by: string | null;
+  /** Which drink / photo / game / stop it was, so a row can act on it. */
+  refId: string;
+  /** Beer name, pub name, game name — whatever the row is about. */
+  label: string;
+  /** `beer` rows only: their nth beer of the night, counted per person. */
+  ordinal?: number;
+  /** `photo` rows only. */
+  url?: string;
+  /** `game` rows only: what the row can start. */
+  gameKey?: string;
+}
+
+/**
+ * What comes first when two things share a timestamp.
+ *
+ * You sit down, you are at a pub, you order — a beer above the join event that
+ * let you have it reads as a glitch. Timestamps collide often here: the first
+ * beer, the first stop and the host's own join all land in the same second when
+ * a night starts.
+ */
+const KIND_ORDER: Record<NightThreadKind, number> = {
+  join: 0,
+  pub: 1,
+  beer: 2,
+  game: 3,
+  photo: 4,
+};
+
+export function nightThread(night: NightRecord): NightThreadEntry[] {
+  const entries: NightThreadEntry[] = [];
+
+  for (const person of night.people) {
+    if (!person.joinedAt) continue;
+    entries.push({
+      id: `join:${person.id}`,
+      at: person.joinedAt,
+      kind: 'join',
+      by: person.id,
+      refId: person.id,
+      label: person.name,
+    });
+  }
+
+  for (const stop of night.stops) {
+    entries.push({
+      id: `pub:${stop.id}`,
+      at: stop.arrivedAt,
+      kind: 'pub',
+      by: null,
+      refId: stop.id,
+      label: stop.pubName,
+    });
+  }
+
+  // "Your third beer" — counted per person over the night in the order things
+  // happened, so somebody else's row counts theirs and not the table's.
+  const nth = new Map<string, number>();
+  for (const drink of [...night.drinks].sort((a, b) => a.at.localeCompare(b.at))) {
+    const ordinal = (nth.get(drink.by) ?? 0) + 1;
+    nth.set(drink.by, ordinal);
+    entries.push({
+      id: `beer:${drink.id}`,
+      at: drink.at,
+      kind: 'beer',
+      by: drink.by,
+      refId: drink.id,
+      label: drink.beerName,
+      ordinal,
+    });
+  }
+
+  for (const photo of night.photos) {
+    entries.push({
+      id: `photo:${photo.id}`,
+      at: photo.at,
+      kind: 'photo',
+      by: photo.by,
+      refId: photo.id,
+      label: 'Fotka',
+      url: photo.url,
+    });
+  }
+
+  for (const game of night.games) {
+    entries.push({
+      id: `game:${game.key}:${game.startedAt}`,
+      at: game.startedAt,
+      kind: 'game',
+      // Who put it on the table is the game's own business; the row leads with
+      // the game, not with a name.
+      by: null,
+      refId: game.key,
+      label: game.name,
+      gameKey: game.key,
+    });
+  }
+
+  return entries.sort(
+    (a, b) =>
+      a.at.localeCompare(b.at) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id.localeCompare(b.id),
+  );
 }

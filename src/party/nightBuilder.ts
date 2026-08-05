@@ -65,15 +65,28 @@ export function tintFor(id: string): string {
 export function peopleOf(evening: PartyEvening | null, meId: string, meName = 'Ty'): NightPerson[] {
   const me: NightPerson = { id: meId, name: meName, avatarUrl: null, tint: ME_TINT };
   if (!evening) return [me];
+  // When somebody sat down, from the evening's own join events.
+  const joinedAt = new Map<string, string>();
+  for (const event of evening.events) {
+    if (event.kind === 'joined' && !joinedAt.has(event.account.id)) {
+      joinedAt.set(event.account.id, event.at);
+    }
+  }
+  const withJoin = (person: NightPerson): NightPerson => {
+    const at = joinedAt.get(person.id);
+    return at ? { ...person, joinedAt: at } : person;
+  };
   const others = evening.members
     .filter((member) => member.id !== meId)
-    .map((member) => ({
-      id: member.id,
-      name: member.nickname ?? member.displayName,
-      avatarUrl: member.avatarUrl,
-      tint: tintFor(member.id),
-    }));
-  return [me, ...others];
+    .map((member) =>
+      withJoin({
+        id: member.id,
+        name: member.nickname ?? member.displayName,
+        avatarUrl: member.avatarUrl,
+        tint: tintFor(member.id),
+      }),
+    );
+  return [withJoin(me), ...others];
 }
 
 /** My own drinks, straight off the counter — no round trip, no waiting. */

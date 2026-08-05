@@ -19,6 +19,7 @@ import {
   nightPlayedGames,
   nightStandings,
   nightStops,
+  nightThread,
   nightTally,
   type NightDrink,
   type NightRecord,
@@ -242,5 +243,60 @@ describe('nightPlayedGames', () => {
     });
 
     expect(nightPlayedGames(record).map((game) => game.key)).toEqual(['quiz']);
+  });
+});
+
+describe('nightThread', () => {
+  const record = night({
+    people: [
+      { ...PEOPLE[0], joinedAt: at(20) },
+      { ...PEOPLE[1], joinedAt: at(21) },
+    ],
+    stops: [{ id: 's1', pubName: 'U Fleků', cacheKey: 'a', arrivedAt: at(20) }],
+    drinks: [drink('me', 20, { stopId: 's1' }), drink('h', 22), drink('me', 23)],
+    photos: [{ id: 'ph1', url: 'file://a.jpg', at: at(22, 30), by: 'h' }],
+    games: [{ key: 'dice', name: 'Kostky', startedAt: at(21, 30) }],
+  });
+
+  it('puts everything that happened in one list, in order', () => {
+    expect(nightThread(record).map((entry) => entry.kind)).toEqual([
+      'join',
+      'pub',
+      'beer',
+      'join',
+      'game',
+      'beer',
+      'photo',
+      'beer',
+    ]);
+  });
+
+  it('names who did it, because at a table of four an unsigned row is the app talking to itself', () => {
+    const photo = nightThread(record).find((entry) => entry.kind === 'photo');
+
+    expect(photo?.by).toBe('h');
+    expect(photo?.url).toBe('file://a.jpg');
+  });
+
+  it('counts your beers, not the table\'s', () => {
+    // Mine are 1 and 2 even though Honza's landed between them.
+    const beers = nightThread(record).filter((entry) => entry.kind === 'beer');
+
+    expect(beers.map((entry) => [entry.by, entry.ordinal])).toEqual([
+      ['me', 1],
+      ['h', 1],
+      ['me', 2],
+    ]);
+  });
+
+  it('leaves a game unsigned — the row leads with the game', () => {
+    const game = nightThread(record).find((entry) => entry.kind === 'game');
+
+    expect(game?.by).toBeNull();
+    expect(game?.gameKey).toBe('dice');
+  });
+
+  it('has nothing to show for a night that has not started', () => {
+    expect(nightThread(night())).toEqual([]);
   });
 });
