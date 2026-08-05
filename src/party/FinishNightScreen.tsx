@@ -26,6 +26,12 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { CameraIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { buildRoast } from '@/feed/roast';
 import { usePublishedStore } from '@/mocks/publishedStore';
+import {
+  isRetriableNightError,
+  publishNight as publishNightToServer,
+} from '@/data/nightsClient';
+import { enqueueNightOp } from '@/data/nightsQueue';
+import { nightPublishPayload } from '@/party/nightPublish';
 import { nightByBeer, nightMe, nightTally } from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
@@ -136,6 +142,23 @@ export default function FinishNightScreen() {
       usualPerHour: roastOn ? 1.6 : null,
       visitsToSamePub: 1,
     });
+    // …and to the feed that actually exists. The card above is the optimistic
+    // local copy so Kocoviny has something at the top the moment you land
+    // there; this is the post itself, through the same endpoint and the same
+    // durable queue the Výčep publishes with. One night, one row, keyed by the
+    // drinking day — publishing the same night twice updates it.
+    const payload = nightPublishPayload(night, {
+      visibility: 'friends',
+      now: (startedAt ?? 0) + minutes * 60000,
+    });
+    void publishNightToServer(payload).then((result) => {
+      // Offline is the normal case at the end of an evening. The queue will
+      // land it; nothing is lost and nobody is told to try again.
+      if (!result.ok && isRetriableNightError(result)) {
+        void enqueueNightOp({ op: 'publish', payload });
+      }
+    });
+
     endParty();
     void endEvening();
     // Into Kocoviny, not back to a recap: you published to a feed, so the feed
