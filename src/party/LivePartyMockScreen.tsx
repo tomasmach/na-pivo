@@ -61,7 +61,6 @@ import { RowMenu } from '@/mocks/MenuChip';
 import { hubStats } from '@/party/nightPulse';
 import { NightRoute } from '@/mocks/NightRoute';
 import {
-  beersByType,
   clockAt,
   minutesBetween,
   useLivePartyStore,
@@ -69,6 +68,15 @@ import {
   type LogKind,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import {
+  beersOf,
+  nightByBeer,
+  nightMe,
+  nightTally,
+  nightThread,
+} from '@/party/nightRecord';
+import { useNightRecord } from '@/party/useNightRecord';
+import { usePartyBeer } from '@/party/usePartyBeer';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -178,22 +186,17 @@ export default function LivePartyMockScreen() {
   const router = useRouter();
 
   const live = useLivePartyStore((s) => s.live);
-  const beers = useLivePartyStore((s) => s.beers);
   const startedAt = useLivePartyStore((s) => s.startedAt);
   // The stopwatch. Ticks on its own; every reading below is derived from it.
   const minutes = useNightClock(startedAt);
-  const people = useLivePartyStore((s) => s.people);
   const photos = useLivePartyStore((s) => s.photos);
   const games = useLivePartyStore((s) => s.games);
-  const log = useLivePartyStore((s) => s.log);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const beginPickingPub = useLivePartyStore((s) => s.beginPickingPub);
   const pubName = useLivePartyStore((s) => s.pubName);
+  const pubKey = useLivePartyStore((s) => s.pubKey);
   const startParty = useLivePartyStore((s) => s.start);
-  const addBeer = useLivePartyStore((s) => s.addBeer);
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
-  const editBeer = useLivePartyStore((s) => s.editBeer);
-  const dropBeer = useLivePartyStore((s) => s.dropBeer);
   const dropEvent = useLivePartyStore((s) => s.dropEvent);
   const addGame = useLivePartyStore((s) => s.addGame);
   const invite = useLivePartyStore((s) => s.invite);
@@ -201,6 +204,8 @@ export default function LivePartyMockScreen() {
   // The real shared evening, which is what makes the code, the games and the
   // quiz reach anybody else's phone. The hub's own state stays local and
   // instant; this runs alongside it and is allowed to be slow or to fail.
+  const night = useNightRecord();
+  const beer = usePartyBeer();
   const evening = usePartyEveningStore((s) => s.evening);
   const startEvening = usePartyEveningStore((s) => s.start);
   const joinEvening = usePartyEveningStore((s) => s.join);
@@ -222,8 +227,11 @@ export default function LivePartyMockScreen() {
    * in a cellar with no signal. The evening is a best-effort extra — when it
    * lands there is a code to read out, and when it does not the night still runs.
    */
-  const beginNight = (beer: string) => {
-    startParty(pubName, beer);
+  const beginNight = (firstBeer: string) => {
+    startParty(pubName, firstBeer, pubKey);
+    // The first beer is a real beer: it goes into the diary through the same
+    // path as every other one, not into a list the hub keeps for itself.
+    beer.add(firstBeer);
     if (!evening) void startEvening(pubName);
   };
 
@@ -243,23 +251,60 @@ export default function LivePartyMockScreen() {
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
     : MAP_IDLE;
 
-  // "Your third beer" — counted per person over the thread in the order things
-  // happened, so Honza's rows count Honza's beers and not the table's.
-  const ordinals = new Map<string, number>();
-  const tally = new Map<string, number>();
-  for (const event of log) {
-    if (event.kind !== 'beer') continue;
-    const next = (tally.get(event.by) ?? 0) + 1;
-    tally.set(event.by, next);
-    ordinals.set(event.id, next);
-  }
+  // Everything below is READ from the night, never kept beside it. One record,
+  // so the faces, the numbers and the thread cannot disagree with each other.
+  const meId = nightMe(night)?.id;
+  const people = night.people.slice(1);
+  const myDrinks = night.drinks.filter((drink) => drink.by === meId);
 
-  const mine = beers.length;
-  const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
-  const byType = beersByType(beers);
+  const mine = beersOf(night, meId);
+  const table = nightTally(night).beers;
+  const byType = nightByBeer({ ...night, drinks: myDrinks }).map((row) => ({
+    beer: row.beer,
+    count: row.count,
+  }));
+
+  /**
+   * The thread, in the shape the rows below draw.
+   *
+   * `nightThread` already ordered it and counted each person's beers; this only
+   * puts Czech on it. A pub row is the first stop or a move, which is the same
+   * event read differently depending on whether anything came before it.
+   */
+  const log = React.useMemo(() => {
+    const myId = nightMe(night)?.id;
+    const nameOf = (id: string | null) =>
+      night.people.find((person) => person.id === id)?.name ?? 'Někdo';
+    let stops = 0;
+    return nightThread(night).map((entry) => {
+      const pubText = entry.kind === 'pub' ? (stops++ === 0 ? 'Večer začal v ' : 'Přesun do ') : '';
+      return {
+        id: entry.id,
+        at: new Date(entry.at).getTime(),
+        kind: entry.kind,
+        text:
+          entry.kind === 'pub'
+            ? `${pubText}${entry.label}`
+            : entry.kind === 'join'
+              ? `${entry.label} přisedl`
+              : entry.kind === 'photo'
+                ? 'Fotka'
+                : entry.label,
+        by: entry.by === myId ? 'Ty' : nameOf(entry.by),
+        // Only your own beer can be corrected — somebody else's row is theirs.
+        beerId: entry.kind === 'beer' && entry.by === myId ? entry.refId : undefined,
+        photo: entry.url,
+        gameKey: entry.gameKey,
+        ordinal: entry.ordinal,
+      };
+    });
+  }, [night]);
 
   // The pulse rules work in minutes from the start; the stamps are epoch.
-  const beerTimes = startedAt === null ? [] : beers.map((e) => minutesBetween(startedAt, e.at));
+  const beerTimes =
+    startedAt === null
+      ? []
+      : myDrinks.map((drink) => minutesBetween(startedAt, new Date(drink.at).getTime()));
   const stats = live
     ? hubStats({ beerTimes, now: minutes, mine, table, others: people.length })
     : [{ label: 'piva', value: '0' }];
@@ -494,7 +539,7 @@ export default function LivePartyMockScreen() {
                       <View style={[styles.logIcon, styles.logIconBeer]}>
                         <BeerIcon size={15} color={Colors.stout} />
                         <Text style={styles.logIconCount} allowFontScaling={false}>
-                          {ordinals.get(event.id) ?? 1}
+                          {event.ordinal ?? 1}
                         </Text>
                       </View>
                     ) : (
@@ -646,14 +691,14 @@ export default function LivePartyMockScreen() {
                           title="Co to bylo?"
                           value={event.text}
                           options={MENU_BEERS}
-                          onChange={(next) => editBeer(event.beerId as string, next)}
+                          onChange={(next) => beer.rename(event.beerId as string, next)}
                           // The thing you most often want from a beer you
                           // already had is another one of it — and this row is
                           // the only place that knows WHICH one you mean.
-                          repeat={{ label: 'Ještě jedno', onPress: () => addBeer(event.text) }}
+                          repeat={{ label: 'Ještě jedno', onPress: () => beer.add(event.text) }}
                           destructive={{
                             label: 'Smazat pivo',
-                            onPress: () => dropBeer(event.beerId as string),
+                            onPress: () => beer.remove(event.beerId as string),
                           }}
                         />
                       ) : event.by === 'Ty' && event.kind !== 'pub' ? (
@@ -719,7 +764,7 @@ export default function LivePartyMockScreen() {
               right edge would be a seam with nothing on the other side. */}
           <View style={[styles.primaryWrap, !live && styles.primaryWhole]}>
             <Pressable
-              onPress={() => (live ? addBeer(houseBeer) : setBeersOpen(true))}
+              onPress={() => (live ? beer.add(houseBeer) : setBeersOpen(true))}
               style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={live ? `Přidat ${houseBeer}` : 'Začít večer prvním pivem'}
@@ -782,9 +827,9 @@ export default function LivePartyMockScreen() {
         // One tap, sheet closed, beer in the log. Staying open to let you add
         // three in a row was designing for a case that does not happen: you
         // order a beer, you log a beer.
-        onAdd={(beer) => {
-          if (live) addBeer(beer);
-          else beginNight(beer);
+        onAdd={(picked) => {
+          if (live) beer.add(picked);
+          else beginNight(picked);
           setBeersOpen(false);
         }}
       />

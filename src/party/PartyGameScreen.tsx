@@ -43,6 +43,9 @@ import { GameLobby } from '@/party/shells/GameLobby';
 import { PickShell } from '@/party/shells/PickShell';
 import { PromptShell } from '@/party/shells/PromptShell';
 import { QuizShell } from '@/party/shells/QuizShell';
+import { beersOf, nightMe, nightStandings } from '@/party/nightRecord';
+import { useNightRecord } from '@/party/useNightRecord';
+import { usePartyBeer } from '@/party/usePartyBeer';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -70,10 +73,7 @@ export default function PartyGameScreen() {
   const router = useRouter();
   const { key } = useLocalSearchParams<{ key: string }>();
 
-  const beers = useLivePartyStore((s) => s.beers);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
-  const people = useLivePartyStore((s) => s.people);
-  const addBeer = useLivePartyStore((s) => s.addBeer);
   const finishGame = useLivePartyStore((s) => s.finishGame);
   const invite = useLivePartyStore((s) => s.invite);
   const games = useLivePartyStore((s) => s.games);
@@ -91,13 +91,14 @@ export default function PartyGameScreen() {
   // Who is at the night, you first. The lobby turns this into who is PLAYING —
   // the two are not the same, and starting a game with everyone in the evening
   // is how the first round becomes an argument about whose turn it is.
+  const night = useNightRecord();
+  const beer = usePartyBeer();
   const table = React.useMemo(
-    () => [
-      { name: 'Ty', tint: Colors.amber },
-      ...people.map((person) => ({ name: person.name, tint: person.tint })),
-    ],
-    [people],
+    () => nightStandings(night).map((person) => ({ name: person.name, tint: person.tint })),
+    [night],
   );
+  // YOUR tally, not the table's — the strip is your counter.
+  const myBeers = beersOf(night, nightMe(night)?.id);
   const [roster, setRoster] = React.useState<{ name: string; tint: string }[] | null>(null);
 
   const players = React.useMemo(
@@ -339,18 +340,18 @@ export default function PartyGameScreen() {
           under your thumb, not up by the exit. */}
       {roster ? (
         <Pressable
-          onPress={() => addBeer(houseBeer)}
+          onPress={() => beer.add(houseBeer)}
           style={({ pressed }) => [
             styles.counter,
             { bottom: insets.bottom + Spacing.md },
             pressed && styles.counterPressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`Máš ${beers.length} piv. Přidat další.`}
+          accessibilityLabel={`Máš ${myBeers} piv. Přidat další.`}
         >
           <BeerIcon size={17} color={Colors.stout} />
           <Text style={styles.counterText} allowFontScaling={false}>
-            {beers.length}
+            {myBeers}
           </Text>
           <PlusIcon size={14} color={Colors.stout} />
         </Pressable>

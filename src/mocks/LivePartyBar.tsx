@@ -33,6 +33,9 @@ import { usePathname, useRouter, type Href } from 'expo-router';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
 import { formatStopwatch, useLivePartyStore, useNightSeconds } from '@/mocks/livePartyStore';
+import { beersOf, nightMe } from '@/party/nightRecord';
+import { useNightRecord } from '@/party/useNightRecord';
+import { usePartyBeer } from '@/party/usePartyBeer';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -70,16 +73,17 @@ export function LivePartyBar() {
   const router = useRouter();
   const live = useLivePartyStore((s) => s.live);
   const pubName = useLivePartyStore((s) => s.pubName);
-  const beers = useLivePartyStore((s) => s.beers);
   const startedAt = useLivePartyStore((s) => s.startedAt);
-  const addBeer = useLivePartyStore((s) => s.addBeer);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const pathname = usePathname();
+  // Before the early return: the same night the hub shows, from the same
+  // record, and hooks do not survive being skipped.
+  const night = useNightRecord();
+  const beer = usePartyBeer();
+  const count = beersOf(night, nightMe(night)?.id);
 
   // Nothing to minimise into while you are already standing in it.
   if (!live || pathname === '/beer') return null;
-
-  const count = beers.length;
 
   return (
     <View style={styles.wrap}>
@@ -118,7 +122,7 @@ export function LivePartyBar() {
       </Pressable>
 
       <Pressable
-        onPress={() => addBeer(houseBeer)}
+        onPress={() => beer.add(houseBeer)}
         style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
         accessibilityRole="button"
         accessibilityLabel="Přidat pivo"

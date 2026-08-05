@@ -26,10 +26,11 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { CameraIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { buildRoast } from '@/feed/roast';
 import { usePublishedStore } from '@/mocks/publishedStore';
+import { nightByBeer, nightMe, nightTally } from '@/party/nightRecord';
+import { useNightRecord } from '@/party/useNightRecord';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
-  beersByType,
   formatElapsed,
   useLivePartyStore,
   useNightClock,
@@ -51,10 +52,8 @@ export default function FinishNightScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const beers = useLivePartyStore((s) => s.beers);
   const startedAt = useLivePartyStore((s) => s.startedAt);
   const minutes = useNightClock(startedAt);
-  const people = useLivePartyStore((s) => s.people);
   const photos = useLivePartyStore((s) => s.photos);
   const games = useLivePartyStore((s) => s.games);
   const pubName = useLivePartyStore((s) => s.pubName);
@@ -69,11 +68,20 @@ export default function FinishNightScreen() {
   const [roastOn, setRoastOn] = React.useState(true);
 
   const played = games.filter((game) => game.result);
-  const byType = beersByType(beers);
+  // The night as data — the same record the hub was showing a moment ago, so
+  // what you publish is what you were looking at.
+  const night = useNightRecord();
+  const me = nightMe(night);
+  const people = night.people.slice(1);
+  const beerCount = nightTally(night).beers;
+  const byType = nightByBeer({
+    ...night,
+    drinks: night.drinks.filter((drink) => drink.by === me?.id),
+  }).map((row) => ({ beer: row.beer, count: row.count }));
 
   // The same rules the feed card runs, on this night's real numbers.
   const roast = buildRoast({
-    beers: beers.length,
+    beers: beerCount,
     duration: minutes,
     pubs: 1,
     people: people.length + 1,
@@ -100,7 +108,7 @@ export default function FinishNightScreen() {
       title: title.trim() || fallbackTitle,
       note: note.trim() || undefined,
       stops: [{ name: pubName, lat: 50.0785, lng: 14.42 }],
-      beers: beers.length,
+      beers: beerCount,
       duration: formatElapsed(minutes),
       people: [
         // No avatar url: `Face` falls back to the initial on a tint, which is
@@ -161,7 +169,7 @@ export default function FinishNightScreen() {
           columns={4}
           compact
           stats={[
-            { label: 'Piva', value: String(beers.length) },
+            { label: 'Piva', value: String(beerCount) },
             { label: 'Večer', value: formatElapsed(minutes) },
             { label: 'U stolu', value: String(people.length + 1) },
             { label: 'Druhů', value: String(byType.length) },

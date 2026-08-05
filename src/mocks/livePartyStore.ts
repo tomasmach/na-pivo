@@ -1,6 +1,12 @@
 /**
- * DESIGN MOCK — the running night, shared between the fullscreen hub, the glass
- * bar that survives minimising it, the games, and whatever the night produces.
+ * DESIGN MOCK — what is left of the running night that has no real source yet.
+ *
+ * The beers and the people are GONE from here. They live where they belong: the
+ * counter's own session and the shared evening, read back through
+ * `src/party/nightRecord.ts`. What stays is the bookkeeping around them —
+ * whether a night is open, which pub it is at, what "+1" pours — plus photos and
+ * games, which are the last two things a running night makes that the app does
+ * not yet write anywhere real (`BeerPhoto` and `PartyGame` both exist).
  *
  * The point of the outputs living here is the loop: the feed card can only lead
  * with a pub-quiz scoreboard or a photo strip if the party mode actually MAKES
@@ -28,6 +34,8 @@
 
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
+
+import { geohash8 } from '@/data/geohash';
 
 export interface GameResult {
   game: string;
@@ -59,18 +67,6 @@ export interface GameEntry {
   /** Minute of the evening it was put on the table. */
   at: number;
   result?: GameResult;
-}
-
-/**
- * One beer, logged — a lap on the stopwatch.
- *
- * `at` is epoch ms. It runs until the next one, so the gap IS the lap time, and
- * the last one is still running.
- */
-export interface BeerEntry {
-  id: string;
-  beer: string;
-  at: number;
 }
 
 export interface PartyPersonLive {
@@ -125,26 +121,24 @@ interface LivePartyState {
   pickingPub: boolean;
   /** What "+1 pivo" pours without asking — the pub's own tap. */
   houseBeer: string;
+  /**
+   * The pub's IDENTITY, not just its name — geohash-8, the same key the counter
+   * and the diary use. Null until a pub has been picked, and a beer logged
+   * without one is filed as an evening outside a pub rather than at a guess.
+   */
+  pubKey: string | null;
   /** Epoch ms of the first beer — the stopwatch's zero. Null until it starts. */
   startedAt: number | null;
-  beers: BeerEntry[];
   people: PartyPersonLive[];
   photos: number;
   games: GameEntry[];
   log: LogEvent[];
 
-  start: (pubName: string, beer: string) => void;
+  start: (pubName: string, beer: string, pubKey?: string | null) => void;
   /** Set where you are — before a night, or when you move mid-evening. */
-  setPub: (pubName: string, beer: string) => void;
+  setPub: (pubName: string, beer: string, pubKey?: string | null) => void;
   beginPickingPub: () => void;
   endPickingPub: () => void;
-  addBeer: (beer: string) => void;
-  /** Takes the LAST beer of that type back off. Mis-taps happen in pubs. */
-  removeBeer: (beer: string) => void;
-  /** Fix one entry you logged wrong — the log is the only place you can see
-   *  WHICH one was wrong, so it is where correcting it belongs. */
-  editBeer: (beerId: string, beer: string) => void;
-  dropBeer: (beerId: string) => void;
   /** Take back anything else you put in the thread — a photo, a game. Only your
    *  own; the row menu is not offered on somebody else's entry. */
   dropEvent: (eventId: string) => void;
@@ -168,15 +162,21 @@ const TABLE: PartyPersonLive[] = [
 ];
 
 /** Where the app assumes you are before you say otherwise. Mock. */
-const DEFAULT_PUB = { name: 'U Fleků', beer: 'Flekovský ležák 13°' };
+const DEFAULT_PUB = {
+  name: 'U Fleků',
+  beer: 'Flekovský ležák 13°',
+  /** geohash-8 of 50.0785, 14.42 — a real key, so a beer logged before you have
+   *  picked anywhere still lands at a real place. */
+  key: geohash8(50.0785, 14.42),
+};
 
 const EMPTY = {
   live: false,
   pubName: DEFAULT_PUB.name,
   houseBeer: DEFAULT_PUB.beer,
+  pubKey: DEFAULT_PUB.key as string | null,
   pickingPub: false,
   startedAt: null as number | null,
-  beers: [] as BeerEntry[],
   people: [] as PartyPersonLive[],
   photos: 0,
   games: [] as GameEntry[],
@@ -209,83 +209,42 @@ function logged(
 export const useLivePartyStore = create<LivePartyState>((set) => ({
   ...EMPTY,
 
-  start: (pubName, beer) => {
+  /**
+   * Open the night.
+   *
+   * No beers here any more: the first one is logged through the counter's own
+   * path like every other beer (`src/party/logBeer.ts`), and read back out of
+   * the night record. This only opens the evening and says where it is.
+   */
+  start: (pubName, beer, pubKey) => {
     const now = Date.now();
-    const firstId = nextId('beer');
     set({
       live: true,
       pubName,
       houseBeer: beer,
+      ...(pubKey !== undefined ? { pubKey } : {}),
       startedAt: now,
-      beers: [{ id: firstId, beer, at: now }],
       people: TABLE.map((person) => ({ ...person })),
       photos: 0,
       games: [],
-      log: [
-        { id: nextId('ev'), at: now, kind: 'pub', text: `Večer začal v ${pubName}`, by: ME },
-        // The table was already there and Honza was already drinking — the
-        // thread starts with more than one voice, because it always does.
-        ...TABLE.filter((person) => person.beers > 0).map((person) => ({
-          id: nextId('ev'),
-          at: now,
-          kind: 'beer' as LogKind,
-          text: beer,
-          by: person.name,
-          // Someone else's beer: no `beerId`, because it is not in YOUR list and
-          // you have no business editing it.
-        })),
-        { id: nextId('ev'), at: now, kind: 'beer' as LogKind, text: beer, by: ME, beerId: firstId },
-      ],
+      log: [],
     });
   },
 
-  setPub: (pubName, beer) =>
+  setPub: (pubName, beer, pubKey) =>
     set((s) =>
       s.live
         ? {
             pubName,
             houseBeer: beer,
+            ...(pubKey !== undefined ? { pubKey } : {}),
             log: logged(s, Date.now(), 'pub', `Přesun do ${pubName}`),
           }
-        : { pubName, houseBeer: beer },
+        : { pubName, houseBeer: beer, ...(pubKey !== undefined ? { pubKey } : {}) },
     ),
 
   beginPickingPub: () => set({ pickingPub: true }),
   endPickingPub: () => set({ pickingPub: false }),
-
-  addBeer: (beer) =>
-    set((s) => {
-      const at = Date.now();
-      const id = nextId('beer');
-      return {
-        beers: [...s.beers, { id, beer, at }],
-        log: logged(s, at, 'beer', beer, ME, { beerId: id }),
-      };
-    }),
-
-  removeBeer: (beer) =>
-    set((s) => {
-      // The last one OF THAT TYPE, not the newest overall — you are correcting
-      // the row you just tapped, not undoing whatever happened most recently.
-      const index = s.beers.map((entry) => entry.beer).lastIndexOf(beer);
-      if (index < 0) return s;
-      return { beers: s.beers.filter((_, i) => i !== index) };
-    }),
-
-  editBeer: (beerId, beer) =>
-    set((s) => ({
-      beers: s.beers.map((entry) => (entry.id === beerId ? { ...entry, beer } : entry)),
-      // The log row is rewritten in place rather than a correction being
-      // appended: a thread of "Pilsner / no vlastně Kozel" is a worse record of
-      // the evening than one that simply says what you drank.
-      log: s.log.map((event) => (event.beerId === beerId ? { ...event, text: beer } : event)),
-    })),
-
-  dropBeer: (beerId) =>
-    set((s) => ({
-      beers: s.beers.filter((entry) => entry.id !== beerId),
-      log: s.log.filter((event) => event.beerId !== beerId),
-    })),
 
   dropEvent: (eventId) =>
     set((s) => {
@@ -424,56 +383,4 @@ export function useNightClock(startedAt: number | null): number {
   return startedAt === null ? 0 : minutesBetween(startedAt, now);
 }
 
-/** The shopping list: one row per beer type, in the order first ordered. */
-export function beersByType(beers: BeerEntry[]): { beer: string; count: number }[] {
-  const order: string[] = [];
-  const counts = new Map<string, number>();
-  for (const entry of beers) {
-    if (!counts.has(entry.beer)) order.push(entry.beer);
-    counts.set(entry.beer, (counts.get(entry.beer) ?? 0) + 1);
-  }
-  return order.map((beer) => ({ beer, count: counts.get(beer) ?? 0 }));
-}
 
-/**
- * Beers bucketed by clock hour, for the tempo chart.
- *
- * Every hour from the first beer to `now` is present, including the empty ones.
- * Bucketing only the hours that HAD a beer drew a chart with one bar on it and
- * no time axis at all — an hour where nobody drank is a fact about the evening,
- * and skipping it silently squashes the gaps out of the tempo.
- */
-export function hourlyFrom(
-  beers: BeerEntry[],
-  /** Epoch ms of "now" — how far the axis has actually got. */
-  now = 0,
-  /**
-   * Hours the axis always shows, counted from the first beer.
-   *
-   * Without it the chart is one bar wide at 20:05 and grows a column every
-   * hour, so the whole thing rescales under you all evening. An evening is
-   * expected to run a few hours — drawing that span from the start means the
-   * bars mean the same thing at 20:05 as at 23:00, and the empty columns read
-   * as "not yet" rather than as a prediction that you will fill them.
-   */
-  minSpan = 5,
-): { hour: string; beers: number }[] {
-  if (beers.length === 0) return [];
-
-  const hourOf = (at: number) => Math.floor(at / 3_600_000);
-
-  const counts = new Map<number, number>();
-  for (const entry of beers) {
-    counts.set(hourOf(entry.at), (counts.get(hourOf(entry.at)) ?? 0) + 1);
-  }
-
-  const first = hourOf(beers[0].at);
-  const reached = hourOf(Math.max(now, beers[beers.length - 1].at));
-  const last = Math.max(reached, first + minSpan - 1);
-
-  const out: { hour: string; beers: number }[] = [];
-  for (let hour = first; hour <= last; hour += 1) {
-    out.push({ hour: clockAt(hour * 3_600_000).slice(0, 2), beers: counts.get(hour) ?? 0 });
-  }
-  return out;
-}

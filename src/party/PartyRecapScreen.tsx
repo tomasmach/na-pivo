@@ -59,11 +59,17 @@ import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
   formatElapsed,
-  beersByType,
-  hourlyFrom,
   useLivePartyStore,
   useNightClock,
 } from '@/mocks/livePartyStore';
+import {
+  nightByBeer,
+  nightHourly,
+  nightMvp,
+  nightStandings,
+  nightTally,
+} from '@/party/nightRecord';
+import { useNightRecord } from '@/party/useNightRecord';
 import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -138,7 +144,10 @@ export default function PartyRecapScreen() {
   // to the canned night for the parts a mock evening has not made yet. Before
   // this, playing a game and taking photos changed nothing here — the loop was
   // drawn but not connected.
-  const liveBeers = useLivePartyStore((s) => s.beers);
+  // The recap reads the same record the hub and the finish screen read, so a
+  // number here can never disagree with the one you saw ten seconds ago.
+  const night = useNightRecord();
+  const liveBeerCount = nightTally(night).beers;
   const livePhotos = useLivePartyStore((s) => s.photos);
   const liveGames = useLivePartyStore((s) => s.games);
   const liveStartedAt = useLivePartyStore((s) => s.startedAt);
@@ -148,7 +157,21 @@ export default function PartyRecapScreen() {
 
   // Derived from the beer list rather than stored: one source of truth for the
   // night, read three different ways.
-  const liveHourly = hourlyFrom(liveBeers);
+  const standings = nightStandings(night);
+  const mvp = nightMvp(standings);
+  const livePeople = standings.map((person) => ({
+    id: person.id,
+    name: person.name,
+    beers: person.beers,
+    tint: person.tint,
+    ...(person.avatarUrl ? { avatar: person.avatarUrl } : {}),
+    ...(mvp?.id === person.id ? { mvp: true } : {}),
+  }));
+
+  const liveHourly = nightHourly(night).map((bucket) => ({
+    hour: bucket.hour,
+    beers: bucket.beers,
+  }));
   // A game on the table is not a result. Only played ones have a scoreboard,
   // and a scoreboard is the whole reason this section exists.
   const playedGames = liveGames.flatMap((game) => (game.result ? [game.result] : []));
@@ -157,7 +180,7 @@ export default function PartyRecapScreen() {
     ? {
         ...MOCK_PARTY,
         title: MOCK_PARTY.title,
-        beers: liveBeers.length,
+        beers: liveBeerCount,
         duration: formatElapsed(liveMinutes),
         photos: livePhotos,
         hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
@@ -167,15 +190,16 @@ export default function PartyRecapScreen() {
                 id: 'live',
                 pubName: livePub,
                 arrivedAt: '20:00',
-                beers: liveBeers.length,
+                beers: liveBeerCount,
                 lat: 50.0785,
                 lng: 14.42,
               },
             ]
           : MOCK_PARTY.stops,
-        people: MOCK_PARTY.people.map((person) =>
-          person.name === 'Honza' ? { ...person, beers: liveBeers.length } : person,
-        ),
+        // Who was actually there, with what they actually drank. The canned
+        // night used to lend its faces your count, which read fine and meant
+        // nothing.
+        people: livePeople,
       }
     : MOCK_PARTY;
   const route = party.stops.map((s) => s.pubName).join('  →  ');
@@ -191,8 +215,8 @@ export default function PartyRecapScreen() {
       : chart === 'Podle piva'
         ? // The live night's own breakdown when there is one, the canned night's
           // otherwise — an empty chart behind a menu item reads as a bug.
-          (liveBeers.length > 0
-            ? beersByType(liveBeers).map((row) => ({ label: row.beer, value: row.count }))
+          (liveBeerCount > 0
+            ? nightByBeer(night).map((row) => ({ label: row.beer, value: row.count }))
             : party.byBeer.map((row) => ({ label: row.beer, value: row.count })))
         : party.people
             .map((person) => ({ label: person.name, value: person.beers }))

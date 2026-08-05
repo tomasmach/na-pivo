@@ -31,7 +31,7 @@ import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { decodeGeohash8 } from '@/data/geohash';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
-import type { DrinkType } from '@/drinks/drinkTypes';
+import { contextFromPubKey, type DrinkType } from '@/drinks/drinkTypes';
 
 export interface PartyBeerPlace {
   /** Geohash-8 of the pub — the durable identity of a place. */
@@ -75,12 +75,21 @@ export function logPartyBeer({
     { id, beerName, drinkType, priceCzk, volumeMl, at: drankAt },
   );
 
+  // A pub carries its identity; an evening that is not at a pub carries no
+  // coordinates at all — never a guessed pub for a drink at somebody's flat.
+  const outside = contextFromPubKey(place.pubKey);
+  const where = outside
+    ? { placeContext: outside }
+    : {
+        externalId: place.pubExternalId ?? null,
+        name: place.pubName,
+        city: place.pubCity,
+        ...decodeGeohash8(place.pubKey),
+      };
+
   const entry = buildDrinkEntry(
     {
-      externalId: place.pubExternalId ?? null,
-      name: place.pubName,
-      city: place.pubCity,
-      ...decodeGeohash8(place.pubKey),
+      ...where,
       drinkType,
       beer: { name: beerName, priceCzk, volumeMl },
       drankAt,

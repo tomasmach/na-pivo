@@ -164,6 +164,28 @@ function count(tally: NightTally, drink: NightDrink): void {
   }
 }
 
+/**
+ * Whoever is holding the phone.
+ *
+ * Always first in the list — `peopleOf` builds it that way, because the table is
+ * read as "us" and not as a roster. Null before anybody is known.
+ */
+export function nightMe(night: NightRecord): NightPerson | null {
+  return night.people[0] ?? null;
+}
+
+/**
+ * One person's beers.
+ *
+ * The difference between this and `nightTally` is the difference between "your
+ * fourth" and "the table's twelfth", and both appear on the same screen — the
+ * top strip counts yours, the stats count the table's.
+ */
+export function beersOf(night: NightRecord, personId: string | undefined): number {
+  if (!personId) return 0;
+  return night.drinks.filter((drink) => drink.by === personId && isBeer(drink)).length;
+}
+
 /** The whole night, by category. */
 export function nightTally(night: NightRecord): NightTally {
   const tally = emptyTally();
