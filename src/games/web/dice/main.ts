@@ -17,6 +17,12 @@
  * animates towards them: the dice are thrown with a random impulse and whatever
  * lands on top is the result, read off the resting orientation and reported back.
  * That is the one thing a fake roll can never be — actually fair.
+ *
+ * It also runs in a plain browser. Open `assets/games/dice.html` in Safari and
+ * the page notices there is no bridge and gives itself a throw button and a
+ * readout — so tuning the feel of a roll costs a reload, not a native rebuild,
+ * a simulator and a tap through four screens. That loop is the difference
+ * between a game that gets tuned and one that ships as it first landed.
  */
 
 import * as CANNON from 'cannon-es';
@@ -62,7 +68,15 @@ const FACE_NORMALS = [
 function post(message: OutMessage): void {
   const bridge = (window as unknown as { ReactNativeWebView?: { postMessage(s: string): void } })
     .ReactNativeWebView;
-  bridge?.postMessage(JSON.stringify(message));
+  if (bridge) {
+    bridge.postMessage(JSON.stringify(message));
+    return;
+  }
+  // No app on the other end: hand it to the browser harness instead, so the
+  // page behaves identically in both places.
+  (window as unknown as { __napivoOnMessage?: (m: OutMessage) => void }).__napivoOnMessage?.(
+    message,
+  );
 }
 
 /**
@@ -301,6 +315,45 @@ class DiceTable {
   };
 }
 
+/**
+ * The browser harness: a throw button and a readout, only when nothing is
+ * listening on the bridge.
+ *
+ * Guarded on `ReactNativeWebView` rather than a build flag, so there is exactly
+ * one build and no way for the harness to reach the app.
+ */
+function attachDevHarness(table: DiceTable): void {
+  const bar = document.createElement('div');
+  bar.style.cssText =
+    'position:fixed;left:0;right:0;bottom:0;display:flex;gap:12px;align-items:center;' +
+    'justify-content:center;padding:16px;font:600 15px -apple-system,system-ui,sans-serif;';
+
+  const button = document.createElement('button');
+  button.textContent = 'Hoď';
+  button.style.cssText =
+    'padding:14px 44px;border:0;border-radius:999px;background:#E8A317;color:#15120F;' +
+    'font:800 17px -apple-system,system-ui,sans-serif;';
+  button.onclick = () => table.roll();
+
+  const readout = document.createElement('span');
+  readout.style.cssText = 'color:#FBF6EA;opacity:.75;min-width:90px;';
+  readout.textContent = '—';
+
+  bar.append(button, readout);
+  document.body.appendChild(bar);
+
+  // Same channel the app listens on, so the harness proves the real contract
+  // rather than a parallel one that can quietly diverge.
+  (window as unknown as { __napivoOnMessage?: (m: OutMessage) => void }).__napivoOnMessage = (
+    message,
+  ) => {
+    if (message.type === 'settled') {
+      const sum = message.dice.reduce((a, b) => a + b, 0);
+      readout.textContent = `${message.dice.join(' + ')} = ${sum}`;
+    }
+  };
+}
+
 function boot(): void {
   const params = new URLSearchParams(window.location.search);
   const theme: Theme = {
@@ -313,6 +366,12 @@ function boot(): void {
 
   const table = new DiceTable(theme, Number(params.get('count') ?? 2));
   (window as unknown as { napivoRoll(): void }).napivoRoll = () => table.roll();
+
+  const inApp = Boolean(
+    (window as unknown as { ReactNativeWebView?: unknown }).ReactNativeWebView,
+  );
+  if (!inApp) attachDevHarness(table);
+
   post({ type: 'ready' });
 }
 

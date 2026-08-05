@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "lint": "expo lint",
-    "build:games": "node scripts/build-games.mjs"
+    "build:games": "node scripts/build-games.mjs",
+    "games:dev": "node scripts/build-games.mjs && open assets/games/dice.html"
   },
   "dependencies": {
     "@expo/ui": "~56.0.22",

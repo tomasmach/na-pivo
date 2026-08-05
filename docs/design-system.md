@@ -1375,6 +1375,12 @@ Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
    (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
 5. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
 
+**Hra se ladí v prohlížeči, ne v simulátoru.** `npm run games:dev` ji sestaví a
+otevře jako obyčejnou stránku; když si všimne, že na druhé straně není most,
+přidá si vlastní tlačítko a výpis výsledku. Doladit pocit z hodu tak stojí
+reload, ne nativní build, simulátor a čtyři obrazovky proklikávání. To je rozdíl
+mezi hrou, která se doladí, a hrou, co vyjde tak, jak poprvé spadla.
+
 Past, na kterou se přijde těžko: hra se načítá jako asset (`.html` v
 `assetExts`). Když Metro drží cache z doby před tou změnou konfigurace, import
 routy selže a expo-router to nahlásí jako **„Cannot read property 'ErrorBoundary'
