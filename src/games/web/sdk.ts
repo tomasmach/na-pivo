@@ -76,9 +76,14 @@ function harnessInit(): ToGame {
   return {
     v: GAME_PROTOCOL_VERSION,
     type: 'init',
+    // Labels included: a game that paints names on itself is untestable in the
+    // browser without them, which is how the wheel shipped its first build with
+    // blank wedges.
     players: [
-      { id: 'p1', colour: '#E8A317' },
-      { id: 'p2', colour: '#7DD66B' },
+      { id: 'Ty', colour: '#E8A317', label: 'Ty' },
+      { id: 'Honza', colour: '#7DD66B', label: 'Honza' },
+      { id: 'Petr', colour: '#F0BE5C', label: 'Petr' },
+      { id: 'Klára', colour: '#A8896A', label: 'Klára' },
     ],
     theme: { bg: '#15120F', surface: '#1C1815', accent: '#E8A317', ink: '#FBF6EA' },
     options: Object.fromEntries(new URLSearchParams(window.location.search)),

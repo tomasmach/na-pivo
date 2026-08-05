@@ -29,38 +29,43 @@ const REST_FRAMES = 10;
 const MAX_FRAMES = 60 * 12;
 
 /**
- * A name, drawn along its wedge.
+ * One name, on its own little plate.
  *
- * A texture on the top face rather than 3D text: `TextGeometry` needs a font
- * file, which is another asset to ship and another thing to get wrong at small
- * sizes. A canvas draws it at whatever resolution the screen has.
+ * A plane per wedge inside a group rotated to that wedge's mid-angle, rather
+ * than one texture stretched over the whole disc: the wedges and the labels then
+ * share one definition of "where wedge i is", so they cannot drift apart. The
+ * first build mapped a single texture by hand and the names sat between colours.
  */
-function faceTexture(labels: string[], ink: string): THREE.CanvasTexture {
-  const size = 1024;
+function labelPlate(text: string, ink: string, angle: number, radius: number): THREE.Group {
+  const width = 512;
+  const height = 128;
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d')!;
-  const middle = size / 2;
-  const sweep = (Math.PI * 2) / labels.length;
-
-  ctx.font = '700 46px -apple-system, system-ui, sans-serif';
-  ctx.textAlign = 'right';
+  ctx.font = '800 74px -apple-system, system-ui, sans-serif';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = ink;
+  ctx.fillText(text.slice(0, 12), width / 2, height / 2 + 4);
 
-  labels.forEach((label, index) => {
-    ctx.save();
-    ctx.translate(middle, middle);
-    // Centre of the wedge, and far enough out that a long name still fits.
-    ctx.rotate(index * sweep + sweep / 2);
-    ctx.fillText(label.slice(0, 12), middle - 46, 0);
-    ctx.restore();
-  });
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.0, 0.5),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(canvas),
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  // Flat on the wheel, reading outwards from the hub.
+  plane.rotation.x = -Math.PI / 2;
+  plane.rotation.z = Math.PI / 2;
+  plane.position.set(0, 0.19, radius);
 
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.anisotropy = 4;
-  return texture;
+  const group = new THREE.Group();
+  group.rotation.y = angle;
+  group.add(plane);
+  return group;
 }
 
 /**
@@ -108,7 +113,7 @@ class Wheel {
     document.body.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-    this.camera.position.set(0, 8.2, 4.6);
+    this.camera.position.set(0, 11.5, 6.4);
     this.camera.lookAt(0, 0, 0);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.1));
@@ -132,27 +137,25 @@ class Wheel {
       this.disc.add(wedge(colour, index * sweep, sweep));
     });
 
-    // The names ride on a disc just above the wedges, so one texture serves the
-    // whole wheel and the labels cannot drift out of their colours.
-    const labelDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(RADIUS - 0.02, 64),
-      new THREE.MeshBasicMaterial({
-        map: faceTexture(labels, theme.ink),
-        transparent: true,
-      }),
-    );
-    labelDisc.rotation.x = -Math.PI / 2;
-    labelDisc.position.y = 0.18;
-    this.disc.add(labelDisc);
+    labels.forEach((label, index) => {
+      if (label) this.disc.add(labelPlate(label, theme.bg, index * sweep + sweep / 2, RADIUS * 0.62));
+    });
     this.scene.add(this.disc);
 
-    // The pointer, at the near edge where the phone's owner is sitting.
+    // The pointer sits at the FAR edge. The bottom of the screen belongs to the
+    // app's own button, and a marker down there is a marker nobody can see.
     const pointer = new THREE.Mesh(
-      new THREE.ConeGeometry(0.28, 0.7, 16),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.ink), roughness: 0.4 }),
+      new THREE.ConeGeometry(0.34, 0.95, 20),
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(theme.ink),
+        roughness: 0.35,
+        emissive: new THREE.Color(theme.ink),
+        emissiveIntensity: 0.18,
+      }),
     );
+    // Tip down, aimed at the rim it is reading.
     pointer.rotation.x = Math.PI;
-    pointer.position.set(0, 0.5, RADIUS + 0.25);
+    pointer.position.set(0, 0.62, -(RADIUS + 0.34));
     pointer.castShadow = true;
     this.scene.add(pointer);
 
@@ -175,13 +178,17 @@ class Wheel {
     this.velocity = 11 + Math.random() * 9;
   }
 
-  /** Which wedge is under the pointer. */
+  /**
+   * Which wedge is under the pointer.
+   *
+   * `CylinderGeometry` measures theta from +Z towards +X, and rotating the disc
+   * by `heading` puts a local theta at world `theta + heading`. The pointer is
+   * at -Z, world angle π, so the wedge under it is at local `π - heading`.
+   */
   private underPointer(): number {
     const sweep = (Math.PI * 2) / this.colours.length;
-    // The pointer sits at +Z; a wedge starting at angle `a` covers `a..a+sweep`
-    // measured from +X, so the reading is offset by a quarter turn.
-    const at = (((Math.PI / 2 - this.heading) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-    return Math.floor(at / sweep) % this.colours.length;
+    const local = (((Math.PI - this.heading) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    return Math.floor(local / sweep) % this.colours.length;
   }
 
   private tick = (): void => {
