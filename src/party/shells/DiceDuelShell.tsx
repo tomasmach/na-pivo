@@ -24,7 +24,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
-import { DiceCanvas, type DiceCanvasHandle } from '@/party/DiceCanvas';
+import { DICE_CANVAS_AVAILABLE, DiceCanvas, type DiceCanvasHandle } from '@/party/DiceCanvas';
 import {
   isOver,
   recordRoll,
@@ -82,8 +82,9 @@ export function DiceDuelShell({
 
   const roll = () => {
     if (rolling || !turn) return;
-    if (reduceMotion) {
-      // No throw to watch, so no throw to wait for.
+    // No table to watch — reduced motion, or a build without the WebView — so
+    // no throw to wait for. The game still plays; it just does not show off.
+    if (reduceMotion || !DICE_CANVAS_AVAILABLE) {
       setState((current) => recordRoll(current, turn, throwDice()));
       return;
     }
@@ -179,7 +180,13 @@ export function DiceDuelShell({
           landed while the next thrower decides — dice do not vanish between
           throws. */}
       <View style={styles.dice}>
-        <DiceCanvas ref={canvas} count={2} onSettled={settled} />
+        {DICE_CANVAS_AVAILABLE ? (
+          <DiceCanvas ref={canvas} count={2} onSettled={settled} />
+        ) : last ? (
+          <Text style={styles.fallbackDice} allowFontScaling={false}>
+            {last.dice[0]} + {last.dice[1]}
+          </Text>
+        ) : null}
       </View>
 
       {/* Smaller than the dice, because the dice ARE the screen. A full-width
@@ -291,6 +298,7 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   kicker: { fontSize: 13, fontWeight: '700', color: Colors.mutedText },
+  fallbackDice: { fontFamily: Fonts.numeral, fontSize: 56, color: Colors.foam },
 
   turn: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },
   turnName: { fontSize: 34, fontWeight: '800', color: Colors.foam, letterSpacing: -0.6 },

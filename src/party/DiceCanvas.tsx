@@ -20,7 +20,7 @@
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import type { WebView as WebViewType, WebViewMessageEvent } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 
 import { MockColors } from '@/mocks/mockTheme';
@@ -29,9 +29,32 @@ import { Colors } from '@/theme/colors';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PAGE = require('../../assets/games/dice.html');
 
+/**
+ * Loaded defensively, because a missing native module must not take a screen
+ * down with it.
+ *
+ * `react-native-webview` is a native dependency: an app binary built before it
+ * was added — an older TestFlight build, a colleague who has not rebuilt, a
+ * stale simulator install — throws on import and, because this component sits
+ * inside a route, expo-router reports the whole route as having no default
+ * export. A game that cannot draw its table should fall back to a plain roll,
+ * not white-screen the evening.
+ */
+const WebView: typeof WebViewType | null = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('react-native-webview').WebView;
+  } catch {
+    return null;
+  }
+})();
+
 export interface DiceCanvasHandle {
   roll: () => void;
 }
+
+/** Whether this build can draw the table at all. */
+export const DICE_CANVAS_AVAILABLE = WebView !== null;
 
 export const DiceCanvas = React.forwardRef<
   DiceCanvasHandle,
@@ -41,7 +64,7 @@ export const DiceCanvas = React.forwardRef<
     onReady?: () => void;
   }
 >(function DiceCanvas({ count = 2, onSettled, onReady }, ref) {
-  const webRef = React.useRef<WebView>(null);
+  const webRef = React.useRef<WebViewType>(null);
   const [uri, setUri] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -72,7 +95,7 @@ export const DiceCanvas = React.forwardRef<
     }
   };
 
-  if (!uri) return <View style={styles.wrap} />;
+  if (!WebView || !uri) return <View style={styles.wrap} />;
 
   const query =
     `?count=${count}` +
