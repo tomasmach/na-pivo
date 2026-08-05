@@ -35,16 +35,29 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { BeerIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { findGame, type GameDraw } from '@/party/gameCatalog';
 import { GAME_PROMPTS } from '@/party/gameContent';
+import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
+import type { QuizAnswer, QuizEntrant } from '@/party/quiz/rules';
 import { DiceDuelShell } from '@/party/shells/DiceDuelShell';
 import { DrawShell } from '@/party/shells/DrawShell';
 import { GameLobby } from '@/party/shells/GameLobby';
 import { PickShell } from '@/party/shells/PickShell';
 import { PromptShell } from '@/party/shells/PromptShell';
+import { QuizShell } from '@/party/shells/QuizShell';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+/**
+ * When an answer landed — only ever used to order answers within one team.
+ *
+ * Module scope because `react-hooks/purity` flags `Date.now()` anywhere in a
+ * component body and cannot tell a handler from render.
+ */
+function stamp(): number {
+  return Date.now();
+}
 
 /** The verb IS the game — "roztoč" and "hoď" are different promises. */
 const DRAW_ACTION: Record<GameDraw, string> = {
@@ -92,6 +105,38 @@ export default function PartyGameScreen() {
     [roster, table],
   );
   const [scores, setScores] = React.useState<Record<string, number>>({});
+
+  // Pub kvíz. At a table everybody answers for themselves, so a person is a
+  // TEAM OF ONE — the same game run at a community event has real teams and the
+  // rules do not change (see `src/party/quiz/rules.ts`).
+  //
+  // The answers are a plain append-only list because that is exactly what the
+  // backend stores and the stream delivers: `enqueuePartyGameEvent(code, id,
+  // {kind: 'answer', payload: {questionId, option}})` out, folded events in.
+  // This local list is the seam where that gets wired, not a different model.
+  const entrants = React.useMemo<QuizEntrant[]>(
+    () =>
+      (roster ?? table).map((person) => ({
+        id: person.name,
+        teamId: person.name,
+        teamName: person.name,
+      })),
+    [roster, table],
+  );
+  const [answers, setAnswers] = React.useState<QuizAnswer[]>([]);
+  const [question, setQuestion] = React.useState(0);
+  const [revealed, setRevealed] = React.useState<number[]>([]);
+
+  const answer = (option: number) => {
+    const current = QUIZ_QUESTIONS[question];
+    if (!current) return;
+    setAnswers((list) =>
+      // A team's answer is its first one, so a second tap is not an edit.
+      list.some((entry) => entry.entrantId === 'Ty' && entry.questionId === current.id)
+        ? list
+        : [...list, { entrantId: 'Ty', questionId: current.id, option, at: stamp() }],
+    );
+  };
 
   const bump = (player: string) =>
     setScores((current) => ({ ...current, [player]: (current[player] ?? 0) + 1 }));
@@ -207,6 +252,29 @@ export default function PartyGameScreen() {
                 }
               : undefined
           }
+        />
+      ) : null}
+
+      {roster && shell === 'quiz' ? (
+        <QuizShell
+          entrants={entrants}
+          answers={answers}
+          me="Ty"
+          index={question}
+          tintOf={(name) => roster.find((person) => person.name === name)?.tint ?? Colors.amber}
+          forceRevealed={revealed.includes(question)}
+          onAnswer={(option) => answer(option)}
+          onReveal={() => setRevealed((current) => [...current, question])}
+          onNext={() => setQuestion((current) => current + 1)}
+          onFinished={(result) => {
+            if (!key) return;
+            finishGame(key, {
+              game: name,
+              winner: result.winner,
+              scores: result.standings,
+            });
+          }}
+          onDone={() => router.back()}
         />
       ) : null}
 

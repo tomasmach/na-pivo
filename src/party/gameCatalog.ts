@@ -48,7 +48,7 @@ export type GameScoring = 'points' | 'drinks';
  *   `prompt`  a deck: one big card at a time, and a way to the next one
  *   `draw`    chance: dice, a bottle, a card off the top
  */
-export type GameShell = 'score' | 'prompt' | 'draw' | 'turns' | 'pick';
+export type GameShell = 'score' | 'prompt' | 'draw' | 'turns' | 'pick' | 'quiz';
 
 /** What `draw` draws. */
 export type GameDraw = 'person' | 'card';
@@ -73,9 +73,10 @@ export const GAME_CATALOG: readonly GameDef[] = [
   {
     key: 'quiz',
     name: 'Pub kvíz',
-    blurb: 'Deset otázek, kdo víc.',
-    how: 'Někdo čte otázky, ostatní hádají. Bod za správnou odpověď.',
-    shell: 'score',
+    blurb: 'Každý na svém. Kdo ví víc.',
+    how: 'Stejná otázka na všech telefonech. Ťukneš odpověď, zamkne se — a odhalí se, až odpoví všichni.',
+    shell: 'quiz',
+    intro: 'Odpovídáš za sebe. Nikdo neuvidí, co jsi ťuknul, dokud neodpoví všichni.',
     scoring: 'points',
     cover: ['#8A5A18', '#3A2410'],
     Icon: TrophyIcon,

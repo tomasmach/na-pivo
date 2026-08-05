@@ -1417,6 +1417,35 @@ tabulka, kterou by mohla vyrobit, je kdo nejvíc pil.
 Plátno si přesto smí konec **oslavit** — konfety, rozsvícená vítězná výseč. To je
 zdobení, ne vyprávění.
 
+### 18.11e Hra na víc telefonů má tři stavy, ne dva
+
+Pub kvíz je první hra, kde **každý hraje na svém**. To mění, co obrazovka je:
+nekreslí stůl, kreslí pohled jednoho hráče na společnou otázku a nikdy nepředstírá,
+že ví víc, než ten telefon může vidět.
+
+| stav | co je vidět |
+|---|---|
+| ptá se | otázka a čtyři možnosti |
+| **zamknuto** | tvoje odpověď je daná, chybějící jména jsou vypsaná |
+| odhaleno | správná odpověď — až když odpověděli všichni |
+
+**Zamknuto je vlastní stav, ne mezikrok.** Odhalit ve chvíli, kdy odpovíš *ty*,
+znamená, že nejrychlejší u stolu odpověď přečte nahlas — a hospoda je přesně
+místo, kde tohle nezůstane teoretické. Odpověď se taky nedá měnit; kvíz, ve kterém
+si můžeš odpověď rozmyslet, když vidíš ostatní, není kvíz.
+
+Čekání musí jít **přerušit** („Nečekat"). Někdo je na baru a hra, kterou odemkne
+jenom člověk, co odešel, končí právě tam.
+
+Skóruje se **po týmech**, a člověk hrající sám je tým o jednom. Party a komunitní
+event jsou tím pádem jedna hra, ne dvě — kdyby se to psalo po lidech a týmy se
+přidaly potom, každé pravidlo by existovalo dvakrát a ty dvě verze by se rozešly.
+
+Stav je fold nad **append-only seznamem odpovědí**, nikdy uložený součet. Dva
+telefony můžou odpovědět ve stejnou chvíli, pořadí nehraje roli, retry nemůže
+započítat dvakrát a telefon, co byl offline, pošle svoje pozdě a nic se neslučuje.
+Je to zároveň přesně tvar, který drží backend (`PartyGameEvent`, kind `answer`).
+
 ### 18.11c Hry, které máme
 
 | hra | plátno | co vrací |
