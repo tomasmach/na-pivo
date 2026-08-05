@@ -6,20 +6,22 @@
  * is shared during the night hangs off it — members, games, the quiz.
  *
  *   GET    /v1/party-evenings                 the one I am in, if any
+ *   GET    /v1/party-evenings/<code>          that one again, members and all
  *   POST   /v1/party-evenings                 start one, idempotent by client_id
  *   POST   /v1/party-evenings/<code>/join     get in
  *   DELETE /v1/party-evenings/<code>/join     get out
  *   POST   /v1/party-evenings/<code>/end      close it (host only)
  *
+ * The detail endpoint is members-only on the server, so a code you are not in
+ * is a 404 — guessing six characters does not read somebody else's table.
+ *
  * This existed once and was deleted in July 2026, for a reason worth keeping in
  * view: the old version made you log every beer TWICE — once into the diary that
  * counts, and once into a shared table that counted nothing. What comes back is
  * the evening, not the second diary. A beer is written where it always was; the
- * evening is a lens over it.
+ * evening is a lens over it, and `POST /v1/drinks` carries the `party_code`.
  *
- * Not restored either: `GET /v1/party-evenings/<code>` for a code you are not in.
- * There is no such route on the server any more, and a client that can read a
- * stranger's table by guessing six characters is not a feature.
+ * Not restored: `sharePartyEveningDrink`. That WAS the second diary.
  *
  * Everything here is best-effort and never throws — the whole point of an
  * evening is that it survives a pub's signal.
@@ -221,6 +223,20 @@ export async function fetchCurrentPartyEvening(signal?: AbortSignal): Promise<Pa
   if (!res.ok) return res.result;
   const evening = res.data.evening;
   return { ok: true, evening: evening ? parsePartyEvening(evening) : null };
+}
+
+/**
+ * The evening again, with whoever has joined since.
+ *
+ * Same shape as the collection call, asked by code — this is what the hub polls
+ * while a night runs, so a face that sits down shows up without a stream.
+ */
+export async function fetchPartyEvening(
+  code: string,
+  signal?: AbortSignal,
+): Promise<PartyEveningResult> {
+  const res = await requestJson(codePath(code, ''), { signal });
+  return res.ok ? { ok: true, evening: parsePartyEvening(res.data) } : res.result;
 }
 
 /**

@@ -150,6 +150,30 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
             account__status=Account.Status.ACTIVE,
         )
     )
+    # The same evening, from the diary. Two sources, one timeline:
+    #
+    #   PartyEveningDrink   released apps, which POST a beer here as well as
+    #                       into their diary. Untouched — they cannot be updated.
+    #   DrinkLog            the current app, which writes a beer ONCE and tags
+    #                       it with the evening it happened in.
+    #
+    # No duplicates: a client that writes DrinkLog rows never posts to the other
+    # endpoint, and one that posts there does not know about `party_code`.
+    events.extend(
+        {
+            "id": f"log:{drink.id}",
+            "kind": "drink",
+            "at": drink.drank_at.isoformat(),
+            "account": _profile(drink.account),
+            "beer_name": drink.beer_name,
+            "quantity": 1,
+        }
+        for drink in evening.logged_drinks.select_related("account").filter(
+            account_id__in=member_ids,
+            account__ghost_mode=False,
+            account__status=Account.Status.ACTIVE,
+        )
+    )
     events.sort(key=lambda event: (event["at"], event["id"]))
     return {
         "id": str(evening.public_id),

@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 from pubs.api.party_views import _serialize_evening
 from pubs.models import (
     Account,
+    DrinkLog,
     FriendBlock,
     Friendship,
     PartyEvening,
@@ -274,7 +275,10 @@ def test_evening_serialization_query_count_does_not_scale_with_members(client):
         payload = _serialize_evening(evening, host)
 
     assert len(payload["members"]) == 9
-    assert len(queries) <= 4
+    # Five, not four: the evening reads drinks from two sources now — the shared
+    # table released apps write to, and the diary rows the current app tags.
+    # Constant either way, which is what this test is about.
+    assert len(queries) <= 5
 
 
 @pytest.mark.django_db
@@ -295,3 +299,95 @@ def test_create_is_idempotent_and_current_endpoint_restores_evening(client):
     current = client.get("/v1/party-evenings", **_auth(token))
     assert current.status_code == status.HTTP_200_OK
     assert current.json()["evening"]["join_code"] == "STUL24"
+
+
+def _log_drink(client: APIClient, token: str, name: str, **extra):
+    """A beer through the diary — the one place a beer is written."""
+    return client.post(
+        "/v1/drinks",
+        data={
+            "client_id": str(uuid.uuid4()),
+            "name": "U Zlatého tygra",
+            "lat": 50.0865,
+            "lng": 14.4192,
+            "beer": {"name": name, "price_czk": 55},
+            **extra,
+        },
+        format="json",
+        **_auth(token),
+    )
+
+
+@pytest.mark.django_db
+def test_a_beer_logged_during_an_evening_shows_up_in_it_without_a_second_write(client):
+    """
+    One write, two readers.
+
+    The beer goes into the diary exactly once, as it always has. The evening is
+    a lens over that row — no `PartyEveningDrink`, which is what made the old
+    version ask people to log every beer twice.
+    """
+    host_token, host = _register(client, "host")
+    friend_token, friend = _register(client, "kamos")
+    _friend(host, friend)
+    _create(client, host_token)
+    client.post("/v1/party-evenings/STUL24/join", **_auth(friend_token))
+
+    logged = _log_drink(client, friend_token, "Plzeň", party_code="STUL24")
+    assert logged.status_code == status.HTTP_201_CREATED
+
+    detail = client.get("/v1/party-evenings/STUL24", **_auth(host_token)).json()
+    drinks = [event for event in detail["events"] if event["kind"] == "drink"]
+    assert [event["beer_name"] for event in drinks] == ["Pilsner Urquell"]
+    assert drinks[0]["account"]["nickname"] == "kamos"
+    # The shared table is a lens, not a second table.
+    assert PartyEveningDrink.objects.count() == 0
+    assert DrinkLog.objects.filter(account=friend).count() == 1
+
+
+@pytest.mark.django_db
+def test_a_code_that_no_longer_works_never_costs_you_the_beer(client):
+    """
+    The queue flushes when the signal comes back, which may be after closing
+    time. A stale code must be ignored, never rejected — otherwise one ended
+    evening jams every drink behind it.
+    """
+    host_token, host = _register(client, "host")
+    _create(client, host_token)
+    client.post("/v1/party-evenings/STUL24/end", **_auth(host_token))
+
+    logged = _log_drink(client, host_token, "Kozel", party_code="STUL24")
+    assert logged.status_code == status.HTTP_201_CREATED
+    # By account, not by name: the server canonicalises a beer name against the
+    # brand catalogue, so "Kozel" comes back as "Velkopopovický Kozel".
+    assert DrinkLog.objects.get(account=host).party_evening is None
+
+    # And a code belonging to somebody else's table is the same non-event.
+    stranger_token, stranger = _register(client, "cizi")
+    other = _log_drink(client, stranger_token, "Radegast", party_code="STUL24")
+    assert other.status_code == status.HTTP_201_CREATED
+    assert DrinkLog.objects.get(account=stranger).party_evening is None
+
+
+@pytest.mark.django_db
+def test_the_drink_feed_toggle_keeps_the_glass_private(client):
+    """
+    Joining a table shares that you are there, not what is in your glass.
+
+    `share_drinks_with_parta` says "friends may see my automatic drink feed", and
+    tagging every beer with an evening is exactly that feed. Off means the beer
+    is logged and simply never linked.
+    """
+    host_token, host = _register(client, "host")
+    friend_token, friend = _register(client, "kamos")
+    _friend(host, friend)
+    _create(client, host_token)
+    client.post("/v1/party-evenings/STUL24/join", **_auth(friend_token))
+    friend.share_drinks_with_parta = False
+    friend.save(update_fields=["share_drinks_with_parta"])
+
+    _log_drink(client, friend_token, "Plzeň", party_code="STUL24")
+
+    detail = client.get("/v1/party-evenings/STUL24", **_auth(host_token)).json()
+    assert [event for event in detail["events"] if event["kind"] == "drink"] == []
+    assert DrinkLog.objects.filter(account=friend).count() == 1

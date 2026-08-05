@@ -1916,6 +1916,18 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     )
     beer = DrinkItemSerializer()
     drank_at = serializers.DateTimeField(required=False, allow_null=True)
+    # The shared evening this was drunk during, if the phone is in one.
+    #
+    # Never validated against a real evening here and never a reason to reject
+    # the drink: the queue may flush hours later, into a night that has ended.
+    # A drink that fails to link is still a drink — see DrinksView.
+    party_code = serializers.CharField(
+        max_length=6,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        trim_whitespace=True,
+    )
 
     def validate(self, attrs: dict) -> dict:
         place_context = attrs["place_context"]

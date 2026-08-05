@@ -117,6 +117,7 @@ import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
@@ -328,6 +329,9 @@ function Tacek({
 
   const pub = place?.kind === 'pub' ? place.pub : null;
   const outsideContext = place?.kind === 'outside' ? place.context : null;
+  // The shared table, if this phone is at one. Only ever a tag on the drink —
+  // the counter works exactly the same without it.
+  const partyCode = usePartyEveningStore((s) => s.evening?.joinCode ?? null);
   const placeLabel = place
     ? pub
       ? pub.name
@@ -786,6 +790,10 @@ function Tacek({
             servingType: beer.servingType,
           },
           drankAt: at,
+          // A beer drunk during a shared evening is tagged with it — one write,
+          // two readers. The server ignores the code when the evening ended, so
+          // a queue that flushes tomorrow morning cannot fail on it.
+          ...(partyCode ? { partyCode } : {}),
         },
         id,
       );
@@ -840,6 +848,7 @@ function Tacek({
       markDrinkSynced,
       menu,
       outsideContext,
+      partyCode,
       place,
       pub,
       setOverride,

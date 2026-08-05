@@ -70,6 +70,14 @@ describe('buildDrinkEntry', () => {
     });
   });
 
+  it('tags the drink with the shared evening, and only when there is one', () => {
+    // One write, two readers: the beer still goes into the diary exactly once,
+    // the code only lets the evening show it. See
+    // docs/decisions/one-write-two-readers.md.
+    expect(buildDrinkEntry(INPUT, 'c').party_code).toBeUndefined();
+    expect(buildDrinkEntry({ ...INPUT, partyCode: 'STUL24' }, 'c').party_code).toBe('STUL24');
+  });
+
   it('omits volume_ml when absent and trims/drops an empty city', () => {
     const entry = buildDrinkEntry(
       { externalId: null, name: 'X', lat: 1, lng: 2, city: '   ', beer: { name: 'Kozel', priceCzk: 40 } },

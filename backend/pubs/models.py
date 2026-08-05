@@ -3208,6 +3208,21 @@ class DrinkLog(models.Model):
         help_text="Abuse flag reason: daily_cap, burst, backdated, or manual.",
     )
 
+    # A beer is written ONCE, here, and an evening is a lens over these rows —
+    # never a second table that counts. The previous shared-evening feature made
+    # people log every beer twice (diary + party) and was deleted for it.
+    #
+    # SET_NULL, not CASCADE: deleting an evening must never delete somebody's
+    # diary. Nullable, because most drinks are not part of a shared table.
+    party_evening = models.ForeignKey(
+        "PartyEvening",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logged_drinks",
+        help_text="The shared evening this drink was logged during, if any.",
+    )
+
     # ---------- timestamps ----------
     drank_at = models.DateTimeField(
         help_text="When the beer was drunk (client-supplied ISO8601, or server now() if omitted).",
@@ -3231,6 +3246,11 @@ class DrinkLog(models.Model):
             models.Index(
                 fields=["account", "place_context"],
                 name="pubs_drink_account_context_idx",
+            ),
+            # The evening's timeline is exactly this query.
+            models.Index(
+                fields=["party_evening", "drank_at"],
+                name="pubs_drink_party_idx",
             ),
         ]
         constraints = [

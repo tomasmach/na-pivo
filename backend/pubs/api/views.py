@@ -1877,6 +1877,33 @@ def _award_first_diary_event_xp(
     return _increment_pivar_xp(account, amount if not had_event else 0)
 
 
+def _party_evening_for_drink(account: Account, code: str | None) -> PartyEvening | None:
+    """
+    The evening a drink belongs to, or None — never an error.
+
+    A drink is written once, into the diary, and an evening is a lens over those
+    rows. This resolves the lens, and every way it can fail is silent on purpose:
+    the offline queue flushes whenever the signal comes back, and a night that
+    ended in the meantime must not jam it. Nothing here can stop a beer being
+    logged.
+
+    Silent when: no code, an unknown or ended evening, an account that is not an
+    active member of it — or an account that has turned off the automatic drink
+    feed. That last one is the toggle honouring what it says on the tin: joining
+    a table shares that you are there, not what is in your glass.
+    """
+    if not code:
+        return None
+    if not account.share_drinks_with_parta:
+        return None
+    return PartyEvening.objects.filter(
+        join_code=code.upper(),
+        active=True,
+        memberships__account=account,
+        memberships__active=True,
+    ).first()
+
+
 class DrinksView(APIView):
     """
     GET    /v1/drinks
@@ -2037,6 +2064,7 @@ class DrinksView(APIView):
                 drink = DrinkLog.objects.create(
                     account=account,
                     client_id=data["client_id"],
+                    party_evening=_party_evening_for_drink(account, data.get("party_code")),
                     cache_key=cache_key,
                     name=data.get("name") or "",
                     lat=data.get("lat") if is_pub else None,
