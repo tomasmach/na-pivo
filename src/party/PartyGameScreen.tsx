@@ -227,19 +227,43 @@ export default function PartyGameScreen() {
   const leader = ranked[0];
   const played = ranked.some((row) => row.score > 0);
 
-  const finish = () => {
-    // The table hears it too: `finish` is what closes the game for everybody,
-    // and the server stamps the row's `ended_at` from it.
-    if (gameId) void sendGameEvent(gameId, { kind: 'finish' });
-    if (key) {
-      finishGame(key, {
-        game: name,
-        // A drinking game names nobody, and keeps no tally: the only tally it
-        // could keep is who drank most.
-        winner: onPoints && played ? leader.name : null,
-        scores: onPoints ? ranked : [],
+  /**
+   * How a game ends — in one place, said twice.
+   *
+   * Locally, so this phone's recap has it the instant you look; and as the
+   * `finish` event, so every other phone at the table ends the game with the
+   * same winner instead of its own guess. The server stamps `ended_at` from
+   * that same event, which is what closes the row.
+   *
+   * The result travels IN the event rather than being recomputed elsewhere: a
+   * game's outcome is the game's to state, and two devices re-deriving it from
+   * partial events is how a table ends up arguing about who paid.
+   */
+  const report = (result: {
+    winner: string | null;
+    scores: { name: string; score: number }[];
+    paying?: string | null;
+  }) => {
+    if (gameId) {
+      void sendGameEvent(gameId, {
+        kind: 'finish',
+        payload: {
+          winner: result.winner,
+          scores: result.scores,
+          ...(result.paying !== undefined ? { paying: result.paying } : {}),
+        },
       });
     }
+    if (key) finishGame(key, { game: name, ...result });
+  };
+
+  const finish = () => {
+    report({
+      // A drinking game names nobody, and keeps no tally: the only tally it
+      // could keep is who drank most.
+      winner: onPoints && played ? leader.name : null,
+      scores: onPoints ? ranked : [],
+    });
     router.back();
   };
 
@@ -294,11 +318,9 @@ export default function PartyGameScreen() {
           players={roster}
           onDone={finish}
           onFinished={(result) => {
-            if (!key) return;
-            finishGame(key, {
-              game: name,
-              // The board is round wins. "Who paid" is the story, and it is the
-              // line the recap and the feed lead with.
+            // The board is round wins. "Who paid" is the story, and it is the
+            // line the recap and the feed lead with.
+            report({
               winner: result.standings[0]?.name ?? null,
               scores: result.standings,
               paying: result.paying,
@@ -324,15 +346,7 @@ export default function PartyGameScreen() {
           onDone={key === 'round' ? finish : undefined}
           onFinished={
             key === 'round'
-              ? (paying) => {
-                  if (!key) return;
-                  finishGame(key, {
-                    game: name,
-                    winner: null,
-                    scores: [],
-                    paying,
-                  });
-                }
+              ? (paying) => report({ winner: null, scores: [], paying })
               : undefined
           }
         />
@@ -351,11 +365,7 @@ export default function PartyGameScreen() {
           onNext={() => setQuestion((current) => current + 1)}
           onFinished={(result) => {
             if (!key) return;
-            finishGame(key, {
-              game: name,
-              winner: result.winner,
-              scores: result.standings,
-            });
+            report({ winner: result.winner, scores: result.standings });
           }}
           onDone={() => router.back()}
         />

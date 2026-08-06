@@ -45,10 +45,34 @@ export function useNightRecord(): NightRecord {
   const games = useLivePartyStore((s) => s.games);
   const log = useLivePartyStore((s) => s.log);
   const sharedGames = usePartyGamesStore((s) => s.games);
+  const sharedEvents = usePartyGamesStore((s) => s.events);
 
   // The account id matters: it is how a drink of mine is told apart from the
   // copy the server sends back. Without it the two would be counted twice.
   const meId = accountId ?? ME_FALLBACK;
+
+  /** What each shared game said when it ended. Last `finish` wins — a game only
+   *  ends once, and a resend of the same event carries the same result. */
+  const finishedResults = React.useMemo(() => {
+    const byGame = new Map<string, NonNullable<NightGame['result']>>();
+    for (const event of sharedEvents) {
+      if (event.kind !== 'finish') continue;
+      const winner = event.payload.winner;
+      const paying = event.payload.paying;
+      const scores = Array.isArray(event.payload.scores) ? event.payload.scores : [];
+      byGame.set(event.gameId, {
+        winner: typeof winner === 'string' ? winner : null,
+        ...(typeof paying === 'string' ? { paying } : {}),
+        scores: scores.flatMap((row) => {
+          const entry = row as { name?: unknown; score?: unknown };
+          return typeof entry?.name === 'string' && typeof entry?.score === 'number'
+            ? [{ name: entry.name, score: entry.score }]
+            : [];
+        }),
+      });
+    }
+    return byGame;
+  }, [sharedEvents]);
 
   return React.useMemo(() => {
     // No `Date.now()` here: a night that has not started has no start, and the
@@ -105,6 +129,10 @@ export function useNightRecord(): NightRecord {
         key: shared.catalogKey,
         name: shared.name,
         startedAt: shared.startedAt,
+        // The result as the game STATED it, not one re-derived here. Two phones
+        // recomputing an outcome from partial events is how a table ends up
+        // arguing about who is paying.
+        ...(finishedResults.get(shared.id) ? { result: finishedResults.get(shared.id)! } : {}),
       });
     }
 
@@ -133,5 +161,5 @@ export function useNightRecord(): NightRecord {
       }));
 
     return extra.length > 0 ? { ...record, people: [...record.people, ...extra] } : record;
-  }, [evening, session, meId, live, pubName, startedAt, games, log, guests, sharedGames]);
+  }, [evening, session, meId, live, pubName, startedAt, games, log, guests, sharedGames, finishedResults]);
 }
