@@ -23,14 +23,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
-  Image,
   Pressable,
   Platform,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
-  type LayoutChangeEvent,
   type ListRenderItemInfo,
   type ViewToken,
 } from 'react-native';
@@ -53,6 +51,7 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { CounterCta } from '@/counter/CounterCta';
+import { OnboardingPreview } from '@/onboarding/OnboardingPreview';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
@@ -64,9 +63,14 @@ interface Slide {
   /** What the app actually does. Three, always — a fourth stops being scanned. */
   bullets: readonly string[];
   icons: readonly React.ComponentType<{ size?: number; color: string }>[];
-  /** Full-bleed illustration on the stout background (generated brand art —
-   *  the PNG background matches Colors.stout exactly, so it blends edge-free). */
-  image: number;
+  /**
+   * Which piece of the real app opens this slide.
+   *
+   * Not an illustration. Generated art is a promise about a product you cannot
+   * see yet; the compass cell, the night's numbers and the board are the product
+   * — and they are the very screens waiting behind "Přeskočit".
+   */
+  preview: 'compass' | 'diary' | 'account';
 }
 
 const SLIDES: Slide[] = [
@@ -76,7 +80,7 @@ const SLIDES: Slide[] = [
     body: cs.onboarding.slide1Body,
     bullets: cs.onboarding.slide1Bullets,
     icons: [CompassIcon, BeerIcon, ChartColumnIcon],
-    image: require('../assets/images/onboarding/slide-compass.png'),
+    preview: 'compass',
   },
   {
     key: 'diary',
@@ -84,7 +88,7 @@ const SLIDES: Slide[] = [
     body: cs.onboarding.slide2Body,
     bullets: cs.onboarding.slide2Bullets,
     icons: [UsersIcon, DicesIcon, CameraIcon],
-    image: require('../assets/images/onboarding/slide-diary.png'),
+    preview: 'diary',
   },
   {
     key: 'account',
@@ -92,32 +96,17 @@ const SLIDES: Slide[] = [
     body: cs.onboarding.slide3Body,
     bullets: cs.onboarding.slide3Bullets,
     icons: [RefreshCwIcon, TrophyIcon, ShieldIcon],
-    image: require('../assets/images/onboarding/slide-account.png'),
+    preview: 'account',
   },
 ];
 
 const LAST_INDEX = SLIDES.length - 1;
 
 function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
-  const [artHeight, setArtHeight] = useState(0);
-  // Smaller than it was: the art is the mood, the three lines under it are the
-  // reason to keep the app, and the art used to take half the screen.
-  const illustrationSide =
-    artHeight > 0 ? Math.max(120, Math.min(210, Math.min(width * 0.5, artHeight - 16))) : 180;
-
-  const handleArtLayout = useCallback((event: LayoutChangeEvent) => {
-    setArtHeight(event.nativeEvent.layout.height);
-  }, []);
-
   return (
     <View style={[styles.slide, { width }]}>
-      <View style={styles.illustrationArea} onLayout={handleArtLayout}>
-        <Image
-          source={item.image}
-          style={{ width: illustrationSide, height: illustrationSide }}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
+      <View style={styles.previewArea}>
+        <OnboardingPreview slide={item.preview} />
       </View>
       <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
         {item.title}
@@ -315,7 +304,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.sm,
   },
-  illustrationArea: {
+  previewArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',

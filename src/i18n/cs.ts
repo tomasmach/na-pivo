@@ -600,10 +600,6 @@ export const cs = {
     title: 'Až sedneš do hospody, cinknu ti.',
     body:
       'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
-    introCta: 'Ukázat, co povoluju',
-    detailsTitle: 'Co bude iOS chtít povolit',
-    detailsBody:
-      'Kompasu stačí poloha při používání. Připomínka navíc potřebuje polohu „vždy“.',
     notificationTitle: 'Notifikace',
     notificationBody: 'Pošlu jen krátké připomenutí, ať večer nezmizí bez zápisu.',
     locationTitle: 'Poloha „vždy“',
@@ -612,7 +608,6 @@ export const cs = {
     privacyBody: 'Trasy neukládám. Hlídám jen, jestli nejsi kousek od hospody.',
     cta: 'Zapnout připomínky',
     ctaBusy: 'Zapínám…',
-    back: 'Zpět',
     skip: 'Teď ne, nech mě pít v klidu',
   },
 
@@ -868,7 +863,9 @@ export const cs = {
     authTitle: 'Účet',
     tabLogin: 'Přihlásit se',
     tabRegister: 'Registrovat',
-    intro: 'Přihlas se a měj svá piva a hodnocení synchronizovaná na všech zařízeních.',
+    haveAccount: 'Už mám účet.',
+    noAccount: 'Ještě nemáš účet?',
+    intro: 'Založ si účet a měj svá piva a hodnocení na všech zařízeních.',
     emailLabel: 'E-mail',
     emailPlaceholder: 'tvuj@email.cz',
     passwordLabel: 'Heslo',

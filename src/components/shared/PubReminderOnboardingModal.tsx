@@ -18,7 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BellRingIcon, ChevronLeftIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
+import { BellRingIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -97,7 +97,6 @@ export function PubReminderOnboardingModal() {
   const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
   const [eligible, setEligible] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState<'intro' | 'permissions'>('intro');
   const [version, setVersion] = useState<string | null>(null);
   // The very first launch belongs to the welcome pager — this explainer stays
   // quiet for that whole session (not just while the pager route is open) and
@@ -144,7 +143,6 @@ export function PubReminderOnboardingModal() {
         setEligible(false);
         return;
       }
-      setStep('intro');
       // Present a beat later: iOS silently drops a Modal presented while the
       // what's-new modal is still mid-dismissal, wedging the UI.
       showTimer = setTimeout(() => {
@@ -179,7 +177,6 @@ export function PubReminderOnboardingModal() {
   const closeAsSeen = useCallback(async () => {
     await markPubReminderOnboardingSeen(version);
     setEligible(false);
-    setStep('intro');
   }, [version]);
 
   const handleEnable = useCallback(async () => {
@@ -191,12 +188,10 @@ export function PubReminderOnboardingModal() {
       if (result.ok) {
         setPubReminderEnabled(true);
         setEligible(false);
-        setStep('intro');
         return;
       }
       setPubReminderEnabled(false);
       setEligible(false);
-      setStep('intro');
       showPubReminderEnableFailure(result.reason);
     } finally {
       setBusy(false);
@@ -218,106 +213,64 @@ export function PubReminderOnboardingModal() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            {step === 'intro' ? (
-              <>
-                <View style={styles.heroBand}>
-                  <View style={styles.eyebrowPill}>
-                    <BellRingIcon size={14} color={Colors.amberLight} />
-                    <Text style={styles.eyebrow}>{cs.pubReminderOnboarding.eyebrow}</Text>
-                  </View>
-                  <PourVisual />
-                </View>
+            <View style={styles.heroBand}>
+              <View style={styles.eyebrowPill}>
+                <BellRingIcon size={14} color={Colors.amberLight} />
+                <Text style={styles.eyebrow}>{cs.pubReminderOnboarding.eyebrow}</Text>
+              </View>
+              <PourVisual />
+            </View>
 
-                <View style={styles.copy}>
-                  <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.pubReminderOnboarding.title}
-                  </Text>
-                  <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.pubReminderOnboarding.body}
-                  </Text>
-                </View>
+            <View style={styles.copy}>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.pubReminderOnboarding.title}
+              </Text>
+              <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.pubReminderOnboarding.body}
+              </Text>
+            </View>
 
-                <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
-                  <GlowButton
-                    label={cs.pubReminderOnboarding.introCta}
-                    onPress={() => setStep('permissions')}
-                    glow="none"
-                    height={58}
-                    accessibilityLabel={cs.pubReminderOnboarding.introCta}
-                  />
-                  <Pressable
-                    onPress={() => void closeAsSeen()}
-                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.skip}
-                  >
-                    <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.skip}
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.detailHeader}>
-                  <Pressable
-                    onPress={() => setStep('intro')}
-                    style={({ pressed }) => [styles.backButton, pressed && styles.secondaryPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.back}
-                    hitSlop={6}
-                  >
-                    <ChevronLeftIcon size={18} color={Colors.foam} />
-                  </Pressable>
-                  <View style={styles.detailCopy}>
-                    <Text style={styles.detailTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.pubReminderOnboarding.detailsTitle}
-                    </Text>
-                    <Text style={styles.detailBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.detailsBody}
-                    </Text>
-                  </View>
-                </View>
+            {/* What iOS will ask for, on the SAME screen as the offer. Splitting
+                it in two made the first screen a teaser with a button whose only
+                job was to reveal the actual pitch — a step that asks for a tap
+                and gives nothing back. */}
+            <View style={styles.reasons}>
+              <ReasonRow
+                icon={<BellRingIcon size={20} color={Colors.amberLight} />}
+                title={cs.pubReminderOnboarding.notificationTitle}
+                body={cs.pubReminderOnboarding.notificationBody}
+              />
+              <ReasonRow
+                icon={<MapPinIcon size={20} color={Colors.amberLight} />}
+                title={cs.pubReminderOnboarding.locationTitle}
+                body={cs.pubReminderOnboarding.locationBody}
+              />
+              <ReasonRow
+                icon={<ShieldIcon size={20} color={Colors.amberLight} />}
+                title={cs.pubReminderOnboarding.privacyTitle}
+                body={cs.pubReminderOnboarding.privacyBody}
+              />
+            </View>
 
-                <View style={styles.reasons}>
-                  <ReasonRow
-                    icon={<BellRingIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.notificationTitle}
-                    body={cs.pubReminderOnboarding.notificationBody}
-                  />
-                  <ReasonRow
-                    icon={<MapPinIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.locationTitle}
-                    body={cs.pubReminderOnboarding.locationBody}
-                  />
-                  <ReasonRow
-                    icon={<ShieldIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.privacyTitle}
-                    body={cs.pubReminderOnboarding.privacyBody}
-                  />
-                </View>
-
-                <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
-                  <GlowButton
-                    label={busy ? cs.pubReminderOnboarding.ctaBusy : cs.pubReminderOnboarding.cta}
-                    onPress={() => void handleEnable()}
-                    glow="none"
-                    height={58}
-                    accessibilityLabel={cs.pubReminderOnboarding.cta}
-                  />
-                  <Pressable
-                    onPress={() => void closeAsSeen()}
-                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.skip}
-                  >
-                    <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.skip}
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+            <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
+              <GlowButton
+                label={busy ? cs.pubReminderOnboarding.ctaBusy : cs.pubReminderOnboarding.cta}
+                onPress={() => void handleEnable()}
+                glow="none"
+                height={58}
+                accessibilityLabel={cs.pubReminderOnboarding.cta}
+              />
+              <Pressable
+                onPress={() => void closeAsSeen()}
+                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.pubReminderOnboarding.skip}
+              >
+                <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.pubReminderOnboarding.skip}
+                </Text>
+              </Pressable>
+            </View>
           </ScrollView>
         </Animated.View>
       </View>
@@ -345,44 +298,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   heroBand: {
-    minHeight: 178,
+    minHeight: 116,
     padding: Spacing.lg,
     backgroundColor: Colors.stout3,
     borderBottomWidth: 1,
     borderBottomColor: withAlpha(Colors.border, 0.7),
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-  },
-  detailCopy: {
-    flex: 1,
-  },
-  detailTitle: {
-    fontWeight: '800',
-    fontSize: 25,
-    lineHeight: 30,
-    color: Colors.foam,
-  },
-  detailBody: {
-    marginTop: Spacing.sm,
-    fontWeight: '400',
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
   },
   eyebrowPill: {
     alignSelf: 'flex-start',
@@ -404,10 +324,10 @@ const styles = StyleSheet.create({
   },
   visual: {
     position: 'absolute',
-    right: Spacing.xl,
-    bottom: Spacing.lg,
-    width: 150,
-    height: 138,
+    right: Spacing.lg,
+    bottom: Spacing.sm,
+    width: 108,
+    height: 100,
   },
   visualRail: {
     position: 'absolute',
@@ -419,10 +339,10 @@ const styles = StyleSheet.create({
   },
   pint: {
     position: 'absolute',
-    left: 22,
-    bottom: 18,
-    width: 82,
-    height: 108,
+    left: 14,
+    bottom: 14,
+    width: 60,
+    height: 78,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.36),
@@ -432,19 +352,19 @@ const styles = StyleSheet.create({
   },
   foamCap: {
     position: 'absolute',
-    left: -10,
-    right: -10,
-    top: 10,
-    height: 32,
+    left: -8,
+    right: -8,
+    top: 8,
+    height: 22,
     borderRadius: Radius.pill,
     backgroundColor: Colors.foam,
   },
   beerFill: {
     position: 'absolute',
-    left: 7,
-    right: 7,
-    bottom: 8,
-    height: 66,
+    left: 6,
+    right: 6,
+    bottom: 6,
+    height: 48,
     borderRadius: 13,
     backgroundColor: Colors.amber,
   },
@@ -459,10 +379,10 @@ const styles = StyleSheet.create({
   },
   bellBubble: {
     position: 'absolute',
-    right: 6,
-    top: 4,
-    width: 58,
-    height: 58,
+    right: 4,
+    top: 2,
+    width: 44,
+    height: 44,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -472,10 +392,10 @@ const styles = StyleSheet.create({
   },
   locationBubble: {
     position: 'absolute',
-    right: 20,
-    bottom: 18,
-    width: 48,
-    height: 48,
+    right: 14,
+    bottom: 14,
+    width: 36,
+    height: 36,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -484,25 +404,24 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   copy: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
   },
   title: {
-    maxWidth: 280,
     fontWeight: '800',
-    fontSize: 32,
-    lineHeight: 36,
+    fontSize: 26,
+    lineHeight: 31,
     color: Colors.foam,
   },
   body: {
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
     fontWeight: '400',
-    fontSize: 16,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 21,
     color: Colors.foamMuted,
   },
   reasons: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
   },
@@ -541,8 +460,8 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
   actions: {
-    paddingTop: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     gap: Spacing.md,
   },
   secondaryButton: {

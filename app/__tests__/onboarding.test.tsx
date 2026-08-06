@@ -29,6 +29,14 @@ jest.mock('@/counter/CounterCta', () => ({
   CounterCta: jest.fn(() => null),
 }));
 
+// The slides open with real app components (the compass cell, the night's
+// numbers, the board). This test is about the pager — the CTA label, the
+// finish/skip wiring — so the preview is stubbed rather than dragging
+// react-native-svg and reanimated into it.
+jest.mock('@/onboarding/OnboardingPreview', () => ({
+  OnboardingPreview: jest.fn(() => null),
+}));
+
 jest.mock('@/theme/fonts', () => ({
   Fonts: {
     display: { extrabold: 'display-extrabold' },
