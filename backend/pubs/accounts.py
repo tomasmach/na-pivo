@@ -599,6 +599,31 @@ def _delete_or_move_account_rows(
         target_keys.add(row_key)
 
 
+def _merge_published_nights(source: Account, target: Account) -> None:
+    """Move nights while respecting both released and 3.0 identities.
+
+    A published night is unique by drinking day in 3.0, but older clients still
+    address deletes and retries by ``client_id``. A collision on either key
+    keeps the claimed account's existing row, matching the merge policy used by
+    the other diary tables.
+    """
+
+    target_client_ids = set(
+        PublishedNight.objects.filter(account=target).values_list("client_id", flat=True)
+    )
+    target_days = set(
+        PublishedNight.objects.filter(account=target).values_list("drinking_day", flat=True)
+    )
+    for row in PublishedNight.objects.filter(account=source).order_by("pk"):
+        if row.client_id in target_client_ids or row.drinking_day in target_days:
+            row.delete()
+            continue
+        row.account = target
+        row.save(update_fields=["account"])
+        target_client_ids.add(row.client_id)
+        target_days.add(row.drinking_day)
+
+
 def _recount_amenity_aggregate(
     cache_key: str, pub_identity_key: str, amenity_key: str
 ) -> None:
@@ -738,9 +763,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubVisit, source=source, target=target, unique_fields=("client_id",)
     )
-    _delete_or_move_account_rows(
-        PublishedNight, source=source, target=target, unique_fields=("client_id",)
-    )
+    _merge_published_nights(source, target)
     _delete_or_move_account_rows(
         NightRound, source=source, target=target, unique_fields=("night_id",)
     )

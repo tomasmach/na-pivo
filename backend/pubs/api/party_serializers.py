@@ -3,7 +3,8 @@ from rest_framework import serializers
 
 class PartyEveningCreateSerializer(serializers.Serializer):
     client_id = serializers.UUIDField()
-    join_code = serializers.RegexField(r"^[A-Z2-9]{6}$")
+    # Readable across a noisy table: no O/I/L/S/Z or 0/1/5.
+    join_code = serializers.RegexField(r"^[ABCDEFGHJKMNPQRTUVWXY2346789]{6}$")
     pub_name = serializers.CharField(max_length=200, trim_whitespace=True)
     pub_city = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
     started_at = serializers.DateTimeField(required=False)

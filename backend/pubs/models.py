@@ -1538,9 +1538,10 @@ class BeerCheckInReaction(models.Model):
 class PublishedNight(models.Model):
     """One explicitly published, finished night in the public/friends feed.
 
-    The mobile client owns ``client_id`` and ``updated_at``. Together they make
-    offline retries idempotent and let the API apply last-write-wins updates
-    without storing any GPS trail, prices, or other implicit location history.
+    The mobile client owns ``client_id`` and ``updated_at``. The drinking day is
+    the product identity, while the client id keeps released clients' offline
+    retries and deletes idempotent. The API never stores a GPS trail, prices, or
+    other implicit location history here.
     """
 
     class Visibility(models.TextChoices):
@@ -1582,16 +1583,16 @@ class PublishedNight(models.Model):
             models.UniqueConstraint(
                 fields=["account", "client_id"],
                 name="unique_published_night_per_account_client_id",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["account", "drinking_day"],
+                name="unique_published_night_per_account_drinking_day",
+            ),
         ]
         indexes = [
             models.Index(
                 fields=["visibility", "-created_at"],
                 name="pubs_night_vis_created_idx",
-            ),
-            models.Index(
-                fields=["account", "drinking_day"],
-                name="pubs_night_account_day_idx",
             ),
         ]
 
@@ -1671,6 +1672,14 @@ class BeerPhoto(models.Model):
         on_delete=models.CASCADE,
         related_name="beer_photos",
     )
+    party_evening = models.ForeignKey(
+        PartyEvening,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="party_photos",
+        help_text="The shared evening this photo was taken during, if any.",
+    )
     client_id = models.UUIDField(help_text="Client-generated idempotency key.")
     image = models.ImageField(upload_to=beer_photo_path)
     caption = models.CharField(max_length=280, blank=True, default="")
@@ -1702,6 +1711,10 @@ class BeerPhoto(models.Model):
         ]
         indexes = [
             models.Index(fields=["account", "-taken_at"]),
+            models.Index(
+                fields=["party_evening", "taken_at"],
+                name="pubs_photo_party_time_idx",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -3380,6 +3393,14 @@ class PubVisit(models.Model):
         related_name="pub_visits",
         help_text="The user who made this visit.",
     )
+    party_evening = models.ForeignKey(
+        PartyEvening,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="party_visits",
+        help_text="The shared evening this visit was part of, if any.",
+    )
     client_id = models.UUIDField(
         help_text="Client-generated UUID; idempotency key for offline retries / updates.",
     )
@@ -3421,6 +3442,10 @@ class PubVisit(models.Model):
             models.Index(
                 fields=["account", "cache_key"],
                 name="pubs_visit_account_pub_idx",
+            ),
+            models.Index(
+                fields=["party_evening", "started_at"],
+                name="pubs_visit_party_time_idx",
             ),
         ]
         constraints = [
@@ -4132,5 +4157,10 @@ class PartyGameEvent(models.Model):
         return f"{self.kind}:{self.delta} on {self.game_id}"
 
 
-from .community_events import CommunityEvent, CommunityEventMembership  # noqa: E402,F401
+from .community_events import (  # noqa: E402,F401
+    CommunityEvent,
+    CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
+)
 from .pub_events import PubEvent  # noqa: E402,F401

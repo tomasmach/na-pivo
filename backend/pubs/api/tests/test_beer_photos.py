@@ -26,6 +26,8 @@ from pubs.models import (
     ContentReport,
     FriendBlock,
     Friendship,
+    PartyEvening,
+    PartyEveningMember,
     PhotoContestEntry,
 )
 from pubs.photo_contest import current_photo_contest
@@ -75,6 +77,18 @@ def _make_friends(a: Account, b: Account) -> None:
         status=Friendship.Status.ACCEPTED,
         responded_at=timezone.now(),
     )
+
+
+def _active_party(account: Account, code: str = "PRAH24") -> PartyEvening:
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code=code,
+        pub_name="U Zlatého tygra",
+        pub_city="Praha",
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account)
+    return evening
 
 
 def _create_photo(
@@ -202,6 +216,29 @@ def test_upload_retry_same_client_id_is_idempotent(client):
     assert second.json()["photo"]["caption"] == "Večer u Tygra"
     media_files = list(Path(BeerPhoto.objects.get().image.path).parent.iterdir())
     assert len(media_files) == 1
+
+
+@pytest.mark.django_db
+def test_upload_links_active_membership_and_stale_or_foreign_code_is_silent(client):
+    token, account = _register(client, "janek")
+    evening = _active_party(account)
+
+    linked = _post_photo(client, token, party_code="PRAH24")
+    assert linked.status_code == status.HTTP_201_CREATED, linked.content
+    assert BeerPhoto.objects.get(public_id=linked.json()["photo"]["id"]).party_evening == evening
+
+    evening.active = False
+    evening.ended_at = timezone.now()
+    evening.save(update_fields=["active", "ended_at"])
+    stale = _post_photo(client, token, party_code="PRAH24", caption="po zavíračce")
+    assert stale.status_code == status.HTTP_201_CREATED, stale.content
+    assert BeerPhoto.objects.get(public_id=stale.json()["photo"]["id"]).party_evening is None
+
+    _active_party(account, code="TABR24")
+    other_token, _other = _register(client, "cizi")
+    foreign = _post_photo(client, other_token, party_code="TABR24", caption="cizí stůl")
+    assert foreign.status_code == status.HTTP_201_CREATED, foreign.content
+    assert BeerPhoto.objects.get(public_id=foreign.json()["photo"]["id"]).party_evening is None
 
 
 @pytest.mark.django_db

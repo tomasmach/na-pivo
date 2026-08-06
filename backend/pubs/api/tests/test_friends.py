@@ -22,6 +22,7 @@ from pubs.models import (
     FriendNotification,
     FriendPubActivity,
     Friendship,
+    PublishedNight,
     PubVisit,
     PushDevice,
 )
@@ -241,6 +242,40 @@ def test_accepted_private_friend_is_visible_even_when_not_public(client):
     dashboard = client.get("/v1/friends", **_auth(token_a))
     assert dashboard.status_code == status.HTTP_200_OK
     assert dashboard.json()["friends"][0]["nickname"] == "tajny"
+
+
+@pytest.mark.django_db
+def test_friend_suggestions_are_public_unrelated_and_privacy_filtered(client):
+    viewer_token, viewer = _register(client, "divak")
+    _public_token, public = _register(client, "novy")
+    _friend_token, friend = _register(client, "kamos")
+    _ghost_token, ghost = _register(client, "duch")
+    _private_token, _private = _register(client, "tajny", is_public=False)
+    _blocked_token, blocked = _register(client, "blok")
+    ghost.ghost_mode = True
+    ghost.save(update_fields=["ghost_mode"])
+    _make_friends(viewer, friend)
+    FriendBlock.objects.create(blocker=blocked, blocked=viewer)
+
+    response = client.get("/v1/friends/search?suggest=true", **_auth(viewer_token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert [item["id"] for item in response.json()["results"]] == [
+        str(public.public_id)
+    ]
+
+
+@pytest.mark.django_db
+def test_ghost_profile_is_hidden_from_direct_friend_search(client):
+    viewer_token, _viewer = _register(client, "divak")
+    _ghost_token, ghost = _register(client, "duch")
+    ghost.ghost_mode = True
+    ghost.save(update_fields=["ghost_mode"])
+
+    response = client.get("/v1/friends/search?q=duch", **_auth(viewer_token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["results"] == []
 
 
 @pytest.mark.django_db
@@ -1339,6 +1374,39 @@ def test_public_non_friend_profile_is_visible_without_private_activity_leaks(cli
         expires_at=now + timedelta(hours=2),
     )
     _drink(account_b)
+    local_today = timezone.localtime(now, _PRAGUE).date()
+    PublishedNight.objects.create(
+        account=account_b,
+        client_id="public-today",
+        drinking_day=local_today,
+        started_at=now - timedelta(hours=2),
+        ended_at=now,
+        beer_count=2,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=["Veřejná hospoda"],
+        city="Praha",
+        duration_minutes=120,
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=now,
+    )
+    PublishedNight.objects.create(
+        account=account_b,
+        client_id="friends-yesterday",
+        drinking_day=local_today - timedelta(days=1),
+        started_at=now - timedelta(days=1, hours=3),
+        ended_at=now - timedelta(days=1),
+        beer_count=7,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=["Tajná hospoda"],
+        city="Praha",
+        duration_minutes=180,
+        visibility=PublishedNight.Visibility.FRIENDS,
+        updated_at=now,
+    )
 
     resp = client.get(f"/v1/friends/{account_b.public_id}", **_auth(token_a))
     assert resp.status_code == status.HTTP_200_OK
@@ -1362,6 +1430,9 @@ def test_public_non_friend_profile_is_visible_without_private_activity_leaks(cli
     assert body["latest_beers"] == []
     assert body["public_stats"]["total_beers"] == 1
     assert body["achievements"]["first_beer"] is True
+    assert body["published_timeline"]["windows"]["week"]["beers"] == 2
+    assert "Veřejná hospoda" not in str(body["published_timeline"])
+    assert "Tajná hospoda" not in str(body["published_timeline"])
 
 
 @pytest.mark.django_db

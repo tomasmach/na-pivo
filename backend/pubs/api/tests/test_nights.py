@@ -140,6 +140,36 @@ def test_publish_and_last_write_wins_upsert(client):
 
 
 @pytest.mark.django_db
+def test_publish_upserts_by_drinking_day_across_publish_surfaces(client):
+    token, account = _register(client, "janek")
+
+    first = _publish(client, token, client_id="recap-1", beer_count=3)
+    updated = _publish(
+        client,
+        token,
+        client_id="vycep-1",
+        beer_count=6,
+        updated_at="2026-07-22T02:00:00+02:00",
+    )
+    stale = _publish(
+        client,
+        token,
+        client_id="recap-1",
+        beer_count=1,
+        updated_at="2026-07-21T22:00:00+02:00",
+    )
+
+    assert first.status_code == status.HTTP_201_CREATED, first.content
+    assert updated.status_code == status.HTTP_200_OK, updated.content
+    assert stale.status_code == status.HTTP_200_OK, stale.content
+    assert PublishedNight.objects.filter(account=account).count() == 1
+    night = PublishedNight.objects.get(account=account)
+    assert night.client_id == "vycep-1"
+    assert night.beer_count == 6
+    assert stale.json()["night"]["id"] == updated.json()["night"]["id"]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -216,6 +246,61 @@ def test_feed_scopes_and_global_nickname_rule(client):
 
 
 @pytest.mark.django_db
+def test_mine_feed_returns_all_of_the_viewers_nights_only(client):
+    viewer_token, viewer = _register(client, None)
+    stranger_token, _stranger = _register(client, "cizi")
+    friends_night = _publish(client, viewer_token, visibility="friends")
+    public_night = _publish(
+        client,
+        viewer_token,
+        client_id="viewer-public",
+        visibility="public",
+    )
+    _publish(client, stranger_token, client_id="stranger-public", visibility="public")
+
+    response = client.get(
+        "/v1/nights/feed?scope=global&mine=true",
+        **_auth(viewer_token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    items = response.json()["nights"]
+    assert {item["id"] for item in items} == {
+        friends_night.json()["night"]["id"],
+        public_night.json()["night"]["id"],
+    }
+    assert {item["author"]["id"] for item in items} == {str(viewer.public_id)}
+    assert all(item["is_mine"] for item in items)
+    assert all("client_id" in item for item in items)
+
+
+@pytest.mark.django_db
+def test_author_feed_keeps_normal_visibility_rules(client):
+    viewer_token, viewer = _register(client, "divak")
+    owner_token, owner = _register(client, "autor")
+    _make_friends(viewer, owner)
+    public = _publish(client, owner_token, client_id="public", visibility="public")
+    friends = _publish(
+        client,
+        owner_token,
+        client_id="friends",
+        drinking_day="2026-07-22",
+        visibility="friends",
+    )
+
+    response = client.get(
+        f"/v1/nights/feed?scope=friends&author={owner.public_id}",
+        **_auth(viewer_token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert {item["id"] for item in response.json()["nights"]} == {
+        public.json()["night"]["id"],
+        friends.json()["night"]["id"],
+    }
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("viewer_blocks", [True, False])
 def test_feed_excludes_blocks_in_both_directions(client, viewer_blocks):
     viewer_token, viewer = _register(client, "divak")
@@ -255,8 +340,13 @@ def test_friends_feed_hides_ghost_author_without_hiding_explicit_global_post(cli
 def test_cursor_pagination_has_no_duplicates(client):
     token, _account = _register(client, "janek")
     created_ids = []
-    for beer_count in (1, 2, 3):
-        response = _publish(client, token, beer_count=beer_count)
+    for offset, beer_count in enumerate((1, 2, 3), start=21):
+        response = _publish(
+            client,
+            token,
+            beer_count=beer_count,
+            drinking_day=f"2026-07-{offset}",
+        )
         assert response.status_code == status.HTTP_201_CREATED, response.content
         created_ids.append(response.json()["night"]["id"])
 
@@ -285,7 +375,13 @@ def test_round_reaction_upserts_unreacts_and_rejects_self_or_invisible(client):
     viewer_token, _viewer = _register(client, "divak")
     stranger_token, _stranger = _register(client, "cizi")
     public = _publish(client, owner_token, visibility="public").json()["night"]
-    hidden = _publish(client, owner_token, visibility="friends").json()["night"]
+    hidden = _publish(
+        client,
+        owner_token,
+        client_id="hidden-night",
+        drinking_day="2026-07-22",
+        visibility="friends",
+    ).json()["night"]
 
     first = client.post(f"/v1/nights/{public['id']}/react", **_auth(viewer_token))
     second = client.post(f"/v1/nights/{public['id']}/react", **_auth(viewer_token))
@@ -311,7 +407,14 @@ def test_anonymous_merge_removes_rounds_that_become_self_reactions(client):
     target_token, target = _register(client, "cil")
     other_token, other = _register(client, "jiny")
     source_night_id = _publish(client, source_token).json()["night"]["id"]
-    target_night_id = _publish(client, target_token).json()["night"]["id"]
+    target_night_id = _publish(
+        client,
+        target_token,
+        drinking_day="2026-07-22",
+        started_at="2026-07-22T18:00:00+02:00",
+        ended_at="2026-07-22T23:30:00+02:00",
+        updated_at="2026-07-23T00:00:00+02:00",
+    ).json()["night"]["id"]
     source_night = PublishedNight.objects.get(public_id=source_night_id)
     target_night = PublishedNight.objects.get(public_id=target_night_id)
 

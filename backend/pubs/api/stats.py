@@ -98,6 +98,13 @@ def _empty_payload() -> dict:
             "months": [],
             "years": [],
         },
+        "timeline": {
+            "days": [],
+            "weeks": [],
+            "months": [],
+            "streak": {"current_weeks": 0, "best_weeks": 0},
+            "windows": {},
+        },
     }
 
 
@@ -115,6 +122,158 @@ def _period_payload(
         "evenings": evenings,
         "spent_czk": spent_czk,
         "average_beers_per_evening": round(beers / evenings, 1) if evenings else 0,
+    }
+
+
+def _empty_timeline_bucket(period: str) -> dict:
+    """One privacy-safe profile chart bucket.
+
+    These buckets deliberately omit spend, concrete beer names and locations.
+    A profile chart needs rhythm, not a second export of somebody's diary.
+    """
+
+    return {
+        "period": period,
+        "beers": 0,
+        "evenings": 0,
+        "distinct_pubs": 0,
+        "longest_evening_seconds": None,
+    }
+
+
+def _timeline_payload(
+    *,
+    evening_times: OrderedDict[tuple[str | None, date], list[datetime]],
+    evening_beer_times: OrderedDict[tuple[str | None, date], list[datetime]],
+    stats_tz: ZoneInfo,
+) -> dict:
+    """Return fixed-width day/week/month series plus the weekly streak.
+
+    Empty buckets are material: omitting a quiet day makes the graph claim a
+    busier rhythm than the diary contains.  The windows end today in the
+    caller's timezone and stay small (7 + 12 + 12 rows), so the response size
+    does not grow with account age.
+    """
+
+    today = datetime.now(stats_tz).date()
+    day_starts = [today - timedelta(days=offset) for offset in range(6, -1, -1)]
+    current_monday = today - timedelta(days=today.weekday())
+    week_starts = [
+        current_monday - timedelta(weeks=offset) for offset in range(11, -1, -1)
+    ]
+
+    month_starts: list[date] = []
+    year, month = today.year, today.month
+    for offset in range(11, -1, -1):
+        absolute = year * 12 + (month - 1) - offset
+        month_starts.append(date(absolute // 12, absolute % 12 + 1, 1))
+
+    day_rows = {
+        start: _empty_timeline_bucket(start.isoformat()) for start in day_starts
+    }
+    week_rows = {
+        start: _empty_timeline_bucket(start.isoformat()) for start in week_starts
+    }
+    month_rows = {
+        start: _empty_timeline_bucket(start.strftime("%Y-%m"))
+        for start in month_starts
+    }
+    day_pub_keys = {start: set() for start in day_starts}
+    week_pub_keys = {start: set() for start in week_starts}
+    month_pub_keys = {start: set() for start in month_starts}
+
+    active_weeks: set[date] = set()
+    for ekey, times in evening_times.items():
+        pub_key, day = ekey
+        monday = day - timedelta(days=day.weekday())
+        month_start = date(day.year, day.month, 1)
+        active_weeks.add(monday)
+        duration_seconds = None
+        if len(times) >= 2:
+            duration = times[-1] - times[0]
+            if duration > timedelta(0):
+                duration_seconds = int(duration.total_seconds())
+        beer_count = len(evening_beer_times.get(ekey, ()))
+
+        for key, rows, pub_keys in (
+            (day, day_rows, day_pub_keys),
+            (monday, week_rows, week_pub_keys),
+            (month_start, month_rows, month_pub_keys),
+        ):
+            row = rows.get(key)
+            if row is None:
+                continue
+            row["beers"] += beer_count
+            row["evenings"] += 1
+            if pub_key is not None:
+                pub_keys[key].add(pub_key)
+            previous = row["longest_evening_seconds"]
+            if duration_seconds is not None and (
+                previous is None or duration_seconds > previous
+            ):
+                row["longest_evening_seconds"] = duration_seconds
+
+    for rows, pub_keys in (
+        (day_rows, day_pub_keys),
+        (week_rows, week_pub_keys),
+        (month_rows, month_pub_keys),
+    ):
+        for key, row in rows.items():
+            row["distinct_pubs"] = len(pub_keys[key])
+
+    best_streak = 0
+    run = 0
+    previous: date | None = None
+    for week in sorted(active_weeks):
+        if previous is not None and week == previous + timedelta(weeks=1):
+            run += 1
+        else:
+            run = 1
+        best_streak = max(best_streak, run)
+        previous = week
+
+    current_streak = 0
+    cursor = current_monday
+    while cursor in active_weeks:
+        current_streak += 1
+        cursor -= timedelta(weeks=1)
+
+    def window_summary(start: date) -> dict:
+        selected = [
+            (ekey, times)
+            for ekey, times in evening_times.items()
+            if start <= ekey[1] <= today
+        ]
+        pub_keys = {ekey[0] for ekey, _ in selected if ekey[0] is not None}
+        longest: int | None = None
+        for _, times in selected:
+            if len(times) < 2:
+                continue
+            duration = times[-1] - times[0]
+            if duration <= timedelta(0):
+                continue
+            seconds = int(duration.total_seconds())
+            longest = seconds if longest is None else max(longest, seconds)
+        return {
+            "beers": sum(len(evening_beer_times.get(ekey, ())) for ekey, _ in selected),
+            "evenings": len(selected),
+            "distinct_pubs": len(pub_keys),
+            "longest_evening_seconds": longest,
+        }
+
+    return {
+        "days": list(day_rows.values()),
+        "weeks": list(week_rows.values()),
+        "months": list(month_rows.values()),
+        "streak": {
+            "current_weeks": current_streak,
+            "best_weeks": best_streak,
+        },
+        "windows": {
+            "week": window_summary(today - timedelta(days=6)),
+            "month": window_summary(today - timedelta(days=29)),
+            "year": window_summary(month_starts[0]),
+        },
     }
 
 
@@ -142,6 +301,11 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
     if not drinks:
         payload = _empty_payload()
         payload["periods"]["timezone"] = resolved_timezone_name
+        payload["timeline"] = _timeline_payload(
+            evening_times=OrderedDict(),
+            evening_beer_times=OrderedDict(),
+            stats_tz=stats_tz,
+        )
         return payload
 
     # Fold the ascending drinks into evenings (cache_key, drinking_day) and
@@ -270,6 +434,11 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
             _period_payload(period, **summary) for period, summary in years.items()
         ],
     }
+    timeline = _timeline_payload(
+        evening_times=evening_times,
+        evening_beer_times=evening_beer_times,
+        stats_tz=stats_tz,
+    )
 
     return {
         "total_beers": total_beers,
@@ -280,4 +449,5 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
         "top_pubs": top_pubs_payload,
         "records": records,
         "periods": periods,
+        "timeline": timeline,
     }

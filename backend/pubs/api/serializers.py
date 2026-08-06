@@ -834,12 +834,23 @@ class FriendProfileSerializer(serializers.ModelSerializer):
 class FriendSearchQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/friends/search."""
 
-    q = serializers.CharField(max_length=40, trim_whitespace=True)
+    q = serializers.CharField(
+        max_length=40,
+        trim_whitespace=True,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    suggest = serializers.BooleanField(required=False, default=False)
 
-    def validate_q(self, value: str) -> str:
-        if len(value.strip()) < 2:
-            raise serializers.ValidationError("q must contain at least 2 characters.")
-        return value.strip()
+    def validate(self, attrs: dict) -> dict:
+        query = attrs.get("q", "").strip()
+        if not attrs.get("suggest") and len(query) < 2:
+            raise serializers.ValidationError(
+                {"q": "q must contain at least 2 characters."}
+            )
+        attrs["q"] = query
+        return attrs
 
 
 class LeaderboardQuerySerializer(serializers.Serializer):
@@ -1183,6 +1194,8 @@ class PublishedNightFeedQuerySerializer(serializers.Serializer):
     """Query parameters for GET /v1/nights/feed."""
 
     scope = serializers.ChoiceField(choices=("friends", "global"), default="global")
+    mine = serializers.BooleanField(required=False, default=False)
+    author = serializers.UUIDField(required=False)
     cursor = serializers.CharField(required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(required=False, min_value=1, max_value=30, default=30)
 
@@ -1297,6 +1310,15 @@ class BeerPhotoUploadSerializer(serializers.Serializer):
         default=BeerPhoto.Visibility.FRIENDS,
     )
     taken_at = serializers.DateTimeField(required=False, allow_null=True)
+    # Best-effort association only. An ended/foreign table must never reject
+    # the photo itself when an offline upload finally reaches the server.
+    party_code = serializers.CharField(
+        max_length=6,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        trim_whitespace=True,
+    )
 
     def validate_taken_at(self, value):
         if value is None:
@@ -2056,6 +2078,14 @@ class PubVisitRequestSerializer(PubInputSerializer):
     started_at = serializers.DateTimeField()
     ended_at = serializers.DateTimeField(required=False, allow_null=True)
     updated_at = serializers.DateTimeField()
+    # Best-effort association only; resolved by PubVisitView after validation.
+    party_code = serializers.CharField(
+        max_length=6,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        trim_whitespace=True,
+    )
 
     def validate(self, attrs: dict) -> dict:
         ended_at = attrs.get("ended_at")

@@ -377,6 +377,7 @@ dependencies = [
     { name = "google-auth" },
     { name = "opening-hours-py" },
     { name = "pillow" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "python-dotenv" },
     { name = "rapidfuzz" },
@@ -387,7 +388,6 @@ dependencies = [
 [package.optional-dependencies]
 prod = [
     { name = "gunicorn" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -411,7 +411,7 @@ requires-dist = [
     { name = "gunicorn", marker = "extra == 'prod'", specifier = ">=26.0.0" },
     { name = "opening-hours-py", specifier = ">=1.4.0" },
     { name = "pillow", specifier = ">=11.4.0" },
-    { name = "psycopg", extras = ["binary"], marker = "extra == 'prod'", specifier = ">=3.3.4" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.13.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },

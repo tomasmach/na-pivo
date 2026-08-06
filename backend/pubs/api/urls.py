@@ -35,13 +35,17 @@ from .auth_views import (
     UnlinkView,
     VerifyEmailView,
 )
+from .challenge_views import ChallengeListView
 from .community_event_views import (
     CommunityEventCancelView,
     CommunityEventCollectionView,
+    CommunityEventDetailView,
     CommunityEventDiscoveryView,
     CommunityEventJoinView,
     CommunityEventReportView,
     CommunityEventRequestDecisionView,
+    CommunityEventTeamCollectionView,
+    CommunityEventTeamMembershipView,
 )
 from .party_views import (
     PartyEveningCollectionView,
@@ -49,6 +53,7 @@ from .party_views import (
     PartyEveningDrinkView,
     PartyEveningEndView,
     PartyEveningJoinView,
+    PartyEveningRecordView,
     PartyGameCollectionView,
     PartyGameEventView,
     party_game_stream,
@@ -118,6 +123,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("challenges", ChallengeListView.as_view(), name="challenges"),
     path("community-events", CommunityEventCollectionView.as_view(), name="community-events"),
     path(
         "community-events/discover",
@@ -125,9 +131,24 @@ urlpatterns = [
         name="community-events-discover",
     ),
     path(
+        "community-events/<uuid:event_id>",
+        CommunityEventDetailView.as_view(),
+        name="community-event-detail",
+    ),
+    path(
         "community-events/<uuid:event_id>/join",
         CommunityEventJoinView.as_view(),
         name="community-event-join",
+    ),
+    path(
+        "community-events/<uuid:event_id>/teams",
+        CommunityEventTeamCollectionView.as_view(),
+        name="community-event-teams",
+    ),
+    path(
+        "community-events/<uuid:event_id>/teams/<uuid:team_id>/join",
+        CommunityEventTeamMembershipView.as_view(),
+        name="community-event-team-join",
     ),
     path(
         "community-events/<uuid:event_id>/requests/<uuid:request_id>/<str:action>",
@@ -177,6 +198,11 @@ urlpatterns = [
         "party-evenings/<str:code>/games/<str:game_id>/events",
         PartyGameEventView.as_view(),
         name="party-evening-game-events",
+    ),
+    path(
+        "party-evenings/<str:code>/record",
+        PartyEveningRecordView.as_view(),
+        name="party-evening-record",
     ),
     path(
         "party-evenings/<str:code>",

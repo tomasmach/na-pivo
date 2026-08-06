@@ -1877,6 +1877,27 @@ def _award_first_diary_event_xp(
     return _increment_pivar_xp(account, amount if not had_event else 0)
 
 
+def _party_evening_for_entry(account: Account, code: str | None) -> PartyEvening | None:
+    """Resolve an active table association, or None without failing the write."""
+    if not code or account.ghost_mode:
+        return None
+    evening = (
+        PartyEvening.objects.select_related("host")
+        .filter(
+            join_code=code.upper(),
+            active=True,
+            memberships__account=account,
+            memberships__active=True,
+        )
+        .first()
+    )
+    if evening is None or evening.host.ghost_mode:
+        return None
+    if evening.host_id in _blocked_account_ids(account):
+        return None
+    return evening
+
+
 def _party_evening_for_drink(account: Account, code: str | None) -> PartyEvening | None:
     """
     The evening a drink belongs to, or None — never an error.
@@ -1892,16 +1913,9 @@ def _party_evening_for_drink(account: Account, code: str | None) -> PartyEvening
     feed. That last one is the toggle honouring what it says on the tin: joining
     a table shares that you are there, not what is in your glass.
     """
-    if not code:
-        return None
     if not account.share_drinks_with_parta:
         return None
-    return PartyEvening.objects.filter(
-        join_code=code.upper(),
-        active=True,
-        memberships__account=account,
-        memberships__active=True,
-    ).first()
+    return _party_evening_for_entry(account, code)
 
 
 class DrinksView(APIView):
@@ -2819,6 +2833,7 @@ def _visit_item(visit: PubVisit) -> dict:
         "started_at": visit.started_at.isoformat(),
         "ended_at": visit.ended_at.isoformat() if visit.ended_at else None,
         "updated_at": visit.client_updated_at.isoformat(),
+        "party_code": visit.party_evening.join_code if visit.party_evening_id else None,
     }
 
 
@@ -2842,7 +2857,7 @@ class PubVisitView(APIView):
 
     def get(self, request: Request) -> Response:
         try:
-            visits = PubVisit.objects.filter(account=request.user)
+            visits = PubVisit.objects.filter(account=request.user).select_related("party_evening")
             items = [_visit_item(visit) for visit in visits]
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-visits: unexpected error listing visits: %s", exc, exc_info=True)
@@ -2876,6 +2891,19 @@ class PubVisitView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
+                party_evening = _party_evening_for_entry(
+                    request.user,
+                    data.get("party_code"),
+                )
+                # A visit is commonly closed after the table ended. Preserve
+                # the association established by its first POST rather than
+                # clearing it when the same now-stale code arrives on update.
+                party_evening_id = (
+                    party_evening.pk
+                    if party_evening is not None
+                    else (existing.party_evening_id if existing is not None else None)
+                )
+
                 _, created = PubVisit.objects.update_or_create(
                     account=request.user,
                     client_id=data["client_id"],
@@ -2889,6 +2917,7 @@ class PubVisitView(APIView):
                         "started_at": data["started_at"],
                         "ended_at": data.get("ended_at"),
                         "client_updated_at": data["updated_at"],
+                        "party_evening_id": party_evening_id,
                     },
                 )
         except Exception as exc:  # noqa: BLE001
@@ -3836,17 +3865,37 @@ class FriendSearchView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         q = serializer.validated_data["q"]
+        suggestions = serializer.validated_data["suggest"]
         profiles = (
             Account.objects.filter(
                 status=Account.Status.ACTIVE,
                 is_public=True,
+                ghost_mode=False,
             )
             .exclude(pk=request.user.pk)
             # A block (either direction) hides both parties from search.
             .exclude(pk__in=_blocked_account_ids(request.user))
-            .filter(Q(nickname__icontains=q) | Q(display_name__icontains=q))
-            .order_by("nickname", "display_name")[:20]
         )
+        if suggestions:
+            related_ids = Friendship.objects.filter(
+                Q(requester=request.user) | Q(recipient=request.user),
+                status__in=(Friendship.Status.PENDING, Friendship.Status.ACCEPTED),
+            ).values_list("requester_id", "recipient_id")
+            excluded_ids = {
+                account_id
+                for pair in related_ids
+                for account_id in pair
+                if account_id != request.user.pk
+            }
+            profiles = (
+                profiles.exclude(pk__in=excluded_ids)
+                .exclude(Q(nickname__isnull=True) | Q(nickname=""))
+                .order_by("-last_seen_at", "nickname", "display_name")[:5]
+            )
+        else:
+            profiles = profiles.filter(
+                Q(nickname__icontains=q) | Q(display_name__icontains=q)
+            ).order_by("nickname", "display_name")[:20]
         return Response(
             {
                 "results": FriendProfileSerializer(
@@ -4445,6 +4494,111 @@ class FriendRequestActionView(APIView):
         )
 
 
+def _published_profile_timeline(
+    friend: Account,
+    *,
+    is_friend: bool,
+    now: datetime | None = None,
+) -> dict:
+    """Fixed-width profile chart over nights the viewer may already see.
+
+    Only aggregate counts leave this helper. Pub names are used transiently to
+    deduplicate the count and are never included in the response.
+    """
+
+    today = dj_timezone.localtime(now or dj_timezone.now(), PRAGUE_TZ).date()
+    current_monday = today - timedelta(days=today.weekday())
+    day_starts = [today - timedelta(days=offset) for offset in range(6, -1, -1)]
+    week_starts = [
+        current_monday - timedelta(weeks=offset) for offset in range(11, -1, -1)
+    ]
+    month_starts: list[date] = []
+    for offset in range(11, -1, -1):
+        absolute = today.year * 12 + today.month - 1 - offset
+        month_starts.append(date(absolute // 12, absolute % 12 + 1, 1))
+
+    rows = PublishedNight.objects.filter(
+        account=friend,
+        is_removed=False,
+        drinking_day__gte=month_starts[0],
+    )
+    if not is_friend or friend.ghost_mode:
+        rows = rows.filter(visibility=PublishedNight.Visibility.PUBLIC)
+    nights = list(rows.order_by("drinking_day", "id"))
+
+    def empty(period: str) -> dict:
+        return {
+            "period": period,
+            "beers": 0,
+            "evenings": 0,
+            "distinct_pubs": 0,
+            "longest_evening_seconds": None,
+            "_pubs": set(),
+        }
+
+    day_buckets = {day: empty(day.isoformat()) for day in day_starts}
+    week_buckets = {day: empty(day.isoformat()) for day in week_starts}
+    month_buckets = {
+        day: empty(day.strftime("%Y-%m")) for day in month_starts
+    }
+
+    def duration_seconds(night: PublishedNight) -> int | None:
+        if night.duration_minutes:
+            return int(night.duration_minutes) * 60
+        duration = night.ended_at - night.started_at
+        return int(duration.total_seconds()) if duration > timedelta(0) else None
+
+    def add(bucket: dict, night: PublishedNight) -> None:
+        bucket["beers"] += int(night.beer_count)
+        bucket["evenings"] += 1
+        bucket["_pubs"].update(
+            name.strip().casefold()
+            for name in night.pub_names
+            if isinstance(name, str) and name.strip()
+        )
+        duration = duration_seconds(night)
+        previous = bucket["longest_evening_seconds"]
+        if duration is not None and (previous is None or duration > previous):
+            bucket["longest_evening_seconds"] = duration
+
+    for night in nights:
+        day = night.drinking_day
+        monday = day - timedelta(days=day.weekday())
+        month = day.replace(day=1)
+        for key, buckets in (
+            (day, day_buckets),
+            (monday, week_buckets),
+            (month, month_buckets),
+        ):
+            if key in buckets:
+                add(buckets[key], night)
+
+    def clean(bucket: dict) -> dict:
+        bucket = dict(bucket)
+        bucket["distinct_pubs"] = len(bucket.pop("_pubs"))
+        return bucket
+
+    def window(start: date) -> dict:
+        bucket = empty("")
+        for night in nights:
+            if start <= night.drinking_day <= today:
+                add(bucket, night)
+        cleaned = clean(bucket)
+        cleaned.pop("period")
+        return cleaned
+
+    return {
+        "days": [clean(bucket) for bucket in day_buckets.values()],
+        "weeks": [clean(bucket) for bucket in week_buckets.values()],
+        "months": [clean(bucket) for bucket in month_buckets.values()],
+        "windows": {
+            "week": window(today - timedelta(days=6)),
+            "month": window(today - timedelta(days=29)),
+            "year": window(month_starts[0]),
+        },
+    }
+
+
 class FriendDetailView(APIView):
     """GET/DELETE /v1/friends/<account_id> — friend profile / remove friend or cancel invite."""
 
@@ -4562,6 +4716,11 @@ class FriendDetailView(APIView):
                 "friendship_status": friendship_status,
                 "incoming_request_id": incoming_request_id,
                 "public_stats": derive_account_public_stats(friend, public_profile_stats),
+                "published_timeline": _published_profile_timeline(
+                    friend,
+                    is_friend=is_friend,
+                    now=now,
+                ),
                 "achievements": derive_account_achievements(friend, public_profile_stats),
                 "stats": {
                     "shared_pub_count": shared_count,
@@ -5405,20 +5564,41 @@ class PublishedNightView(APIView):
 
         try:
             with transaction.atomic():
-                existing = (
-                    PublishedNight.objects.select_for_update()
-                    .filter(account=request.user, client_id=data["client_id"])
-                    .first()
+                # Lock the account because an absent row cannot be locked. This
+                # serialises the two legitimate publishers for one drinking day
+                # (recap and Výčep) without relying on a uniqueness exception.
+                Account.objects.select_for_update().get(pk=request.user.pk)
+                locked = PublishedNight.objects.select_for_update().filter(
+                    account=request.user
                 )
+                by_day = locked.filter(drinking_day=data["drinking_day"]).first()
+                by_client = locked.filter(client_id=data["client_id"]).first()
+                if by_day is not None and by_client is not None and by_day.pk != by_client.pk:
+                    return Response(
+                        {
+                            "code": "night_identity_conflict",
+                            "detail": "Tento večer se nepodařilo bezpečně spárovat.",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                existing = by_day or by_client
                 if existing is not None and existing.updated_at > data["updated_at"]:
                     night = existing
                     created = False
+                elif existing is not None:
+                    for field, value in defaults.items():
+                        setattr(existing, field, value)
+                    existing.client_id = data["client_id"]
+                    existing.save(update_fields=["client_id", *defaults.keys()])
+                    night = existing
+                    created = False
                 else:
-                    night, created = PublishedNight.objects.update_or_create(
+                    night = PublishedNight.objects.create(
                         account=request.user,
                         client_id=data["client_id"],
-                        defaults=defaults,
+                        **defaults,
                     )
+                    created = True
         except Exception as exc:  # noqa: BLE001
             logger.error("nights: upsert failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -5465,7 +5645,9 @@ class PublishedNightFeedView(APIView):
         if blocked_ids:
             rows = rows.exclude(account_id__in=blocked_ids)
 
-        if data["scope"] == "friends":
+        if data["mine"]:
+            rows = rows.filter(account=request.user)
+        elif data["scope"] == "friends":
             friend_ids = set(_accepted_friend_ids(request.user))
             friend_ids.difference_update(blocked_ids)
             rows = rows.filter(
@@ -5483,6 +5665,9 @@ class PublishedNightFeedView(APIView):
             rows = rows.filter(visibility=PublishedNight.Visibility.PUBLIC).exclude(
                 Q(account__nickname__isnull=True) | Q(account__nickname="")
             )
+
+        if data.get("author") is not None:
+            rows = rows.filter(account__public_id=data["author"])
 
         cursor = data.get("cursor") or ""
         if cursor:
@@ -5870,6 +6055,10 @@ class BeerPhotoView(APIView):
 
         photo = BeerPhoto(
             account=request.user,
+            party_evening=_party_evening_for_entry(
+                request.user,
+                data.get("party_code"),
+            ),
             client_id=data["client_id"],
             caption=data.get("caption") or "",
             pub_cache_key=pub_identity.cache_key,
@@ -7696,7 +7885,10 @@ def _load_export_account(account: Account) -> Account:
         .prefetch_related(
             "identities",
             "push_devices",
-            "drinks",
+            Prefetch(
+                "drinks",
+                queryset=DrinkLog.objects.select_related("party_evening"),
+            ),
             Prefetch(
                 "beer_checkins",
                 queryset=BeerCheckIn.objects.order_by("-checked_in_at", "created_at", "id"),
@@ -7710,7 +7902,16 @@ def _load_export_account(account: Account) -> Account:
                 "night_rounds",
                 queryset=NightRound.objects.select_related("night"),
             ),
-            "pub_visits",
+            Prefetch(
+                "beer_photos",
+                queryset=BeerPhoto.objects.select_related("party_evening").order_by(
+                    "-taken_at", "id"
+                ),
+            ),
+            Prefetch(
+                "pub_visits",
+                queryset=PubVisit.objects.select_related("party_evening"),
+            ),
             "pub_ratings",
             "contribution_logs",
             "pub_reports",
@@ -7891,6 +8092,9 @@ def _export_account_data(account: Account) -> dict:
                 "beer_name": drink.beer_name,
                 "price_czk": drink.price_czk,
                 "volume_ml": drink.volume_ml,
+                "party_evening_id": (
+                    str(drink.party_evening.public_id) if drink.party_evening_id else None
+                ),
                 "drank_at": _iso(drink.drank_at),
                 "created_at": _iso(drink.created_at),
             }
@@ -7922,6 +8126,23 @@ def _export_account_data(account: Account) -> dict:
                 "updated_at": _iso(checkin.updated_at),
             }
             for checkin in account.beer_checkins.all()
+        ],
+        "beer_photos": [
+            {
+                "id": str(photo.public_id),
+                "client_id": str(photo.client_id),
+                "caption": photo.caption,
+                "pub_cache_key": photo.pub_cache_key or None,
+                "pub_name": photo.pub_name or None,
+                "pub_city": photo.pub_city or None,
+                "visibility": photo.visibility,
+                "taken_at": _iso(photo.taken_at),
+                "created_at": _iso(photo.created_at),
+                "party_evening_id": (
+                    str(photo.party_evening.public_id) if photo.party_evening_id else None
+                ),
+            }
+            for photo in account.beer_photos.all()
         ],
         "published_nights": [
             {

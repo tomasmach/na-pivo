@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework import serializers, status
@@ -14,7 +14,13 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from pubs.api.authentication import AccountTokenAuthentication
-from pubs.community_events import CommunityEvent, CommunityEventMembership
+from pubs.community_events import (
+    COMMUNITY_EVENT_TEAM_MAX_MEMBERS,
+    CommunityEvent,
+    CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
+)
 from pubs.models import Account, ContentReport, FriendBlock
 
 
@@ -80,6 +86,11 @@ class CommunityEventDiscoverySerializer(serializers.Serializer):
     lng = serializers.FloatField(min_value=-180, max_value=180)
 
 
+class CommunityEventTeamCreateSerializer(serializers.Serializer):
+    client_id = serializers.UUIDField()
+    name = serializers.CharField(min_length=1, max_length=40, trim_whitespace=True)
+
+
 def _claimed_or_error(request: Request) -> Response | None:
     if request.user.is_claimed:
         return None
@@ -114,8 +125,7 @@ def _blocked_account_ids(account: Account) -> set[int]:
         "blocker_id", "blocked_id"
     )
     return {
-        blocked_id if blocker_id == account.id else blocker_id
-        for blocker_id, blocked_id in rows
+        blocked_id if blocker_id == account.id else blocker_id for blocker_id, blocked_id in rows
     }
 
 
@@ -150,6 +160,184 @@ def _time_status(event: CommunityEvent, now) -> str:
     return "upcoming"
 
 
+def _event_membership(event: CommunityEvent, account: Account) -> CommunityEventMembership | None:
+    prefetched = getattr(event, "_prefetched_objects_cache", {}).get("memberships")
+    if prefetched is not None:
+        return next((row for row in prefetched if row.account_id == account.id), None)
+    return CommunityEventMembership.objects.filter(event=event, account=account).first()
+
+
+def _is_event_participant(event: CommunityEvent, account: Account) -> bool:
+    if event.host_id == account.id:
+        return True
+    membership = _event_membership(event, account)
+    return membership is not None and membership.status == CommunityEventMembership.Status.APPROVED
+
+
+def _team_access_error(
+    event: CommunityEvent | None,
+    viewer: Account,
+    *,
+    require_open: bool,
+    blocked_account_ids: set[int] | None = None,
+) -> Response | None:
+    if event is None:
+        return Response(
+            {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    if blocked_account_ids is None:
+        blocked_account_ids = _blocked_account_ids(viewer)
+    if (
+        event.host.status != Account.Status.ACTIVE
+        or viewer.status != Account.Status.ACTIVE
+        or event.host_id in blocked_account_ids
+        or (event.host.ghost_mode and event.host_id != viewer.id)
+        or not _is_event_participant(event, viewer)
+    ):
+        return Response(
+            {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    if viewer.ghost_mode or event.host.ghost_mode:
+        return Response(
+            {"detail": "Nejdřív vypni neviditelný režim.", "code": "ghost_mode"},
+            status=status.HTTP_409_CONFLICT,
+        )
+    if require_open and (
+        event.status != CommunityEvent.Status.ACTIVE or event.ends_at <= timezone.now()
+    ):
+        return Response(
+            {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+            status=status.HTTP_409_CONFLICT,
+        )
+    return None
+
+
+def _serialize_team_roster(
+    event: CommunityEvent,
+    viewer: Account,
+    *,
+    blocked_account_ids: set[int] | None = None,
+) -> dict:
+    if blocked_account_ids is None:
+        blocked_account_ids = _blocked_account_ids(viewer)
+
+    participants: dict[int, Account] = {}
+    if (
+        event.host.status == Account.Status.ACTIVE
+        and not event.host.ghost_mode
+        and event.host_id not in blocked_account_ids
+    ):
+        participants[event.host_id] = event.host
+    for membership in event.memberships.all():
+        account = membership.account
+        if (
+            membership.status == CommunityEventMembership.Status.APPROVED
+            and account.status == Account.Status.ACTIVE
+            and not account.ghost_mode
+            and account.id not in blocked_account_ids
+        ):
+            participants[account.id] = account
+
+    assigned_account_ids: set[int] = set()
+    my_team_id = None
+    teams = []
+    for team in event.teams.all():
+        all_members = [
+            membership for membership in team.memberships.all() if membership.event_id == event.id
+        ]
+        visible_members = [
+            membership for membership in all_members if membership.account_id in participants
+        ]
+        assigned_account_ids.update(row.account_id for row in visible_members)
+        if any(row.account_id == viewer.id for row in visible_members):
+            my_team_id = str(team.id)
+        teams.append(
+            {
+                "id": str(team.id),
+                "name": team.name,
+                "capacity": COMMUNITY_EVENT_TEAM_MAX_MEMBERS,
+                "member_count": len(visible_members),
+                "available_spots": max(0, COMMUNITY_EVENT_TEAM_MAX_MEMBERS - len(all_members)),
+                "is_mine": any(row.account_id == viewer.id for row in visible_members),
+                "members": [
+                    {
+                        "account": _profile(row.account),
+                        "joined_at": row.joined_at.isoformat(),
+                    }
+                    for row in visible_members
+                ],
+                "created_at": team.created_at.isoformat(),
+            }
+        )
+
+    participant_ids = set(participants)
+    return {
+        "max_team_size": COMMUNITY_EVENT_TEAM_MAX_MEMBERS,
+        "participant_count": len(participant_ids),
+        "assigned_count": len(participant_ids & assigned_account_ids),
+        "unassigned_count": len(participant_ids - assigned_account_ids),
+        "my_team_id": my_team_id,
+        "teams": teams,
+    }
+
+
+def _claim_team_seat(
+    event: CommunityEvent,
+    team: CommunityEventTeam,
+    account: Account,
+) -> tuple[CommunityEventTeamMembership | None, bool, str | None]:
+    """Claim one of four DB-unique seats while the caller holds the event lock."""
+
+    existing = (
+        CommunityEventTeamMembership.objects.select_for_update()
+        .select_related("team")
+        .filter(event=event, account=account)
+        .first()
+    )
+    if existing is not None:
+        if existing.team_id == team.id:
+            return existing, False, None
+        return existing, False, "already_on_team"
+
+    used_slots = set(
+        CommunityEventTeamMembership.objects.select_for_update()
+        .filter(team=team)
+        .values_list("slot", flat=True)
+    )
+    for slot in range(1, COMMUNITY_EVENT_TEAM_MAX_MEMBERS + 1):
+        if slot in used_slots:
+            continue
+        try:
+            # A savepoint keeps the outer transaction usable if a concurrent
+            # insert wins this slot or the account's one-team constraint.
+            with transaction.atomic():
+                membership = CommunityEventTeamMembership.objects.create(
+                    event=event,
+                    team=team,
+                    account=account,
+                    slot=slot,
+                )
+            return membership, True, None
+        except IntegrityError:
+            raced = (
+                CommunityEventTeamMembership.objects.select_related("team")
+                .filter(event=event, account=account)
+                .first()
+            )
+            if raced is not None:
+                if raced.team_id == team.id:
+                    return raced, False, None
+                return raced, False, "already_on_team"
+            used_slots = set(
+                CommunityEventTeamMembership.objects.filter(team=team).values_list(
+                    "slot", flat=True
+                )
+            )
+    return None, False, "team_full"
+
+
 def _serialize_event(
     event: CommunityEvent,
     viewer: Account,
@@ -157,6 +345,7 @@ def _serialize_event(
     distance_km: float | None = None,
     blocked_account_ids: set[int] | None = None,
     now=None,
+    include_team_roster: bool = False,
 ) -> dict:
     if blocked_account_ids is None:
         blocked_account_ids = _blocked_account_ids(viewer)
@@ -217,16 +406,44 @@ def _serialize_event(
             and not member.account.ghost_mode
             and member.account_id not in blocked_account_ids
         ]
+    if (
+        include_team_roster
+        and _team_access_error(
+            event,
+            viewer,
+            require_open=False,
+            blocked_account_ids=blocked_account_ids,
+        )
+        is None
+    ):
+        payload["team_roster"] = _serialize_team_roster(
+            event,
+            viewer,
+            blocked_account_ids=blocked_account_ids,
+        )
     return payload
 
 
-def _event_queryset():
-    return CommunityEvent.objects.select_related("host").prefetch_related(
+def _event_queryset(*, include_teams: bool = False):
+    queryset = CommunityEvent.objects.select_related("host").prefetch_related(
         Prefetch(
             "memberships",
             queryset=CommunityEventMembership.objects.select_related("account"),
         )
     )
+    if include_teams:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "teams",
+                queryset=CommunityEventTeam.objects.select_related("created_by").prefetch_related(
+                    Prefetch(
+                        "memberships",
+                        queryset=CommunityEventTeamMembership.objects.select_related("account"),
+                    )
+                ),
+            )
+        )
+    return queryset
 
 
 def _dashboard_payload(viewer: Account, viewer_lat: float | None, viewer_lng: float | None) -> dict:
@@ -349,6 +566,45 @@ class CommunityEventCollectionView(APIView):
         )
 
 
+class CommunityEventDetailView(APIView):
+    """One privacy-filtered event for cold deep links and the 3.0 detail."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "community"
+
+    def get(self, request: Request, event_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+        event = _event_queryset(include_teams=True).filter(pk=event_id).first()
+        blocked_ids = _blocked_account_ids(request.user)
+        if (
+            event is None
+            or event.host_id in blocked_ids
+            or event.host.status != Account.Status.ACTIVE
+            or event.host.ghost_mode
+            or (
+                event.host_id != request.user.id
+                and not event.host.is_public
+                and not event.memberships.filter(account=request.user).exists()
+            )
+        ):
+            return Response(
+                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            _serialize_event(
+                event,
+                request.user,
+                blocked_account_ids=blocked_ids,
+                include_team_roster=True,
+            )
+        )
+
+
 class CommunityEventDiscoveryView(APIView):
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -414,19 +670,260 @@ class CommunityEventJoinView(APIView):
         )
 
     def delete(self, request: Request, event_id) -> Response:
-        membership = CommunityEventMembership.objects.filter(
-            event_id=event_id, account=request.user
-        ).first()
-        if not membership:
-            return Response({"cancelled": False})
-        membership.status = (
-            CommunityEventMembership.Status.LEFT
-            if membership.status == CommunityEventMembership.Status.APPROVED
-            else CommunityEventMembership.Status.CANCELLED
-        )
-        membership.decided_at = timezone.now()
-        membership.save(update_fields=["status", "decided_at", "updated_at"])
+        with transaction.atomic():
+            event = CommunityEvent.objects.select_for_update().filter(pk=event_id).first()
+            if event is None:
+                return Response({"cancelled": False})
+            membership = (
+                CommunityEventMembership.objects.select_for_update()
+                .filter(event=event, account=request.user)
+                .first()
+            )
+            if not membership:
+                return Response({"cancelled": False})
+            CommunityEventTeamMembership.objects.filter(
+                event_id=event_id,
+                account=request.user,
+            ).delete()
+            membership.status = (
+                CommunityEventMembership.Status.LEFT
+                if membership.status == CommunityEventMembership.Status.APPROVED
+                else CommunityEventMembership.Status.CANCELLED
+            )
+            membership.decided_at = timezone.now()
+            membership.save(update_fields=["status", "decided_at", "updated_at"])
         return Response({"cancelled": True, "status": membership.status})
+
+
+class CommunityEventTeamCollectionView(APIView):
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "community"
+
+    def get(self, request: Request, event_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+        event = _event_queryset(include_teams=True).filter(pk=event_id).first()
+        blocked_ids = _blocked_account_ids(request.user)
+        access_error = _team_access_error(
+            event,
+            request.user,
+            require_open=False,
+            blocked_account_ids=blocked_ids,
+        )
+        if access_error is not None:
+            return access_error
+        return Response(
+            _serialize_team_roster(
+                event,
+                request.user,
+                blocked_account_ids=blocked_ids,
+            )
+        )
+
+    def post(self, request: Request, event_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+        serializer = CommunityEventTeamCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            event = (
+                CommunityEvent.objects.select_for_update()
+                .select_related("host")
+                .filter(pk=event_id)
+                .first()
+            )
+            access_error = _team_access_error(
+                event,
+                request.user,
+                require_open=True,
+            )
+            if access_error is not None:
+                return access_error
+
+            team = CommunityEventTeam.objects.filter(
+                event=event,
+                client_id=data["client_id"],
+            ).first()
+            if team is not None:
+                if team.created_by_id != request.user.id:
+                    return Response(
+                        {
+                            "detail": "Tenhle požadavek už použil někdo jiný.",
+                            "code": "team_client_id_conflict",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                created = False
+            else:
+                if CommunityEventTeamMembership.objects.filter(
+                    event=event,
+                    account=request.user,
+                ).exists():
+                    return Response(
+                        {"detail": "Už jsi v jiném týmu.", "code": "already_on_team"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if CommunityEventTeam.objects.filter(event=event).count() >= event.capacity:
+                    return Response(
+                        {
+                            "detail": "Další tým už se sem nevejde.",
+                            "code": "team_limit_reached",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                try:
+                    with transaction.atomic():
+                        team = CommunityEventTeam.objects.create(
+                            event=event,
+                            created_by=request.user,
+                            client_id=data["client_id"],
+                            name=data["name"],
+                        )
+                    created = True
+                except IntegrityError:
+                    team = CommunityEventTeam.objects.filter(
+                        event=event,
+                        client_id=data["client_id"],
+                    ).first()
+                    if team is None or team.created_by_id != request.user.id:
+                        return Response(
+                            {
+                                "detail": "Tenhle požadavek už použil někdo jiný.",
+                                "code": "team_client_id_conflict",
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                    created = False
+
+                _membership, _joined, seat_error = _claim_team_seat(
+                    event,
+                    team,
+                    request.user,
+                )
+                if seat_error is not None:
+                    if created:
+                        team.delete()
+                    code = "team_full" if seat_error == "team_full" else "already_on_team"
+                    detail = (
+                        "Tenhle tým už má čtyři." if code == "team_full" else "Už jsi v jiném týmu."
+                    )
+                    return Response(
+                        {"detail": detail, "code": code},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+            team_id = team.id
+
+        event = _event_queryset(include_teams=True).get(pk=event_id)
+        roster = _serialize_team_roster(event, request.user)
+        team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
+        return Response(
+            {"created": created, "team": team_payload, "team_roster": roster},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class CommunityEventTeamMembershipView(APIView):
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "community"
+
+    def post(self, request: Request, event_id, team_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+
+        with transaction.atomic():
+            event = (
+                CommunityEvent.objects.select_for_update()
+                .select_related("host")
+                .filter(pk=event_id)
+                .first()
+            )
+            blocked_ids = _blocked_account_ids(request.user)
+            access_error = _team_access_error(
+                event,
+                request.user,
+                require_open=True,
+                blocked_account_ids=blocked_ids,
+            )
+            if access_error is not None:
+                return access_error
+            team = (
+                CommunityEventTeam.objects.select_for_update()
+                .filter(pk=team_id, event=event)
+                .first()
+            )
+            if team is None:
+                return Response(
+                    {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if team.created_by_id in blocked_ids or (
+                blocked_ids
+                and CommunityEventTeamMembership.objects.filter(
+                    team=team,
+                    account_id__in=blocked_ids,
+                ).exists()
+            ):
+                return Response(
+                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            _membership, joined, seat_error = _claim_team_seat(
+                event,
+                team,
+                request.user,
+            )
+            if seat_error is not None:
+                code = "team_full" if seat_error == "team_full" else "already_on_team"
+                detail = (
+                    "Tenhle tým už má čtyři." if code == "team_full" else "Už jsi v jiném týmu."
+                )
+                return Response(
+                    {"detail": detail, "code": code},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        event = _event_queryset(include_teams=True).get(pk=event_id)
+        roster = _serialize_team_roster(event, request.user)
+        team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
+        return Response(
+            {"joined": joined, "team": team_payload, "team_roster": roster},
+            status=status.HTTP_201_CREATED if joined else status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, event_id, team_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+        with transaction.atomic():
+            event = (
+                CommunityEvent.objects.select_for_update()
+                .select_related("host")
+                .filter(pk=event_id)
+                .first()
+            )
+            if event is None:
+                return Response({"left": False})
+            deleted, _details = CommunityEventTeamMembership.objects.filter(
+                event=event,
+                team_id=team_id,
+                account=request.user,
+            ).delete()
+
+        payload = {"left": deleted > 0}
+        event = _event_queryset(include_teams=True).get(pk=event_id)
+        if _team_access_error(event, request.user, require_open=False) is None:
+            payload["team_roster"] = _serialize_team_roster(event, request.user)
+        return Response(payload)
 
 
 class CommunityEventRequestDecisionView(APIView):
@@ -458,10 +955,7 @@ class CommunityEventRequestDecisionView(APIView):
             if not membership:
                 return Response(status=status.HTTP_404_NOT_FOUND)
             if action == "approve":
-                if (
-                    event.status != CommunityEvent.Status.ACTIVE
-                    or event.ends_at <= timezone.now()
-                ):
+                if event.status != CommunityEvent.Status.ACTIVE or event.ends_at <= timezone.now():
                     return Response(
                         {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
                         status=status.HTTP_409_CONFLICT,

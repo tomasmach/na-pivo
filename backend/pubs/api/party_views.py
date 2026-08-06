@@ -24,13 +24,15 @@ from pubs.api.party_serializers import (
 )
 from pubs.models import (
     Account,
+    BeerPhoto,
+    DrinkLog,
     FriendBlock,
-    Friendship,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
     PartyGame,
     PartyGameEvent,
+    PubVisit,
 )
 
 
@@ -44,28 +46,10 @@ def _profile(account: Account) -> dict:
     }
 
 
-def _are_friends(left: Account, right: Account) -> bool:
-    return Friendship.objects.filter(
-        Q(requester=left, recipient=right) | Q(requester=right, recipient=left),
-        status=Friendship.Status.ACCEPTED,
-    ).exists()
-
-
 def _blocked(left: Account, right: Account) -> bool:
     return FriendBlock.objects.filter(
         Q(blocker=left, blocked=right) | Q(blocker=right, blocked=left)
     ).exists()
-
-
-def _accepted_friend_ids(account: Account) -> set[int]:
-    rows = Friendship.objects.filter(
-        Q(requester=account) | Q(recipient=account),
-        status=Friendship.Status.ACCEPTED,
-    ).values_list("requester_id", "recipient_id")
-    return {
-        recipient_id if requester_id == account.id else requester_id
-        for requester_id, recipient_id in rows
-    }
 
 
 def _blocked_account_ids(account: Account) -> set[int]:
@@ -80,26 +64,40 @@ def _blocked_account_ids(account: Account) -> set[int]:
 def _can_access(evening: PartyEvening, account: Account) -> bool:
     if account.ghost_mode or evening.host.ghost_mode:
         return False
-    if evening.host_id == account.id:
-        return True
-    return _are_friends(account, evening.host) and not _blocked(account, evening.host)
+    if _blocked(account, evening.host):
+        return False
+    # A join code grants access to this table only. It never creates a durable
+    # friendship, and friendship is not a prerequisite after explicit opt-in.
+    return evening.memberships.filter(account=account, active=True).exists()
 
 
-def _visible_members(evening: PartyEvening) -> list[PartyEveningMember]:
-    visible_account_ids = {
-        evening.host_id,
-        *(_accepted_friend_ids(evening.host) - _blocked_account_ids(evening.host)),
-    }
+def _visible_participants(
+    evening: PartyEvening, viewer: Account
+) -> list[PartyEveningMember]:
+    """Every historical participant this viewer may still see."""
     return list(
         evening.memberships.select_related("account")
         .filter(
-            active=True,
-            account_id__in=visible_account_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
         )
+        .exclude(account_id__in=_blocked_account_ids(viewer))
         .order_by("joined_at", "id")
     )
+
+
+def _visible_members(evening: PartyEvening, viewer: Account) -> list[PartyEveningMember]:
+    """Active participants, preserving the released ``members`` semantics."""
+    return [membership for membership in _visible_participants(evening, viewer) if membership.active]
+
+
+def _serialize_participant(membership: PartyEveningMember) -> dict:
+    return {
+        **_profile(membership.account),
+        "joined_at": membership.joined_at.isoformat(),
+        "left_at": membership.left_at.isoformat() if membership.left_at else None,
+        "active": membership.active,
+    }
 
 
 def _has_other_active_membership(account: Account, evening: PartyEvening | None = None) -> bool:
@@ -124,8 +122,9 @@ def _active_membership_conflict() -> Response:
 
 
 def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
-    members = _visible_members(evening)
-    member_ids = {member.account_id for member in members}
+    participants = _visible_participants(evening, viewer)
+    members = [membership for membership in participants if membership.active]
+    participant_ids = {membership.account_id for membership in participants}
     events = [
         {
             "id": f"join:{member.id}",
@@ -133,7 +132,7 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
             "at": member.joined_at.isoformat(),
             "account": _profile(member.account),
         }
-        for member in members
+        for member in participants
     ]
     events.extend(
         {
@@ -145,7 +144,7 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
             "quantity": drink.quantity,
         }
         for drink in evening.shared_drinks.select_related("account").filter(
-            account_id__in=member_ids,
+            account_id__in=participant_ids,
             account__ghost_mode=False,
             account__status=Account.Status.ACTIVE,
         )
@@ -169,7 +168,7 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
             "quantity": 1,
         }
         for drink in evening.logged_drinks.select_related("account").filter(
-            account_id__in=member_ids,
+            account_id__in=participant_ids,
             account__ghost_mode=False,
             account__status=Account.Status.ACTIVE,
         )
@@ -187,16 +186,13 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
         "ended_at": evening.ended_at.isoformat() if evening.ended_at else None,
         "is_host": evening.host_id == viewer.id,
         "members": [_profile(member.account) for member in members],
+        "participants": [_serialize_participant(member) for member in participants],
         "events": events,
     }
 
 
 def _member_evening(code: str, account: Account) -> PartyEvening | None:
-    evening = (
-        PartyEvening.objects.select_related("host")
-        .filter(join_code=code.upper(), memberships__account=account, memberships__active=True)
-        .first()
-    )
+    evening = PartyEvening.objects.select_related("host").filter(join_code=code.upper()).first()
     return evening if evening and _can_access(evening, account) else None
 
 
@@ -314,11 +310,9 @@ class PartyEveningJoinView(APIView):
                 {"detail": "Party evening is hidden by ghost mode.", "code": "ghost_mode"},
                 status=status.HTTP_409_CONFLICT,
             )
-        if request.user != evening.host and (
-            not _are_friends(request.user, evening.host) or _blocked(request.user, evening.host)
-        ):
+        if request.user != evening.host and _blocked(request.user, evening.host):
             return Response(
-                {"detail": "Only accepted friends can join.", "code": "not_friends"},
+                {"detail": "Party evening is unavailable.", "code": "party_blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         with transaction.atomic():
@@ -333,7 +327,18 @@ class PartyEveningJoinView(APIView):
         return Response(_serialize_evening(evening, request.user))
 
     def delete(self, request: Request, code: str) -> Response:
-        evening = _member_evening(code, request.user)
+        # Leaving must remain possible after a block or after enabling ghost
+        # mode; otherwise an invisible active membership traps the account and
+        # prevents it from joining another table.
+        evening = (
+            PartyEvening.objects.select_related("host")
+            .filter(
+                join_code=code.upper(),
+                memberships__account=request.user,
+                memberships__active=True,
+            )
+            .first()
+        )
         if not evening:
             return Response({"left": False})
         if evening.host_id == request.user.id:
@@ -447,6 +452,308 @@ def _serialize_game_event(event: PartyGameEvent) -> dict:
     }
 
 
+def _party_photo_url(photo: BeerPhoto, request: Request) -> str | None:
+    try:
+        return request.build_absolute_uri(photo.image.url)
+    except (AttributeError, ValueError):
+        return None
+
+
+def _party_pub(cache_key: str | None, name: str, city: str) -> dict | None:
+    if not cache_key and not name and not city:
+        return None
+    return {
+        "cache_key": cache_key or None,
+        "name": name or None,
+        "city": city or None,
+    }
+
+
+def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Request) -> dict:
+    """Build the private table record from source rows; never persist totals.
+
+    Prices and phone coordinates deliberately never enter this shape. The
+    record is members-only and may contain individual drink names because it is
+    the table's private recap, not a PublishedNight payload.
+    """
+    participants = _visible_participants(evening, viewer)
+    participant_ids = {membership.account_id for membership in participants}
+    profiles = {membership.account_id: _profile(membership.account) for membership in participants}
+
+    visits = list(
+        evening.party_visits.select_related("account")
+        .filter(account_id__in=participant_ids)
+        .order_by("started_at", "id")
+    )
+    stop_ids = {
+        visit.pk: f"visit:{visit.account.public_id}:{visit.client_id}" for visit in visits
+    }
+    stops = [
+        {
+            "id": stop_ids[visit.pk],
+            "by": str(visit.account.public_id),
+            "account": profiles[visit.account_id],
+            "pub_name": visit.name,
+            "pub_city": visit.city or None,
+            "cache_key": visit.cache_key,
+            "arrived_at": visit.started_at.isoformat(),
+            "left_at": visit.ended_at.isoformat() if visit.ended_at else None,
+        }
+        for visit in visits
+    ]
+    visits_by_account: dict[int, list[PubVisit]] = {}
+    for visit in visits:
+        visits_by_account.setdefault(visit.account_id, []).append(visit)
+
+    def matching_stop_id(account_id: int, at, cache_key: str | None) -> str | None:
+        if not cache_key:
+            return None
+        candidates = [
+            visit
+            for visit in visits_by_account.get(account_id, [])
+            if visit.cache_key == cache_key
+            and visit.started_at <= at
+            and (visit.ended_at is None or at <= visit.ended_at)
+        ]
+        if not candidates:
+            return None
+        return stop_ids[max(candidates, key=lambda visit: visit.started_at).pk]
+
+    drinks: list[dict] = []
+    diary_drinks = list(
+        evening.logged_drinks.select_related("account")
+        .filter(
+            account_id__in=participant_ids,
+            account__status=Account.Status.ACTIVE,
+            account__ghost_mode=False,
+        )
+        .order_by("drank_at", "id")
+    )
+    for drink in diary_drinks:
+        drinks.append(
+            {
+                "id": str(drink.client_id),
+                "source": "diary",
+                "at": drink.drank_at.isoformat(),
+                "by": str(drink.account.public_id),
+                "account": profiles[drink.account_id],
+                "beer_name": drink.beer_name,
+                "drink_type": drink.drink_type,
+                "volume_ml": drink.volume_ml,
+                "place_context": drink.place_context,
+                "stop_id": matching_stop_id(
+                    drink.account_id,
+                    drink.drank_at,
+                    drink.cache_key,
+                ),
+                "pub": _party_pub(drink.cache_key, drink.name, drink.city),
+            }
+        )
+
+    legacy_drinks = list(
+        evening.shared_drinks.select_related("account")
+        .filter(
+            account_id__in=participant_ids,
+            account__status=Account.Status.ACTIVE,
+            account__ghost_mode=False,
+        )
+        .order_by("shared_at", "id")
+    )
+    for drink in legacy_drinks:
+        for index in range(drink.quantity):
+            drinks.append(
+                {
+                    "id": f"legacy:{drink.client_id}:{index}",
+                    "source": "legacy_party",
+                    "at": drink.shared_at.isoformat(),
+                    "by": str(drink.account.public_id),
+                    "account": profiles[drink.account_id],
+                    "beer_name": drink.beer_name,
+                    "drink_type": DrinkLog.DrinkType.BEER,
+                    "volume_ml": None,
+                    "place_context": DrinkLog.PlaceContext.PUB,
+                    "stop_id": None,
+                    "pub": None,
+                }
+            )
+    drinks.sort(key=lambda item: (item["at"], item["id"]))
+
+    photo_rows = list(
+        evening.party_photos.select_related("account")
+        .filter(
+            account_id__in=participant_ids,
+            account__status=Account.Status.ACTIVE,
+            account__ghost_mode=False,
+        )
+        .order_by("taken_at", "id")
+    )
+    photos = [
+        {
+            "id": str(photo.public_id),
+            "url": _party_photo_url(photo, request),
+            "caption": photo.caption,
+            "at": photo.taken_at.isoformat(),
+            "by": str(photo.account.public_id),
+            "account": profiles[photo.account_id],
+            "stop_id": matching_stop_id(
+                photo.account_id,
+                photo.taken_at,
+                photo.pub_cache_key or None,
+            ),
+            "pub": _party_pub(photo.pub_cache_key, photo.pub_name, photo.pub_city),
+        }
+        for photo in photo_rows
+    ]
+
+    game_rows = list(
+        evening.games.select_related("started_by")
+        .filter(started_by_id__in=participant_ids)
+        .order_by("started_at", "id")
+    )
+    game_events: dict[int, list[PartyGameEvent]] = {game.pk: [] for game in game_rows}
+    if game_rows:
+        for event in (
+            PartyGameEvent.objects.filter(
+                game_id__in=game_events,
+                account_id__in=participant_ids,
+            )
+            .select_related("game", "account", "subject")
+            .order_by("id")
+        ):
+            if event.subject_id is None or event.subject_id in participant_ids:
+                game_events[event.game_id].append(event)
+
+    games: list[dict] = []
+    finish_by_game: dict[int, PartyGameEvent] = {}
+    for game in game_rows:
+        events = game_events[game.pk]
+        finish = next(
+            (event for event in reversed(events) if event.kind == PartyGameEvent.Kind.FINISH),
+            None,
+        )
+        if finish is not None:
+            finish_by_game[game.pk] = finish
+        games.append(
+            {
+                "id": str(game.public_id),
+                "key": game.catalog_key,
+                "name": game.name,
+                "scoring": game.scoring,
+                "started_by": profiles[game.started_by_id],
+                "started_at": game.started_at.isoformat(),
+                "ended_at": game.ended_at.isoformat() if game.ended_at else None,
+                "result": finish.payload if finish is not None else None,
+                "events": [_serialize_game_event(event) for event in events],
+            }
+        )
+
+    timeline: list[dict] = []
+    for membership in participants:
+        profile = profiles[membership.account_id]
+        timeline.append(
+            {
+                "id": f"join:{membership.id}",
+                "kind": "joined",
+                "at": membership.joined_at.isoformat(),
+                "account": profile,
+            }
+        )
+        if membership.left_at is not None:
+            timeline.append(
+                {
+                    "id": f"left:{membership.id}",
+                    "kind": "left",
+                    "at": membership.left_at.isoformat(),
+                    "account": profile,
+                }
+            )
+    timeline.extend(
+        {
+            "id": f"drink:{drink['id']}",
+            "kind": "drink",
+            "at": drink["at"],
+            "account": drink["account"],
+            "drink": drink,
+        }
+        for drink in drinks
+    )
+    timeline.extend(
+        {
+            "id": f"photo:{photo['id']}",
+            "kind": "photo",
+            "at": photo["at"],
+            "account": photo["account"],
+            "photo": photo,
+        }
+        for photo in photos
+    )
+    timeline.extend(
+        {
+            "id": f"visit:{stop['id']}",
+            "kind": "visit",
+            "at": stop["arrived_at"],
+            "account": stop["account"],
+            "stop": stop,
+        }
+        for stop in stops
+    )
+    for game, game_item in zip(game_rows, games, strict=True):
+        timeline.append(
+            {
+                "id": f"game:{game.public_id}:start",
+                "kind": "game_started",
+                "at": game_item["started_at"],
+                "account": game_item["started_by"],
+                "game": game_item,
+            }
+        )
+        finish = finish_by_game.get(game.pk)
+        if finish is not None:
+            timeline.append(
+                {
+                    "id": f"game:{game.public_id}:finish:{finish.id}",
+                    "kind": "game_finished",
+                    "at": finish.created_at.isoformat(),
+                    "account": _profile(finish.account),
+                    "game": game_item,
+                    "result": finish.payload,
+                }
+            )
+    timeline.sort(key=lambda event: (event["at"], event["id"]))
+
+    return {
+        "id": str(evening.public_id),
+        "code": evening.join_code,
+        "active": evening.active,
+        "started_at": evening.started_at.isoformat(),
+        "ended_at": evening.ended_at.isoformat() if evening.ended_at else None,
+        "participants": [_serialize_participant(membership) for membership in participants],
+        "stops": stops,
+        "drinks": drinks,
+        "games": games,
+        "photos": photos,
+        "events": timeline,
+    }
+
+
+class PartyEveningRecordView(APIView):
+    """GET /v1/party-evenings/<code>/record — private derived recap data."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request, code: str) -> Response:
+        evening = _member_evening(code, request.user)
+        if not evening:
+            return Response(
+                {"detail": "Party evening not found.", "code": "party_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(_serialize_party_record(evening, request.user, request))
+
+
 def game_events_since(evening: PartyEvening, since: int, limit: int = 200) -> list[PartyGameEvent]:
     """Everything that happened in this evening's games after `since`, in order."""
     return list(
@@ -552,7 +859,8 @@ class PartyGameEventView(APIView):
             )
 
         members = {
-            str(member.account.public_id): member.account for member in _visible_members(evening)
+            str(member.account.public_id): member.account
+            for member in _visible_members(evening, request.user)
         }
         written: list[PartyGameEvent] = []
         for item in serializer.validated_data["events"]:

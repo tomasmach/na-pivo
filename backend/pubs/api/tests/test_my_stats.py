@@ -10,7 +10,7 @@ drinking day rolls at 04:00 Europe/Prague.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -93,7 +93,8 @@ def test_empty_stats_returns_zeroes_not_404(client):
     resp = client.get("/v1/me/stats", **_auth(token))
 
     assert resp.status_code == status.HTTP_200_OK, resp.content
-    assert resp.json() == {
+    body = resp.json()
+    assert {key: value for key, value in body.items() if key != "timeline"} == {
         "total_beers": 0,
         "total_evenings": 0,
         "distinct_pubs": 0,
@@ -113,6 +114,14 @@ def test_empty_stats_returns_zeroes_not_404(client):
             "years": [],
         },
     }
+    assert len(body["timeline"]["days"]) == 7
+    assert len(body["timeline"]["weeks"]) == 12
+    assert len(body["timeline"]["months"]) == 12
+    assert body["timeline"]["streak"] == {
+        "current_weeks": 0,
+        "best_weeks": 0,
+    }
+    assert all(row["beers"] == 0 for row in body["timeline"]["days"])
 
 
 @pytest.mark.django_db
@@ -401,6 +410,57 @@ def test_monthly_and_yearly_periods_include_zero_safe_averages(client):
             },
         ],
     }
+
+
+@pytest.mark.django_db
+def test_profile_timeline_keeps_empty_buckets_and_derives_weekly_streak(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    today = datetime.now(PRAGUE).date()
+    current_monday = today - timedelta(days=today.weekday())
+    current_at = datetime.combine(today, time(hour=19), tzinfo=PRAGUE)
+    previous_at = datetime.combine(
+        current_monday - timedelta(days=2),
+        time(hour=20),
+        tzinfo=PRAGUE,
+    )
+
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=60,
+        drank_at=current_at,
+    )
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=60,
+        drank_at=current_at + timedelta(minutes=45),
+    )
+    _drink(
+        account,
+        cache_key=_KEY_LOKAL,
+        name="Lokál",
+        price_czk=58,
+        drank_at=previous_at,
+    )
+
+    timeline = client.get("/v1/me/stats", **_auth(token)).json()["timeline"]
+
+    assert len(timeline["days"]) == 7
+    assert timeline["days"][-1] == {
+        "period": today.isoformat(),
+        "beers": 2,
+        "evenings": 1,
+        "distinct_pubs": 1,
+        "longest_evening_seconds": 45 * 60,
+    }
+    assert timeline["weeks"][-1]["beers"] == 2
+    assert timeline["weeks"][-1]["evenings"] == 1
+    assert timeline["weeks"][-2]["beers"] == 1
+    assert timeline["streak"] == {"current_weeks": 2, "best_weeks": 2}
 
 
 @pytest.mark.django_db

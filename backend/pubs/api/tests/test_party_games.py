@@ -64,7 +64,7 @@ def _table(client: APIClient) -> tuple[str, Account, str, Account, str]:
     host_token, host = _register(client, "host")
     guest_token, guest = _register(client, "guest")
     _friend(host, guest)
-    code = "STUL24"
+    code = "PRAH24"
     assert (
         client.post(
             "/v1/party-evenings",
