@@ -1,93 +1,554 @@
-/**
- * DESIGN MOCK — one event, opened from the Komunita card.
- *
- * The order is the order you ask: what is it, when and where, what it actually
- * is, who else is going. The poster leads because that is what you tapped.
- *
- * "Kdo jde" is a COUNT, never a list of names. Who is going to a pub event is
- * exactly the sort of thing this product does not publish (AGENTS.md).
- */
-
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CheckIcon, MapPinIcon, UsersIcon } from '@/components/shared/IconGlyph';
-import { TAB_CHROME } from '@/components/shared/TabBar';
 import { EventCover } from '@/community/EventCover';
-import type { CommunityEvent } from '@/community/mockEvents';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { CheckIcon, MapPinIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { TAB_CHROME } from '@/components/shared/TabBar';
+import { generateUuidV4 } from '@/data/account';
+import {
+  createCommunityEventTeam,
+  decideCommunityJoinRequest,
+  fetchCommunityEvent,
+  fetchCommunityEventTeams,
+  joinCommunityEventTeam,
+  leaveCommunityEvent,
+  leaveCommunityEventTeam,
+  requestCommunityEventJoin,
+  type CommunityEvent,
+  type CommunityEventTeam,
+  type CommunityEventTeamRoster,
+  type CommunityJoinRequest,
+} from '@/data/communityEventsClient';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+function displayName(request: CommunityJoinRequest): string {
+  return request.account.nickname ? `@${request.account.nickname}` : request.account.displayName;
+}
+
+function attendingLabel(count: number): string {
+  if (count === 1) return '1 pivař';
+  if (count >= 2 && count <= 4) return `${count} pivaři`;
+  return `${count} pivařů`;
+}
+
+function spotsLabel(count: number): string {
+  if (count === 1) return '1 místo zbývá';
+  if (count >= 2 && count <= 4) return `${count} místa zbývají`;
+  return `${count} míst zbývá`;
+}
+
+function TeamCard({
+  team,
+  roster,
+  closed,
+  busy,
+  locked,
+  onToggle,
+}: {
+  team: CommunityEventTeam;
+  roster: CommunityEventTeamRoster;
+  closed: boolean;
+  busy: boolean;
+  locked: boolean;
+  onToggle: (team: CommunityEventTeam) => void;
+}) {
+  const onAnotherTeam = roster.myTeamId !== null && !team.isMine;
+  const full = team.availableSpots === 0;
+  const disabled = locked || closed || onAnotherTeam || (!team.isMine && full);
+  const actionLabel = team.isMine
+    ? 'Opustit tým'
+    : onAnotherTeam
+      ? 'Už jsi v týmu'
+      : full
+        ? 'Tým je plný'
+        : 'Přidat se';
+
+  return (
+    <View style={[styles.teamCard, team.isMine && styles.teamCardMine]}>
+      <View style={styles.teamHead}>
+        <View style={styles.grow}>
+          <Text style={styles.teamName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {team.name}
+          </Text>
+          <Text style={styles.teamCapacity} maxFontSizeMultiplier={FontScaleCap.body}>
+            {team.memberCount} z {team.capacity}
+          </Text>
+        </View>
+        {team.isMine ? (
+          <View style={styles.mineBadge}>
+            <CheckIcon size={14} color={Colors.amber} />
+            <Text style={styles.mineBadgeText}>Tvůj tým</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {team.members.length ? (
+        <View style={styles.memberList}>
+          {team.members.map(({ account }) => (
+            <View key={account.id} style={styles.memberRow}>
+              <Avatar
+                uri={account.avatarUrl}
+                nickname={account.nickname}
+                displayName={account.displayName}
+                size={32}
+                border="quiet"
+              />
+              <Text style={styles.memberName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {account.nickname ? `@${account.nickname}` : account.displayName}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.teamEmpty}>Zatím prázdný stůl.</Text>
+      )}
+
+      <Pressable
+        onPress={() => onToggle(team)}
+        disabled={disabled}
+        style={({ pressed }) => [
+          styles.teamAction,
+          team.isMine && styles.teamActionLeave,
+          disabled && styles.disabled,
+          pressed && styles.pressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={actionLabel}
+        accessibilityState={{ disabled, selected: team.isMine }}
+      >
+        {busy ? <ActivityIndicator size="small" color={Colors.amber} /> : null}
+        <Text style={[styles.teamActionText, team.isMine && styles.teamActionLeaveText]}>
+          {busy ? 'Chvilku…' : actionLabel}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export function EventDetailScreen({ event }: { event: CommunityEvent }) {
   const insets = useSafeAreaInsets();
-  const [going, setGoing] = React.useState(Boolean(event.mine));
+  const [detail, setDetail] = React.useState(event);
+  const [membershipBusy, setMembershipBusy] = React.useState(false);
+  const [membershipError, setMembershipError] = React.useState<string | null>(null);
+  const [moderationBusy, setModerationBusy] = React.useState<string | null>(null);
+  const [moderationError, setModerationError] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+  const [roster, setRoster] = React.useState<CommunityEventTeamRoster | null>(event.teamRoster);
+  const [rosterLoading, setRosterLoading] = React.useState(
+    (event.isHost || event.membershipStatus === 'approved') && event.teamRoster === null,
+  );
+  const [rosterError, setRosterError] = React.useState<string | null>(null);
+  const [teamBusy, setTeamBusy] = React.useState<string | null>(null);
+  const [newTeamName, setNewTeamName] = React.useState('');
+  const createAttemptRef = React.useRef<{ name: string; clientId: string } | null>(null);
+
+  const membership = detail.membershipStatus;
+  const canSeeTeams = detail.isHost || membership === 'approved';
+  const attending = Math.max(1, detail.capacity - detail.availableSpots);
+  const startsAt = new Date(detail.startsAt);
+  const when = Number.isFinite(startsAt.getTime())
+    ? new Intl.DateTimeFormat('cs-CZ', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'long',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(startsAt)
+    : detail.startsAt;
+  const joined = membership === 'approved' || membership === 'pending';
+  const closed = detail.status === 'ended' || detail.status === 'cancelled';
+  const pendingRequests = detail.joinRequests.filter((request) => request.status === 'pending');
+  const membershipActionLabel = detail.isHost
+    ? closed
+      ? 'Tvoje akce skončila'
+      : 'Pořádáš'
+    : closed
+      ? 'Akce skončila'
+      : membershipBusy
+        ? 'Chvilku…'
+        : membership === 'approved'
+          ? 'Jdeš'
+          : membership === 'pending'
+            ? 'Čeká na schválení'
+            : 'Chci jít';
+
+  React.useEffect(() => {
+    if (!canSeeTeams || roster !== null) return;
+    let active = true;
+    const controller = new AbortController();
+    void fetchCommunityEventTeams(detail.id, controller.signal).then((result) => {
+      if (!active) return;
+      if (result.ok) {
+        setRoster(result.roster);
+        setRosterError(null);
+      } else {
+        setRosterError(result.detail);
+      }
+      setRosterLoading(false);
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [canSeeTeams, detail.id, roster]);
+
+  const refreshRoster = async () => {
+    if (rosterLoading) return;
+    setRosterLoading(true);
+    setRosterError(null);
+    const result = await fetchCommunityEventTeams(detail.id);
+    if (result.ok) setRoster(result.roster);
+    else setRosterError(result.detail);
+    setRosterLoading(false);
+  };
+
+  const toggleMembership = async () => {
+    if (membershipBusy || detail.isHost || closed) return;
+    setMembershipBusy(true);
+    setMembershipError(null);
+    setNotice(null);
+    const result = joined
+      ? await leaveCommunityEvent(detail.id)
+      : await requestCommunityEventJoin(detail.id);
+    setMembershipBusy(false);
+    if (!result.ok) {
+      setMembershipError(result.detail);
+      return;
+    }
+    if (joined) {
+      setDetail((current) => ({
+        ...current,
+        membershipStatus: current.membershipStatus === 'approved' ? 'left' : 'cancelled',
+        exactAddress: null,
+        teamRoster: null,
+      }));
+      setRoster(null);
+      setNotice('Účast je zrušená.');
+    } else {
+      setDetail((current) => ({ ...current, membershipStatus: 'pending' }));
+      setNotice('Žádost letí pořadateli.');
+    }
+  };
+
+  const decideRequest = async (request: CommunityJoinRequest, action: 'approve' | 'reject') => {
+    if (moderationBusy) return;
+    setModerationBusy(request.id);
+    setModerationError(null);
+    setNotice(null);
+    const result = await decideCommunityJoinRequest(detail.id, request.id, action);
+    if (!result.ok) {
+      setModerationBusy(null);
+      setModerationError(result.detail);
+      return;
+    }
+
+    setDetail((current) => ({
+      ...current,
+      availableSpots:
+        action === 'approve' ? Math.max(0, current.availableSpots - 1) : current.availableSpots,
+      joinRequests: current.joinRequests.map((row) =>
+        row.id === request.id ? { ...row, status: action === 'approve' ? 'approved' : 'rejected' } : row,
+      ),
+    }));
+    if (action === 'approve' && roster) {
+      setRoster({
+        ...roster,
+        participantCount: roster.participantCount + 1,
+        unassignedCount: roster.unassignedCount + 1,
+      });
+    }
+    setNotice(action === 'approve' ? `${displayName(request)} jde s vámi.` : 'Žádost je zamítnutá.');
+
+    const refreshed = await fetchCommunityEvent(detail.id);
+    if (refreshed.ok) {
+      setDetail(refreshed.event);
+      setRoster(refreshed.event.teamRoster);
+    }
+    setModerationBusy(null);
+  };
+
+  const createTeam = async () => {
+    const name = newTeamName.trim();
+    if (!name || teamBusy || closed) return;
+    const attempt = createAttemptRef.current?.name === name
+      ? createAttemptRef.current
+      : { name, clientId: generateUuidV4() };
+    createAttemptRef.current = attempt;
+    setTeamBusy('create');
+    setRosterError(null);
+    setNotice(null);
+    const result = await createCommunityEventTeam(detail.id, attempt);
+    setTeamBusy(null);
+    if (!result.ok) {
+      setRosterError(result.detail);
+      return;
+    }
+    setRoster(result.roster);
+    setNewTeamName('');
+    createAttemptRef.current = null;
+    Keyboard.dismiss();
+    setNotice(result.created ? `Tým ${result.team?.name ?? name} je na světě.` : 'Tým už je připravený.');
+  };
+
+  const toggleTeam = async (team: CommunityEventTeam) => {
+    if (teamBusy || closed) return;
+    setTeamBusy(team.id);
+    setRosterError(null);
+    setNotice(null);
+    const result = team.isMine
+      ? await leaveCommunityEventTeam(detail.id, team.id)
+      : await joinCommunityEventTeam(detail.id, team.id);
+    setTeamBusy(null);
+    if (!result.ok) {
+      setRosterError(result.detail);
+      return;
+    }
+    setRoster(result.roster);
+    setNotice(team.isMine ? 'Z týmu jsi venku.' : `Jsi v týmu ${team.name}.`);
+  };
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
         { paddingTop: insets.top + 52, paddingBottom: insets.bottom + TAB_CHROME },
       ]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
-      <EventCover event={event} height={160} />
+      <EventCover event={detail} height={160} />
 
       <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {event.title}
+        {detail.title}
       </Text>
       <Text style={styles.when} maxFontSizeMultiplier={FontScaleCap.body}>
-        {event.when} {event.time}
+        {when}
       </Text>
 
       <View style={styles.whereRow}>
         <MapPinIcon size={16} color={Colors.amber} />
         <Text style={styles.where} maxFontSizeMultiplier={FontScaleCap.body}>
-          {event.where}
+          {detail.exactAddress ?? [detail.areaLabel, detail.city].filter(Boolean).join(', ')}
         </Text>
       </View>
 
       <Text style={styles.blurb} maxFontSizeMultiplier={FontScaleCap.body}>
-        {event.blurb}
+        {detail.description}
       </Text>
 
-      {/* A number, not a guest list. */}
       <View style={styles.goingRow}>
         <UsersIcon size={16} color={Colors.mutedText} />
         <Text style={styles.goingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          Jde {event.going + (going && !event.mine ? 1 : 0)} pivařů
+          Jde {attendingLabel(attending)} · {spotsLabel(detail.availableSpots)}
         </Text>
       </View>
 
       <Pressable
-        onPress={() => setGoing((current) => !current)}
-        style={({ pressed }) => [styles.cta, going && styles.ctaOn, pressed && styles.pressed]}
+        onPress={() => void toggleMembership()}
+        disabled={membershipBusy || detail.isHost || closed}
+        style={({ pressed }) => [styles.cta, joined && styles.ctaOn, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityState={{ selected: going }}
-        accessibilityLabel={going ? 'Přece jen nejdu' : 'Půjdu'}
+        accessibilityState={{ selected: joined, disabled: membershipBusy || detail.isHost || closed }}
+        accessibilityLabel={
+          detail.isHost
+            ? membershipActionLabel
+            : joined
+              ? 'Zrušit účast'
+              : 'Požádat o účast'
+        }
       >
-        {going ? <CheckIcon size={18} color={Colors.amber} /> : null}
+        {joined || detail.isHost ? <CheckIcon size={18} color={Colors.amber} /> : null}
         <Text
-          style={[styles.ctaText, going && styles.ctaTextOn]}
+          style={[styles.ctaText, (joined || detail.isHost) && styles.ctaTextOn]}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {going ? 'Jdeš' : 'Půjdu'}
+          {membershipActionLabel}
         </Text>
       </Pressable>
+      {membership === 'pending' ? <Text style={styles.pendingHint}>Po schválení si vybereš tým.</Text> : null}
+      {membershipError ? <Text style={styles.error}>{membershipError}</Text> : null}
+      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        Design mock — data jsou napevno.
-      </Text>
-    </ScrollView>
+      {detail.isHost ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              Žádosti o místo
+            </Text>
+            <Text style={styles.sectionCount} allowFontScaling={false}>{pendingRequests.length}</Text>
+          </View>
+          {pendingRequests.length ? pendingRequests.map((request) => {
+            const busy = moderationBusy === request.id;
+            return (
+              <View key={request.id} style={styles.requestCard}>
+                <View style={styles.requestPerson}>
+                  <Avatar
+                    uri={request.account.avatarUrl}
+                    nickname={request.account.nickname}
+                    displayName={request.account.displayName}
+                    size={40}
+                    border="quiet"
+                  />
+                  <View style={styles.grow}>
+                    <Text style={styles.requestName} numberOfLines={1}>{displayName(request)}</Text>
+                    {request.message ? <Text style={styles.requestMessage} numberOfLines={2}>{request.message}</Text> : null}
+                  </View>
+                </View>
+                <View style={styles.requestActions}>
+                  <Pressable
+                    onPress={() => void decideRequest(request, 'reject')}
+                    disabled={moderationBusy !== null}
+                    style={({ pressed }) => [styles.rejectButton, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Zamítnout žádost ${displayName(request)}`}
+                  >
+                    <XIcon size={16} color={Colors.mutedText} />
+                    <Text style={styles.rejectButtonText}>Ne</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void decideRequest(request, 'approve')}
+                    disabled={moderationBusy !== null || detail.availableSpots === 0}
+                    style={({ pressed }) => [
+                      styles.approveButton,
+                      detail.availableSpots === 0 && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Schválit žádost ${displayName(request)}`}
+                    accessibilityState={{ disabled: moderationBusy !== null || detail.availableSpots === 0 }}
+                  >
+                    {busy ? <ActivityIndicator size="small" color={Colors.stout} /> : <CheckIcon size={16} color={Colors.stout} />}
+                    <Text style={styles.approveButtonText}>{busy ? 'Chvilku…' : 'Jo'}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          }) : (
+            <Text style={styles.empty}>Nikdo teď nečeká.</Text>
+          )}
+          {detail.availableSpots === 0 && pendingRequests.length ? (
+            <Text style={styles.capacityError}>Kapacita je plná. Žádost můžeš jen zamítnout.</Text>
+          ) : null}
+          {moderationError ? <Text style={styles.errorLeft}>{moderationError}</Text> : null}
+        </View>
+      ) : null}
+
+      {canSeeTeams ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              Týmy
+            </Text>
+            {roster ? (
+              <Text style={styles.sectionMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                {roster.assignedCount}/{roster.participantCount} v týmech
+              </Text>
+            ) : null}
+          </View>
+
+          {rosterLoading ? (
+            <View style={styles.loadingRow} accessibilityLabel="Načítám týmy">
+              <ActivityIndicator color={Colors.amber} />
+              <Text style={styles.loadingText}>Skládám soupisku…</Text>
+            </View>
+          ) : rosterError && !roster ? (
+            <View style={styles.loadError}>
+              <Text style={styles.errorLeft}>{rosterError}</Text>
+              <Pressable
+                onPress={() => void refreshRoster()}
+                style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.retryText}>Zkusit znovu</Text>
+              </Pressable>
+            </View>
+          ) : roster ? (
+            <>
+              {roster.unassignedCount > 0 ? (
+                <Text style={styles.unassigned}>
+                  {roster.unassignedCount === 1
+                    ? 'Jeden pivař ještě tým nemá.'
+                    : `${roster.unassignedCount} pivaři ještě tým nemají.`}
+                </Text>
+              ) : null}
+              {roster.teams.length ? roster.teams.map((team) => (
+                <TeamCard
+                  key={team.id}
+                  team={team}
+                  roster={roster}
+                  closed={closed}
+                  busy={teamBusy === team.id}
+                  locked={teamBusy !== null}
+                  onToggle={(row) => void toggleTeam(row)}
+                />
+              )) : (
+                <Text style={styles.empty}>Zatím žádný tým. Někdo musí vykopnout první.</Text>
+              )}
+
+              {!roster.myTeamId && !closed ? (
+                <View style={styles.createTeam}>
+                  <TextInput
+                    value={newTeamName}
+                    onChangeText={(value) => {
+                      setNewTeamName(value);
+                      if (createAttemptRef.current?.name !== value.trim()) createAttemptRef.current = null;
+                    }}
+                    placeholder="Název týmu"
+                    placeholderTextColor={MockColors.fieldHint}
+                    maxLength={40}
+                    returnKeyType="done"
+                    onSubmitEditing={() => void createTeam()}
+                    editable={teamBusy === null}
+                    style={styles.teamInput}
+                    accessibilityLabel="Název nového týmu"
+                  />
+                  <Pressable
+                    onPress={() => void createTeam()}
+                    disabled={!newTeamName.trim() || teamBusy !== null}
+                    style={({ pressed }) => [
+                      styles.createTeamButton,
+                      (!newTeamName.trim() || teamBusy !== null) && styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Založit tým"
+                    accessibilityState={{ disabled: !newTeamName.trim() || teamBusy !== null }}
+                  >
+                    {teamBusy === 'create' ? <ActivityIndicator size="small" color={Colors.stout} /> : null}
+                    <Text style={styles.createTeamButtonText}>{teamBusy === 'create' ? 'Zakládám…' : 'Založit'}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {rosterError ? <Text style={styles.errorLeft}>{rosterError}</Text> : null}
+            </>
+          ) : null}
+        </View>
+      ) : null}
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
   content: { paddingHorizontal: MockLayout.screenPad },
-  pressed: { opacity: 0.7 },
+  grow: { flex: 1 },
+  pressed: { opacity: 0.68 },
+  disabled: { opacity: 0.45 },
 
   title: {
     fontSize: 28,
@@ -97,16 +558,16 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
   },
   when: { fontSize: 16, fontWeight: '600', color: Colors.amber, marginTop: 4 },
-  whereRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.md },
-  where: { fontSize: 15, fontWeight: '500', color: Colors.foam },
+  whereRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
+  where: { flex: 1, fontSize: 15, fontWeight: '500', color: Colors.foam },
   blurb: {
     fontSize: 16,
     fontWeight: '400',
     color: Colors.mutedText,
-    lineHeight: 23,
+    lineHeight: 24,
     marginTop: Spacing.lg,
   },
-  goingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.lg },
+  goingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: Spacing.lg },
   goingText: { fontSize: 14, fontWeight: '600', color: Colors.mutedText },
 
   cta: {
@@ -126,12 +587,142 @@ const styles = StyleSheet.create({
   },
   ctaText: { ...MockType.buttonLabel, color: Colors.stout },
   ctaTextOn: { color: Colors.amber },
+  pendingHint: { marginTop: 8, textAlign: 'center', fontSize: 13, fontWeight: '500', color: Colors.mutedText },
+  notice: { marginTop: 8, textAlign: 'center', fontSize: 13, fontWeight: '600', color: Colors.success },
+  error: { fontSize: 13, fontWeight: '500', color: Colors.glow, marginTop: 8, textAlign: 'center' },
+  errorLeft: { fontSize: 13, fontWeight: '500', color: Colors.glow, lineHeight: 18 },
+  capacityError: { fontSize: 13, fontWeight: '500', color: Colors.glow, lineHeight: 18 },
 
-  mockNote: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
+  section: { marginTop: 40, gap: 12 },
+  sectionHead: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { ...MockType.titleS, color: Colors.foam, flex: 1 },
+  sectionCount: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: withAlpha(Colors.amber, 0.16),
+    color: Colors.amber,
     textAlign: 'center',
-    marginTop: MockLayout.sectionGap,
+    lineHeight: 28,
+    fontSize: 13,
+    fontWeight: '800',
   },
+  sectionMeta: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
+  empty: { fontSize: 14, fontWeight: '500', color: Colors.mutedText, lineHeight: 20 },
+
+  requestCard: {
+    padding: 16,
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
+    gap: 12,
+  },
+  requestPerson: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  requestName: { fontSize: 15, fontWeight: '700', color: Colors.foam },
+  requestMessage: { marginTop: 4, fontSize: 13, fontWeight: '500', color: Colors.mutedText, lineHeight: 18 },
+  requestActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  rejectButton: {
+    minWidth: 72,
+    minHeight: HitArea.min,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  rejectButtonText: { fontSize: 14, fontWeight: '700', color: Colors.mutedText },
+  approveButton: {
+    minWidth: 80,
+    minHeight: HitArea.min,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  approveButtonText: { fontSize: 14, fontWeight: '800', color: Colors.stout },
+
+  loadingRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
+  loadError: { gap: 12, alignItems: 'flex-start' },
+  retryButton: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
+  retryText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
+  unassigned: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
+
+  teamCard: {
+    padding: 16,
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
+    gap: 12,
+  },
+  teamCardMine: { borderColor: withAlpha(Colors.amber, 0.5) },
+  teamHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  teamName: { fontSize: 16, fontWeight: '700', color: Colors.foam },
+  teamCapacity: { marginTop: 4, fontSize: 13, fontWeight: '600', color: Colors.mutedText },
+  mineBadge: {
+    height: 28,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 10,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  mineBadgeText: { fontSize: 12, fontWeight: '700', color: Colors.amber },
+  memberList: { gap: 8 },
+  memberRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  memberName: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foamMuted },
+  teamEmpty: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
+  teamAction: {
+    minHeight: HitArea.min,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+    flexDirection: 'row',
+    gap: 8,
+  },
+  teamActionLeave: { backgroundColor: Colors.stout3 },
+  teamActionText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
+  teamActionLeaveText: { color: Colors.mutedText },
+
+  createTeam: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  teamInput: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 16,
+    backgroundColor: MockColors.field,
+    borderWidth: 1,
+    borderColor: MockColors.fieldBorder,
+    color: Colors.foam,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  createTeamButton: {
+    minWidth: 92,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  createTeamButtonText: { fontSize: 14, fontWeight: '800', color: Colors.stout },
 });

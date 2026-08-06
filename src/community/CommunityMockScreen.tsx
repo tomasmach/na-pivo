@@ -1,264 +1,342 @@
-/**
- * DESIGN MOCK — Komunita: challenges, standings and what is on.
- *
- * Three top-level sections, because they are three different jobs:
- *
- *   Výzvy      something to chase this month
- *   Žebříčky   where you stand
- *   Akce       what is happening near you
- *
- * Built as its own screen rather than by injecting sections into the real
- * `LeaderboardsScreen`: that screen owns a root View, a manual safe-area inset
- * and a pinned CTA, all of which fight a native large title (which needs the
- * screen's ScrollView to be the root).
- *
- * Inside Žebříčky there is ONE board, filtered by two chips — the metric and
- * the window. The previous version showed a segmented control AND a period row,
- * two controls in two different voices asking two questions, which is exactly
- * what the design system's §14.2 warns about.
- *
- * The top three get a podium. A leaderboard where first place looks like sixth
- * is a table, not a ranking.
- *
- * People suggestions are NOT here any more — they belong in search, where you
- * are already looking for someone.
- */
-
-import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
-
+import React from 'react';
 import {
-  ChevronRightIcon,
-} from '@/components/shared/IconGlyph';
-import { MenuChip } from '@/mocks/MenuChip';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
-// Shared with the detail screen, so the card you tap and the screen you land on
-// can never show different numbers.
-import { CHALLENGES } from '@/community/mockChallenges';
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import * as Location from 'expo-location';
+import { useRouter, type Href } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { ChallengeGlyphIcon } from '@/community/ChallengeGlyphIcon';
-import { EVENTS } from '@/community/mockEvents';
 import { EventCover } from '@/community/EventCover';
+import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
+import type { Challenge } from '@/data/challengesClient';
+import { fetchChallenges } from '@/data/challengesClient';
+import {
+  fetchCommunityEvents,
+  type CommunityEvent,
+} from '@/data/communityEventsClient';
+import {
+  fetchLeaderboard,
+  type BoardEntry,
+  type Leaderboard,
+  type LeaderboardCategory,
+  type LeaderboardPeriod,
+} from '@/data/leaderboardsClient';
+import SkeletonBlock from '@/friends/SkeletonBlock';
+import { MenuChip } from '@/mocks/MenuChip';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { Avatar } from '@/profile/Avatar';
+import { useAccountStore } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const SECTIONS = ['Žebříčky', 'Výzvy', 'Akce'] as const;
 const METRICS = ['Piva', 'Hospody', 'Mapér XP'] as const;
-
-/** A bare 31 does not say what it counts. The chip picks the metric, so the
- *  unit follows it rather than being hard-coded next to the numeral. */
-const UNITS: Record<string, string> = { Piva: 'piv', Hospody: 'hospod', 'Mapér XP': 'XP' };
 const PERIODS = ['Týden', 'Letos', 'Celkem'] as const;
 
-const AVATARS = 'https://i.pravatar.cc/160?img=';
+type Metric = (typeof METRICS)[number];
+type Period = (typeof PERIODS)[number];
 
-/**
- * A board of six read as a friend list, not as a community. A leaderboard has to
- * look like something you are IN — with a tail below you that you could climb
- * and people you do not know at the top.
- */
-const ROWS = [
-  { rank: 1, handle: '@sudík', score: 31, avatar: `${AVATARS}57` },
-  { rank: 2, handle: '@chmelák', score: 27, avatar: `${AVATARS}50` },
-  { rank: 3, handle: '@pěna', score: 24, avatar: `${AVATARS}41` },
-  { rank: 4, handle: '@klárka', score: 19, avatar: `${AVATARS}64` },
-  { rank: 5, handle: '@ty', score: 17, avatar: `${AVATARS}12`, me: true },
-  { rank: 6, handle: '@mišák', score: 14, avatar: `${AVATARS}26` },
-  { rank: 7, handle: '@hospodská', score: 13, avatar: `${AVATARS}47` },
-  { rank: 8, handle: '@tanker', score: 12, avatar: `${AVATARS}33` },
-  { rank: 9, handle: '@ležáková', score: 11, avatar: `${AVATARS}45` },
-  { rank: 10, handle: '@kvasnice', score: 10, avatar: `${AVATARS}15` },
-  { rank: 11, handle: '@půllitr', score: 9, avatar: `${AVATARS}68` },
-  { rank: 12, handle: '@štamgast', score: 8, avatar: `${AVATARS}59` },
-  { rank: 13, handle: '@chmel', score: 7, avatar: `${AVATARS}11` },
-  { rank: 14, handle: '@nočnísova', score: 6, avatar: `${AVATARS}23` },
-  { rank: 15, handle: '@tmavé12', score: 5, avatar: `${AVATARS}52` },
-];
+const CATEGORY: Record<Metric, LeaderboardCategory> = {
+  Piva: 'beers',
+  Hospody: 'pubs',
+  'Mapér XP': 'mapper',
+};
+const WINDOW: Record<Period, LeaderboardPeriod> = {
+  Týden: 'week',
+  Letos: 'year',
+  Celkem: 'all',
+};
+const UNITS: Record<Metric, string> = { Piva: 'piv', Hospody: 'hospod', 'Mapér XP': 'XP' };
 
-/** The podium — first place has to look like first place. */
-function Podium({ rows, unit }: { rows: typeof ROWS; unit: string }) {
-  const order = [rows[1], rows[0], rows[2]].filter(Boolean);
+function eventWhen(value: string): string {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('cs-CZ', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed);
+}
+
+function challengeDeadline(value: string): string {
+  const parsed = new Date(`${value}T12:00:00`);
+  if (!Number.isFinite(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'long' }).format(parsed);
+}
+
+function Podium({ rows, unit }: { rows: BoardEntry[]; unit: string }) {
+  const order = [rows[1], rows[0], rows[2]].filter((row): row is BoardEntry => Boolean(row));
   const heights = [64, 84, 56];
-
   return (
     <View style={styles.podium}>
-      {order.map((row, index) => (
-        <View key={row.handle} style={styles.podiumCol}>
-          <Image
-            source={{ uri: row.avatar }}
-            style={[styles.podiumAvatar, index === 1 && styles.podiumAvatarFirst]}
-          />
-          <Text
-            style={[styles.podiumHandle, index === 1 && styles.podiumHandleFirst]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {row.handle}
-          </Text>
-          <Text style={styles.podiumScore} allowFontScaling={false}>
-            {row.score}
-            <Text style={styles.podiumUnit}> {unit}</Text>
-          </Text>
-          <View style={[styles.podiumBlock, { height: heights[index] }, index === 1 && styles.podiumBlockFirst]}>
-            <Text style={styles.podiumRank} allowFontScaling={false}>
-              {row.rank}
+      {order.map((row, index) => {
+        const handle = row.account.nickname ? `@${row.account.nickname}` : row.account.displayName;
+        return (
+          <View key={row.account.id} style={styles.podiumCol}>
+            <Avatar
+              uri={row.account.avatarUrl}
+              nickname={row.account.nickname}
+              displayName={row.account.displayName}
+              size={index === 1 ? 62 : 46}
+              border={index === 1 ? 'amber' : 'quiet'}
+            />
+            <Text
+              style={[styles.podiumHandle, index === 1 && styles.podiumHandleFirst]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {handle}
             </Text>
+            <Text style={styles.podiumScore} allowFontScaling={false}>
+              {row.score}<Text style={styles.podiumUnit}> {unit}</Text>
+            </Text>
+            <View style={[styles.podiumBlock, { height: heights[index] }, index === 1 && styles.podiumBlockFirst]}>
+              <Text style={styles.podiumRank} allowFontScaling={false}>{row.rank}</Text>
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
+}
+
+function LoadingRows() {
+  const reduceMotion = useReducedMotion();
+  return (
+    <View style={styles.loading} accessibilityLabel="Načítám komunitu">
+      <SkeletonBlock width="100%" height={92} reduceMotion={reduceMotion} />
+      <SkeletonBlock width="100%" height={58} reduceMotion={reduceMotion} />
+      <SkeletonBlock width="100%" height={58} reduceMotion={reduceMotion} />
+    </View>
+  );
+}
+
+async function coarseLocation(): Promise<{ lat: number; lng: number } | undefined> {
+  try {
+    const permission = await Location.getForegroundPermissionsAsync();
+    if (permission.status !== 'granted') return undefined;
+    const fix =
+      (await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000, requiredAccuracy: 1000 })) ??
+      (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+    return {
+      // Roughly one kilometre. Discovery does not need a table's precise pin.
+      lat: Number(fix.coords.latitude.toFixed(2)),
+      lng: Number(fix.coords.longitude.toFixed(2)),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export default function CommunityMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [section, setSection] = useState<(typeof SECTIONS)[number]>('Žebříčky');
-  const [metric, setMetric] = useState<string>(METRICS[0]);
-  const [period, setPeriod] = useState<string>(PERIODS[0]);
+  const profile = useAccountStore((state) => state.profile);
+  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Žebříčky');
+  const [metric, setMetric] = React.useState<Metric>('Piva');
+  const [period, setPeriod] = React.useState<Period>('Týden');
+  const [board, setBoard] = React.useState<Leaderboard | null>(null);
+  const [boardLoading, setBoardLoading] = React.useState(true);
+  const [boardFailed, setBoardFailed] = React.useState(false);
+  const [challenges, setChallenges] = React.useState<Challenge[] | null>(null);
+  const [challengesLoading, setChallengesLoading] = React.useState(true);
+  const [challengesFailed, setChallengesFailed] = React.useState(false);
+  const [events, setEvents] = React.useState<CommunityEvent[] | null>(null);
+  const [eventsLoading, setEventsLoading] = React.useState(true);
+  const [eventsFailed, setEventsFailed] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [revision, setRevision] = React.useState(0);
 
-  const rest = ROWS.slice(3);
-  const top = ROWS[0]?.score ?? 1;
+  React.useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const kickoff = setTimeout(() => {
+      setBoardLoading(true);
+      setBoardFailed(false);
+      void fetchLeaderboard(CATEGORY[metric], WINDOW[period], {
+        signal: controller.signal,
+        force: revision > 0,
+      }).then((result) => {
+        if (!active) return;
+        setBoard(result);
+        setBoardFailed(result === null);
+        setBoardLoading(false);
+      });
+    }, 0);
+    return () => {
+      active = false;
+      clearTimeout(kickoff);
+      controller.abort();
+    };
+  }, [metric, period, revision]);
+
+  React.useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const kickoff = setTimeout(() => {
+      setChallengesLoading(true);
+      setChallengesFailed(false);
+      setEventsLoading(true);
+      setEventsFailed(false);
+      void Promise.all([
+        fetchChallenges({ signal: controller.signal, force: revision > 0 }),
+        coarseLocation().then((location) => fetchCommunityEvents(location, controller.signal)),
+      ]).then(([challengeRows, eventResult]) => {
+        if (!active) return;
+        setChallenges(challengeRows ?? []);
+        setChallengesFailed(challengeRows === null);
+        setChallengesLoading(false);
+        if (eventResult.ok) {
+          const unique = new Map<string, CommunityEvent>();
+          for (const event of [
+            ...eventResult.dashboard.nearby,
+            ...eventResult.dashboard.hosted,
+            ...eventResult.dashboard.joined,
+          ]) unique.set(event.id, event);
+          setEvents([...unique.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
+        } else {
+          setEvents([]);
+        }
+        setEventsFailed(!eventResult.ok);
+        setEventsLoading(false);
+        setRefreshing(false);
+      });
+    }, 0);
+    return () => {
+      active = false;
+      clearTimeout(kickoff);
+      controller.abort();
+    };
+  }, [revision]);
+
+  const boardRows = React.useMemo(() => {
+    if (!board) return [];
+    const rows = [...board.entries];
+    if (!board.me.listed && board.me.rank !== null && profile?.id) {
+      rows.push({
+        rank: board.me.rank,
+        score: board.me.score,
+        isMe: true,
+        isFriend: false,
+        account: {
+          id: profile.id,
+          nickname: profile.nickname,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+      });
+    }
+    return rows.sort((left, right) => left.rank - right.rank);
+  }, [board, profile]);
+  const rest = boardRows.slice(3);
+
+  const refresh = () => {
+    setRefreshing(true);
+    setRevision((value) => value + 1);
+  };
 
   return (
-    // Root ScrollView: react-native-screens binds the native large title to the
-    // screen's scrollable, and a wrapping View hides it.
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + TAB_CHROME }]}
       contentInsetAdjustmentBehavior="automatic"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.amber} />}
     >
-      <UnderlineTabs
-                options={SECTIONS}
-                value={section}
-                onChange={setSection}
-                inset={MockLayout.screenPad}
-              />
+      <UnderlineTabs options={SECTIONS} value={section} onChange={setSection} inset={MockLayout.screenPad} />
 
       {section === 'Žebříčky' ? (
         <>
           <View style={styles.chips}>
-            <MenuChip value={metric} options={METRICS} title="Podle čeho" onChange={setMetric} />
-            <MenuChip value={period} options={PERIODS} title="Za jaké období" onChange={setPeriod} />
+            <MenuChip value={metric} options={METRICS} title="Podle čeho" onChange={(value) => setMetric(value as Metric)} />
+            <MenuChip value={period} options={PERIODS} title="Za jaké období" onChange={(value) => setPeriod(value as Period)} />
           </View>
-
-          <Podium rows={ROWS} unit={UNITS[metric] ?? ''} />
-
-          {rest.map((row) => (
-            <View key={row.handle} style={[styles.row, row.me && styles.rowMe]}>
-              <Image source={{ uri: row.avatar }} style={styles.rowAvatar} />
-              <View style={styles.body}>
-                <Text
-                  style={[styles.handle, row.me && styles.handleMe]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {row.handle}
-                </Text>
-                {/* The place goes UNDER the name. In its own leading column it
-                    was 18pt wide, so "10" broke across two lines and the board
-                    read as a stack of loose digits.
-
-                    No bar either: below the podium the differences are one or
-                    two beers and every bar was the same length — a graphic that
-                    says nothing, printed fifteen times. */}
-                <Text style={styles.rank} allowFontScaling={false}>
-                  {row.rank}. místo
-                </Text>
-              </View>
-              <Text style={styles.score} allowFontScaling={false}>
-                {row.score}
-                <Text style={styles.scoreUnit}> {UNITS[metric] ?? ''}</Text>
-              </Text>
-            </View>
-          ))}
+          {boardLoading ? <LoadingRows /> : boardFailed ? (
+            <Text style={styles.empty}>Žebříček se teď nedotáhl. Potáhni dolů a zkus to znovu.</Text>
+          ) : boardRows.length ? (
+            <>
+              <Podium rows={boardRows.slice(0, 3)} unit={UNITS[metric]} />
+              {rest.map((row) => {
+                const handle = row.account.nickname ? `@${row.account.nickname}` : row.account.displayName;
+                return (
+                  <View key={row.account.id} style={[styles.row, row.isMe && styles.rowMe]}>
+                    <Avatar uri={row.account.avatarUrl} nickname={row.account.nickname} displayName={row.account.displayName} size={34} border="quiet" />
+                    <View style={styles.body}>
+                      <Text style={[styles.handle, row.isMe && styles.handleMe]} numberOfLines={1}>{handle}</Text>
+                      <Text style={styles.rank} allowFontScaling={false}>{row.rank}. místo</Text>
+                    </View>
+                    <Text style={styles.score} allowFontScaling={false}>{row.score}<Text style={styles.scoreUnit}> {UNITS[metric]}</Text></Text>
+                  </View>
+                );
+              })}
+            </>
+          ) : (
+            <Text style={styles.empty}>V tomhle žebříčku zatím nikdo není.</Text>
+          )}
         </>
       ) : null}
 
-      {/* Rows, not cards. A card inset inside a screen that is already inset
-          left every challenge two paddings narrower than the text around it —
-          three of them read as a column of chips rather than a list. The rail
-          between rows says the same "these are separate things" for free. */}
-      {section === 'Výzvy'
-        ? CHALLENGES.map((challenge, index) => (
-            <Pressable
-              key={challenge.id}
-              onPress={() => router.push(`/community/challenge/${challenge.id}` as Href)}
-              style={({ pressed }) => [
-                styles.challenge,
-                index === 0 && styles.challengeFirst,
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={challenge.title}
-            >
-              <View style={styles.challengeHead}>
-                <View style={styles.medallion}>
-                  <ChallengeGlyphIcon glyph={challenge.glyph} size={17} color={Colors.amber} />
-                </View>
-                <View style={styles.grow}>
-                  <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {challenge.title}
-                  </Text>
-                  <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {challenge.detail}
-                  </Text>
-                </View>
-                <ChevronRightIcon size={18} color={Colors.mutedText} />
+      {section === 'Výzvy' ? (
+        challengesLoading ? <LoadingRows /> : challengesFailed ? (
+          <Text style={styles.empty}>Výzvy se teď nedotáhly. Potáhni dolů a zkus to znovu.</Text>
+        ) : challenges?.length ? challenges.map((challenge, index) => (
+          <Pressable
+            key={challenge.id}
+            onPress={() => router.push(`/community/challenge/${challenge.id}` as Href)}
+            style={({ pressed }) => [styles.challenge, index === 0 && styles.challengeFirst, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={challenge.title}
+          >
+            <View style={styles.challengeHead}>
+              <View style={styles.medallion}><ChallengeGlyphIcon glyph={challenge.glyph} size={17} color={Colors.amber} /></View>
+              <View style={styles.grow}>
+                <Text style={styles.handle} numberOfLines={1}>{challenge.title}</Text>
+                <Text style={styles.sub}>Do {challengeDeadline(challenge.deadline)} · {challenge.done} z {challenge.goal}</Text>
               </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.fill,
-                    { width: `${challenge.progress * 100}%`, backgroundColor: Colors.amber },
-                  ]}
-                />
-              </View>
-            </Pressable>
-          ))
-        : null}
+              <ChevronRightIcon size={18} color={Colors.mutedText} />
+            </View>
+            <View style={styles.track}><View style={[styles.fill, { width: `${challenge.progress * 100}%` }]} /></View>
+          </Pressable>
+        )) : <Text style={styles.empty}>Teď neběží žádná výzva.</Text>
+      ) : null}
 
-      {/* Cards with a poster, not rows with a trophy. An event is a thing you
-          might GO to — it has a place, a time and other people — and a row of
-          three facts behind one repeated glyph makes them all look the same. */}
-      {section === 'Akce'
-        ? EVENTS.map((event) => (
+      {section === 'Akce' ? (
+        eventsLoading ? <LoadingRows /> : <>
+          {eventsFailed ? (
+            <Text style={styles.empty}>Akce se teď nedotáhly. Potáhni dolů a zkus to znovu.</Text>
+          ) : (events ?? []).map((event) => (
             <Pressable
               key={event.id}
               onPress={() => router.push(`/community/event/${event.id}` as Href)}
               style={({ pressed }) => [styles.event, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`${event.title}, ${event.when} ${event.time}, ${event.where}`}
+              accessibilityLabel={event.title}
             >
               <EventCover event={event} height={112} />
               <View style={styles.eventBody}>
-                <Text
-                  style={styles.eventTitle}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {event.title}
-                </Text>
-                <Text
-                  style={styles.eventMeta}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {event.when} {event.time} · {event.where}
-                </Text>
+                <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                <Text style={styles.eventMeta} numberOfLines={2}>{eventWhen(event.startsAt)} · {event.areaLabel || event.city}</Text>
               </View>
               <ChevronRightIcon size={18} color={Colors.mutedText} />
             </Pressable>
-          ))
-        : null}
-
-      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        Design mock — data jsou napevno.
-      </Text>
+          ))}
+          {!eventsFailed && (events?.length ?? 0) === 0 ? <Text style={styles.empty}>V okolí teď žádná akce není.</Text> : null}
+          <Pressable style={({ pressed }) => [styles.create, pressed && styles.pressed]} onPress={() => router.push('/community-events' as Href)} accessibilityRole="button">
+            <Text style={styles.createText}>Moje akce a nové setkání</Text>
+          </Pressable>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -267,142 +345,38 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
   content: { paddingHorizontal: MockLayout.screenPad },
   pressed: { opacity: 0.65 },
-
-  // — Section tabs (underline, like iOS segmented pages) —
-  // Full width, equal columns — three sections of one screen, not a row of
-  // links that happens to start on the left.
-  // The native large title needs air under it; butted straight against the
-  // tabs it read as one stacked heading rather than a title and a control.
-
+  loading: { gap: Spacing.sm, marginTop: Spacing.lg },
+  empty: { fontSize: 15, fontWeight: '500', color: Colors.mutedText, textAlign: 'center', marginTop: MockLayout.sectionGap },
   chips: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: MockLayout.pillHeight,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.4),
-  },
-  chipText: { fontSize: 13, fontWeight: '600', color: Colors.amber },
-
-  // — Podium —
-  podium: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Spacing.sm,
-    marginTop: MockLayout.sectionGap,
-    marginBottom: Spacing.md,
-  },
+  podium: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm, marginTop: MockLayout.sectionGap, marginBottom: Spacing.md },
   podiumCol: { flex: 1, alignItems: 'center', gap: 3 },
-  podiumAvatar: { width: 46, height: 46, borderRadius: 23 },
-  podiumAvatarFirst: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    borderWidth: 2,
-    borderColor: Colors.amber,
-  },
   podiumHandle: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   podiumHandleFirst: { fontSize: 15, fontWeight: '700', color: Colors.foam },
-  podiumScore: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
-  },
-  podiumBlock: {
-    alignSelf: 'stretch',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    backgroundColor: withAlpha(Colors.amber, 0.16),
-    alignItems: 'center',
-    paddingTop: 6,
-    marginTop: 4,
-  },
-  podiumBlockFirst: { backgroundColor: withAlpha(Colors.amber, 0.34) },
+  podiumScore: { fontSize: 20, fontWeight: '800', color: Colors.foam, fontVariant: ['tabular-nums'] },
   podiumUnit: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
+  podiumBlock: { alignSelf: 'stretch', borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: withAlpha(Colors.amber, 0.16), alignItems: 'center', paddingTop: 6, marginTop: 4 },
+  podiumBlockFirst: { backgroundColor: withAlpha(Colors.amber, 0.34) },
   podiumRank: { fontSize: 15, fontWeight: '800', color: Colors.amber },
-
-  // — Rest of the board / challenges / events —
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm + 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
-  rowFirst: { borderTopWidth: 0, marginTop: Spacing.lg },
+  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm + 2, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.1) },
   rowMe: { borderTopColor: withAlpha(Colors.amber, 0.3) },
-  rank: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.mutedText,
-    marginTop: 2,
-    fontVariant: ['tabular-nums'],
-  },
-  rowAvatar: { width: 34, height: 34, borderRadius: 17 },
-  medallion: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
+  body: { flex: 1, gap: 3 },
+  handle: { ...MockType.bodySemibold, color: Colors.foam },
+  handleMe: { color: Colors.amber },
+  rank: { fontSize: 13, fontWeight: '600', color: Colors.mutedText, fontVariant: ['tabular-nums'] },
+  score: { fontSize: 16, fontWeight: '700', color: Colors.foam, fontVariant: ['tabular-nums'] },
+  scoreUnit: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
+  medallion: { width: 38, height: 38, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(Colors.amber, 0.12) },
   grow: { flex: 1 },
-  challenge: {
-    gap: Spacing.sm,
-    paddingVertical: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
+  challenge: { gap: Spacing.sm, paddingVertical: Spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.1) },
   challengeFirst: { borderTopWidth: 0, marginTop: Spacing.sm },
   challengeHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-
-  event: {
-    borderRadius: MockLayout.cardRadius,
-    backgroundColor: Colors.stout2,
-    overflow: 'hidden',
-    marginTop: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingRight: Spacing.md,
-  },
+  sub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
+  track: { height: 7, borderRadius: 4, backgroundColor: withAlpha(Colors.foam, 0.07), overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 4, backgroundColor: Colors.amber },
+  event: { borderRadius: MockLayout.cardRadius, backgroundColor: Colors.stout2, overflow: 'hidden', marginTop: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingRight: Spacing.md },
   eventBody: { flex: 1, gap: 3, paddingVertical: Spacing.md },
   eventTitle: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam },
   eventMeta: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
-  body: { flex: 1, gap: 5 },
-  handle: { ...MockType.bodySemibold, color: Colors.foam },
-  handleMe: { color: Colors.amber },
-  sub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
-  // The challenge card's progress. It survived the leaderboard's cull because
-  // there it measures something real — how far through a goal you are — rather
-  // than restating a score printed beside it.
-  track: {
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: withAlpha(Colors.foam, 0.07),
-    overflow: 'hidden',
-  },
-  fill: { height: '100%', borderRadius: 4 },
-  score: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
-  },
-  scoreUnit: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
-
-  mockNote: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    textAlign: 'center',
-    marginTop: MockLayout.sectionGap,
-  },
+  create: { minHeight: 48, borderRadius: Radius.pill, backgroundColor: Colors.stout3, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.lg, paddingHorizontal: Spacing.lg },
+  createText: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 });

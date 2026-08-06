@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon, TrophyIcon } from '@/components/shared/IconGlyph';
@@ -28,11 +28,16 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-import type { Challenge } from './mockChallenges';
+import type { Challenge } from '@/data/challengesClient';
+
+function deadlineLabel(value: string): string {
+  const parsed = new Date(`${value}T12:00:00`);
+  if (!Number.isFinite(parsed.getTime())) return value;
+  return `Do ${new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'long' }).format(parsed)}`;
+}
 
 export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
   const insets = useSafeAreaInsets();
-  const lead = Math.max(...challenge.rivals.map((rival) => rival.done), challenge.goal);
 
   return (
     <ScrollView
@@ -67,7 +72,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {challenge.deadline}
+            {deadlineLabel(challenge.deadline)}
           </Text>
           <View style={styles.rewardRow}>
             <TrophyIcon size={14} color={Colors.amber} />
@@ -81,7 +86,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
       <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
         Co se počítá
       </Text>
-      {challenge.counts.map((rule) => (
+      {challenge.rules.map((rule) => (
         <View key={rule} style={styles.rule}>
           <CheckIcon size={16} color={Colors.amber} />
           <Text style={styles.ruleText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -90,42 +95,6 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
         </View>
       ))}
 
-      <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-        Kdo ještě jede
-      </Text>
-      {challenge.rivals.map((rival) => (
-        <View key={rival.handle} style={styles.rival}>
-          <Image source={{ uri: rival.avatar }} style={styles.avatar} />
-          <View style={styles.grow}>
-            <Text
-              style={[styles.handle, rival.me && styles.handleMe]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {rival.handle}
-            </Text>
-            <View style={styles.trackThin}>
-              <View
-                style={[
-                  styles.fill,
-                  {
-                    width: `${Math.max(5, Math.round((rival.done / lead) * 100))}%`,
-                    backgroundColor: rival.me ? Colors.amber : withAlpha(Colors.amber, 0.35),
-                  },
-                ]}
-              />
-            </View>
-          </View>
-          <Text style={styles.rivalScore} allowFontScaling={false}>
-            {rival.done}
-            <Text style={styles.rivalGoal}>/{challenge.goal}</Text>
-          </Text>
-        </View>
-      ))}
-
-      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        Design mock — data jsou napevno.
-      </Text>
     </ScrollView>
   );
 }

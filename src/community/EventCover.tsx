@@ -10,19 +10,26 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import type { CommunityEvent } from '@/community/mockEvents';
+import type { CommunityEvent } from '@/data/communityEventsClient';
 import { Colors, withAlpha } from '@/theme/colors';
 
 export function EventCover({ event, height }: { event: CommunityEvent; height: number }) {
-  const [day, month] = event.when.replace(/^\S+\s/, '').split(' ');
+  const parsed = new Date(event.startsAt);
+  const day = Number.isFinite(parsed.getTime())
+    ? new Intl.DateTimeFormat('cs-CZ', { day: 'numeric' }).format(parsed)
+    : '?';
+  const month = Number.isFinite(parsed.getTime())
+    ? new Intl.DateTimeFormat('cs-CZ', { month: 'short' }).format(parsed).replace('.', '')
+    : '';
+  const cover = event.status === 'live' ? ['#8A5A18', '#2E1D0E'] : ['#5E421C', '#24170B'];
 
   return (
     <View style={[styles.wrap, { height, width: height }]}>
       <Svg style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id={`event-${event.id}`} x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={event.cover[0]} />
-            <Stop offset="1" stopColor={event.cover[1]} />
+            <Stop offset="0" stopColor={cover[0]} />
+            <Stop offset="1" stopColor={cover[1]} />
           </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#event-${event.id})`} />

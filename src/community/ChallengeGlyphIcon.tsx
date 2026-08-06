@@ -13,7 +13,7 @@
 import React from 'react';
 
 import { BeerIcon, HistoryIcon, MapPinnedIcon } from '@/components/shared/IconGlyph';
-import type { ChallengeGlyph } from '@/community/mockChallenges';
+import type { ChallengeGlyph } from '@/data/challengesClient';
 
 const GLYPHS: Record<ChallengeGlyph, React.ComponentType<{ size?: number; color: string }>> = {
   places: MapPinnedIcon,
