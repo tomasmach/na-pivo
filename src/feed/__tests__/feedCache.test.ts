@@ -1,0 +1,91 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import type { PublishedNight } from '@/data/nightsClient';
+
+import {
+  clearNightFeedCaches,
+  loadNightFeedCache,
+  parseNightFeedCache,
+  saveNightFeedCache,
+} from '../feedCache';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+function night(id: string): PublishedNight {
+  return {
+    id,
+    author: {
+      id: `author-${id}`,
+      nickname: null,
+      displayName: 'Pivař',
+      avatarUrl: null,
+      isPublic: true,
+    },
+    drinkingDay: '2026-08-05',
+    startedAt: '2026-08-05T18:00:00.000Z',
+    endedAt: '2026-08-05T22:00:00.000Z',
+    beerCount: 4,
+    wineCount: 0,
+    softDrinkCount: 1,
+    shotCount: 0,
+    pubNames: ['U Testu'],
+    city: 'Brno',
+    durationMinutes: 240,
+    visibility: 'friends',
+    createdAt: '2026-08-05T22:05:00.000Z',
+    rounds: 2,
+    myRound: false,
+    isMine: false,
+  };
+}
+
+beforeEach(async () => {
+  await AsyncStorage.clear();
+});
+
+describe('night feed cache', () => {
+  it('isolates the last-good feed by account and scope', async () => {
+    const snapshot = { nights: [night('night-1')], nextCursor: 'next', savedAt: 1234 };
+    await saveNightFeedCache('account-a', 'friends', snapshot);
+
+    expect(await loadNightFeedCache('account-a', 'friends')).toEqual(snapshot);
+    expect(await loadNightFeedCache('account-a', 'global')).toBeNull();
+    expect(await loadNightFeedCache('account-b', 'friends')).toBeNull();
+  });
+
+  it('drops malformed cached nights while retaining valid entries', () => {
+    const valid = night('night-1');
+
+    expect(
+      parseNightFeedCache({
+        version: 1,
+        nights: [valid, { ...valid, id: '' }, { madeUp: true }],
+        nextCursor: null,
+        savedAt: 1234,
+      }),
+    ).toEqual({ nights: [valid], nextCursor: null, savedAt: 1234 });
+  });
+
+  it('clears every account feed on logout without touching unrelated storage', async () => {
+    await AsyncStorage.setItem('keep-me', 'yes');
+    await saveNightFeedCache('account-a', 'friends', {
+      nights: [night('night-1')],
+      nextCursor: null,
+      savedAt: 1,
+    });
+    await saveNightFeedCache('account-b', 'global', {
+      nights: [night('night-2')],
+      nextCursor: null,
+      savedAt: 2,
+    });
+
+    await clearNightFeedCaches();
+
+    expect(await loadNightFeedCache('account-a', 'friends')).toBeNull();
+    expect(await loadNightFeedCache('account-b', 'global')).toBeNull();
+    expect(await AsyncStorage.getItem('keep-me')).toBe('yes');
+  });
+});

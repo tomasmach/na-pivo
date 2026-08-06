@@ -10,6 +10,7 @@ import { chainAbortSignal } from './apiFetch';
 import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
+import { parseStatsTimeline, type RemoteStatsTimeline } from './statsClient';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
@@ -273,6 +274,8 @@ export interface FriendProfileDetail {
   publicStats: PublicProfileStats | null;
   /** Null on older backends → hide the badge showcase. */
   achievements: AccountAchievements | null;
+  /** Aggregates over nights this viewer may already see; absent on older backends. */
+  publishedTimeline: RemoteStatsTimeline | null;
 }
 
 /** The failure half of {@link FriendActionResult}. */
@@ -427,6 +430,7 @@ interface RawFriendProfileDetail {
   incoming_request_id?: string | null;
   public_stats?: RawPublicProfileStats | null;
   achievements?: RawAchievementsBlock | null;
+  published_timeline?: unknown;
 }
 
 interface RawFriendInvite {
@@ -675,6 +679,7 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     incomingRequestId: raw.incoming_request_id ?? null,
     publicStats: parsePublicStats(raw.public_stats),
     achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
+    publishedTimeline: parseStatsTimeline(raw.published_timeline),
   };
 }
 
@@ -845,6 +850,14 @@ export async function searchFriends(query: string, signal?: AbortSignal): Promis
   const q = query.trim();
   if (q.length < 2) return [];
   const res = await requestJson(`/v1/friends/search?q=${encodeURIComponent(q)}`, { signal });
+  if (!res.ok) return null;
+  return Array.isArray(res.data.results)
+    ? (res.data.results as RawFriendProfile[]).map(parseProfile)
+    : [];
+}
+
+export async function fetchFriendSuggestions(signal?: AbortSignal): Promise<FriendProfile[] | null> {
+  const res = await requestJson('/v1/friends/search?suggest=true', { signal });
   if (!res.ok) return null;
   return Array.isArray(res.data.results)
     ? (res.data.results as RawFriendProfile[]).map(parseProfile)

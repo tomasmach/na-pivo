@@ -62,12 +62,14 @@ export function CheersButton({
   count,
   cheered,
   onPress,
+  disabled = false,
   size = 19,
   label,
 }: {
   count: number;
   cheered: boolean;
   onPress?: () => void;
+  disabled?: boolean;
   size?: number;
   /** Accessibility label — the count in words. */
   label: string;
@@ -79,6 +81,7 @@ export function CheersButton({
   const color = cheered ? Colors.amber : Colors.mutedText;
 
   const clink = () => {
+    if (disabled) return;
     onPress?.();
     if (reducedMotion) return;
     // −1 is wound up (apart), +1 is met. The sparks land on the meeting beat.
@@ -134,9 +137,15 @@ export function CheersButton({
   return (
     <Pressable
       onPress={clink}
-      style={({ pressed }) => [styles.wrap, pressed && styles.pressed]}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.wrap,
+        pressed && !disabled && styles.pressed,
+        disabled && styles.disabled,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled, selected: cheered }}
       hitSlop={8}
     >
       <View style={[styles.glyph, { width: size * 1.18, height: size }]}>
@@ -167,6 +176,7 @@ export function CheersButton({
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pressed: { opacity: 0.7 },
+  disabled: { opacity: 0.72 },
 
   glyph: { justifyContent: 'center' },
   mug: { position: 'absolute', bottom: 0 },

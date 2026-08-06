@@ -283,6 +283,35 @@ export async function fetchNightsFeed(
   };
 }
 
+export async function fetchMyNights(cursor?: string): Promise<NightsFeedResult> {
+  const query = `scope=global&mine=true&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
+  const res = await requestJson(`/v1/nights/feed?${query}`);
+  if (!res.ok) return res.result;
+  return {
+    ok: true,
+    nights: Array.isArray(res.data.nights)
+      ? res.data.nights.map((night) => parsePublishedNight(rawObject(night)))
+      : [],
+    nextCursor: typeof res.data.next_cursor === 'string' ? res.data.next_cursor : null,
+  };
+}
+
+export async function fetchProfileNights(
+  accountId: string,
+  cursor?: string,
+): Promise<NightsFeedResult> {
+  const query = `scope=friends&author=${encodeURIComponent(accountId)}&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
+  const res = await requestJson(`/v1/nights/feed?${query}`);
+  if (!res.ok) return res.result;
+  return {
+    ok: true,
+    nights: Array.isArray(res.data.nights)
+      ? res.data.nights.map((night) => parsePublishedNight(rawObject(night)))
+      : [],
+    nextCursor: typeof res.data.next_cursor === 'string' ? res.data.next_cursor : null,
+  };
+}
+
 function parseReactionResult(data: Record<string, unknown>): NightReactionResult {
   return {
     ok: true,

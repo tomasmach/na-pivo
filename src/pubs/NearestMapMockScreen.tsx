@@ -1,26 +1,5 @@
-/**
- * DESIGN MOCK — the map, turned the way you are.
- *
- * A north-up map makes you do the rotation in your head. This one turns with
- * the phone, so "the pub is up and slightly left on screen" means "the pub is
- * up and slightly left in the street". It is the compass idea, drawn as a map:
- * one place in focus, and the world rotating around you rather than the pin
- * moving around a static north.
- *
- * The heading arrives on the UI thread as a Reanimated shared value, so it is
- * brought over to JS deliberately and cheaply:
- *
- *   - only when the bearing has actually moved by `HEADING_STEP` degrees, and
- *   - through `animateCamera`, never by re-rendering a controlled `camera`
- *     prop, which would rebuild the map on every sensor tick.
- *
- * That threshold is the whole cost story: the magnetometer fires far faster
- * than a map can redraw, and a camera animation per tick is what turns a map
- * into a battery complaint.
- */
-
 import React, { useCallback, useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -28,15 +7,14 @@ import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 
 import { ChevronLeftIcon, LocateFixedIcon } from '@/components/shared/IconGlyph';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
-import { MOCK_COMPASS_TARGET } from '@/pubs/mockPubs';
+import { useCompass } from '@/hooks/useCompass';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { presentPub } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-/** Degrees the phone must turn before the map is told about it. */
 const HEADING_STEP = 2;
-/** Matches the sensor cadence closely enough to look continuous. */
 const CAMERA_MS = 220;
 const ZOOM = 17;
 
@@ -45,9 +23,12 @@ export default function NearestMapMockScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const lastHeadingRef = useRef<number | null>(null);
-  const t = MOCK_COMPASS_TARGET;
-
+  const compass = useCompass(null, [], null, null, true, false);
   const { smoothedHeading } = useDeviceHeading(true);
+  const target = compass.pub;
+  const presentation = target
+    ? presentPub(target, compass.currentPosition)
+    : null;
 
   const applyHeading = useCallback((heading: number) => {
     const previous = lastHeadingRef.current;
@@ -64,20 +45,67 @@ export default function NearestMapMockScreen() {
     },
   );
 
-  // Frame the pub once; after this only the heading changes.
   useEffect(() => {
+    if (!target) return;
     mapRef.current?.setCamera({
-      center: { latitude: t.lat, longitude: t.lng },
+      center: { latitude: target.lat, longitude: target.lng },
       zoom: ZOOM,
     });
-  }, [t.lat, t.lng]);
+  }, [target]);
 
   const recentre = () => {
+    if (!target) return;
     mapRef.current?.animateCamera(
-      { center: { latitude: t.lat, longitude: t.lng }, zoom: ZOOM },
+      { center: { latitude: target.lat, longitude: target.lng }, zoom: ZOOM },
       { duration: 320 },
     );
   };
+
+  if (!target || !presentation) {
+    return (
+      <View style={styles.screen}>
+        <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
+          <Pressable
+            onPress={() => router.back()}
+            style={({ pressed }) => [styles.round, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Zpátky"
+          >
+            <ChevronLeftIcon size={22} color={Colors.foam} />
+          </Pressable>
+        </View>
+        <View style={styles.state}>
+          {compass.isLoading && compass.permissionState !== 'denied' ? (
+            <ActivityIndicator color={Colors.amber} />
+          ) : null}
+          <Text style={styles.stateText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {compass.permissionState === 'denied'
+              ? 'Povol polohu a ukážu ti nejbližší hospodu.'
+              : compass.searchFailed
+                ? 'Hospodu se teď nepodařilo načíst.'
+                : 'Hledám nejbližší hospodu…'}
+          </Text>
+          {compass.permissionState === 'denied' ? (
+            <Pressable
+              onPress={() => void compass.requestPermission()}
+              style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.stateButtonText}>Povolit polohu</Text>
+            </Pressable>
+          ) : compass.searchFailed ? (
+            <Pressable
+              onPress={compass.retrySearch}
+              style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.stateButtonText}>Zkusit znovu</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -86,14 +114,14 @@ export default function NearestMapMockScreen() {
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialCamera={{
-          center: { latitude: t.lat, longitude: t.lng },
+          center: { latitude: target.lat, longitude: target.lng },
           heading: 0,
           pitch: 0,
           zoom: ZOOM,
           altitude: 0,
         }}
         userInterfaceStyle="dark"
-        showsUserLocation
+        showsUserLocation={compass.currentPosition != null}
         showsMyLocationButton={false}
         showsCompass={false}
         showsPointsOfInterests={false}
@@ -103,9 +131,9 @@ export default function NearestMapMockScreen() {
         loadingIndicatorColor={Colors.amber}
       >
         <Marker
-          coordinate={{ latitude: t.lat, longitude: t.lng }}
+          coordinate={{ latitude: target.lat, longitude: target.lng }}
           tracksViewChanges={false}
-          accessibilityLabel={t.name}
+          accessibilityLabel={target.name}
         >
           <View style={styles.pin} />
         </Marker>
@@ -131,15 +159,13 @@ export default function NearestMapMockScreen() {
         </Pressable>
       </View>
 
-      {/* The one place in focus, restated at the bottom so the map never has to
-          be read to know where you are being sent. */}
       <View style={[styles.card, { marginBottom: insets.bottom + Spacing.md }]}>
         <View style={styles.grow}>
           <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.name}
+            {presentation.name}
           </Text>
           <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.distance} {t.unit} · {t.hours}
+            {[presentation.distanceLabel, presentation.openLabel].filter(Boolean).join(' · ')}
           </Text>
         </View>
         <View style={styles.badge}>
@@ -156,7 +182,22 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
   grow: { flex: 1 },
   pressed: { opacity: 0.7 },
-
+  state: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    padding: Spacing.lg,
+  },
+  stateText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText, textAlign: 'center' },
+  stateButton: {
+    minHeight: 44,
+    paddingHorizontal: Spacing.lg,
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  stateButtonText: { fontSize: 15, fontWeight: '700', color: Colors.foam },
   topBar: {
     position: 'absolute',
     top: 0,
@@ -173,7 +214,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha('#000000', 0.6),
   },
-
   pin: {
     width: 18,
     height: 18,
@@ -182,7 +222,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: withAlpha('#000000', 0.75),
   },
-
   card: {
     marginTop: 'auto',
     marginHorizontal: Spacing.md,

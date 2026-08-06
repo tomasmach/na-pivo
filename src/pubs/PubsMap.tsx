@@ -1,83 +1,103 @@
-/**
- * DESIGN MOCK — the map behind the places sheet.
- *
- * Every mocked pub, pinned, framed to fit them all. It is the backdrop of the
- * Hospody screen rather than a destination: the sheet sits over it and the map
- * answers "where is all this" without being asked.
- *
- * Interaction stays on — unlike the feed card's map, this one you can pan and
- * pinch, because the sheet leaves it half the screen and a map you cannot move
- * in that space is a picture pretending to be a map.
- */
-
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { MOCK_PUBS } from '@/pubs/mockPubs';
+import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
 
-/** Prague, roughly where the mocked pubs are — real coordinates per pub would
- *  come from `Pub.lat/lng`; the mock list carries names and distances only, so
- *  they are laid out around the city centre here. */
-const CENTRE = { lat: 50.079, lng: 14.432 };
-const SPREAD = 0.012;
+function initialRegionFor(
+  pubs: readonly PubPresentation[],
+  position: PubPosition | null,
+): Region | null {
+  if (position) {
+    return {
+      latitude: position.lat,
+      longitude: position.lng,
+      latitudeDelta: 0.025,
+      longitudeDelta: 0.025,
+    };
+  }
+  if (pubs.length === 0) return null;
+  const latitudes = pubs.map((pub) => pub.pub.lat);
+  const longitudes = pubs.map((pub) => pub.pub.lng);
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const minLng = Math.min(...longitudes);
+  const maxLng = Math.max(...longitudes);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max(0.02, (maxLat - minLat) * 1.35),
+    longitudeDelta: Math.max(0.02, (maxLng - minLng) * 1.35),
+  };
+}
 
 export function PubsMap({
+  pubs,
+  currentPosition,
   recenterSignal = 0,
   onPressPub,
   onPan,
   selectedId,
 }: {
-  /** Bump to fly the map back to where you are. */
+  pubs: readonly PubPresentation[];
+  currentPosition: PubPosition | null;
   recenterSignal?: number;
   onPressPub?: (id: string) => void;
-  /** The pub the floating card is currently on — its pin leads. */
   selectedId?: string | null;
-  /** Fires while the user drags the map — the screen uses it to get the sheet
-   *  out of the way (Apple Maps behaviour). */
   onPan?: () => void;
 }) {
   const mapRef = useRef<MapView>(null);
+  const region = useMemo(
+    () => initialRegionFor(pubs, currentPosition),
+    [currentPosition, pubs],
+  );
+  const coordinateSignature = pubs
+    .map((pub) => `${pub.id}:${pub.pub.lat}:${pub.pub.lng}`)
+    .join('|');
 
-  // Recentring is a MAP action, so it moves the map — it used to push a whole
-  // separate screen, which is a strange answer to "put me back where I am".
   const seenRecenter = useRef(recenterSignal);
   useEffect(() => {
     if (recenterSignal === seenRecenter.current) return;
     seenRecenter.current = recenterSignal;
+    if (!currentPosition) return;
     mapRef.current?.animateToRegion(
       {
-        latitude: CENTRE.lat,
-        longitude: CENTRE.lng,
+        latitude: currentPosition.lat,
+        longitude: currentPosition.lng,
         latitudeDelta: 0.012,
         longitudeDelta: 0.012,
       },
       450,
     );
-  }, [recenterSignal]);
+  }, [currentPosition, recenterSignal]);
 
-  const pins = useMemo(
-    () =>
-      MOCK_PUBS.map((pub, index) => {
-        const angle = (index / MOCK_PUBS.length) * Math.PI * 2;
-        return {
-          id: pub.id,
-          name: pub.name,
-          open: pub.open,
-          lat: CENTRE.lat + Math.sin(angle) * SPREAD * (0.5 + index / MOCK_PUBS.length),
-          lng: CENTRE.lng + Math.cos(angle) * SPREAD * (0.5 + index / MOCK_PUBS.length),
-        };
-      }),
-    [],
-  );
+  const fittedSignature = useRef('');
+  useEffect(() => {
+    if (coordinateSignature === fittedSignature.current) return;
+    fittedSignature.current = coordinateSignature;
+    if (pubs.length <= 1) return;
+    mapRef.current?.fitToCoordinates(
+      pubs.map((pub) => ({ latitude: pub.pub.lat, longitude: pub.pub.lng })),
+      { edgePadding: { top: 100, right: 36, bottom: 300, left: 36 }, animated: false },
+    );
+  });
 
-  const region: Region = {
-    latitude: CENTRE.lat,
-    longitude: CENTRE.lng,
-    latitudeDelta: SPREAD * 3.4,
-    longitudeDelta: SPREAD * 3.4,
-  };
+  const animatedSelection = useRef('');
+  useEffect(() => {
+    if (!selectedId) return;
+    const selected = pubs.find((pub) => pub.id === selectedId);
+    if (!selected) return;
+    const signature = `${selected.id}:${selected.pub.lat}:${selected.pub.lng}`;
+    if (signature === animatedSelection.current) return;
+    animatedSelection.current = signature;
+    mapRef.current?.animateCamera(
+      { center: { latitude: selected.pub.lat, longitude: selected.pub.lng } },
+      { duration: 300 },
+    );
+  });
+
+  if (!region) return <View style={[StyleSheet.absoluteFill, styles.emptyMap]} />;
 
   return (
     <MapView
@@ -86,7 +106,7 @@ export function PubsMap({
       style={StyleSheet.absoluteFill}
       initialRegion={region}
       userInterfaceStyle="dark"
-      showsUserLocation
+      showsUserLocation={currentPosition != null}
       showsMyLocationButton={false}
       showsCompass={false}
       showsPointsOfInterests={false}
@@ -95,26 +115,26 @@ export function PubsMap({
       loadingIndicatorColor={Colors.amber}
       onPanDrag={onPan}
     >
-      {pins.map((pin) => (
+      {pubs.map((pub) => (
         <Marker
-          key={pin.id}
-          coordinate={{ latitude: pin.lat, longitude: pin.lng }}
-          onPress={() => onPressPub?.(pin.id)}
+          key={pub.id}
+          coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
+          onPress={() => onPressPub?.(pub.id)}
           tracksViewChanges={false}
         >
           <View
             style={[
               styles.pin,
-              !pin.open && styles.pinClosed,
-              pin.id === selectedId && styles.pinSelected,
+              pub.openState === 'closed' && styles.pinClosed,
+              pub.id === selectedId && styles.pinSelected,
             ]}
           >
             <Text
-              style={[styles.pinText, pin.id === selectedId && styles.pinTextSelected]}
+              style={[styles.pinText, pub.id === selectedId && styles.pinTextSelected]}
               numberOfLines={1}
               allowFontScaling={false}
             >
-              {pin.name}
+              {pub.name}
             </Text>
           </View>
         </Marker>
@@ -124,6 +144,7 @@ export function PubsMap({
 }
 
 const styles = StyleSheet.create({
+  emptyMap: { backgroundColor: Colors.stout },
   pin: {
     paddingHorizontal: 9,
     height: 26,
@@ -135,8 +156,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   pinClosed: { borderColor: withAlpha(Colors.foam, 0.3) },
-  /** The card you are on. Filled rather than merely outlined, so it reads as
-   *  the subject of the screen and not just another marker. */
   pinSelected: { backgroundColor: Colors.amber, borderColor: Colors.amber },
   pinTextSelected: { color: Colors.stout },
   pinText: { fontSize: 12, fontWeight: '700', color: Colors.foam },

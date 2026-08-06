@@ -53,6 +53,32 @@ export interface RemotePeriodStats {
   years: RemotePeriodStat[];
 }
 
+/** Fixed-width, privacy-safe chart bucket returned additively for the 3.0 profile. */
+export interface RemoteTimelineStat {
+  period: string;
+  beers: number;
+  evenings: number;
+  distinctPubs: number;
+  longestEveningSeconds: number | null;
+}
+
+export interface RemoteStatsTimeline {
+  days: RemoteTimelineStat[];
+  weeks: RemoteTimelineStat[];
+  months: RemoteTimelineStat[];
+  streak: {
+    currentWeeks: number;
+    bestWeeks: number;
+  };
+  windows: {
+    week: RemoteTimelineWindow;
+    month: RemoteTimelineWindow;
+    year: RemoteTimelineWindow;
+  } | null;
+}
+
+export type RemoteTimelineWindow = Omit<RemoteTimelineStat, 'period'>;
+
 /** The account's durable beer stats. */
 export interface RemoteStats {
   totalBeers: number;
@@ -63,6 +89,8 @@ export interface RemoteStats {
   topPubs: RemotePubTally[];
   records: RemoteRecords;
   periods: RemotePeriodStats;
+  /** Added in API 3.0; absent against an older compatible backend. */
+  timeline?: RemoteStatsTimeline;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -105,6 +133,56 @@ function parsePeriod(raw: unknown): RemotePeriodStat | null {
   };
 }
 
+function parseTimelineStat(raw: unknown): RemoteTimelineStat | null {
+  const period = raw as Record<string, unknown>;
+  if (!period || typeof period.period !== 'string') return null;
+  return {
+    period: period.period,
+    beers: num(period.beers),
+    evenings: num(period.evenings),
+    distinctPubs: num(period.distinct_pubs),
+    longestEveningSeconds: nullableNum(period.longest_evening_seconds),
+  };
+}
+
+function parseTimelineWindow(raw: unknown): RemoteTimelineWindow {
+  const value = (raw ?? {}) as Record<string, unknown>;
+  return {
+    beers: num(value.beers),
+    evenings: num(value.evenings),
+    distinctPubs: num(value.distinct_pubs),
+    longestEveningSeconds: nullableNum(value.longest_evening_seconds),
+  };
+}
+
+export function parseStatsTimeline(raw: unknown): RemoteStatsTimeline | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const timeline = raw as Record<string, unknown>;
+  const timelineStreak = (timeline.streak ?? {}) as Record<string, unknown>;
+  const timelineWindows = (timeline.windows ?? {}) as Record<string, unknown>;
+  const parseTimeline = (value: unknown): RemoteTimelineStat[] =>
+    Array.isArray(value)
+      ? value.map(parseTimelineStat).filter((p): p is RemoteTimelineStat => p != null)
+      : [];
+  return {
+    days: parseTimeline(timeline.days),
+    weeks: parseTimeline(timeline.weeks),
+    months: parseTimeline(timeline.months),
+    streak: {
+      currentWeeks: num(timelineStreak.current_weeks),
+      bestWeeks: num(timelineStreak.best_weeks),
+    },
+    windows:
+      timelineWindows.week || timelineWindows.month || timelineWindows.year
+        ? {
+            week: parseTimelineWindow(timelineWindows.week),
+            month: parseTimelineWindow(timelineWindows.month),
+            year: parseTimelineWindow(timelineWindows.year),
+          }
+        : null,
+  };
+}
+
 function parseStats(body: unknown): RemoteStats | null {
   const b = body as Record<string, unknown>;
   if (!b || typeof b !== 'object') return null;
@@ -119,6 +197,7 @@ function parseStats(body: unknown): RemoteStats | null {
   const years = Array.isArray(periods.years)
     ? periods.years.map(parsePeriod).filter((p): p is RemotePeriodStat => p != null)
     : [];
+  const timeline = parseStatsTimeline(b.timeline);
 
   return {
     totalBeers: num(b.total_beers),
@@ -138,6 +217,13 @@ function parseStats(body: unknown): RemoteStats | null {
       timezone: str(periods.timezone),
       months,
       years,
+    },
+    timeline: timeline ?? {
+      days: [],
+      weeks: [],
+      months: [],
+      streak: { currentWeeks: 0, bestWeeks: 0 },
+      windows: null,
     },
   };
 }

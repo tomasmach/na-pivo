@@ -1,67 +1,209 @@
-/**
- * DESIGN MOCK — somebody else's profile.
- *
- * Same object as your own profile, seen from outside: a face, a handle, the
- * numbers, the nights. Deliberately NOT a different screen design — a person
- * should look like a person wherever you meet them, and a stranger's page that
- * is laid out differently from yours reads as a different product.
- *
- * What changes when the profile is not yours:
- *
- *   - the identity block gains the relationship: whether you follow them, and
- *     how many nights you have actually been out together. That number is the
- *     honest version of "mutual friends" in a pub app;
- *   - two actions instead of none — follow, and "Na pivo?", which is the only
- *     thing this product really wants you to do with another person;
- *   - no records, no streak. Your own profile shows those to push YOU; on
- *     someone else's page a streak is a stat about their drinking that they did
- *     not choose to publish, and this app does not build that.
- *
- * Privacy (`AGENTS.md`): nothing here is derived from where they are, only from
- * what they published. Pub counts are aggregates — "12 hospod", never the list
- * of which ones, because a list of somebody's regular pubs is a schedule.
- */
-
-import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerIcon, CheckIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
-import { FeedCard } from '@/feed/FeedMockScreen';
-import { MOCK_FEED } from '@/feed/mockFeed';
+import { EMPTY_ACHIEVEMENTS } from '@/data/achievements';
+import {
+  cancelFriendRequest,
+  fetchFriendProfile,
+  removeFriend,
+  respondFriendRequest,
+  sendFriendRequest,
+  type FriendActionResult,
+  type FriendProfileDetail,
+} from '@/data/friendsClient';
+import { fetchProfileNights, type PublishedNight } from '@/data/nightsClient';
+import { FeedCard } from '@/feed/FeedScreen';
+import { mergeNightPages } from '@/feed/feedModel';
+import ComposeSheet from '@/friends/ComposeSheet';
+import SkeletonBlock from '@/friends/SkeletonBlock';
 import { BarChart } from '@/mocks/BarChart';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { AchievementGrid } from '@/profile/AchievementGrid';
-import { MOCK_ACHIEVEMENTS, SERIES, type StatPeriod } from '@/profile/mockStats';
+import { Avatar } from '@/profile/Avatar';
+import {
+  profileTimelineSeries,
+  type ProfilePeriod,
+} from '@/profile/profileStats';
+import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-/** Placeholder face — `pravatar.cc` is stock photography and MUST NOT ship. */
-const AVATAR = 'https://i.pravatar.cc/240?img=41';
-
 const TABS = ['Statistiky', 'Aktivita'] as const;
-const PERIODS: StatPeriod[] = ['Týden', 'Měsíc', 'Rok'];
+const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
 
-/** How many nights you two have actually shared. Mock — the real number comes
- *  from parties you were both in. */
-const TOGETHER = 4;
+function relationshipLabel(detail: FriendProfileDetail): string {
+  switch (detail.friendshipStatus) {
+    case 'accepted':
+      return 'Parťák';
+    case 'outgoing_pending':
+      return 'Žádost odeslána';
+    case 'incoming_pending':
+      return 'Přijmout';
+    default:
+      return 'Přidat';
+  }
+}
 
 export default function PublicProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ handle?: string }>();
-  const handle = params.handle ? `@${params.handle}` : '@pěna';
-
+  const reduceMotion = useReducedMotion();
+  const showToast = useToastStore((state) => state.show);
+  const params = useLocalSearchParams<{ accountId?: string }>();
+  const accountId = typeof params.accountId === 'string' ? params.accountId : '';
+  const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
-  const [period, setPeriod] = useState<StatPeriod>('Měsíc');
-  const [following, setFollowing] = useState(false);
-  const series = SERIES[period];
+  const [period, setPeriod] = useState<ProfilePeriod>('Měsíc');
+  const [scrubbed, setScrubbed] = useState<number | null>(null);
+  const [relationshipBusy, setRelationshipBusy] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [nights, setNights] = useState<PublishedNight[] | null>(null);
+  const [nightsCursor, setNightsCursor] = useState<string | null>(null);
+  const [nightsLoading, setNightsLoading] = useState(true);
+  const [nightsError, setNightsError] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    if (!accountId) {
+      setLoading(false);
+      setLoadFailed(true);
+      return;
+    }
+    setLoading(true);
+    setLoadFailed(false);
+    const result = await fetchFriendProfile(accountId);
+    setLoading(false);
+    if (!result) {
+      setLoadFailed(true);
+      return;
+    }
+    setDetail(result);
+  }, [accountId]);
+
+  const loadNights = useCallback(async () => {
+    if (!accountId) return;
+    setNightsLoading(true);
+    setNightsError(false);
+    const result = await fetchProfileNights(accountId);
+    setNightsLoading(false);
+    if (!result.ok) {
+      setNightsError(true);
+      return;
+    }
+    setNights(result.nights);
+    setNightsCursor(result.nextCursor);
+  }, [accountId]);
+
+  useEffect(() => {
+    const kickoff = setTimeout(() => {
+      void loadProfile();
+      void loadNights();
+    }, 0);
+    return () => clearTimeout(kickoff);
+  }, [loadNights, loadProfile]);
+
+  const series = useMemo(
+    () => profileTimelineSeries(detail?.publishedTimeline ?? null, period),
+    [detail?.publishedTimeline, period],
+  );
+  const selectedPoint = scrubbed === null ? null : series.points[scrubbed];
+  const handle = detail?.profile.nickname
+    ? `@${detail.profile.nickname}`
+    : detail?.profile.displayName || 'Pivař';
+
+  const refreshRelationship = useCallback(async () => {
+    const refreshed = await fetchFriendProfile(accountId);
+    if (refreshed) setDetail(refreshed);
+  }, [accountId]);
+
+  const runRelationshipAction = useCallback(async () => {
+    if (!detail || relationshipBusy) return;
+    setRelationshipBusy(true);
+    let result: FriendActionResult;
+    if (detail.friendshipStatus === 'accepted') {
+      result = await removeFriend(detail.profile.id);
+    } else if (detail.friendshipStatus === 'outgoing_pending') {
+      result = await cancelFriendRequest(detail.profile.id);
+    } else if (detail.friendshipStatus === 'incoming_pending' && detail.incomingRequestId) {
+      result = await respondFriendRequest(detail.incomingRequestId, 'accept');
+    } else {
+      result = await sendFriendRequest({ accountId: detail.profile.id });
+    }
+    setRelationshipBusy(false);
+    if (!result.ok) {
+      showToast(result.detail);
+      return;
+    }
+    await refreshRelationship();
+  }, [detail, refreshRelationship, relationshipBusy, showToast]);
+
+  const relationshipPress = () => {
+    if (detail?.friendshipStatus !== 'accepted') {
+      void runRelationshipAction();
+      return;
+    }
+    showAppDialog({
+      title: `Odebrat ${handle} z party?`,
+      buttons: [
+        { text: 'Nechat v partě', style: 'cancel' },
+        { text: 'Odebrat', style: 'destructive', onPress: () => void runRelationshipAction() },
+      ],
+    });
+  };
+
+  const loadMore = async () => {
+    if (!accountId || !nightsCursor || moreLoading) return;
+    setMoreLoading(true);
+    const result = await fetchProfileNights(accountId, nightsCursor);
+    setMoreLoading(false);
+    if (!result.ok) {
+      setNightsError(true);
+      return;
+    }
+    setNights((current) => mergeNightPages(current ?? [], result.nights));
+    setNightsCursor(result.nextCursor);
+  };
+
+  if (loading && !detail) {
+    return (
+      <View style={styles.stateScreen} accessibilityLabel="Načítám profil">
+        <SkeletonBlock width={72} height={72} radius={36} reduceMotion={reduceMotion} />
+        <SkeletonBlock width="72%" height={24} reduceMotion={reduceMotion} />
+        <SkeletonBlock width="88%" height={140} reduceMotion={reduceMotion} />
+      </View>
+    );
+  }
+
+  if (loadFailed || !detail) {
+    return (
+      <View style={styles.stateScreen}>
+        <Text style={styles.stateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+          Profil se teď nenačetl
+        </Text>
+        <Pressable
+          onPress={() => void loadProfile()}
+          style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+          accessibilityRole="button"
+        >
+          <Text style={styles.retryText}>Zkusit znovu</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const relationshipOn = detail.friendshipStatus !== 'none';
 
   return (
     <View style={styles.screen}>
@@ -82,118 +224,166 @@ export default function PublicProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.identity}>
-          <Image source={{ uri: AVATAR }} style={styles.avatar} />
+          <Avatar
+            uri={detail.profile.avatarUrl}
+            nickname={detail.profile.nickname}
+            displayName={detail.profile.displayName}
+            size={72}
+          />
           <View style={styles.grow}>
-            <Text
-              style={styles.handle}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
+            <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
               {handle}
             </Text>
-            {/* The honest version of "12 mutual friends": how many evenings you
-                two have actually shared. It is the only social number in this
-                product that means anything. */}
             <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
-              {TOGETHER > 0 ? `Byli jste spolu ${TOGETHER}× na pivu` : 'Ještě jste spolu nebyli'}
+              {detail.stats.nightsTogether > 0
+                ? `Byli jste spolu ${detail.stats.nightsTogether}× na pivu`
+                : 'Ještě jste spolu nebyli'}
             </Text>
           </View>
         </View>
 
-        {/* Two actions, and the second one is the point of the app. Following
-            someone means their nights show up in Kocoviny; "Na pivo?" is the
-            thing you actually came here to do. */}
         <View style={styles.actions}>
           <Pressable
-            onPress={() => setFollowing((current) => !current)}
+            onPress={relationshipPress}
+            disabled={relationshipBusy}
             style={({ pressed }) => [
               styles.action,
-              following ? styles.actionOn : styles.actionPrimary,
+              relationshipOn ? styles.actionOn : styles.actionPrimary,
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
-            accessibilityState={{ selected: following }}
-            accessibilityLabel={following ? `Sleduješ ${handle}` : `Sledovat ${handle}`}
+            accessibilityState={{ disabled: relationshipBusy, selected: relationshipOn }}
+            accessibilityLabel={relationshipLabel(detail)}
           >
-            {following ? (
+            {relationshipOn ? (
               <CheckIcon size={17} color={Colors.amber} />
             ) : (
               <PlusIcon size={17} color={Colors.stout} />
             )}
-            <Text
-              style={[styles.actionText, following && styles.actionTextOn]}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {following ? 'Sleduješ' : 'Sledovat'}
+            <Text style={[styles.actionText, relationshipOn && styles.actionTextOn]} maxFontSizeMultiplier={FontScaleCap.body}>
+              {relationshipBusy ? 'Chvilku…' : relationshipLabel(detail)}
             </Text>
           </Pressable>
 
           <Pressable
-            style={({ pressed }) => [styles.action, styles.actionGhost, pressed && styles.pressed]}
+            onPress={() => setComposeOpen(true)}
+            disabled={!detail.isFriend}
+            style={({ pressed }) => [
+              styles.action,
+              styles.actionGhost,
+              !detail.isFriend && styles.actionDisabled,
+              pressed && styles.pressed,
+            ]}
             accessibilityRole="button"
+            accessibilityState={{ disabled: !detail.isFriend }}
             accessibilityLabel={`Pozvat ${handle} na pivo`}
           >
             <BeerIcon size={17} color={Colors.foam} />
-            <Text
-              style={[styles.actionText, styles.actionTextGhost]}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
+            <Text style={[styles.actionText, styles.actionTextGhost]} maxFontSizeMultiplier={FontScaleCap.body}>
               Na pivo?
             </Text>
           </Pressable>
         </View>
 
-        <UnderlineTabs
-          options={TABS}
-          value={tab}
-          onChange={setTab}
-          inset={MockLayout.screenPad}
-        />
+        <UnderlineTabs options={TABS} value={tab} onChange={setTab} inset={MockLayout.screenPad} />
 
         {tab === 'Statistiky' ? (
           <>
-            {/* Aggregates only. "12 hospod" is a fact about how much they get
-                out; the list of WHICH twelve is a schedule, and this app does
-                not hand one person another person's schedule. */}
-            <View style={styles.totals}>
-              <Text style={styles.window} maxFontSizeMultiplier={FontScaleCap.body}>
-                {period}
-              </Text>
-              <StatGrid columns={4} compact stats={series.totals} />
-            </View>
+            {detail.publishedTimeline?.windows ? (
+              <>
+                <View style={styles.totals}>
+                  <Text style={styles.window} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {selectedPoint ? selectedPoint.label : period}
+                  </Text>
+                  <StatGrid columns={4} compact stats={selectedPoint?.totals ?? series.totals} />
+                </View>
+                <View style={styles.chart}>
+                  <BarChart points={series.points} onScrub={setScrubbed} />
+                </View>
+                <View style={styles.periodRow}>
+                  <Segmented options={PERIODS} value={period} onChange={setPeriod} />
+                </View>
+              </>
+            ) : null}
 
-            <View style={styles.chart}>
-              <BarChart points={series.points} />
-            </View>
+            {detail.publicStats ? (
+              <>
+                <SectionBreak title="Celkem" />
+                <StatGrid
+                  columns={3}
+                  stats={[
+                    { label: 'Piv', value: String(detail.publicStats.totalBeers) },
+                    { label: 'Hospod', value: String(detail.publicStats.distinctPubs) },
+                    { label: 'Mapér', value: String(detail.publicStats.mapperLevel) },
+                  ]}
+                />
+              </>
+            ) : null}
 
-            <View style={styles.periodRow}>
-              <Segmented options={PERIODS} value={period} onChange={setPeriod} />
-            </View>
-
-            {/* Badges yes, streak and records no: a badge is something they
-                earned and chose to wear, a streak is a running tally of another
-                person's drinking. */}
-            <SectionBreak title="Odznaky" />
-            <AchievementGrid mapper={undefined} achievements={MOCK_ACHIEVEMENTS} />
+            {detail.achievements ? (
+              <>
+                <SectionBreak title="Odznaky" />
+                <AchievementGrid mapper={undefined} achievements={detail.achievements ?? EMPTY_ACHIEVEMENTS} />
+              </>
+            ) : null}
           </>
         ) : (
-          MOCK_FEED.map((entry) => <FeedCard key={entry.id} entry={entry} />)
+          <View style={styles.activity}>
+            {nightsLoading && nights === null ? (
+              <View style={styles.activityLoading} accessibilityLabel="Načítám večery">
+                <SkeletonBlock width="100%" height={150} reduceMotion={reduceMotion} />
+                <SkeletonBlock width="100%" height={150} reduceMotion={reduceMotion} />
+              </View>
+            ) : null}
+            {!nightsLoading && (nights?.length ?? 0) === 0 ? (
+              <View style={styles.activityState}>
+                <Text style={styles.activityTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {nightsError ? 'Večery se teď nedotáhly' : 'Zatím žádný zveřejněný večer'}
+                </Text>
+                {nightsError ? (
+                  <Pressable onPress={() => void loadNights()} style={styles.retry} accessibilityRole="button">
+                    <Text style={styles.retryText}>Zkusit znovu</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+            {(nights ?? []).map((night, index) => (
+              <FeedCard key={night.id} night={night} first={index === 0} />
+            ))}
+            {nightsCursor ? (
+              <Pressable onPress={() => void loadMore()} disabled={moreLoading} style={styles.more} accessibilityRole="button">
+                <Text style={styles.moreText}>{moreLoading ? 'Dotahuju…' : 'Starší večery'}</Text>
+              </Pressable>
+            ) : null}
+          </View>
         )}
-
-        <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-          Design mock — data jsou napevno.
-        </Text>
       </ScrollView>
+
+      {composeOpen ? (
+        <ComposeSheet
+          friends={[detail.profile]}
+          onSubmitted={() => undefined}
+          onClose={() => setComposeOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
+  stateScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    padding: Spacing.xl,
+    backgroundColor: Colors.stout,
+  },
+  stateTitle: { fontSize: 20, fontWeight: '800', color: Colors.foam, textAlign: 'center' },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
   content: { paddingHorizontal: MockLayout.screenPad },
-
   top: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },
   back: {
     width: HitArea.min,
@@ -203,38 +393,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
-
   identity: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.stout3 },
   handle: { ...MockType.titleXL, fontSize: 26, color: Colors.foam },
   since: { fontSize: 14, fontWeight: '500', color: Colors.mutedText, marginTop: 2 },
-
   actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
   action: {
     flex: 1,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 46,
+    paddingHorizontal: Spacing.sm,
     borderRadius: Radius.pill,
   },
   actionPrimary: { backgroundColor: Colors.amber },
   actionOn: { backgroundColor: withAlpha(Colors.amber, 0.16) },
   actionGhost: { backgroundColor: withAlpha(Colors.foam, 0.09) },
-  actionText: { fontSize: 15, fontWeight: '800', color: Colors.stout },
+  actionDisabled: { opacity: 0.38 },
+  actionText: { fontSize: 14, fontWeight: '800', color: Colors.stout },
   actionTextOn: { color: Colors.amber },
   actionTextGhost: { color: Colors.foam },
-
   totals: { marginTop: Spacing.lg, gap: Spacing.sm },
   window: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   chart: { marginTop: Spacing.lg },
   periodRow: { marginTop: Spacing.lg },
-
-  mockNote: {
-    marginTop: Spacing.xl,
-    fontSize: 12,
-    fontWeight: '500',
-    color: withAlpha(Colors.mutedText, 0.7),
+  retry: {
+    minHeight: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    marginTop: Spacing.sm,
   },
+  retryText: { fontSize: 14, fontWeight: '800', color: Colors.foam },
+  activity: { marginTop: Spacing.xs },
+  activityLoading: { gap: Spacing.md, marginTop: Spacing.md },
+  activityState: { minHeight: 260, alignItems: 'center', justifyContent: 'center' },
+  activityTitle: { fontSize: 18, fontWeight: '800', color: Colors.foam, textAlign: 'center' },
+  more: { minHeight: HitArea.min, alignItems: 'center', justifyContent: 'center' },
+  moreText: { fontSize: 14, fontWeight: '800', color: Colors.amber },
 });

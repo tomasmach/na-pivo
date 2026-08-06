@@ -1,0 +1,118 @@
+import type { PublishedNight } from '@/data/nightsClient';
+import { shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+
+export interface FeedFact {
+  label: string;
+  value: string;
+}
+
+/** Prefer a handle in social UI, then the display name, then a neutral fallback. */
+export function feedAuthorLabel(night: PublishedNight): string {
+  if (night.author.nickname) return `@${night.author.nickname}`;
+  return night.author.displayName || 'Pivař';
+}
+
+/** The published-night API has no user-authored title. Lead with a real pub when present. */
+export function feedNightTitle(night: PublishedNight): string {
+  return night.pubNames[0]?.trim() || 'Pivní večer';
+}
+
+export function feedNightRoute(night: PublishedNight): string | null {
+  if (night.pubNames.length > 1) return night.pubNames.join('  →  ');
+  if (night.pubNames.length === 0 && night.city.trim()) return night.city.trim();
+  return null;
+}
+
+export function feedDuration(minutes: number | null): string | null {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  const rounded = Math.round(minutes);
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  if (hours === 0) return `${rest}m`;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
+/** Only facts carried by PublishedNight are eligible for the card. */
+export function feedFacts(night: PublishedNight): FeedFact[] {
+  const facts: FeedFact[] = [{ label: 'Piva', value: String(night.beerCount) }];
+  const duration = feedDuration(night.durationMinutes);
+  if (duration) facts.push({ label: 'Večer', value: duration });
+  if (night.pubNames.length > 0) {
+    facts.push({ label: 'Hospody', value: String(night.pubNames.length) });
+  }
+  return facts;
+}
+
+/** Mixed drinks are factual metadata, never silently folded into the beer number. */
+export function feedOtherDrinks(night: PublishedNight): string | null {
+  const parts = [
+    night.wineCount > 0 ? wineCountLabel(night.wineCount) : null,
+    night.shotCount > 0 ? shotCountLabel(night.shotCount) : null,
+    night.softDrinkCount > 0 ? softDrinkCountLabel(night.softDrinkCount) : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateFromKey(key: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) return null;
+  const value = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  return Number.isNaN(value.getTime()) ? null : value;
+}
+
+/** Humanised from server timestamps/day only; no guessed live state. */
+export function feedWhen(night: PublishedNight, now: Date = new Date()): string {
+  const instantRaw = night.endedAt || night.startedAt || night.createdAt;
+  const instant = instantRaw ? new Date(instantRaw) : null;
+  const drinkingDate = dateFromKey(night.drinkingDay);
+  const today = dateFromKey(dateKey(now));
+
+  let dayLabel = '';
+  if (drinkingDate && today) {
+    const days = Math.round((today.getTime() - drinkingDate.getTime()) / 86_400_000);
+    if (days <= 0) dayLabel = 'dnes';
+    else if (days === 1) dayLabel = 'včera';
+    else {
+      dayLabel =
+        drinkingDate.getFullYear() === today.getFullYear()
+          ? `${drinkingDate.getDate()}. ${drinkingDate.getMonth() + 1}.`
+          : `${drinkingDate.getDate()}. ${drinkingDate.getMonth() + 1}. ${drinkingDate.getFullYear()}`;
+    }
+  }
+
+  if (!instant || Number.isNaN(instant.getTime())) return dayLabel || 'Publikováno';
+  if (dayLabel === 'dnes' || dayLabel === 'včera') {
+    const time = `${String(instant.getHours()).padStart(2, '0')}:${String(instant.getMinutes()).padStart(2, '0')}`;
+    return `${dayLabel} ${time}`;
+  }
+  return dayLabel || `${instant.getDate()}. ${instant.getMonth() + 1}.`;
+}
+
+/** Append a page without duplicating a night already present. */
+export function mergeNightPages(
+  current: readonly PublishedNight[],
+  incoming: readonly PublishedNight[],
+): PublishedNight[] {
+  const seen = new Set(current.map((night) => night.id));
+  return [...current, ...incoming.filter((night) => night.id && !seen.has(night.id))];
+}
+
+export function replaceNightReaction(
+  nights: readonly PublishedNight[],
+  nightId: string,
+  rounds: number,
+  myRound: boolean,
+): PublishedNight[] {
+  return nights.map((night) =>
+    night.id === nightId
+      ? { ...night, rounds: Math.max(0, rounds), myRound }
+      : night,
+  );
+}

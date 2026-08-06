@@ -1,80 +1,48 @@
-/**
- * DESIGN MOCK — the compass as the head cell of the pub list (§17.5).
- *
- * The point of this file is that the dial is REAL. An earlier pass drew a
- * static `CompassIcon` glyph, which is a picture of a compass, not a compass —
- * the one thing the product is known for, reduced to decoration.
- *
- * So it mounts the same `CompassContainer` the full screen uses, fed by the
- * same magnetometer stream (`useDeviceHeading`) through the same rotation
- * helper (`shortestRotationTarget`). There is no second source of truth and no
- * second animation path; this is the compass, smaller.
- *
- * Note it will sit still in the simulator — there is no magnetometer there.
- * On a device it turns.
- *
- * The needle points at the target's bearing MINUS the device heading, which is
- * what turns "north is that way" into "the pub is that way".
- */
-
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
-import { splitDistance, type MockPub } from '@/pubs/mockPubs';
-import { useCompassRotation } from '@/pubs/useCompassRotation';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
+import { useCompassRotation } from '@/pubs/useCompassRotation';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
 const DIAL = 66;
-/** Stand-in for the device position until the mock is wired to location. */
-const HERE = { lat: 50.077, lng: 14.4165 };
 
-/**
- * The compass points at the pub at the TOP OF THE LIST, not at a fixed target.
- * It used to hold a constant, so picking "Náhodně v okolí" reshuffled the rows
- * while the needle kept sending you to U Fleků — the head cell and the list
- * disagreed about where you were going.
- */
 export function CompassCell({
   pub,
+  position,
   badge,
   onPress,
 }: {
-  pub: MockPub;
-  /** Why THIS pub is at the top — "Nejbližší", "Nejlíp hodnocená", "Náhodná".
-   *  It follows the sort, because a row hard-labelled "Nejbližší" while the
-   *  list is shuffled is simply wrong. */
+  pub: PubPresentation;
+  position: PubPosition;
   badge: string;
   onPress?: () => void;
 }) {
-  const distance = splitDistance(pub.distance);
-  const rotation = useCompassRotation(HERE, { lat: pub.lat, lng: pub.lng });
+  const rotation = useCompassRotation(position, { lat: pub.pub.lat, lng: pub.pub.lng });
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.cell, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`${badge} hospoda ${pub.name}, ${pub.distance}`}
+      accessibilityLabel={`${badge} hospoda ${pub.name}, ${pub.distanceLabel ?? 'vzdálenost neznámá'}`}
     >
       <CompassContainer rotation={rotation} size={DIAL} />
 
-      {/* Name first: that is what you are looking for. The distance is a
-          property OF the pub, so it reads underneath — and the badge says why
-          this one is at the top of the list at all. */}
       <View style={styles.body}>
         <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {pub.name}
         </Text>
         <View style={styles.distanceRow}>
           <Text style={styles.distance} allowFontScaling={false}>
-            {distance.value}
+            {pub.distanceValue}
           </Text>
           <Text style={styles.unit} allowFontScaling={false}>
-            {distance.unit}
+            {pub.distanceUnit}
           </Text>
           <View style={styles.badge}>
             <Text style={styles.badgeText} allowFontScaling={false}>
@@ -83,7 +51,7 @@ export function CompassCell({
           </View>
         </View>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          Otevřeno {pub.hours} · {pub.beer}
+          {[pub.openLabel, pub.beerLine].filter(Boolean).join(' · ')}
         </Text>
       </View>
     </Pressable>
@@ -95,9 +63,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    // Packeta highlights the nearest branch with a tinted row, not a bordered
-    // card — the fill says "this is the one" without adding a frame. One tinted
-    // row among plain ones stays calm; tinting every row is what read as busy.
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.sm + 2,
     marginHorizontal: -(Spacing.sm + 2),

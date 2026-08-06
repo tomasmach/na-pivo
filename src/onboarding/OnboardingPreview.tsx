@@ -24,27 +24,26 @@ import { CompassCell } from '@/pubs/CompassCell';
 import { Leaderboard } from '@/mocks/Leaderboard';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
-import type { MockPub } from '@/pubs/mockPubs';
+import { presentPub } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 /** The pub the compass points at in the preview. Real coordinates, so the
  *  needle behaves like the real one on a device. */
-const PREVIEW_PUB: MockPub = {
+const PREVIEW_POSITION = { lat: 50.077, lng: 14.4165 };
+const PREVIEW_PUB = presentPub({
   id: 'preview',
   name: 'U Fleků',
   lat: 50.0785,
   lng: 14.42,
-  distance: '180 m',
   address: 'Křemencova 11, Nové Město',
-  open: true,
-  hours: 'do 23:00',
-  beer: 'Flekovský ležák 13°',
-  priceCzk: 62,
+  isOpenNow: true,
+  nextChange: '2026-08-06T23:00:00+02:00',
+  hoursStatus: 'ok',
+  beers: [{ name: 'Flekovský ležák 13°', priceCzk: 62 }],
   rating: 4.6,
-  lastParty: null,
-};
+}, PREVIEW_POSITION);
 
 /** One thread row, drawn the way the hub draws it. */
 function LogRow({
@@ -77,7 +76,7 @@ export function OnboardingPreview({ slide }: { slide: 'compass' | 'diary' | 'acc
   if (slide === 'compass') {
     return (
       <View style={styles.frame} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <CompassCell pub={PREVIEW_PUB} badge="Nejbližší" />
+        <CompassCell pub={PREVIEW_PUB} position={PREVIEW_POSITION} badge="Nejbližší" />
       </View>
     );
   }

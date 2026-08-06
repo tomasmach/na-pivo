@@ -1,21 +1,3 @@
-/**
- * DESIGN MOCK — the swipeable pub card that floats over the map.
- *
- * When the sheet is down and the map is the screen, one card rides above it:
- * the pub, its distance, and the live compass pointing at it. Swiping sideways
- * walks through the pubs and the map highlights whichever card you are on —
- * the Apple Maps / Packeta places idiom, and the same object Strava floats over
- * a route.
- *
- * It only exists at the `peek` detent. At `half` and `full` the list itself is
- * on screen, and a carousel of the same pubs above it would be the same content
- * twice (§0.3).
- *
- * One card fills the width; the next is fully off-screen. `snapToInterval`
- * rather than `pagingEnabled` because the cards are inset by the screen padding
- * and separated by a gap, so a "page" is not the viewport width.
- */
-
 import React, { useCallback, useRef } from 'react';
 import {
   Pressable,
@@ -27,13 +9,12 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
-import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -42,32 +23,28 @@ const GLASS = isLiquidGlassAvailable();
 const DIAL = 62;
 const GAP = Spacing.sm;
 
-/** Stand-in for the device position until the mock is wired to location. */
-const HERE = { lat: 50.077, lng: 14.4165 };
-
 function PubCard({
   pub,
+  position,
   width,
   nearest,
   onPress,
 }: {
-  pub: MockPub;
+  pub: PubPresentation;
+  position: PubPosition;
   width: number;
   nearest: boolean;
   onPress?: () => void;
 }) {
-  const rotation = useCompassRotation(HERE, { lat: pub.lat, lng: pub.lng });
+  const rotation = useCompassRotation(position, { lat: pub.pub.lat, lng: pub.pub.lng });
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.card, { width }, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`${pub.name}, ${pub.distance}, detail`}
+      accessibilityLabel={`${pub.name}, ${pub.distanceLabel ?? 'vzdálenost neznámá'}, detail`}
     >
-      {/* Glass, like Packeta's places card. Tinted hard enough that a pub name
-          never has to be read against a street label showing through — glass
-          here is a material, not transparency for its own sake. */}
       {GLASS ? (
         <GlassView
           style={StyleSheet.absoluteFill}
@@ -86,7 +63,7 @@ function PubCard({
         </Text>
         <View style={styles.distanceRow}>
           <Text style={styles.distance} allowFontScaling={false}>
-            {pub.distance}
+            {pub.distanceLabel}
           </Text>
           {nearest ? (
             <View style={styles.badge}>
@@ -97,7 +74,7 @@ function PubCard({
           ) : null}
         </View>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`} · {pub.beer}
+          {[pub.openLabel, pub.beerLine].filter(Boolean).join(' · ')}
         </Text>
       </View>
     </Pressable>
@@ -105,15 +82,17 @@ function PubCard({
 }
 
 export function PubCarousel({
+  pubs,
+  position,
   onSelect,
   onOpen,
 }: {
+  pubs: readonly PubPresentation[];
+  position: PubPosition;
   onSelect?: (id: string) => void;
-  /** Tapping a card opens that pub — the card is a row, not a caption. */
   onOpen?: (id: string) => void;
 }) {
   const { width: screen } = useWindowDimensions();
-  // One card per screen width: no peek of the next one.
   const cardWidth = screen - MockLayout.screenPad * 2;
   const interval = cardWidth + GAP;
   const lastIndex = useRef(0);
@@ -123,10 +102,10 @@ export function PubCarousel({
       const index = Math.round(event.nativeEvent.contentOffset.x / interval);
       if (index === lastIndex.current) return;
       lastIndex.current = index;
-      const pub = MOCK_PUBS[index];
+      const pub = pubs[index];
       if (pub) onSelect?.(pub.id);
     },
-    [interval, onSelect],
+    [interval, onSelect, pubs],
   );
 
   return (
@@ -138,10 +117,11 @@ export function PubCarousel({
       contentContainerStyle={styles.row}
       onMomentumScrollEnd={handleScroll}
     >
-      {MOCK_PUBS.map((pub, index) => (
+      {pubs.map((pub, index) => (
         <PubCard
           key={pub.id}
           pub={pub}
+          position={position}
           width={cardWidth}
           nearest={index === 0}
           onPress={() => onOpen?.(pub.id)}
@@ -164,7 +144,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.14),
   },
-  /** The pre-glass surface, kept for iOS < 26 and Android. */
   solid: { backgroundColor: Colors.stout2 },
   body: { flex: 1 },
   name: { ...MockType.titleS, color: Colors.foam },

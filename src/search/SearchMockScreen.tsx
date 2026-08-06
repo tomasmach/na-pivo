@@ -1,80 +1,181 @@
-/**
- * DESIGN MOCK — search, the one screen the magnifier on three tabs was pointing
- * at and which did not exist.
- *
- * One field, three kinds of answer, because those are the three kinds of thing
- * in this product:
- *
- *   Hospody   places you can go
- *   Piva      what is in the glass
- *   Pivaři    people
- *
- * Empty is the important state. A search screen that opens on nothing is a dead
- * end you have to type your way out of, so before you type it shows what it can
- * offer: recent searches, and PEOPLE SUGGESTIONS — which is why they moved here
- * out of Komunita. Suggesting someone belongs where you are already looking for
- * someone, not on a leaderboard screen where it is an interruption.
- *
- * Filtering is client-side on the mock's three lists. The real one hits
- * `PubSearchFilters` and `FriendSearchView`, which is also why the tabs match
- * those endpoints rather than being invented categories.
- */
-
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
+import { useReducedMotion } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PeopleSuggestions } from '@/community/PeopleSuggestions';
 import {
   ChevronRightIcon,
   ClockIcon,
   SearchIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import { PeopleSuggestions } from '@/community/PeopleSuggestions';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
-import { SectionBreak } from '@/mocks/SectionBreak';
-import { MOCK_PUBS } from '@/pubs/mockPubs';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
+import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
+import { searchFriends, type FriendProfile } from '@/data/friendsClient';
+import { suggestPubLocations } from '@/data/mapyClient';
+import { getAllLoadedPubs, hydratePubsSnapshot, type Pub } from '@/data/pubs';
+import SkeletonBlock from '@/friends/SkeletonBlock';
+import { SectionBreak } from '@/mocks/SectionBreak';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import { Avatar } from '@/profile/Avatar';
+import { loadRecentSearches, saveRecentSearch } from '@/search/recentSearches';
+import { usePubStore } from '@/stores/pubStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 const TABS = ['Hospody', 'Piva', 'Pivaři'] as const;
+type SearchTab = (typeof TABS)[number];
 
-const RECENT = ['Zlý časy', 'Matuška', '@chmelák', 'tankové'];
+function normalize(value: string): string {
+  return value
+    .trim()
+    .toLocaleLowerCase('cs-CZ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
 
-const BEERS = [
-  { name: 'Matuška Raptor', style: 'IPA 15°', pubs: 4 },
-  { name: 'Únětická 12°', style: 'Ležák', pubs: 9 },
-  { name: 'Pilsner Urquell', style: 'Ležák 12°', pubs: 31 },
-  { name: 'Kacíř 11°', style: 'Světlé výčepní', pubs: 6 },
-  { name: 'Flekovský ležák 13°', style: 'Tmavý ležák', pubs: 1 },
-];
+function pubMatches(pub: Pub, query: string): boolean {
+  const needle = normalize(query);
+  return (
+    normalize(pub.name).includes(needle) ||
+    (pub.beers ?? []).some((beer) => normalize(beer.name).includes(needle))
+  );
+}
 
-const AVATARS = 'https://i.pravatar.cc/160?img=';
-const PEOPLE = [
-  { handle: '@chmelák', meta: '27 piv tenhle týden', avatar: `${AVATARS}50` },
-  { handle: '@pěna', meta: '24 piv · 5 hospod', avatar: `${AVATARS}41` },
-  { handle: '@klárka', meta: 'Máte 3 společné hospody', avatar: `${AVATARS}64` },
-];
+function personLabel(person: FriendProfile): string {
+  return person.nickname ? `@${person.nickname}` : person.displayName;
+}
 
-function matches(haystack: string, needle: string): boolean {
-  return haystack.toLocaleLowerCase('cs').includes(needle.toLocaleLowerCase('cs'));
+function SearchLoading() {
+  const reduceMotion = useReducedMotion();
+  return (
+    <View style={styles.loading} accessibilityLabel="Hledám">
+      <SkeletonBlock width="100%" height={56} reduceMotion={reduceMotion} />
+      <SkeletonBlock width="100%" height={56} reduceMotion={reduceMotion} />
+      <SkeletonBlock width="100%" height={56} reduceMotion={reduceMotion} />
+    </View>
+  );
 }
 
 export default function SearchMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const setRevealedPub = usePubStore((state) => state.setRevealedPub);
   const [query, setQuery] = React.useState('');
-  const [tab, setTab] = React.useState<(typeof TABS)[number]>('Hospody');
+  const [tab, setTab] = React.useState<SearchTab>('Hospody');
+  const [recent, setRecent] = React.useState<string[]>([]);
+  const [pubs, setPubs] = React.useState<Pub[]>([]);
+  const [beers, setBeers] = React.useState<BeerBrandSuggestion[]>([]);
+  const [people, setPeople] = React.useState<FriendProfile[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
 
   const term = query.trim();
   const searching = term.length > 0;
+  const canSearch = term.length >= 2;
 
-  const pubs = MOCK_PUBS.filter((pub) => matches(pub.name, term) || matches(pub.beer, term));
-  const beers = BEERS.filter((beer) => matches(beer.name, term) || matches(beer.style, term));
-  const people = PEOPLE.filter((person) => matches(person.handle, term));
+  React.useEffect(() => {
+    void loadRecentSearches().then(setRecent);
+    void hydratePubsSnapshot();
+  }, []);
+
+  React.useEffect(() => {
+    if (!canSearch) {
+      const reset = setTimeout(() => {
+        setLoading(false);
+        setFailed(false);
+        setPubs([]);
+        setBeers([]);
+        setPeople([]);
+      }, 0);
+      return () => clearTimeout(reset);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setLoading(true);
+      setFailed(false);
+      if (tab === 'Hospody') {
+        const local = getAllLoadedPubs().filter((pub) => pubMatches(pub, term)).slice(0, 20);
+        void suggestPubLocations({ name: term }, controller.signal)
+          .then((suggestions) => {
+            if (controller.signal.aborted) return;
+            const merged = local.slice();
+            const seen = new Set(local.map((pub) => pub.id));
+            for (const suggestion of suggestions) {
+              if (seen.has(suggestion.id)) continue;
+              seen.add(suggestion.id);
+              merged.push({
+                id: suggestion.id,
+                name: suggestion.name,
+                lat: suggestion.lat,
+                lng: suggestion.lng,
+                ...(suggestion.city ? { city: suggestion.city } : {}),
+                ...(suggestion.address ? { address: suggestion.address } : {}),
+              });
+            }
+            setPubs(merged.slice(0, 20));
+            setLoading(false);
+          })
+          .catch(() => {
+            if (controller.signal.aborted) return;
+            setPubs(local);
+            setFailed(local.length === 0);
+            setLoading(false);
+          });
+        return;
+      }
+
+      if (tab === 'Piva') {
+        void suggestBeerBrands(term, controller.signal, 20).then((results) => {
+          if (controller.signal.aborted) return;
+          setBeers(results);
+          setLoading(false);
+        });
+        return;
+      }
+
+      void searchFriends(term.replace(/^@/, ''), controller.signal).then((results) => {
+        if (controller.signal.aborted) return;
+        setPeople(results ?? []);
+        setFailed(results === null);
+        setLoading(false);
+      });
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [canSearch, tab, term]);
+
+  const remember = React.useCallback(
+    (value: string) => {
+      void saveRecentSearch(recent, value).then(setRecent);
+    },
+    [recent],
+  );
+
+  const openPub = (pub: Pub) => {
+    remember(pub.name);
+    setRevealedPub(pub);
+    router.push(`/pub/${encodeURIComponent(pub.id)}` as Href);
+  };
+
+  const openPerson = (person: FriendProfile) => {
+    remember(personLabel(person));
+    router.push(`/user?accountId=${encodeURIComponent(person.id)}` as Href);
+  };
+
+  const empty = failed
+    ? 'Hledání se teď nedotáhlo.'
+    : canSearch
+      ? 'Nic. Zkus to jinak.'
+      : 'Napiš aspoň dvě písmena.';
 
   return (
     <View style={styles.screen}>
@@ -84,10 +185,12 @@ export default function SearchMockScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
+            onSubmitEditing={() => remember(term)}
             placeholder="Hospodu, pivo nebo pivaře"
             placeholderTextColor={MockColors.fieldHint}
             style={styles.input}
             autoFocus
+            autoCorrect={false}
             returnKeyType="search"
             maxFontSizeMultiplier={FontScaleCap.body}
           />
@@ -114,18 +217,11 @@ export default function SearchMockScreen() {
         </Pressable>
       </View>
 
-      {/* The tabs only appear once there is something to sort into them. Before
-          that they are three empty promises across the top of a blank screen. */}
       {searching ? (
-        <UnderlineTabs
-                options={TABS}
-                value={tab}
-                onChange={setTab}
-                inset={MockLayout.screenPad}
-              />
+        <UnderlineTabs options={TABS} value={tab} onChange={setTab} inset={MockLayout.screenPad} />
       ) : null}
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -133,62 +229,54 @@ export default function SearchMockScreen() {
       >
         {!searching ? (
           <>
-            <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Nedávno
-            </Text>
-            {RECENT.map((entry) => (
-              <Pressable
-                key={entry}
-                onPress={() => setQuery(entry)}
-                style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={entry}
-              >
-                <ClockIcon size={16} color={Colors.mutedText} />
-                <Text
-                  style={styles.recentText}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {entry}
+            {recent.length > 0 ? (
+              <>
+                <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  Nedávno
                 </Text>
-              </Pressable>
-            ))}
-
-            {/* Moved out of Komunita: a suggestion belongs where you are already
-                trying to find someone. */}
+                {recent.map((entry) => (
+                  <Pressable
+                    key={entry}
+                    onPress={() => setQuery(entry)}
+                    style={({ pressed }) => [styles.recentRow, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={entry}
+                  >
+                    <ClockIcon size={16} color={Colors.mutedText} />
+                    <Text style={styles.recentText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {entry}
+                    </Text>
+                  </Pressable>
+                ))}
+              </>
+            ) : null}
             <SectionBreak title="Pivaři, co bys mohl znát" />
             <PeopleSuggestions />
           </>
         ) : null}
 
-        {searching && tab === 'Hospody' ? (
+        {searching && loading ? <SearchLoading /> : null}
+        {searching && !loading && tab === 'Hospody' ? (
           pubs.length === 0 ? (
-            <Empty />
+            <Empty text={empty} />
           ) : (
             pubs.map((pub) => (
               <Pressable
                 key={pub.id}
-                onPress={() => router.push(`/pub/${pub.id}` as Href)}
+                onPress={() => openPub(pub)}
                 style={({ pressed }) => [styles.row, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel={pub.name}
               >
                 <View style={styles.grow}>
-                  <Text
-                    style={styles.rowTitle}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
+                  <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                     {pub.name}
                   </Text>
-                  <Text
-                    style={styles.rowMeta}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {pub.distance} · {pub.beer}
-                  </Text>
+                  {pub.address || pub.city || pub.beers?.[0]?.name ? (
+                    <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {pub.address || pub.city || pub.beers?.[0]?.name}
+                    </Text>
+                  ) : null}
                 </View>
                 <ChevronRightIcon size={16} color={Colors.mutedText} />
               </Pressable>
@@ -196,63 +284,72 @@ export default function SearchMockScreen() {
           )
         ) : null}
 
-        {searching && tab === 'Piva' ? (
+        {searching && !loading && tab === 'Piva' ? (
           beers.length === 0 ? (
-            <Empty />
+            <Empty text={empty} />
           ) : (
             beers.map((beer) => (
-              <View key={beer.name} style={styles.row}>
+              <Pressable
+                key={beer.slug}
+                onPress={() => {
+                  setQuery(beer.name);
+                  remember(beer.name);
+                }}
+                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={beer.name}
+              >
                 <View style={styles.grow}>
-                  <Text
-                    style={styles.rowTitle}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
+                  <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                     {beer.name}
                   </Text>
-                  <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {beer.style} · na čepu v {beer.pubs} hospodách
-                  </Text>
+                  {beer.brandName && beer.brandName !== beer.name ? (
+                    <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {beer.brandName}
+                    </Text>
+                  ) : null}
                 </View>
-              </View>
+              </Pressable>
             ))
           )
         ) : null}
 
-        {searching && tab === 'Pivaři' ? (
+        {searching && !loading && tab === 'Pivaři' ? (
           people.length === 0 ? (
-            <Empty />
+            <Empty text={empty} />
           ) : (
             people.map((person) => (
-              <View key={person.handle} style={styles.row}>
-                <Image source={{ uri: person.avatar }} style={styles.avatar} />
-                <View style={styles.grow}>
-                  <Text
-                    style={styles.rowTitle}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {person.handle}
-                  </Text>
-                  <Text style={styles.rowMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {person.meta}
-                  </Text>
-                </View>
+              <Pressable
+                key={person.id}
+                onPress={() => openPerson(person)}
+                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={personLabel(person)}
+              >
+                <Avatar
+                  uri={person.avatarUrl}
+                  nickname={person.nickname}
+                  displayName={person.displayName}
+                  size={40}
+                  border="quiet"
+                />
+                <Text style={[styles.rowTitle, styles.grow]} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {personLabel(person)}
+                </Text>
                 <ChevronRightIcon size={16} color={Colors.mutedText} />
-              </View>
+              </Pressable>
             ))
           )
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
 
-/** One sentence, no illustration. An empty result is not an occasion. */
-function Empty() {
+function Empty({ text }: { text: string }) {
   return (
     <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-      Nic. Zkus to jinak.
+      {text}
     </Text>
   );
 }
@@ -261,7 +358,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
-
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -283,36 +379,21 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.foam },
   cancel: { fontSize: 16, fontWeight: '600', color: Colors.amber },
-
-
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.md },
   section: { ...MockType.titleS, color: Colors.foam, marginBottom: Spacing.xs },
-
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    minHeight: HitArea.min,
-  },
+  recentRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, minHeight: HitArea.min },
   recentText: { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.foam },
-
   row: {
+    minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: withAlpha(Colors.foam, 0.08),
   },
-  avatar: { width: 40, height: 40, borderRadius: Radius.pill },
   rowTitle: { fontSize: 16, fontWeight: '600', color: Colors.foam },
   rowMeta: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 1 },
-
-  empty: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: Colors.mutedText,
-    paddingTop: Spacing.xl,
-    textAlign: 'center',
-  },
+  loading: { gap: Spacing.sm, paddingTop: Spacing.sm },
+  empty: { fontSize: 15, fontWeight: '500', color: Colors.mutedText, paddingTop: Spacing.xl, textAlign: 'center' },
 });
