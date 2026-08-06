@@ -78,6 +78,7 @@ import {
 import { useNightRecord } from '@/party/useNightRecord';
 import { usePartyBeer } from '@/party/usePartyBeer';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import { useFollowPartyGames } from '@/stores/partyGamesStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -207,6 +208,9 @@ export default function LivePartyMockScreen() {
   const night = useNightRecord();
   const beer = usePartyBeer();
   const evening = usePartyEveningStore((s) => s.evening);
+  // The table's games, live. The hub is normally the screen that is open when
+  // somebody else puts one down.
+  useFollowPartyGames(evening?.joinCode ?? null);
   const startEvening = usePartyEveningStore((s) => s.start);
   const joinEvening = usePartyEveningStore((s) => s.join);
   const joiningTable = usePartyEveningStore((s) => s.busy);

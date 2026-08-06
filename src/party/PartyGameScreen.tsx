@@ -45,6 +45,12 @@ import { PromptShell } from '@/party/shells/PromptShell';
 import { QuizShell } from '@/party/shells/QuizShell';
 import { beersOf, nightMe, nightStandings } from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
+import {
+  eventsOfGame,
+  useFollowPartyGames,
+  usePartyGamesStore,
+} from '@/stores/partyGamesStore';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { usePartyBeer } from '@/party/usePartyBeer';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
@@ -93,6 +99,36 @@ export default function PartyGameScreen() {
   // is how the first round becomes an argument about whose turn it is.
   const night = useNightRecord();
   const beer = usePartyBeer();
+
+  /**
+   * The shared side of a game.
+   *
+   * A game put on the table becomes a `PartyGame` row so the other phones can
+   * see it, and everything that happens in it becomes an event. Without an
+   * evening there is nothing to share with and this stays null — the game plays
+   * exactly as it did before, on one phone.
+   */
+  useFollowPartyGames(usePartyEveningStore((s) => s.evening?.joinCode ?? null));
+  const gameEvents = usePartyGamesStore((s) => s.events);
+  const startSharedGame = usePartyGamesStore((s) => s.start);
+  const sendGameEvent = usePartyGamesStore((s) => s.send);
+  const sharedCode = usePartyGamesStore((s) => s.code);
+  const [gameId, setGameId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!key || !sharedCode || gameId) return;
+    let cancelled = false;
+    void startSharedGame({
+      catalogKey: key,
+      name,
+      scoring: def?.scoring === 'drinks' ? 'drinks' : 'points',
+    }).then((id) => {
+      if (!cancelled && id) setGameId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, name, def, sharedCode, gameId, startSharedGame]);
   const table = React.useMemo(
     () => nightStandings(night).map((person) => ({ name: person.name, tint: person.tint })),
     [night],
@@ -107,36 +143,79 @@ export default function PartyGameScreen() {
   );
   const [scores, setScores] = React.useState<Record<string, number>>({});
 
-  // Pub kvíz. At a table everybody answers for themselves, so a person is a
-  // TEAM OF ONE — the same game run at a community event has real teams and the
-  // rules do not change (see `src/party/quiz/rules.ts`).
-  //
-  // The answers are a plain append-only list because that is exactly what the
-  // backend stores and the stream delivers: `enqueuePartyGameEvent(code, id,
-  // {kind: 'answer', payload: {questionId, option}})` out, folded events in.
-  // This local list is the seam where that gets wired, not a different model.
+  /**
+   * Pub kvíz — the one game that is genuinely played on several phones.
+   *
+   * Entrants are the people AT THE EVENING, keyed by account id rather than by
+   * name: a name is what you show, an id is what two phones can agree on. At a
+   * table everybody answers for themselves, so a person is a TEAM OF ONE — the
+   * same game at a community event has real teams and no rule changes
+   * (`src/party/quiz/rules.ts`).
+   *
+   * Self-paced on purpose. Every phone keeps its own question index and the
+   * reveal happens per QUESTION, once every team has committed to that one —
+   * so nobody waits for a host to press next, and the slowest reader does not
+   * hold up the table.
+   */
   const entrants = React.useMemo<QuizEntrant[]>(
     () =>
-      (roster ?? table).map((person) => ({
-        id: person.name,
-        teamId: person.name,
+      night.people.map((person) => ({
+        id: person.id,
+        teamId: person.id,
         teamName: person.name,
       })),
-    [roster, table],
+    [night],
   );
-  const [answers, setAnswers] = React.useState<QuizAnswer[]>([]);
+
+  // Mine, folded in the moment I tap, and everybody's as the stream delivers
+  // them. No dedupe key is needed: a team's answer is its FIRST one, so my own
+  // answer coming back from the server folds to the same result as the local
+  // copy it duplicates.
+  const [myAnswers, setMyAnswers] = React.useState<QuizAnswer[]>([]);
+  const remoteAnswers = React.useMemo<QuizAnswer[]>(
+    () =>
+      eventsOfGame(gameEvents, gameId)
+        .filter((event) => event.kind === 'answer')
+        .flatMap((event) => {
+          const questionId = event.payload.questionId;
+          const option = event.payload.option;
+          if (typeof questionId !== 'string' || typeof option !== 'number') return [];
+          return [
+            {
+              entrantId: event.account.id,
+              questionId,
+              option,
+              at: new Date(event.at).getTime(),
+            },
+          ];
+        }),
+    [gameEvents, gameId],
+  );
+  const answers = React.useMemo(
+    () => [...myAnswers, ...remoteAnswers],
+    [myAnswers, remoteAnswers],
+  );
   const [question, setQuestion] = React.useState(0);
   const [revealed, setRevealed] = React.useState<number[]>([]);
 
   const answer = (option: number) => {
     const current = QUIZ_QUESTIONS[question];
-    if (!current) return;
-    setAnswers((list) =>
+    const me = nightMe(night)?.id;
+    if (!current || !me) return;
+    const at = stamp();
+    setMyAnswers((list) =>
       // A team's answer is its first one, so a second tap is not an edit.
-      list.some((entry) => entry.entrantId === 'Ty' && entry.questionId === current.id)
+      list.some((entry) => entry.entrantId === me && entry.questionId === current.id)
         ? list
-        : [...list, { entrantId: 'Ty', questionId: current.id, option, at: stamp() }],
+        : [...list, { entrantId: me, questionId: current.id, option, at }],
     );
+    // …and to the table. Queued, so a pub with no signal costs nothing.
+    if (gameId) {
+      void sendGameEvent(gameId, {
+        kind: 'answer',
+        payload: { questionId: current.id, option },
+      });
+    }
   };
 
   const bump = (player: string) =>
@@ -149,6 +228,9 @@ export default function PartyGameScreen() {
   const played = ranked.some((row) => row.score > 0);
 
   const finish = () => {
+    // The table hears it too: `finish` is what closes the game for everybody,
+    // and the server stamps the row's `ended_at` from it.
+    if (gameId) void sendGameEvent(gameId, { kind: 'finish' });
     if (key) {
       finishGame(key, {
         game: name,
@@ -260,7 +342,7 @@ export default function PartyGameScreen() {
         <QuizShell
           entrants={entrants}
           answers={answers}
-          me="Ty"
+          me={nightMe(night)?.id ?? 'me'}
           index={question}
           tintOf={(name) => roster.find((person) => person.name === name)?.tint ?? Colors.amber}
           forceRevealed={revealed.includes(question)}
