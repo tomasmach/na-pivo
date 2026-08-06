@@ -26,6 +26,12 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import Animated, {
+  runOnJS,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -276,6 +282,11 @@ function PubRow({
   );
 }
 
+/** Row height of the search field plus its bottom padding. */
+const SEARCH_HEIGHT = 46 + 8;
+/** How far you scroll before it is fully folded. */
+const SEARCH_COLLAPSE = 64;
+
 export default function PubListMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -293,6 +304,37 @@ export default function PubListMockScreen() {
   const [listAtTop, setListAtTop] = React.useState(true);
   // Handed to the sheet so its drag can out-rank the list's own scrolling.
   const listRef = React.useRef<React.ComponentType<object> | null>(null);
+
+  /**
+   * The search field folds away as the list scrolls.
+   *
+   * A sheet at full height still spends its top third on a field you are not
+   * typing in and chips you already set — scroll far enough to want more list,
+   * and the field is the part you are not using. It comes straight back the
+   * moment you scroll to the top, so it is never gone, only out of the way.
+   *
+   * Reduce motion keeps it: this follows a finger rather than animating on its
+   * own, which is the kind of movement §10 allows.
+   */
+  const listScrollY = useSharedValue(0);
+  const onListScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      'worklet';
+      listScrollY.value = event.contentOffset.y;
+      // The sheet's own drag needs to know whether the list still has room
+      // above it — at the top, a downward drag belongs to the sheet.
+      const atTop = event.contentOffset.y <= 0.5;
+      runOnJS(setListAtTop)(atTop);
+    },
+  });
+  const searchAnim = useAnimatedStyle(() => {
+    const shut = Math.min(1, Math.max(0, listScrollY.value / SEARCH_COLLAPSE));
+    return {
+      height: SEARCH_HEIGHT * (1 - shut),
+      opacity: 1 - shut,
+      transform: [{ translateY: -8 * shut }],
+    };
+  });
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
@@ -437,7 +479,7 @@ export default function PubListMockScreen() {
           </ScrollView>
         ) : (
           <>
-            <View style={styles.searchWrap}>
+            <Animated.View style={[styles.searchWrap, searchAnim]}>
               {/* A field you tap to OPEN search, not one you type in here: the
                   sheet is half a screen tall and a keyboard would take the rest
                   of it. Apple Maps does the same. */}
@@ -452,21 +494,20 @@ export default function PubListMockScreen() {
                   Hledej hospodu nebo pivo
                 </Text>
               </Pressable>
-            </View>
+            </Animated.View>
 
+            {/* The chips stay. They are how you change what the list IS, so
+                losing them on scroll would mean scrolling back up to filter. */}
             <FilterChips sort={sort} onSort={pickSort} />
 
-            <ScrollView
+            <Animated.ScrollView
               ref={listRef as never}
               contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               scrollEnabled={detent === 'full'}
               scrollEventThrottle={16}
-              onScroll={(event) => {
-                const atTop = event.nativeEvent.contentOffset.y <= 0.5;
-                setListAtTop((current) => (current === atTop ? current : atTop));
-              }}
+              onScroll={onListScroll}
             >
               {head ? (
                 <CompassCell
@@ -493,7 +534,7 @@ export default function PubListMockScreen() {
               <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
                 Design mock — data jsou napevno.
               </Text>
-            </ScrollView>
+            </Animated.ScrollView>
           </>
         )}
       </PlacesSheet>
@@ -570,7 +611,11 @@ const styles = StyleSheet.create({
   // — Search + filters, inside the sheet —
   // Tight around the filter row: the sheet is half a screen and the padding
   // above and below the chips was costing a whole pub row.
-  searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.xs },
+  searchWrap: {
+    paddingHorizontal: MockLayout.screenPad,
+    paddingBottom: Spacing.xs,
+    overflow: 'hidden',
+  },
   searchField: {
     flexDirection: 'row',
     alignItems: 'center',
