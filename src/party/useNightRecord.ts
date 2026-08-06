@@ -11,13 +11,13 @@
  *
  *   me       `tallyStore` — the counter, the diary's own truth
  *   others   `partyEveningStore` — the shared evening, when there is one
- *   games    `livePartyStore` — still local; `PartyGame` exists but the hub
- *            does not write to it yet
+ *   games    `livePartyStore` for the ones YOU put down, plus `partyGamesStore`
+ *            for the ones somebody else did
  *   photos   `livePartyStore` — still local; the real ones are `BeerPhoto`
  *
- * The last two are the only mocked parts left in a running night, and both are
- * passed in rather than special-cased, so replacing them is a change of source
- * and not a change of shape.
+ * Photos are the last mocked part of a running night, and they are passed in
+ * rather than special-cased, so replacing them is a change of source and not a
+ * change of shape.
  */
 
 import React from 'react';
@@ -25,6 +25,7 @@ import React from 'react';
 import { useAccountStore } from '@/stores/accountStore';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import { usePartyGamesStore } from '@/stores/partyGamesStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { buildNightRecord, tintFor } from '@/party/nightBuilder';
 import type { NightGame, NightPhoto, NightRecord, NightStop } from '@/party/nightRecord';
@@ -43,6 +44,7 @@ export function useNightRecord(): NightRecord {
   const guests = useLivePartyStore((s) => s.people);
   const games = useLivePartyStore((s) => s.games);
   const log = useLivePartyStore((s) => s.log);
+  const sharedGames = usePartyGamesStore((s) => s.games);
 
   // The account id matters: it is how a drink of mine is told apart from the
   // copy the server sends back. Without it the two would be counted twice.
@@ -93,6 +95,19 @@ export function useNightRecord(): NightRecord {
         by: event.by === 'Ty' ? meId : event.by,
       }));
 
+    // Games somebody ELSE put on the table. Keyed by catalogue key, because
+    // that is what a thread row launches — and the same game twice at one table
+    // at the same moment is not a case worth splitting rows over.
+    const local = new Set(nightGames.map((game) => game.key));
+    for (const shared of sharedGames) {
+      if (local.has(shared.catalogKey)) continue;
+      nightGames.push({
+        key: shared.catalogKey,
+        name: shared.name,
+        startedAt: shared.startedAt,
+      });
+    }
+
     const record = buildNightRecord({
       evening,
       session,
@@ -118,5 +133,5 @@ export function useNightRecord(): NightRecord {
       }));
 
     return extra.length > 0 ? { ...record, people: [...record.people, ...extra] } : record;
-  }, [evening, session, meId, live, pubName, startedAt, games, log, guests]);
+  }, [evening, session, meId, live, pubName, startedAt, games, log, guests, sharedGames]);
 }
