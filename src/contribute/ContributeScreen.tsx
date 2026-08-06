@@ -666,6 +666,10 @@ export default function ContributeScreen() {
     async (source: MenuPhotoSource) => {
       if (scanInFlightRef.current) return;
       scanInFlightRef.current = true;
+      // Set this before handing control to the native picker. When the user
+      // confirms a large camera photo, preprocessing can take a moment; the
+      // editor must already show that the scan is alive as soon as it returns.
+      setScanning(true);
       const toast = useToastStore.getState().show;
 
       try {
@@ -690,7 +694,6 @@ export default function ContributeScreen() {
           return;
         }
 
-        setScanning(true);
         const result = await scanMenuPhoto(picked.uri);
         switch (result.status) {
           case 'ok': {
