@@ -9,6 +9,7 @@ const BACKGROUND_LOCATION_REASON =
 
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
 const SPLASH_BACKGROUND = '#1f1007';
+const SKIP_IOS_WIDGETS = process.env.NA_PIVO_SKIP_IOS_WIDGETS === '1';
 
 // Reversed iOS OAuth client id for the native Google Sign-In redirect, e.g.
 // "com.googleusercontent.apps.1234567890-abcdef". Set it via
@@ -76,6 +77,93 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'Nastav ho lokálně nebo jako EAS environment secret.',
     );
   }
+  const plugins: NonNullable<ExpoConfig['plugins']> = [
+    'expo-router',
+    'expo-font',
+    'expo-asset',
+    [
+      'react-native-maps',
+      {
+        ...(GOOGLE_MAPS_ANDROID_API_KEY
+          ? { androidGoogleMapsApiKey: GOOGLE_MAPS_ANDROID_API_KEY }
+          : {}),
+        ...(GOOGLE_MAPS_IOS_API_KEY
+          ? { iosGoogleMapsApiKey: GOOGLE_MAPS_IOS_API_KEY }
+          : {}),
+      },
+    ],
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission: LOCATION_REASON,
+        locationAlwaysAndWhenInUsePermission: BACKGROUND_LOCATION_REASON,
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
+      },
+    ],
+    'expo-notifications',
+    [
+      'expo-audio',
+      {
+        enableBackgroundPlayback: false,
+        enableBackgroundRecording: false,
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ],
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/images/icon.png',
+        imageWidth: 140,
+        resizeMode: 'contain',
+        backgroundColor: SPLASH_BACKGROUND,
+      },
+    ],
+    'expo-secure-store',
+    // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
+    // entitlement; requires enabling the capability on the App ID in the
+    // Apple Developer portal and a dev-client rebuild.
+    'expo-apple-authentication',
+    // Native Google Sign-In. iosUrlScheme is the reversed iOS OAuth client id;
+    // requires a dev-client rebuild. webClientId is supplied at runtime in
+    // src/data/socialAuth.ts via EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.
+    [
+      '@react-native-google-signin/google-signin',
+      {
+        iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
+      },
+    ],
+    // google-signin pulls in AppCheckCore/GoogleUtilities, which can't be
+    // integrated as static *libraries* (no module maps). Building iOS pods as
+    // static *frameworks* gives them module maps so Swift can import them —
+    // the documented fix for google-signin on Expo.
+    [
+      'expo-build-properties',
+      {
+        ios: {
+          useFrameworks: 'static',
+        },
+      },
+    ],
+  ];
+
+  if (!SKIP_IOS_WIDGETS) {
+    // Generates the WidgetKit extension used by the beer-counter Live
+    // Activity, adds NSSupportsLiveActivities and configures its shared app
+    // group. Local `npm run dev` deliberately skips it to keep simulator builds
+    // lightweight; release/native builds include it by default.
+    plugins.push([
+      'expo-widgets',
+      {
+        bundleIdentifier: 'com.tomasmach.na-pivo.widgets',
+        groupIdentifier: 'group.com.tomasmach.na-pivo',
+        enablePushNotifications: false,
+        frequentUpdates: false,
+      },
+    ]);
+  }
+
   const expoConfig: ExpoConfig = {
     ...config,
     name: 'Na pivo',
@@ -146,89 +234,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#101010',
       },
     },
-    plugins: [
-      'expo-router',
-      'expo-font',
-      'expo-asset',
-      [
-        'react-native-maps',
-        {
-          ...(GOOGLE_MAPS_ANDROID_API_KEY
-            ? { androidGoogleMapsApiKey: GOOGLE_MAPS_ANDROID_API_KEY }
-            : {}),
-          ...(GOOGLE_MAPS_IOS_API_KEY
-            ? { iosGoogleMapsApiKey: GOOGLE_MAPS_IOS_API_KEY }
-            : {}),
-        },
-      ],
-      [
-        'expo-location',
-        {
-          locationWhenInUsePermission: LOCATION_REASON,
-          locationAlwaysAndWhenInUsePermission: BACKGROUND_LOCATION_REASON,
-          isIosBackgroundLocationEnabled: true,
-          isAndroidBackgroundLocationEnabled: true,
-        },
-      ],
-      'expo-notifications',
-      [
-        'expo-audio',
-        {
-          enableBackgroundPlayback: false,
-          enableBackgroundRecording: false,
-          microphonePermission: false,
-          recordAudioAndroid: false,
-        },
-      ],
-      [
-        'expo-splash-screen',
-        {
-          image: './assets/images/icon.png',
-          imageWidth: 140,
-          resizeMode: 'contain',
-          backgroundColor: SPLASH_BACKGROUND,
-        },
-      ],
-      'expo-secure-store',
-      // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
-      // entitlement; requires enabling the capability on the App ID in the
-      // Apple Developer portal and a dev-client rebuild.
-      'expo-apple-authentication',
-      // Native Google Sign-In. iosUrlScheme is the reversed iOS OAuth client id;
-      // requires a dev-client rebuild. webClientId is supplied at runtime in
-      // src/data/socialAuth.ts via EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.
-      [
-        '@react-native-google-signin/google-signin',
-        {
-          iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
-        },
-      ],
-      // google-signin pulls in AppCheckCore/GoogleUtilities, which can't be
-      // integrated as static *libraries* (no module maps). Building iOS pods as
-      // static *frameworks* gives them module maps so Swift can import them —
-      // the documented fix for google-signin on Expo.
-      [
-        'expo-build-properties',
-        {
-          ios: {
-            useFrameworks: 'static',
-          },
-        },
-      ],
-      // Generates the WidgetKit extension used by the beer-counter Live
-      // Activity, adds NSSupportsLiveActivities and configures its shared app
-      // group. Counting updates are local, so APNs/frequent-update capability
-      // is intentionally not enabled.
-      [
-        'expo-widgets',
-        {
-          bundleIdentifier: 'com.tomasmach.na-pivo.widgets',
-          groupIdentifier: 'group.com.tomasmach.na-pivo',
-          enablePushNotifications: false,
-          frequentUpdates: false,
-        },
-      ],
-    ],
+    plugins,
     experiments: {
       typedRoutes: true,
     },

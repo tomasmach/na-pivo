@@ -16,6 +16,10 @@ BACKEND_DIR="$(cd "$REPO_ROOT/backend" 2>/dev/null && pwd || true)"
 # 8012 = the dvanactka of ports; 80xx range, but clear of 8000/8080/8081
 BACKEND_PORT="${EXPO_PUBLIC_BACKEND_PORT:-8012}"
 export EXPO_PUBLIC_BACKEND_PORT="$BACKEND_PORT"
+# The WidgetKit target powers the shipped beer-counter Live Activity, but it is
+# irrelevant for ordinary simulator work and substantially inflates clean local
+# builds. Release/EAS builds do not set this flag and keep the extension.
+export NA_PIVO_SKIP_IOS_WIDGETS=1
 
 if [ -z "$BACKEND_DIR" ]; then
   echo "Backend directory not found in this repo (expected backend/)" >&2
