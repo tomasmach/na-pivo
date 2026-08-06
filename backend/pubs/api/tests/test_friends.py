@@ -122,7 +122,14 @@ def _visit(account: Account, *, day: str = "2026-06-12", pub_name: str = _PUB_NA
     )
 
 
-def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> DrinkLog:
+def _drink(
+    account: Account,
+    *,
+    drank_at=None,
+    cache_key: str = "u2fkbn1z",
+    drink_type: str = DrinkLog.DrinkType.BEER,
+    is_suspect: bool = False,
+) -> DrinkLog:
     return DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -133,6 +140,8 @@ def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> D
         city="Praha",
         external_id="mapy:test",
         beer_name="Plzeň",
+        drink_type=drink_type,
+        is_suspect=is_suspect,
         price_czk=65,
         drank_at=drank_at or timezone.now(),
     )
@@ -919,6 +928,30 @@ def test_dashboard_leaderboard_ranks_by_visits(client):
         ("janek", 2, True),
         ("karel", 1, False),
     ]
+
+
+@pytest.mark.django_db
+def test_dashboard_leaderboard_counts_recent_non_suspect_beers(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    now = timezone.now()
+
+    _drink(account_a, drank_at=now - timedelta(days=29))
+    _drink(account_a, drank_at=now - timedelta(days=31))
+    _drink(account_a, drank_at=now - timedelta(days=1), is_suspect=True)
+    _drink(
+        account_a,
+        drank_at=now - timedelta(days=1),
+        drink_type=DrinkLog.DrinkType.WINE,
+    )
+
+    resp = client.get("/v1/friends", **_auth(token_a))
+    assert resp.status_code == status.HTTP_200_OK
+    beers_by_nickname = {
+        row["account"]["nickname"]: row["beers_30d"] for row in resp.json()["leaderboard"]
+    }
+    assert beers_by_nickname == {"janek": 1, "petr": 0}
 
 
 @pytest.mark.django_db

@@ -1384,10 +1384,13 @@ export const cs = {
     streakEmpty: 'Bez série',
 
     // — Party leaderboard —
-    leaderboardHeader: 'Žebříček party',
-    // Visits noun only — the numeral renders separately.
+    leaderboardHeader: 'Žebříček party — 30 dní',
+    // Nouns only — the numeral renders separately.
     leaderboardVisits: (n: number) =>
       n === 1 ? 'návštěva' : n >= 2 && n <= 4 ? 'návštěvy' : 'návštěv',
+    leaderboardBeers: (n: number) => (n === 1 ? 'pivo' : n >= 2 && n <= 4 ? 'piva' : 'piv'),
+    leaderboardMetricBeers: 'Piva',
+    leaderboardMetricVisits: 'Návštěvy',
     leaderboardMe: 'Ty',
     leaderboardEmpty: 'Zatím nemáš s kým soupeřit. Přiber parťáky.',
     leaderboardMore: (n: number) =>
@@ -3003,6 +3006,7 @@ export const cs = {
     photoTile: (label: string) => `Fotka piva${label ? `, ${label}` : ''}. Ťukni pro detail.`,
     photoContestLink: 'Otevřít soutěž FotoPivař',
     leaderboardsLink: 'Otevřít žebříček pivařů',
+    partyLeaderboardMetric: 'Metrika žebříčku party',
     photoCaptionInput: 'Popisek fotky',
     photoPickPub: 'Označit hospodu',
     photoClearPub: 'Zrušit označenou hospodu',

@@ -13,11 +13,13 @@
  *      somebody is out; it is how they ask you to come. Those rows keep the
  *      loud card with the RSVP, the rest are quiet one-liners.
  *   2. **Čerstvě cvaknuto** — tonight's photos, unchanged.
- *   3. **Co se pilo** — one chronological row per evening, automatic. Ratings
+ *   3. **Žebříček party** — who out-drank and out-sat whom over the trailing
+ *      30 days, switchable between beers and visits.
+ *   4. **Co se pilo** — one chronological row per evening, automatic. Ratings
  *      are folded into the evening they belong to rather than running as a
  *      second, parallel feed. (Not called "Výčep": that name belongs to the
  *      screen behind the rail door, where a night is hung up on purpose.)
- *   4. **Co spolu podniknout** — the two other evening formats, at the tail.
+ *   5. **Co spolu podniknout** — the two other evening formats, at the tail.
  *
  * Two things left the surface entirely. The friend list is no longer
  * interleaved with the feed — it was the single most confusing thing on the
@@ -89,6 +91,7 @@ import {
   type FriendPubActivity,
   type FriendsDashboard,
   type Friendship,
+  type LeaderboardEntry,
 } from '@/data/friendsClient';
 import {
   enqueueFriendOp,
@@ -134,7 +137,9 @@ import { FriendMini, friendDisplayName } from './FriendMini';
 import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
+import { LeaderboardRow } from './LeaderboardRow';
 import MyActivityCard from './MyActivityCard';
+import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
@@ -149,6 +154,8 @@ const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 /** How many evenings the screen holds before "Načíst starší" earns its place. */
 const FEED_PAGE = 20;
+/** Leaderboard rows shown before the "+N dalších" cut (my row is always pinned). */
+const LEADERBOARD_CAP = 8;
 
 function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
@@ -393,6 +400,9 @@ export default function FriendsScreen() {
   const [focused, setFocused] = useState(false);
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
   const [weeklyBoard, setWeeklyBoard] = useState<Leaderboard | null>(null);
+  // 0 = piva, 1 = návštěvy. Falls back to visits on a backend without beers_30d.
+  const [boardMetric, setBoardMetric] = useState<0 | 1>(0);
+  const [showAllBoard, setShowAllBoard] = useState(false);
   const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
   const [respondingRequestActions, setRespondingRequestActions] = useState<
     Record<string, 'accept' | 'decline'>
@@ -974,6 +984,41 @@ export default function FriendsScreen() {
     return cs.friends.emptyActive;
   }, [d?.myActiveActivity, freshestPlan, freshestSitting, sharedTable, sittingCount]);
 
+  // — Žebříček party — beers or visits over the trailing 30 days. The server
+  // sorts by visits; the beer order is this screen's own cut of the same rows.
+  // An older backend omits beers_30d → the toggle hides and visits stand alone.
+  const partyBoard = useMemo(() => d?.leaderboard ?? [], [d?.leaderboard]);
+  const boardHasBeers =
+    partyBoard.length > 0 && partyBoard.every((entry) => entry.beers30d != null);
+  const activeBoardMetric: 0 | 1 = boardHasBeers ? boardMetric : 1;
+  const rankedBoard = useMemo(() => {
+    if (activeBoardMetric === 1) return partyBoard;
+    return [...partyBoard].sort(
+      (a, b) =>
+        (b.beers30d ?? 0) - (a.beers30d ?? 0) ||
+        b.visits30d - a.visits30d ||
+        b.sharedCount - a.sharedCount,
+    );
+  }, [activeBoardMetric, partyBoard]);
+  // Top rows + a tappable "+N dalších" expand, but ALWAYS pin my row while
+  // collapsed (expanding shows everyone, me included).
+  const visibleBoard = showAllBoard ? rankedBoard : rankedBoard.slice(0, LEADERBOARD_CAP);
+  const hiddenBoardCount = rankedBoard.length - visibleBoard.length;
+  const myBoardIndex = rankedBoard.findIndex((entry) => entry.isMe);
+  const myBoardPinned = !showAllBoard && hiddenBoardCount > 0 && myBoardIndex >= LEADERBOARD_CAP;
+  const boardValue = useCallback(
+    (entry: LeaderboardEntry) =>
+      activeBoardMetric === 0 ? (entry.beers30d ?? 0) : entry.visits30d,
+    [activeBoardMetric],
+  );
+  const boardCaption = useCallback(
+    (value: number) =>
+      activeBoardMetric === 0
+        ? cs.friends.leaderboardBeers(value)
+        : cs.friends.leaderboardVisits(value),
+    [activeBoardMetric],
+  );
+
   const rankLine = useMemo(() => {
     if (d?.settings.ghostMode) return cs.friends.hiddenRank;
     const rank = weeklyBoard?.me.rank;
@@ -1321,7 +1366,81 @@ export default function FriendsScreen() {
           {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
           <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
 
-          {/* 3. Co se pilo — automatic, chronological, one row per evening. */}
+          {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
+          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.leaderboardHeader}
+          </Text>
+
+          {rankedBoard.length > 1 ? (
+            <>
+              {boardHasBeers ? (
+                <View style={styles.boardSwitch}>
+                  <SegmentedControl
+                    options={[cs.friends.leaderboardMetricBeers, cs.friends.leaderboardMetricVisits]}
+                    value={activeBoardMetric}
+                    onChange={setBoardMetric}
+                    accessibilityLabel={cs.a11y.partyLeaderboardMetric}
+                  />
+                </View>
+              ) : null}
+
+              <View style={styles.card}>
+                {visibleBoard.map((entry, index) => (
+                  <LeaderboardRow
+                    key={entry.account.id || `rank-${index}`}
+                    entry={entry}
+                    rank={index + 1}
+                    value={boardValue(entry)}
+                    caption={boardCaption(boardValue(entry))}
+                    divided={index > 0}
+                    onPress={
+                      entry.isMe || !entry.account.id
+                        ? undefined
+                        : () => openFriendProfile(entry.account.id)
+                    }
+                  />
+                ))}
+                {myBoardPinned && myBoardIndex >= 0 ? (
+                  <>
+                    <Text
+                      style={styles.boardDots}
+                      allowFontScaling={false}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                    >
+                      …
+                    </Text>
+                    <LeaderboardRow
+                      key="me-pinned"
+                      entry={rankedBoard[myBoardIndex]}
+                      rank={myBoardIndex + 1}
+                      value={boardValue(rankedBoard[myBoardIndex])}
+                      caption={boardCaption(boardValue(rankedBoard[myBoardIndex]))}
+                    />
+                  </>
+                ) : null}
+              </View>
+
+              {!showAllBoard && hiddenBoardCount > 0 ? (
+                <Pressable
+                  onPress={() => setShowAllBoard(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.friends.leaderboardMore(hiddenBoardCount)}
+                  style={({ pressed }) => [styles.moreFeedButton, pressed && styles.dim]}
+                >
+                  <Text style={styles.moreFeedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.friends.leaderboardMore(hiddenBoardCount)}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : loading && !d ? null : (
+            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.leaderboardEmpty}
+            </Text>
+          )}
+
+          {/* 4. Co se pilo — automatic, chronological, one row per evening. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.friends.sittingsHeader}
           </Text>
@@ -1366,7 +1485,7 @@ export default function FriendsScreen() {
             </Text>
           )}
 
-          {/* 4. Co spolu podniknout. */}
+          {/* 5. Co spolu podniknout. */}
           <PartaPlans />
         </ScrollView>
         <ScrollFade height={16} />
@@ -1508,6 +1627,18 @@ const styles = StyleSheet.create({
   },
   photoStreamItem: {
     marginTop: 24,
+  },
+  // The metric switch sits between the section label and the card, closer to
+  // the card it filters (8 under, the label's own 8 above).
+  boardSwitch: {
+    marginBottom: 8,
+  },
+  // The gap row standing in for the ranks hidden between the cut and my row.
+  boardDots: {
+    textAlign: 'center',
+    color: Colors.mutedText,
+    fontSize: 13,
+    includeFontPadding: false,
   },
   card: {
     overflow: 'hidden',

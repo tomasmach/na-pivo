@@ -3500,11 +3500,11 @@ class FriendsView(APIView):
         now,
         context: dict,
     ) -> list[dict]:
-        """Party leaderboard: me + accepted friends ranked by 30-day pub visits.
+        """Party leaderboard with 30-day pub visit and beer tallies.
 
-        Excludes accounts pending deletion. Visits come from ONE grouped query;
-        ``shared_count`` is the shared-evening tally with me (0 for myself).
-        Sorted desc by visits_30d, then shared_count.
+        Excludes accounts pending deletion. Visits and beers each come from one
+        grouped query; ``shared_count`` is the shared-evening tally with me (0
+        for myself). Sorted desc by visits_30d, then shared_count.
         """
         members = [request.user] + [
             account
@@ -3521,6 +3521,17 @@ class FriendsView(APIView):
             .annotate(c=Count("id"))
         )
         visits_by_account = {row["account_id"]: row["c"] for row in visit_rows}
+        beer_rows = (
+            DrinkLog.objects.filter(
+                account_id__in=member_ids,
+                drink_type=DrinkLog.DrinkType.BEER,
+                is_suspect=False,
+                drank_at__gte=now - LEADERBOARD_WINDOW,
+            )
+            .values("account_id")
+            .annotate(c=Count("id"))
+        )
+        beers_by_account = {row["account_id"]: row["c"] for row in beer_rows}
 
         entries = []
         for account in members:
@@ -3529,6 +3540,7 @@ class FriendsView(APIView):
                 {
                     "account": FriendProfileSerializer(account, context=context).data,
                     "visits_30d": int(visits_by_account.get(account.id, 0)),
+                    "beers_30d": int(beers_by_account.get(account.id, 0)),
                     "shared_count": 0
                     if is_me
                     else int(shared_stats.get(account.id, {}).get("shared_count") or 0),
