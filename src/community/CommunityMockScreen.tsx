@@ -179,15 +179,20 @@ export default function CommunityMockScreen() {
         </>
       ) : null}
 
-      {/* Challenges are cards, not rows: each one is a thing you are IN, with a
-          detail behind it. A row would file them next to the leaderboard's
-          entries, which is a different kind of object. */}
+      {/* Rows, not cards. A card inset inside a screen that is already inset
+          left every challenge two paddings narrower than the text around it —
+          three of them read as a column of chips rather than a list. The rail
+          between rows says the same "these are separate things" for free. */}
       {section === 'Výzvy'
-        ? CHALLENGES.map((challenge) => (
+        ? CHALLENGES.map((challenge, index) => (
             <Pressable
               key={challenge.id}
               onPress={() => router.push(`/community/challenge/${challenge.id}` as Href)}
-              style={({ pressed }) => [styles.challenge, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.challenge,
+                index === 0 && styles.challengeFirst,
+                pressed && styles.pressed,
+              ]}
               accessibilityRole="button"
               accessibilityLabel={challenge.title}
             >
@@ -350,12 +355,12 @@ const styles = StyleSheet.create({
   },
   grow: { flex: 1 },
   challenge: {
-    gap: Spacing.md,
-    padding: Spacing.lg,
-    borderRadius: MockLayout.cardRadius,
-    backgroundColor: Colors.stout2,
-    marginTop: Spacing.sm,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
+  challengeFirst: { borderTopWidth: 0, marginTop: Spacing.sm },
   challengeHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
 
   event: {
