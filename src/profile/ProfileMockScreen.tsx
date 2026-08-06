@@ -17,10 +17,10 @@
  */
 
 import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FeedCard } from '@/feed/FeedMockScreen';
+import { Face, FeedCard } from '@/feed/FeedMockScreen';
 import { MOCK_FEED } from '@/feed/mockFeed';
 import { BarChart } from '@/mocks/BarChart';
 import { SectionBreak } from '@/mocks/SectionBreak';
@@ -36,8 +36,6 @@ import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-
-const AVATAR = 'https://i.pravatar.cc/240?img=57';
 
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: StatPeriod[] = ['Týden', 'Měsíc', 'Rok'];
@@ -65,7 +63,10 @@ export default function ProfileMockScreen() {
     >
       {/* Who you are: a face and a handle. Nothing else competes up here. */}
       <View style={styles.identity}>
-        <Image source={{ uri: AVATAR }} style={styles.avatar} />
+        {/* The real photo when there is one, the initial when there is not.
+            A stock face is a lie that reads as a bug the moment somebody
+            notices it is not them — and most people never set a photo. */}
+        <Face name={handle} tint={Colors.amber} avatar={profile?.avatarUrl ?? undefined} size={68} />
         <View style={styles.grow}>
           <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {handle}
