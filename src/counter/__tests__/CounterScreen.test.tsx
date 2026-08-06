@@ -83,8 +83,9 @@ jest.mock('@/vycep/ShareNightModal', () => ({ ShareNightModal: jest.fn(() => nul
 // expo-location via compass/permissions, which this suite doesn't stub.
 jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => null }));
 
+const mockRouterPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn() })),
+  useRouter: jest.fn(() => ({ push: mockRouterPush, back: jest.fn() })),
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => {
@@ -166,6 +167,7 @@ import { useToastStore } from '@/stores/toastStore';
 import { geohash8 } from '@/data/geohash';
 import { BeerFormModal } from '@/counter/BeerFormModal';
 import { PubPickerModal } from '@/counter/PubPickerModal';
+import { showAppDialog } from '@/components/shared/AppDialog';
 
 const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
@@ -365,6 +367,37 @@ describe('CounterScreen CTA state machine', () => {
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'beer_form_opened',
       context: { mode: 'add' },
+    });
+  });
+
+  it('routes the top-camera menu choice through the pub menu scanner', () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.photoDiary.counterCta).props.onPress());
+
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(dialog.title).toBe(copy.counter.cameraTitle);
+    expect(dialog.buttons.map((button: { text: string }) => button.text)).toEqual([
+      copy.counter.cameraBeer,
+      copy.counter.cameraMenu,
+      copy.counter.cancel,
+    ]);
+
+    act(() => {
+      dialog.buttons.find((button: { text: string }) => button.text === copy.counter.cameraMenu).onPress();
+    });
+
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/contribute',
+      params: expect.objectContaining({
+        focus: 'beers',
+        autoScan: '1',
+        id: PUB.id,
+        name: PUB.name,
+        lat: String(PUB.lat),
+        lng: String(PUB.lng),
+      }),
     });
   });
 

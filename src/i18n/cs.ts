@@ -1186,7 +1186,7 @@ export const cs = {
     friendHeader: (name: string) => `Pivní fotky — ${name}`,
 
     // — Counter (Štamgast) capture pill —
-    counterCta: 'Cvakni pivo',
+    counterCta: 'Foťák: pivo nebo menu',
   },
 
   partaPhotos: {
@@ -2337,6 +2337,10 @@ export const cs = {
     scanDrinksTitle: 'Co si dáváš?',
     scanDrinksHint: 'Vyber nápoj a před zapsáním ho ještě můžeš upravit.',
     scanDrinksEmpty: 'Na fotce jsem žádný nápoj nepřečetl.',
+    cameraTitle: 'Co chceš cvaknout?',
+    cameraBeer: 'Pivo do deníčku',
+    cameraMenu: 'Menu hospody',
+    cameraMenuNeedsPub: 'Vyber hospodu a pak klepni na foťák znovu',
     // — Backdate (zapsat pivo zpětně) —
     backdateLink: 'Zapsat pivo zpětně',
     backdateTitle: 'Kdy jsi ho měl?',

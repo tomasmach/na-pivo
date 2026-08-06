@@ -1148,6 +1148,28 @@ function Tacek({
     });
   }, [beerMenuRotates, historicalBeers, menu, pub, router]);
 
+  const handleCameraPress = useCallback(() => {
+    showAppDialog({
+      title: cs.counter.cameraTitle,
+      buttons: [
+        {
+          text: cs.counter.cameraBeer,
+          onPress: () => setPhotoCaptureOpen(true),
+        },
+        {
+          text: cs.counter.cameraMenu,
+          onPress: pub
+            ? handleScanMenu
+            : () => {
+                showToast(cs.counter.cameraMenuNeedsPub);
+                onChangePlace();
+              },
+        },
+        { text: cs.counter.cancel, style: 'cancel' },
+      ],
+    });
+  }, [handleScanMenu, onChangePlace, pub, showToast]);
+
   const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
     setScanSourceVisible(false);
     setScanningDrinks(true);
@@ -1439,11 +1461,10 @@ function Tacek({
       <View style={styles.header}>
         <PlaceChip kind={chipKind} label={placeLabel} onPress={handlePlaceOpen} />
         <View style={styles.headerSpacer} />
-        {/* Cvakni pivo. It feeds the Parta strip and the photo contest, so it is
-            the one social action that earns a permanent glyph up here instead of
-            a row inside "…" that nobody opens with a beer in hand. */}
+        {/* One camera door, with an explicit choice between the photo diary and
+            the pub-menu scanner. */}
         <Pressable
-          onPress={() => setPhotoCaptureOpen(true)}
+          onPress={handleCameraPress}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
           hitSlop={8}
           accessibilityRole="button"
