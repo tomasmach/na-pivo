@@ -20,9 +20,19 @@ export interface ChallengeRival {
   me?: boolean;
 }
 
+/**
+ * The glyph on the card.
+ *
+ * One per challenge, and it says what the challenge IS — a pin for new places,
+ * a calendar for a rhythm, a beer for breweries. The same sparkle on all three
+ * was decoration standing in for a thought: it told you a card was a card.
+ */
+export type ChallengeGlyph = 'places' | 'rhythm' | 'taste';
+
 export interface Challenge {
   id: string;
   title: string;
+  glyph: ChallengeGlyph;
   /** The one-line summary the card shows: deadline · progress. */
   detail: string;
   /** 0–1, for the track. */
@@ -44,6 +54,7 @@ export const CHALLENGES: Challenge[] = [
   {
     id: 'c1',
     title: 'Deset nových hospod',
+    glyph: 'places',
     detail: 'Do konce srpna · 4 z 10',
     progress: 0.4,
     done: 4,
@@ -67,6 +78,7 @@ export const CHALLENGES: Challenge[] = [
   {
     id: 'c2',
     title: 'Tři čtvrtky po sobě',
+    glyph: 'rhythm',
     detail: 'Série běží · 2 ze 3',
     progress: 0.66,
     done: 2,
@@ -89,6 +101,7 @@ export const CHALLENGES: Challenge[] = [
   {
     id: 'c3',
     title: 'Ochutnej pět pivovarů',
+    glyph: 'taste',
     detail: 'Do konce srpna · 1 z 5',
     progress: 0.2,
     done: 1,

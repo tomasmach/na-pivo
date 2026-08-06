@@ -31,14 +31,13 @@ import { useRouter, type Href } from 'expo-router';
 
 import {
   ChevronRightIcon,
-  SparklesIcon,
-  TrophyIcon,
 } from '@/components/shared/IconGlyph';
 import { MenuChip } from '@/mocks/MenuChip';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 // Shared with the detail screen, so the card you tap and the screen you land on
 // can never show different numbers.
 import { CHALLENGES } from '@/community/mockChallenges';
+import { ChallengeGlyphIcon } from '@/community/ChallengeGlyphIcon';
 import { EVENTS } from '@/community/mockEvents';
 import { EventCover } from '@/community/EventCover';
 import { TAB_CHROME } from '@/components/shared/TabBar';
@@ -194,7 +193,7 @@ export default function CommunityMockScreen() {
             >
               <View style={styles.challengeHead}>
                 <View style={styles.medallion}>
-                  <SparklesIcon size={17} color={Colors.amber} />
+                  <ChallengeGlyphIcon glyph={challenge.glyph} size={17} color={Colors.amber} />
                 </View>
                 <View style={styles.grow}>
                   <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>

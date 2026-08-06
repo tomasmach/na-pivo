@@ -21,7 +21,7 @@ import React from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CheckIcon, SparklesIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -42,10 +42,9 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
         { paddingTop: insets.top + 52, paddingBottom: insets.bottom + TAB_CHROME },
       ]}
     >
-      <View style={styles.medallion}>
-        <SparklesIcon size={22} color={Colors.amber} />
-      </View>
-
+      {/* No glyph here. On the card it tells three challenges apart at a
+          glance; on the screen that is only about this one it decorates a
+          title that already says everything. */}
       <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
         {challenge.title}
       </Text>
@@ -136,14 +135,6 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: MockLayout.screenPad },
   grow: { flex: 1 },
 
-  medallion: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.16),
-  },
   title: {
     fontSize: 30,
     fontWeight: '800',
