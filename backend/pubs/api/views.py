@@ -6600,6 +6600,8 @@ def _user_added_pub_item(pub: UserAddedPub) -> dict:
 # nearest MAX so the rows we drop are the most distant ones, not arbitrary ones.
 _USER_ADDED_SCAN_LIMIT = 200
 _USER_ADDED_MAX_RESULTS = 50
+_COMMUNITY_PUB_SCAN_LIMIT = 200
+_COMMUNITY_PUB_MAX_RESULTS = 50
 _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
 _PRICE_INDEX_SCAN_LIMIT = 900
@@ -6709,6 +6711,24 @@ def _pub_beer_brand_item(link: PubBeerBrand) -> dict:
             {"name": link.city, "type": "regional.municipality"},
         ]
         item["location"] = link.city
+    return item
+
+
+def _pub_community_item(pub: PubCommunityData) -> dict:
+    """Mapy-shaped fallback for a pub confirmed through community activity."""
+    item = {
+        "name": pub.name,
+        "label": "Hospoda",
+        "position": {"lat": pub.lat, "lon": pub.lng},
+        "source": "community_signal",
+    }
+    if pub.external_id:
+        item["id"] = pub.external_id
+    if pub.city:
+        item["regionalStructure"] = [
+            {"name": pub.city, "type": "regional.municipality"},
+        ]
+        item["location"] = pub.city
     return item
 
 
@@ -6902,6 +6922,37 @@ def _nearby_pub_beer_brand_items(
     return [_pub_beer_brand_item(link) for link in links], {link.cache_key for link in links}
 
 
+def _nearby_pub_community_items(
+    *,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> list[dict]:
+    """Nearby pubs missing from the imported directory but known to the community.
+
+    Beer filters already use PubBeerBrand as a fallback. Serving the underlying
+    community pub on the unfiltered path keeps a filter from making a venue
+    appear out of nowhere while preserving the imported directory as primary.
+    """
+    rows = _nearest_rows(
+        PubCommunityData.objects.all(),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-updated_at",
+        scan_limit=_COMMUNITY_PUB_SCAN_LIMIT,
+        max_results=_COMMUNITY_PUB_MAX_RESULTS,
+    )
+    blocked_cache_keys = _globally_reported_pub_cache_keys(
+        {row.cache_key for row in rows}
+    )
+    return [
+        _pub_community_item(row)
+        for row in rows
+        if row.cache_key not in blocked_cache_keys
+    ]
+
+
 def _nearby_pub_price_indexes(
     *,
     lat: float,
@@ -7045,6 +7096,18 @@ def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict])
         if not any(_items_refer_to_same_pub(item, signal) for signal in signal_items)
     ]
     return [*signal_items, *remaining_provider_items]
+
+
+def _with_missing_pub_signal_items(
+    signal_items: list[dict], existing_items: list[dict]
+) -> list[dict]:
+    """Append only community pubs that the primary sources do not already have."""
+    missing = [
+        signal
+        for signal in signal_items
+        if not any(_items_refer_to_same_pub(signal, item) for item in existing_items)
+    ]
+    return [*existing_items, *missing]
 
 
 def _pub_near_dedupe_key(item: dict) -> str:
@@ -7393,6 +7456,15 @@ class PubsNearView(APIView):
             return body
 
         user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
+        community_items = (
+            _nearby_pub_community_items(
+                lat=data["lat"],
+                lng=data["lng"],
+                radius_km=radius_km,
+            )
+            if not beer_brand_key and not amenity_keys
+            else []
+        )
         beer_brand_items: list[dict] = []
         beer_brand_cache_keys: set[str] = set()
         if beer_brand_key:
@@ -7448,7 +7520,8 @@ class PubsNearView(APIView):
             if amenity_keys:
                 filtered_items = _with_pub_signal_items(amenity_items, filtered_items)
                 return _with_user_added_items(user_added_items, filtered_items)
-            return _with_user_added_items(user_added_items, filtered_items)
+            existing_items = _with_user_added_items(user_added_items, filtered_items)
+            return _with_missing_pub_signal_items(community_items, existing_items)
 
         def final_items(items: list[dict]) -> list[dict]:
             return _with_pub_name_corrections(

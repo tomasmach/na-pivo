@@ -840,6 +840,53 @@ def test_beer_brand_filter_can_serve_known_pub_without_search_cache(client):
 
 
 @pytest.mark.django_db
+def test_community_pub_does_not_require_a_beer_filter_to_be_discoverable(client):
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    community = PubCommunityData.objects.create(
+        cache_key=geohash8(_LAT, _LNG),
+        name="Hospoda Se Záznamem",
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        beers=[{"name": brand.name, "price_czk": 62, "volume_ml": 500}],
+        beers_updated_at=dj_tz.now(),
+    )
+    PubBeerBrand.objects.create(
+        cache_key=community.cache_key,
+        name=community.name,
+        lat=community.lat,
+        lng=community.lng,
+        city=community.city or "",
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.DRINK,
+    )
+
+    unfiltered = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
+    filtered = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "beer_brand": brand.key,
+        },
+    )
+
+    assert unfiltered.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in unfiltered.json()["items"]] == [community.name]
+    assert unfiltered.json()["items"][0]["source"] == "community_signal"
+    assert [item["name"] for item in filtered.json()["items"]] == [community.name]
+
+
+@pytest.mark.django_db
 def test_beer_brand_filter_returns_empty_when_no_local_signals(client):
     BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
