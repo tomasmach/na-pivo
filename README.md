@@ -3,11 +3,11 @@
 [![CI](https://github.com/tomasmach/na-pivo/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/tomasmach/na-pivo/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Na pivo je mobilní pivní deníček pro české a slovenské pivaře.
+Na pivo is a mobile beer diary for Czech and Slovak beer drinkers.
 
-Začalo jako jednoduchá iOS appka s kompasem do nejbližší hospody. Kompas v ní zůstal, ale postupně kolem něj vzniká deníček na piva, hospody a večery s kamarády. Patří sem i profily, statistiky, hodnocení, komunita a objevování nových míst.
+It started as a simple iOS app with a compass pointing to the nearest pub. The compass is still there, but the app is growing into a diary for beers, pubs and nights out with friends. It also has profiles, stats, ratings, community features and tools for finding new places.
 
-Appka mluví česky, tyká a nebere se zbytečně vážně. Kód a komentáře jsou anglicky.
+The app speaks Czech, uses informal language and does not take itself too seriously. Code and comments are in English.
 
 ## What is in this repo
 
@@ -66,7 +66,7 @@ On macOS, the following command installs the Python packages, runs migrations, s
 npm run dev
 ```
 
-`npm run dev` uses port `8012`, the dvanáctka of ports. It stays out of the way of 8000, 8080 and Metro's 8081. Set `EXPO_PUBLIC_BACKEND_PORT` to use a different one. If Django is already running there, the command reuses it and leaves it running when you quit.
+`npm run dev` uses port `8012`, a small nod to a Czech 12-degree lager. It stays out of the way of 8000, 8080 and Metro's 8081. Set `EXPO_PUBLIC_BACKEND_PORT` to use a different one. If Django is already running there, the command reuses it and leaves it running when you quit.
 
 The backend uses SQLite and safe development defaults when `backend/.env` is missing. Copy `backend/.env.example` to `backend/.env` only when you need to change an integration or backend setting. Regular development never needs production credentials.
 
@@ -92,11 +92,11 @@ Override the backend port when needed:
 EXPO_PUBLIC_BACKEND_PORT=8765 npm run ios:local
 ```
 
-Mapová obrazovka používá Google Maps SDK na Androidu i iOS. Pro lokální i EAS
-build nastav oddělené klíče `EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY` a
-`EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY`. Android klíč omez na package + signing
-certificate, iOS klíč na bundle ID. Serverový Google Places klíč do aplikace
-nikdy nepatří.
+The map uses the Google Maps SDK on both Android and iOS. Set separate
+`EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY` and
+`EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY` values for local and EAS builds. Restrict
+the Android key to the package and signing certificate, and the iOS key to the
+bundle ID. Never put a server-side Google Places key in the app.
 
 Use `npm run start:local` to start Metro in local backend mode without rebuilding the native iOS app.
 
