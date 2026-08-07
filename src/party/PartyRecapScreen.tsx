@@ -222,14 +222,14 @@ export default function PartyRecapScreen() {
   }));
 
   const nowMs = night.endedAt ? new Date(night.endedAt).getTime() : openedAt;
-  const durationMinutes = nightMinutes(night, nowMs);
+  const durationMinutes = nightMinutes(night);
 
   // What tonight beat, measured against YOUR own history and nobody else's.
   const best = nightBestFrom(
     [...(current ? [current] : []), ...history],
     drinkingDayKey(new Date(night.startedAt)),
   );
-  const records = nightBrokenRecords(night, best, nowMs).map((broken) => ({
+  const records = nightBrokenRecords(night, best).map((broken) => ({
     id: broken.kind,
     title: RECORD_TITLE[broken.kind],
     detail: RECORD_DETAIL[broken.kind](broken.value, broken.previous),

@@ -42,7 +42,7 @@ export function nightPublishPayload(
   const started = new Date(night.startedAt);
   const day = drinkingDayKey(started);
   const tally = nightTally(night);
-  const minutes = nightMinutes(night, now);
+  const minutes = nightMinutes(night);
 
   // In first-visit order and capped the way the server caps it: a crawl of
   // eleven pubs is a great night and a terrible headline.

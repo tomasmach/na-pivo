@@ -186,23 +186,34 @@ describe('nightStops', () => {
 });
 
 describe('nightMinutes', () => {
-  it('measures a running night to now and a finished one to its end', () => {
-    expect(nightMinutes(night(), NOW)).toBe(360);
-    expect(nightMinutes(night({ endedAt: at(23) }), NOW)).toBe(180);
+  it('measures from the first drink to the last activity with one-minute minimum', () => {
+    expect(nightMinutes(night())).toBe(0);
+    expect(nightMinutes(night({ drinks: [drink('me', 20)] }))).toBe(1);
+    const ninetySecondsAfterFirst = new Date(
+      new Date(at(20)).getTime() + 90 * 1000,
+    ).toISOString();
+    expect(
+      nightMinutes(
+        night({
+          startedAt: at(19),
+          endedAt: at(23),
+          drinks: [drink('me', 20)],
+          photos: [{ id: 'p1', url: 'file://photo.jpg', at: ninetySecondsAfterFirst, by: 'me' }],
+        }),
+      ),
+    ).toBe(2);
   });
 });
 
 describe('nightPerHour', () => {
   it('says nothing about pace in the first twenty minutes', () => {
-    const early = new Date(2026, 6, 30, 20, 10).getTime();
-
-    expect(nightPerHour(night({ drinks: [drink('me', 20)] }), early)).toBeNull();
+    expect(nightPerHour(night({ drinks: [drink('me', 20)] }))).toBeNull();
   });
 
   it('is beers over hours once there is enough night to divide by', () => {
     const record = night({ drinks: [drink('me', 20), drink('me', 21), drink('me', 22)] });
 
-    expect(nightPerHour(record, new Date(2026, 6, 30, 23, 0).getTime())).toBe(1);
+    expect(nightPerHour(record)).toBe(1.5);
   });
 });
 
@@ -217,14 +228,14 @@ describe('nightBrokenRecords', () => {
   });
 
   it('announces only what tonight actually beat', () => {
-    const broken = nightBrokenRecords(record, { beers: 1, minutes: 999, stops: 5 }, NOW);
+    const broken = nightBrokenRecords(record, { beers: 1, minutes: 999, stops: 5 });
 
     expect(broken).toEqual([{ kind: 'beers', value: 2, previous: 1 }]);
   });
 
   it('does not call equalling a record breaking it', () => {
     // Matching last Tuesday is not a record, and saying so cheapens the real ones.
-    expect(nightBrokenRecords(record, { beers: 2, minutes: 180, stops: 2 }, NOW)).toEqual([]);
+    expect(nightBrokenRecords(record, { beers: 2, minutes: 120, stops: 2 })).toEqual([]);
   });
 });
 

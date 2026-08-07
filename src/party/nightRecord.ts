@@ -126,14 +126,29 @@ export function emptyNight(id: string, startedAt: string, code: string | null = 
 }
 
 /**
- * How long it has been going, in minutes.
+ * Canonical duration of a night, in whole minutes.
  *
- * `now` rather than `Date.now()` so this stays pure and a test can say what
- * time it is. A running night measures to now; a finished one to when it ended.
+ * A night runs from its first logged drink to its last recorded activity
+ * (drink, arrival, join, game or photo). The difference is rounded to the
+ * nearest minute and is at least one minute whenever a drink exists; a night
+ * without a drink is zero. Start/end screen timestamps and `Date.now()` are
+ * deliberately excluded, so every reader of the same NightRecord prints the
+ * same number.
  */
-export function nightMinutes(night: NightRecord, now: number): number {
-  const end = night.endedAt ? ms(night.endedAt) : now;
-  return Math.max(0, Math.round((end - ms(night.startedAt)) / 60000));
+export function nightMinutes(night: NightRecord): number {
+  const drinkTimes = night.drinks.map((drink) => ms(drink.at)).filter(Number.isFinite);
+  if (drinkTimes.length === 0) return 0;
+
+  const activityTimes = [
+    ...drinkTimes,
+    ...night.stops.map((stop) => ms(stop.arrivedAt)),
+    ...night.people.flatMap((person) => (person.joinedAt ? [ms(person.joinedAt)] : [])),
+    ...night.games.map((game) => ms(game.startedAt)),
+    ...night.photos.map((photo) => ms(photo.at)),
+  ].filter(Number.isFinite);
+  const firstDrink = Math.min(...drinkTimes);
+  const lastActivity = Math.max(firstDrink, ...activityTimes);
+  return Math.max(1, Math.round((lastActivity - firstDrink) / 60000));
 }
 
 export interface NightTally {
@@ -358,11 +373,10 @@ export interface NightBroken {
 export function nightBrokenRecords(
   night: NightRecord,
   best: NightBest,
-  now: number,
 ): NightBroken[] {
   const broken: NightBroken[] = [];
   const beers = nightTally(night).beers;
-  const minutes = nightMinutes(night, now);
+  const minutes = nightMinutes(night);
   const stops = night.stops.length;
 
   if (beers > best.beers) broken.push({ kind: 'beers', value: beers, previous: best.beers });
@@ -379,8 +393,8 @@ export function nightBrokenRecords(
  * Null under twenty minutes: a rate computed over five minutes says a table is
  * drinking twelve an hour, which is arithmetic rather than a fact about anyone.
  */
-export function nightPerHour(night: NightRecord, now: number): number | null {
-  const minutes = nightMinutes(night, now);
+export function nightPerHour(night: NightRecord): number | null {
+  const minutes = nightMinutes(night);
   if (minutes < 20) return null;
   return nightTally(night).beers / (minutes / 60);
 }

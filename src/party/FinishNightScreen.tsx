@@ -47,7 +47,6 @@ import { StatGrid } from '@/mocks/StatGrid';
 import {
   formatElapsed,
   useLivePartyStore,
-  useNightClock,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -58,8 +57,6 @@ export default function FinishNightScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const startedAt = useLivePartyStore((s) => s.startedAt);
-  const minutes = useNightClock(startedAt);
   const pubName = useLivePartyStore((s) => s.pubName);
   const pubKey = useLivePartyStore((s) => s.pubKey);
   const endParty = useLivePartyStore((s) => s.end);
@@ -82,8 +79,7 @@ export default function FinishNightScreen() {
   const me = nightMe(night);
   const people = night.people.slice(1);
   const beerCount = nightTally(night).beers;
-  const publishNow = (startedAt ?? 0) + minutes * 60000;
-  const nightDurationMinutes = nightMinutes(night, publishNow);
+  const nightDurationMinutes = nightMinutes(night);
   const byType = nightByBeer({
     ...night,
     drinks: night.drinks.filter((drink) => drink.by === me?.id),

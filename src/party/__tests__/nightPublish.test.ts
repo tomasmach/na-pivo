@@ -11,7 +11,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 import { nightPublishPayload } from '@/party/nightPublish';
-import { emptyNight, type NightDrink, type NightRecord } from '@/party/nightRecord';
+import {
+  emptyNight,
+  nightMinutes,
+  type NightDrink,
+  type NightRecord,
+} from '@/party/nightRecord';
 
 const START = new Date(2026, 6, 30, 20, 0);
 const END = new Date(2026, 6, 30, 23, 30);
@@ -136,14 +141,14 @@ describe('nightPublishPayload', () => {
     expect(payload.pubNames).toHaveLength(5);
   });
 
-  it('measures a night that is still running up to now', () => {
-    const running = night({ endedAt: null });
+  it('publishes the same activity-derived duration for a running night', () => {
+    const running = night({ endedAt: null, drinks: [drink(), drink()] });
     const payload = nightPublishPayload(running, {
       visibility: 'public',
       now: new Date(2026, 6, 30, 22, 0).getTime(),
     });
 
-    expect(payload.durationMinutes).toBe(120);
+    expect(payload.durationMinutes).toBe(nightMinutes(running));
     expect(payload.endedAt).toBe(new Date(2026, 6, 30, 22, 0).toISOString());
     expect(payload.visibility).toBe('public');
   });
