@@ -24,7 +24,12 @@ import {
   parsePublishedNight,
   type NightPublishPayload,
 } from '../nightsClient';
-import { clearNightsQueue, enqueueNightOp, type NightQueueItem } from '../nightsQueue';
+import {
+  clearNightsQueue,
+  enqueueNightOp,
+  getPendingNightPublishes,
+  type NightQueueItem,
+} from '../nightsQueue';
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
 
@@ -157,6 +162,15 @@ describe('night wire and parser', () => {
 });
 
 describe('nights queue collapse', () => {
+  it('exposes only queued publishes for the feed pending overlay', async () => {
+    mockPublishNight.mockResolvedValue(retry());
+    mockReactToNight.mockResolvedValue(retry());
+    await enqueueNightOp({ op: 'publish', payload });
+    await enqueueNightOp({ op: 'round', nightId: 'night-1' });
+
+    expect(await getPendingNightPublishes()).toEqual([payload]);
+  });
+
   it('keeps only the newest publish for one client id', async () => {
     mockPublishNight.mockResolvedValue(retry());
     await enqueueNightOp({ op: 'publish', payload });

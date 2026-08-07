@@ -10,7 +10,7 @@
  * The first tile is still the best thing, ranked by how much it tells you about
  * the evening:
  *
- *   photos → game → tempo → record → map
+ *   game → tempo → record → map
  *
  * The map is last on purpose. It is the one output that says nothing about what
  * the night was LIKE — it is coordinates, and coordinates are plan B.
@@ -24,7 +24,7 @@
  */
 
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { NightRoute } from '@/mocks/NightRoute';
@@ -40,21 +40,7 @@ import { Spacing } from '@/theme/layout';
 const TILE = 164;
 /** How much of the next tile stays on screen. */
 const PEEK = 54;
-const PHOTO_W = 128;
 const MAP_W = 218;
-
-/**
- * Illustrative photos for the mock. `picsum.photos` is a stock-photo service and
- * a seeded URL always returns the same image, so the feed does not reshuffle on
- * every render. It MUST NOT ship — real photos come from `BeerPhoto`.
- */
-const PHOTOS = [
-  'https://picsum.photos/seed/napivo-1/400/400',
-  'https://picsum.photos/seed/napivo-2/400/400',
-  'https://picsum.photos/seed/napivo-3/400/400',
-  'https://picsum.photos/seed/napivo-4/400/400',
-  'https://picsum.photos/seed/napivo-5/400/400',
-];
 
 /** A data tile: the surface that makes a chart read as one card in the strip. */
 function Tile({ width, children }: { width: number; children: React.ReactNode }) {
@@ -131,7 +117,7 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
 
   const tiles: React.ReactNode[] = [];
 
-  // 1. The ranked hero, whatever this night's best output was.
+  // The ranked hero, whatever this night's best API-backed output was.
   if (h.kind === 'game') {
     tiles.push(
       <Tile key="game" width={wide}>
@@ -152,14 +138,6 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
     );
   }
 
-  const photoTiles = Array.from({ length: entry.photos }).map((_, index) => (
-    <Image
-      key={`photo-${index}`}
-      source={{ uri: PHOTOS[index % PHOTOS.length] }}
-      style={styles.photo}
-    />
-  ));
-
   const mapTile =
     entry.stops.length > 0 ? (
       <View key="map" style={styles.map}>
@@ -167,15 +145,10 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
       </View>
     ) : null;
 
-  // 2. Photos before the map when the pictures ARE the highlight; otherwise the
-  //    map establishes where before the pictures show what it looked like.
-  if (h.kind === 'photos') {
-    tiles.push(...photoTiles);
-    if (mapTile) tiles.push(mapTile);
-  } else {
-    if (mapTile) tiles.push(mapTile);
-    tiles.push(...photoTiles);
-  }
+  // The published-night API does not return photos. A count cannot support a
+  // photo tile, so the feed omits that mock-only card type instead of inventing
+  // an image. The route remains the honest fallback when coordinates exist.
+  if (mapTile) tiles.push(mapTile);
 
   // Nothing was produced: no map, no filler. Strava does the same with a
   // text-only activity — the card is the numbers and a line saying where. A map
@@ -225,12 +198,6 @@ const styles = StyleSheet.create({
     backgroundColor: MockColors.surfaceHigh,
   },
   map: { width: MAP_W, height: TILE, borderRadius: 20, overflow: 'hidden' },
-  photo: {
-    width: PHOTO_W,
-    height: TILE,
-    borderRadius: 20,
-    backgroundColor: MockColors.surfaceHigh,
-  },
 
   // — Game —
   gameHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },

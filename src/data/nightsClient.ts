@@ -102,6 +102,16 @@ interface RequestOk {
 }
 
 type RequestResult = RequestOk | { ok: false; result: NightActionError };
+const feedChangeListeners = new Set<() => void>();
+
+function notifyFeedChanged(): void {
+  feedChangeListeners.forEach((listener) => listener());
+}
+
+export function subscribeNightsFeedChanges(listener: () => void): () => void {
+  feedChangeListeners.add(listener);
+  return () => feedChangeListeners.delete(listener);
+}
 
 function parseNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -255,16 +265,20 @@ export async function publishNight(payload: NightPublishPayload): Promise<NightP
     method: 'POST',
     body: nightPublishWire(payload),
   });
-  return res.ok
+  const result: NightPublishResult = res.ok
     ? { ok: true, night: parsePublishedNight(rawObject(res.data.night)) }
     : res.result;
+  if (result.ok) notifyFeedChanged();
+  return result;
 }
 
 export async function unpublishNight(clientId: string): Promise<NightActionResult> {
   const res = await requestJson(`/v1/nights/${encodeURIComponent(clientId)}`, {
     method: 'DELETE',
   });
-  return res.ok ? { ok: true } : res.result;
+  const result: NightActionResult = res.ok ? { ok: true } : res.result;
+  if (result.ok) notifyFeedChanged();
+  return result;
 }
 
 export async function fetchNightsFeed(

@@ -26,18 +26,10 @@
  * generated from the numbers, which can sit over any of the above.
  */
 export type PartyHighlight =
-  | { kind: 'photos'; count: number; caption: string }
   | { kind: 'game'; game: string; winner: string; scores: { name: string; score: number }[] }
   | { kind: 'tempo'; hourly: { hour: string; beers: number }[]; peakLabel: string }
   | { kind: 'record'; title: string; detail: string }
   | { kind: 'map' };
-
-/**
- * Placeholder faces for the mock only. `pravatar.cc` is a stock-photo service —
- * it must not survive into anything shipped; real avatars come from
- * `Account.avatar`, which the app already serves.
- */
-const AVATARS = 'https://i.pravatar.cc/160?img=';
 
 export interface FeedEntry {
   id: string;
@@ -88,8 +80,8 @@ export const MOCK_FEED: FeedEntry[] = [
     beers: 4,
     duration: '48m',
     people: [
-      { name: '@sudík', tint: '#E8A317', avatar: `${AVATARS}57` },
-      { name: '@pěna', tint: '#7DD66B', avatar: `${AVATARS}41` },
+      { name: '@sudík', tint: '#E8A317', avatar: '' },
+      { name: '@pěna', tint: '#7DD66B', avatar: '' },
     ],
     photos: 2,
     cheers: 3,
@@ -119,11 +111,11 @@ export const MOCK_FEED: FeedEntry[] = [
     beers: 27,
     duration: '6h 42m',
     people: [
-      { name: '@sudík', tint: '#E8A317', avatar: `${AVATARS}57` },
-      { name: '@pěna', tint: '#7DD66B', avatar: `${AVATARS}41` },
-      { name: '@chmelák', tint: '#F0BE5C', avatar: `${AVATARS}50` },
-      { name: '@klárka', tint: '#A8896A', avatar: `${AVATARS}64` },
-      { name: '@mišák', tint: '#FBF3E0', avatar: `${AVATARS}26` },
+      { name: '@sudík', tint: '#E8A317', avatar: '' },
+      { name: '@pěna', tint: '#7DD66B', avatar: '' },
+      { name: '@chmelák', tint: '#F0BE5C', avatar: '' },
+      { name: '@klárka', tint: '#A8896A', avatar: '' },
+      { name: '@mišák', tint: '#FBF3E0', avatar: '' },
     ],
     photos: 18,
     cheers: 12,
@@ -159,9 +151,9 @@ export const MOCK_FEED: FeedEntry[] = [
     beers: 9,
     duration: '3h 05m',
     people: [
-      { name: '@klárka', tint: '#A8896A', avatar: `${AVATARS}64` },
-      { name: '@mišák', tint: '#FBF3E0', avatar: `${AVATARS}26` },
-      { name: '@chmelák', tint: '#F0BE5C', avatar: `${AVATARS}50` },
+      { name: '@klárka', tint: '#A8896A', avatar: '' },
+      { name: '@mišák', tint: '#FBF3E0', avatar: '' },
+      { name: '@chmelák', tint: '#F0BE5C', avatar: '' },
     ],
     photos: 6,
     cheers: 7,

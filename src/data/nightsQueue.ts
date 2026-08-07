@@ -68,6 +68,11 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<NightQueueItem>(
   isQueueItem,
 );
 const runMutation = createQueueLock();
+const queueListeners = new Set<() => void>();
+
+function notifyQueueChanged(): void {
+  queueListeners.forEach((listener) => listener());
+}
 
 function classifyAction(result: { ok: true } | NightActionError): QueueSyncResult {
   if (result.ok) return 'ok';
@@ -115,6 +120,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     });
     await saveQueue(remaining);
   });
+  notifyQueueChanged();
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -127,7 +133,18 @@ export async function enqueueNightOp(item: NightQueueItem): Promise<void> {
     deduped.push(item);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
+  notifyQueueChanged();
   await flushNightsQueue();
+}
+
+export async function getPendingNightPublishes(): Promise<NightPublishPayload[]> {
+  const queue = await runMutation(loadQueue);
+  return queue.flatMap((item) => (item.op === 'publish' ? [item.payload] : []));
+}
+
+export function subscribeNightsQueue(listener: () => void): () => void {
+  queueListeners.add(listener);
+  return () => queueListeners.delete(listener);
 }
 
 export function flushNightsQueue(): Promise<void> {
@@ -138,5 +155,6 @@ export function clearNightsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
+    notifyQueueChanged();
   });
 }
