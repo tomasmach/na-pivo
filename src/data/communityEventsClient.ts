@@ -50,6 +50,31 @@ export interface CommunityEventsDashboard {
   joined: CommunityEvent[];
 }
 
+const eventCache = new Map<string, CommunityEvent>();
+let eventCacheAccountId: string | null = null;
+
+function bindEventCache(accountId: string): void {
+  if (eventCacheAccountId !== accountId) {
+    eventCache.clear();
+    eventCacheAccountId = accountId;
+  }
+}
+
+function rememberDashboard(dashboard: CommunityEventsDashboard): void {
+  for (const event of [...dashboard.nearby, ...dashboard.hosted, ...dashboard.joined]) {
+    eventCache.set(event.id, event);
+  }
+}
+
+export function clearCommunityEventsCache(): void {
+  eventCache.clear();
+  eventCacheAccountId = null;
+}
+
+export function rememberCommunityEvent(event: CommunityEvent): void {
+  eventCache.set(event.id, event);
+}
+
 export type CommunityActionResult =
   | { ok: true; event?: CommunityEvent }
   | { ok: false; code: string; detail: string };
@@ -131,6 +156,7 @@ async function request(path: string, options: RequestOptions = {}) {
   if (!session?.authenticated) {
     return { ok: false as const, code: 'auth', detail: 'Pro domácí setkání se nejdřív přihlas.' };
   }
+  bindEventCache(session.accountId);
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
@@ -171,7 +197,23 @@ export async function fetchCommunityEvents(
     Array.isArray(result.data[key])
       ? (result.data[key] as unknown[]).map(parseEvent).filter((event): event is CommunityEvent => event != null)
       : [];
-  return { ok: true, dashboard: { nearby: list('nearby'), hosted: list('hosted'), joined: list('joined') } };
+  const dashboard = { nearby: list('nearby'), hosted: list('hosted'), joined: list('joined') };
+  rememberDashboard(dashboard);
+  return { ok: true, dashboard };
+}
+
+export async function fetchCommunityEvent(
+  eventId: string,
+  signal?: AbortSignal,
+): Promise<CommunityEvent | null> {
+  const session = await ensureAccount(signal);
+  if (!session?.authenticated || signal?.aborted) return null;
+  bindEventCache(session.accountId);
+  const cached = eventCache.get(eventId);
+  if (cached) return cached;
+  const result = await fetchCommunityEvents(undefined, signal);
+  if (!result.ok) return null;
+  return eventCache.get(eventId) ?? null;
 }
 
 export async function createCommunityEvent(input: {
@@ -206,6 +248,7 @@ export async function createCommunityEvent(input: {
   });
   if (!result.ok) return result;
   const event = parseEvent(result.data);
+  if (event) rememberCommunityEvent(event);
   return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
 }
 

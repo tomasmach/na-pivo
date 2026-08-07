@@ -14,16 +14,60 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon, MapPinIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
-import { EventCover } from '@/community/EventCover';
-import type { CommunityEvent } from '@/community/mockEvents';
+import {
+  EventCover,
+  eventDateLabel,
+  eventPlaceLabel,
+  eventTimeLabel,
+} from '@/community/EventCover';
+import {
+  leaveCommunityEvent,
+  rememberCommunityEvent,
+  requestCommunityEventJoin,
+  type CommunityEvent,
+} from '@/data/communityEventsClient';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export function EventDetailScreen({ event }: { event: CommunityEvent }) {
   const insets = useSafeAreaInsets();
-  const [going, setGoing] = React.useState(Boolean(event.mine));
+  const showToast = useToastStore((state) => state.show);
+  const [current, setCurrent] = React.useState(event);
+  const [busy, setBusy] = React.useState(false);
+  const going = current.membershipStatus === 'approved';
+  const pending = current.membershipStatus === 'pending';
+  const closed = current.status === 'ended' || current.status === 'cancelled';
+  const attendeeCount = Math.max(1, current.capacity - current.availableSpots);
+
+  const toggleMembership = React.useCallback(async () => {
+    if (busy || current.isHost || closed) return;
+    setBusy(true);
+    const result = going || pending
+      ? await leaveCommunityEvent(current.id)
+      : await requestCommunityEventJoin(current.id);
+    if (result.ok) {
+      const next: CommunityEvent = {
+        ...current,
+        membershipStatus: going || pending ? 'left' : 'pending',
+        availableSpots: going
+          ? Math.min(current.capacity - 1, current.availableSpots + 1)
+          : current.availableSpots,
+      };
+      setCurrent(next);
+      rememberCommunityEvent(next);
+      showToast(
+        going || pending
+          ? 'Místo je zase volné.'
+          : 'Žádost letí pořadateli. Teď už jen držet palce.',
+      );
+    } else {
+      showToast(result.detail);
+    }
+    setBusy(false);
+  }, [busy, closed, current, going, pending, showToast]);
 
   return (
     <ScrollView
@@ -33,53 +77,77 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
         { paddingTop: insets.top + 52, paddingBottom: insets.bottom + TAB_CHROME },
       ]}
     >
-      <EventCover event={event} height={160} />
+      <EventCover event={current} height={160} />
 
       <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {event.title}
+        {current.title}
       </Text>
       <Text style={styles.when} maxFontSizeMultiplier={FontScaleCap.body}>
-        {event.when} {event.time}
+        {eventDateLabel(current)} {eventTimeLabel(current)}
       </Text>
 
       <View style={styles.whereRow}>
         <MapPinIcon size={16} color={Colors.amber} />
         <Text style={styles.where} maxFontSizeMultiplier={FontScaleCap.body}>
-          {event.where}
+          {current.exactAddress || eventPlaceLabel(current)}
         </Text>
       </View>
 
       <Text style={styles.blurb} maxFontSizeMultiplier={FontScaleCap.body}>
-        {event.blurb}
+        {current.description}
       </Text>
 
       {/* A number, not a guest list. */}
       <View style={styles.goingRow}>
         <UsersIcon size={16} color={Colors.mutedText} />
         <Text style={styles.goingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          Jde {event.going + (going && !event.mine ? 1 : 0)} pivařů
+          Jde {attendeeCount} pivařů
         </Text>
       </View>
 
       <Pressable
-        onPress={() => setGoing((current) => !current)}
-        style={({ pressed }) => [styles.cta, going && styles.ctaOn, pressed && styles.pressed]}
+        onPress={() => void toggleMembership()}
+        disabled={busy || current.isHost || closed}
+        style={({ pressed }) => [
+          styles.cta,
+          (going || pending || current.isHost || closed) && styles.ctaOn,
+          pressed && styles.pressed,
+        ]}
         accessibilityRole="button"
-        accessibilityState={{ selected: going }}
-        accessibilityLabel={going ? 'Přece jen nejdu' : 'Půjdu'}
+        accessibilityState={{ selected: going, disabled: busy || current.isHost || closed }}
+        accessibilityLabel={
+          closed
+            ? 'Akce už není otevřená'
+            : current.isHost
+            ? 'Pořádáš tuhle akci'
+            : going || pending
+              ? 'Přece jen nejdu'
+              : 'Požádat o místo'
+        }
       >
-        {going ? <CheckIcon size={18} color={Colors.amber} /> : null}
+        {going || current.isHost ? <CheckIcon size={18} color={Colors.amber} /> : null}
         <Text
-          style={[styles.ctaText, going && styles.ctaTextOn]}
+          style={[
+            styles.ctaText,
+            (going || pending || current.isHost || closed) && styles.ctaTextOn,
+          ]}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {going ? 'Jdeš' : 'Půjdu'}
+          {closed
+            ? current.status === 'cancelled'
+              ? 'Akce je zrušená'
+              : 'Akce skončila'
+            : busy
+            ? 'Chvilku…'
+            : current.isHost
+              ? 'Pořádáš'
+              : going
+                ? 'Jdeš'
+                : pending
+                  ? 'Čekáš na potvrzení'
+                  : 'Požádat o místo'}
         </Text>
       </Pressable>
-
-      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        Design mock — data jsou napevno.
-      </Text>
     </ScrollView>
   );
 }
@@ -126,12 +194,4 @@ const styles = StyleSheet.create({
   },
   ctaText: { ...MockType.buttonLabel, color: Colors.stout },
   ctaTextOn: { color: Colors.amber },
-
-  mockNote: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    textAlign: 'center',
-    marginTop: MockLayout.sectionGap,
-  },
 });

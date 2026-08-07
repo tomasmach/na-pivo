@@ -35,6 +35,7 @@ from .auth_views import (
     UnlinkView,
     VerifyEmailView,
 )
+from .challenge_views import ChallengeCollectionView
 from .community_event_views import (
     CommunityEventCancelView,
     CommunityEventCollectionView,
@@ -118,6 +119,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("challenges", ChallengeCollectionView.as_view(), name="challenges"),
     path("community-events", CommunityEventCollectionView.as_view(), name="community-events"),
     path(
         "community-events/discover",

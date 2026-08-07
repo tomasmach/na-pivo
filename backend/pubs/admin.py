@@ -11,6 +11,7 @@ from .models import (
     BeerProduct,
     BeerProductMergeAudit,
     CanonicalPub,
+    Challenge,
     ClientEvent,
     ContentReport,
     DrinkLog,
@@ -41,6 +42,14 @@ def _truncate(value: str | None, limit: int) -> str:
     """Clip an admin list-cell string to ``limit`` chars with an ellipsis."""
     text = value or ""
     return text if len(text) <= limit else f"{text[:limit - 3]}..."
+
+
+@admin.register(Challenge)
+class ChallengeAdmin(admin.ModelAdmin):
+    list_display = ("title", "metric_rule", "target", "window_start", "window_end", "active")
+    list_filter = ("active", "metric_rule", "glyph_key")
+    search_fields = ("title", "slug")
+    ordering = ("-window_start", "title")
 
 
 class _ReadOnlyAdmin:
