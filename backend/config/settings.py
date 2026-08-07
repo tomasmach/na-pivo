@@ -687,7 +687,8 @@ GOOGLE_MAPS_SERVER_API_KEY: str = os.environ.get(
     "GOOGLE_MAPS_SERVER_API_KEY", ""
 )
 GOOGLE_MAPS_TIMEOUT: int = int(os.environ.get("GOOGLE_MAPS_TIMEOUT", "8"))
-# Shared database-backed cap across Google geocoding entry points and workers.
+# Shared database-backed cap across Google geocoding/autocomplete entry points
+# and workers.
 GOOGLE_MAPS_DAILY_CAP: int = int(os.environ.get("GOOGLE_MAPS_DAILY_CAP", "250"))
 GOOGLE_MAPS_LOCAL_SCAN_LIMIT: int = int(
     os.environ.get("GOOGLE_MAPS_LOCAL_SCAN_LIMIT", "80")

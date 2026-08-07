@@ -2148,6 +2148,12 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
     """Query params for local-first pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
+    place_id = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
     lat = serializers.FloatField(required=False)
     lng = serializers.FloatField(required=False)
 
@@ -2162,6 +2168,16 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
         if has_lat != has_lng:
             raise serializers.ValidationError("lat and lng must be provided together.")
         return attrs
+
+
+class PubLocationReverseGeocodeSerializer(
+    _LatLngBoundsValidationMixin,
+    serializers.Serializer,
+):
+    """An explicit map point that should be converted to a display address."""
+
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
 
 
 # ---------------------------------------------------------------------------

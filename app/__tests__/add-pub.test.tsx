@@ -21,6 +21,9 @@ const mockPubIdForCoords: jest.Mock = jest.fn((lat: number, lng: number) => `loc
 const mockUpsertLocalPub: jest.Mock = jest.fn();
 const mockFireSuccessHaptic: jest.Mock = jest.fn(async () => undefined);
 const mockResetBeerMapLayerForAddedPub: jest.Mock = jest.fn();
+const mockReverseGeocodePubLocation: jest.Mock = jest.fn(async () => null);
+const mockSuggestPubLocations: jest.Mock = jest.fn(async () => []);
+const mockGeocodePubLocation: jest.Mock = jest.fn(async () => null);
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -102,6 +105,12 @@ jest.mock('@/data/addedPubsQueue', () => ({
   enqueueAddedPubEdit: (entry: unknown) => mockEnqueueAddedPubEdit(entry),
 }));
 
+jest.mock('@/data/mapyClient', () => ({
+  reverseGeocodePubLocation: (...args: unknown[]) => mockReverseGeocodePubLocation(...args),
+  suggestPubLocations: (...args: unknown[]) => mockSuggestPubLocations(...args),
+  geocodePubLocation: (...args: unknown[]) => mockGeocodePubLocation(...args),
+}));
+
 jest.mock('@/data/pubs', () => ({
   clearPubsSnapshot: () => mockClearPubsSnapshot(),
   pubIdForCoords: (...args: [number, number]) => mockPubIdForCoords(...args),
@@ -141,9 +150,13 @@ describe('AddPubScreen', () => {
     mockGetCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 48.1486, longitude: 17.1077 },
     });
+    mockReverseGeocodePubLocation.mockResolvedValue(null);
+    mockSuggestPubLocations.mockResolvedValue([]);
+    mockGeocodePubLocation.mockResolvedValue(null);
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     if (!renderer) return;
 
     act(() => {
@@ -264,6 +277,100 @@ describe('AddPubScreen', () => {
     );
     expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefills city and address by reverse geocoding the selected map pin', async () => {
+    mockSearchParams = {
+      lat: '50.080123',
+      lng: '16.510616',
+      source: 'map',
+    };
+    mockReverseGeocodePubLocation.mockResolvedValue({
+      lat: 50.080123,
+      lng: 16.510616,
+      city: 'Líšnice',
+      address: 'Líšnice ev. č. 7',
+      type: 'regional.address',
+    });
+
+    await act(async () => {
+      renderer = TestRenderer.create(<AddPubScreen />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockReverseGeocodePubLocation).toHaveBeenCalledWith(
+      { lat: 50.080123, lng: 16.510616 },
+      expect.any(Object),
+    );
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubCityInput }).props.value,
+    ).toBe('Líšnice');
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput }).props.value,
+    ).toBe('Líšnice ev. č. 7');
+  });
+
+  it('suggests a missing Google place by name and fills its resolved location', async () => {
+    jest.useFakeTimers();
+    mockSearchParams = {
+      lat: '50.080123',
+      lng: '16.510616',
+      source: 'map',
+    };
+    mockSuggestPubLocations.mockResolvedValue([
+      {
+        id: 'google:place-smrk',
+        name: 'Občerstvení U Smrku',
+        location: 'Líšnice ev. č. 7, Líšnice',
+        provider: 'google',
+        placeId: 'place-smrk',
+      },
+    ]);
+    mockGeocodePubLocation.mockResolvedValue({
+      lat: 50.080123,
+      lng: 16.510616,
+      city: 'Líšnice',
+      address: 'Líšnice ev. č. 7',
+      type: 'regional.address',
+    });
+    renderScreen();
+    const nameInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubNameInput,
+    });
+
+    act(() => {
+      nameInput.props.onChangeText('Občerstvení U Smrku');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const suggestion = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubSuggestion('Občerstvení U Smrku'),
+    });
+    expect(renderer!.root.findAllByProps({ children: 'Google Maps' }).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      await suggestion.props.onPress();
+    });
+
+    expect(mockGeocodePubLocation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Občerstvení U Smrku',
+        placeId: 'place-smrk',
+        near: expect.objectContaining({ lat: 50.080123, lng: 16.510616 }),
+      }),
+    );
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubCityInput }).props.value,
+    ).toBe('Líšnice');
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput }).props.value,
+    ).toBe('Líšnice ev. č. 7');
   });
 
   it('lets the user clear the current location selection', () => {

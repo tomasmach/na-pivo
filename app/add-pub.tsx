@@ -6,7 +6,7 @@
  * compass can target it immediately after returning.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,13 @@ import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { enqueueAddedPub, enqueueAddedPubEdit } from '@/data/addedPubsQueue';
+import {
+  geocodePubLocation,
+  reverseGeocodePubLocation,
+  suggestPubLocations,
+  type PubLocationGeocodeResult,
+  type PubLocationSuggestion,
+} from '@/data/mapyClient';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -66,7 +73,8 @@ interface Coordinates {
 
 interface SelectedLocation extends Coordinates {
   displayLocation?: string;
-  source: 'current' | 'pin';
+  source: 'current' | 'pin' | 'suggestion';
+  provider?: 'local' | 'google';
 }
 
 export default function AddPubScreen() {
@@ -107,11 +115,15 @@ export default function AddPubScreen() {
     fromMapPin && initialCoords
       ? {
           ...initialCoords,
-          displayLocation: cs.addPub.mapPinSelectedBody,
+          displayLocation: cs.addPub.addressLookingUp,
           source: 'pin',
         }
       : null,
   );
+  const [suggestions, setSuggestions] = useState<PubLocationSuggestion[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestedQuery, setSuggestedQuery] = useState('');
+  const [resolvingSuggestionId, setResolvingSuggestionId] = useState<string | null>(null);
   const nameChanged = name.trim() !== initialName;
   const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
@@ -121,8 +133,123 @@ export default function AddPubScreen() {
         (!locationCorrectionSelected || (city.trim().length > 0 && address.trim().length > 0))
       : city.trim().length > 0 && address.trim().length > 0 && locationCorrectionSelected) &&
     !locating &&
+    resolvingSuggestionId === null &&
     !submitted;
   const currentLocationSelected = locationCorrectionSelected;
+
+  const selectedLat = selectedLocation?.lat;
+  const selectedLng = selectedLocation?.lng;
+  const selectedSource = selectedLocation?.source;
+
+  useEffect(() => {
+    if (
+      selectedLat === undefined ||
+      selectedLng === undefined ||
+      (selectedSource !== 'pin' && selectedSource !== 'current')
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void reverseGeocodePubLocation(
+      { lat: selectedLat, lng: selectedLng },
+      controller.signal,
+    ).then((result) => {
+      if (controller.signal.aborted) return;
+      const displayLocation = [result?.address, result?.city].filter(Boolean).join(', ');
+      setSelectedLocation((current) => {
+        if (!current || current.lat !== selectedLat || current.lng !== selectedLng) return current;
+        return {
+          ...current,
+          displayLocation: displayLocation || cs.addPub.addressLookupUnavailable,
+          provider: result ? 'google' : current.provider,
+        };
+      });
+      if (result?.city) setCity((current) => current.trim() || result.city || '');
+      if (result?.address) setAddress((current) => current.trim() || result.address || '');
+    });
+
+    return () => controller.abort();
+  }, [selectedLat, selectedLng, selectedSource]);
+
+  useEffect(() => {
+    if (isEditing || submitted || selectedSource === 'suggestion') return;
+    const query = name.trim();
+    if (query.length < 3) return;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      setSuggesting(true);
+      const near =
+        selectedLat !== undefined && selectedLng !== undefined
+          ? { lat: selectedLat, lng: selectedLng }
+          : initialCoords;
+      void suggestPubLocations({ name: query, near }, controller.signal)
+        .then((results) => {
+          if (controller.signal.aborted) return;
+          setSuggestions(results);
+          setSuggestedQuery(query);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSuggesting(false);
+        });
+    }, 400);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [initialCoords, isEditing, name, selectedLat, selectedLng, selectedSource, submitted]);
+
+  const applyResolvedSuggestion = useCallback((
+    suggestion: PubLocationSuggestion,
+    result: PubLocationGeocodeResult,
+  ) => {
+    const resolvedCity = result.city ?? suggestion.city ?? '';
+    const resolvedAddress = result.address ?? suggestion.address ?? '';
+    setSelectedLocation({
+      lat: result.lat,
+      lng: result.lng,
+      displayLocation:
+        [resolvedAddress, resolvedCity].filter(Boolean).join(', ') || suggestion.location,
+      source: 'suggestion',
+      provider: suggestion.provider,
+    });
+    setName(suggestion.name);
+    setCity(resolvedCity);
+    setAddress(resolvedAddress);
+    setSuggestions([]);
+    setSuggestedQuery('');
+    setLocationError('');
+  }, []);
+
+  const handleSuggestionPress = useCallback(async (suggestion: PubLocationSuggestion) => {
+    setResolvingSuggestionId(suggestion.id);
+    setLocationError('');
+    try {
+      const result =
+        suggestion.lat !== undefined && suggestion.lng !== undefined
+          ? {
+              lat: suggestion.lat,
+              lng: suggestion.lng,
+              city: suggestion.city,
+              address: suggestion.address,
+              type: 'poi',
+            }
+          : await geocodePubLocation({
+              name: suggestion.name,
+              placeId: suggestion.placeId,
+              near: selectedLocation ?? initialCoords,
+            });
+      if (!result) {
+        showToast(cs.addPub.placeLookupUnavailable);
+        return;
+      }
+      applyResolvedSuggestion(suggestion, result);
+    } finally {
+      setResolvingSuggestionId(null);
+    }
+  }, [applyResolvedSuggestion, initialCoords, selectedLocation, showToast]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
@@ -162,9 +289,7 @@ export default function AddPubScreen() {
 
       setSelectedLocation({
         ...coords,
-        displayLocation: fromMapPin
-          ? cs.addPub.mapPinSelectedBody
-          : cs.addPub.currentLocationSelectedBody,
+        displayLocation: cs.addPub.addressLookingUp,
         source: fromMapPin ? 'pin' : 'current',
       });
     } catch {
@@ -401,12 +526,81 @@ export default function AddPubScreen() {
             onChangeText={(value) => {
               setName(value);
               setLocationError('');
+              setSuggestedQuery('');
+              setSuggestions([]);
+              setSuggesting(false);
+              if (selectedLocation?.source === 'suggestion') {
+                setSelectedLocation(
+                  fromMapPin && initialCoords
+                    ? {
+                        ...initialCoords,
+                        displayLocation: [address, city].filter(Boolean).join(', ') || cs.addPub.addressLookingUp,
+                        source: 'pin',
+                      }
+                    : null,
+                );
+              }
             }}
             placeholder={cs.addPub.namePlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={200}
             accessibilityLabel={cs.a11y.addPubNameInput}
           />
+          {!isEditing && (suggestions.length > 0 || suggesting || suggestedQuery.length > 0) && (
+            <View style={styles.suggestions}>
+              {suggesting && suggestions.length === 0 ? (
+                <Text style={styles.searchStatus} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.addPub.searchingPlaces}
+                </Text>
+              ) : null}
+              {!suggesting && suggestions.length === 0 && suggestedQuery ? (
+                <Text style={styles.searchStatus} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.addPub.noPlaceSuggestions}
+                </Text>
+              ) : null}
+              {suggestions.map((suggestion, index) => (
+                <Pressable
+                  key={suggestion.id}
+                  onPress={() => void handleSuggestionPress(suggestion)}
+                  disabled={resolvingSuggestionId !== null}
+                  style={({ pressed }) => [
+                    styles.suggestion,
+                    index > 0 && styles.suggestionDivider,
+                    pressed && styles.suggestionPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.addPubSuggestion(suggestion.name)}
+                >
+                  <MapPinIcon size={16} color={Colors.amber} />
+                  <View style={styles.suggestionText}>
+                    <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {resolvingSuggestionId === suggestion.id
+                        ? cs.addPub.loadingPlace
+                        : suggestion.name}
+                    </Text>
+                    {!!suggestion.location && (
+                      <Text
+                        style={styles.suggestionLocation}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                        numberOfLines={2}
+                      >
+                        {suggestion.location}
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+              ))}
+              {suggestions.some((suggestion) => suggestion.provider === 'google') ? (
+                <Text
+                  style={styles.googleMapsAttribution}
+                  accessibilityLabel="Google Maps"
+                  maxFontSizeMultiplier={1}
+                >
+                  Google Maps
+                </Text>
+              ) : null}
+            </View>
+          )}
           {selectedLocation && (
             <View style={styles.suggestions}>
               <View
@@ -420,9 +614,11 @@ export default function AddPubScreen() {
                 <MapPinIcon size={16} color={Colors.amber} />
                 <View style={styles.suggestionText}>
                   <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {selectedLocation.source === 'pin'
-                      ? cs.addPub.mapPinSelectedTitle
-                      : cs.addPub.currentLocationSelectedTitle}
+                    {selectedLocation.source === 'suggestion'
+                      ? cs.addPub.selectedPlace
+                      : selectedLocation.source === 'pin'
+                        ? cs.addPub.mapPinSelectedTitle
+                        : cs.addPub.currentLocationSelectedTitle}
                   </Text>
                   <Text
                     style={styles.suggestionLocation}
@@ -431,6 +627,15 @@ export default function AddPubScreen() {
                   >
                     {selectedLocation.displayLocation}
                   </Text>
+                  {selectedLocation.provider === 'google' ? (
+                    <Text
+                      style={styles.googleMapsAttribution}
+                      accessibilityLabel="Google Maps"
+                      maxFontSizeMultiplier={1}
+                    >
+                      Google Maps
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -557,6 +762,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.24),
     backgroundColor: withAlpha(Colors.stout2, 0.9),
+  },
+  suggestion: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  suggestionDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  suggestionPressed: {
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  searchStatus: {
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.foamMuted,
+  },
+  googleMapsAttribution: {
+    alignSelf: 'flex-end',
+    marginHorizontal: 10,
+    marginTop: 5,
+    marginBottom: 5,
+    fontStyle: 'normal',
+    fontWeight: '400',
+    fontSize: 12,
+    letterSpacing: 0,
+    color: Colors.foam,
   },
   selectedSuggestion: {
     minHeight: 62,

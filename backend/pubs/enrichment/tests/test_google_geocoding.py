@@ -142,6 +142,18 @@ def test_place_id_lookup_accepts_known_place_without_address_precision() -> None
     assert session.calls[0]["params"] == {"languageCode": "cs"}
 
 
+def test_reverse_geocode_uses_selected_coordinates() -> None:
+    session = _FakeSession(_response({"results": [_result()]}))
+
+    candidate = _source(session).reverse_geocode(lat=50.0801234, lng=16.5106164)
+
+    assert candidate is not None
+    assert session.calls[0]["url"].endswith(
+        "/v4/geocode/location/50.0801234,16.5106164"
+    )
+    assert session.calls[0]["params"] == {"languageCode": "cs"}
+
+
 @pytest.mark.parametrize(
     ("result_type", "granularity"),
     [
