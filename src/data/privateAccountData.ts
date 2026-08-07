@@ -104,7 +104,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useVycepStore.setState({ published: {} });
   useLivePartyStore.setState({
     live: false,
-    pubName: 'Vyber hospodu',
+    pubName: '',
     houseBeer: 'Pivo',
     pubKey: null,
     pickingPub: false,

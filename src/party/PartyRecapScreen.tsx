@@ -57,6 +57,7 @@ import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
+  UNNAMED_PLACE,
   clockAt,
   formatElapsed,
 } from '@/mocks/livePartyStore';
@@ -135,7 +136,7 @@ function StopRow({
           {arrivedAt}
         </Text>
         <Text style={styles.stopPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pubName}
+          {pubName || UNNAMED_PLACE}
         </Text>
         <Text style={styles.stopBeers} allowFontScaling={false}>
           {beers} piv
@@ -259,7 +260,7 @@ export default function PartyRecapScreen() {
   const title =
     stops.length > 1
       ? 'Pivní jízda'
-      : stops[0]
+      : stops[0]?.pubName
         ? `Večer v ${stops[0].pubName}`
         : 'Pivní večer';
   const party: PartyRecapView = {
@@ -277,7 +278,7 @@ export default function PartyRecapScreen() {
     photoUrls: night.photos.map((photo) => ({ id: photo.id, uri: photo.url })),
   };
   const route = party.stops.length > 0
-    ? party.stops.map((stop) => stop.pubName).join('  →  ')
+    ? party.stops.map((stop) => stop.pubName || UNNAMED_PLACE).join('  →  ')
     : 'Bez hospody';
 
   // Same person, same face, wherever they appear on this screen.

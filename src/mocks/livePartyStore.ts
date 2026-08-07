@@ -153,6 +153,12 @@ interface LivePartyState {
   end: () => void;
 }
 
+/** The picker's own label. Lives here so no consumer stores it as a pub name. */
+export const PUB_PICKER_CTA = 'Vyber hospodu';
+
+/** What a night without a chosen pub is called, everywhere it has to be named. */
+export const UNNAMED_PLACE = 'Mimo hospodu';
+
 let seq = 0;
 const nextId = (prefix: string) => {
   seq += 1;
@@ -161,7 +167,9 @@ const nextId = (prefix: string) => {
 
 const EMPTY = {
   live: false,
-  pubName: 'Vyber hospodu',
+  // Empty, not a CTA string: this name travels into drink rows, the recap title
+  // and the published post, and "Večer v Vyber hospodu" is not a place.
+  pubName: '',
   houseBeer: 'Pivo',
   pubKey: null as string | null,
   pickingPub: false,

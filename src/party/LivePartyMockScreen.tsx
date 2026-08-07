@@ -66,6 +66,7 @@ import { NightRoute } from '@/mocks/NightRoute';
 import {
   clockAt,
   minutesBetween,
+  PUB_PICKER_CTA,
   useLivePartyStore,
   useNightClock,
   type LogKind,
@@ -492,7 +493,7 @@ export default function LivePartyMockScreen() {
               }}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`${pubName}. Změnit hospodu.`}
+              accessibilityLabel={`${pubName || PUB_PICKER_CTA}. Změnit hospodu.`}
             >
               {live ? <View style={styles.pubDot} /> : null}
               <Text
@@ -500,7 +501,7 @@ export default function LivePartyMockScreen() {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {pubName}
+                {pubName || PUB_PICKER_CTA}
               </Text>
               <ChevronDownIcon size={15} color={Colors.amber} />
             </Pressable>

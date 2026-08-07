@@ -32,7 +32,12 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { usePathname, useRouter, type Href } from 'expo-router';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
-import { formatStopwatch, useLivePartyStore, useNightSeconds } from '@/mocks/livePartyStore';
+import {
+  UNNAMED_PLACE,
+  formatStopwatch,
+  useLivePartyStore,
+  useNightSeconds,
+} from '@/mocks/livePartyStore';
 import { beersOf, nightMe } from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
 import { usePartyBeer } from '@/party/usePartyBeer';
@@ -104,11 +109,11 @@ export function LivePartyBar() {
         onPress={() => router.navigate('/beer' as Href)}
         style={({ pressed }) => [styles.body, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`Večer běží, ${pubName}, ${beersLabel(count)}. Otevřít.`}
+        accessibilityLabel={`Večer běží, ${pubName || UNNAMED_PLACE}, ${beersLabel(count)}. Otevřít.`}
       >
         <View style={styles.text}>
           <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {pubName}
+            {pubName || UNNAMED_PLACE}
           </Text>
           <Text style={styles.meta} numberOfLines={1} allowFontScaling={false}>
             {beersLabel(count)}

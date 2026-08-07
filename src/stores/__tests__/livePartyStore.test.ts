@@ -12,7 +12,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   useLivePartyStore.setState({
     live: false,
-    pubName: 'Vyber hospodu',
+    pubName: '',
     houseBeer: 'Pivo',
     pubKey: null,
     pickingPub: false,
@@ -93,5 +93,11 @@ describe('livePartyStore persistence', () => {
       games: [expect.objectContaining({ key: 'dice', result: { game: 'Kostky', winner: 'Ty', scores: [{ name: 'Ty', score: 6 }] } })],
     });
     expect(useLivePartyStore.getState().startedAt).not.toBeNull();
+  });
+});
+
+describe('unnamed place', () => {
+  it('starts with no pub name so the picker label never becomes one', () => {
+    expect(useLivePartyStore.getState().pubName).toBe('');
   });
 });

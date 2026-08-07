@@ -21,7 +21,7 @@
 import React from 'react';
 
 import { contextPubKey } from '@/drinks/drinkTypes';
-import { useLivePartyStore } from '@/mocks/livePartyStore';
+import { UNNAMED_PLACE, useLivePartyStore } from '@/mocks/livePartyStore';
 import { logPartyBeer, renamePartyBeer, unlogPartyBeer, type PartyBeerPlace } from '@/party/logBeer';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -51,7 +51,9 @@ export function usePartyBeer(): PartyBeerActions {
       };
     }
     if (pubKey) return { pubKey, pubName };
-    return { pubKey: contextPubKey('other'), pubName };
+    // No pub picked: the drink still belongs somewhere, and that somewhere is
+    // honestly "not a pub" rather than the picker's own label.
+    return { pubKey: contextPubKey('other'), pubName: pubName || UNNAMED_PLACE };
   }, [session, pubKey, pubName]);
 
   return React.useMemo(
