@@ -7,7 +7,7 @@ const REQUEST_TIMEOUT_MS = 9000;
 const FEED_PAGE_SIZE = 20;
 
 export type NightVisibility = 'friends' | 'public';
-export type NightsFeedScope = 'friends' | 'global';
+export type NightsFeedScope = 'friends' | 'global' | 'mine';
 
 export interface PublishedNight {
   id: string;

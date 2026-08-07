@@ -130,6 +130,8 @@ export interface AccountProfile {
   providers: AuthProvider[];
   isAnonymous: boolean;
   status: string;
+  /** ISO timestamp when this account first joined Na pivo. */
+  createdAt?: string | null;
   /** Present on auth responses: whether this provider sign-in created a new account. */
   created?: boolean;
   settings?: AccountSettings;
@@ -164,6 +166,7 @@ interface RawAccount {
   display_name?: string;
   is_public?: boolean;
   created?: boolean;
+  created_at?: string | null;
   avatar_url?: string | null;
   /** Defensive alias some providers/responses use instead of avatar_url. */
   picture?: string | null;
@@ -236,7 +239,7 @@ const CANCELLED: AuthResult = { ok: false, code: 'cancelled', detail: '' };
 function parseSettings(data: RawAccount): AccountSettings | undefined {
   const raw = data.settings;
   if (!raw) return undefined;
-  return {
+  const settings: AccountSettings = {
     mode: raw.mode === 'nearest' || raw.mode === 'surprise' ? raw.mode : undefined,
     maxDistanceKm:
       typeof raw.max_distance_km === 'number' || raw.max_distance_km === null
@@ -251,11 +254,11 @@ function parseSettings(data: RawAccount): AccountSettings | undefined {
     hideClosedPubs:
       typeof raw.hide_closed_pubs === 'boolean' ? raw.hide_closed_pubs : undefined,
     hidePubNames: typeof raw.hide_pub_names === 'boolean' ? raw.hide_pub_names : undefined,
-    marketingEmailsEnabled:
-      typeof raw.marketing_emails_enabled === 'boolean'
-        ? raw.marketing_emails_enabled
-        : undefined,
   };
+  if (typeof raw.marketing_emails_enabled === 'boolean') {
+    settings.marketingEmailsEnabled = raw.marketing_emails_enabled;
+  }
+  return settings;
 }
 
 function parseSubscription(data: RawAccount): AccountSubscription | undefined {
@@ -396,6 +399,7 @@ function parseProfile(data: RawAccount): AccountProfile {
     status: data.status ?? 'active',
   };
   if (typeof data.created === 'boolean') profile.created = data.created;
+  if (typeof data.created_at === 'string') profile.createdAt = data.created_at;
   const settings = parseSettings(data);
   const subscription = parseSubscription(data);
   const stats = parseStats(data);

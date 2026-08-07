@@ -884,6 +884,7 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
     installFetch(
       fetchResolving(200, {
         id: 'acc',
+        created_at: '2026-06-09T12:00:00+02:00',
         is_anonymous: false,
         achievements: {
           first_ten: true,
@@ -926,6 +927,7 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
 
     const profile = await auth.fetchAccountProfile();
     expect(profile).not.toBeNull();
+    expect(profile?.createdAt).toBe('2026-06-09T12:00:00+02:00');
     expect(profile?.achievements).toEqual({
       firstTen: true,
       regular: false,

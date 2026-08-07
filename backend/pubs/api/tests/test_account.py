@@ -347,6 +347,7 @@ def test_me_returns_account_for_valid_token(client):
     assert body["id"] == register_body["id"]
     assert body["device_id"] == _DEVICE_ID
     assert body["hide_pub_names"] is False
+    assert body["created_at"] == register_body["created_at"]
     assert "token" not in body
 
 

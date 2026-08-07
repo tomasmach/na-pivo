@@ -1,67 +1,84 @@
-/**
- * DESIGN MOCK — somebody else's profile.
- *
- * Same object as your own profile, seen from outside: a face, a handle, the
- * numbers, the nights. Deliberately NOT a different screen design — a person
- * should look like a person wherever you meet them, and a stranger's page that
- * is laid out differently from yours reads as a different product.
- *
- * What changes when the profile is not yours:
- *
- *   - the identity block gains the relationship: whether you follow them, and
- *     how many nights you have actually been out together. That number is the
- *     honest version of "mutual friends" in a pub app;
- *   - two actions instead of none — follow, and "Na pivo?", which is the only
- *     thing this product really wants you to do with another person;
- *   - no records, no streak. Your own profile shows those to push YOU; on
- *     someone else's page a streak is a stat about their drinking that they did
- *     not choose to publish, and this app does not build that.
- *
- * Privacy (`AGENTS.md`): nothing here is derived from where they are, only from
- * what they published. Pub counts are aggregates — "12 hospod", never the list
- * of which ones, because a list of somebody's regular pubs is a schedule.
- */
-
-import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { BeerIcon, CheckIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
-import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
-import { FeedCard } from '@/feed/FeedMockScreen';
-import { MOCK_FEED } from '@/feed/mockFeed';
-import { BarChart } from '@/mocks/BarChart';
+import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { fetchFriendProfile, searchFriends, type FriendProfileDetail } from '@/data/friendsClient';
+import { Face } from '@/feed/FeedMockScreen';
+import SkeletonBlock from '@/friends/SkeletonBlock';
+import { cs } from '@/i18n/cs';
 import { SectionBreak } from '@/mocks/SectionBreak';
-import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { AchievementGrid } from '@/profile/AchievementGrid';
-import { MOCK_ACHIEVEMENTS, SERIES, type StatPeriod } from '@/profile/mockStats';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { useReduceMotion } from '@/utils/useReduceMotion';
 
-/** Placeholder face — `pravatar.cc` is stock photography and MUST NOT ship. */
-const AVATAR = 'https://i.pravatar.cc/240?img=41';
+async function resolveProfile(
+  params: { accountId: string; handle: string },
+  signal: AbortSignal,
+): Promise<FriendProfileDetail | null> {
+  let accountId = params.accountId;
+  if (!accountId && params.handle) {
+    const candidates = await searchFriends(params.handle, signal);
+    const normalized = params.handle.replace(/^@/, '').toLocaleLowerCase('cs-CZ');
+    accountId =
+      candidates?.find((candidate) => candidate.nickname?.toLocaleLowerCase('cs-CZ') === normalized)
+        ?.id ?? '';
+  }
+  return accountId ? fetchFriendProfile(accountId, signal) : null;
+}
 
-const TABS = ['Statistiky', 'Aktivita'] as const;
-const PERIODS: StatPeriod[] = ['Týden', 'Měsíc', 'Rok'];
-
-/** How many nights you two have actually shared. Mock — the real number comes
- *  from parties you were both in. */
-const TOGETHER = 4;
+function ProfileSkeleton({ reduceMotion }: { reduceMotion: boolean }) {
+  return (
+    <View style={styles.skeleton}>
+      <View style={styles.identity}>
+        <SkeletonBlock width={72} height={72} radius={Radius.pill} reduceMotion={reduceMotion} />
+        <View style={styles.grow}>
+          <SkeletonBlock width="55%" height={28} reduceMotion={reduceMotion} />
+          <View style={styles.skeletonGap} />
+          <SkeletonBlock width="70%" height={14} reduceMotion={reduceMotion} />
+        </View>
+      </View>
+      <SkeletonBlock width="100%" height={62} radius={Radius.card} reduceMotion={reduceMotion} />
+      <SkeletonBlock width="100%" height={180} radius={Radius.card} reduceMotion={reduceMotion} />
+    </View>
+  );
+}
 
 export default function PublicProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ handle?: string }>();
-  const handle = params.handle ? `@${params.handle}` : '@pěna';
+  const reduceMotion = useReduceMotion();
+  const params = useLocalSearchParams<{ accountId?: string; id?: string; handle?: string }>();
+  const accountId = params.accountId || params.id || '';
+  const handleParam = params.handle || '';
+  const requestKey = accountId ? `id:${accountId}` : `handle:${handleParam}`;
+  const [snapshot, setSnapshot] = useState<{
+    key: string;
+    detail: FriendProfileDetail | null;
+  } | null>(null);
 
-  const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
-  const [period, setPeriod] = useState<StatPeriod>('Měsíc');
-  const [following, setFollowing] = useState(false);
-  const series = SERIES[period];
+  useEffect(() => {
+    const controller = new AbortController();
+    void resolveProfile({ accountId, handle: handleParam }, controller.signal).then((result) => {
+      if (!controller.signal.aborted) {
+        setSnapshot({ key: requestKey, detail: result });
+      }
+    });
+    return () => controller.abort();
+  }, [accountId, handleParam, requestKey]);
+
+  const loaded = snapshot?.key === requestKey;
+  const detail = loaded ? snapshot.detail : null;
+  const profile = detail?.profile;
+  const handle = profile?.nickname
+    ? `@${profile.nickname}`
+    : profile?.displayName || cs.profile.noDisplayName;
+  const together = detail?.stats.nightsTogether ?? 0;
 
   return (
     <View style={styles.screen}>
@@ -81,108 +98,66 @@ export default function PublicProfileScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xxl }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.identity}>
-          <Image source={{ uri: AVATAR }} style={styles.avatar} />
-          <View style={styles.grow}>
-            <Text
-              style={styles.handle}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {handle}
-            </Text>
-            {/* The honest version of "12 mutual friends": how many evenings you
-                two have actually shared. It is the only social number in this
-                product that means anything. */}
-            <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
-              {TOGETHER > 0 ? `Byli jste spolu ${TOGETHER}× na pivu` : 'Ještě jste spolu nebyli'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Two actions, and the second one is the point of the app. Following
-            someone means their nights show up in Kocoviny; "Na pivo?" is the
-            thing you actually came here to do. */}
-        <View style={styles.actions}>
-          <Pressable
-            onPress={() => setFollowing((current) => !current)}
-            style={({ pressed }) => [
-              styles.action,
-              following ? styles.actionOn : styles.actionPrimary,
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: following }}
-            accessibilityLabel={following ? `Sleduješ ${handle}` : `Sledovat ${handle}`}
-          >
-            {following ? (
-              <CheckIcon size={17} color={Colors.amber} />
-            ) : (
-              <PlusIcon size={17} color={Colors.stout} />
-            )}
-            <Text
-              style={[styles.actionText, following && styles.actionTextOn]}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {following ? 'Sleduješ' : 'Sledovat'}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.action, styles.actionGhost, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={`Pozvat ${handle} na pivo`}
-          >
-            <BeerIcon size={17} color={Colors.foam} />
-            <Text
-              style={[styles.actionText, styles.actionTextGhost]}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              Na pivo?
-            </Text>
-          </Pressable>
-        </View>
-
-        <UnderlineTabs
-          options={TABS}
-          value={tab}
-          onChange={setTab}
-          inset={MockLayout.screenPad}
-        />
-
-        {tab === 'Statistiky' ? (
-          <>
-            {/* Aggregates only. "12 hospod" is a fact about how much they get
-                out; the list of WHICH twelve is a schedule, and this app does
-                not hand one person another person's schedule. */}
-            <View style={styles.totals}>
-              <Text style={styles.window} maxFontSizeMultiplier={FontScaleCap.body}>
-                {period}
-              </Text>
-              <StatGrid columns={4} compact stats={series.totals} />
-            </View>
-
-            <View style={styles.chart}>
-              <BarChart points={series.points} />
-            </View>
-
-            <View style={styles.periodRow}>
-              <Segmented options={PERIODS} value={period} onChange={setPeriod} />
-            </View>
-
-            {/* Badges yes, streak and records no: a badge is something they
-                earned and chose to wear, a streak is a running tally of another
-                person's drinking. */}
-            <SectionBreak title="Odznaky" />
-            <AchievementGrid mapper={undefined} achievements={MOCK_ACHIEVEMENTS} />
-          </>
+        {!loaded ? (
+          <ProfileSkeleton reduceMotion={reduceMotion} />
+        ) : !detail || !profile ? (
+          <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+            Tenhle profil se nepodařilo načíst.
+          </Text>
         ) : (
-          MOCK_FEED.map((entry) => <FeedCard key={entry.id} entry={entry} />)
-        )}
+          <>
+            <View style={styles.identity}>
+              <Face
+                name={handle}
+                tint={Colors.amber}
+                avatar={profile.avatarUrl ?? undefined}
+                size={72}
+              />
+              <View style={styles.grow}>
+                <Text
+                  style={styles.handle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {handle}
+                </Text>
+                <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {together > 0
+                    ? `Byli jste spolu ${together}× na pivu`
+                    : 'Ještě jste spolu nebyli'}
+                </Text>
+              </View>
+            </View>
 
-        <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-          Design mock — data jsou napevno.
-        </Text>
+            {detail.publicStats ? (
+              <View style={styles.totals}>
+                <StatGrid
+                  columns={4}
+                  compact
+                  stats={[
+                    { label: 'Piv', value: String(detail.publicStats.totalBeers) },
+                    { label: 'Hospod', value: String(detail.publicStats.distinctPubs) },
+                    { label: 'Úroveň', value: String(detail.publicStats.mapperLevel) },
+                    { label: 'XP', value: String(detail.publicStats.mapperXp) },
+                  ]}
+                />
+              </View>
+            ) : null}
+
+            {detail.achievements ? (
+              <>
+                <SectionBreak title="Odznaky" />
+                <AchievementGrid mapper={undefined} achievements={detail.achievements} />
+              </>
+            ) : null}
+
+            {!detail.publicStats && !detail.achievements ? (
+              <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                Tenhle profil zatím nemá veřejné statistiky.
+              </Text>
+            ) : null}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -193,7 +168,6 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
   content: { paddingHorizontal: MockLayout.screenPad },
-
   top: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },
   back: {
     width: HitArea.min,
@@ -203,38 +177,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
-
   identity: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.stout3 },
   handle: { ...MockType.titleXL, fontSize: 26, color: Colors.foam },
   since: { fontSize: 14, fontWeight: '500', color: Colors.mutedText, marginTop: 2 },
-
-  actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
-  action: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    height: 46,
-    borderRadius: Radius.pill,
-  },
-  actionPrimary: { backgroundColor: Colors.amber },
-  actionOn: { backgroundColor: withAlpha(Colors.amber, 0.16) },
-  actionGhost: { backgroundColor: withAlpha(Colors.foam, 0.09) },
-  actionText: { fontSize: 15, fontWeight: '800', color: Colors.stout },
-  actionTextOn: { color: Colors.amber },
-  actionTextGhost: { color: Colors.foam },
-
-  totals: { marginTop: Spacing.lg, gap: Spacing.sm },
-  window: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
-  chart: { marginTop: Spacing.lg },
-  periodRow: { marginTop: Spacing.lg },
-
-  mockNote: {
+  totals: { marginTop: Spacing.xl },
+  empty: {
     marginTop: Spacing.xl,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '500',
-    color: withAlpha(Colors.mutedText, 0.7),
+    color: Colors.mutedText,
+    textAlign: 'center',
   },
+  skeleton: { gap: Spacing.xl },
+  skeletonGap: { height: Spacing.sm },
 });

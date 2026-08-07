@@ -1182,7 +1182,7 @@ class PublishedNightRequestSerializer(serializers.Serializer):
 class PublishedNightFeedQuerySerializer(serializers.Serializer):
     """Query parameters for GET /v1/nights/feed."""
 
-    scope = serializers.ChoiceField(choices=("friends", "global"), default="global")
+    scope = serializers.ChoiceField(choices=("friends", "global", "mine"), default="global")
     cursor = serializers.CharField(required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(required=False, min_value=1, max_value=30, default=30)
 
