@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { ChallengeDetailScreen } from '@/community/ChallengeDetailScreen';
-import { findChallenge } from '@/community/mockChallenges';
+import { CommunityDetailSkeleton } from '@/community/CommunityDetailSkeleton';
+import { fetchChallenge, type Challenge } from '@/data/challengesClient';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 
@@ -14,7 +15,19 @@ import { FontScaleCap } from '@/theme/fonts';
  */
 export default function ChallengeRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const challenge = findChallenge(id);
+  const [result, setResult] = React.useState<{ id: string; challenge: Challenge | null } | null>(null);
+
+  React.useEffect(() => {
+    const abort = new AbortController();
+    void fetchChallenge(id, { signal: abort.signal }).then((challenge) => {
+      if (abort.signal.aborted) return;
+      setResult({ id, challenge });
+    });
+    return () => abort.abort();
+  }, [id]);
+
+  if (result?.id !== id) return <CommunityDetailSkeleton />;
+  const challenge = result.challenge;
 
   if (!challenge) {
     return (

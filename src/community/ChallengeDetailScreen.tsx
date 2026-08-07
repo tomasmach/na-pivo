@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon, TrophyIcon } from '@/components/shared/IconGlyph';
@@ -26,13 +26,14 @@ import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
+import { Avatar } from '@/profile/Avatar';
 
-import type { Challenge } from './mockChallenges';
+import type { Challenge } from '@/data/challengesClient';
 
 export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
   const insets = useSafeAreaInsets();
-  const lead = Math.max(...challenge.rivals.map((rival) => rival.done), challenge.goal);
+  const lead = Math.max(...challenge.rivals.map((rival) => rival.progress), challenge.target);
 
   return (
     <ScrollView
@@ -56,18 +57,18 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
           it — no chip, no card, no gradient (§15: glass never under a number). */}
       <View style={styles.progress}>
         <Text style={styles.count} allowFontScaling={false}>
-          {challenge.done}
+          {challenge.current}
           <Text style={styles.countRest}>
             {' '}
-            z {challenge.goal} {challenge.unit}
+            z {challenge.target} {challenge.unit}
           </Text>
         </Text>
         <View style={styles.track}>
-          <View style={[styles.fill, { width: `${Math.max(4, challenge.progress * 100)}%` }]} />
+          <View style={[styles.fill, { width: `${challenge.ratio * 100}%` }]} />
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {challenge.deadline}
+            {formatDeadline(challenge.windowEnd)}
           </Text>
           <View style={styles.rewardRow}>
             <TrophyIcon size={14} color={Colors.amber} />
@@ -81,7 +82,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
       <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
         Co se počítá
       </Text>
-      {challenge.counts.map((rule) => (
+      {challenge.rules.map((rule) => (
         <View key={rule} style={styles.rule}>
           <CheckIcon size={16} color={Colors.amber} />
           <Text style={styles.ruleText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -93,39 +94,49 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
       <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
         Kdo ještě jede
       </Text>
+      {challenge.rivals.length === 0 ? (
+        <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+          Z party tu zatím nikdo není.
+        </Text>
+      ) : null}
       {challenge.rivals.map((rival) => (
-        <View key={rival.handle} style={styles.rival}>
-          <Image source={{ uri: rival.avatar }} style={styles.avatar} />
+        <View key={rival.account.id} style={styles.rival}>
+          <Avatar
+            size={40}
+            uri={rival.account.avatarUrl}
+            nickname={rival.account.nickname}
+            displayName={rival.account.displayName}
+            border="quiet"
+          />
           <View style={styles.grow}>
             <Text
-              style={[styles.handle, rival.me && styles.handleMe]}
+              style={styles.handle}
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {rival.handle}
+              {rival.account.nickname
+                ? `@${rival.account.nickname}`
+                : rival.account.displayName || 'Kamarád'}
             </Text>
             <View style={styles.trackThin}>
               <View
                 style={[
                   styles.fill,
                   {
-                    width: `${Math.max(5, Math.round((rival.done / lead) * 100))}%`,
-                    backgroundColor: rival.me ? Colors.amber : withAlpha(Colors.amber, 0.35),
+                    width: `${Math.round((rival.progress / lead) * 100)}%`,
+                    backgroundColor: withAlpha(Colors.amber, 0.35),
                   },
                 ]}
               />
             </View>
           </View>
           <Text style={styles.rivalScore} allowFontScaling={false}>
-            {rival.done}
-            <Text style={styles.rivalGoal}>/{challenge.goal}</Text>
+            {rival.progress}
+            <Text style={styles.rivalGoal}>/{challenge.target}</Text>
           </Text>
         </View>
       ))}
 
-      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        Design mock — data jsou napevno.
-      </Text>
     </ScrollView>
   );
 }
@@ -192,9 +203,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: withAlpha(Colors.foam, 0.08),
   },
-  avatar: { width: 40, height: 40, borderRadius: Radius.pill },
   handle: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
-  handleMe: { color: Colors.foam, fontWeight: '700' },
+  empty: { fontSize: 15, fontWeight: '400', color: Colors.mutedText, marginTop: Spacing.md },
   rivalScore: {
     fontSize: 19,
     fontWeight: '700',
@@ -202,12 +212,10 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   rivalGoal: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
-
-  mockNote: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    textAlign: 'center',
-    marginTop: MockLayout.sectionGap,
-  },
 });
+
+function formatDeadline(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return `Do ${date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long' })}`;
+}

@@ -3,13 +3,26 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 
 import { EventDetailScreen } from '@/community/EventDetailScreen';
-import { findEvent } from '@/community/mockEvents';
+import { CommunityDetailSkeleton } from '@/community/CommunityDetailSkeleton';
+import { fetchCommunityEvent, type CommunityEvent } from '@/data/communityEventsClient';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 
 export default function EventRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const event = findEvent(id);
+  const [result, setResult] = React.useState<{ id: string; event: CommunityEvent | null } | null>(null);
+
+  React.useEffect(() => {
+    const abort = new AbortController();
+    void fetchCommunityEvent(id, abort.signal).then((event) => {
+      if (abort.signal.aborted) return;
+      setResult({ id, event });
+    });
+    return () => abort.abort();
+  }, [id]);
+
+  if (result?.id !== id) return <CommunityDetailSkeleton poster />;
+  const event = result.event;
 
   if (!event) {
     return (

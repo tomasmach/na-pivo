@@ -4132,5 +4132,55 @@ class PartyGameEvent(models.Model):
         return f"{self.kind}:{self.delta} on {self.game_id}"
 
 
+class Challenge(models.Model):
+    """A server-defined, time-bounded community challenge.
+
+    Challenge progress is deliberately not stored here. The API derives it from
+    diary rows on every read, so deleting or correcting a drink, visit, or photo
+    immediately changes the result everywhere.
+    """
+
+    class GlyphKey(models.TextChoices):
+        PLACES = "places", "Places"
+        RHYTHM = "rhythm", "Rhythm"
+        TASTE = "taste", "Taste"
+
+    class MetricRule(models.TextChoices):
+        BEER_COUNT = "beer_count", "Beer count"
+        DISTINCT_PUBS = "distinct_pubs", "Distinct pubs"
+        PHOTO_COUNT = "photo_count", "Photo count"
+
+    slug = models.SlugField(max_length=80, unique=True)
+    title = models.CharField(max_length=120)
+    glyph_key = models.CharField(max_length=16, choices=GlyphKey.choices)
+    metric_rule = models.CharField(max_length=24, choices=MetricRule.choices)
+    target = models.PositiveIntegerField()
+    unit = models.CharField(max_length=40)
+    blurb = models.TextField(blank=True, default="")
+    reward = models.CharField(max_length=120, blank=True, default="")
+    rules = models.JSONField(default=list, blank=True)
+    window_start = models.DateTimeField(db_index=True)
+    window_end = models.DateTimeField(db_index=True)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["window_end", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(target__gt=0),
+                name="challenge_target_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(window_end__gt=models.F("window_start")),
+                name="challenge_window_order",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.slug})"
+
+
 from .community_events import CommunityEvent, CommunityEventMembership  # noqa: E402,F401
 from .pub_events import PubEvent  # noqa: E402,F401
