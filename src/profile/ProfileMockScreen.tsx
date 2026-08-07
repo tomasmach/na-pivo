@@ -297,7 +297,13 @@ export default function ProfileMockScreen() {
       ) : (
         activity !== undefined && activity !== null ? (
           activity.length > 0 ? (
-            activity.map((night) => <FeedCard key={night.id} entry={nightToFeedEntry(night)} />)
+            activity.map((night) => (
+              <FeedCard
+                key={night.id}
+                entry={nightToFeedEntry(night)}
+                nightKey={night.drinkingDay ? `night-${night.drinkingDay}` : undefined}
+              />
+            ))
           ) : (
             <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
               Zatím jsi žádný večer nezveřejnil.

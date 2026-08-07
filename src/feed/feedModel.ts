@@ -26,6 +26,8 @@ export interface FeedNightEntry {
   myRound: boolean;
   isMine: boolean;
   pending: boolean;
+  /** The drinking-day key the recap resolves a night by. Empty when unknown. */
+  drinkingDay: string;
 }
 
 export function formatFeedDuration(minutes: number | null): string {
@@ -64,6 +66,7 @@ export function publishedNightToFeedEntry(
     myRound: night.myRound,
     isMine: night.isMine,
     pending: false,
+    drinkingDay: night.drinkingDay,
   };
 }
 
@@ -96,6 +99,7 @@ export function pendingPublishToFeedEntry(
     myRound: false,
     isMine: true,
     pending: true,
+    drinkingDay: payload.drinkingDay,
   };
 }
 

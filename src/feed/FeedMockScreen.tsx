@@ -133,15 +133,25 @@ export function Face({
 export function FeedCard({
   entry,
   first = false,
+  nightKey,
 }: {
   entry: FeedCardEntry;
   /** The band separates posts FROM EACH OTHER. Above the first one there is no
    *  previous post to separate it from, only the title — so it reads as a rule
    *  under the header instead of a gap, which is a different thing. */
   first?: boolean;
+  /** Recap key for legacy-shaped entries; real entries derive their own. */
+  nightKey?: string;
 }) {
   const router = useRouter();
   const real = isNightEntry(entry);
+  // Only MY night can open the recap — it rebuilds from this device's diary,
+  // and somebody else's evening is not on this device. Their card IS the detail.
+  const recapKey = real
+    ? entry.isMine && entry.drinkingDay
+      ? `night-${entry.drinkingDay}`
+      : null
+    : nightKey ?? null;
 
   // Derived, not written: every roast is a true observation about THIS night,
   // and the rules stay silent when there is nothing fair to say (see roast.ts).
@@ -245,17 +255,19 @@ export function FeedCard({
 
   return (
     <View style={[styles.card, first && styles.cardFirst]}>
-      {real ? (
-        <View>{content}</View>
-      ) : (
+      {recapKey ? (
         <Pressable
           style={({ pressed }) => [pressed && styles.cardPressed]}
-          onPress={() => router.push("/friends/party-recap" as Href)}
+          onPress={() =>
+            router.push(`/friends/party-recap?nightKey=${encodeURIComponent(recapKey)}` as Href)
+          }
           accessibilityRole="button"
           accessibilityLabel={`${entry.title}, detail večera`}
         >
           {content}
         </Pressable>
+      ) : (
+        <View>{content}</View>
       )}
 
       {real ? (
