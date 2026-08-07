@@ -39,20 +39,26 @@ export function InviteSheet({
   presentIds,
   code,
   link,
+  creating,
+  creationError,
+  onRetry,
   onClose,
 }: {
   visible: boolean;
   /** Who is already at the table — they get a tick instead of a button. */
   presentIds: string[];
   /**
-   * The real join code, or null while the evening is still being created.
+   * The real join code, or null while creation is pending or failed.
    *
    * No placeholder: a code somebody reads across the table and that opens
-   * nothing is worse than a moment of "zakládá se". This is the one thing in
-   * the sheet that has to be true.
+   * nothing is worse than an honest loading/error state. This is the one thing
+   * in the sheet that has to be true.
    */
   code: string | null;
   link: string | null;
+  creating: boolean;
+  creationError: string | null;
+  onRetry: () => void;
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -140,13 +146,38 @@ export function InviteSheet({
                   Nasnímej, nebo si kód přečti nahlas.
                 </Text>
               </>
-            ) : (
+            ) : creating ? (
               <Text
                 style={styles.codeHint}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
                 Kód se zakládá. Chvilku.
               </Text>
+            ) : (
+              <View style={styles.codeFailure}>
+                <Text
+                  style={styles.codeHint}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {creationError ?? 'Kód se nepodařilo založit.'}
+                </Text>
+                <Text
+                  style={styles.codeHint}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  Na kód potřebuješ signál. Pivo si dál zapisuješ i bez něj.
+                </Text>
+                <Pressable
+                  onPress={onRetry}
+                  style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Zkusit založit kód znovu"
+                >
+                  <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    Zkusit znovu
+                  </Text>
+                </Pressable>
+              </View>
             )}
           </View>
 
@@ -257,6 +288,15 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   codeHint: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
+  codeFailure: { alignItems: 'center', gap: Spacing.sm },
+  retry: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
+  retryText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
 
   linkRow: {
     flexDirection: 'row',

@@ -313,6 +313,18 @@ export default function LivePartyMockScreen() {
   const [beersOpen, setBeersOpen] = React.useState(false);
   const [photoCaptureOpen, setPhotoCaptureOpen] = React.useState(false);
 
+  const openInvite = React.useCallback(() => {
+    setInviteOpen(true);
+    if (evening || joiningTable) return;
+    clearJoinError();
+    void startEvening(pubName);
+  }, [clearJoinError, evening, joiningTable, pubName, startEvening]);
+
+  const retryInvite = React.useCallback(() => {
+    clearJoinError();
+    void startEvening(pubName);
+  }, [clearJoinError, pubName, startEvening]);
+
   const mapHeight = live
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
     : MAP_IDLE;
@@ -503,7 +515,7 @@ export default function LivePartyMockScreen() {
 
                 With a word on it: a bare glyph in a corner is a guess, and this
                 is the one control here whose job no icon says on its own. */}
-            <GlassPill accessibilityLabel="Přizvat ke stolu" onPress={() => setInviteOpen(true)}>
+            <GlassPill accessibilityLabel="Přizvat ke stolu" onPress={openInvite}>
               <UserPlusIcon size={17} color={Colors.amber} />
               <Text style={styles.invitePill} allowFontScaling={false}>
                 Pozvat
@@ -944,10 +956,17 @@ export default function LivePartyMockScreen() {
         visible={inviteOpen}
         presentIds={people.map((person) => person.id)}
         // The real thing, or nothing. The evening is created when the night
-        // starts; until the server answers there is no code to read out.
+        // starts or when Pozvat is opened first; until the server answers there
+        // is no code to read out.
         code={evening?.joinCode ?? null}
         link={evening?.joinUrl ?? null}
-        onClose={() => setInviteOpen(false)}
+        creating={joiningTable}
+        creationError={evening ? null : joinError}
+        onRetry={retryInvite}
+        onClose={() => {
+          clearJoinError();
+          setInviteOpen(false);
+        }}
       />
 
       <BeerPhotoCaptureFlow
