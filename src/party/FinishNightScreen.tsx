@@ -25,16 +25,24 @@ import { useRouter, type Href } from 'expo-router';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { CameraIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { buildRoast } from '@/feed/roast';
-import { usePublishedStore } from '@/mocks/publishedStore';
 import {
   isRetriableNightError,
   publishNight as publishNightToServer,
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { nightPublishPayload } from '@/party/nightPublish';
-import { nightByBeer, nightMe, nightTally } from '@/party/nightRecord';
+import {
+  nightByBeer,
+  nightMe,
+  nightMinutes,
+  nightPlayedGames,
+  nightTally,
+} from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import { loadBeerPhotos } from '@/stores/beerPhotosStore';
+import { useToastStore } from '@/stores/toastStore';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
   formatElapsed,
@@ -46,40 +54,36 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-/** Illustrative only — real ones come from `BeerPhoto`. MUST NOT ship. */
-const PHOTOS = [
-  'https://picsum.photos/seed/napivo-1/300/300',
-  'https://picsum.photos/seed/napivo-2/300/300',
-  'https://picsum.photos/seed/napivo-3/300/300',
-  'https://picsum.photos/seed/napivo-4/300/300',
-];
-
 export default function FinishNightScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const startedAt = useLivePartyStore((s) => s.startedAt);
   const minutes = useNightClock(startedAt);
-  const photos = useLivePartyStore((s) => s.photos);
-  const games = useLivePartyStore((s) => s.games);
   const pubName = useLivePartyStore((s) => s.pubName);
+  const pubKey = useLivePartyStore((s) => s.pubKey);
   const endParty = useLivePartyStore((s) => s.end);
   // Closing the shared evening too, when there is one. Leaving it open would
   // leave the table joinable by a code for a night that is already published.
   const endEvening = usePartyEveningStore((s) => s.end);
-  const publishNight = usePublishedStore((s) => s.publish);
+  const showToast = useToastStore((s) => s.show);
 
   const [title, setTitle] = React.useState('');
   const [note, setNote] = React.useState('');
   const [roastOn, setRoastOn] = React.useState(true);
+  const [photoCaptureOpen, setPhotoCaptureOpen] = React.useState(false);
+  const [publishing, setPublishing] = React.useState(false);
 
-  const played = games.filter((game) => game.result);
   // The night as data — the same record the hub was showing a moment ago, so
   // what you publish is what you were looking at.
   const night = useNightRecord();
+  const photos = night.photos;
+  const played = nightPlayedGames(night);
   const me = nightMe(night);
   const people = night.people.slice(1);
   const beerCount = nightTally(night).beers;
+  const publishNow = (startedAt ?? 0) + minutes * 60000;
+  const nightDurationMinutes = nightMinutes(night, publishNow);
   const byType = nightByBeer({
     ...night,
     drinks: night.drinks.filter((drink) => drink.by === me?.id),
@@ -88,13 +92,13 @@ export default function FinishNightScreen() {
   // The same rules the feed card runs, on this night's real numbers.
   const roast = buildRoast({
     beers: beerCount,
-    duration: minutes,
-    pubs: 1,
+    duration: nightDurationMinutes,
+    pubs: night.stops.length,
     people: people.length + 1,
-    photos,
+    photos: photos.length,
     games: played.length,
     gamesWon: played.filter((game) => game.result?.winner === 'Ty').length,
-    // No history in the mock, so the tempo rules stay silent — which is exactly
+    // Without comparable history the tempo rules stay silent — which is exactly
     // what should happen on a first night.
     usualPerHour: 1.6,
     visitsToSamePub: 1,
@@ -103,61 +107,31 @@ export default function FinishNightScreen() {
   const fallbackTitle = `Večer v ${pubName || 'hospodě'}`;
   const caption = roastOn && roast ? roast.line : title.trim() || fallbackTitle;
 
-  const publish = () => {
-    // Built BEFORE `endParty()`, which resets the live store — the whole point
-    // of publishing is that the evening outlives the night that made it.
-    publishNight({
-      id: `mine-${startedAt ?? 0}`,
-      author: 'Ty',
-      authorTint: Colors.amber,
-      when: 'právě teď',
-      title: title.trim() || fallbackTitle,
-      note: note.trim() || undefined,
-      stops: [{ name: pubName, lat: 50.0785, lng: 14.42 }],
-      beers: beerCount,
-      duration: formatElapsed(minutes),
-      people: [
-        // No avatar url: `Face` falls back to the initial on a tint, which is
-        // what a real table looks like anyway — half of them never set a photo.
-        { name: 'Ty', tint: Colors.amber, avatar: '' },
-        ...people.map((person) => ({ name: person.name, tint: person.tint, avatar: '' })),
-      ],
-      photos,
-      cheers: 0,
-      comments: 0,
-      highlight:
-        played.length > 0 && played[0].result
-          ? {
-              kind: 'game',
-              game: played[0].name,
-              winner: played[0].result.winner ?? '—',
-              scores: played[0].result.scores,
-            }
-          : { kind: 'map' },
-      durationMinutes: minutes,
-      games: played.length,
-      gamesWon: played.filter((game) => game.result?.winner === 'Ty').length,
-      // Roast off means the night keeps its own words: the rules read this and
-      // stay silent, rather than the card having to know about a toggle.
-      usualPerHour: roastOn ? 1.6 : null,
-      visitsToSamePub: 1,
-    });
-    // …and to the feed that actually exists. The card above is the optimistic
-    // local copy so Kocoviny has something at the top the moment you land
-    // there; this is the post itself, through the same endpoint and the same
-    // durable queue the Výčep publishes with. One night, one row, keyed by the
-    // drinking day — publishing the same night twice updates it.
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadBeerPhotos(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  const publish = async () => {
+    if (publishing) return;
+    setPublishing(true);
     const payload = nightPublishPayload(night, {
       visibility: 'friends',
-      now: (startedAt ?? 0) + minutes * 60000,
+      now: Date.now(),
     });
-    void publishNightToServer(payload).then((result) => {
-      // Offline is the normal case at the end of an evening. The queue will
-      // land it; nothing is lost and nobody is told to try again.
-      if (!result.ok && isRetriableNightError(result)) {
+    const result = await publishNightToServer(payload);
+    if (!result.ok) {
+      if (isRetriableNightError(result)) {
+        // Offline is normal at closing time. Persist the post and finish now;
+        // the queue retries by the same drinking-day idempotency key.
         void enqueueNightOp({ op: 'publish', payload });
+      } else {
+        setPublishing(false);
+        showToast('Večer se nezveřejnil. Zkus to znovu — nic jsme nesmazali.');
+        return;
       }
-    });
+    }
 
     endParty();
     void endEvening();
@@ -193,7 +167,7 @@ export default function FinishNightScreen() {
           compact
           stats={[
             { label: 'Piva', value: String(beerCount) },
-            { label: 'Večer', value: formatElapsed(minutes) },
+            { label: 'Večer', value: formatElapsed(nightDurationMinutes) },
             { label: 'U stolu', value: String(people.length + 1) },
             { label: 'Druhů', value: String(byType.length) },
           ]}
@@ -263,19 +237,21 @@ export default function FinishNightScreen() {
             {/* Round, like the hub's controls — adding a photo is an action, and
                 actions in this product are discs. */}
             <Pressable
+              onPress={() => setPhotoCaptureOpen(true)}
               style={({ pressed }) => [styles.addPhoto, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Přidat fotku"
             >
               <CameraIcon size={20} color={Colors.stout} />
             </Pressable>
-            {Array.from({ length: Math.max(photos, 3) }).map((_, index) => (
-              <Image
-                key={index}
-                source={{ uri: PHOTOS[index % PHOTOS.length] }}
-                style={styles.photo}
-              />
+            {photos.map((photo) => (
+              <Image key={photo.id} source={{ uri: photo.url }} style={styles.photo} />
             ))}
+            {photos.length === 0 ? (
+              <Text style={styles.photoEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+                Zatím nic. Cvakni jednu na památku.
+              </Text>
+            ) : null}
           </View>
         </View>
 
@@ -319,7 +295,8 @@ export default function FinishNightScreen() {
           {caption}
         </Text>
         <Pressable
-          onPress={publish}
+          onPress={() => void publish()}
+          disabled={publishing}
           style={({ pressed }) => [styles.publish, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Zveřejnit večer"
@@ -329,6 +306,13 @@ export default function FinishNightScreen() {
           </Text>
         </Pressable>
       </View>
+
+      <BeerPhotoCaptureFlow
+        open={photoCaptureOpen}
+        onClose={() => setPhotoCaptureOpen(false)}
+        directSource="camera"
+        initialPub={pubKey ? { pubKey, name: pubName, city: '' } : null}
+      />
     </View>
   );
 }
@@ -404,6 +388,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   photo: { width: 62, height: 62, borderRadius: 18 },
+  photoEmpty: { flex: 1, fontSize: 13, fontWeight: '500', color: Colors.mutedText },
 
   gameLine: { fontSize: 15, fontWeight: '600', color: Colors.foam },
 

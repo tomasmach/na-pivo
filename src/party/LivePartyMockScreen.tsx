@@ -22,11 +22,12 @@
  * Ending the night sits top right, away from "+1 pivo": those two buttons must
  * never be neighbours, because one of them is undoable and the other is not.
  *
- * Everything is local state on a mock store. Nothing is wired.
+ * The visual language started as a design mock. Its data is now the same local,
+ * offline-first night record used by the counter, photos and shared evening.
  */
 
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -57,8 +58,10 @@ import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
 import { JoinTableSheet } from '@/party/JoinTableSheet';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { RowMenu } from '@/mocks/MenuChip';
 import { hubStats } from '@/party/nightPulse';
+import { tintFor } from '@/party/nightBuilder';
 import { NightRoute } from '@/mocks/NightRoute';
 import {
   clockAt,
@@ -79,16 +82,18 @@ import { useNightRecord } from '@/party/useNightRecord';
 import { usePartyBeer } from '@/party/usePartyBeer';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { useFollowPartyGames } from '@/stores/partyGamesStore';
+import { loadBeerPhotos } from '@/stores/beerPhotosStore';
+import {
+  isBeerListOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
+import { usePubStore } from '@/stores/pubStore';
+import { geohash8 } from '@/data/geohash';
+import { getAllLoadedPubs, hydratePubsSnapshot } from '@/data/pubs';
+import { pubIdentityKey } from '@/data/pubIdentity';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-
-const STOPS = [{ name: 'U Fleků', lat: 50.0785, lng: 14.42 }];
-const TAPS = [
-  { name: 'Flekovský ležák 13°', priceCzk: 62 },
-  { name: 'Flekovský tmavý 13°', priceCzk: 62 },
-  { name: 'Nealko 11°', priceCzk: 45 },
-];
 
 /** Resolved once: constant for the process (iOS 26+, false everywhere else). */
 const GLASS = isLiquidGlassAvailable();
@@ -106,9 +111,6 @@ const REMOVE_LABEL: Partial<Record<LogKind, string>> = {
   game: 'Sundat ze stolu',
   join: 'Odebrat ze stolu',
 };
-
-/** What the row menu offers instead of the entry you logged. */
-const MENU_BEERS = TAPS.map((tap) => tap.name);
 
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
@@ -190,22 +192,26 @@ export default function LivePartyMockScreen() {
   const startedAt = useLivePartyStore((s) => s.startedAt);
   // The stopwatch. Ticks on its own; every reading below is derived from it.
   const minutes = useNightClock(startedAt);
-  const photos = useLivePartyStore((s) => s.photos);
   const games = useLivePartyStore((s) => s.games);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const beginPickingPub = useLivePartyStore((s) => s.beginPickingPub);
   const pubName = useLivePartyStore((s) => s.pubName);
   const pubKey = useLivePartyStore((s) => s.pubKey);
   const startParty = useLivePartyStore((s) => s.start);
-  const addPhoto = useLivePartyStore((s) => s.addPhoto);
   const dropEvent = useLivePartyStore((s) => s.dropEvent);
   const addGame = useLivePartyStore((s) => s.addGame);
-  const invite = useLivePartyStore((s) => s.invite);
+  const setPeople = useLivePartyStore((s) => s.setPeople);
+  const communityOverride = useCommunityStore((s) =>
+    pubKey ? s.overrides[pubKey] : undefined,
+  );
+  const catalogRevision = usePubStore((s) => s.catalogRevision);
+  const [loadedPubs, setLoadedPubs] = React.useState(() => getAllLoadedPubs());
 
   // The real shared evening, which is what makes the code, the games and the
   // quiz reach anybody else's phone. The hub's own state stays local and
   // instant; this runs alongside it and is allowed to be slow or to fail.
   const night = useNightRecord();
+  const photos = night.photos.length;
   const beer = usePartyBeer();
   const evening = usePartyEveningStore((s) => s.evening);
   // The table's games, live. The hub is normally the screen that is open when
@@ -223,6 +229,61 @@ export default function LivePartyMockScreen() {
   React.useEffect(() => {
     void refreshEvening();
   }, [refreshEvening]);
+
+  React.useEffect(() => {
+    if (!evening) return;
+    setPeople(
+      evening.members.map((member) => ({
+        id: member.id,
+        name: member.nickname ?? member.displayName,
+        tint: tintFor(member.id),
+        beers: 0,
+        avatarUrl: member.avatarUrl,
+      })),
+    );
+  }, [evening, setPeople]);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadBeerPhotos(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  React.useEffect(() => {
+    let mounted = true;
+    void hydratePubsSnapshot().then(() => {
+      if (mounted) setLoadedPubs(getAllLoadedPubs());
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [catalogRevision]);
+
+  // A shared table changes on other phones. Poll only while this hub is in the
+  // foreground; a failed refresh keeps the last table and never touches beer
+  // logging, which stays entirely local/offline-first.
+  React.useEffect(() => {
+    if (!evening?.joinCode || !evening.active) return undefined;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (interval) clearInterval(interval);
+      interval = null;
+    };
+    const start = () => {
+      if (interval) return;
+      void refreshEvening();
+      interval = setInterval(() => void refreshEvening(), 30_000);
+    };
+    if (AppState.currentState === 'active') start();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') start();
+      else stop();
+    });
+    return () => {
+      stop();
+      subscription.remove();
+    };
+  }, [evening?.active, evening?.joinCode, refreshEvening]);
 
   /**
    * Start the night: locally first, on the server after.
@@ -250,6 +311,7 @@ export default function LivePartyMockScreen() {
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [joinOpen, setJoinOpen] = React.useState(false);
   const [beersOpen, setBeersOpen] = React.useState(false);
+  const [photoCaptureOpen, setPhotoCaptureOpen] = React.useState(false);
 
   const mapHeight = live
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
@@ -267,6 +329,30 @@ export default function LivePartyMockScreen() {
     beer: row.beer,
     count: row.count,
   }));
+  const stops = React.useMemo(
+    () =>
+      night.stops.flatMap((stop) =>
+        stop.lat !== undefined && stop.lng !== undefined
+          ? [{ name: stop.pubName, lat: stop.lat, lng: stop.lng }]
+          : [],
+      ),
+    [night.stops],
+  );
+  const taps = React.useMemo(() => {
+    if (!pubKey) return [];
+    const identity = pubIdentityKey(pubKey, pubName);
+    const loadedPub = loadedPubs.find(
+      (pub) => pubIdentityKey(geohash8(pub.lat, pub.lng), pub.name) === identity,
+    );
+    const beers = isBeerListOverrideCurrent(communityOverride, loadedPub?.beersUpdatedAt)
+      ? communityOverride?.beers
+      : loadedPub?.beers;
+    return (beers ?? []).map((tap) => ({
+      name: tap.name,
+      priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null,
+    }));
+  }, [pubKey, pubName, communityOverride, loadedPubs]);
+  const menuBeers = taps.length > 0 ? taps.map((tap) => tap.name) : byType.map((row) => row.beer);
 
   /**
    * The thread, in the shape the rows below draw.
@@ -318,12 +404,7 @@ export default function LivePartyMockScreen() {
       {/* The map shrinks to a band once the night is running: at that point it
           is orientation, not the subject. */}
       <View style={styles.map}>
-        <NightRoute
-          stops={STOPS}
-          live={live}
-          height={mapHeight}
-          caption={false}
-        />
+        <NightRoute stops={stops} live={live} height={mapHeight} caption={false} />
       </View>
 
       {/* Absolute: it is chrome floating ON the map. In the column it was also
@@ -504,7 +585,7 @@ export default function LivePartyMockScreen() {
           contentContainerStyle={styles.sheetContent}
           showsVerticalScrollIndicator={false}
         >
-          {log.length > 0 ? (
+          {live && log.length > 0 ? (
             <View>
               {[...log].reverse().map((event, index, all) => {
                 const game = event.gameKey
@@ -694,7 +775,7 @@ export default function LivePartyMockScreen() {
                         <RowMenu
                           title="Co to bylo?"
                           value={event.text}
-                          options={MENU_BEERS}
+                          options={menuBeers}
                           onChange={(next) => beer.rename(event.beerId as string, next)}
                           // The thing you most often want from a beer you
                           // already had is another one of it — and this row is
@@ -705,7 +786,7 @@ export default function LivePartyMockScreen() {
                             onPress: () => beer.remove(event.beerId as string),
                           }}
                         />
-                      ) : event.by === 'Ty' && event.kind !== 'pub' ? (
+                      ) : event.by === 'Ty' && event.kind !== 'pub' && event.kind !== 'photo' ? (
                         // Everything YOU put in the thread can come back out —
                         // a photo you did not mean to post, a game nobody
                         // played. Not somebody else's row, and not the pub: the
@@ -747,7 +828,10 @@ export default function LivePartyMockScreen() {
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#controlsFade)" />
           </Svg>
-          <CircleButton label={photos > 0 ? `Foto, ${photos}` : 'Foto'} onPress={addPhoto}>
+          <CircleButton
+            label={photos > 0 ? `Foto, ${photos}` : 'Foto'}
+            onPress={() => setPhotoCaptureOpen(true)}
+          >
             <CameraIcon size={20} color={Colors.foam} />
           </CircleButton>
 
@@ -820,7 +904,7 @@ export default function LivePartyMockScreen() {
       <BeerSheet
         visible={beersOpen}
         rows={byType}
-        onTaps={TAPS}
+        onTaps={taps}
         title={live ? 'Co piješ' : 'Čím začínáš?'}
         subtitle={
           live
@@ -858,13 +942,18 @@ export default function LivePartyMockScreen() {
 
       <InviteSheet
         visible={inviteOpen}
-        present={people.map((person) => person.name)}
+        presentIds={people.map((person) => person.id)}
         // The real thing, or nothing. The evening is created when the night
         // starts; until the server answers there is no code to read out.
         code={evening?.joinCode ?? null}
         link={evening?.joinUrl ?? null}
         onClose={() => setInviteOpen(false)}
-        onInvite={invite}
+      />
+
+      <BeerPhotoCaptureFlow
+        open={photoCaptureOpen}
+        onClose={() => setPhotoCaptureOpen(false)}
+        initialPub={pubKey ? { pubKey, name: pubName, city: '' } : null}
       />
     </View>
   );

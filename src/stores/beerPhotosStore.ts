@@ -31,6 +31,7 @@ import {
   type BeerPhoto,
   type BeerPhotoVisibility,
 } from '@/data/beerPhotosClient';
+import { drinkingDayKey } from '@/stores/tallyStore';
 
 export type BeerPhotoSyncState = 'pending' | 'synced' | 'failed';
 
@@ -72,6 +73,28 @@ export interface PendingBeerPhotoInput {
   pubCity?: string;
   visibility: BeerPhotoVisibility;
   takenAt: string;
+}
+
+/** The renderable uri, local while queued/failed and remote after sync. */
+export function beerPhotoUri(photo: BeerPhotoLocal): string | null {
+  return photo.localUri ?? photo.imageUrl;
+}
+
+/**
+ * Photos belonging to one 04:00-boundary drinking day, oldest first for a
+ * chronological party strip/thread. Invalid legacy timestamps are ignored.
+ */
+export function beerPhotosForDrinkingDay(
+  photos: BeerPhotoLocal[],
+  dayKey: string | null,
+): BeerPhotoLocal[] {
+  if (!dayKey) return [];
+  return photos
+    .filter((photo) => {
+      const takenAt = new Date(photo.takenAt || photo.createdAt);
+      return Number.isFinite(takenAt.getTime()) && drinkingDayKey(takenAt) === dayKey;
+    })
+    .sort((a, b) => (a.takenAt || a.createdAt).localeCompare(b.takenAt || b.createdAt));
 }
 
 function fromServerPhoto(photo: BeerPhoto): BeerPhotoLocal {
