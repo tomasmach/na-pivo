@@ -16,8 +16,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -207,9 +205,6 @@ export default function ManagePartaScreen() {
       {loading ? (
         <FriendsSkeleton />
       ) : (
-        // Android is edge-to-edge, so `adjustResize` no longer pushes content
-        // above the keyboard — pad it here (iOS pads via keyboard insets below).
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" enabled={Platform.OS === 'android'}>
         <KeyboardAwareScrollView
           contentContainerStyle={[
             styles.content,
@@ -224,7 +219,10 @@ export default function ManagePartaScreen() {
           }
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          // KeyboardAwareScrollView already adds the keyboard clearance and
+          // scrolls only when the focused field would be covered. A native
+          // inset here would count the keyboard twice and jump the whole page.
+          automaticallyAdjustKeyboardInsets={false}
         >
           {loadError ? (
             <View style={styles.section}>
@@ -296,7 +294,6 @@ export default function ManagePartaScreen() {
             </View>
           ) : null}
         </KeyboardAwareScrollView>
-        </KeyboardAvoidingView>
       )}
 
       {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}

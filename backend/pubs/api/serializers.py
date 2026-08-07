@@ -843,9 +843,10 @@ class FriendSearchQuerySerializer(serializers.Serializer):
     q = serializers.CharField(max_length=40, trim_whitespace=True)
 
     def validate_q(self, value: str) -> str:
-        if len(value.strip()) < 2:
+        value = value.strip().removeprefix("@")
+        if len(value) < 2:
             raise serializers.ValidationError("q must contain at least 2 characters.")
-        return value.strip()
+        return value
 
 
 class LeaderboardQuerySerializer(serializers.Serializer):

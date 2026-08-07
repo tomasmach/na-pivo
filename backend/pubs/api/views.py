@@ -57,7 +57,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce, NullIf, TruncDate
+from django.db.models.functions import Coalesce, Lower, NullIf, TruncDate
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -3861,6 +3861,7 @@ class FriendSearchView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         q = serializer.validated_data["q"]
+        normalized_q = q.casefold()
         profiles = (
             Account.objects.filter(
                 status=Account.Status.ACTIVE,
@@ -3869,8 +3870,18 @@ class FriendSearchView(APIView):
             .exclude(pk=request.user.pk)
             # A block (either direction) hides both parties from search.
             .exclude(pk__in=_blocked_account_ids(request.user))
+            .annotate(normalized_nickname=Lower("nickname"))
             .filter(Q(nickname__icontains=q) | Q(display_name__icontains=q))
-            .order_by("nickname", "display_name")[:20]
+            .annotate(
+                search_rank=Case(
+                    When(normalized_nickname=normalized_q, then=Value(0)),
+                    When(normalized_nickname__startswith=normalized_q, then=Value(1)),
+                    When(display_name__iexact=q, then=Value(2)),
+                    When(display_name__istartswith=q, then=Value(3)),
+                    default=Value(4),
+                )
+            )
+            .order_by("search_rank", "normalized_nickname", "display_name")[:20]
         )
         return Response(
             {
