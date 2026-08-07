@@ -14,7 +14,7 @@ body:
     id: attempted
     attributes:
       label: What have you tried?
-      description: Include the relevant documentation section and sanitized command output.
+      description: Link the relevant documentation and include cleaned command output.
     validations:
       required: true
   - type: input
@@ -27,5 +27,5 @@ body:
     attributes:
       label: Before submitting
       options:
-        - label: I removed tokens, credentials, personal data and precise locations from this question.
+        - label: I removed tokens, credentials, personal data and exact locations from this question.
           required: true

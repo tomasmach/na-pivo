@@ -3,19 +3,19 @@
 [![CI](https://github.com/tomasmach/na-pivo/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/tomasmach/na-pivo/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Moderní mobilní pivní deníček pro české a slovenské hospody, piva, večery a party kamarádů.
+Na pivo je mobilní pivní deníček pro české a slovenské pivaře.
 
-Na pivo začalo jako jednoduchá iOS appka s kompasem do nejbližší hospody. Kompas je pořád důležitá a rozpoznatelná část produktu, ale aplikace se posouvá směrem k plnohodnotnému pivnímu deníčku: záznamy večerů, vypitá piva, navštívené hospody, profily, statistiky, komunita, hodnocení a objevování nových míst.
+Začalo jako jednoduchá iOS appka s kompasem do nejbližší hospody. Kompas v ní zůstal, ale postupně kolem něj vzniká deníček na piva, hospody a večery s kamarády. Patří sem i profily, statistiky, hodnocení, komunita a objevování nových míst.
 
-Produktový tón je český, hospodský, hravý a lidský. UI copy uživateli tyká. Kód, komentáře a internals jsou anglicky.
+Appka mluví česky, tyká a nebere se zbytečně vážně. Kód a komentáře jsou anglicky.
 
 ## What is in this repo
 
-This monorepo contains the Expo / React Native mobile app at the repository root.
+The Expo / React Native app is in the repository root. The Django backend lives in `backend/`.
 
-The Django backend lives in `backend/` and powers accounts, profiles, community data, pub hours, ratings, visits, drink logs, telemetry, feedback and other synced features.
+The backend handles accounts, profiles, community data, pub hours, ratings, visits, drink logs, telemetry, feedback and the other features that sync across devices.
 
-The app should degrade gracefully without internet: local state and queued changes matter. Server-backed features still require sync, but the mobile experience should not collapse just because the network is unavailable.
+A bad connection should not lose local work. Features that need the server can wait for sync, while the rest of the app should keep working.
 
 ## Tech stack
 
@@ -29,11 +29,11 @@ The app should degrade gracefully without internet: local state and queued chang
 | Native builds | EAS / Expo prebuild |
 | Tests | Jest, React Native Testing Library, pytest |
 
-## Quick start for contributors
+## Quick start
 
-You need Node.js 24, npm, Python 3.14 and [uv](https://docs.astral.sh/uv/). Native app work also needs Xcode or Android Studio. The full setup and pull request workflow live in [CONTRIBUTING.md](CONTRIBUTING.md).
+You need Node.js 24, npm, Python 3.14 and [uv](https://docs.astral.sh/uv/). To work on native builds, install Xcode or Android Studio too. [CONTRIBUTING.md](CONTRIBUTING.md) covers the full setup and pull request flow.
 
-Install dependencies and run every check without cloud credentials or environment variables:
+These checks run without cloud credentials or environment variables:
 
 ```bash
 nvm use
@@ -58,33 +58,33 @@ Copy the mobile environment template:
 cp .env.example .env.local
 ```
 
-Native builds require your own restricted Google Maps SDK key for the platform you run. Put it in `.env.local`; Google Sign-In values are optional. See the comments in [.env.example](.env.example) for every mobile setting.
+Native builds need a Google Maps SDK key for the platform you use. Put your own restricted key in `.env.local`. Google Sign-In is optional. [.env.example](.env.example) documents every mobile setting.
 
-On macOS, one command installs missing Python packages through uv, applies backend migrations, starts the Django backend, generates the native iOS project and opens the simulator. Ctrl+C stops the backend it started and shuts down the simulator:
+On macOS, the following command installs the Python packages, runs migrations, starts Django, generates the native iOS project and opens the simulator. Ctrl+C stops Django and closes the simulator it started.
 
 ```bash
 npm run dev
 ```
 
-`npm run dev` uses port `8012` (the dvanáctka of ports — clear of 8000, 8080 and Metro's 8081); override it with `EXPO_PUBLIC_BACKEND_PORT`. If the backend is already running there, the command reuses it and leaves it running on exit.
+`npm run dev` uses port `8012`, the dvanáctka of ports. It stays out of the way of 8000, 8080 and Metro's 8081. Set `EXPO_PUBLIC_BACKEND_PORT` to use a different one. If Django is already running there, the command reuses it and leaves it running when you quit.
 
-The backend works locally with SQLite and safe development defaults even without `backend/.env`. To customize integrations or backend behavior, copy `backend/.env.example` to `backend/.env`. Production-only credentials are never needed for ordinary development.
+The backend uses SQLite and safe development defaults when `backend/.env` is missing. Copy `backend/.env.example` to `backend/.env` only when you need to change an integration or backend setting. Regular development never needs production credentials.
 
-The manual flow works too. Start Django on the LAN interface:
+You can also start each part by hand. First, run Django on the LAN interface:
 
 ```bash
 cd backend
 uv run python manage.py runserver 0.0.0.0:8000
 ```
 
-Then build and run the local iOS app with backend mode enabled:
+Then build the iOS app in local backend mode:
 
 ```bash
 cd ..
 npm run ios:local
 ```
 
-`ios:local` passes the Mac's LAN IP into the app so the simulator or device talks to the local Django server instead of `https://api.na-pivo.cz`.
+`ios:local` gives the app your Mac's LAN IP, so the simulator or device connects to local Django instead of `https://api.na-pivo.cz`.
 
 Override the backend port when needed:
 
@@ -98,7 +98,7 @@ build nastav oddělené klíče `EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY` a
 certificate, iOS klíč na bundle ID. Serverový Google Places klíč do aplikace
 nikdy nepatří.
 
-Use `npm run start:local` only when you want to start Metro in local-backend mode without rebuilding the native iOS app.
+Use `npm run start:local` to start Metro in local backend mode without rebuilding the native iOS app.
 
 ## Native app commands
 
@@ -124,21 +124,21 @@ eas build -p ios --profile production
 
 ## Data and privacy notes
 
-Na pivo works with sensitive data: location, pubs, alcohol history, profiles and social activity.
+Na pivo handles sensitive data such as location, pub visits, alcohol history, profiles and social activity.
 
-The app should prefer user-confirmed visits, local calculations, queued sync and coarse or aggregated location data where possible. Do not introduce raw GPS history or route storage without an explicit product decision.
+Prefer visits confirmed by the user, calculations on the phone, queued sync and coarse or aggregated location data. Do not store raw GPS history or routes without an explicit product decision.
 
 Never log bearer tokens, raw GPS, contact details, cookies, proxy credentials or request bodies containing personal data.
 
 ## Agent instructions
 
-Agent-facing product and engineering guidance lives in `AGENTS.md`. Claude-compatible instructions live in `CLAUDE.md` and point to the same source.
+Product and engineering instructions for coding agents are in `AGENTS.md`. `CLAUDE.md` points to the same instructions.
 
 ## Contributing
 
-Issues and pull requests are welcome. Start feature branches from `dev` and open pull requests back into `dev`; `main` is reserved for released mobile builds. Every change requires maintainer review and passing CI before merge.
+Open feature branches from `dev` and send pull requests back to `dev`. The `main` branch tracks mobile builds released through the App Store and Google Play. [@tomasmach](https://github.com/tomasmach) reviews every change, and CI must pass before it can be merged.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) before contributing. Please report vulnerabilities privately through [GitHub Security Advisories](https://github.com/tomasmach/na-pivo/security/advisories/new).
+Before contributing, read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

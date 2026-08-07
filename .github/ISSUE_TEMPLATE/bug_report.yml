@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in the app or backend
+description: Tell us about a problem you can reproduce in the app or backend
 title: "bug: "
 labels:
   - bug
@@ -7,12 +7,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the report. Search existing issues first and never include tokens, email addresses, raw GPS, private account data or production credentials.
+        Search existing issues before filing a new one. Remove tokens, email addresses, raw GPS, private account data and production credentials from your report.
   - type: textarea
     id: problem
     attributes:
       label: What happened?
-      description: Describe the actual and expected behavior.
+      description: What did you expect, and what happened instead?
     validations:
       required: true
   - type: textarea
@@ -45,14 +45,14 @@ body:
   - type: textarea
     id: evidence
     attributes:
-      label: Screenshots or sanitized logs
-      description: Remove personal data, coordinates, tokens, cookies and request bodies before posting.
+      label: Screenshots or cleaned logs
+      description: Remove personal data, coordinates, tokens, cookies and request bodies before you post them.
   - type: checkboxes
     id: checks
     attributes:
       label: Before submitting
       options:
-        - label: I searched existing issues for this problem.
+        - label: I searched the existing issues for this problem.
           required: true
         - label: This report contains no secrets or personal data.
           required: true

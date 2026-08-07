@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a focused improvement for Na pivo
+description: Suggest a focused improvement to Na pivo
 title: "feat: "
 labels:
   - enhancement
@@ -8,25 +8,25 @@ body:
     id: problem
     attributes:
       label: What problem would this solve?
-      description: Describe the user situation before proposing implementation details.
+      description: Start with the user's situation, not the implementation.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed experience
-      description: What should happen in the app or API?
+      label: What should happen instead?
+      description: Describe how the app or API should behave.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Smaller alternatives
-      description: Could the same value be delivered with a simpler change?
+      label: Is there a smaller option?
+      description: Could a simpler change solve the same problem?
   - type: checkboxes
     id: impact
     attributes:
-      label: Relevant impact
+      label: What could this affect?
       options:
         - label: This may affect offline behavior or sync.
         - label: This may affect privacy or sensitive data.

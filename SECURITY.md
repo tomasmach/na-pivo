@@ -2,24 +2,18 @@
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities through [GitHub's private vulnerability reporting](https://github.com/tomasmach/na-pivo/security/advisories/new). Do not open a public issue and do not include real user data, production credentials or exploit details in a pull request.
+Report suspected vulnerabilities through [GitHub's private vulnerability reporting](https://github.com/tomasmach/na-pivo/security/advisories/new). Do not open a public issue or put exploit details in a pull request. Never include real user data or production credentials.
 
-Include, where possible:
+Tell us which part of the mobile app or backend is affected and how to reproduce the problem with synthetic data. If you know the likely impact or have a fix in mind, include that too. Please also say if you think someone is actively exploiting it.
 
-- the affected mobile or backend component;
-- steps to reproduce with synthetic data;
-- the impact you expect;
-- any suggested mitigation;
-- whether you believe the issue is being actively exploited.
-
-The maintainer will acknowledge the report, investigate it privately and coordinate disclosure after a fix is available. This is a solo-maintained project, so no guaranteed response or bounty program is offered.
+The maintainer, [@tomasmach](https://github.com/tomasmach), will acknowledge the report, investigate it privately and arrange disclosure once a fix is ready. Na pivo is maintained by one person, so there is no guaranteed response time or bug bounty.
 
 ## Supported versions
 
-Security fixes are developed on `dev`. The currently released mobile version on `main` and the currently deployed backend API tag receive fixes when affected. Older mobile versions may remain API-compatible, but do not receive new binaries.
+Security fixes are developed on `dev`. When affected, the mobile version on `main` and the deployed backend API tag receive the fix. Older mobile versions may stay API-compatible, but they do not receive new binaries.
 
-## Scope reminders
+## Testing rules
 
-Na pivo handles location, pub visits, alcohol history, profiles and social relationships. Reports that expose private account data, authentication tokens, non-public location data or administrative functionality are especially important.
+Na pivo handles location, pub visits, alcohol history, profiles and social relationships. Pay particular attention to anything that exposes private account data, authentication tokens, non-public locations or admin features.
 
-Please do not test against production accounts you do not own, degrade the public service, automate high-volume requests, access data beyond the minimum needed to demonstrate the issue, or contact users. Use the local development environment whenever possible.
+Use the local development environment whenever possible. Do not test with production accounts you do not own, disrupt the public service, send high volumes of automated requests, access more data than you need for a minimal proof or contact users.

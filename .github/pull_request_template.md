@@ -1,26 +1,26 @@
-## Summary
+## What changed?
 
-<!-- What changed, and what user or contributor problem does it solve? -->
+<!-- Describe the change and the problem it solves. -->
 
-## Verification
+## How did you test it?
 
-<!-- List the commands and manual flows you ran. -->
+<!-- List the commands you ran and anything you tested by hand. -->
 
 - [ ] `npm run typecheck`
 - [ ] `npm run lint`
 - [ ] `npm test -- --runInBand`
 - [ ] `npm audit --omit=dev --audit-level=high`
 - [ ] `cd backend && uv run ruff check . && uv run pip-audit && uv run pytest`
-- [ ] Not applicable checks are explained below
+- [ ] I explained below why any skipped check does not apply
 
 ## Checklist
 
 - [ ] This pull request targets `dev`, not `main`
-- [ ] The change is focused and contains no credentials or personal data
+- [ ] This is a focused change and contains no credentials or personal data
 - [ ] User-facing copy is Czech; code and comments are English
-- [ ] Released API clients remain compatible, or the migration path is documented
-- [ ] Offline, privacy and operating-cost impact was considered where relevant
+- [ ] Released API clients still work, or I documented the migration path
+- [ ] I checked the offline, privacy and operating cost impact where relevant
 
-## Screenshots or notes
+## Screenshots and notes
 
-<!-- Add UI screenshots or anything reviewers need. Remove this section if empty. -->
+<!-- Add UI screenshots or context the reviewer will need. Delete this section if it is empty. -->
