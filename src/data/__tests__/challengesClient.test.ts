@@ -98,4 +98,22 @@ describe('challenges client', () => {
     await fetchChallenges();
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('treats an older backend without the endpoint as no challenges', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 404,
+    })) as unknown as typeof fetch;
+
+    await expect(fetchChallenges()).resolves.toEqual([]);
+  });
+
+  it('returns null instead of throwing for other non-success responses', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 503,
+    })) as unknown as typeof fetch;
+
+    await expect(fetchChallenges()).resolves.toBeNull();
+  });
 });

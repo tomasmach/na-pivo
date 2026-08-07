@@ -158,6 +158,10 @@ export async function fetchChallenges(
       });
       return null;
     }
+    // Challenges were added after the first 3.0 backend rollout. An older
+    // server without the endpoint means there are no challenges to show, not a
+    // broken app that should keep nagging the user to retry.
+    if (response.status === 404) return [];
     if (!response.ok) {
       trackApiFailure('challenges_fetch', { endpoint: '/v1/challenges', status: response.status });
       return null;

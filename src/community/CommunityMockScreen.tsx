@@ -203,6 +203,8 @@ export default function CommunityMockScreen() {
     board: Leaderboard | null;
   } | null>(null);
   const [challenges, setChallenges] = useState<Challenge[] | null>(null);
+  const [challengesError, setChallengesError] = useState(false);
+  const [challengesRevision, setChallengesRevision] = useState(0);
   const [events, setEvents] = useState<CommunityEvent[] | null>(null);
   const [eventsHaveLocation, setEventsHaveLocation] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
@@ -225,11 +227,20 @@ export default function CommunityMockScreen() {
 
   useEffect(() => {
     const abort = new AbortController();
-    void fetchChallenges({ signal: abort.signal }).then((result) => {
-      if (!abort.signal.aborted) setChallenges(result);
+    void fetchChallenges({
+      signal: abort.signal,
+      force: challengesRevision > 0,
+    }).then((result) => {
+      if (abort.signal.aborted) return;
+      if (result === null) {
+        setChallengesError(true);
+        return;
+      }
+      setChallenges(result);
+      setChallengesError(false);
     });
     return () => abort.abort();
-  }, []);
+  }, [challengesRevision]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -344,7 +355,23 @@ export default function CommunityMockScreen() {
       ) : null}
 
       {section === 'Výzvy' ? (
-        challenges === null ? (
+        challengesError ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.empty}>Výzvy se teď nepodařilo načepovat.</Text>
+            <Pressable
+              onPress={() => {
+                setChallengesError(false);
+                setChallenges(null);
+                setChallengesRevision((revision) => revision + 1);
+              }}
+              style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Zkusit načíst výzvy znovu"
+            >
+              <Text style={styles.retryText}>Zkusit znovu</Text>
+            </Pressable>
+          </View>
+        ) : challenges === null ? (
           <ChallengesSkeleton reduceMotion={reduceMotion} />
         ) : challenges.length ? (
           challenges.map((challenge, index) => (
@@ -497,6 +524,16 @@ const styles = StyleSheet.create({
   eventTitle: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam },
   eventMeta: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
   empty: { fontSize: 15, lineHeight: 22, color: Colors.mutedText, marginTop: MockLayout.sectionGap },
+  emptyState: { alignItems: 'flex-start' },
+  retry: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
+  retryText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
   skeletonGroup: { gap: Spacing.md, marginTop: Spacing.sm },
   skeletonPodium: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm, marginTop: Spacing.lg },
   skeletonPodiumCol: { flex: 1, alignItems: 'center', gap: Spacing.sm },

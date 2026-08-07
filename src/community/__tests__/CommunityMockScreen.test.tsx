@@ -3,7 +3,7 @@ import React from 'react';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const fetchLeaderboard = jest.fn();
-const fetchChallenges = jest.fn(async () => []);
+const fetchChallenges: jest.Mock = jest.fn(async () => []);
 const fetchCommunityEvents = jest.fn(async () => ({
   ok: false,
   code: 'auth',
@@ -75,6 +75,7 @@ describe('CommunityMockScreen leaderboard controls', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fetchLeaderboard.mockResolvedValue(BOARD);
+    fetchChallenges.mockResolvedValue([]);
   });
 
   it('changes the backend query for metric and period, with Mapér fixed to all-time', async () => {
@@ -106,5 +107,31 @@ describe('CommunityMockScreen leaderboard controls', () => {
       await flush();
     });
     expect(fetchLeaderboard).toHaveBeenLastCalledWith('mapper', 'all', expect.any(Object));
+  });
+
+  it('replaces failed challenge skeletons with a retry action', async () => {
+    fetchChallenges.mockResolvedValueOnce(null).mockResolvedValueOnce([]);
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    await act(async () => {
+      renderer = TestRenderer.create(<CommunityMockScreen />);
+      await flush();
+    });
+
+    const tabs = renderer!.root.findByType('UnderlineTabs');
+    await act(async () => {
+      tabs.props.onChange('Výzvy');
+      await flush();
+    });
+    const retry = renderer!.root.findByProps({
+      accessibilityLabel: 'Zkusit načíst výzvy znovu',
+    });
+
+    await act(async () => {
+      retry.props.onPress();
+      await flush();
+    });
+    expect(fetchChallenges).toHaveBeenLastCalledWith(
+      expect.objectContaining({ force: true }),
+    );
   });
 });
