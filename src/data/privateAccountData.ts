@@ -33,6 +33,7 @@ import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 
 const PRIVATE_STORAGE_KEYS = [
   'na-pivo-tally',
@@ -47,6 +48,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-party-groups',
   'na-pivo-beer-photos',
   'na-pivo-vycep',
+  'na-pivo-live-party',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
@@ -100,6 +102,18 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   usePartyGroupsStore.setState({ groups: [] });
   // Výčep publication ledger is tied to the outgoing account's nights.
   useVycepStore.setState({ published: {} });
+  useLivePartyStore.setState({
+    live: false,
+    pubName: 'Vyber hospodu',
+    houseBeer: 'Pivo',
+    pubKey: null,
+    pickingPub: false,
+    startedAt: null,
+    people: [],
+    photos: 0,
+    games: [],
+    log: [],
+  });
   usePubStore.setState({
     revealedPub: null,
     reportedPubIds: [],

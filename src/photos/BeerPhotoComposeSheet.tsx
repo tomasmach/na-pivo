@@ -59,7 +59,7 @@ import { isContextPubKey } from '@/drinks/drinkTypes';
 const CAPTION_MAX = 280;
 
 /** The tag the diary stores: durable geohash-8 key + display name/city. */
-interface PhotoPubTag {
+export interface PhotoPubTag {
   pubKey: string;
   name: string;
   city: string;
@@ -70,6 +70,8 @@ interface BeerPhotoComposeSheetProps {
   pickedUri: string;
   /** Preselect FotoPivař when the capture started from the contest screen. */
   initialContestEntry?: boolean;
+  /** Party/counter context wins over location guessing when supplied. */
+  initialPub?: PhotoPubTag | null;
   onClose: () => void;
   /** Fired after the photo is queued (sheet already closable). */
   onSaved: (result: BeerPhotoSaveResult) => void;
@@ -83,7 +85,8 @@ export interface BeerPhotoSaveResult {
 }
 
 /** An active counter session pins its pub as the initial tag suggestion. */
-function tallyPubSuggestion(): PhotoPubTag | null {
+function tallyPubSuggestion(initialPub?: PhotoPubTag | null): PhotoPubTag | null {
+  if (initialPub?.pubKey && initialPub.name) return initialPub;
   const current = useTallyStore.getState().current;
   if (!current || !current.pubName) return null;
   // An outside evening is no pub — the photo defaults to "Bez hospody".
@@ -94,6 +97,7 @@ function tallyPubSuggestion(): PhotoPubTag | null {
 export function BeerPhotoComposeSheet({
   pickedUri,
   initialContestEntry = false,
+  initialPub,
   onClose,
   onSaved,
 }: BeerPhotoComposeSheetProps) {
@@ -115,7 +119,7 @@ export function BeerPhotoComposeSheet({
   // The effective tag is DERIVED (no setState-in-effect): a manual pick wins,
   // then — unless explicitly cleared — the active counter session, then the
   // nearby auto-detect.
-  const tallySuggestion = useMemo(() => tallyPubSuggestion(), []);
+  const tallySuggestion = useMemo(() => tallyPubSuggestion(initialPub), [initialPub]);
   const nearbySelected = nearby.selected;
   const nearbySuggestion = useMemo<PhotoPubTag | null>(
     () =>

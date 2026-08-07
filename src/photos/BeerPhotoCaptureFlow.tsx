@@ -17,7 +17,10 @@ import { CameraIcon, InfoIcon } from '@/components/shared/IconGlyph';
 import { openSystemSettings } from '@/compass/permissions';
 import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoPicker';
 import { cs } from '@/i18n/cs';
-import { BeerPhotoComposeSheet } from '@/photos/BeerPhotoComposeSheet';
+import {
+  BeerPhotoComposeSheet,
+  type PhotoPubTag,
+} from '@/photos/BeerPhotoComposeSheet';
 import { BeerPhotoSourceSheet } from '@/photos/BeerPhotoSourceSheet';
 import { useToastStore } from '@/stores/toastStore';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
@@ -34,6 +37,8 @@ interface BeerPhotoCaptureFlowProps {
   directSource?: BeerPhotoSource;
   /** Preselect the FotoPivař opt-in in the compose sheet. */
   initialContestEntry?: boolean;
+  /** Known pub from the launching flow; avoids a second location guess. */
+  initialPub?: PhotoPubTag | null;
   /** Fires after an online contest entry has landed. */
   onContestEntered?: () => void;
 }
@@ -44,6 +49,7 @@ export function BeerPhotoCaptureFlow({
   onSaved,
   directSource,
   initialContestEntry = false,
+  initialPub,
   onContestEntered,
 }: BeerPhotoCaptureFlowProps) {
   const showToast = useToastStore((s) => s.show);
@@ -114,6 +120,7 @@ export function BeerPhotoCaptureFlow({
         <BeerPhotoComposeSheet
           pickedUri={composeUri}
           initialContestEntry={initialContestEntry}
+          initialPub={initialPub}
           onClose={() => setComposeUri(null)}
           onSaved={({ clientId, contestRequested, completion }) => {
             setComposeUri(null);

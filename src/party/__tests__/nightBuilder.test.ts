@@ -15,6 +15,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 import {
   buildNightRecord,
   nightBestFrom,
+  nightStopsFromSessions,
   peopleOf,
   tintFor,
   ME_TINT,
@@ -140,6 +141,38 @@ describe('buildNightRecord', () => {
     });
 
     expect(record.drinks[0].stopId).toBe('s2');
+  });
+
+  it('rebuilds a pub crawl from every local session and keeps drinks at their stop', () => {
+    const first = session(1);
+    const second: TallySession = {
+      ...session(1),
+      clientId: 'sess-2',
+      pubKey: 'u2fk80m6',
+      pubName: 'Zlý časy',
+      startedAt: '2026-07-30T21:00:00.000Z',
+      drinks: [
+        { id: 'late', beerName: 'Kozel', at: '2026-07-30T21:15:00.000Z' },
+      ],
+    };
+    const stops = nightStopsFromSessions([first, second]);
+    const record = buildNightRecord({
+      evening: null,
+      session: second,
+      sessions: [first, second],
+      stops,
+      meId: ME,
+    });
+
+    expect(stops.map((stop) => [stop.id, stop.pubName])).toEqual([
+      ['sess-1', 'U Fleků'],
+      ['sess-2', 'Zlý časy'],
+    ]);
+    expect(stops.every((stop) => stop.lat !== undefined && stop.lng !== undefined)).toBe(true);
+    expect(record.drinks.map((drink) => [drink.id, drink.stopId])).toEqual([
+      ['t0', 'sess-1'],
+      ['late', 'sess-2'],
+    ]);
   });
 });
 

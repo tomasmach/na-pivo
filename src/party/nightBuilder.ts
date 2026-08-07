@@ -27,7 +27,8 @@
 
 import type { PartyEvening } from '@/data/partyClient';
 import { drinkingDayKey, type TallyDrink, type TallySession } from '@/stores/tallyStore';
-import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { decodeGeohash8 } from '@/data/geohash';
+import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import type {
   NightBest,
   NightGame,
@@ -91,18 +92,45 @@ export function peopleOf(evening: PartyEvening | null, meId: string, meName = 'T
   return [withJoin(me), ...others];
 }
 
+/** Real stops from the counter's PubVisit/session context, in walking order. */
+export function nightStopsFromSessions(sessions: TallySession[]): NightStop[] {
+  return [...sessions]
+    .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
+    .map((session) => {
+      const coordinates =
+        !isContextPubKey(session.pubKey) &&
+        /^[0123456789bcdefghjkmnpqrstuvwxyz]{8}$/.test(session.pubKey)
+          ? decodeGeohash8(session.pubKey)
+          : null;
+      return {
+        id: session.clientId,
+        pubName: session.pubName,
+        cacheKey: isContextPubKey(session.pubKey) ? null : session.pubKey,
+        arrivedAt: session.startedAt,
+        ...(coordinates ? coordinates : {}),
+      };
+    });
+}
+
 /** My own drinks, straight off the counter — no round trip, no waiting. */
-function myDrinks(session: TallySession | null, meId: string, stopId: string | null) {
-  if (!session) return [];
-  return session.drinks.map((drink: TallyDrink) => ({
-    id: drink.id,
-    at: drink.at,
-    by: meId,
-    beerName: drink.beerName,
-    drinkType: drink.drinkType ?? ('beer' as const),
-    ...(drink.volumeMl !== undefined ? { volumeMl: drink.volumeMl } : {}),
-    stopId,
-  }));
+function myDrinks(
+  sessions: TallySession[],
+  meId: string,
+  stopIds: Set<string>,
+  fallbackStopId: string | null,
+) {
+  return sessions.flatMap((session) => {
+    const stopId = stopIds.has(session.clientId) ? session.clientId : fallbackStopId;
+    return session.drinks.map((drink: TallyDrink) => ({
+      id: drink.id,
+      at: drink.at,
+      by: meId,
+      beerName: drink.beerName,
+      drinkType: drink.drinkType ?? ('beer' as const),
+      ...(drink.volumeMl !== undefined ? { volumeMl: drink.volumeMl } : {}),
+      stopId,
+    }));
+  });
 }
 
 /**
@@ -139,6 +167,7 @@ function theirDrinks(evening: PartyEvening | null, meId: string, stopId: string 
 export function buildNightRecord({
   evening,
   session,
+  sessions,
   meId,
   meName,
   stops = [],
@@ -149,6 +178,8 @@ export function buildNightRecord({
 }: {
   evening: PartyEvening | null;
   session: TallySession | null;
+  /** All sittings on the drinking day; defaults to the current one. */
+  sessions?: TallySession[];
   meId: string;
   meName?: string;
   stops?: NightStop[];
@@ -158,10 +189,12 @@ export function buildNightRecord({
   startedAt?: string;
   endedAt?: string | null;
 }): NightRecord {
-  // Where a drink was had: the stop that was open when it landed. One stop is
-  // the common case and gets it exactly right; the walk is threaded through
-  // properly once stops come from `PubVisit` rather than being passed in.
+  const localSessions = sessions ?? (session ? [session] : []);
+  // Released callers passed one session plus an independently-built stop list.
+  // Keep their old last-stop fallback while multi-session callers attach each
+  // drink to its exact PubVisit/session id.
   const currentStop = stops.length > 0 ? stops[stops.length - 1].id : null;
+  const stopIds = new Set(stops.map((stop) => stop.id));
   const started =
     startedAt ?? evening?.startedAt ?? session?.startedAt ?? new Date(0).toISOString();
 
@@ -173,7 +206,7 @@ export function buildNightRecord({
     people: peopleOf(evening, meId, meName),
     stops,
     drinks: [
-      ...myDrinks(session, meId, currentStop),
+      ...myDrinks(localSessions, meId, stopIds, currentStop),
       ...theirDrinks(evening, meId, currentStop),
     ].sort((a, b) => a.at.localeCompare(b.at)),
     games,

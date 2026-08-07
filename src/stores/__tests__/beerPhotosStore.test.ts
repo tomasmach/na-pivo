@@ -18,6 +18,8 @@ jest.mock('@/data/beerPhotosClient', () => ({
 }));
 
 import {
+  beerPhotosForDrinkingDay,
+  beerPhotoUri,
   loadBeerPhotos,
   useBeerPhotosStore,
   type PendingBeerPhotoInput,
@@ -197,6 +199,34 @@ describe('removePhoto', () => {
     useBeerPhotosStore.getState().removePhoto('c3');
 
     expect(useBeerPhotosStore.getState().photos.map((p) => p.clientId)).toEqual(['c2']);
+  });
+});
+
+describe('party drinking-day view', () => {
+  it('keeps a 03:59 photo with the previous evening and starts the next at 04:00', () => {
+    const beforeCutoff = pendingInput('before', { takenAt: '2026-07-05T03:59:00' });
+    const atCutoff = pendingInput('after', { takenAt: '2026-07-05T04:00:00' });
+    const previousDay = '2026-07-04';
+    useBeerPhotosStore.getState().addPendingPhoto(beforeCutoff);
+    useBeerPhotosStore.getState().addPendingPhoto(atCutoff);
+
+    const photos = beerPhotosForDrinkingDay(
+      useBeerPhotosStore.getState().photos,
+      previousDay,
+    );
+
+    expect(photos.map((photo) => photo.clientId)).toEqual(['before']);
+    expect(beerPhotoUri(photos[0])).toBe('file:///docs/beer-photos/before.jpg');
+  });
+
+  it('ignores invalid timestamps instead of leaking them into a recap', () => {
+    useBeerPhotosStore.getState().addPendingPhoto(
+      pendingInput('broken', { takenAt: 'not-a-date' }),
+    );
+
+    expect(
+      beerPhotosForDrinkingDay(useBeerPhotosStore.getState().photos, '2026-07-04'),
+    ).toEqual([]);
   });
 });
 

@@ -16,39 +16,34 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import QRCode from 'react-native-qrcode-svg';
 
 import { CheckIcon, CopyIcon } from '@/components/shared/IconGlyph';
+import { fetchFriendsDashboard, type FriendProfile } from '@/data/friendsClient';
+import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { tintFor } from '@/party/nightBuilder';
+import { useToastStore } from '@/stores/toastStore';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-/** Friends the app already knows about — the mock's stand-in for the friends
- *  list. Real one comes from `friendsClient`. */
-const FRIENDS = [
-  { name: 'Klára', tint: '#A8896A' },
-  { name: 'Míša', tint: '#FBF3E0' },
-  { name: 'Tomáš', tint: '#F0BE5C' },
-  { name: 'Verča', tint: '#7DD66B' },
-];
-
 export function InviteSheet({
   visible,
-  present,
+  presentIds,
   code,
   link,
   onClose,
-  onInvite,
 }: {
   visible: boolean;
   /** Who is already at the table — they get a tick instead of a button. */
-  present: string[];
+  presentIds: string[];
   /**
    * The real join code, or null while the evening is still being created.
    *
@@ -59,9 +54,49 @@ export function InviteSheet({
   code: string | null;
   link: string | null;
   onClose: () => void;
-  onInvite: (name: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const showToast = useToastStore((s) => s.show);
+  const [friends, setFriends] = React.useState<FriendProfile[]>([]);
+
+  React.useEffect(() => {
+    if (!visible) return undefined;
+    let mounted = true;
+    const controller = new AbortController();
+    void loadFriendsDashboardSnapshot().then((snapshot) => {
+      if (mounted && snapshot) setFriends(snapshot.dashboard.friends);
+    });
+    void fetchFriendsDashboard(controller.signal).then((dashboard) => {
+      if (mounted && dashboard) setFriends(dashboard.friends);
+    });
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [visible]);
+
+  const shareInvite = React.useCallback(async () => {
+    const destination = link ?? (code ? `Kód ke stolu: ${code}` : null);
+    if (!destination) {
+      showToast('Nejdřív večer založ. Pak bude co poslat.');
+      return;
+    }
+    try {
+      await Share.share({ message: `Přisedni k nám na Na pivo: ${destination}` });
+    } catch {
+      showToast('Pozvánka se neposlala. Zkus to ještě jednou.');
+    }
+  }, [code, link, showToast]);
+
+  const copyLink = React.useCallback(async () => {
+    if (!link) return;
+    try {
+      await Clipboard.setStringAsync(link);
+      showToast('Odkaz je ve schránce.');
+    } catch {
+      showToast('Odkaz se nepodařilo zkopírovat.');
+    }
+  }, [link, showToast]);
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose}>
@@ -117,6 +152,7 @@ export function InviteSheet({
 
           {link ? (
             <Pressable
+              onPress={() => void copyLink()}
               style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Zkopírovat odkaz"
@@ -138,13 +174,14 @@ export function InviteSheet({
           >
             Kamarádi
           </Text>
-          {FRIENDS.map((friend) => {
-            const here = present.includes(friend.name);
+          {friends.map((friend) => {
+            const name = friend.nickname ?? friend.displayName;
+            const here = presentIds.includes(friend.id);
             return (
-              <View key={friend.name} style={styles.friendRow}>
-                <View style={[styles.avatar, { backgroundColor: friend.tint }]}>
+              <View key={friend.id} style={styles.friendRow}>
+                <View style={[styles.avatar, { backgroundColor: tintFor(friend.id) }]}>
                   <Text style={styles.avatarText} allowFontScaling={false}>
-                    {friend.name.slice(0, 1).toUpperCase()}
+                    {name.slice(0, 1).toUpperCase()}
                   </Text>
                 </View>
                 <Text
@@ -152,7 +189,7 @@ export function InviteSheet({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {friend.name}
+                  {name}
                 </Text>
                 {here ? (
                   <View style={styles.hereRow}>
@@ -163,13 +200,13 @@ export function InviteSheet({
                   </View>
                 ) : (
                   <Pressable
-                    onPress={() => onInvite(friend.name)}
+                    onPress={() => void shareInvite()}
                     style={({ pressed }) => [
                       styles.invite,
                       pressed && styles.pressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Přizvat ${friend.name}`}
+                    accessibilityLabel={`Přizvat ${name}`}
                   >
                     <Text style={styles.inviteText} allowFontScaling={false}>
                       Přizvat
@@ -179,6 +216,11 @@ export function InviteSheet({
               </View>
             );
           })}
+          {friends.length === 0 ? (
+            <Text style={styles.emptyFriends} maxFontSizeMultiplier={FontScaleCap.body}>
+              Kamarádi se teď neukázali.
+            </Text>
+          ) : null}
         </ScrollView>
       </View>
     </BottomSheetModal>
@@ -250,6 +292,12 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontSize: 14, fontWeight: '700', color: Colors.stout },
   friendName: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.foam },
+  emptyFriends: {
+    paddingVertical: Spacing.lg,
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.mutedText,
+  },
   invite: {
     height: 38,
     paddingHorizontal: Spacing.md,

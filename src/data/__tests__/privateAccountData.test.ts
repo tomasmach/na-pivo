@@ -7,6 +7,7 @@ import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -45,6 +46,7 @@ const PRIVATE_KEYS = [
   'na-pivo-pub-amenities-queue',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-live-party',
 ];
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -78,6 +80,7 @@ beforeEach(async () => {
     reportedCacheKeys: [],
   });
   useSettingsStore.setState({ homePoint: null, navigationProvider: 'google' });
+  useLivePartyStore.setState({ live: false, people: [], games: [], log: [] });
 });
 
 it('clears local private stores and private sync queue storage', async () => {
@@ -119,6 +122,8 @@ it('clears local private stores and private sync queue storage', async () => {
     reportedPubIds: ['mapy:test'],
     reportedCacheKeys: ['u2fkbn1x'],
   });
+  useLivePartyStore.getState().start('U Testu', 'Plzeň', 'u2fkbn1x');
+  useLivePartyStore.getState().invite('Kuba');
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -145,6 +150,8 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(usePubStore.getState().revealedPub).toBeNull();
   expect(usePubStore.getState().reportedPubIds).toEqual([]);
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
+  expect(useLivePartyStore.getState().live).toBe(false);
+  expect(useLivePartyStore.getState().people).toEqual([]);
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
 

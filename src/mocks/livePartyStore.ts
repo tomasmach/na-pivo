@@ -1,12 +1,11 @@
 /**
- * DESIGN MOCK — what is left of the running night that has no real source yet.
+ * Persisted local shell around the running night.
  *
- * The beers and the people are GONE from here. They live where they belong: the
- * counter's own session and the shared evening, read back through
- * `src/party/nightRecord.ts`. What stays is the bookkeeping around them —
- * whether a night is open, which pub it is at, what "+1" pours — plus photos and
- * games, which are the last two things a running night makes that the app does
- * not yet write anywhere real (`BeerPhoto` and `PartyGame` both exist).
+ * Beers live in the counter session and shared members come from the evening,
+ * read back through `src/party/nightRecord.ts`. This store keeps the offline
+ * shell around them: whether a night is open, its pub and clock, the latest
+ * member snapshot, local game results and a small compatibility log. Photos
+ * live in the persisted BeerPhoto store and are not duplicated here.
  *
  * The point of the outputs living here is the loop: the feed card can only lead
  * with a pub-quiz scoreboard or a photo strip if the party mode actually MAKES
@@ -28,14 +27,16 @@
  * and the timeline, the per-type counters and the tempo chart are all just
  * different readings of the same list.
  *
- * Deliberately not persisted and deliberately small: the real thing hangs off
- * the party evening client.
+ * Persisted because the local half is the offline source of truth while a night
+ * is running. The shared evening still refreshes from the server, but losing the
+ * stopwatch, selected pub or a locally finished game on restart would make the
+ * core pub flow depend on signal.
  */
 
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-
-import { geohash8 } from '@/data/geohash';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface GameResult {
   game: string;
@@ -64,7 +65,7 @@ export interface GameResult {
 export interface GameEntry {
   key: string;
   name: string;
-  /** Minute of the evening it was put on the table. */
+  /** Epoch ms when it was put on the table. */
   at: number;
   result?: GameResult;
 }
@@ -74,6 +75,7 @@ export interface PartyPersonLive {
   name: string;
   tint: string;
   beers: number;
+  avatarUrl?: string | null;
 }
 
 /**
@@ -142,39 +144,26 @@ interface LivePartyState {
   /** Take back anything else you put in the thread — a photo, a game. Only your
    *  own; the row menu is not offered on somebody else's entry. */
   dropEvent: (eventId: string) => void;
-  addPhoto: () => void;
+  /** Legacy thread hook. Real party photos live in beerPhotosStore. */
+  addPhoto: (uri?: string) => void;
   addGame: (key: string, name: string) => void;
   finishGame: (key: string, result: GameResult) => void;
   invite: (name: string) => void;
+  setPeople: (people: PartyPersonLive[]) => void;
   end: () => void;
 }
 
 let seq = 0;
 const nextId = (prefix: string) => {
   seq += 1;
-  return `${prefix}-${seq}`;
-};
-
-/** The table you walk in with. Mock — the real thing comes from members. */
-const TABLE: PartyPersonLive[] = [
-  { id: 'u2', name: 'Honza', tint: '#7DD66B', beers: 1 },
-  { id: 'u3', name: 'Petr', tint: '#F0BE5C', beers: 0 },
-];
-
-/** Where the app assumes you are before you say otherwise. Mock. */
-const DEFAULT_PUB = {
-  name: 'U Fleků',
-  beer: 'Flekovský ležák 13°',
-  /** geohash-8 of 50.0785, 14.42 — a real key, so a beer logged before you have
-   *  picked anywhere still lands at a real place. */
-  key: geohash8(50.0785, 14.42),
+  return `${prefix}-${Date.now()}-${seq}`;
 };
 
 const EMPTY = {
   live: false,
-  pubName: DEFAULT_PUB.name,
-  houseBeer: DEFAULT_PUB.beer,
-  pubKey: DEFAULT_PUB.key as string | null,
+  pubName: 'Vyber hospodu',
+  houseBeer: 'Pivo',
+  pubKey: null as string | null,
   pickingPub: false,
   startedAt: null as number | null,
   people: [] as PartyPersonLive[],
@@ -185,15 +174,6 @@ const EMPTY = {
 
 /** Whoever is holding the phone. */
 const ME = 'Ty';
-
-/** Stand-ins so the thread can show a picture. `picsum.photos` is a placeholder
- *  service and MUST NOT ship — real ones come from `BeerPhoto`. */
-const MOCK_PHOTOS = [
-  'https://picsum.photos/seed/napivo-1/400/400',
-  'https://picsum.photos/seed/napivo-2/400/400',
-  'https://picsum.photos/seed/napivo-3/400/400',
-  'https://picsum.photos/seed/napivo-4/400/400',
-];
 
 function logged(
   state: { log: LogEvent[] },
@@ -206,98 +186,135 @@ function logged(
   return [...state.log, { id: nextId('ev'), at, kind, text, by, ...extra }];
 }
 
-export const useLivePartyStore = create<LivePartyState>((set) => ({
-  ...EMPTY,
+export const useLivePartyStore = create<LivePartyState>()(
+  persist(
+    (set) => ({
+      ...EMPTY,
 
-  /**
-   * Open the night.
-   *
-   * No beers here any more: the first one is logged through the counter's own
-   * path like every other beer (`src/party/logBeer.ts`), and read back out of
-   * the night record. This only opens the evening and says where it is.
-   */
-  start: (pubName, beer, pubKey) => {
-    const now = Date.now();
-    set({
-      live: true,
-      pubName,
-      houseBeer: beer,
-      ...(pubKey !== undefined ? { pubKey } : {}),
-      startedAt: now,
-      people: TABLE.map((person) => ({ ...person })),
-      photos: 0,
-      games: [],
-      log: [],
-    });
-  },
+      /**
+       * Open the night.
+       *
+       * No beers here any more: the first one is logged through the counter's own
+       * path like every other beer (`src/party/logBeer.ts`), and read back out of
+       * the night record. This only opens the evening and says where it is.
+       */
+      start: (pubName, beer, pubKey) => {
+        const now = Date.now();
+        set({
+          live: true,
+          pubName,
+          houseBeer: beer,
+          ...(pubKey !== undefined ? { pubKey } : {}),
+          startedAt: now,
+          people: [],
+          photos: 0,
+          games: [],
+          log: [],
+        });
+      },
 
-  setPub: (pubName, beer, pubKey) =>
-    set((s) =>
-      s.live
-        ? {
-            pubName,
-            houseBeer: beer,
-            ...(pubKey !== undefined ? { pubKey } : {}),
-            log: logged(s, Date.now(), 'pub', `Přesun do ${pubName}`),
-          }
-        : { pubName, houseBeer: beer, ...(pubKey !== undefined ? { pubKey } : {}) },
-    ),
+      setPub: (pubName, beer, pubKey) =>
+        set((s) =>
+          s.live
+            ? {
+                pubName,
+                houseBeer: beer,
+                ...(pubKey !== undefined ? { pubKey } : {}),
+                log: logged(s, Date.now(), 'pub', `Přesun do ${pubName}`),
+              }
+            : { pubName, houseBeer: beer, ...(pubKey !== undefined ? { pubKey } : {}) },
+        ),
 
-  beginPickingPub: () => set({ pickingPub: true }),
-  endPickingPub: () => set({ pickingPub: false }),
+      beginPickingPub: () => set({ pickingPub: true }),
+      endPickingPub: () => set({ pickingPub: false }),
 
-  dropEvent: (eventId) =>
-    set((s) => {
-      const event = s.log.find((entry) => entry.id === eventId);
-      if (!event) return s;
-      return {
-        log: s.log.filter((entry) => entry.id !== eventId),
-        // The side effects go with it, or the counters keep claiming a photo
-        // that is no longer in the thread.
-        photos: event.kind === 'photo' ? Math.max(0, s.photos - 1) : s.photos,
-        games: event.gameKey ? s.games.filter((game) => game.key !== event.gameKey) : s.games,
-      };
+      dropEvent: (eventId) =>
+        set((s) => {
+          const event = s.log.find((entry) => entry.id === eventId);
+          if (!event) return s;
+          return {
+            log: s.log.filter((entry) => entry.id !== eventId),
+            // Compatibility for old persisted rows. Real photos are removed
+            // through the beer-photo store instead of this thread ledger.
+            photos: event.kind === 'photo' ? Math.max(0, s.photos - 1) : s.photos,
+            games: event.gameKey
+              ? s.games.filter((game) => game.key !== event.gameKey)
+              : s.games,
+          };
+        }),
+
+      addPhoto: (uri) =>
+        set((s) =>
+          uri
+            ? {
+                photos: s.photos + 1,
+                log: logged(s, Date.now(), 'photo', 'Fotka', ME, { photo: uri }),
+              }
+            : s,
+        ),
+
+      addGame: (key, name) =>
+        set((s) =>
+          s.games.some((game) => game.key === key)
+            ? s
+            : {
+                games: [...s.games, { key, name, at: Date.now() }],
+                // Carries the key: the thread row IS the game, and starting it
+                // happens from where it was put on the table.
+                log: logged(s, Date.now(), 'game', name, ME, { gameKey: key }),
+              },
+        ),
+
+      // No second log entry when it ends: the game's own row grows a scoreboard.
+      // Two rows for one game read as two games.
+      finishGame: (key, result) =>
+        set((s) => ({
+          games: s.games.map((game) => (game.key === key ? { ...game, result } : game)),
+        })),
+
+      invite: (name) =>
+        set((s) =>
+          s.people.some((person) => person.name === name)
+            ? s
+            : {
+                people: [
+                  ...s.people,
+                  { id: nextId('u'), name, tint: '#A8896A', beers: 0 },
+                ],
+                log: logged(s, Date.now(), 'join', 'Dorazil k stolu', name),
+              },
+        ),
+
+      setPeople: (people) => set({ people }),
+
+      // Keep the just-finished local outputs for its recap. Starting the next
+      // night replaces them; the idle hub hides them in the meantime.
+      end: () =>
+        set((state) => ({
+          ...EMPTY,
+          startedAt: state.startedAt,
+          people: state.people,
+          games: state.games,
+        })),
     }),
-
-  addPhoto: () =>
-    set((s) => ({
-      photos: s.photos + 1,
-      log: logged(s, Date.now(), 'photo', 'Fotka', ME, {
-        photo: MOCK_PHOTOS[s.photos % MOCK_PHOTOS.length],
+    {
+      name: 'na-pivo-live-party',
+      version: 1,
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        live: state.live,
+        pubName: state.pubName,
+        houseBeer: state.houseBeer,
+        pubKey: state.pubKey,
+        startedAt: state.startedAt,
+        people: state.people,
+        photos: state.photos,
+        games: state.games,
+        log: state.log,
       }),
-    })),
-
-  addGame: (key, name) =>
-    set((s) =>
-      s.games.some((game) => game.key === key)
-        ? s
-        : {
-            games: [...s.games, { key, name, at: Date.now() }],
-            // Carries the key: the thread row IS the game, and starting it
-            // happens from where it was put on the table.
-            log: logged(s, Date.now(), 'game', name, ME, { gameKey: key }),
-          },
-    ),
-
-  // No second log entry when it ends: the game's own row grows a scoreboard.
-  // Two rows for one game read as two games.
-  finishGame: (key, result) =>
-    set((s) => ({
-      games: s.games.map((game) => (game.key === key ? { ...game, result } : game)),
-    })),
-
-  invite: (name) =>
-    set((s) =>
-      s.people.some((person) => person.name === name)
-        ? s
-        : {
-            people: [...s.people, { id: nextId('u'), name, tint: '#A8896A', beers: 0 }],
-            log: logged(s, Date.now(), 'join', 'Dorazil k stolu', name),
-          },
-    ),
-
-  end: () => set({ ...EMPTY }),
-}));
+    },
+  ),
+);
 
 /** "1h 12m" / "48m". Shared, so the bar, the hub and the recap agree. */
 export function formatElapsed(minutes: number): string {
@@ -382,5 +399,3 @@ export function useNightClock(startedAt: number | null): number {
 
   return startedAt === null ? 0 : minutesBetween(startedAt, now);
 }
-
-

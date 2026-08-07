@@ -1,8 +1,8 @@
 /**
- * DESIGN MOCK — party recap, in the 3.0 language.
+ * Party recap in the 3.0 visual language.
  *
- * Reachable at `/party-recap` (or `napivo://party-recap`) and wired to nothing:
- * it renders `MOCK_PARTY` so the shape can be judged before any of it is built.
+ * Reachable at `/party-recap?nightKey=night-YYYY-MM-DD` and rebuilt from the
+ * local drinking-day record. The active night uses the same record as the hub.
  *
  * What it is trying to be, and how that differs from the Tácek screens:
  *
@@ -32,19 +32,18 @@
  * If this direction is adopted, the swap belongs in §3 of the design system for
  * the whole app — not left as one screen quietly using different type.
  *
- * Deliberately absent: price, spend, per-mille. See `mockParty.ts`.
+ * Deliberately absent: price, spend, per-mille.
  */
 
 import React from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
+import { useLocalSearchParams } from 'expo-router';
 
 import {
-  ClockIcon,
   MessageSquareIcon,
   Share2Icon,
-  MapPinIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
 import { Face } from '@/feed/FeedMockScreen';
@@ -60,14 +59,14 @@ import { StatGrid } from '@/mocks/StatGrid';
 import {
   clockAt,
   formatElapsed,
-  useLivePartyStore,
-  useNightClock,
 } from '@/mocks/livePartyStore';
 import {
   nightBrokenRecords,
   nightByBeer,
   nightHourly,
+  nightMinutes,
   nightMvp,
+  nightPlayedGames,
   nightStandings,
   nightStops,
   nightTally,
@@ -75,7 +74,7 @@ import {
 import { useNightRecord } from '@/party/useNightRecord';
 import { nightBestFrom } from '@/party/nightBuilder';
 import { drinkingDayKey, useTallyStore } from '@/stores/tallyStore';
-import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
+import { loadBeerPhotos } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -165,88 +164,121 @@ function SectionTitle({ children }: { children: string }) {
 
 const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
 
+interface PartyRecapView {
+  title: string;
+  dateLabel: string;
+  beers: number;
+  duration: string;
+  stops: {
+    id: string;
+    pubName: string;
+    arrivedAt: string;
+    beers: number;
+    lat?: number;
+    lng?: number;
+  }[];
+  people: { id: string; name: string; avatar?: string; beers: number; tint: string }[];
+  hourly: { hour: string; beers: number }[];
+  byBeer: { beer: string; count: number }[];
+  records: { id: string; title: string; detail: string; by: string }[];
+  cheers: number;
+  comments: number;
+  photoUrls: { id: string; uri: string }[];
+}
+
 export default function PartyRecapScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ nightKey?: string; id?: string }>();
+  const nightKey =
+    typeof params.nightKey === 'string'
+      ? params.nightKey
+      : typeof params.id === 'string'
+        ? params.id
+        : undefined;
   const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
   const [shape, setShape] = React.useState<ChartShape>('bar');
-  // The recap reads what the party mode actually produced, and only falls back
-  // to the canned night for the parts a mock evening has not made yet. Before
-  // this, playing a game and taking photos changed nothing here — the loop was
-  // drawn but not connected.
-  // The recap reads the same record the hub and the finish screen read, so a
-  // number here can never disagree with the one you saw ten seconds ago.
-  const night = useNightRecord();
-  const liveBeerCount = nightTally(night).beers;
-  const livePhotos = useLivePartyStore((s) => s.photos);
-  const liveGames = useLivePartyStore((s) => s.games);
-  const liveStartedAt = useLivePartyStore((s) => s.startedAt);
-  const liveMinutes = useNightClock(liveStartedAt);
-  const hasLive = useLivePartyStore((s) => s.live);
+  const [openedAt] = React.useState(() => Date.now());
+  // A route always identifies the drinking day. With no explicit key (legacy
+  // callers), useNightRecord chooses the active/latest local night — never a
+  // canned example.
+  const night = useNightRecord(nightKey);
+  const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
 
-  // Derived from the beer list rather than stored: one source of truth for the
-  // night, read three different ways.
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadBeerPhotos(controller.signal);
+    return () => controller.abort();
+  }, []);
+
   const standings = nightStandings(night);
   const mvp = nightMvp(standings);
-  const livePeople = standings.map((person) => ({
+  const people = standings.map((person) => ({
     id: person.id,
     name: person.name,
     beers: person.beers,
     tint: person.tint,
     ...(person.avatarUrl ? { avatar: person.avatarUrl } : {}),
-    ...(mvp?.id === person.id ? { mvp: true } : {}),
   }));
 
-  // Tonight's own instant, from the ticking clock rather than `Date.now()` in a
-  // component body — which is impure, and the lint rule is right about it.
-  const nowMs = (liveStartedAt ?? 0) + liveMinutes * 60000;
+  const nowMs = night.endedAt ? new Date(night.endedAt).getTime() : openedAt;
+  const durationMinutes = nightMinutes(night, nowMs);
 
   // What tonight beat, measured against YOUR own history and nobody else's.
-  const best = nightBestFrom(history, drinkingDayKey(new Date(night.startedAt)));
-  const liveRecords = nightBrokenRecords(night, best, nowMs).map((broken) => ({
+  const best = nightBestFrom(
+    [...(current ? [current] : []), ...history],
+    drinkingDayKey(new Date(night.startedAt)),
+  );
+  const records = nightBrokenRecords(night, best, nowMs).map((broken) => ({
     id: broken.kind,
     title: RECORD_TITLE[broken.kind],
     detail: RECORD_DETAIL[broken.kind](broken.value, broken.previous),
     by: 'Ty',
   }));
 
-  const liveStops = nightStops(night, nowMs).map((stop) => ({
+  const stops = nightStops(night, nowMs).map((stop) => ({
     id: stop.id,
     pubName: stop.pubName,
     arrivedAt: clockAt(new Date(stop.arrivedAt).getTime()),
     beers: stop.beers,
     ...(stop.lat !== undefined && stop.lng !== undefined
       ? { lat: stop.lat, lng: stop.lng }
-      : { lat: 50.0785, lng: 14.42 }),
+      : {}),
   }));
 
-  const liveHourly = nightHourly(night).map((bucket) => ({
+  const hourly = nightHourly(night).map((bucket) => ({
     hour: bucket.hour,
     beers: bucket.beers,
   }));
-  // A game on the table is not a result. Only played ones have a scoreboard,
-  // and a scoreboard is the whole reason this section exists.
-  const playedGames = liveGames.flatMap((game) => (game.result ? [game.result] : []));
-
-  const party: PartyRecap = hasLive
-    ? {
-        ...MOCK_PARTY,
-        title: MOCK_PARTY.title,
-        beers: liveBeerCount,
-        duration: formatElapsed(liveMinutes),
-        photos: livePhotos,
-        hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
-        stops: liveStops.length > 0 ? liveStops : MOCK_PARTY.stops,
-        // Only what tonight actually beat. An empty list is the honest answer
-        // most nights, and the section simply does not draw.
-        records: liveRecords,
-        // Who was actually there, with what they actually drank. The canned
-        // night used to lend its faces your count, which read fine and meant
-        // nothing.
-        people: livePeople,
-      }
-    : MOCK_PARTY;
-  const route = party.stops.map((s) => s.pubName).join('  →  ');
+  const playedGames = nightPlayedGames(night);
+  const dateLabel = new Intl.DateTimeFormat('cs-CZ', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(night.startedAt));
+  const title =
+    stops.length > 1
+      ? 'Pivní jízda'
+      : stops[0]
+        ? `Večer v ${stops[0].pubName}`
+        : 'Pivní večer';
+  const party: PartyRecapView = {
+    title,
+    dateLabel,
+    beers: nightTally(night).beers,
+    duration: formatElapsed(durationMinutes),
+    stops,
+    people,
+    hourly,
+    byBeer: nightByBeer(night),
+    records,
+    cheers: 0,
+    comments: 0,
+    photoUrls: night.photos.map((photo) => ({ id: photo.id, uri: photo.url })),
+  };
+  const route = party.stops.length > 0
+    ? party.stops.map((stop) => stop.pubName).join('  →  ')
+    : 'Bez hospody';
 
   // Same person, same face, wherever they appear on this screen.
   const personOf = (name: string) => party.people.find((person) => person.name === name);
@@ -257,11 +289,7 @@ export default function PartyRecapScreen() {
     chart === 'V čase'
       ? party.hourly.map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
       : chart === 'Podle piva'
-        ? // The live night's own breakdown when there is one, the canned night's
-          // otherwise — an empty chart behind a menu item reads as a bug.
-          (liveBeerCount > 0
-            ? nightByBeer(night).map((row) => ({ label: row.beer, value: row.count }))
-            : party.byBeer.map((row) => ({ label: row.beer, value: row.count })))
+        ? party.byBeer.map((row) => ({ label: row.beer, value: row.count }))
         : party.people
             .map((person) => ({ label: person.name, value: person.beers }))
             .sort((a, b) => b.value - a.value);
@@ -341,18 +369,17 @@ export default function PartyRecapScreen() {
             contentContainerStyle={styles.photoStrip}
             style={styles.photoStripWrap}
           >
-            {party.photoUrls.map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.photoThumb} />
+            {party.photoUrls.map((photo) => (
+              <Image key={photo.id} source={{ uri: photo.uri }} style={styles.photoThumb} />
             ))}
-            {party.photos > party.photoUrls.length ? (
-              <View style={[styles.photoThumb, styles.photoMore]}>
-                <Text style={styles.photoMoreText} allowFontScaling={false}>
-                  +{party.photos - party.photoUrls.length}
-                </Text>
-              </View>
-            ) : null}
           </ScrollView>
-        ) : null}
+        ) : (
+          <View style={styles.photoEmpty}>
+            <Text style={styles.photoEmptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+              Bez fotek. Příště něco cvakni.
+            </Text>
+          </View>
+        )}
 
         {/* The shared block: one column width per stat, so a long duration
             cannot walk into the next number. */}
@@ -383,7 +410,7 @@ export default function PartyRecapScreen() {
           <View style={styles.reaction}>
             <MessageSquareIcon size={19} color={Colors.foam} />
             <Text style={styles.reactionText} allowFontScaling={false}>
-              4
+              {party.comments}
             </Text>
           </View>
         </View>
@@ -402,7 +429,7 @@ export default function PartyRecapScreen() {
                 tint: person.tint,
               }))}
               unit="piv"
-              topBadge="MVP"
+              topBadge={mvp ? 'MVP' : undefined}
             />
           </View>
         </View>
@@ -411,9 +438,17 @@ export default function PartyRecapScreen() {
           <SectionTitle>Štace</SectionTitle>
           {/* The walk, drawn. The list says where and when; the map says how far
               it actually was, which is the part nobody remembers by morning. */}
-          {party.stops.length > 1 ? (
+          {party.stops.filter((stop) => stop.lat !== undefined && stop.lng !== undefined).length > 1 ? (
             <View style={styles.stopsMap}>
-              <NightRoute stops={party.stops.map((stop) => ({ ...stop, name: stop.pubName }))} height={168} caption={false} />
+              <NightRoute
+                stops={party.stops.flatMap((stop) =>
+                  stop.lat !== undefined && stop.lng !== undefined
+                    ? [{ name: stop.pubName, lat: stop.lat, lng: stop.lng }]
+                    : [],
+                )}
+                height={168}
+                caption={false}
+              />
             </View>
           ) : null}
           <View style={styles.stops}>
@@ -456,13 +491,15 @@ export default function PartyRecapScreen() {
           <View style={styles.section}>
             <SectionTitle>Hry</SectionTitle>
             {playedGames.map((game, index) => (
-              <View key={`${game.game}-${index}`} style={styles.gameBlock}>
+              <View key={`${game.key}-${index}`} style={styles.gameBlock}>
                 <Text style={styles.gameTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {game.winner
-                    ? `${game.game} · vyhrál${game.winner === 'Klára' ? 'a' : ''} ${game.winner}`
-                    : `${game.game} · odehráno`}
+                  {game.result?.paying
+                    ? `${game.name} · platí ${game.result.paying}`
+                    : game.result?.winner
+                      ? `${game.name} · vyhrál ${game.result.winner}`
+                      : `${game.name} · odehráno`}
                 </Text>
-                {game.scores.map((row, rank) => (
+                {(game.result?.scores ?? []).map((row, rank) => (
                   <View key={row.name} style={styles.gameRow}>
                     <Text style={styles.gameRank} allowFontScaling={false}>
                       {rank + 1}
@@ -519,12 +556,6 @@ export default function PartyRecapScreen() {
         </View>
         )}
 
-        <View style={styles.mockNote}>
-          <ClockIcon size={13} color={Colors.mutedText} />
-          <Text style={styles.mockText} maxFontSizeMultiplier={FontScaleCap.body}>
-            Design mock — data jsou napevno.
-          </Text>
-        </View>
       </ScrollView>
     </View>
   );
@@ -537,6 +568,14 @@ const styles = StyleSheet.create({
   photoThumb: { width: 76, height: 76, borderRadius: 14, backgroundColor: Colors.stout3 },
   photoMore: { alignItems: 'center', justifyContent: 'center' },
   photoMoreText: { fontSize: 17, fontWeight: '800', color: Colors.foam },
+  photoEmpty: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
+  },
+  photoEmptyText: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
   reactions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg, marginTop: Spacing.md },
   reaction: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   reactionText: { fontSize: 15, fontWeight: '700', color: Colors.foam },
@@ -711,15 +750,4 @@ const styles = StyleSheet.create({
   recordByName: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   recordDetail: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginTop: 1 },
 
-  // — Footer —
-
-
-  mockNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: Spacing.md,
-  },
-  mockText: { fontWeight: '400', fontSize: 12, color: Colors.mutedText },
 });
