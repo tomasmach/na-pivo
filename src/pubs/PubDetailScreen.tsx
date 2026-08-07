@@ -6,20 +6,33 @@
  */
 
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { NightRoute } from '@/mocks/NightRoute';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
-import { MOCK_PUBS } from '@/pubs/mockPubs';
+import { EMPTY_NEARBY_PUB_FILTERS, useNearbyPubs } from '@/pubs/useNearbyPubs';
 import { Colors } from '@/theme/colors';
+import { Spacing } from '@/theme/layout';
 
 export default function PubDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const pub = MOCK_PUBS.find((p) => p.id === id) ?? MOCK_PUBS[0];
+  const nearby = useNearbyPubs(EMPTY_NEARBY_PUB_FILTERS);
+  const pub = nearby.pubs.find((candidate) => candidate.id === id) ?? null;
+
+  if (!pub) {
+    return (
+      <View style={styles.loading}>
+        <View style={styles.mapSkeleton} />
+        <Text style={styles.loadingText}>
+          {nearby.loading ? 'Načítám hospodu…' : 'Tuhle hospodu teď nemám v okolí.'}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -39,4 +52,7 @@ export default function PubDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
+  loading: { flex: 1, backgroundColor: Colors.stout, paddingBottom: Spacing.xl },
+  mapSkeleton: { height: 260, backgroundColor: Colors.stout3 },
+  loadingText: { color: Colors.mutedText, fontSize: 15, textAlign: 'center', marginTop: Spacing.xl },
 });

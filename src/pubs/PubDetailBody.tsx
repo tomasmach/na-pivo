@@ -1,5 +1,5 @@
 /**
- * DESIGN MOCK — the pub, in detail: everything except the map.
+ * The pub in detail: everything except the map.
  *
  * Split out because the same detail is now read in two places and must not be
  * two designs:
@@ -31,24 +31,21 @@ import {
 import { useRouter, type Href } from 'expo-router';
 
 import { CloseButton } from '@/components/shared/CloseButton';
+import { MapPubButton } from '@/components/amenities/MapPubButton';
+import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { SectionBreak } from '@/mocks/SectionBreak';
-import { FeedCard } from '@/feed/FeedMockScreen';
-import { MOCK_FEED } from '@/feed/mockFeed';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
-import type { MockPub } from '@/pubs/mockPubs';
+import type { PubListItem } from '@/pubs/pubPresentation';
+import { openPubNavigation } from '@/pubs/pubNavigation';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
+import { geohash8 } from '@/data/geohash';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-
-/** What happened here. Real data comes from PartyEvening + PubVisit. */
-const MOCK_TAPS = [
-  { name: 'Matuška Raptor', priceCzk: 69 },
-  { name: 'Únětická 12°', priceCzk: 52 },
-  { name: 'Pilsner Urquell', priceCzk: 59 },
-];
 
 /**
  * A wide pill, not a disc with a caption under it.
@@ -104,18 +101,21 @@ export function PubDetailBody({
   pub,
   onClose,
 }: {
-  pub: MockPub;
+  pub: PubListItem;
   /** Only in the sheet: there is no stack to go back through, so the detail
    *  needs its own way out. On the pushed screen the native back button is it. */
   onClose?: () => void;
 }) {
   const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
+  const [mapPubOpen, setMapPubOpen] = React.useState(false);
   const router = useRouter();
   const startParty = useLivePartyStore((s) => s.start);
   const setPub = useLivePartyStore((s) => s.setPub);
   const picking = useLivePartyStore((s) => s.pickingPub);
   const endPicking = useLivePartyStore((s) => s.endPickingPub);
   const live = useLivePartyStore((s) => s.live);
+  const evening = usePartyEveningStore((s) => s.evening);
+  const startEvening = usePartyEveningStore((s) => s.start);
 
   /**
    * Two jobs, one button — Packeta's "vybrat pobočku".
@@ -128,7 +128,7 @@ export function PubDetailBody({
 
   const startHere = () => {
     if (picking) {
-      setPub(pub.name, pub.beer);
+      setPub(pub.name, pub.beerLabel);
       endPicking();
       onClose?.();
       // Back to the night, not forward to another copy of it: the picker was
@@ -137,13 +137,26 @@ export function PubDetailBody({
       return;
     }
     if (live) {
-      setPub(pub.name, pub.beer);
+      setPub(pub.name, pub.beerLabel);
     } else {
-      startParty(pub.name, pub.beer);
+      startParty(pub.name, pub.beerLabel, geohash8(pub.lat, pub.lng));
     }
+    if (!evening) void startEvening(pub.name, pub.city);
     router.push('/party-live' as Href);
   };
-  const visited = pub.lastParty !== null;
+  const visited = pub.visit !== null;
+  const info = React.useMemo(() => pubInfoFromPub(pub), [pub]);
+  const pubKey = React.useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
+
+  const navigate = React.useCallback(() => {
+    void openPubNavigation(pub);
+  }, [pub]);
+
+  const lastVisited = pub.visit
+    ? new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'short' }).format(
+        new Date(pub.visit.lastVisitedAt),
+      )
+    : null;
 
   return (
       <View style={styles.body}>
@@ -159,18 +172,20 @@ export function PubDetailBody({
         </View>
 
         <View style={styles.metaRow}>
-          <StarIcon size={13} color={Colors.amber} />
-          <Text style={styles.meta} allowFontScaling={false}>
-            {pub.rating.toFixed(1)}
-          </Text>
-          <Text style={styles.metaDot} allowFontScaling={false}>
-            ·
-          </Text>
+          {typeof pub.rating === 'number' ? (
+            <>
+              <StarIcon size={13} color={Colors.amber} />
+              <Text style={styles.meta} allowFontScaling={false}>
+                {pub.rating.toFixed(1)}
+              </Text>
+              <Text style={styles.metaDot} allowFontScaling={false}>·</Text>
+            </>
+          ) : null}
           <Text
-            style={[styles.meta, { color: pub.open ? Colors.open : Colors.mutedText }]}
+            style={[styles.meta, { color: pub.open === true ? Colors.open : Colors.mutedText }]}
             allowFontScaling={false}
           >
-            {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`}
+            {pub.hoursLabel}
           </Text>
           <Text style={styles.metaDot} allowFontScaling={false}>
             ·
@@ -181,13 +196,13 @@ export function PubDetailBody({
         </View>
 
         <Text style={styles.address} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.address}
+          {pub.addressLine}
         </Text>
 
         {/* The two things you do from here. Starting a night is the primary;
             navigating is the escape hatch to another app. */}
         <View style={styles.actions}>
-          <PillAction label="Navigovat">
+          <PillAction label="Navigovat" onPress={navigate}>
             <MapPinIcon size={18} color={Colors.foam} />
           </PillAction>
           {/* This is the loop: you found the place in Hospody, so starting the
@@ -214,12 +229,11 @@ export function PubDetailBody({
               Co se tu dělo
             </Text>
             <StatGrid
-              columns={3}
+              columns={2}
               compact
               stats={[
-                { label: 'Byli jste tu', value: '3×' },
-                { label: 'Vypito', value: '24' },
-                { label: 'Naposled', value: 'čt' },
+                { label: 'Byl jsi tu', value: `${pub.visit?.visitCount ?? 0}×` },
+                { label: 'Naposled', value: lastVisited ?? '—' },
               ]}
             />
           </View>
@@ -228,7 +242,7 @@ export function PubDetailBody({
         {tab === 'Info' ? (
           <View style={styles.tapSection}>
             <SectionBreak title="Na čepu" />
-            {MOCK_TAPS.map((tap, index) => (
+            {(pub.beers ?? []).map((tap, index) => (
               <View key={tap.name} style={[styles.tapRow, index === 0 && styles.tapFirst]}>
                 <Text
                   style={styles.tapName}
@@ -237,37 +251,56 @@ export function PubDetailBody({
                 >
                   {tap.name}
                 </Text>
-                <Text style={styles.tapPrice} allowFontScaling={false}>
-                  {tap.priceCzk} Kč
-                </Text>
+                {typeof tap.priceCzk === 'number' ? (
+                  <Text style={styles.tapPrice} allowFontScaling={false}>
+                    {tap.priceCzk} Kč
+                  </Text>
+                ) : null}
               </View>
             ))}
+            {(pub.beers?.length ?? 0) === 0 ? (
+              <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                Co je na čepu, zatím nikdo nezapsal.
+              </Text>
+            ) : null}
+            <MapPubButton
+              pubKey={pubKey}
+              pubName={pub.name}
+              info={info}
+              onPress={() => setMapPubOpen(true)}
+            />
           </View>
         ) : null}
 
         {tab === 'Aktivita' ? (
-          // The same card the feed and the profile use, filtered to this pub.
-          // A night looks identical wherever you meet it — the stripped rows
-          // that used to be here were a third design of an object the app
-          // already draws twice, and they carried none of what makes a night
-          // worth opening: the faces, the photos, the roast.
           <View style={styles.feed}>
-            {MOCK_FEED.filter((entry) =>
-              entry.stops.some((stop) => stop.name === pub.name),
-            ).map((entry, index) => (
-              <FeedCard key={entry.id} entry={entry} first={index === 0} />
-            ))}
-            {MOCK_FEED.every((entry) => entry.stops.every((stop) => stop.name !== pub.name)) ? (
+            {pub.visit ? (
+              <View style={styles.activityRow}>
+                <Text style={styles.tapName} maxFontSizeMultiplier={FontScaleCap.body}>
+                  Byl jsi tu {pub.visit.visitCount}×
+                </Text>
+                <Text style={styles.tapPrice} allowFontScaling={false}>
+                  {lastVisited}
+                </Text>
+              </View>
+            ) : (
               <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-                Zatím sem nikdo nic nezapsal. Buď první.
+                Tady ještě žádný svůj večer nemáš.
               </Text>
-            ) : null}
+            )}
           </View>
         ) : null}
 
-        <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-          Design mock — data jsou napevno.
-        </Text>
+        <MapPubSheet
+          visible={mapPubOpen}
+          pubKey={pubKey}
+          pubName={pub.name}
+          info={info}
+          hoursLabel={pub.hoursLabel}
+          hoursTone={pub.open === true ? 'open' : pub.open === false ? 'closed' : 'unknown'}
+          beerLine={pub.beers?.length ? pub.beers.map((beer) => beer.name).slice(0, 2).join(' · ') : null}
+          onClose={() => setMapPubOpen(false)}
+        />
       </View>
   );
 }
@@ -278,6 +311,12 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.65 },
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.md },
   feed: { marginTop: Spacing.md },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+  },
   empty: {
     marginTop: Spacing.lg,
     fontSize: 15,
@@ -355,11 +394,4 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  mockNote: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    textAlign: 'center',
-    marginTop: MockLayout.sectionGap,
-  },
 });

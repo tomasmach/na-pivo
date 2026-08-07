@@ -33,7 +33,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
-import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
+import type { PubListItem } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -42,21 +42,20 @@ const GLASS = isLiquidGlassAvailable();
 const DIAL = 62;
 const GAP = Spacing.sm;
 
-/** Stand-in for the device position until the mock is wired to location. */
-const HERE = { lat: 50.077, lng: 14.4165 };
-
 function PubCard({
   pub,
+  position,
   width,
   nearest,
   onPress,
 }: {
-  pub: MockPub;
+  pub: PubListItem;
+  position: { lat: number; lng: number };
   width: number;
   nearest: boolean;
   onPress?: () => void;
 }) {
-  const rotation = useCompassRotation(HERE, { lat: pub.lat, lng: pub.lng });
+  const rotation = useCompassRotation(position, { lat: pub.lat, lng: pub.lng });
 
   return (
     <Pressable
@@ -97,7 +96,7 @@ function PubCard({
           ) : null}
         </View>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`} · {pub.beer}
+          {pub.hoursLabel} · {pub.beerLabel}
         </Text>
       </View>
     </Pressable>
@@ -105,9 +104,13 @@ function PubCard({
 }
 
 export function PubCarousel({
+  pubs,
+  position,
   onSelect,
   onOpen,
 }: {
+  pubs: PubListItem[];
+  position: { lat: number; lng: number };
   onSelect?: (id: string) => void;
   /** Tapping a card opens that pub — the card is a row, not a caption. */
   onOpen?: (id: string) => void;
@@ -123,10 +126,10 @@ export function PubCarousel({
       const index = Math.round(event.nativeEvent.contentOffset.x / interval);
       if (index === lastIndex.current) return;
       lastIndex.current = index;
-      const pub = MOCK_PUBS[index];
+      const pub = pubs[index];
       if (pub) onSelect?.(pub.id);
     },
-    [interval, onSelect],
+    [interval, onSelect, pubs],
   );
 
   return (
@@ -138,10 +141,11 @@ export function PubCarousel({
       contentContainerStyle={styles.row}
       onMomentumScrollEnd={handleScroll}
     >
-      {MOCK_PUBS.map((pub, index) => (
+      {pubs.map((pub, index) => (
         <PubCard
           key={pub.id}
           pub={pub}
+          position={position}
           width={cardWidth}
           nearest={index === 0}
           onPress={() => onOpen?.(pub.id)}

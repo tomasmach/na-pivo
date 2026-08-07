@@ -1,20 +1,4 @@
-/**
- * DESIGN MOCK — multi-select beer filter, as a bottom sheet.
- *
- * An action sheet answers one question with one answer; picking several beers
- * is a different control, so this is a sheet with checkable rows and an apply
- * button. Built on the canonical recipe (§7): backdrop as an absolute sibling,
- * height bounds on `cardWrap` and never on the card itself (§7.5), presses
- * swallowed inside the card so a row tap never falls through.
- *
- * NOTE FOR SHIPPING, not for the mock: `PubSearchFilters.beerBrand` is a SINGLE
- * `BeerBrandFilterValue | null` today, and unlike the price range it reaches
- * the wire. Multi-select therefore is not a UI change — it needs the filter to
- * become a list on both sides, additively, with released apps still sending the
- * scalar. The real sheet also has server-backed brand suggestions and a price
- * histogram (`src/components/compass/PubFilterSheet.tsx`); this mock is only
- * about the shape of choosing more than one.
- */
+/** Beer-brand filter using the existing one-brand backend contract. */
 
 import React, { useState } from "react";
 import {
@@ -33,6 +17,8 @@ import { MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
 import { HitArea, Radius, Spacing } from "@/theme/layout";
+import type { PopularBeerBrand } from '@/data/beerSuggestionsClient';
+import type { BeerBrandFilterValue } from '@/data/pubSearchFilters';
 
 export function BeerFilterSheet({
   visible,
@@ -42,10 +28,10 @@ export function BeerFilterSheet({
   onApply,
 }: {
   visible: boolean;
-  options: readonly string[];
-  value: string[];
+  options: readonly PopularBeerBrand[];
+  value: BeerBrandFilterValue | null;
   onClose: () => void;
-  onApply: (next: string[]) => void;
+  onApply: (next: BeerBrandFilterValue | null) => void;
 }) {
   return (
     <BottomSheetModal visible={visible} onClose={onClose}>
@@ -71,20 +57,18 @@ function SheetBody({
   onClose,
   onApply,
 }: {
-  options: readonly string[];
-  value: string[];
+  options: readonly PopularBeerBrand[];
+  value: BeerBrandFilterValue | null;
   onClose: () => void;
-  onApply: (next: string[]) => void;
+  onApply: (next: BeerBrandFilterValue | null) => void;
 }) {
   const insets = useSafeAreaInsets();
   // Local draft, so cancelling really cancels.
-  const [draft, setDraft] = useState<string[]>(value);
+  const [draft, setDraft] = useState<BeerBrandFilterValue | null>(value);
 
-  const toggle = (beer: string) =>
+  const toggle = (beer: PopularBeerBrand) =>
     setDraft((current) =>
-      current.includes(beer)
-        ? current.filter((b) => b !== beer)
-        : [...current, beer],
+      current?.key === beer.key ? null : { key: beer.key, label: beer.label },
     );
 
   return (
@@ -107,10 +91,10 @@ function SheetBody({
             showsVerticalScrollIndicator={false}
           >
             {options.map((beer, index) => {
-              const on = draft.includes(beer);
+              const on = draft?.key === beer.key;
               return (
                 <Pressable
-                  key={beer}
+                  key={beer.key}
                   onPress={() => toggle(beer)}
                   style={({ pressed }) => [
                     styles.row,
@@ -119,14 +103,14 @@ function SheetBody({
                   ]}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: on }}
-                  accessibilityLabel={beer}
+                  accessibilityLabel={beer.label}
                 >
                   <Text
                     style={[styles.rowText, on && styles.rowTextOn]}
                     numberOfLines={1}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {beer}
+                    {beer.label}
                   </Text>
                   <View style={[styles.box, on && styles.boxOn]}>
                     {on ? <CheckIcon size={14} color={Colors.stout} /> : null}
@@ -143,7 +127,7 @@ function SheetBody({
             ]}
           >
             <Pressable
-              onPress={() => setDraft([])}
+              onPress={() => setDraft(null)}
               style={({ pressed }) => [styles.clear, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Zrušit výběr"
@@ -168,7 +152,7 @@ function SheetBody({
                 style={styles.applyText}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {draft.length > 0 ? `Ukázat (${draft.length})` : "Ukázat vše"}
+                {draft ? 'Ukázat' : 'Ukázat vše'}
               </Text>
             </Pressable>
           </View>

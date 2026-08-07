@@ -28,7 +28,7 @@ import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 
 import { ChevronLeftIcon, LocateFixedIcon } from '@/components/shared/IconGlyph';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
-import { MOCK_COMPASS_TARGET } from '@/pubs/mockPubs';
+import { EMPTY_NEARBY_PUB_FILTERS, useNearbyPubs } from '@/pubs/useNearbyPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -45,7 +45,10 @@ export default function NearestMapMockScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const lastHeadingRef = useRef<number | null>(null);
-  const t = MOCK_COMPASS_TARGET;
+  const nearby = useNearbyPubs(EMPTY_NEARBY_PUB_FILTERS);
+  const pub = nearby.pubs[0] ?? null;
+  const pubLat = pub?.lat;
+  const pubLng = pub?.lng;
 
   const { smoothedHeading } = useDeviceHeading(true);
 
@@ -66,18 +69,48 @@ export default function NearestMapMockScreen() {
 
   // Frame the pub once; after this only the heading changes.
   useEffect(() => {
+    if (pubLat == null || pubLng == null) return;
     mapRef.current?.setCamera({
-      center: { latitude: t.lat, longitude: t.lng },
+      center: { latitude: pubLat, longitude: pubLng },
       zoom: ZOOM,
     });
-  }, [t.lat, t.lng]);
+  }, [pubLat, pubLng]);
 
   const recentre = () => {
+    if (!pub) return;
     mapRef.current?.animateCamera(
-      { center: { latitude: t.lat, longitude: t.lng }, zoom: ZOOM },
+      { center: { latitude: pub.lat, longitude: pub.lng }, zoom: ZOOM },
       { duration: 320 },
     );
   };
+
+  if (!pub || !nearby.position) {
+    return (
+      <View style={styles.emptyScreen}>
+        <Text style={styles.emptyText}>
+          {nearby.loading
+            ? 'Hledám nejbližší hospodu…'
+            : nearby.permissionState === 'granted'
+              ? 'V okolí teď žádnou hospodu nevidím.'
+              : 'Bez polohy ti cestu neotočím.'}
+        </Text>
+        {!nearby.loading ? (
+          <Pressable
+            onPress={() =>
+              nearby.permissionState === 'granted'
+                ? nearby.retry()
+                : void nearby.requestPermission()
+            }
+            style={styles.emptyButton}
+          >
+            <Text style={styles.emptyButtonText}>
+              {nearby.permissionState === 'granted' ? 'Zkusit znovu' : 'Povolit polohu'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -86,7 +119,7 @@ export default function NearestMapMockScreen() {
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialCamera={{
-          center: { latitude: t.lat, longitude: t.lng },
+          center: { latitude: pub.lat, longitude: pub.lng },
           heading: 0,
           pitch: 0,
           zoom: ZOOM,
@@ -103,9 +136,9 @@ export default function NearestMapMockScreen() {
         loadingIndicatorColor={Colors.amber}
       >
         <Marker
-          coordinate={{ latitude: t.lat, longitude: t.lng }}
+          coordinate={{ latitude: pub.lat, longitude: pub.lng }}
           tracksViewChanges={false}
-          accessibilityLabel={t.name}
+          accessibilityLabel={pub.name}
         >
           <View style={styles.pin} />
         </Marker>
@@ -136,10 +169,10 @@ export default function NearestMapMockScreen() {
       <View style={[styles.card, { marginBottom: insets.bottom + Spacing.md }]}>
         <View style={styles.grow}>
           <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.name}
+            {pub.name}
           </Text>
           <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.distance} {t.unit} · {t.hours}
+            {pub.distance} · {pub.hoursLabel}
           </Text>
         </View>
         <View style={styles.badge}>
@@ -154,6 +187,23 @@ export default function NearestMapMockScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
+  emptyScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: Colors.stout,
+  },
+  emptyText: { ...MockType.body, color: Colors.mutedText, textAlign: 'center' },
+  emptyButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  emptyButtonText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
   grow: { flex: 1 },
   pressed: { opacity: 0.7 },
 
