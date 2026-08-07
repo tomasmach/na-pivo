@@ -28,8 +28,8 @@ google-service-account.json
 *-service-account*.json
 
 # Local environment
-.env
-.env.local
+.env*
+!.env.example
 .codex/
 
 # macOS

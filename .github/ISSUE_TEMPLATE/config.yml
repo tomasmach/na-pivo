@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/tomasmach/na-pivo/security/advisories/new
+    about: Send sensitive security reports privately to the maintainer.
+  - name: Read the contribution guide
+    url: https://github.com/tomasmach/na-pivo/blob/dev/CONTRIBUTING.md
+    about: Setup, architecture and pull request expectations.

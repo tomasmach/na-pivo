@@ -1,5 +1,8 @@
 # Na pivo
 
+[![CI](https://github.com/tomasmach/na-pivo/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/tomasmach/na-pivo/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Moderní mobilní pivní deníček pro české a slovenské hospody, piva, večery a party kamarádů.
 
 Na pivo začalo jako jednoduchá iOS appka s kompasem do nejbližší hospody. Kompas je pořád důležitá a rozpoznatelná část produktu, ale aplikace se posouvá směrem k plnohodnotnému pivnímu deníčku: záznamy večerů, vypitá piva, navštívené hospody, profily, statistiky, komunita, hodnocení a objevování nových míst.
@@ -18,39 +21,55 @@ The app should degrade gracefully without internet: local state and queued chang
 
 | Layer | Technology |
 |---|---|
-| Runtime | Expo, React Native, React 19 |
+| Mobile | Expo, React Native, React 19, TypeScript |
 | Navigation | Expo Router |
 | State | Zustand + local queues where needed |
+| Backend | Python 3.14, Django 6, Django REST Framework |
+| Data | SQLite locally, PostgreSQL in production |
 | Native builds | EAS / Expo prebuild |
-| Tests | Jest + React Native Testing Library |
-| Language | TypeScript |
+| Tests | Jest, React Native Testing Library, pytest |
 
-## Run locally
+## Quick start for contributors
 
-```bash
-npm install
-npm run start
-```
+You need Node.js 24, npm, Python 3.14 and [uv](https://docs.astral.sh/uv/). Native app work also needs Xcode or Android Studio. The full setup and pull request workflow live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Useful checks:
+Install dependencies and run every check without cloud credentials or environment variables:
 
 ```bash
+nvm use
+npm ci
 npm run typecheck
-npm test
 npm run lint
+npm test -- --runInBand
+npm audit --omit=dev --audit-level=high
+
+cd backend
+uv sync --locked
+uv run ruff check .
+uv run pytest
 ```
 
-## Run against the local backend
+## Run the full app locally
 
-One command does everything — applies backend migrations, starts the Django backend, and launches the iOS simulator build. Ctrl+C stops the backend it started and shuts down the simulator:
+Copy the mobile environment template:
+
+```bash
+cp .env.example .env.local
+```
+
+Native builds require your own restricted Google Maps SDK key for the platform you run. Put it in `.env.local`; Google Sign-In values are optional. See the comments in [.env.example](.env.example) for every mobile setting.
+
+On macOS, one command installs missing Python packages through uv, applies backend migrations, starts the Django backend, generates the native iOS project and opens the simulator. Ctrl+C stops the backend it started and shuts down the simulator:
 
 ```bash
 npm run dev
 ```
 
-`npm run dev` runs the backend on its own dedicated port `8012` (the dvanáctka of ports — clear of 8000, 8080 and Metro's 8081) so it never fights with other dev servers; override it with `EXPO_PUBLIC_BACKEND_PORT`. If the backend is already running on that port, `npm run dev` reuses it and leaves it running on exit. The manual way still works too:
+`npm run dev` uses port `8012` (the dvanáctka of ports — clear of 8000, 8080 and Metro's 8081); override it with `EXPO_PUBLIC_BACKEND_PORT`. If the backend is already running there, the command reuses it and leaves it running on exit.
 
-Start the Django backend on the LAN interface:
+The backend works locally with SQLite and safe development defaults even without `backend/.env`. To customize integrations or backend behavior, copy `backend/.env.example` to `backend/.env`. Production-only credentials are never needed for ordinary development.
+
+The manual flow works too. Start Django on the LAN interface:
 
 ```bash
 cd backend
@@ -113,6 +132,12 @@ Never log bearer tokens, raw GPS, contact details, cookies, proxy credentials or
 ## Agent instructions
 
 Agent-facing product and engineering guidance lives in `AGENTS.md`. Claude-compatible instructions live in `CLAUDE.md` and point to the same source.
+
+## Contributing
+
+Issues and pull requests are welcome. Start feature branches from `dev` and open pull requests back into `dev`; `main` is reserved for released mobile builds. Every change requires maintainer review and passing CI before merge.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) before contributing. Please report vulnerabilities privately through [GitHub Security Advisories](https://github.com/tomasmach/na-pivo/security/advisories/new).
 
 ## License
 

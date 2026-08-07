@@ -14,6 +14,7 @@ dependencies = [
     "google-auth>=2.54.0",
     "opening-hours-py>=1.4.0",
     "pillow>=11.4.0",
+    "psycopg[binary]>=3.3.4",
     "pyjwt[crypto]>=2.13.0",
     "python-dotenv>=1.2.2",
     "rapidfuzz>=3.14.5",
@@ -24,7 +25,6 @@ dependencies = [
 [project.optional-dependencies]
 prod = [
     "gunicorn>=26.0.0",
-    "psycopg[binary]>=3.3.4",
 ]
 
 [dependency-groups]
