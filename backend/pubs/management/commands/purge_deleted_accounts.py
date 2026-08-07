@@ -32,6 +32,8 @@ from pubs.models import Account
 
 logger = logging.getLogger("pubs.accounts")
 
+PURGE_BATCH_SIZE = 100
+
 
 class Command(BaseCommand):
     help = "Hard-delete accounts pending deletion past the grace window."
@@ -69,15 +71,40 @@ class Command(BaseCommand):
             return
 
         purged = 0
-        for account in expired.iterator():
-            if dry_run:
-                self.stdout.write(f"  would purge {account.public_id} (deleted_at={account.deleted_at})")
-                continue
-            try:
-                accounts.hard_delete(account)
-                purged += 1
-            except Exception as exc:  # noqa: BLE001
-                logger.error("purge: failed to delete account %s: %s", account.public_id, exc)
+        last_pk = 0
+        while True:
+            candidates = list(
+                expired.filter(pk__gt=last_pk)
+                .order_by("pk")
+                .values("pk", "public_id", "deleted_at", "deletion_epoch")[:PURGE_BATCH_SIZE]
+            )
+            if not candidates:
+                break
+            last_pk = candidates[-1]["pk"]
+
+            for candidate in candidates:
+                if dry_run:
+                    self.stdout.write(
+                        "  would purge "
+                        f"{candidate['public_id']} (deleted_at={candidate['deleted_at']})"
+                    )
+                    continue
+                try:
+                    if accounts.hard_delete_expired_account(
+                        candidate["pk"],
+                        cutoff=cutoff,
+                        expected_deletion_epoch=candidate["deletion_epoch"],
+                    ):
+                        purged += 1
+                except Exception as exc:  # noqa: BLE001
+                    # Storage/database errors may echo private values. The
+                    # public account UUID plus exception class is enough to
+                    # operate the retryable batch without logging those values.
+                    logger.error(
+                        "purge: failed to delete account %s (%s)",
+                        candidate["public_id"],
+                        type(exc).__name__,
+                    )
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(f"Purged {purged}/{total} account(s)."))

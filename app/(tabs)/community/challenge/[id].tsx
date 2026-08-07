@@ -6,6 +6,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { ChallengeDetailScreen } from '@/community/ChallengeDetailScreen';
 import { fetchChallenge, type Challenge } from '@/data/challengesClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
+import { useAccountStore } from '@/stores/accountStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 
@@ -17,19 +18,36 @@ import { FontScaleCap } from '@/theme/fonts';
 export default function ChallengeRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const reduceMotion = useReducedMotion();
-  const [challenge, setChallenge] = React.useState<Challenge | null>(null);
-  const [state, setState] = React.useState<'loading' | 'ready' | 'missing'>('loading');
+  const viewerAccountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const [resource, setResource] = React.useState<{
+    viewerAccountId: string;
+    challenge: Challenge | null;
+    state: 'loading' | 'ready' | 'missing';
+  } | null>(null);
   const [retry, setRetry] = React.useState(0);
 
+  const visibleResource =
+    resource?.viewerAccountId === viewerAccountId ? resource : null;
+  const challenge = visibleResource?.challenge ?? null;
+  const state = !viewerAccountId || !visibleResource ? 'loading' : visibleResource.state;
+
   React.useEffect(() => {
+    if (!viewerAccountId || !id) return;
     let active = true;
     const controller = new AbortController();
+    const requestedViewer = viewerAccountId;
     const kickoff = setTimeout(() => {
-      setState('loading');
+      setResource({ viewerAccountId: requestedViewer, challenge: null, state: 'loading' });
       void fetchChallenge(id, controller.signal).then((result) => {
-        if (!active) return;
-        setChallenge(result);
-        setState(result ? 'ready' : 'missing');
+        if (
+          !active ||
+          useAccountStore.getState().session?.accountId !== requestedViewer
+        ) return;
+        setResource({
+          viewerAccountId: requestedViewer,
+          challenge: result,
+          state: result ? 'ready' : 'missing',
+        });
       });
     }, 0);
     return () => {
@@ -37,7 +55,7 @@ export default function ChallengeRoute() {
       clearTimeout(kickoff);
       controller.abort();
     };
-  }, [id, retry]);
+  }, [id, retry, viewerAccountId]);
 
   if (state === 'loading') {
     return (

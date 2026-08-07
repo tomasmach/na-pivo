@@ -133,9 +133,7 @@ class CommunityEventTeam(models.Model):
     )
     created_by = models.ForeignKey(
         "pubs.Account",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.CASCADE,
         related_name="created_community_event_teams",
     )
     client_id = models.UUIDField()

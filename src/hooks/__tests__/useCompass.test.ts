@@ -84,13 +84,13 @@ function renderCompassHook() {
   let latestResult: ReturnType<typeof useCompass> | undefined;
   let renderer: { update: (element: React.ReactElement) => void; unmount: () => void };
   const loadingLog: boolean[] = [];
-  let filters: { beerBrandKey: string | null; amenityKeys: string[] } = {
-    beerBrandKey: null,
+  let filters: { beerBrandFilter: string | readonly string[] | null; amenityKeys: string[] } = {
+    beerBrandFilter: null,
     amenityKeys: [],
   };
 
   function Harness() {
-    const result = useCompass(filters.beerBrandKey, filters.amenityKeys);
+    const result = useCompass(filters.beerBrandFilter, filters.amenityKeys);
     loadingLog.push(result.isLoading);
     latestResult = result;
     return null;
@@ -113,9 +113,14 @@ function renderCompassHook() {
         renderer.update(React.createElement(Harness));
       });
     },
-    setFilters(next: { beerBrandKey?: string | null; amenityKeys?: string[] }) {
+    setFilters(next: {
+      beerBrandKey?: string | null;
+      beerBrandKeys?: readonly string[];
+      amenityKeys?: string[];
+    }) {
       filters = {
-        beerBrandKey: next.beerBrandKey ?? null,
+        beerBrandFilter:
+          next.beerBrandKeys !== undefined ? next.beerBrandKeys : (next.beerBrandKey ?? null),
         amenityKeys: next.amenityKeys ?? [],
       };
       act(() => {
@@ -369,6 +374,29 @@ describe('useCompass', () => {
 
     expect(hook.result.isLoading).toBe(false);
     expect(hook.result.pub).toBe(pub);
+  });
+
+  it('refetches with stable multi-brand keys and canonical amenity keys', async () => {
+    const hook = renderCompassHook();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    hook.setFilters({
+      beerBrandKeys: ['radegast', 'pilsner-urquell', 'radegast'],
+      amenityKeys: ['seating_garden', 'practical_tank_beer'],
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
+      beerBrandKeys: ['pilsner-urquell', 'radegast'],
+      amenityKeys: ['practical_tank_beer', 'seating_garden'],
+      force: true,
+      includeOtherPlaces: false,
+      radiusKm: 100,
+    });
   });
 
   describe('radius-change debounce', () => {

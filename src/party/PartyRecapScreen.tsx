@@ -1,286 +1,185 @@
-/**
- * DESIGN MOCK — party recap, in the 3.0 language.
- *
- * Reachable at `/party-recap` (or `napivo://party-recap`) and wired to nothing:
- * it renders `MOCK_PARTY` so the shape can be judged before any of it is built.
- *
- * What it is trying to be, and how that differs from the Tácek screens:
- *
- *  - **Content first, chrome last.** Every block on this screen is a fact about
- *    the night. There is not a single row whose job is to say "the content is
- *    elsewhere". The one button is at the very bottom, after you have read it.
- *  - **Numbers are the design.** Strava opens an activity with three enormous
- *    numerals and hairlines between them; this opens with piva / večer /
- *    hospody. No card around them, no illustration competing with them.
- *  - **Rows carry data, not labels.** A person row is a name, a tally and a bar
- *    of how they did against the biggest drinker. A stop is a time, a pub and a
- *    tally. Both are readable at a glance without opening anything.
- *  - **Left-aligned, generous, native.** Big left title instead of a centred
- *    18pt chrome title between two chevrons; 28-32pt of air between sections
- *    instead of 12.
- *
- * Palette stays Na pivo — stout ground, amber accent, foam text. The change is
- * structure, density and type, not colour.
- *
- * Type is the SYSTEM font (SF Pro on iOS, Roboto on Android) via bare
- * `fontWeight`, not Baloo 2. Baloo is the rounded pub voice that makes every
- * Tácek screen read as the same playful object; on a screen whose whole job is
- * dense numbers and rows it fights the content and reads as a theme rather than
- * an app. The system face is what "native like Packeta" actually means, and it
- * gets optical sizing, real tabular numerals and Dynamic Type for free.
- *
- * If this direction is adopted, the swap belongs in §3 of the design system for
- * the whole app — not left as one screen quietly using different type.
- *
- * Deliberately absent: price, spend, per-mille. See `mockParty.ts`.
- */
+/** Finished shared evening, derived only from NightRecord. */
 
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 
-import {
-  ClockIcon,
-  MessageSquareIcon,
-  Share2Icon,
-  MapPinIcon,
-  TrophyIcon,
-} from '@/components/shared/IconGlyph';
-import { Face } from '@/feed/FeedMockScreen';
-import { Leaderboard } from '@/mocks/Leaderboard';
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
-import { MockLayout } from '@/mocks/mockTheme';
-import { CheersButton } from '@/feed/CheersButton';
+import { Share2Icon } from '@/components/shared/IconGlyph';
+import { PersonAvatar } from '@/components/shared/PersonAvatar';
+import { decodeGeohash8 } from '@/data/geohash';
+import { fetchMyStats, type RemoteNightRecords } from '@/data/statsClient';
+import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { NightRoute } from '@/mocks/NightRoute';
 import { SectionBreak } from '@/mocks/SectionBreak';
-import { MenuChip } from '@/mocks/MenuChip';
-import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { StatGrid } from '@/mocks/StatGrid';
-import {
-  clockAt,
-  formatElapsed,
-  useLivePartyStore,
-  useNightClock,
-} from '@/mocks/livePartyStore';
+import { MenuChip } from '@/mocks/MenuChip';
 import {
   nightBrokenRecords,
   nightByBeer,
   nightHourly,
+  nightMe,
+  nightMinutes,
   nightMvp,
   nightStandings,
   nightStops,
   nightTally,
 } from '@/party/nightRecord';
-import { useNightRecord } from '@/party/useNightRecord';
+import { mergeConfirmedNightBest, personalNightRecord } from '@/party/personalNightRecord';
+import {
+  hasRenderableNightRecord,
+  useNightRecord,
+  type NightRecordRecoveryState,
+} from '@/party/useNightRecord';
 import { nightBestFrom } from '@/party/nightBuilder';
 import { drinkingDayKey, useTallyStore } from '@/stores/tallyStore';
-import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
+import { useAccountStore } from '@/stores/accountStore';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Fonts } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
 
-/**
- * What a record is called, and the line under it.
- *
- * Short and loud — "Osobní rekord", not "Gratulujeme, dosáhl jsi…". The detail
- * says what it beat, because a record with no previous number is a compliment
- * rather than a fact.
- */
-const RECORD_TITLE: Record<'beers' | 'minutes' | 'stops', string> = {
+const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
+const SECTION_GAP = 32;
+
+function formatElapsed(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+function clockAt(iso: string): string {
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+const RECORD_TITLE = {
   beers: 'Nejvíc piv za večer',
   minutes: 'Nejdelší večer',
   stops: 'Nejvíc štací',
-};
+} as const;
 
-const RECORD_DETAIL: Record<'beers' | 'minutes' | 'stops', (value: number, previous: number) => string> = {
-  beers: (value, previous) =>
-    previous > 0 ? `${value} — dosud ${previous}.` : `${value}. Zatím nejvíc.`,
-  minutes: (value, previous) =>
-    previous > 0
-      ? `${formatElapsed(value)} — dosud ${formatElapsed(previous)}.`
-      : `${formatElapsed(value)}. Zatím nejdéle.`,
-  stops: (value, previous) =>
-    previous > 0 ? `${value} — dosud ${previous}.` : `${value}. Zatím nejvíc.`,
-};
-
-/** Air between top-level sections. Deliberately far larger than the 12pt the
- *  Tácek surface uses — the density is most of what makes this feel native. */
-const SECTION_GAP = 32;
-
-// ── The three numerals ──────────────────────────────────────────────────────
-
-/** Label ABOVE value, exactly as the feed card does it — the detail should
- *  read as the same object opened, not as a different screen. */
-// ── People ──────────────────────────────────────────────────────────────────
-
-function StopRow({
-  arrivedAt,
-  pubName,
-  beers,
-  last,
-}: {
-  arrivedAt: string;
-  pubName: string;
-  beers: number;
-  last: boolean;
-}) {
-  return (
-    <View style={styles.stopRow}>
-      <View style={styles.stopRail}>
-        <View style={styles.stopDot} />
-        {last ? null : <View style={styles.stopLine} />}
-      </View>
-      <View style={styles.stopBody}>
-        <Text style={styles.stopTime} allowFontScaling={false}>
-          {arrivedAt}
-        </Text>
-        <Text style={styles.stopPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pubName}
-        </Text>
-        <Text style={styles.stopBeers} allowFontScaling={false}>
-          {beers} piv
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-// ── Tempo ───────────────────────────────────────────────────────────────────
-
-/** Strava's splits, in beers. Bars only — a line chart would need axes, and an
- *  axis is chrome explaining content that can just be the right height. */
-// ── Screen ──────────────────────────────────────────────────────────────────
-
-/**
- * A heading with the dark band above it, the way the feed separates posts.
- *
- * The recap ran five sections apart on margin alone, so "Kdo tam byl", "Štace"
- * and "Piva po hodinách" read as one long column. The band is what makes the
- * feed scan as separate things, and this screen is the same problem.
- */
 function SectionTitle({ children }: { children: string }) {
   return <SectionBreak title={children} inset={20} />;
 }
 
-const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
-
 export default function PartyRecapScreen() {
   const insets = useSafeAreaInsets();
+  const [recoveryState, setRecoveryState] = React.useState<NightRecordRecoveryState>('loading');
+  const night = useNightRecord({
+    recoverLatestEnded: true,
+    onRecoveryStateChange: setRecoveryState,
+  });
+  const history = useTallyStore((state) => state.history);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
   const [shape, setShape] = React.useState<ChartShape>('bar');
-  // The recap reads what the party mode actually produced, and only falls back
-  // to the canned night for the parts a mock evening has not made yet. Before
-  // this, playing a game and taking photos changed nothing here — the loop was
-  // drawn but not connected.
-  // The recap reads the same record the hub and the finish screen read, so a
-  // number here can never disagree with the one you saw ten seconds ago.
-  const night = useNightRecord();
-  const liveBeerCount = nightTally(night).beers;
-  const livePhotos = useLivePartyStore((s) => s.photos);
-  const liveGames = useLivePartyStore((s) => s.games);
-  const liveStartedAt = useLivePartyStore((s) => s.startedAt);
-  const liveMinutes = useNightClock(liveStartedAt);
-  const hasLive = useLivePartyStore((s) => s.live);
-  const history = useTallyStore((s) => s.history);
+  const [openedAt] = React.useState(() => Date.now());
 
-  // Derived from the beer list rather than stored: one source of truth for the
-  // night, read three different ways.
+  const now = night.endedAt ? new Date(night.endedAt).getTime() : openedAt;
+  const minutes = nightMinutes(night, now);
+  const tally = nightTally(night);
   const standings = nightStandings(night);
   const mvp = nightMvp(standings);
-  const livePeople = standings.map((person) => ({
-    id: person.id,
-    name: person.name,
-    beers: person.beers,
-    tint: person.tint,
-    ...(person.avatarUrl ? { avatar: person.avatarUrl } : {}),
-    ...(mvp?.id === person.id ? { mvp: true } : {}),
-  }));
+  const stops = nightStops(night, now);
+  const hourly = nightHourly(night);
+  const byBeer = nightByBeer(night);
+  const games = night.games.filter((game) => game.result);
+  const personalNight = personalNightRecord(night, nightMe(night)?.id);
+  const personalDay = personalNight ? drinkingDayKey(new Date(personalNight.startedAt)) : undefined;
+  const localBest = nightBestFrom(history, personalDay);
+  const [remoteBest, setRemoteBest] = React.useState<{
+    accountId: string;
+    day: string;
+    value: RemoteNightRecords;
+  } | null>(null);
+  React.useEffect(() => {
+    if (!accountId || !personalDay) return undefined;
+    const controller = new AbortController();
+    void fetchMyStats(controller.signal, personalDay).then((stats) => {
+      if (controller.signal.aborted || !stats?.nightRecords) return;
+      setRemoteBest({ accountId, day: personalDay, value: stats.nightRecords });
+    });
+    return () => controller.abort();
+  }, [accountId, personalDay]);
+  const confirmedBest =
+    remoteBest?.accountId === accountId && remoteBest.day === personalDay
+      ? mergeConfirmedNightBest(localBest, remoteBest.value)
+      : null;
+  // A device keeps only a bounded local history and an account may have older
+  // nights from another phone. Stay silent until the server has excluded this
+  // drinking day and confirmed what there really was to beat.
+  const records =
+    personalNight && confirmedBest
+      ? nightBrokenRecords(
+          personalNight,
+          confirmedBest,
+          personalNight.endedAt ? new Date(personalNight.endedAt).getTime() : openedAt,
+        )
+      : [];
+  const route = stops.map((stop) => stop.pubName).join('  →  ');
+  const title = stops[0]?.pubName ? `Večer v ${stops[0].pubName}` : 'Pivní večer';
+  const dateLabel = new Intl.DateTimeFormat('cs-CZ', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(night.startedAt));
+  const routeStops = night.stops.flatMap((stop) => {
+    if (stop.lat !== undefined && stop.lng !== undefined) {
+      return [{ name: stop.pubName, lat: stop.lat, lng: stop.lng }];
+    }
+    if (stop.cacheKey && /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(stop.cacheKey)) {
+      return [{ name: stop.pubName, ...decodeGeohash8(stop.cacheKey) }];
+    }
+    return [];
+  });
 
-  // Tonight's own instant, from the ticking clock rather than `Date.now()` in a
-  // component body — which is impure, and the lint rule is right about it.
-  const nowMs = (liveStartedAt ?? 0) + liveMinutes * 60000;
-
-  // What tonight beat, measured against YOUR own history and nobody else's.
-  const best = nightBestFrom(history, drinkingDayKey(new Date(night.startedAt)));
-  const liveRecords = nightBrokenRecords(night, best, nowMs).map((broken) => ({
-    id: broken.kind,
-    title: RECORD_TITLE[broken.kind],
-    detail: RECORD_DETAIL[broken.kind](broken.value, broken.previous),
-    by: 'Ty',
-  }));
-
-  const liveStops = nightStops(night, nowMs).map((stop) => ({
-    id: stop.id,
-    pubName: stop.pubName,
-    arrivedAt: clockAt(new Date(stop.arrivedAt).getTime()),
-    beers: stop.beers,
-    ...(stop.lat !== undefined && stop.lng !== undefined
-      ? { lat: stop.lat, lng: stop.lng }
-      : { lat: 50.0785, lng: 14.42 }),
-  }));
-
-  const liveHourly = nightHourly(night).map((bucket) => ({
-    hour: bucket.hour,
-    beers: bucket.beers,
-  }));
-  // A game on the table is not a result. Only played ones have a scoreboard,
-  // and a scoreboard is the whole reason this section exists.
-  const playedGames = liveGames.flatMap((game) => (game.result ? [game.result] : []));
-
-  const party: PartyRecap = hasLive
-    ? {
-        ...MOCK_PARTY,
-        title: MOCK_PARTY.title,
-        beers: liveBeerCount,
-        duration: formatElapsed(liveMinutes),
-        photos: livePhotos,
-        hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
-        stops: liveStops.length > 0 ? liveStops : MOCK_PARTY.stops,
-        // Only what tonight actually beat. An empty list is the honest answer
-        // most nights, and the section simply does not draw.
-        records: liveRecords,
-        // Who was actually there, with what they actually drank. The canned
-        // night used to lend its faces your count, which read fine and meant
-        // nothing.
-        people: livePeople,
-      }
-    : MOCK_PARTY;
-  const route = party.stops.map((s) => s.pubName).join('  →  ');
-
-  // Same person, same face, wherever they appear on this screen.
-  const personOf = (name: string) => party.people.find((person) => person.name === name);
-  const personTint = (name: string) => personOf(name)?.tint ?? Colors.amber;
-  const personAvatar = (name: string) => personOf(name)?.avatar;
+  if (!hasRenderableNightRecord(night)) {
+    return (
+      <View
+        style={[
+          styles.screen,
+          styles.recovery,
+          { paddingTop: insets.top, paddingBottom: insets.bottom },
+        ]}
+      >
+        {recoveryState === 'loading' ? (
+          <>
+            <ActivityIndicator color={Colors.amber} />
+            <Text style={styles.recoveryText}>Tahám poslední večer…</Text>
+          </>
+        ) : (
+          <Text style={styles.recoveryText}>
+            {recoveryState === 'empty'
+              ? 'Žádný dokončený večer.'
+              : 'Rekapitulaci teď nenačtu.'}
+          </Text>
+        )}
+      </View>
+    );
+  }
 
   const chartRows =
     chart === 'V čase'
-      ? party.hourly.map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
+      ? hourly.map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
       : chart === 'Podle piva'
-        ? // The live night's own breakdown when there is one, the canned night's
-          // otherwise — an empty chart behind a menu item reads as a bug.
-          (liveBeerCount > 0
-            ? nightByBeer(night).map((row) => ({ label: row.beer, value: row.count }))
-            : party.byBeer.map((row) => ({ label: row.beer, value: row.count })))
-        : party.people
-            .map((person) => ({ label: person.name, value: person.beers }))
-            .sort((a, b) => b.value - a.value);
+        ? byBeer.map((row) => ({ label: row.beer, value: row.count }))
+        : standings.map((person) => ({
+            label: person.name,
+            value: person.beers,
+          }));
 
-  /** Does any of tonight's records mention this? Cheap, and it keeps the badge
-   *  honest — no record in the list, no PR on the number. */
-  const brokeRecord = (needle: string) =>
-    party.records.some((record) => record.title.toLocaleLowerCase('cs').includes(needle));
+  const share = () => {
+    const pubs = stops.map((stop) => stop.pubName).join(' → ');
+    void Share.share({
+      message: `${title}: ${tally.beers} piv, ${formatElapsed(minutes)}${pubs ? `, ${pubs}` : ''}.`,
+    });
+  };
 
   return (
     <View style={styles.screen}>
-      {/* Share floats top right, opposite the native back capsule. As a
-          full-width amber bar at the very bottom it was the loudest thing on the
-          screen and sat below everything worth sharing. */}
       <View style={[styles.shareFloat, { top: insets.top + Spacing.sm }]}>
-        <GlassIconButton size={40} accessibilityLabel="Sdílet večer">
-          {/* The system's own share mark, not a generic node graph. On iOS this
-              is the glyph every share sheet in the OS is behind, so it needs no
-              learning; the fallback keeps the old icon everywhere else. */}
+        <GlassIconButton size={40} accessibilityLabel="Sdílet večer" onPress={share}>
           <SymbolView
             name="square.and.arrow.up"
             size={20}
@@ -294,189 +193,146 @@ export default function PartyRecapScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            // Clears the transparent native header so the title never sits
-            // under the back control.
             paddingTop: insets.top + 52,
             paddingBottom: insets.bottom + SECTION_GAP,
           },
         ]}
+        showsVerticalScrollIndicator={false}
       >
-        {/* No hand-rolled back button: the native header draws it on iOS 26's
-            own glass capsule and morphs it. Ours would be a flat copy. */}
-        {/* Title block — the night, named, dated and routed. */}
-        {/* The same header the card in the feed carries — the detail is that
-            post opened, so it should still say whose night this is. */}
-        <View style={styles.byline}>
-          {party.people.slice(0, 5).map((person, index) => (
-            <View key={person.id} style={index === 0 ? undefined : styles.peopleOverlap}>
-              <Face name={person.name} tint={person.tint} avatar={person.avatar} size={30} />
+        {night.people.length > 0 ? (
+          <View style={styles.byline}>
+            <View style={styles.faces}>
+              {night.people.slice(0, 5).map((person, index) => (
+                <View key={person.id} style={index === 0 ? undefined : styles.faceOverlap}>
+                  <PersonAvatar
+                    name={person.name}
+                    tint={person.tint}
+                    avatarUrl={person.avatarUrl}
+                    size={30}
+                  />
+                </View>
+              ))}
             </View>
-          ))}
-          <Text
-            style={styles.peopleNames}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {party.people.map((p) => p.name).join(', ')}
-          </Text>
-        </View>
+            <Text style={styles.peopleNames} numberOfLines={1}>
+              {night.people.map((person) => person.name).join(', ')}
+            </Text>
+          </View>
+        ) : null}
 
-        <Text style={styles.date} maxFontSizeMultiplier={FontScaleCap.body}>
-          {party.dateLabel}
-        </Text>
-        <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {party.title}
-        </Text>
-        <Text style={styles.route} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-          {route}
-        </Text>
+        <Text style={styles.date}>{dateLabel}</Text>
+        <Text style={styles.title}>{title}</Text>
+        {route ? <Text style={styles.route}>{route}</Text> : null}
 
-        {/* The night's own pictures, right under its name — they are the best
-            thing the evening made, and as a count in a meta row ("18 fotek")
-            they were a number standing in for the content. */}
-        {party.photoUrls.length > 0 ? (
+        {night.photos.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoStrip}
-            style={styles.photoStripWrap}
           >
-            {party.photoUrls.map((uri) => (
-              <Image key={uri} source={{ uri }} style={styles.photoThumb} />
+            {night.photos.map((photo) => (
+              <Image key={photo.id} source={{ uri: photo.url }} style={styles.photo} />
             ))}
-            {party.photos > party.photoUrls.length ? (
-              <View style={[styles.photoThumb, styles.photoMore]}>
-                <Text style={styles.photoMoreText} allowFontScaling={false}>
-                  +{party.photos - party.photoUrls.length}
-                </Text>
-              </View>
-            ) : null}
           </ScrollView>
         ) : null}
 
-        {/* The shared block: one column width per stat, so a long duration
-            cannot walk into the next number. */}
-        <View style={styles.heroRow}>
+        <View style={styles.hero}>
           <StatGrid
             columns={3}
             hero
             stats={[
-              // Derived from the night's own records, not hard-coded: the recap
-              // already lists what this evening beat, so the stat and the record
-              // list cannot disagree.
-              { label: 'Piva', value: String(party.beers), record: brokeRecord('piv') },
-              { label: 'Večer', value: party.duration, record: brokeRecord('večer') },
-              {
-                label: 'Hospody',
-                value: String(party.stops.length),
-                record: brokeRecord('štac'),
-              },
+              { label: 'Piva', value: String(tally.beers) },
+              { label: 'Večer', value: formatElapsed(minutes) },
+              { label: 'Hospody', value: String(stops.length) },
             ]}
           />
         </View>
 
-        {/* Reactions sit UNDER the numbers, where they do on the feed card:
-            you read what the night was, then you clink it. Above the stats they
-            were a toolbar on top of the content. */}
-        <View style={styles.reactions}>
-          <CheersButton count={party.cheers} cheered={false} label={`${party.cheers} cheers`} />
-          <View style={styles.reaction}>
-            <MessageSquareIcon size={19} color={Colors.foam} />
-            <Text style={styles.reactionText} allowFontScaling={false}>
-              4
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle>Kdo tam byl</SectionTitle>
-          {/* Komunita's board, not a second design of the same object. A list
-              where first place looks like fifth is a table, not a ranking. */}
-          <View style={styles.people}>
-            <Leaderboard
-              rows={party.people.map((person) => ({
-                id: person.id,
-                name: person.name,
-                score: person.beers,
-                avatar: person.avatar,
-                tint: person.tint,
-              }))}
-              unit="piv"
-              topBadge="MVP"
-            />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <SectionTitle>Štace</SectionTitle>
-          {/* The walk, drawn. The list says where and when; the map says how far
-              it actually was, which is the part nobody remembers by morning. */}
-          {party.stops.length > 1 ? (
-            <View style={styles.stopsMap}>
-              <NightRoute stops={party.stops.map((stop) => ({ ...stop, name: stop.pubName }))} height={168} caption={false} />
+        {standings.length > 0 ? (
+          <View style={styles.section}>
+            <SectionTitle>Kdo tam byl</SectionTitle>
+            <View style={styles.peopleList}>
+              {standings.map((person, index) => (
+                <View key={person.id} style={styles.personRow}>
+                  <Text style={styles.rank} allowFontScaling={false}>
+                    {index + 1}
+                  </Text>
+                  <PersonAvatar
+                    name={person.name}
+                    tint={person.tint}
+                    avatarUrl={person.avatarUrl}
+                    size={38}
+                  />
+                  <Text style={styles.personName} numberOfLines={1}>
+                    {person.name}
+                  </Text>
+                  {mvp?.id === person.id ? <Text style={styles.mvp}>MVP</Text> : null}
+                  <Text style={styles.personScore}>{person.beers} piv</Text>
+                </View>
+              ))}
             </View>
-          ) : null}
-          <View style={styles.stops}>
-            {party.stops.map((stop, index) => (
-              <StopRow
-                key={stop.id}
-                arrivedAt={stop.arrivedAt}
-                pubName={stop.pubName}
-                beers={stop.beers}
-                last={index === party.stops.length - 1}
-              />
+          </View>
+        ) : null}
+
+        {stops.length > 0 ? (
+          <View style={styles.section}>
+            <SectionTitle>Štace</SectionTitle>
+            {routeStops.length > 0 ? (
+              <View style={styles.map}>
+                <NightRoute stops={routeStops} height={168} caption={false} />
+              </View>
+            ) : null}
+            {stops.map((stop, index) => (
+              <View key={stop.id} style={styles.stopRow}>
+                <View style={styles.stopRail}>
+                  <View style={styles.stopDot} />
+                  {index < stops.length - 1 ? <View style={styles.stopLine} /> : null}
+                </View>
+                <Text style={styles.stopTime}>{clockAt(stop.arrivedAt)}</Text>
+                <Text style={styles.stopName} numberOfLines={1}>
+                  {stop.pubName}
+                </Text>
+                <Text style={styles.stopBeers}>{stop.beers} piv</Text>
+              </View>
             ))}
           </View>
-        </View>
+        ) : null}
 
-        {/* The night's numbers, drawn. This is where the charts moved to from
-            the running hub: while the evening is happening you glance at the
-            phone to see what just happened, and only afterwards do you want to
-            look at its shape. One chart, three questions you can ask of it. */}
-        <View style={styles.section}>
-          <SectionTitle>Jak to šlo</SectionTitle>
-          <NightChart
-            rows={chartRows}
-            shape={shape}
-            onShape={setShape}
-            control={
-              <MenuChip
-                value={chart}
-                options={CHARTS}
-                title="Podle čeho"
-                onChange={(next) => setChart(next as (typeof CHARTS)[number])}
-              />
-            }
-          />
-        </View>
+        {chartRows.length > 0 ? (
+          <View style={styles.section}>
+            <SectionTitle>Jak to šlo</SectionTitle>
+            <NightChart
+              rows={chartRows}
+              shape={shape}
+              onShape={setShape}
+              control={
+                <MenuChip
+                  value={chart}
+                  options={CHARTS}
+                  title="Podle čeho"
+                  onChange={(value) => setChart(value as (typeof CHARTS)[number])}
+                />
+              }
+            />
+          </View>
+        ) : null}
 
-        {/* The richest thing a night makes. Only rendered when one was played —
-            an empty scoreboard would be a section explaining its own absence. */}
-        {playedGames.length > 0 ? (
+        {games.length > 0 ? (
           <View style={styles.section}>
             <SectionTitle>Hry</SectionTitle>
-            {playedGames.map((game, index) => (
-              <View key={`${game.game}-${index}`} style={styles.gameBlock}>
-                <Text style={styles.gameTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {game.winner
-                    ? `${game.game} · vyhrál${game.winner === 'Klára' ? 'a' : ''} ${game.winner}`
-                    : `${game.game} · odehráno`}
+            {games.map((game) => (
+              <View key={`${game.key}:${game.startedAt}`} style={styles.game}>
+                <Text style={styles.gameName}>{game.name}</Text>
+                <Text style={styles.gameResult}>
+                  {game.result?.paying
+                    ? `Platí ${game.result.paying}`
+                    : game.result?.winner
+                      ? `Vyhrál ${game.result.winner}`
+                      : 'Odehráno'}
                 </Text>
-                {game.scores.map((row, rank) => (
-                  <View key={row.name} style={styles.gameRow}>
-                    <Text style={styles.gameRank} allowFontScaling={false}>
-                      {rank + 1}
-                    </Text>
-                    <Text
-                      style={styles.gameName}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {row.name}
-                    </Text>
-                    <Text style={styles.gameScore} allowFontScaling={false}>
-                      {row.score}
-                    </Text>
+                {game.result?.scores.map((score, index) => (
+                  <View key={`${score.name}:${index}`} style={styles.scoreRow}>
+                    <Text style={styles.scoreName}>{score.name}</Text>
+                    <Text style={styles.scoreValue}>{score.score}</Text>
                   </View>
                 ))}
               </View>
@@ -484,242 +340,127 @@ export default function PartyRecapScreen() {
           </View>
         ) : null}
 
-        {party.records.length === 0 ? null : (
-        <View style={styles.section}>
-          <SectionTitle>Padlo tenhle večer</SectionTitle>
-          {party.records.map((record) => (
-            <View key={record.id} style={styles.record}>
-              <View style={styles.recordMedallion}>
-                <TrophyIcon size={16} color={Colors.amber} />
-              </View>
-              <View style={styles.grow}>
-                <Text style={styles.recordTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {record.title}
+        {records.length > 0 ? (
+          <View style={styles.section}>
+            <SectionTitle>Osobní rekordy</SectionTitle>
+            {records.map((record) => (
+              <View key={record.kind} style={styles.record}>
+                <Text style={styles.recordTitle}>{RECORD_TITLE[record.kind]}</Text>
+                <Text style={styles.recordValue}>
+                  {record.kind === 'minutes' ? formatElapsed(record.value) : record.value}
                 </Text>
-                <Text style={styles.recordDetail} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {record.detail}
-                </Text>
-                {/* Whose it is. On a post shared by five people, "tvůj nový
-                    rekord" is ambiguous for four of them — a record needs a
-                    face on it. */}
-                <View style={styles.recordBy}>
-                  <Face
-                    name={record.by}
-                    tint={personTint(record.by)}
-                    avatar={personAvatar(record.by)}
-                    size={16}
-                  />
-                  <Text style={styles.recordByName} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {record.by}
-                  </Text>
-                </View>
               </View>
-            </View>
-          ))}
-        </View>
-        )}
-
-        <View style={styles.mockNote}>
-          <ClockIcon size={13} color={Colors.mutedText} />
-          <Text style={styles.mockText} maxFontSizeMultiplier={FontScaleCap.body}>
-            Design mock — data jsou napevno.
-          </Text>
-        </View>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  shareFloat: { position: 'absolute', right: 20, zIndex: 2 },
-  photoStripWrap: { marginTop: Spacing.md, marginHorizontal: -MockLayout.screenPad },
-  photoStrip: { gap: Spacing.xs, paddingHorizontal: MockLayout.screenPad },
-  photoThumb: { width: 76, height: 76, borderRadius: 14, backgroundColor: Colors.stout3 },
-  photoMore: { alignItems: 'center', justifyContent: 'center' },
-  photoMoreText: { fontSize: 17, fontWeight: '800', color: Colors.foam },
-  reactions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg, marginTop: Spacing.md },
-  reaction: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  reactionText: { fontSize: 15, fontWeight: '700', color: Colors.foam },
-  stopsMap: { marginBottom: Spacing.md, borderRadius: 18, overflow: 'hidden' },
-  screen: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: MockLayout.screenPad },
-  grow: { flex: 1 },
-  pressed: { opacity: 0.6 },
-
-  back: {
-    width: HitArea.min,
-    height: HitArea.min,
-    marginLeft: -10,
-    alignItems: 'flex-start',
+  screen: { flex: 1, backgroundColor: MockColors.bg },
+  recovery: {
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: MockLayout.screenPad,
   },
-
-  byline: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
-  peopleOverlap: { marginLeft: -9 },
+  recoveryText: { fontSize: 16, fontWeight: '700', color: Colors.foam },
+  content: { paddingHorizontal: MockLayout.screenPad },
+  shareFloat: { position: 'absolute', right: Spacing.md, zIndex: 3 },
+  byline: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  faces: { flexDirection: 'row' },
+  faceOverlap: { marginLeft: -8 },
   peopleNames: {
     flex: 1,
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: Colors.mutedText,
-    marginLeft: Spacing.sm,
   },
-
-  // — Title block —
-  date: {
-    fontWeight: '500',
-    fontSize: 13,
-    color: Colors.mutedText,
-    letterSpacing: 0.3,
-    marginTop: Spacing.xs,
-  },
+  date: { marginTop: Spacing.lg, fontSize: 14, color: Colors.mutedText },
   title: {
+    marginTop: 4,
+    fontSize: 32,
     fontWeight: '800',
-    fontSize: 34,
-    lineHeight: 40,
     color: Colors.foam,
-    marginTop: 2,
-    letterSpacing: -0.6,
+    letterSpacing: -0.7,
   },
   route: {
-    fontWeight: '500',
-    fontSize: 14,
-    lineHeight: 20,
-    color: withAlpha(Colors.amber, 0.85),
     marginTop: Spacing.xs,
-  },
-
-  // — Hero numerals —
-  heroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SECTION_GAP - 6,
-    paddingTop: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.14),
-  },
-
-  // — Sections —
-  section: {},
-  // Sentence case, foam — the same voice as the feed card's sections. The
-  // uppercase muted kicker made the detail read as a different app from the
-  // preview it opens out of.
-
-  // — People —
-  people: { gap: Spacing.md },
-  personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  avatar: { alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  avatarText: { fontWeight: '700', color: Colors.foam },
-  personBody: { flex: 1, gap: 6 },
-  personTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  personName: { fontWeight: '700', fontSize: 16, color: Colors.foam },
-  personCount: {
-    fontWeight: '800',
-    fontSize: 17,
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
-  },
-  mvpTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
-  mvpText: {
-    fontWeight: '700',
-    fontSize: 10,
-    letterSpacing: 0.5,
+    fontSize: 15,
+    fontWeight: '600',
     color: Colors.amber,
   },
-  barTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: withAlpha(Colors.foam, 0.07),
-    overflow: 'hidden',
+  photoStrip: { gap: Spacing.sm, paddingTop: Spacing.lg },
+  photo: {
+    width: 122,
+    height: 122,
+    borderRadius: 18,
+    backgroundColor: Colors.stout3,
   },
-  barFill: { height: '100%', borderRadius: 3 },
-
-  // — Štace —
-  stops: {},
-  stopRow: { flexDirection: 'row', gap: Spacing.sm },
-  stopRail: { width: 12, alignItems: 'center' },
+  hero: { marginTop: Spacing.xl },
+  section: { marginTop: SECTION_GAP },
+  peopleList: { gap: 2 },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 56,
+  },
+  rank: {
+    width: 18,
+    fontFamily: Fonts.numeral,
+    fontSize: 15,
+    color: Colors.mutedText,
+  },
+  personName: { flex: 1, fontSize: 16, fontWeight: '700', color: Colors.foam },
+  mvp: { fontSize: 11, fontWeight: '800', color: Colors.amber },
+  personScore: { fontFamily: Fonts.numeral, fontSize: 16, color: Colors.foam },
+  map: {
+    overflow: 'hidden',
+    borderRadius: Radius.card,
+    marginBottom: Spacing.md,
+  },
+  stopRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  stopRail: { width: 12, alignItems: 'center', alignSelf: 'stretch' },
   stopDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 7,
     backgroundColor: Colors.amber,
   },
-  stopLine: { flex: 1, width: 2, backgroundColor: withAlpha(Colors.amber, 0.25), marginTop: 2 },
-  stopBody: {
+  stopLine: {
+    width: 1,
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingBottom: Spacing.lg,
+    backgroundColor: withAlpha(Colors.foam, 0.15),
   },
-  stopTime: {
-    fontWeight: '700',
+  stopTime: { width: 40, fontSize: 12, color: Colors.mutedText },
+  stopName: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.foam },
+  stopBeers: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
+  game: {
+    padding: Spacing.md,
+    borderRadius: Radius.card,
+    backgroundColor: MockColors.surfaceHigh,
+    marginBottom: Spacing.sm,
+  },
+  gameName: { ...MockType.bodySemibold, color: Colors.foam },
+  gameResult: {
+    marginTop: 2,
     fontSize: 14,
-    color: Colors.mutedText,
-    width: 46,
-    fontVariant: ['tabular-nums'],
-  },
-  stopPub: { flex: 1, fontWeight: '700', fontSize: 17, color: Colors.foam },
-  stopBeers: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
-
-  // — Tempo —
-
-  // — Games —
-  gameBlock: { marginBottom: Spacing.lg, gap: 4 },
-  gameTitle: { fontWeight: '700', fontSize: 15, color: Colors.foam, marginBottom: 4 },
-  gameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  gameRank: {
-    width: 16,
     fontWeight: '700',
-    fontSize: 13,
-    color: Colors.mutedText,
-    fontVariant: ['tabular-nums'],
+    color: Colors.amber,
   },
-  gameName: { flex: 1, fontWeight: '500', fontSize: 15, color: Colors.foam },
-  gameScore: {
-    fontWeight: '700',
-    fontSize: 15,
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // — Records —
-  record: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-  },
-  recordMedallion: {
-    width: 34,
-    height: 34,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
-  recordTitle: { fontWeight: '700', fontSize: 15, color: Colors.foam },
-  recordBy: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  recordByName: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
-  recordDetail: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginTop: 1 },
-
-  // — Footer —
-
-
-  mockNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: Spacing.md,
-  },
-  mockText: { fontWeight: '400', fontSize: 12, color: Colors.mutedText },
+  scoreRow: { flexDirection: 'row', marginTop: Spacing.sm },
+  scoreName: { flex: 1, fontSize: 14, color: Colors.foam },
+  scoreValue: { fontFamily: Fonts.numeral, fontSize: 14, color: Colors.foam },
+  record: { flexDirection: 'row', alignItems: 'center', minHeight: 48 },
+  recordTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.foam },
+  recordValue: { fontFamily: Fonts.numeral, fontSize: 18, color: Colors.amber },
 });

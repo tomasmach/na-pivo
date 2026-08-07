@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
 
 import type { NightsFeedScope, PublishedNight } from '@/data/nightsClient';
 
@@ -60,6 +60,40 @@ function isPublishedNight(value: unknown): value is PublishedNight {
   );
 }
 
+/** Keep the last feed useful across the additive 3.0 story contract rollout. */
+function normalizeCachedNight(night: PublishedNight): PublishedNight {
+  return {
+    ...night,
+    title: typeof night.title === 'string' ? night.title : '',
+    roastLine: typeof night.roastLine === 'string' ? night.roastLine : '',
+    roastBasis: typeof night.roastBasis === 'string' ? night.roastBasis : '',
+    participants: Array.isArray(night.participants) ? night.participants.filter(isAuthor) : [],
+    heroPhotos: Array.isArray(night.heroPhotos)
+      ? night.heroPhotos.filter(
+          (photo) =>
+            !!photo &&
+            typeof photo.id === 'string' &&
+            typeof photo.imageUrl === 'string' &&
+            typeof photo.caption === 'string',
+        )
+      : [],
+    heroGames: Array.isArray(night.heroGames)
+      ? night.heroGames.filter(
+          (game) =>
+            !!game &&
+            typeof game.id === 'string' &&
+            typeof game.catalogKey === 'string' &&
+            typeof game.name === 'string' &&
+            (game.scoring === 'points' || game.scoring === 'drinks'),
+        )
+      : [],
+    commentCount:
+      typeof night.commentCount === 'number' && Number.isFinite(night.commentCount)
+        ? Math.max(0, night.commentCount)
+        : 0,
+  };
+}
+
 export function parseNightFeedCache(value: unknown): NightFeedCache | null {
   if (!value || typeof value !== 'object') return null;
   const stored = value as Partial<StoredNightFeed>;
@@ -68,7 +102,10 @@ export function parseNightFeedCache(value: unknown): NightFeedCache | null {
   if (stored.nextCursor !== null && typeof stored.nextCursor !== 'string') return null;
 
   return {
-    nights: stored.nights.filter(isPublishedNight).slice(0, MAX_CACHED_NIGHTS),
+    nights: stored.nights
+      .filter(isPublishedNight)
+      .map(normalizeCachedNight)
+      .slice(0, MAX_CACHED_NIGHTS),
     nextCursor: stored.nextCursor,
     savedAt: stored.savedAt,
   };
@@ -103,6 +140,41 @@ export async function saveNightFeedCache(
   } catch {
     // A cache is an offline enhancement; persistence failure must not break the feed.
   }
+}
+
+/**
+ * Remove a newly blocked account everywhere it can appear in the active
+ * viewer's cached feed: its own stories disappear and participant copies are
+ * stripped from other people's stories. Keeping this viewer-scoped avoids
+ * leaking one account's safety choices into another account that may later
+ * sign in on the device.
+ */
+export async function removeAccountFromNightFeedCaches(
+  accountId: string,
+  targetAccountId: string,
+): Promise<void> {
+  if (!accountId || !targetAccountId) return;
+
+  await Promise.all(
+    (['friends', 'global', 'mine'] as const).map(async (scope) => {
+      const cached = await loadNightFeedCache(accountId, scope);
+      if (!cached) return;
+      const nights = cached.nights.flatMap((night) => {
+        if (night.author.id === targetAccountId) return [];
+        const participants = night.participants.filter(
+          (person) => person.id !== targetAccountId,
+        );
+        return participants.length === night.participants.length
+          ? [night]
+          : [{ ...night, participants }];
+      });
+      const changed =
+        nights.length !== cached.nights.length ||
+        nights.some((night, index) => night !== cached.nights[index]);
+      if (!changed) return;
+      await saveNightFeedCache(accountId, scope, { ...cached, nights });
+    }),
+  );
 }
 
 export async function clearNightFeedCaches(): Promise<void> {

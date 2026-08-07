@@ -3,9 +3,8 @@
  * beer photo, ending in "Uložit do deníčku".
  *
  * Save is fully offline-first: the picked (cache) image is copied into the
- * durable diary directory, then handed to beerPhotosQueue which inserts the
- * optimistic store entry and retries the upload until it lands — so this sheet
- * closes instantly and never blocks on the network.
+ * durable diary directory, then handed to beerPhotosQueue. The sheet closes
+ * only after that retry op is durably stored, but never waits on the network.
  *
  * The pub tag prefers what the app already knows: an active counter session
  * pins its pub as the suggestion, otherwise the nearby auto-detect (GPS only
@@ -31,13 +30,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   EyeOffIcon,
+  InfoIcon,
   MapPinIcon,
   TrophyIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import type { BeerPhotoVisibility } from '@/data/beerPhotosClient';
-import { enqueueBeerPhoto, persistBeerPhotoLocally } from '@/data/beerPhotosQueue';
+import {
+  deleteBeerPhotoLocalFile,
+  enqueueBeerPhoto,
+  persistBeerPhotoLocally,
+  resolveBeerPhotoPartyAssociation,
+} from '@/data/beerPhotosQueue';
 import { generateUuidV4 } from '@/data/account';
 import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
@@ -45,6 +50,10 @@ import { PubPickerModal } from '@/counter/PubPickerModal';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
+import {
+  selectConfirmedPartyJoinCode,
+  usePartyEveningStore,
+} from '@/stores/partyEveningStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { MockColors } from '@/mocks/mockTheme';
@@ -70,8 +79,11 @@ interface BeerPhotoComposeSheetProps {
   pickedUri: string;
   /** Preselect FotoPivař when the capture started from the contest screen. */
   initialContestEntry?: boolean;
+  partyCode?: string | null;
+  pendingPartyCode?: string | null;
+  partyDrinkingDay?: string | null;
   onClose: () => void;
-  /** Fired after the photo is queued (sheet already closable). */
+  /** Fired only after the photo is durably queued (sheet is now closable). */
   onSaved: (result: BeerPhotoSaveResult) => void;
 }
 
@@ -94,6 +106,9 @@ function tallyPubSuggestion(): PhotoPubTag | null {
 export function BeerPhotoComposeSheet({
   pickedUri,
   initialContestEntry = false,
+  partyCode,
+  pendingPartyCode,
+  partyDrinkingDay,
   onClose,
   onSaved,
 }: BeerPhotoComposeSheetProps) {
@@ -109,6 +124,10 @@ export function BeerPhotoComposeSheet({
   const [enterContest, setEnterContest] = useState(initialContestEntry);
   const [pickerVisible, setPickerVisible] = useState(false);
   const savingRef = useRef(false);
+  // Reuse the id if a storage write fails ambiguously and the user retries.
+  // AsyncStorage can reject after starting a native write; a stable id keeps
+  // that edge case idempotent instead of creating a second photo.
+  const clientIdRef = useRef<string | null>(null);
 
   const nearby = useNearbyPub();
 
@@ -162,24 +181,76 @@ export function BeerPhotoComposeSheet({
     if (savingRef.current) return;
     savingRef.current = true;
 
-    const clientId = generateUuidV4();
+    const clientId = clientIdRef.current ?? generateUuidV4();
+    clientIdRef.current = clientId;
     const durableUri = await persistBeerPhotoLocally(pickedUri, clientId);
-    // Fire-and-forget: enqueue inserts the optimistic store entry synchronously
-    // and retries the upload in the background — never block the sheet on it.
-    const completion = enqueueBeerPhoto({
+    const reservedCode = pendingPartyCode?.toUpperCase() ?? null;
+    const partyState = usePartyEveningStore.getState();
+    const latestConfirmedCode = selectConfirmedPartyJoinCode(partyState);
+    const confirmedCode = partyCode ?? (
+      reservedCode && latestConfirmedCode?.toUpperCase() === reservedCode
+        ? latestConfirmedCode
+        : null
+    );
+    const deferredCode = !confirmedCode &&
+      reservedCode &&
+      partyState.pendingJoinCode?.toUpperCase() === reservedCode
+      ? reservedCode
+      : null;
+    const queued = await enqueueBeerPhoto({
       clientId,
       localUri: durableUri,
       caption: caption.trim(),
       pubCacheKey: pub?.pubKey,
       pubName: pub?.name,
       pubCity: pub?.city,
+      partyCode: confirmedCode ?? undefined,
+      pendingPartyCode: deferredCode ?? undefined,
+      partyDrinkingDay: partyDrinkingDay ?? undefined,
       visibility,
       takenAt: new Date().toISOString(),
       enterContest,
     });
+    if (!queued.persisted) {
+      // Do not leave an orphaned copy behind. The original pickedUri remains
+      // available in the open compose sheet for another attempt.
+      deleteBeerPhotoLocalFile(clientId);
+      savingRef.current = false;
+      showToast(cs.photoDiary.errorSave, {
+        icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+      });
+      return;
+    }
+    if (deferredCode) {
+      // Close the tiny race where the table response settles between our state
+      // read and the durable queue write. If it is still pending, the evening
+      // store will resolve the association when its request completes.
+      const latestPartyState = usePartyEveningStore.getState();
+      const confirmedAfterWrite = selectConfirmedPartyJoinCode(latestPartyState);
+      if (confirmedAfterWrite?.toUpperCase() === deferredCode) {
+        void resolveBeerPhotoPartyAssociation(deferredCode, confirmedAfterWrite);
+      } else if (latestPartyState.pendingJoinCode?.toUpperCase() !== deferredCode) {
+        void resolveBeerPhotoPartyAssociation(deferredCode, null);
+      }
+    }
     if (useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
-    onSaved({ clientId, contestRequested: enterContest, completion });
-  }, [pickedUri, caption, pub, visibility, enterContest, onSaved]);
+    onSaved({
+      clientId,
+      contestRequested: enterContest,
+      completion: queued.completion,
+    });
+  }, [
+    pickedUri,
+    caption,
+    pub,
+    partyCode,
+    pendingPartyCode,
+    partyDrinkingDay,
+    visibility,
+    enterContest,
+    onSaved,
+    showToast,
+  ]);
 
   return (
     <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>

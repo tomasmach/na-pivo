@@ -49,27 +49,33 @@ export function PromptShell({
   prompts,
   intro,
   seed,
+  step,
+  onNext,
 }: {
   prompts: readonly string[];
   intro?: string;
   /** Varies the order between games without calling `Math.random()` in render. */
   seed: number;
+  /** Shared append-only position. Omit for a local-only game. */
+  step?: number;
+  onNext?: () => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const [deck, setDeck] = React.useState(() => shuffled(prompts, seed));
-  const [index, setIndex] = React.useState(0);
+  const [localStep, setLocalStep] = React.useState(0);
+  const currentStep = step ?? localStep;
+  const cycle = prompts.length > 0 ? Math.floor(currentStep / prompts.length) : 0;
+  const deck = React.useMemo(
+    () => shuffled(prompts, seed + cycle * Math.max(1, prompts.length)),
+    [cycle, prompts, seed],
+  );
+  const index = deck.length > 0 ? currentStep % deck.length : 0;
   // A single-card deck is a rule, not a round — no counter, no "další".
   const single = prompts.length <= 1;
 
   const next = () => {
     if (single) return;
-    setIndex((current) => {
-      if (current + 1 < deck.length) return current + 1;
-      // Round the deck rather than stopping. A table that is still playing does
-      // not want to be told the game is over.
-      setDeck(shuffled(prompts, seed + current + 1));
-      return 0;
-    });
+    if (onNext) onNext();
+    else setLocalStep((current) => current + 1);
   };
 
   return (
@@ -77,7 +83,7 @@ export function PromptShell({
       onPress={next}
       style={styles.wrap}
       accessibilityRole={single ? 'text' : 'button'}
-      accessibilityLabel={single ? deck[index] : `${deck[index]}. Ťukni pro další.`}
+      accessibilityLabel={single ? deck[index] : `${deck[index] ?? ''}. Ťukni pro další.`}
     >
       {intro ? (
         <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>

@@ -168,7 +168,7 @@ export function enqueueAmenityOp(item: AmenityQueueItem): Promise<void> {
 export function clearPubAmenitiesQueue(): Promise<void> {
   return runLocked(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

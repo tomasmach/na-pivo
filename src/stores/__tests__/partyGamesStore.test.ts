@@ -7,14 +7,18 @@
  * the signal is worst and a game is played in seconds.
  */
 
-const startPartyGame: jest.Mock = jest.fn();
-jest.mock('@/data/partyGamesClient', () => ({
-  startPartyGame: (...args: unknown[]) => startPartyGame(...(args as [])),
+const enqueuePartyGameStart: jest.Mock = jest.fn();
+const flushPartyGameStartsQueue: jest.Mock = jest.fn(async () => undefined);
+jest.mock('@/data/partyGameStartsQueue', () => ({
+  enqueuePartyGameStart: (...args: unknown[]) => enqueuePartyGameStart(...(args as [])),
+  flushPartyGameStartsQueue: () => flushPartyGameStartsQueue(),
 }));
 
 const enqueuePartyGameEvent: jest.Mock = jest.fn(async () => undefined);
+const flushPartyGamesQueue: jest.Mock = jest.fn(async () => undefined);
 jest.mock('@/data/partyGamesQueue', () => ({
   enqueuePartyGameEvent: (...args: unknown[]) => enqueuePartyGameEvent(...(args as [])),
+  flushPartyGamesQueue: () => flushPartyGamesQueue(),
 }));
 
 const close: jest.Mock = jest.fn();
@@ -25,21 +29,34 @@ jest.mock('@/data/partyGamesStream', () => ({
 
 jest.mock('@/data/account', () => ({ generateUuidV4: () => 'uuid-1' }));
 
-import { eventsOfGame, usePartyGamesStore } from '@/stores/partyGamesStore';
+import {
+  eventsOfGame,
+  placePartyGameOnTable,
+  refreshPartyGamesAfterAccountMerge,
+  usePartyGamesStore,
+} from '@/stores/partyGamesStore';
 import type { PartyGame, PartyGameEvent } from '@/data/partyGamesClient';
+import type { PartyGameStartDelivery } from '@/data/partyGameStartsQueue';
+import { beginPrivateAccountTransition } from '@/data/privateAccountBoundary';
 
 const GAME: PartyGame = {
+  seed: 1,
   id: 'game-1',
   catalogKey: 'quiz',
   name: 'Pub kvíz',
   scoring: 'points',
   startedBy: { id: 'me', nickname: 'ja', displayName: 'Já', avatarUrl: null },
+  roster: [
+    { id: 'me', nickname: 'ja', displayName: 'Já', avatarUrl: null },
+    { id: 'h', nickname: 'honza', displayName: 'Honza', avatarUrl: null },
+  ],
   startedAt: '2026-07-30T20:00:00.000Z',
   endedAt: null,
 };
 
 const event = (over: Partial<PartyGameEvent> = {}): PartyGameEvent => ({
   cursor: 1,
+  clientId: 'event-1',
   gameId: 'game-1',
   kind: 'answer',
   account: { id: 'h', nickname: 'honza', displayName: 'Honza', avatarUrl: null },
@@ -53,10 +70,31 @@ const event = (over: Partial<PartyGameEvent> = {}): PartyGameEvent => ({
 /** The handlers the store passed to the stream, so a test can push at it. */
 const handlers = () => subscribeToPartyGames.mock.calls[0][1];
 
+const startTicket = (
+  delivery: Promise<PartyGameStartDelivery> = Promise.resolve({ ok: true, game: GAME }),
+) => ({
+  localGameId: 'local:uuid-1',
+  ownerAccountId: 'me',
+  input: {
+    clientId: 'uuid-1',
+    catalogKey: 'quiz',
+    name: 'Pub kvíz',
+    scoring: 'points' as const,
+    rosterIds: ['me', 'h'],
+  },
+  delivery,
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
-  startPartyGame.mockResolvedValue({ ok: true, game: GAME });
-  usePartyGamesStore.setState({ code: null, games: [], events: [], live: false });
+  enqueuePartyGameStart.mockResolvedValue(startTicket());
+  usePartyGamesStore.setState({
+    code: null,
+    games: [],
+    events: [],
+    sharingFailures: {},
+    live: false,
+  });
 });
 
 describe('partyGamesStore', () => {
@@ -89,24 +127,90 @@ describe('partyGamesStore', () => {
     expect(usePartyGamesStore.getState().games).toEqual([]);
   });
 
-  it('puts a game on the table once, however the stream echoes it back', () => {
+  it('puts a game on the table once, however the stream echoes it back', async () => {
     usePartyGamesStore.getState().connect('STUL24');
-    return usePartyGamesStore
+    const handle = await usePartyGamesStore
       .getState()
-      .start({ catalogKey: 'quiz', name: 'Pub kvíz' })
-      .then((id) => {
-        handlers().onGames([GAME]);
+      .start({ catalogKey: 'quiz', name: 'Pub kvíz', rosterIds: ['me', 'h'] });
+    handlers().onGames([GAME]);
 
-        expect(id).toBe('game-1');
-        expect(usePartyGamesStore.getState().games).toEqual([GAME]);
-      });
+    expect(handle).toEqual({ gameId: 'local:uuid-1', rosterIds: ['me', 'h'] });
+    expect(usePartyGamesStore.getState().games).toEqual([GAME]);
+  });
+
+  it('durably places a picked game with an explicit pending roster', async () => {
+    const handle = await placePartyGameOnTable('STUL24', {
+      catalogKey: 'quiz',
+      name: 'Pub kvíz',
+      scoring: 'points',
+    });
+
+    expect(handle?.gameId).toBe('local:uuid-1');
+    expect(enqueuePartyGameStart).toHaveBeenCalledWith('STUL24', {
+      clientId: 'uuid-1',
+      catalogKey: 'quiz',
+      name: 'Pub kvíz',
+      scoring: 'points',
+      rosterIds: [],
+    });
+  });
+
+  it('hands the durable local id back before the server start finishes', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    let resolveDelivery!: (result: PartyGameStartDelivery) => void;
+    const delivery = new Promise<PartyGameStartDelivery>((resolve) => {
+      resolveDelivery = resolve;
+    });
+    enqueuePartyGameStart.mockResolvedValueOnce(startTicket(delivery));
+
+    const handle = await usePartyGamesStore
+      .getState()
+      .start({ catalogKey: 'quiz', name: 'Pub kvíz', rosterIds: ['me', 'h'] });
+
+    expect(handle?.gameId).toBe('local:uuid-1');
+    expect(usePartyGamesStore.getState().games).toEqual([]);
+
+    resolveDelivery({ ok: true, game: GAME });
+    await delivery;
+    await Promise.resolve();
+    expect(usePartyGamesStore.getState().games).toEqual([GAME]);
+  });
+
+  it('joins the existing catalogue game instead of creating another row', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    handlers().onGames([GAME]);
+
+    const handle = await usePartyGamesStore
+      .getState()
+      .start({ catalogKey: 'quiz', name: 'Pub kvíz', rosterIds: ['me', 'h'] });
+
+    expect(handle).toEqual({ gameId: 'game-1', rosterIds: ['me', 'h'] });
+    expect(enqueuePartyGameStart).not.toHaveBeenCalled();
+  });
+
+  it('binds a lobby roster onto an existing pending placement', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    handlers().onGames([{ ...GAME, roster: [] }]);
+
+    const handle = await usePartyGamesStore
+      .getState()
+      .start({ catalogKey: 'quiz', name: 'Pub kvíz', rosterIds: ['me', 'h'] });
+
+    expect(handle).toEqual({ gameId: 'local:uuid-1', rosterIds: ['me', 'h'] });
+    expect(enqueuePartyGameStart).toHaveBeenCalledWith('STUL24', {
+      clientId: 'uuid-1',
+      catalogKey: 'quiz',
+      name: 'Pub kvíz',
+      scoring: 'points',
+      rosterIds: ['me', 'h'],
+    });
   });
 
   it('starts nothing when there is no evening to share with', async () => {
     const id = await usePartyGamesStore.getState().start({ catalogKey: 'quiz', name: 'Pub kvíz' });
 
     expect(id).toBeNull();
-    expect(startPartyGame).not.toHaveBeenCalled();
+    expect(enqueuePartyGameStart).not.toHaveBeenCalled();
   });
 
   it('queues an event rather than posting it, and stamps a client id', async () => {
@@ -120,6 +224,93 @@ describe('partyGamesStore', () => {
       kind: 'answer',
       payload: { questionId: 'q-plzen', option: 2 },
     });
+  });
+
+  it('preserves an optimistic action id for exact stream echo dedupe', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    await usePartyGamesStore
+      .getState()
+      .send(
+        'game-1',
+        { kind: 'action', payload: { type: 'prompt_next' } },
+        'optimistic-action-1',
+      );
+
+    expect(enqueuePartyGameEvent).toHaveBeenCalledWith('STUL24', 'game-1', {
+      clientId: 'optimistic-action-1',
+      kind: 'action',
+      payload: { type: 'prompt_next' },
+    });
+  });
+
+  it('surfaces a terminal start rejection instead of losing local events silently', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    enqueuePartyGameStart.mockResolvedValueOnce(startTicket(Promise.resolve({
+      ok: false,
+      permanent: true,
+      code: 'roster_member_not_active',
+      detail: 'Honza už odešel.',
+      discardedEvents: 2,
+    })));
+
+    await usePartyGamesStore
+      .getState()
+      .start({ catalogKey: 'quiz', name: 'Pub kvíz', rosterIds: ['me', 'h'] });
+    await Promise.resolve();
+
+    expect(usePartyGamesStore.getState().sharingFailures.quiz).toBe('Honza už odešel.');
+  });
+
+  it('surfaces a local queue refusal and keeps the game local-only', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    enqueuePartyGameStart.mockResolvedValueOnce(null);
+
+    const handle = await usePartyGamesStore
+      .getState()
+      .start({ catalogKey: 'quiz', name: 'Pub kvíz', rosterIds: ['me', 'h'] });
+
+    expect(handle).toBeNull();
+    expect(usePartyGamesStore.getState().sharingFailures.quiz).toBe(
+      'Hru se nepodařilo bezpečně uložit pro sdílení.',
+    );
+  });
+
+  it('reopens the stream after account merge and ignores the stale roster callback', () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    const oldHandlers = handlers();
+
+    refreshPartyGamesAfterAccountMerge();
+    oldHandlers.onGames([GAME]);
+
+    expect(close).toHaveBeenCalled();
+    expect(subscribeToPartyGames).toHaveBeenCalledTimes(2);
+    expect(usePartyGamesStore.getState().games).toEqual([]);
+    expect(flushPartyGameStartsQueue).toHaveBeenCalled();
+    expect(flushPartyGamesQueue).toHaveBeenCalled();
+  });
+
+  it('reconnects the exact evening after a rejected auth boundary releases', () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    const oldHandlers = handlers();
+    oldHandlers.onGames([GAME]);
+    const closesBeforeBoundary = close.mock.calls.length;
+
+    // This is the lifecycle of a 4xx login: freeze and close all A resources,
+    // then abort the credential transition while A remains the durable owner.
+    const transition = beginPrivateAccountTransition('credential-auth', 'me');
+    expect(transition).not.toBeNull();
+    expect(close).toHaveBeenCalledTimes(closesBeforeBoundary + 1);
+    transition!.release();
+
+    expect(subscribeToPartyGames).toHaveBeenCalledTimes(2);
+    expect(subscribeToPartyGames.mock.calls[1][0]).toBe('STUL24');
+    expect(usePartyGamesStore.getState().code).toBe('STUL24');
+    expect(usePartyGamesStore.getState().games).toEqual([]);
+
+    oldHandlers.onGames([GAME]);
+    expect(usePartyGamesStore.getState().games).toEqual([]);
+    subscribeToPartyGames.mock.calls[1][1].onGames([GAME]);
+    expect(usePartyGamesStore.getState().games).toEqual([GAME]);
   });
 });
 

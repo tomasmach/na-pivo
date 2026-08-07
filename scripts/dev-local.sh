@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local dev runner: applies backend migrations, starts the Django backend,
+# Local dev runner: applies backend migrations, starts the Django ASGI backend,
 # then builds and launches the app in the iOS simulator. On exit (Ctrl+C)
 # it stops the backend it started and shuts down the simulator.
 set -euo pipefail
@@ -34,7 +34,8 @@ cleanup() {
   if [ "$STARTED_BACKEND" = 1 ] && [ -n "$BACKEND_PID" ]; then
     pkill -P "$BACKEND_PID" 2>/dev/null || true
     kill "$BACKEND_PID" 2>/dev/null || true
-    # runserver's autoreload child can outlive its parent; free the port
+    # The ASGI reloader child can outlive its parent; free the port as a final
+    # guard so the next `npm run dev` never reuses a stale backend.
     lsof -ti "tcp:$BACKEND_PORT" | xargs kill 2>/dev/null || true
   fi
   # The simulator is only torn down when this runner OWNS the session. Set
@@ -58,7 +59,16 @@ if lsof -ti "tcp:$BACKEND_PORT" >/dev/null 2>&1; then
   echo "==> Backend already running on port $BACKEND_PORT, reusing it (won't be stopped on exit)"
 else
   echo "==> Starting backend on 0.0.0.0:$BACKEND_PORT"
-  (cd "$BACKEND_DIR" && exec uv run python manage.py runserver "0.0.0.0:$BACKEND_PORT") &
+  # The shared party-game endpoint is an async SSE stream. Django's WSGI
+  # `runserver` adapts its async iterator synchronously, which both hides the
+  # production behaviour and can fail while a stream is being disconnected.
+  # Run the same ASGI application and Uvicorn event loop used in production.
+  (cd "$BACKEND_DIR" && exec uv run --extra prod uvicorn config.asgi:application \
+    --host 0.0.0.0 \
+    --port "$BACKEND_PORT" \
+    --reload \
+    --reload-dir "$BACKEND_DIR" \
+    --timeout-graceful-shutdown 3) &
   BACKEND_PID=$!
   STARTED_BACKEND=1
   for _ in $(seq 1 30); do

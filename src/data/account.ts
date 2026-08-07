@@ -32,6 +32,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { getBackendEndpoint } from './backendConfig';
+import {
+  isPrivateAccountMutationScopeCurrent,
+  privateAccountMergeBlocksAnonymousEviction,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+} from './privateAccountBoundary';
 import { setTelemetrySession, trackApiFailure } from './telemetryClient';
 
 export interface AccountSession {
@@ -361,6 +367,30 @@ export async function clearCachedAccount(
   setTelemetrySession(null);
 }
 
+/**
+ * Remove the current credential as one serialized account boundary. Private
+ * storage is cleared by revertToAnonymous BEFORE this runs, so an app kill after
+ * a successful delete can never boot a replacement identity over stale A data.
+ */
+async function clearCachedAccountAtBoundary(): Promise<boolean> {
+  const cleared = await serializeSessionCache(async () => {
+    const deleted = await deleteCachedAccountUnlocked();
+    if (!deleted) return false;
+
+    // Never let a previously memoized read hand the just-removed credential
+    // back to the logout caller. Existing waiters may still finish, but every
+    // post-boundary ensure starts from the now-empty secure cache.
+    ensureAccountInFlight = null;
+
+    return true;
+  });
+  if (cleared) {
+    resetBootstrapBackoff();
+    setTelemetrySession(null);
+  }
+  return cleared;
+}
+
 export function setAnonymousSessionEvictionListener(
   listener: (() => void | Promise<void>) | null,
 ): void {
@@ -378,31 +408,72 @@ export async function clearCachedAnonymousAccount(
 ): Promise<boolean> {
   if (!session || session.authenticated) return false;
 
-  const evicted = await serializeSessionCache(async () => {
-    const cachedRead = await readCachedAccountUnlocked();
-    const cached = cachedRead.available ? cachedRead.account : null;
-    if (!cached || cached.authenticated || cached.token !== session.token) {
+  let evicted = false;
+  try {
+    evicted = await runPrivateAccountMutation(async (scope) => {
+      if (await privateAccountMergeBlocksAnonymousEviction(session.accountId)) {
+        trackApiFailure('anonymous_session_eviction', {
+          endpoint: context.endpoint,
+          source: context.source,
+          status: 401,
+          reason: 'anonymous_401_merge_unresolved',
+        });
+        return false;
+      }
+
+      return serializeSessionCache(async () => {
+        const cachedRead = await readCachedAccountUnlocked();
+        const cached = cachedRead.available ? cachedRead.account : null;
+        if (!cached || cached.authenticated || cached.token !== session.token) {
+          trackApiFailure('anonymous_session_eviction', {
+            endpoint: context.endpoint,
+            source: context.source,
+            status: 401,
+            reason: 'anonymous_401_stale_session_ignored',
+          });
+          return false;
+        }
+
+        // This is the eviction linearization point. A credential transition
+        // freezes the process generation synchronously and then drains this
+        // lease before persisting its merge marker. If it won the race, A's
+        // only retry bearer must stay in SecureStore.
+        if (!isPrivateAccountMutationScopeCurrent(scope)) return false;
+
+        const deleted = await deleteCachedAccountUnlocked();
+        if (!deleted) return false;
+
+        setTelemetrySession(null);
+        trackApiFailure('anonymous_session_eviction', {
+          endpoint: context.endpoint,
+          source: context.source,
+          status: 401,
+          reason: 'anonymous_401_current_session_evicted',
+        });
+        return true;
+      });
+    });
+  } catch (error) {
+    if (
+      error instanceof PrivateAccountMutationFrozenError &&
+      await privateAccountMergeBlocksAnonymousEviction(session.accountId)
+    ) {
       trackApiFailure('anonymous_session_eviction', {
         endpoint: context.endpoint,
         source: context.source,
         status: 401,
-        reason: 'anonymous_401_stale_session_ignored',
+        reason: 'anonymous_401_merge_unresolved',
       });
-      return false;
+    } else if (!(error instanceof PrivateAccountMutationFrozenError)) {
+      trackApiFailure('anonymous_session_eviction', {
+        endpoint: context.endpoint,
+        source: context.source,
+        status: 401,
+        reason: 'anonymous_401_eviction_failed',
+      });
     }
-
-    const deleted = await deleteCachedAccountUnlocked();
-    if (!deleted) return false;
-
-    setTelemetrySession(null);
-    trackApiFailure('anonymous_session_eviction', {
-      endpoint: context.endpoint,
-      source: context.source,
-      status: 401,
-      reason: 'anonymous_401_current_session_evicted',
-    });
-    return true;
-  });
+    return false;
+  }
 
   if (evicted && anonymousSessionEvictionListener) {
     try {
@@ -462,6 +533,17 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
   // A failed Keychain read is not proof that the account is absent. Wait for a
   // later retry instead of registering and overwriting a possibly signed-in user.
   if (!cachedRead.available) return null;
+
+  // A response-lost anonymous merge may have revoked A server-side while its
+  // exact operation marker is the only route to B. Never mint unrelated C over
+  // A's private queues; the auth retry must replay that same operation instead.
+  if (await privateAccountMergeBlocksAnonymousEviction()) {
+    trackApiFailure('account_bootstrap', {
+      endpoint: '/v1/account',
+      reason: 'bootstrap_merge_unresolved',
+    });
+    return null;
+  }
 
   if (Date.now() < bootstrapRetryAfter) {
     trackApiFailure('account_bootstrap', {
@@ -562,9 +644,15 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
   // Cancelling one caller only stops that caller waiting for the shared result.
   if (signal?.aborted) return null;
 
-  ensureAccountInFlight ??= ensureAccountOnce().finally(() => {
-    ensureAccountInFlight = null;
-  });
+  if (!ensureAccountInFlight) {
+    const operation = ensureAccountOnce();
+    const tracked = operation.finally(() => {
+      // A session boundary may deliberately replace this shared operation while
+      // it is finishing. Do not let the old promise erase the newer one.
+      if (ensureAccountInFlight === tracked) ensureAccountInFlight = null;
+    });
+    ensureAccountInFlight = tracked;
+  }
   const shared = ensureAccountInFlight;
   if (!signal) return shared;
 
@@ -639,6 +727,7 @@ export async function fetchAccountPreferences(
 export async function updateAccountPreferences(
   preferences: Partial<AccountPreferences>,
   signal?: AbortSignal,
+  expectedAccountId?: string,
 ): Promise<AccountPreferences | null> {
   if (signal?.aborted) return null;
 
@@ -647,6 +736,9 @@ export async function updateAccountPreferences(
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
+  // Queued preferences are private account data. Refuse to reuse a request
+  // after a credential transition installed a different account.
+  if (expectedAccountId && session.accountId !== expectedAccountId) return null;
 
   const body: Record<string, unknown> = {};
   if (preferences.mode === 'nearest' || preferences.mode === 'surprise') {
@@ -731,6 +823,19 @@ export async function getSessionToken(): Promise<string | null> {
   return cached.account?.token ?? null;
 }
 
+export type DurableAccountSessionRead =
+  | { available: true; session: AccountSession | null }
+  | { available: false; session: AccountSession | null };
+
+/**
+ * Read SecureStore without registration, identity repair, or network I/O.
+ * `available:false` means a locked/unavailable Keychain, never "no account".
+ */
+export async function readDurableAccountSession(): Promise<DurableAccountSessionRead> {
+  const cached = await readCachedAccount();
+  return { available: cached.available, session: cached.account };
+}
+
 /**
  * Persist a signed-in session: the server-issued token + account id, flagged
  * ``authenticated`` so ensureAccount() stops treating it as a device-bound
@@ -760,10 +865,28 @@ export async function setSession(session: {
  * Sign out: drop the cached session, mint a FRESH device identity (the old one
  * is now tied to a claimed account that needs a token we no longer hold), then
  * re-establish a clean anonymous device account so the app keeps working.
- * Always resolves; never throws.
+ * The private-data callback runs first. This is deliberately clear-first: a kill
+ * after SecureStore deletion must not let a replacement account hydrate A's
+ * persisted queues. If credential removal fails, A remains the active session,
+ * its local caches stay empty/privacy-safe, and server data can be restored.
  */
-export async function revertToAnonymous(signal?: AbortSignal): Promise<AccountSession | null> {
-  await clearCachedAccount();
+export async function revertToAnonymous(
+  signal?: AbortSignal,
+  beforeSessionCleared: () => void | Promise<void> = () => undefined,
+): Promise<AccountSession | null> {
+  // A durable anonymous merge marker is the only local proof that A may have
+  // been claimed server-side while its response was lost. Clearing A's bearer
+  // here would make the operation impossible to retry and tempt bootstrap to
+  // mint unrelated C over A's private data. The owning auth flow must resolve
+  // the exact operation first.
+  if (await privateAccountMergeBlocksAnonymousEviction()) {
+    throw new Error('Anonymous account merge is unresolved.');
+  }
+  await beforeSessionCleared();
+  const cleared = await clearCachedAccountAtBoundary();
+  if (!cleared) {
+    throw new Error('Secure session removal failed.');
+  }
   await replaceDeviceId();
   const session = await ensureAccount(signal);
   setTelemetrySession(session);

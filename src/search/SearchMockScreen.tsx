@@ -292,8 +292,14 @@ export default function SearchMockScreen() {
               <Pressable
                 key={beer.slug}
                 onPress={() => {
-                  setQuery(beer.name);
                   remember(beer.name);
+                  router.push({
+                    pathname: '/beer-detail',
+                    params: {
+                      beer: beer.name,
+                      ...(beer.brandName ? { brewery: beer.brandName } : {}),
+                    },
+                  } as Href);
                 }}
                 style={({ pressed }) => [styles.row, pressed && styles.pressed]}
                 accessibilityRole="button"
@@ -309,6 +315,7 @@ export default function SearchMockScreen() {
                     </Text>
                   ) : null}
                 </View>
+                <ChevronRightIcon size={16} color={Colors.mutedText} />
               </Pressable>
             ))
           )

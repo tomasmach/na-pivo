@@ -91,7 +91,12 @@ function emptySeries(length: number, labels: string[]): ProfileStatSeries {
 }
 
 export function profileSeries(stats: RemoteStats | null, period: ProfilePeriod): ProfileStatSeries {
-  return profileTimelineSeries(stats?.timeline ?? null, period);
+  return profileTimelineSeries(profileTimeline(stats), period);
+}
+
+/** Drinking-day stats are canonical for Profile; legacy per-pub stats remain a fallback. */
+export function profileTimeline(stats: RemoteStats | null): RemoteStats['timeline'] | null {
+  return stats?.nightTimeline ?? stats?.timeline ?? null;
 }
 
 export function profileTimelineSeries(
@@ -134,12 +139,45 @@ function formatDate(value: string | null): string {
 export function profileRecords(stats: RemoteStats | null): ProfileRecord[] {
   if (!stats) return [];
   const records: ProfileRecord[] = [];
+  if (stats.nightRecords) {
+    if (stats.nightRecords.longestSeconds > 0) {
+      const pubs = stats.nightRecords.longestPubNames ?? [];
+      const context = [
+        formatDate(stats.nightRecords.longestDate ?? null),
+        pubs.join(' → '),
+      ].filter(Boolean);
+      records.push({
+        id: 'longest-evening',
+        title: 'Nejdelší večer',
+        value: formatDuration(stats.nightRecords.longestSeconds),
+        when: context.join(' · '),
+      });
+    }
+    if (stats.nightRecords.mostBeers > 0) {
+      const pubs = stats.nightRecords.mostBeersPubNames ?? [];
+      const context = [
+        formatDate(stats.nightRecords.mostBeersDate ?? null),
+        pubs.join(' → '),
+      ].filter(Boolean);
+      records.push({
+        id: 'most-beers',
+        title: 'Nejvíc piv za večer',
+        value: String(stats.nightRecords.mostBeers),
+        when: context.join(' · '),
+      });
+    }
+    return records;
+  }
   if (stats.records.longestEveningSeconds !== null) {
+    const context = [
+      formatDate(stats.records.longestEveningDate ?? null),
+      stats.records.longestEveningPubName,
+    ].filter(Boolean);
     records.push({
       id: 'longest-evening',
       title: 'Nejdelší večer',
       value: formatDuration(stats.records.longestEveningSeconds),
-      when: '',
+      when: context.join(' · '),
     });
   }
   if (stats.records.mostBeersInEvening > 0) {

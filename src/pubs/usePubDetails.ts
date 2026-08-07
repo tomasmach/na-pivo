@@ -3,6 +3,18 @@ import { useEffect, useState } from 'react';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
 import type { Pub } from '@/data/pubs';
 
+const PENDING_FALLBACK_MS = 3_000;
+
+function settlePendingHours(pub: Pub): Pub {
+  if (
+    (pub.hoursStatus === 'loading' || pub.hoursStatus === 'pending') &&
+    pub.isOpenNow == null
+  ) {
+    return { ...pub, hoursStatus: 'unknown' };
+  }
+  return pub;
+}
+
 export function mergePubHours(pub: Pub, details: PubHoursResult): Pub {
   return {
     ...pub,
@@ -31,13 +43,28 @@ export function usePubDetails(pub: Pub): Pub {
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let pendingTimedOut = false;
     let retryIndex = 0;
     const retryDelays = [10_000, 30_000] as const;
 
+    const pendingFallback = setTimeout(() => {
+      pendingTimedOut = true;
+      setResolved((current) => {
+        const currentPub = current?.id === pub.id ? current.pub : pub;
+        return { id: pub.id, pub: settlePendingHours(currentPub) };
+      });
+    }, PENDING_FALLBACK_MS);
+
     const load = () => void fetchPubHours([pub], controller.signal).then((results) => {
       const details = results.get(pub.id);
-      if (!details || controller.signal.aborted) return;
-      setResolved({ id: pub.id, pub: mergePubHours(pub, details) });
+      if (controller.signal.aborted) return;
+      if (!details) return;
+      const merged = mergePubHours(pub, details);
+      setResolved({
+        id: pub.id,
+        pub: pendingTimedOut ? settlePendingHours(merged) : merged,
+      });
+      if (details.status !== 'pending') clearTimeout(pendingFallback);
       if (details.status === 'pending' && retryIndex < retryDelays.length) {
         const delay = retryDelays[retryIndex];
         retryIndex += 1;
@@ -47,6 +74,7 @@ export function usePubDetails(pub: Pub): Pub {
     load();
     return () => {
       controller.abort();
+      clearTimeout(pendingFallback);
       if (timer) clearTimeout(timer);
     };
   }, [pub]);

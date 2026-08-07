@@ -77,6 +77,11 @@ from pubs.beer_catalog import (
     sync_pub_beer_indexes_for_menu,
     upsert_pub_beer_brand,
 )
+from pubs.beer_photo_deletions import (
+    enqueue_beer_photo_file_deletion,
+    retry_beer_photo_file_deletions,
+    schedule_beer_photo_file_deletions,
+)
 from pubs.enrichment import (
     GoogleGeocodingSource,
     GoogleGeocodingUnavailableError,
@@ -108,6 +113,7 @@ from pubs.menu_scan import (
 from pubs.models import (
     BEER_CHECKIN_TAGS,
     Account,
+    AccountDeletionOperation,
     AccountMappedPub,
     AccountPubCompletion,
     AccountUsageStats,
@@ -118,9 +124,13 @@ from pubs.models import (
     BeerCheckIn,
     BeerCheckInReaction,
     BeerPhoto,
+    BeerPhotoDeletionTombstone,
+    BeerPhotoFileDeletion,
     ClientEvent,
     CommunityEvent,
     CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
     ContentReport,
     DrinkLog,
     FeedbackReport,
@@ -136,6 +146,8 @@ from pubs.models import (
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
+    PartyGame,
+    PartyGameEvent,
     PhotoContest,
     PhotoContestEntry,
     PhotoContestVote,
@@ -153,6 +165,8 @@ from pubs.models import (
     PubGooglePlace,
     PubHours,
     PublishedNight,
+    PublishedNightComment,
+    PublishedNightPubReference,
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
@@ -162,6 +176,8 @@ from pubs.models import (
     PushDevice,
     ReleaseNote,
     UserAddedPub,
+    account_deletion_fingerprint,
+    hash_account_token,
 )
 from pubs.photo_contest import _rank_xp, current_photo_contest
 from pubs.photos import BeerPhotoError, process_beer_photo
@@ -173,11 +189,11 @@ from .authentication import AccountTokenAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
 from .drink_flags import evaluate_drink_flags
 from .profile_helpers import (
-    derive_account_achievements,
-    derive_account_profile_stats,
+    derive_account_public_achievements,
     derive_account_public_stats,
 )
 from .serializers import (
+    AccountDeletionOperationSerializer,
     AccountMeSerializer,
     AccountRegisterSerializer,
     AccountSerializer,
@@ -225,6 +241,8 @@ from .serializers import (
     PubCommunityResponseSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
+    PublishedNightCommentRequestSerializer,
+    PublishedNightCommentSerializer,
     PublishedNightFeedQuerySerializer,
     PublishedNightRequestSerializer,
     PublishedNightSerializer,
@@ -609,12 +627,26 @@ def _published_night_context(request: Request) -> dict:
 
 
 def _published_night_queryset(viewer: Account):
-    """Night rows with author, reaction count, and viewer state in one query."""
+    """Night rows with viewer-specific reaction/comment state in one query."""
 
     viewer_round = NightRound.objects.filter(night_id=OuterRef("pk"), account=viewer)
+    blocked_ids = _blocked_account_ids(viewer)
+    visible_comment_filter = Q(
+        comments__is_removed=False,
+        comments__account__status=Account.Status.ACTIVE,
+    )
+    if blocked_ids:
+        visible_comment_filter &= ~Q(comments__account_id__in=blocked_ids)
     return PublishedNight.objects.select_related("account").annotate(
-        rounds_count=Count("rounds"),
+        # Both reverse relations are joined here; DISTINCT prevents a night
+        # with two rounds and three comments from reporting six of each.
+        rounds_count=Count("rounds", distinct=True),
         viewer_has_round=Exists(viewer_round),
+        comments_count=Count(
+            "comments",
+            filter=visible_comment_filter,
+            distinct=True,
+        ),
     )
 
 
@@ -642,6 +674,146 @@ def _published_night_visible_to(night: PublishedNight, viewer: Account) -> bool:
         and night.visibility
         in (PublishedNight.Visibility.FRIENDS, PublishedNight.Visibility.PUBLIC)
     )
+
+
+def _visible_published_night(viewer: Account, night_id) -> PublishedNight | None:
+    night = (
+        _published_night_queryset(viewer)
+        .filter(
+            public_id=night_id,
+            account__status=Account.Status.ACTIVE,
+            is_removed=False,
+        )
+        .first()
+    )
+    return night if night is not None and _published_night_visible_to(night, viewer) else None
+
+
+def _party_membership_window(
+    evening: PartyEvening,
+    membership: PartyEveningMember,
+) -> tuple[datetime, datetime]:
+    """Return the exact interval in which one account belonged to a table."""
+
+    started_at = (
+        evening.started_at
+        if membership.account_id == evening.host_id
+        else membership.joined_at
+    )
+    end_candidates = [dj_timezone.now()]
+    if evening.ended_at is not None:
+        end_candidates.append(evening.ended_at)
+    if membership.left_at is not None:
+        end_candidates.append(membership.left_at)
+    return started_at, min(end_candidates)
+
+
+def _snapshot_party_evening(
+    data: dict,
+    account: Account,
+) -> tuple[PartyEvening, PartyEveningMember] | None:
+    """Validate transient party proof without ever persisting the join code."""
+
+    code = (data.get("party_code") or "").strip().upper()
+    if not code:
+        return None
+    membership = (
+        PartyEveningMember.objects.select_related("evening")
+        .filter(evening__join_code=code, account=account)
+        .first()
+    )
+    if membership is None:
+        return None
+    evening = membership.evening
+    grace = timedelta(minutes=10)
+    evening_end = evening.ended_at or dj_timezone.now()
+    if evening.started_at > data["ended_at"] + grace:
+        return None
+    if evening_end < data["started_at"] - grace:
+        return None
+    membership_start, membership_end = _party_membership_window(
+        evening, membership
+    )
+    if membership_start > data["ended_at"] + grace:
+        return None
+    if membership_end < data["started_at"] - grace:
+        return None
+    return evening, membership
+
+
+def _published_night_story_updates(data: dict, account: Account) -> dict:
+    """Return only author-owned or consent-filtered optional story fields.
+
+    Omitted request fields stay omitted so a released client updating the same
+    drinking day cannot erase a newer client's story. Invalid/stale references
+    are silently dropped: publishing the counts is more important than a hero
+    tile, and rejecting a stale party code would break offline retries.
+    """
+
+    updates = {
+        field: data[field]
+        for field in ("title", "roast_line", "roast_basis")
+        if field in data
+    }
+    reference_fields = ("participant_ids", "photo_ids", "game_ids")
+    if not any(field in data for field in reference_fields):
+        return updates
+
+    if "photo_ids" in data:
+        # Photo references may be either the server public id or the upload's
+        # idempotent client id. Keeping an unresolved client id lets a photo
+        # captured offline become the hero after its upload eventually lands.
+        # Serialization still resolves only this author's friends-visible rows.
+        updates["photo_ids"] = [str(value) for value in data["photo_ids"]]
+
+    snapshot = _snapshot_party_evening(data, account)
+    if snapshot is None:
+        for field in ("participant_ids", "game_ids"):
+            if field in data:
+                updates[field] = []
+        return updates
+    evening, author_membership = snapshot
+
+    blocked_ids = _blocked_account_ids(account)
+    friend_ids = set(_accepted_friend_ids(account)) - blocked_ids
+
+    if "participant_ids" in data:
+        requested = [str(value) for value in data["participant_ids"]]
+        author_start, author_end = _party_membership_window(
+            evening, author_membership
+        )
+        memberships = PartyEveningMember.objects.select_related("account").filter(
+            evening=evening,
+            account__public_id__in=requested,
+            account__status=Account.Status.ACTIVE,
+            account__ghost_mode=False,
+            account__share_drinks_with_parta=True,
+            account_id__in=friend_ids,
+        ).exclude(account=account)
+        allowed = {
+            str(membership.account.public_id)
+            for membership in memberships
+            if (
+                (participant_window := _party_membership_window(evening, membership))[0]
+                <= author_end
+                and author_start <= participant_window[1]
+            )
+        }
+        updates["participant_ids"] = [value for value in requested if value in allowed]
+
+    if "game_ids" in data:
+        requested = [str(value) for value in data["game_ids"]]
+        # Only a game this author put down is theirs to publish. The response
+        # exposes catalogue identity/name/scoring only, never events or scores.
+        rows = PartyGame.objects.filter(
+            public_id__in=requested,
+            evening=evening,
+            started_by=account,
+        )
+        allowed = {str(row.public_id) for row in rows}
+        updates["game_ids"] = [value for value in requested if value in allowed]
+
+    return updates
 
 
 def _blocked_account_ids(account: Account) -> set[int]:
@@ -1877,28 +2049,94 @@ def _award_first_diary_event_xp(
     return _increment_pivar_xp(account, amount if not had_event else 0)
 
 
-def _party_evening_for_entry(account: Account, code: str | None) -> PartyEvening | None:
-    """Resolve an active table association, or None without failing the write."""
-    if not code or account.ghost_mode:
+_PARTY_ENTRY_CLOCK_GRACE = timedelta(minutes=10)
+_PARTY_ENTRY_MAX_DURATION = timedelta(hours=24)
+
+
+def _party_evening_for_entry(
+    account: Account,
+    code: str | None,
+    *,
+    occurred_at: datetime,
+    occurred_until: datetime | None = None,
+) -> PartyEvening | None:
+    """Resolve the table an offline diary entry occurred in, or silently fail.
+
+    Upload time is deliberately irrelevant: a phone may regain signal after the
+    host has ended the evening.  The client-supplied occurrence time must still
+    overlap the bounded table/membership window, so knowing an old join code is
+    never enough to attach a row.  This only returns an FK target; it never
+    changes the evening or membership state.
+    """
+    if (
+        not code
+        or account.ghost_mode
+        or account.status != Account.Status.ACTIVE
+    ):
         return None
-    evening = (
-        PartyEvening.objects.select_related("host")
-        .filter(
-            join_code=code.upper(),
-            active=True,
-            memberships__account=account,
-            memberships__active=True,
-        )
+
+    membership = (
+        PartyEveningMember.objects.select_related("evening__host")
+        .filter(evening__join_code=code.upper(), account=account)
         .first()
     )
-    if evening is None or evening.host.ghost_mode:
+    if membership is None:
         return None
-    if evening.host_id in _blocked_account_ids(account):
+
+    evening = membership.evening
+    if (
+        evening.host.ghost_mode
+        or evening.host.status != Account.Status.ACTIVE
+        or evening.host_id in _blocked_account_ids(account)
+    ):
+        return None
+
+    # An inconsistent inactive row without an end timestamp has no trustworthy
+    # historical window. Likewise an inactive membership without ``left_at``
+    # cannot prove when the caller still belonged to the table.
+    if not evening.active and evening.ended_at is None:
+        return None
+    if not membership.active and membership.left_at is None:
+        return None
+
+    entry_end = occurred_until or occurred_at
+    if entry_end < occurred_at:
+        return None
+    if occurred_until is not None and entry_end - occurred_at > _PARTY_ENTRY_MAX_DURATION:
+        return None
+
+    # The host's membership row is created when an offline create request
+    # reaches the server, while ``started_at`` is the client-captured beginning
+    # of the evening. Guests can only join online, so their server join time is
+    # the privacy boundary.
+    membership_started_at = (
+        evening.started_at if evening.host_id == account.id else membership.joined_at
+    )
+    window_start = max(evening.started_at, membership_started_at) - _PARTY_ENTRY_CLOCK_GRACE
+    window_ends = [
+        evening.started_at + _PARTY_ENTRY_MAX_DURATION + _PARTY_ENTRY_CLOCK_GRACE,
+    ]
+    if evening.ended_at is not None:
+        window_ends.append(evening.ended_at + _PARTY_ENTRY_CLOCK_GRACE)
+    else:
+        window_ends.append(dj_timezone.now() + _PARTY_ENTRY_CLOCK_GRACE)
+    if membership.left_at is not None:
+        # Leaving is an explicit privacy boundary. Unlike clock skew around the
+        # table itself, no grace is allowed after it.
+        window_ends.append(membership.left_at)
+    window_end = min(window_ends)
+
+    if entry_end < window_start or occurred_at > window_end:
         return None
     return evening
 
 
-def _party_evening_for_drink(account: Account, code: str | None) -> PartyEvening | None:
+def _party_evening_for_drink(
+    account: Account,
+    code: str | None,
+    *,
+    drank_at: datetime,
+) -> PartyEvening | None:
     """
     The evening a drink belongs to, or None — never an error.
 
@@ -1908,14 +2146,14 @@ def _party_evening_for_drink(account: Account, code: str | None) -> PartyEvening
     ended in the meantime must not jam it. Nothing here can stop a beer being
     logged.
 
-    Silent when: no code, an unknown or ended evening, an account that is not an
-    active member of it — or an account that has turned off the automatic drink
-    feed. That last one is the toggle honouring what it says on the tin: joining
-    a table shares that you are there, not what is in your glass.
+    Silent when the code cannot be safely resolved for the time the drink was
+    logged, or when the account has turned off the automatic drink feed. That
+    last one is the toggle honouring what it says on the tin: joining a table
+    shares that you are there, not what is in your glass.
     """
     if not account.share_drinks_with_parta:
         return None
-    return _party_evening_for_entry(account, code)
+    return _party_evening_for_entry(account, code, occurred_at=drank_at)
 
 
 class DrinksView(APIView):
@@ -2078,7 +2316,11 @@ class DrinksView(APIView):
                 drink = DrinkLog.objects.create(
                     account=account,
                     client_id=data["client_id"],
-                    party_evening=_party_evening_for_drink(account, data.get("party_code")),
+                    party_evening=_party_evening_for_drink(
+                        account,
+                        data.get("party_code"),
+                        drank_at=flags.drank_at,
+                    ),
                     cache_key=cache_key,
                     name=data.get("name") or "",
                     lat=data.get("lat") if is_pub else None,
@@ -2894,6 +3136,8 @@ class PubVisitView(APIView):
                 party_evening = _party_evening_for_entry(
                     request.user,
                     data.get("party_code"),
+                    occurred_at=data["started_at"],
+                    occurred_until=data.get("ended_at"),
                 )
                 # A visit is commonly closed after the table ended. Preserve
                 # the association established by its first POST rather than
@@ -2960,19 +3204,32 @@ class MyStatsView(APIView):
     model — an account holder keeps stats beyond the device's 50-evening cap, and
     the same numbers later feed the Pivní Wrapped. An account that has logged
     nothing gets a 200 with zeroes / nulls (never a 404). Auth required (401
-    without a valid token); no throttle scope of its own (cheap indexed scan).
+    without a valid token); repeated aggregate rebuilds have their own read
+    throttle budget.
     New clients may pass an IANA ``timezone`` query parameter; invalid or absent
     values use Europe/Prague for backwards compatibility.
     """
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "stats"
 
     def get(self, request: Request) -> Response:
+        exclude_drinking_day = None
+        raw_exclude_day = request.query_params.get("exclude_drinking_day")
+        if raw_exclude_day:
+            try:
+                exclude_drinking_day = date.fromisoformat(raw_exclude_day)
+            except ValueError:
+                # Additive hint for 3.0 recap clients. Older or malformed
+                # callers still receive the released lifetime payload.
+                exclude_drinking_day = None
         try:
             payload = compute_my_stats(
                 request.user,
                 timezone_name=request.query_params.get("timezone"),
+                exclude_drinking_day=exclude_drinking_day,
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
@@ -3851,6 +4108,92 @@ class FriendDrinkFeedView(APIView):
         )
 
 
+_FRIEND_SUGGESTION_CANDIDATE_LIMIT = 100
+_FRIEND_SUGGESTION_LIMIT = 5
+
+
+def _friend_suggestion_payloads(
+    viewer: Account,
+    profiles,
+    *,
+    request: Request,
+) -> list[dict]:
+    """Rank bounded suggestions from the accepted-friend graph only."""
+
+    candidates = list(
+        profiles.order_by("-last_seen_at", "nickname", "display_name", "id")[
+            :_FRIEND_SUGGESTION_CANDIDATE_LIMIT
+        ]
+    )
+    if not candidates:
+        return []
+
+    candidate_ids = {account.id for account in candidates}
+    viewer_friend_ids = (
+        Friendship.objects.filter(
+            status=Friendship.Status.ACCEPTED,
+        )
+        .filter(Q(requester=viewer) | Q(recipient=viewer))
+        .annotate(
+            friend_id=Case(
+                When(requester=viewer, then=F("recipient_id")),
+                default=F("requester_id"),
+            )
+        )
+        .values("friend_id")
+    )
+    # Aggregate each edge direction in SQL. Even a pathological social graph
+    # therefore materializes at most two rows per bounded candidate, not every
+    # shared-friend edge.
+    mutual_friend_counts: dict[int, int] = defaultdict(int)
+    outgoing_mutuals = (
+        Friendship.objects.filter(
+            status=Friendship.Status.ACCEPTED,
+            requester_id__in=candidate_ids,
+            recipient_id__in=Subquery(viewer_friend_ids),
+        )
+        .values("requester_id")
+        .annotate(mutual_count=Count("recipient_id", distinct=True))
+    )
+    for row in outgoing_mutuals:
+        mutual_friend_counts[row["requester_id"]] += row["mutual_count"]
+    incoming_mutuals = (
+        Friendship.objects.filter(
+            status=Friendship.Status.ACCEPTED,
+            recipient_id__in=candidate_ids,
+            requester_id__in=Subquery(viewer_friend_ids),
+        )
+        .values("recipient_id")
+        .annotate(mutual_count=Count("requester_id", distinct=True))
+    )
+    for row in incoming_mutuals:
+        mutual_friend_counts[row["recipient_id"]] += row["mutual_count"]
+
+    serialized = FriendProfileSerializer(
+        candidates,
+        many=True,
+        context=_friend_profile_context(request),
+    ).data
+    ranked: list[tuple[tuple[int, int], dict]] = []
+    for index, (account, profile) in enumerate(
+        zip(candidates, serialized, strict=True)
+    ):
+        mutual_count = mutual_friend_counts.get(account.id, 0)
+        if not mutual_count:
+            continue
+        payload = dict(profile)
+        payload["suggestion_reason"] = {
+            "kind": "mutual_friends",
+            "count": mutual_count,
+        }
+        # Never derive non-friend discovery from private visit or drink rows.
+        rank = (mutual_count, -index)
+        ranked.append((rank, payload))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [payload for _rank, payload in ranked[:_FRIEND_SUGGESTION_LIMIT]]
+
+
 class FriendSearchView(APIView):
     """GET /v1/friends/search?q=nick — public profile lookup for adding friends."""
 
@@ -3887,10 +4230,16 @@ class FriendSearchView(APIView):
                 for account_id in pair
                 if account_id != request.user.pk
             }
-            profiles = (
-                profiles.exclude(pk__in=excluded_ids)
-                .exclude(Q(nickname__isnull=True) | Q(nickname=""))
-                .order_by("-last_seen_at", "nickname", "display_name")[:5]
+            suggestion_payloads = _friend_suggestion_payloads(
+                request.user,
+                profiles.exclude(pk__in=excluded_ids).exclude(
+                    Q(nickname__isnull=True) | Q(nickname="")
+                ),
+                request=request,
+            )
+            return Response(
+                {"results": suggestion_payloads},
+                status=status.HTTP_200_OK,
             )
         else:
             profiles = profiles.filter(
@@ -4706,7 +5055,7 @@ class FriendDetailView(APIView):
                 )
                 .order_by("-checked_in_at", "created_at", "id")[:5]
             )
-        public_profile_stats = derive_account_profile_stats(friend)
+        public_profile_stats = derive_account_public_stats(friend, is_friend=is_friend)
 
         return Response(
             {
@@ -4715,13 +5064,15 @@ class FriendDetailView(APIView):
                 "friendship_id": str(friendship.public_id) if is_friend else None,
                 "friendship_status": friendship_status,
                 "incoming_request_id": incoming_request_id,
-                "public_stats": derive_account_public_stats(friend, public_profile_stats),
+                "public_stats": public_profile_stats,
                 "published_timeline": _published_profile_timeline(
                     friend,
                     is_friend=is_friend,
                     now=now,
                 ),
-                "achievements": derive_account_achievements(friend, public_profile_stats),
+                "achievements": derive_account_public_achievements(
+                    friend, public_profile_stats
+                ),
                 "stats": {
                     "shared_pub_count": shared_count,
                     "nights_together": shared_count,
@@ -5533,6 +5884,27 @@ def _decode_nights_cursor(value: str) -> tuple[datetime, int]:
     return created_at, row_id
 
 
+def _sync_published_night_pub_references(night: PublishedNight) -> None:
+    """Keep the normalized, non-location index aligned with explicit pub names."""
+
+    wanted = {
+        name_key
+        for name in night.pub_names or []
+        if (name_key := normalize_pub_name(str(name)))
+    }
+    existing = set(night.pub_references.values_list("name_key", flat=True))
+    stale = existing - wanted
+    if stale:
+        night.pub_references.filter(name_key__in=stale).delete()
+    PublishedNightPubReference.objects.bulk_create(
+        [
+            PublishedNightPubReference(night=night, name_key=name_key)
+            for name_key in sorted(wanted - existing)
+        ],
+        ignore_conflicts=True,
+    )
+
+
 class PublishedNightView(APIView):
     """POST/DELETE /v1/nights — publish or unpublish one finished night."""
 
@@ -5561,6 +5933,7 @@ class PublishedNightView(APIView):
             "visibility": data["visibility"],
             "updated_at": data["updated_at"],
         }
+        story_updates = _published_night_story_updates(data, request.user)
 
         try:
             with transaction.atomic():
@@ -5568,11 +5941,28 @@ class PublishedNightView(APIView):
                 # serialises the two legitimate publishers for one drinking day
                 # (recap and Výčep) without relying on a uniqueness exception.
                 Account.objects.select_for_update().get(pk=request.user.pk)
-                locked = PublishedNight.objects.select_for_update().filter(
-                    account=request.user
+                locked = list(
+                    PublishedNight.objects.select_for_update().filter(
+                        account=request.user
+                    )
                 )
-                by_day = locked.filter(drinking_day=data["drinking_day"]).first()
-                by_client = locked.filter(client_id=data["client_id"]).first()
+                by_day = next(
+                    (
+                        night
+                        for night in locked
+                        if night.drinking_day == data["drinking_day"]
+                    ),
+                    None,
+                )
+                by_client = next(
+                    (
+                        night
+                        for night in locked
+                        if data["client_id"] == night.client_id
+                        or data["client_id"] in (night.client_aliases or [])
+                    ),
+                    None,
+                )
                 if by_day is not None and by_client is not None and by_day.pk != by_client.pk:
                     return Response(
                         {
@@ -5582,23 +5972,33 @@ class PublishedNightView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
                 existing = by_day or by_client
+                if existing is not None and data["client_id"] not in (
+                    existing.client_aliases or []
+                ):
+                    existing.client_aliases = [
+                        *list(existing.client_aliases or []),
+                        data["client_id"],
+                    ]
+                    existing.save(update_fields=["client_aliases"])
                 if existing is not None and existing.updated_at > data["updated_at"]:
                     night = existing
                     created = False
                 elif existing is not None:
-                    for field, value in defaults.items():
+                    for field, value in {**defaults, **story_updates}.items():
                         setattr(existing, field, value)
-                    existing.client_id = data["client_id"]
-                    existing.save(update_fields=["client_id", *defaults.keys()])
+                    existing.save(update_fields=[*defaults.keys(), *story_updates.keys()])
                     night = existing
                     created = False
                 else:
                     night = PublishedNight.objects.create(
                         account=request.user,
                         client_id=data["client_id"],
+                        client_aliases=[data["client_id"]],
                         **defaults,
+                        **story_updates,
                     )
                     created = True
+                _sync_published_night_pub_references(night)
         except Exception as exc:  # noqa: BLE001
             logger.error("nights: upsert failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -5615,8 +6015,20 @@ class PublishedNightView(APIView):
         )
 
     def delete(self, request: Request, client_id) -> Response:
+        night = next(
+            (
+                row
+                for row in PublishedNight.objects.filter(account=request.user)
+                if client_id == row.client_id or client_id in (row.client_aliases or [])
+            ),
+            None,
+        )
         return _idempotent_delete(
-            PublishedNight.objects.filter(account=request.user, client_id=client_id),
+            (
+                PublishedNight.objects.filter(pk=night.pk)
+                if night is not None
+                else PublishedNight.objects.none()
+            ),
             scope="nights",
             key_label="client_id",
             key_value=client_id,
@@ -5645,7 +6057,15 @@ class PublishedNightFeedView(APIView):
         if blocked_ids:
             rows = rows.exclude(account_id__in=blocked_ids)
 
-        if data["mine"]:
+        # Public-profile activity has an explicit contract instead of relying on
+        # the caller to choose the right scope. Even an accepted friend cannot
+        # widen this branch to FRIENDS posts by sending scope=friends.
+        if data.get("public_author") is not None:
+            rows = rows.filter(
+                account__public_id=data["public_author"],
+                visibility=PublishedNight.Visibility.PUBLIC,
+            ).exclude(Q(account__nickname__isnull=True) | Q(account__nickname=""))
+        elif data["mine"]:
             rows = rows.filter(account=request.user)
         elif data["scope"] == "friends":
             friend_ids = set(_accepted_friend_ids(request.user))
@@ -5668,6 +6088,10 @@ class PublishedNightFeedView(APIView):
 
         if data.get("author") is not None:
             rows = rows.filter(account__public_id=data["author"])
+        if data.get("pub"):
+            rows = rows.filter(
+                pub_references__name_key=normalize_pub_name(data["pub"])
+            )
 
         cursor = data.get("cursor") or ""
         if cursor:
@@ -5700,6 +6124,151 @@ class PublishedNightFeedView(APIView):
         )
 
 
+class PublishedNightDetailView(APIView):
+    """GET /v1/nights/<id>/detail — the same safe post, one at a time."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request, night_id) -> Response:
+        night = _visible_published_night(request.user, night_id)
+        if night is None:
+            return Response(
+                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            {
+                "night": PublishedNightSerializer(
+                    night,
+                    context=_published_night_context(request),
+                ).data
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+def _visible_night_comments(night: PublishedNight, viewer: Account):
+    blocked_ids = _blocked_account_ids(viewer)
+    rows = PublishedNightComment.objects.select_related("account", "night__account").filter(
+        night=night,
+        is_removed=False,
+        account__status=Account.Status.ACTIVE,
+    )
+    if blocked_ids:
+        rows = rows.exclude(account_id__in=blocked_ids)
+    return rows.order_by("created_at", "id")
+
+
+class PublishedNightCommentView(APIView):
+    """GET/POST /v1/nights/<id>/comments with post visibility inherited."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "night_comments"
+
+    def get_throttles(self):
+        # Reads are bounded to 100 rows and share the normal social-read budget;
+        # writes get the deliberately tighter anti-spam bucket.
+        self.throttle_scope = (
+            "friends_dashboard" if self.request.method == "GET" else "night_comments"
+        )
+        return super().get_throttles()
+
+    def get(self, request: Request, night_id) -> Response:
+        night = _visible_published_night(request.user, night_id)
+        if night is None:
+            return Response(
+                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        rows = list(_visible_night_comments(night, request.user)[:100])
+        return Response(
+            {
+                "comments": PublishedNightCommentSerializer(
+                    rows,
+                    many=True,
+                    context=_published_night_context(request),
+                ).data
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request: Request, night_id) -> Response:
+        night = _visible_published_night(request.user, night_id)
+        if night is None:
+            return Response(
+                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = PublishedNightCommentRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+
+        comment, created = PublishedNightComment.objects.get_or_create(
+            account=request.user,
+            client_id=data["client_id"],
+            defaults={"night": night, "body": data["body"]},
+        )
+        if comment.night_id != night.pk:
+            return Response(
+                {
+                    "detail": "Komentář se nepodařilo bezpečně spárovat.",
+                    "code": "comment_identity_conflict",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        if comment.is_removed:
+            return Response(
+                {
+                    "detail": "Tenhle komentář už byl smazaný.",
+                    "code": "comment_removed",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(
+            {
+                "comment": PublishedNightCommentSerializer(
+                    comment,
+                    context=_published_night_context(request),
+                ).data
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class PublishedNightCommentDeleteView(APIView):
+    """DELETE one comment; author or owner of the night may moderate it."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "night_comments"
+
+    def delete(self, request: Request, night_id, comment_id) -> Response:
+        comment = (
+            PublishedNightComment.objects.select_related("night")
+            .filter(public_id=comment_id, night__public_id=night_id)
+            .first()
+        )
+        if comment is None or request.user.pk not in (
+            comment.account_id,
+            comment.night.account_id,
+        ):
+            return Response(
+                {"detail": "Komentář tu není.", "code": "comment_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not comment.is_removed:
+            comment.is_removed = True
+            comment.save(update_fields=["is_removed", "updated_at"])
+        return Response({"removed": True}, status=status.HTTP_200_OK)
+
+
 class PublishedNightReactView(APIView):
     """POST/DELETE /v1/nights/<public_id>/react — buy a symbolic round."""
 
@@ -5709,18 +6278,7 @@ class PublishedNightReactView(APIView):
     throttle_scope = "friends"
 
     def _load_visible_night(self, request: Request, night_id) -> PublishedNight | None:
-        night = (
-            PublishedNight.objects.select_related("account")
-            .filter(
-                public_id=night_id,
-                account__status=Account.Status.ACTIVE,
-                is_removed=False,
-            )
-            .first()
-        )
-        if night is None or not _published_night_visible_to(night, request.user):
-            return None
-        return night
+        return _visible_published_night(request.user, night_id)
 
     def _validate_target(self, request: Request, night_id) -> tuple[PublishedNight | None, Response | None]:
         night = self._load_visible_night(request, night_id)
@@ -5959,15 +6517,19 @@ def _photo_not_found() -> Response:
 
 
 class BeerPhotoView(APIView):
-    """GET/POST /v1/beer-photos + DELETE /v1/beer-photos/<id> — beer photo diary.
+    """Beer-photo diary plus durable delete-by-client cancellation.
+
+    GET/POST /v1/beer-photos, DELETE /v1/beer-photos/<id>, and idempotent
+    DELETE /v1/beer-photos/by-client/<client_id>.
 
     POST is ``multipart/form-data`` with an ``image`` file part plus form fields
     (``client_id`` required). Idempotent on (account, client_id): an offline
     retry returns the EXISTING photo with 200 and never re-processes the image.
     Every upload is re-decoded and re-encoded to a downscaled webp (EXIF —
     including any GPS — stripped). A per-account total cap bounds media-volume
-    cost. DELETE removes the storage file too; an entry in the current open
-    contest (and its votes) cascades away with the photo.
+    cost. DELETE hides the row immediately and durably queues storage cleanup;
+    an entry in the current open contest (and its votes) cascades away with the
+    photo.
 
     ``parser_classes`` is overridden LOCALLY to MultiPartParser — the global
     default stays JSON-only so no other endpoint is affected.
@@ -5980,8 +6542,8 @@ class BeerPhotoView(APIView):
 
     def get_throttles(self):
         # POST re-encodes an image and writes to the media volume, so it gets
-        # the tight per-account daily budget; GET/DELETE are DB-only and reuse
-        # the friends write scope like the other diary endpoints.
+        # the tight per-account daily budget; GET/DELETE reuse the friends write
+        # scope like the other diary endpoints.
         self.throttle_scope = (
             "beer_photo_upload" if self.request.method == "POST" else "friends"
         )
@@ -6018,12 +6580,39 @@ class BeerPhotoView(APIView):
                 status=status.HTTP_200_OK,
             )
 
+        # A delete-by-client marker wins over every later native-upload replay.
+        # Check before both the existing-row fast path and image processing.
+        if BeerPhotoDeletionTombstone.objects.filter(
+            account=request.user, client_id=data["client_id"]
+        ).exists():
+            return Response(
+                {"detail": "Tahle fotka už byla smazaná.", "code": "photo_deleted"},
+                status=status.HTTP_410_GONE,
+            )
+
         # Idempotent offline retry: same (account, client_id) returns the
         # existing row WITHOUT re-processing (or even reading) the image.
         existing = BeerPhoto.objects.filter(
             account=request.user, client_id=data["client_id"]
         ).first()
         if existing is not None:
+            # A photo can be queued while this same phone's offline table-create
+            # is still reaching the server. The first upload is intentionally
+            # accepted as a private diary photo; once the membership exists, an
+            # idempotent retry may fill only the missing FK. Caption, visibility,
+            # image and an already-bound table stay immutable. The normal
+            # occurrence-window resolver keeps an old/foreign code powerless.
+            if existing.party_evening_id is None and data.get("party_code"):
+                evening = _party_evening_for_entry(
+                    request.user,
+                    data.get("party_code"),
+                    occurred_at=existing.taken_at,
+                )
+                if evening is not None:
+                    BeerPhoto.objects.filter(
+                        pk=existing.pk,
+                        party_evening__isnull=True,
+                    ).update(party_evening=evening)
             return _existing_response(existing.pk)
 
         # Check-then-insert without locking: two concurrent uploads can overshoot
@@ -6053,11 +6642,13 @@ class BeerPhotoView(APIView):
         except BeerPhotoError as exc:
             return _coded_error(exc)
 
+        taken_at = data.get("taken_at") or dj_timezone.now()
         photo = BeerPhoto(
             account=request.user,
             party_evening=_party_evening_for_entry(
                 request.user,
                 data.get("party_code"),
+                occurred_at=taken_at,
             ),
             client_id=data["client_id"],
             caption=data.get("caption") or "",
@@ -6065,20 +6656,60 @@ class BeerPhotoView(APIView):
             pub_name=data.get("pub_name") or "",
             pub_city=data.get("pub_city") or "",
             visibility=data.get("visibility") or BeerPhoto.Visibility.FRIENDS,
-            taken_at=data.get("taken_at") or dj_timezone.now(),
+            taken_at=taken_at,
         )
         # upload_to ignores the supplied name and builds the stable
         # beer-photos/<account>/<photo>.webp path from the instance's uuids.
         photo.image.save("photo.webp", content, save=False)
+
+        def _discard_unsaved_file(cleanup_account: Account | None) -> None:
+            """Make even a never-committed upload durably removable."""
+
+            try:
+                cleanup_id = enqueue_beer_photo_file_deletion(
+                    photo,
+                    account=cleanup_account,
+                )
+            except Exception as exc:  # noqa: BLE001 -- best-effort fallback below
+                logger.error(
+                    "beer_photos: could not enqueue unsaved file cleanup (%s)",
+                    type(exc).__name__,
+                )
+                try:
+                    photo.image.delete(save=False)
+                except Exception as storage_exc:  # noqa: BLE001
+                    logger.error(
+                        "beer_photos: unsaved file cleanup failed (%s)",
+                        type(storage_exc).__name__,
+                    )
+                return
+            if cleanup_id is not None:
+                schedule_beer_photo_file_deletions([cleanup_id])
+
         try:
             with transaction.atomic():
                 account = Account.objects.select_for_update().get(pk=request.user.pk)
+                # Serialize against delete-by-client on the same account. If
+                # DELETE won while this request decoded the image, discard the
+                # freshly-written file and never create the row.
+                if BeerPhotoDeletionTombstone.objects.filter(
+                    account=account,
+                    client_id=data["client_id"],
+                ).exists():
+                    _discard_unsaved_file(account)
+                    return Response(
+                        {
+                            "detail": "Tahle fotka už byla smazaná.",
+                            "code": "photo_deleted",
+                        },
+                        status=status.HTTP_410_GONE,
+                    )
                 existing = BeerPhoto.objects.filter(
                     account=account,
                     client_id=data["client_id"],
                 ).first()
                 if existing is not None:
-                    photo.image.delete(save=False)
+                    _discard_unsaved_file(account)
                     return _existing_response(existing.pk)
                 photo.account = account
                 _award_first_diary_event_xp(
@@ -6092,7 +6723,8 @@ class BeerPhotoView(APIView):
         except IntegrityError:
             # A concurrent retry of the same client_id won the insert race;
             # drop this request's freshly written file and return the winner.
-            photo.image.delete(save=False)
+            cleanup_account = Account.objects.filter(pk=request.user.pk).first()
+            _discard_unsaved_file(cleanup_account)
             existing = BeerPhoto.objects.filter(
                 account=request.user, client_id=data["client_id"]
             ).first()
@@ -6101,7 +6733,8 @@ class BeerPhotoView(APIView):
             return _existing_response(existing.pk)
         except Exception as exc:  # noqa: BLE001
             logger.error("beer_photos: upsert failed: %s", exc, exc_info=True)
-            photo.image.delete(save=False)
+            cleanup_account = Account.objects.filter(pk=request.user.pk).first()
+            _discard_unsaved_file(cleanup_account)
             return _internal_error()
 
         fresh = _beer_photo_queryset(contest).get(pk=photo.pk)
@@ -6110,16 +6743,71 @@ class BeerPhotoView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-    def delete(self, request: Request, photo_id=None) -> Response:
-        photo = BeerPhoto.objects.filter(account=request.user, public_id=photo_id).first()
-        if photo is None:
-            return _photo_not_found()
-        # Remove the storage file first, then the row; an entry in the current
-        # OPEN contest (and its votes) CASCADE away. Closed-round history stays
-        # durable where it matters: final_rank was already stamped and the
-        # monotonic photo_contest_wins_count is never decremented.
-        photo.image.delete(save=False)
-        photo.delete()
+    def delete(self, request: Request, photo_id=None, client_id=None) -> Response:
+        cleanup_ids: list[int] = []
+        with transaction.atomic():
+            account = Account.objects.select_for_update().get(pk=request.user.pk)
+            if client_id is not None:
+                # Idempotent even when the upload has not committed yet. POST
+                # takes the same account lock and observes this marker before
+                # saving, so an ignored native abort cannot resurrect the row.
+                BeerPhotoDeletionTombstone.objects.get_or_create(
+                    account=account,
+                    client_id=client_id,
+                )
+                photo = BeerPhoto.objects.filter(
+                    account=account,
+                    client_id=client_id,
+                ).first()
+                if photo is None:
+                    cleanup_ids = list(
+                        BeerPhotoFileDeletion.objects.filter(
+                            account=account,
+                            client_id=client_id,
+                        ).values_list("pk", flat=True)
+                    )
+            else:
+                photo = BeerPhoto.objects.filter(
+                    account=account,
+                    public_id=photo_id,
+                ).first()
+                if photo is None:
+                    # The DB row is removed before storage cleanup. Preserve the
+                    # released DELETE-by-public-id retry contract while an
+                    # outbox row still owns that former public id.
+                    cleanup_ids = list(
+                        BeerPhotoFileDeletion.objects.filter(
+                            account=account,
+                            photo_public_id=photo_id,
+                        ).values_list("pk", flat=True)
+                    )
+                    if not cleanup_ids:
+                        return _photo_not_found()
+                else:
+                    BeerPhotoDeletionTombstone.objects.get_or_create(
+                        account=account,
+                        client_id=photo.client_id,
+                    )
+
+            if photo is not None:
+                cleanup_id = enqueue_beer_photo_file_deletion(photo, account=account)
+                if cleanup_id is not None:
+                    cleanup_ids.append(cleanup_id)
+                # An entry in the current OPEN contest (and its votes) CASCADE
+                # away. Closed-round final_rank/wins history stays durable.
+                photo.delete()
+
+        # The public DB row is already gone. A failed storage operation keeps
+        # its outbox row, is retried by this endpoint, and is also drained by
+        # the worker so a transient media-volume error cannot orphan the file.
+        if cleanup_ids and not retry_beer_photo_file_deletions(cleanup_ids):
+            return Response(
+                {
+                    "detail": "Fotka je skrytá, soubor ještě uklízíme.",
+                    "code": "photo_cleanup_pending",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -7054,14 +7742,14 @@ def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
 
 def _nearby_pub_beer_brand_items(
     *,
-    brand_key: str,
+    brand_keys: list[str],
     lat: float,
     lng: float,
     radius_km: float,
 ) -> tuple[list[dict], set[str]]:
-    """Known pubs serving a brand, based on community menus and drink logs."""
+    """Known pubs serving ANY selected brand, based on local public signals."""
     links = _nearest_rows(
-        PubBeerBrand.objects.filter(active=True, brand_key=brand_key),
+        PubBeerBrand.objects.filter(active=True, brand_key__in=brand_keys),
         lat,
         lng,
         radius_km,
@@ -7069,7 +7757,16 @@ def _nearby_pub_beer_brand_items(
         scan_limit=_BEER_BRAND_SCAN_LIMIT,
         max_results=_BEER_BRAND_MAX_RESULTS,
     )
-    return [_pub_beer_brand_item(link) for link in links], {link.cache_key for link in links}
+    # A pub serving two selected brands has two signal rows. Preserve nearest
+    # order but put one map item on the wire; the filter contract, not this
+    # preview field, carries the complete selected set.
+    unique_links: dict[str, PubBeerBrand] = {}
+    for link in links:
+        unique_links.setdefault(link.cache_key, link)
+    return (
+        [_pub_beer_brand_item(link) for link in unique_links.values()],
+        set(unique_links),
+    )
 
 
 def _nearby_pub_price_indexes(
@@ -7438,8 +8135,23 @@ class PubsNearView(APIView):
         data = serializer.validated_data
         radius_km: float = data["radius_km"]
         beer_brand_key = data.get("beer_brand") or ""
+        explicit_beer_brand_keys: list[str] = data.get("beer_brands") or []
+        beer_brand_keys = explicit_beer_brand_keys or ([beer_brand_key] if beer_brand_key else [])
         amenity_keys: list[str] = data.get("amenities") or []
         include_other_places: bool = data["include_other_places"]
+        max_beer_filters = max(
+            1,
+            int(getattr(settings, "PUBS_NEAR_MAX_BEER_FILTERS", 5)),
+        )
+        if len(beer_brand_keys) > max_beer_filters:
+            return Response(
+                {
+                    "beer_brands": [
+                        f"At most {max_beer_filters} beer brands may be filtered at once."
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         max_amenity_filters = max(
             1,
             int(getattr(settings, "PUBS_NEAR_MAX_AMENITY_FILTERS", 5)),
@@ -7449,12 +8161,22 @@ class PubsNearView(APIView):
                 {"amenities": [f"At most {max_amenity_filters} amenities may be filtered at once."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if beer_brand_key and not BeerBrand.objects.filter(
-            key=beer_brand_key,
-            active=True,
-        ).exists():
+        known_beer_brand_keys = set(
+            BeerBrand.objects.filter(
+                key__in=beer_brand_keys,
+                active=True,
+            ).values_list("key", flat=True)
+        )
+        unknown_beer_brand_keys = [
+            key for key in beer_brand_keys if key not in known_beer_brand_keys
+        ]
+        if unknown_beer_brand_keys:
             return Response(
-                {"beer_brand": ["Unknown beer brand."]},
+                {
+                    "beer_brands" if explicit_beer_brand_keys else "beer_brand": [
+                        f"Unknown beer brand: {key}." for key in unknown_beer_brand_keys
+                    ]
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if amenity_keys:
@@ -7550,13 +8272,16 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if amenity_keys or include_other_places:
+            if beer_brand_keys or amenity_keys or include_other_places:
                 applied_filters = {
-                    "version": 2 if include_other_places else 1,
+                    "version": 3 if explicit_beer_brand_keys else (2 if include_other_places else 1),
                     "match": "all",
                     "amenities": amenity_keys,
-                    "beer_brand": beer_brand_key or None,
+                    "beer_brand": beer_brand_keys[0] if len(beer_brand_keys) == 1 else None,
                 }
+                if explicit_beer_brand_keys:
+                    applied_filters["beer_brands"] = beer_brand_keys
+                    applied_filters["beer_match"] = "any"
                 if include_other_places:
                     applied_filters["include_other_places"] = True
                 body["applied_filters"] = applied_filters
@@ -7565,9 +8290,9 @@ class PubsNearView(APIView):
         user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
         beer_brand_items: list[dict] = []
         beer_brand_cache_keys: set[str] = set()
-        if beer_brand_key:
+        if beer_brand_keys:
             beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_brand_items(
-                brand_key=beer_brand_key,
+                brand_keys=beer_brand_keys,
                 lat=data["lat"],
                 lng=data["lng"],
                 radius_km=radius_km,
@@ -7593,11 +8318,11 @@ class PubsNearView(APIView):
                 radius_km=radius_km,
             )
             user_added_items = _filter_items_by_amenity_signals(user_added_items, amenity_items)
-            if beer_brand_key:
+            if beer_brand_keys:
                 beer_brand_items = _filter_items_by_amenity_signals(beer_brand_items, amenity_items)
                 beer_brand_cache_keys = {_item_cache_key(item) for item in beer_brand_items}
                 beer_brand_cache_keys.discard("")
-            if not amenity_cache_keys or (beer_brand_key and not beer_brand_cache_keys):
+            if not amenity_cache_keys or (beer_brand_keys and not beer_brand_cache_keys):
                 return Response(
                     response_body(
                         items=[],
@@ -7611,7 +8336,7 @@ class PubsNearView(APIView):
             filtered_items = items
             if amenity_keys:
                 filtered_items = _filter_items_by_amenity_signals(filtered_items, amenity_items)
-            if beer_brand_key:
+            if beer_brand_keys:
                 filtered_items = _filter_items_by_cache_key(filtered_items, beer_brand_cache_keys)
                 return _with_pub_signal_items(beer_brand_items, filtered_items)
             if amenity_keys:
@@ -7903,6 +8628,12 @@ def _load_export_account(account: Account) -> Account:
                 queryset=NightRound.objects.select_related("night"),
             ),
             Prefetch(
+                "published_night_comments",
+                queryset=PublishedNightComment.objects.select_related("night").order_by(
+                    "created_at", "id"
+                ),
+            ),
+            Prefetch(
                 "beer_photos",
                 queryset=BeerPhoto.objects.select_related("party_evening").order_by(
                     "-taken_at", "id"
@@ -7972,6 +8703,24 @@ def _load_export_account(account: Account) -> Account:
                 ),
             ),
             Prefetch(
+                "started_party_games",
+                queryset=PartyGame.objects.select_related("evening").order_by(
+                    "started_at", "id"
+                ),
+            ),
+            Prefetch(
+                "party_game_events",
+                queryset=PartyGameEvent.objects.select_related(
+                    "game__evening", "subject"
+                ).order_by("created_at", "id"),
+            ),
+            Prefetch(
+                "party_game_scores",
+                queryset=PartyGameEvent.objects.select_related("game__evening").order_by(
+                    "created_at", "id"
+                ),
+            ),
+            Prefetch(
                 "pub_event_suggestions",
                 queryset=PubEvent.objects.order_by("starts_at", "created_at"),
             ),
@@ -7984,6 +8733,18 @@ def _load_export_account(account: Account) -> Account:
                 queryset=CommunityEventMembership.objects.select_related("event").order_by(
                     "requested_at", "id"
                 ),
+            ),
+            Prefetch(
+                "created_community_event_teams",
+                queryset=CommunityEventTeam.objects.select_related("event").order_by(
+                    "created_at", "id"
+                ),
+            ),
+            Prefetch(
+                "community_event_team_memberships",
+                queryset=CommunityEventTeamMembership.objects.select_related(
+                    "event", "team"
+                ).order_by("joined_at", "id"),
             ),
         )
         .get(pk=account.pk)
@@ -8000,6 +8761,72 @@ def _export_account_identity(account: Account) -> dict:
         "providers": [
             *(["email"] if credential is not None else []),
             *(identity.provider for identity in identities),
+        ],
+    }
+
+
+def _export_party_game_data(account: Account) -> dict:
+    """Export only game rows and event detail that belong to this account.
+
+    Events authored by the account are their user-generated data, so their
+    bounded payload is included (quiz answers and locally submitted results
+    live there). Events authored by somebody else are included only when the
+    account was their score subject, and deliberately omit the other person's
+    client id, identity and opaque payload.
+    """
+    started_games = list(account.started_party_games.all())
+    authored_events = list(account.party_game_events.all())
+    subject_events = [
+        event
+        for event in account.party_game_scores.all()
+        if event.account_id != account.id
+    ]
+
+    games_by_id = {game.id: game for game in started_games}
+    for event in [*authored_events, *subject_events]:
+        games_by_id[event.game_id] = event.game
+
+    return {
+        "games": [
+            {
+                "id": str(game.public_id),
+                "client_id": str(game.client_id) if game.started_by_id == account.id else None,
+                "evening_id": str(game.evening.public_id),
+                "catalog_key": game.catalog_key,
+                "name": game.name,
+                "scoring": game.scoring,
+                "started_by_account": game.started_by_id == account.id,
+                "started_at": _iso(game.started_at),
+                "ended_at": _iso(game.ended_at),
+            }
+            for game in sorted(games_by_id.values(), key=lambda row: (row.started_at, row.id))
+        ],
+        "events_authored": [
+            {
+                "id": event.id,
+                "client_id": str(event.client_id),
+                "game_id": str(event.game.public_id),
+                "kind": event.kind,
+                "subject": (
+                    "self"
+                    if event.subject_id == account.id
+                    else ("other" if event.subject_id is not None else None)
+                ),
+                "delta": event.delta,
+                "payload": event.payload,
+                "created_at": _iso(event.created_at),
+            }
+            for event in authored_events
+        ],
+        "score_events_as_subject": [
+            {
+                "id": event.id,
+                "game_id": str(event.game.public_id),
+                "kind": event.kind,
+                "delta": event.delta,
+                "created_at": _iso(event.created_at),
+            }
+            for event in subject_events
         ],
     }
 
@@ -8131,6 +8958,9 @@ def _export_account_data(account: Account) -> dict:
             {
                 "id": str(photo.public_id),
                 "client_id": str(photo.client_id),
+                # Storage-relative, never an absolute filesystem path or a
+                # signed URL. The directory is already scoped to the owner.
+                "image_path": photo.image.name or None,
                 "caption": photo.caption,
                 "pub_cache_key": photo.pub_cache_key or None,
                 "pub_name": photo.pub_name or None,
@@ -8148,6 +8978,7 @@ def _export_account_data(account: Account) -> dict:
             {
                 "id": str(night.public_id),
                 "client_id": str(night.client_id),
+                "client_aliases": list(night.client_aliases or []),
                 "drinking_day": night.drinking_day.isoformat(),
                 "started_at": _iso(night.started_at),
                 "ended_at": _iso(night.ended_at),
@@ -8158,12 +8989,30 @@ def _export_account_data(account: Account) -> dict:
                 "pub_names": night.pub_names,
                 "city": night.city,
                 "duration_minutes": night.duration_minutes,
+                "title": night.title,
+                "roast_line": night.roast_line,
+                "roast_basis": night.roast_basis,
+                "participant_ids": list(night.participant_ids or []),
+                "photo_ids": list(night.photo_ids or []),
+                "game_ids": list(night.game_ids or []),
                 "visibility": night.visibility,
                 "is_removed": night.is_removed,
                 "created_at": _iso(night.created_at),
                 "updated_at": _iso(night.updated_at),
             }
             for night in account.published_nights.all()
+        ],
+        "published_night_comments": [
+            {
+                "id": str(comment.public_id),
+                "client_id": str(comment.client_id),
+                "night_id": str(comment.night.public_id),
+                "body": comment.body,
+                "is_removed": comment.is_removed,
+                "created_at": _iso(comment.created_at),
+                "updated_at": _iso(comment.updated_at),
+            }
+            for comment in account.published_night_comments.all()
         ],
         "social": {
             "friendships": [
@@ -8315,6 +9164,7 @@ def _export_account_data(account: Account) -> dict:
                 for drink in account.party_evening_drinks.all()
             ],
         },
+        "party_games": _export_party_game_data(account),
         "pub_event_suggestions": [
             {
                 "id": str(event.id),
@@ -8369,6 +9219,28 @@ def _export_account_data(account: Account) -> dict:
                     "updated_at": _iso(membership.updated_at),
                 }
                 for membership in account.community_event_memberships.all()
+            ],
+            "created_teams": [
+                {
+                    "id": str(team.id),
+                    "event_id": str(team.event_id),
+                    "client_id": str(team.client_id),
+                    "name": team.name,
+                    "created_at": _iso(team.created_at),
+                    "updated_at": _iso(team.updated_at),
+                }
+                for team in account.created_community_event_teams.all()
+            ],
+            "team_memberships": [
+                {
+                    "id": str(membership.id),
+                    "event_id": str(membership.event_id),
+                    "team_id": str(membership.team_id),
+                    "team_name": membership.team.name,
+                    "slot": membership.slot,
+                    "joined_at": _iso(membership.joined_at),
+                }
+                for membership in account.community_event_team_memberships.all()
             ],
         },
         "visits": [_visit_item(visit) for visit in account.pub_visits.all()],
@@ -8513,8 +9385,7 @@ class AccountView(APIView):
     app sends the device_id it generated and persisted locally; we get_or_create
     the Account and return it with a token. Re-posting a known device_id rotates
     and returns a fresh token only when the request already carries a valid Bearer
-    token for that same account. The sole recovery exception is an existing
-    account with zero AuthToken rows, which cannot otherwise authenticate.
+    token for that same account and the same deletion-authorization epoch.
 
     Unauthenticated by design — this is how a brand-new device gets its first
     credentials — but throttled per-IP (scope "account") to blunt scripted mass
@@ -8552,9 +9423,10 @@ class AccountView(APIView):
             # Tokens live in AuthToken now (kind=device for this bootstrap path).
             # Only the SHA-256 hash is stored, so a raw token cannot be recovered.
             # A known device_id is therefore allowed to rotate only when the caller
-            # proves possession of a token for this same account. The sole exception
-            # is a stranded account with zero AuthToken rows.
-            recovered = False
+            # proves possession of a token for this same account. ``device_id`` is
+            # an identifier, not a secret, so there is deliberately no zero-token
+            # recovery path: credential login/reset is the recovery mechanism for
+            # a claimed account, and an unclaimed account cannot be safely proven.
             with transaction.atomic():
                 account, created = Account.objects.select_for_update().get_or_create(
                     device_id=device_id
@@ -8564,43 +9436,58 @@ class AccountView(APIView):
                     raw_token = accounts.issue_token(
                         account, kind=AuthToken.Kind.DEVICE
                     )
-                elif not account.auth_tokens.exists():
-                    # Production recovery: a device account with no token rows is
-                    # unusable by anyone. The per-IP throttle remains the abuse
-                    # brake; any account with a token still requires possession.
-                    raw_token = accounts.issue_token(
-                        account, kind=AuthToken.Kind.DEVICE
-                    )
-                    recovered = True
+                else:
+                    auth_result = AccountTokenAuthentication().authenticate(request)
+                    if auth_result is None:
+                        _log_account_bootstrap_failure(
+                            "token_missing", device_id_already_existed=True
+                        )
+                        return Response(
+                            {"detail": "Authentication credentials were not provided."},
+                            status=status.HTTP_401_UNAUTHORIZED,
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
 
-            if recovered:
-                _log_account_bootstrap_recovery("zero_tokens")
-            elif not created:
-                auth_result = AccountTokenAuthentication().authenticate(request)
-                if auth_result is None:
-                    _log_account_bootstrap_failure(
-                        "token_missing", device_id_already_existed=True
-                    )
-                    return Response(
-                        {"detail": "Authentication credentials were not provided."},
-                        status=status.HTTP_401_UNAUTHORIZED,
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
+                    authenticated_account, presented_token = auth_result
+                    if authenticated_account.pk != account.pk:
+                        _log_account_bootstrap_failure(
+                            "token_mismatch", device_id_already_existed=True
+                        )
+                        return Response(
+                            {"detail": "Bearer token does not match device account."},
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
 
-                authenticated_account, presented_token = auth_result
-                if authenticated_account.pk != account.pk:
-                    _log_account_bootstrap_failure(
-                        "token_mismatch", device_id_already_existed=True
+                    # Re-read the capability under the same transaction and the
+                    # already-held Account lock. A credential proof advances the
+                    # account epoch; allowing an older token to mint at the newer
+                    # epoch would launder stale DELETE authorization into a fresh
+                    # destructive capability.
+                    presented_auth_token = (
+                        AuthToken.objects.select_for_update()
+                        .filter(token_hash=hash_account_token(presented_token))
+                        .first()
                     )
-                    return Response(
-                        {"detail": "Bearer token does not match device account."},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
+                    if (
+                        presented_auth_token is None
+                        or presented_auth_token.account_id != account.pk
+                        or presented_auth_token.is_expired
+                        or presented_auth_token.deletion_epoch != account.deletion_epoch
+                    ):
+                        _log_account_bootstrap_failure(
+                            "stale_deletion_epoch", device_id_already_existed=True
+                        )
+                        return Response(
+                            {
+                                "code": "stale_account_session",
+                                "detail": "Účet se mezitím znovu přihlásil. Přihlas se znovu.",
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
 
-                # Keep the presented token as a recovery path if the response is
-                # lost. A later successful rotation prunes older device tokens,
-                # while session tokens remain untouched.
-                with transaction.atomic():
+                    # Keep the presented token as a recovery path if the response
+                    # is lost. A later successful rotation prunes older device
+                    # tokens, while session tokens remain untouched.
                     raw_token = accounts.issue_token(account, kind=AuthToken.Kind.DEVICE)
                     accounts.prune_device_tokens(
                         account, keep_raw_tokens=(presented_token, raw_token)
@@ -8622,9 +9509,8 @@ class AccountView(APIView):
                 device_id_already_existed=device_id_already_existed,
             )
             logger.error(
-                "account: unexpected error registering account: %s",
-                exc,
-                exc_info=True,
+                "account: unexpected error registering account (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
@@ -8725,12 +9611,153 @@ class AccountMeView(APIView):
         cancel-by date. The ``purge_deleted_accounts`` command hard-purges after
         the window; signing back in within it reactivates the account.
         """
+        operation_id, operation_id_valid = _account_deletion_operation_id(
+            request,
+            include_body=True,
+        )
+        if not operation_id_valid:
+            return Response(
+                {
+                    "detail": "operation_id musí být náhodné UUIDv4.",
+                    "code": "invalid_operation_id",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            accounts.schedule_deletion(request.user)
+            # Serialize concurrent retries for this account.  For an operation
+            # id, get_or_create also reserves the globally unique capability
+            # before external deletion work; the provisional INSERT is inside
+            # this outer transaction and cannot become visible/durable unless
+            # schedule_deletion succeeds and the whole transaction commits.  A
+            # cross-account collision therefore returns 409 before deletion work,
+            # even when two requests race on different Account rows.
+            operation_conflict = False
+            with transaction.atomic():
+                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                authenticated_deletion_epoch = getattr(
+                    request._request,
+                    "na_pivo_deletion_epoch",
+                    None,
+                )
+                if (
+                    operation_id is not None
+                    and authenticated_deletion_epoch != account.deletion_epoch
+                ):
+                    return Response(
+                        {
+                            "detail": (
+                                "Účet se mezitím znovu přihlásil. Nejdřív se "
+                                "přihlas znovu a pak zopakuj smazání."
+                            ),
+                            "code": "deletion_epoch_cancelled",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                fingerprint = account_deletion_fingerprint(account.public_id)
+                should_schedule = operation_id is None
+                if operation_id is not None:
+                    completed_operation, proof_created = (
+                        AccountDeletionOperation.objects.get_or_create(
+                            operation_id=operation_id,
+                            defaults={"account_fingerprint": fingerprint},
+                        )
+                    )
+                    operation_conflict = not proof_created and not secrets.compare_digest(
+                        completed_operation.account_fingerprint,
+                        fingerprint,
+                    )
+                    should_schedule = proof_created
+                if not operation_conflict and should_schedule:
+                    accounts.schedule_deletion(account)
         except Exception as exc:  # noqa: BLE001
-            logger.error("account delete failed: %s", exc, exc_info=True)
+            # A database/storage exception may echo INSERT parameters, including
+            # the deletion operation id. That UUID is a bearer-like recovery
+            # capability, so never interpolate the exception or attach a
+            # traceback that could serialize it into production logs.
+            logger.error("account delete failed (%s)", type(exc).__name__)
             return _internal_error()
+        if operation_conflict:
+            return Response(
+                {
+                    "detail": "operation_id už patří jinému požadavku.",
+                    "code": "operation_id_reused",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _account_deletion_operation_id(
+    request: Request,
+    *,
+    include_body: bool,
+) -> tuple[uuid.UUID | None, bool]:
+    """Read one consistent UUIDv4 deletion capability from supported inputs.
+
+    New clients use ``X-Account-Deletion-Operation-Id`` so the capability stays
+    out of URLs.  JSON, query-string, and standard Idempotency-Key aliases keep
+    the protocol usable across older/network-specific clients, while omission
+    remains valid for released mobile versions.  If more than one location is
+    supplied they must resolve to the same UUID.
+    """
+
+    raw_values: list[object] = []
+    for header in ("Idempotency-Key", "X-Account-Deletion-Operation-Id"):
+        value = request.headers.get(header)
+        if value is not None:
+            raw_values.append(value)
+
+    if "operation_id" in request.query_params:
+        raw_values.append(request.query_params.get("operation_id"))
+
+    if include_body and hasattr(request.data, "get") and "operation_id" in request.data:
+        raw_values.append(request.data.get("operation_id"))
+
+    if not raw_values:
+        return None, True
+
+    parsed_values: set[uuid.UUID] = set()
+    for raw_value in raw_values:
+        serializer = AccountDeletionOperationSerializer(
+            data={"operation_id": raw_value}
+        )
+        if not serializer.is_valid():
+            return None, False
+        parsed_values.add(serializer.validated_data["operation_id"])
+
+    if len(parsed_values) != 1:
+        return None, False
+    return next(iter(parsed_values)), True
+
+
+class AccountDeletionStatusView(APIView):
+    """Return only whether an opaque account-deletion operation completed.
+
+    This endpoint intentionally has no authentication and never returns account
+    attributes, timestamps, error distinctions, or a 404.  Unknown and malformed
+    capabilities are indistinguishable (``{"complete": false}``), preventing an
+    account-enumeration oracle; UUIDv4 entropy protects valid proofs.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account"
+
+    def get(self, request: Request) -> Response:
+        operation_id, operation_id_valid = _account_deletion_operation_id(
+            request,
+            include_body=False,
+        )
+        complete = bool(
+            operation_id_valid
+            and operation_id is not None
+            and AccountDeletionOperation.objects.filter(
+                operation_id=operation_id
+            ).exists()
+        )
+        return Response({"complete": complete}, status=status.HTTP_200_OK)
 
 
 class RestorePurchasesView(APIView):

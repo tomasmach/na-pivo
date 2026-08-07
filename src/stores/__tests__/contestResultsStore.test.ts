@@ -13,15 +13,25 @@ function currentAsyncStorage() {
   return mod.default ?? mod;
 }
 
-async function seedLastSeenResults(contestId: string): Promise<void> {
+async function seedLastSeenResults(
+  contestId: string,
+  viewerAccountId = 'account-a',
+): Promise<void> {
   await currentAsyncStorage().setItem(
     'na-pivo-contest-results',
-    JSON.stringify({ state: { lastSeenResultsContestId: contestId }, version: 0 }),
+    JSON.stringify({
+      state: { viewerAccountId, lastSeenResultsContestId: contestId },
+      version: 0,
+    }),
   );
 }
 
 function requireStore() {
   return require('../contestResultsStore').useContestResultsStore;
+}
+
+function requireStoreModule() {
+  return require('../contestResultsStore') as typeof import('../contestResultsStore');
 }
 
 const ACCOUNT = {
@@ -41,8 +51,10 @@ function snapshotWith({
   xpAwarded = 0,
   winsCount = 0,
   withMyResult = true,
+  viewerAccountId = 'account-a',
 } = {}): PhotoContestSnapshot {
   return {
+    viewerAccountId,
     contest: null,
     entries: [],
     myEntryId: null,
@@ -125,5 +137,73 @@ describe('contestResultsStore', () => {
     const useStore = requireStore();
     await useStore.getState().ingestSnapshot(snapshotWith({ withMyResult: false }));
     expect(useStore.getState().pendingResult).toBeNull();
+  });
+
+  it('does not carry a seen baseline or pending result across accounts', async () => {
+    const useStore = requireStore();
+    await useStore.getState().ingestSnapshot(
+      snapshotWith({ rank: 1, entered: true, viewerAccountId: 'account-a' }),
+    );
+    useStore.getState().dismissResult();
+    expect(useStore.getState()).toMatchObject({
+      viewerAccountId: 'account-a',
+      lastSeenResultsContestId: 'round-2',
+      pendingResult: null,
+    });
+
+    await useStore.getState().ingestSnapshot(
+      snapshotWith({ rank: 2, entered: true, viewerAccountId: 'account-b' }),
+    );
+
+    expect(useStore.getState().viewerAccountId).toBe('account-b');
+    expect(useStore.getState().lastSeenResultsContestId).toBeNull();
+    expect(useStore.getState().pendingResult?.rank).toBe(2);
+  });
+
+  it('ignores another account persisted baseline for the same round', async () => {
+    await seedLastSeenResults('round-2', 'account-a');
+    const useStore = requireStore();
+
+    await useStore.getState().ingestSnapshot(
+      snapshotWith({ rank: 3, entered: true, viewerAccountId: 'account-b' }),
+    );
+
+    expect(useStore.getState().viewerAccountId).toBe('account-b');
+    expect(useStore.getState().pendingResult?.rank).toBe(3);
+  });
+
+  it('clears an old pending result even when the new account has no previous round', async () => {
+    const useStore = requireStore();
+    await useStore.getState().ingestSnapshot(
+      snapshotWith({ rank: 1, entered: true, viewerAccountId: 'account-a' }),
+    );
+
+    await useStore.getState().ingestSnapshot({
+      ...snapshotWith({ viewerAccountId: 'account-b' }),
+      lastResults: null,
+    });
+
+    expect(useStore.getState()).toMatchObject({
+      viewerAccountId: 'account-b',
+      lastSeenResultsContestId: null,
+      pendingResult: null,
+    });
+  });
+
+  it('clears both in-memory and persisted account results at logout', async () => {
+    const storeModule = requireStoreModule();
+    await storeModule.useContestResultsStore.getState().ingestSnapshot(
+      snapshotWith({ rank: 1, entered: true }),
+    );
+    storeModule.useContestResultsStore.getState().dismissResult();
+
+    await storeModule.clearContestResultsAccountData();
+
+    expect(storeModule.useContestResultsStore.getState()).toMatchObject({
+      viewerAccountId: null,
+      lastSeenResultsContestId: null,
+      pendingResult: null,
+    });
+    expect(await currentAsyncStorage().getItem('na-pivo-contest-results')).toBeNull();
   });
 });

@@ -377,6 +377,61 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(calledUrl.searchParams.get('beer_brand')).toBe('pilsner-urquell');
   });
 
+  it('passes normalized multi-brand filters and accepts the v3 ANY acknowledgement', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [PUB_ITEM],
+        applied_filters: {
+          version: 3,
+          match: 'all',
+          amenities: ['practical_tank_beer'],
+          beer_brand: null,
+          beer_brands: ['pilsner-urquell', 'radegast'],
+          beer_match: 'any',
+        },
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25, undefined, {
+      beerBrandKeys: ['radegast', 'pilsner-urquell', 'radegast'],
+      amenityKeys: ['practical_tank_beer'],
+    });
+
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.searchParams.get('beer_brands')).toBe('pilsner-urquell,radegast');
+    expect(calledUrl.searchParams.has('beer_brand')).toBe(false);
+    expect(calledUrl.searchParams.get('amenities')).toBe('practical_tank_beer');
+    expect(pubs).toHaveLength(1);
+  });
+
+  it('fails closed when multi-brand filters are not acknowledged exactly', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [PUB_ITEM],
+        applied_filters: {
+          version: 3,
+          match: 'all',
+          amenities: [],
+          beer_brands: ['pilsner-urquell'],
+          beer_match: 'all',
+        },
+      }),
+    })) as unknown as typeof fetch;
+
+    await expect(
+      searchPubsNear(50.08, 14.42, 25, undefined, {
+        beerBrandKeys: ['pilsner-urquell', 'radegast'],
+      }),
+    ).rejects.toThrow('Pub directory backend is not configured or unavailable');
+  });
+
   it('passes amenity filters alongside a beer brand', async () => {
     setBackend('https://api.example.com');
     const fetchMock = jest.fn(async () => ({

@@ -101,9 +101,9 @@ function PublishNightSheetBase({
       updatedAt: new Date().toISOString(),
     };
 
-    void publishNight(payload).then((res) => {
-      setBusy(false);
+    void publishNight(payload).then(async (res) => {
       if (res.ok) {
+        setBusy(false);
         trackUiInteraction('night_publish', 'success');
         markPublished(night.clientKey, visibility);
         showToast(cs.vycep.publishedToast, {
@@ -114,10 +114,15 @@ function PublishNightSheetBase({
         return;
       }
       if (isRetriableNightError(res)) {
+        // Only promise a later publish after the payload is durably on disk.
+        const queued = await enqueueNightOp({ op: 'publish', payload }).catch(() => false);
+        setBusy(false);
+        if (!queued) {
+          trackUiInteraction('night_publish', 'failure');
+          showToast(cs.vycep.publishErrorToast);
+          return;
+        }
         trackUiInteraction('night_publish', 'success');
-        // Offline / transient: hand the publish to the durable queue and keep
-        // the optimistic published state (it WILL land).
-        void enqueueNightOp({ op: 'publish', payload });
         markPublished(night.clientKey, visibility);
         showToast(cs.vycep.publishQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
@@ -126,6 +131,7 @@ function PublishNightSheetBase({
         onClose();
         return;
       }
+      setBusy(false);
       trackUiInteraction('night_publish', 'failure');
       showToast(res.detail);
     });

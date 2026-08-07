@@ -143,8 +143,8 @@ jest.mock('@/hooks/useCompass', () => ({
   useCompass: jest.fn(),
 }));
 
-jest.mock('@/data/account', () => ({
-  updateAccountPreferences: jest.fn(async () => null),
+jest.mock('@/data/accountPreferencesQueue', () => ({
+  enqueueAccountPreferences: jest.fn(async () => true),
 }));
 
 // The real compass lives in src/ now; `app/(tabs)/index.tsx` is a one-line
@@ -153,8 +153,8 @@ const CompassScreen = require('@/compass/CompassHomeScreen').default;
 const { useCompass } = require('@/hooks/useCompass') as {
   useCompass: jest.Mock;
 };
-const { updateAccountPreferences } = require('@/data/account') as {
-  updateAccountPreferences: jest.Mock;
+const { enqueueAccountPreferences } = require('@/data/accountPreferencesQueue') as {
+  enqueueAccountPreferences: jest.Mock;
 };
 const mockedUseRouter = useRouter as jest.Mock;
 const CompassCardMock = CompassCard as jest.Mock;
@@ -397,7 +397,7 @@ describe('CompassScreen', () => {
     pressMoreRow(renderer, cs.compass.moreModeSurprise);
 
     expect(setMode).toHaveBeenCalledWith('surprise');
-    expect(updateAccountPreferences).toHaveBeenCalledWith({ mode: 'surprise' });
+    expect(enqueueAccountPreferences).toHaveBeenCalledWith({ mode: 'surprise' });
   });
 
   it('opens the report reason sheet from the more sheet', () => {

@@ -1,9 +1,16 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
+import { clusterCoordinates } from '@/map/mapModel';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
+
+type ClusterPoint = {
+  lat: number;
+  lng: number;
+  pub: PubPresentation;
+};
 
 function initialRegionFor(
   pubs: readonly PubPresentation[],
@@ -48,13 +55,48 @@ export function PubsMap({
   onPan?: () => void;
 }) {
   const mapRef = useRef<MapView>(null);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const region = useMemo(
     () => initialRegionFor(pubs, currentPosition),
     [currentPosition, pubs],
   );
+  const visibleRegion = mapRegion ?? region;
   const coordinateSignature = pubs
     .map((pub) => `${pub.id}:${pub.pub.lat}:${pub.pub.lng}`)
     .join('|');
+
+  const clusters = useMemo(() => {
+    if (!visibleRegion) return [];
+    const latMargin = visibleRegion.latitudeDelta * 0.65;
+    const lngMargin = visibleRegion.longitudeDelta * 0.65;
+    const points: ClusterPoint[] = pubs
+      .filter((pub) => pub.id !== selectedId)
+      .map((pub) => ({ lat: pub.pub.lat, lng: pub.pub.lng, pub }))
+      .filter(
+        (point) =>
+          Math.abs(point.lat - visibleRegion.latitude) <= latMargin &&
+          Math.abs(point.lng - visibleRegion.longitude) <= lngMargin,
+      );
+    return clusterCoordinates(points, visibleRegion);
+  }, [pubs, selectedId, visibleRegion]);
+
+  const selectedPub = selectedId ? pubs.find((pub) => pub.id === selectedId) ?? null : null;
+
+  const openCluster = useCallback(
+    (latitude: number, longitude: number) => {
+      if (!visibleRegion) return;
+      mapRef.current?.animateToRegion(
+        {
+          latitude,
+          longitude,
+          latitudeDelta: Math.max(visibleRegion.latitudeDelta / 2.5, 0.0015),
+          longitudeDelta: Math.max(visibleRegion.longitudeDelta / 2.5, 0.0015),
+        },
+        320,
+      );
+    },
+    [visibleRegion],
+  );
 
   const seenRecenter = useRef(recenterSignal);
   useEffect(() => {
@@ -76,12 +118,16 @@ export function PubsMap({
   useEffect(() => {
     if (coordinateSignature === fittedSignature.current) return;
     fittedSignature.current = coordinateSignature;
-    if (pubs.length <= 1) return;
+    // Nearby discovery stays centred on the user. Fitting the complete backend
+    // result set can zoom the map out across a whole city and stack every pin
+    // into one unreadable cloud. Only fit the catalogue when location is not
+    // available and it is our sole source of map context.
+    if (currentPosition || pubs.length <= 1) return;
     mapRef.current?.fitToCoordinates(
       pubs.map((pub) => ({ latitude: pub.pub.lat, longitude: pub.pub.lng })),
       { edgePadding: { top: 100, right: 36, bottom: 300, left: 36 }, animated: false },
     );
-  });
+  }, [coordinateSignature, currentPosition, pubs]);
 
   const animatedSelection = useRef('');
   useEffect(() => {
@@ -114,31 +160,58 @@ export function PubsMap({
       loadingBackgroundColor={Colors.stout}
       loadingIndicatorColor={Colors.amber}
       onPanDrag={onPan}
+      onRegionChangeComplete={setMapRegion}
     >
-      {pubs.map((pub) => (
-        <Marker
-          key={pub.id}
-          coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
-          onPress={() => onPressPub?.(pub.id)}
-          tracksViewChanges={false}
-        >
-          <View
-            style={[
-              styles.pin,
-              pub.openState === 'closed' && styles.pinClosed,
-              pub.id === selectedId && styles.pinSelected,
-            ]}
-          >
-            <Text
-              style={[styles.pinText, pub.id === selectedId && styles.pinTextSelected]}
-              numberOfLines={1}
-              allowFontScaling={false}
+      {clusters.map((cluster) => {
+        if (cluster.items.length > 1) {
+          return (
+            <Marker
+              key={`cluster:${cluster.id}:${cluster.items.length}`}
+              coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
+              onPress={() => openCluster(cluster.lat, cluster.lng)}
+              tracksViewChanges={false}
+              accessibilityLabel={`${cluster.items.length} hospod. Přiblížit`}
             >
-              {pub.name}
+              <View style={styles.clusterPin}>
+                <Text style={styles.clusterText} allowFontScaling={false}>
+                  {cluster.items.length}
+                </Text>
+              </View>
+            </Marker>
+          );
+        }
+        const pub = cluster.items[0].pub;
+        return (
+          <Marker
+            key={`${pub.id}:compact`}
+            coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
+            onPress={() => onPressPub?.(pub.id)}
+            tracksViewChanges={false}
+            accessibilityLabel={pub.name}
+          >
+            <View
+              style={[styles.pin, pub.openState === 'closed' && styles.pinClosed]}
+            />
+          </Marker>
+        );
+      })}
+
+      {selectedPub ? (
+        <Marker
+          key={`${selectedPub.id}:selected`}
+          coordinate={{ latitude: selectedPub.pub.lat, longitude: selectedPub.pub.lng }}
+          onPress={() => onPressPub?.(selectedPub.id)}
+          tracksViewChanges={false}
+          accessibilityLabel={selectedPub.name}
+          zIndex={10}
+        >
+          <View style={styles.pinSelected}>
+            <Text style={styles.pinTextSelected} numberOfLines={1} allowFontScaling={false}>
+              {selectedPub.name}
             </Text>
           </View>
         </Marker>
-      ))}
+      ) : null}
     </MapView>
   );
 }
@@ -146,17 +219,38 @@ export function PubsMap({
 const styles = StyleSheet.create({
   emptyMap: { backgroundColor: Colors.stout },
   pin: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: withAlpha('#000000', 0.78),
+  },
+  pinClosed: {
+    backgroundColor: withAlpha(Colors.foam, 0.48),
+    borderColor: withAlpha('#000000', 0.72),
+  },
+  pinSelected: {
     paddingHorizontal: 9,
-    height: 26,
-    borderRadius: 13,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     maxWidth: 140,
-    backgroundColor: withAlpha('#000000', 0.78),
+    backgroundColor: Colors.amber,
     borderWidth: 1.5,
     borderColor: Colors.amber,
   },
-  pinClosed: { borderColor: withAlpha(Colors.foam, 0.3) },
-  pinSelected: { backgroundColor: Colors.amber, borderColor: Colors.amber },
-  pinTextSelected: { color: Colors.stout },
-  pinText: { fontSize: 12, fontWeight: '700', color: Colors.foam },
+  pinTextSelected: { fontSize: 12, fontWeight: '700', color: Colors.stout },
+  clusterPin: {
+    minWidth: 32,
+    height: 32,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha('#000000', 0.82),
+    borderWidth: 2,
+    borderColor: Colors.amber,
+  },
+  clusterText: { fontSize: 12, fontWeight: '800', color: Colors.amber },
 });

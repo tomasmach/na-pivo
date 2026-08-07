@@ -35,6 +35,8 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^(?:\\.\\./)+modules/beer-live-activity$':
+      '<rootDir>/src/__mocks__/beer-live-activity.ts',
     '^expo-linking$': '<rootDir>/src/__mocks__/expo-linking.ts',
     '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
     '^expo-secure-store$': '<rootDir>/src/__mocks__/expo-secure-store.ts',

@@ -31,7 +31,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
-import { Face } from '@/feed/FeedMockScreen';
+import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import type { GameScore } from '@/games/protocol';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -106,7 +106,7 @@ export function GameResult({
       </Text>
 
       <View style={styles.star}>
-        {star ? <Face name={star} tint={tintOf(star)} size={72} /> : null}
+        {star ? <PersonAvatar name={star} tint={tintOf(star)} size={72} /> : null}
         <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
           {title}
         </Text>
@@ -126,7 +126,7 @@ export function GameResult({
               <Text style={styles.rank} allowFontScaling={false}>
                 {index + 1}
               </Text>
-              <Face name={row.name} tint={tintOf(row.name)} size={30} />
+              <PersonAvatar name={row.name} tint={tintOf(row.name)} size={30} />
               <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                 {row.name}
               </Text>

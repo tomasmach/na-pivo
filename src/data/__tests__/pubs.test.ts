@@ -84,6 +84,44 @@ describe("fetchPubsNear", () => {
     });
   });
 
+  it("passes stable multi-brand filters to the Mapy client", async () => {
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      beerBrandKeys: ["radegast", "pilsner-urquell", "radegast"],
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKeys: ["pilsner-urquell", "radegast"],
+      amenityKeys: [],
+    });
+  });
+
+  it("keeps scalar and multi-brand cache identities distinct", async () => {
+    _reset();
+    (searchPubsNear as jest.Mock).mockResolvedValue([]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      beerBrandKey: "pilsner-urquell",
+    });
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      radiusKm: 25,
+      beerBrandKeys: ["pilsner-urquell"],
+    });
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      radiusKm: 25,
+      beerBrandKeys: ["pilsner-urquell", "pilsner-urquell"],
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(2);
+    expect(searchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKeys: ["pilsner-urquell"],
+      amenityKeys: [],
+    });
+  });
+
   it("runs a fresh fetch when the beer brand changes during an in-flight request", async () => {
     let resolveFirst!: (value: Pub[]) => void;
     const firstFetch = new Promise<Pub[]>((resolve) => {

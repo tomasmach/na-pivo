@@ -141,6 +141,57 @@ describe('buildNightRecord', () => {
 
     expect(record.drinks[0].stopId).toBe('s2');
   });
+
+  it('builds one-write drinks across every stop in a pub crawl', () => {
+    const first: TallySession = {
+      clientId: 'stop-a',
+      pubKey: 'pub-a',
+      pubName: 'První hospoda',
+      startedAt: '2026-07-30T18:00:00.000Z',
+      drinks: [
+        { id: 'beer-a', beerName: 'Plzeň', at: '2026-07-30T18:30:00.000Z' },
+        { id: 'shared-id', beerName: 'Kozel', at: '2026-07-30T19:00:00.000Z' },
+      ],
+    };
+    const second: TallySession = {
+      clientId: 'stop-b',
+      pubKey: 'pub-b',
+      pubName: 'Druhá hospoda',
+      startedAt: '2026-07-30T21:00:00.000Z',
+      drinks: [
+        // A corrupt persisted duplicate still represents one server row.
+        { id: 'shared-id', beerName: 'Kozel', at: '2026-07-30T19:00:00.000Z' },
+        { id: 'beer-b', beerName: 'Radegast', at: '2026-07-30T21:30:00.000Z' },
+      ],
+    };
+    const record = buildNightRecord({
+      evening: null,
+      session: second,
+      sessions: [first, second],
+      meId: ME,
+      stops: [
+        {
+          id: first.clientId,
+          pubName: first.pubName,
+          cacheKey: first.pubKey,
+          arrivedAt: first.startedAt,
+        },
+        {
+          id: second.clientId,
+          pubName: second.pubName,
+          cacheKey: second.pubKey,
+          arrivedAt: second.startedAt,
+        },
+      ],
+    });
+
+    expect(record.drinks.map((drink) => [drink.id, drink.stopId])).toEqual([
+      ['beer-a', 'stop-a'],
+      ['shared-id', 'stop-a'],
+      ['beer-b', 'stop-b'],
+    ]);
+    expect(nightTally(record).beers).toBe(3);
+  });
 });
 
 describe('peopleOf', () => {

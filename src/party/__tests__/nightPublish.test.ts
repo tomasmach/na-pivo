@@ -10,7 +10,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-import { nightPublishPayload } from '@/party/nightPublish';
+import { nightPhotoReferences, nightPublishPayload } from '@/party/nightPublish';
 import { emptyNight, type NightDrink, type NightRecord } from '@/party/nightRecord';
 
 const START = new Date(2026, 6, 30, 20, 0);
@@ -43,6 +43,57 @@ beforeEach(() => {
 });
 
 describe('nightPublishPayload', () => {
+  it('keeps an offline photo client id until the upload becomes a hero', () => {
+    const pendingId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const syncedId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    expect(
+      nightPhotoReferences(
+        [
+          {
+            id: null,
+            clientId: pendingId,
+            visibility: 'friends',
+            partyDrinkingDay: '2026-07-30',
+          },
+          {
+            id: syncedId,
+            clientId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            visibility: 'friends',
+            partyCode: 'STUL24',
+          },
+          {
+            id: null,
+            clientId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            visibility: 'private',
+            partyCode: 'STUL24',
+          },
+        ],
+        'stul24',
+        '2026-07-30',
+      ),
+    ).toEqual([pendingId, syncedId]);
+  });
+
+  it('publishes an offline-only Party photo by drinking day without a table code', () => {
+    const pendingId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    expect(
+      nightPhotoReferences(
+        [
+          {
+            id: null,
+            clientId: pendingId,
+            visibility: 'friends',
+            partyDrinkingDay: '2026-07-30',
+          },
+        ],
+        undefined,
+        '2026-07-30',
+      ),
+    ).toEqual([pendingId]);
+  });
+
   it('is keyed by the drinking day, so one night is one post', () => {
     // The same key the diary uses: publishing this night from the hub and from
     // Výčep must update one post, not argue in two.
@@ -146,5 +197,54 @@ describe('nightPublishPayload', () => {
     expect(payload.durationMinutes).toBe(120);
     expect(payload.endedAt).toBe(new Date(2026, 6, 30, 22, 0).toISOString());
     expect(payload.visibility).toBe('public');
+  });
+
+  it('publishes only the current account from a shared table', () => {
+    const payload = nightPublishPayload(
+      night({
+        endedAt: '2026-07-31T02:00:00.000Z',
+        people: [
+          {
+            id: 'me',
+            name: 'Ty',
+            avatarUrl: null,
+            tint: '#E8A317',
+            joinedAt: '2026-07-31T00:30:00.000Z',
+          },
+          { id: 'friend', name: 'Honza', avatarUrl: null, tint: '#fff' },
+        ],
+        stops: [
+          {
+            id: 'mine',
+            by: 'me',
+            pubName: 'Moje hospoda',
+            cacheKey: null,
+            arrivedAt: '2026-07-31T00:35:00.000Z',
+          },
+          {
+            id: 'theirs',
+            by: 'friend',
+            pubName: 'Cizí štace',
+            cacheKey: null,
+            arrivedAt: '2026-07-30T20:00:00.000Z',
+          },
+        ],
+        drinks: [
+          drink({ by: 'me', stopId: 'mine', at: '2026-07-31T00:45:00.000Z' }),
+          drink({ by: 'friend', stopId: 'theirs', at: '2026-07-30T20:30:00.000Z' }),
+          drink({ by: 'friend', stopId: 'theirs', at: '2026-07-30T21:30:00.000Z' }),
+        ],
+      }),
+      { visibility: 'friends', now: Date.parse('2026-07-31T02:00:00.000Z'), ownerId: 'me' },
+    );
+
+    expect(payload).toMatchObject({
+      drinkingDay: '2026-07-30',
+      beerCount: 1,
+      pubNames: ['Moje hospoda'],
+      startedAt: '2026-07-31T00:30:00.000Z',
+      durationMinutes: 90,
+    });
+    expect(JSON.stringify(payload)).not.toContain('Cizí štace');
   });
 });

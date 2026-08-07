@@ -37,6 +37,21 @@ export interface RemoteRecords {
   mostBeersDate: string | null;
   fastestBeerSeconds: number | null;
   longestEveningSeconds: number | null;
+  /** Added in 3.0; absent when talking to an older compatible backend. */
+  longestEveningPubName?: string | null;
+  longestEveningDate?: string | null;
+}
+
+/** Whole drinking-day bests used by the 3.0 recap record callout. */
+export interface RemoteNightRecords {
+  mostBeers: number;
+  longestSeconds: number;
+  mostStops: number;
+  /** Additive context from API 3.0; absent against an older backend. */
+  mostBeersDate?: string | null;
+  mostBeersPubNames?: string[];
+  longestDate?: string | null;
+  longestPubNames?: string[];
 }
 
 export interface RemotePeriodStat {
@@ -83,14 +98,20 @@ export type RemoteTimelineWindow = Omit<RemoteTimelineStat, 'period'>;
 export interface RemoteStats {
   totalBeers: number;
   totalEvenings: number;
+  /** One count per 04:00 drinking day, even when the night changed pubs. */
+  totalNights?: number;
   distinctPubs: number;
   totalSpentCzk: number;
   firstDrinkAt: string | null;
   topPubs: RemotePubTally[];
   records: RemoteRecords;
+  /** Added in 3.0; absent when talking to an older compatible backend. */
+  nightRecords?: RemoteNightRecords;
   periods: RemotePeriodStats;
   /** Added in API 3.0; absent against an older compatible backend. */
   timeline?: RemoteStatsTimeline;
+  /** Drinking-day counterpart to legacy per-pub `timeline`. */
+  nightTimeline?: RemoteStatsTimeline;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -107,6 +128,12 @@ function str(value: unknown): string {
 
 function nullableStr(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string =>
+    typeof item === 'string' && item.length > 0))];
 }
 
 function parsePub(raw: unknown): RemotePubTally | null {
@@ -187,6 +214,7 @@ function parseStats(body: unknown): RemoteStats | null {
   const b = body as Record<string, unknown>;
   if (!b || typeof b !== 'object') return null;
   const records = (b.records ?? {}) as Record<string, unknown>;
+  const nightRecords = (b.night_records ?? {}) as Record<string, unknown>;
   const topPubs = Array.isArray(b.top_pubs)
     ? b.top_pubs.map(parsePub).filter((p): p is RemotePubTally => p != null)
     : [];
@@ -198,10 +226,14 @@ function parseStats(body: unknown): RemoteStats | null {
     ? periods.years.map(parsePeriod).filter((p): p is RemotePeriodStat => p != null)
     : [];
   const timeline = parseStatsTimeline(b.timeline);
+  const nightTimeline = parseStatsTimeline(b.night_timeline);
 
   return {
     totalBeers: num(b.total_beers),
     totalEvenings: num(b.total_evenings),
+    ...(typeof b.total_nights === 'number' && Number.isFinite(b.total_nights)
+      ? { totalNights: b.total_nights }
+      : {}),
     distinctPubs: num(b.distinct_pubs),
     totalSpentCzk: num(b.total_spent_czk),
     firstDrinkAt: nullableStr(b.first_drink_at),
@@ -212,7 +244,22 @@ function parseStats(body: unknown): RemoteStats | null {
       mostBeersDate: nullableStr(records.most_beers_date),
       fastestBeerSeconds: nullableNum(records.fastest_beer_seconds),
       longestEveningSeconds: nullableNum(records.longest_evening_seconds),
+      longestEveningPubName: nullableStr(records.longest_evening_pub_name),
+      longestEveningDate: nullableStr(records.longest_evening_date),
     },
+    ...(b.night_records && typeof b.night_records === 'object'
+      ? {
+          nightRecords: {
+            mostBeers: num(nightRecords.most_beers),
+            longestSeconds: num(nightRecords.longest_seconds),
+            mostStops: num(nightRecords.most_stops),
+            mostBeersDate: nullableStr(nightRecords.most_beers_date),
+            mostBeersPubNames: stringList(nightRecords.most_beers_pub_names),
+            longestDate: nullableStr(nightRecords.longest_date),
+            longestPubNames: stringList(nightRecords.longest_pub_names),
+          },
+        }
+      : {}),
     periods: {
       timezone: str(periods.timezone),
       months,
@@ -225,6 +272,7 @@ function parseStats(body: unknown): RemoteStats | null {
       streak: { currentWeeks: 0, bestWeeks: 0 },
       windows: null,
     },
+    ...(nightTimeline ? { nightTimeline } : {}),
   };
 }
 
@@ -240,14 +288,23 @@ function deviceTimezone(): string | null {
 /**
  * GET the account's durable beer stats, or null on any failure. Never throws.
  */
-export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | null> {
+export async function fetchMyStats(
+  signal?: AbortSignal,
+  excludeDrinkingDay?: string,
+): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
   const baseEndpoint = getBackendEndpoint('/v1/me/stats');
   if (!baseEndpoint) return null;
   const timezone = deviceTimezone();
-  const endpoint = timezone
-    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}timezone=${encodeURIComponent(timezone)}`
+  const query = [
+    ...(timezone ? [`timezone=${encodeURIComponent(timezone)}`] : []),
+    ...(excludeDrinkingDay
+      ? [`exclude_drinking_day=${encodeURIComponent(excludeDrinkingDay)}`]
+      : []),
+  ].join('&');
+  const endpoint = query
+    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}${query}`
     : baseEndpoint;
 
   const session = await ensureAccount(signal);

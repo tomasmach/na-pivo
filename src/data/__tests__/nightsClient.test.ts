@@ -1,9 +1,19 @@
+/* eslint-disable import/first -- Jest module mocks must be installed before imports. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+jest.mock('../account', () => ({
+  clearCachedAnonymousAccount: jest.fn(async () => undefined),
+  ensureAccount: jest.fn(async () => ({ accountId: 'me', token: 'token' })),
+  generateUuidV4: jest.fn(() => '44444444-4444-4444-8444-444444444444'),
+}));
+jest.mock('../backendConfig', () => ({
+  getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
+}));
+jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
 const mockPublishNight: jest.Mock = jest.fn(async () => ({ ok: true, night: {} }));
 const mockUnpublishNight: jest.Mock = jest.fn(async () => ({ ok: true }));
@@ -19,6 +29,8 @@ jest.mock('../nightsClient', () => ({
 }));
 
 import {
+  fetchProfileNights,
+  fetchPubNightsFeed,
   isRetriableNightError,
   nightPublishWire,
   parsePublishedNight,
@@ -40,6 +52,13 @@ const payload: NightPublishPayload = {
   pubNames: ['U Testu', 'Lokál'],
   city: 'Praha',
   durationMinutes: 270,
+  title: 'Čtyři kousky a domů',
+  roastLine: 'Domů ses vydal na třetí pokus.',
+  roastBasis: '4 piva · 2 hospody',
+  partyCode: 'STUL12',
+  participantIds: ['11111111-1111-4111-8111-111111111111'],
+  photoIds: ['22222222-2222-4222-8222-222222222222'],
+  gameIds: ['33333333-3333-4333-8333-333333333333'],
   visibility: 'friends',
   updatedAt: '2026-07-19T08:00:00.000Z',
 };
@@ -75,6 +94,13 @@ describe('night wire and parser', () => {
       pub_names: ['U Testu', 'Lokál'],
       city: 'Praha',
       duration_minutes: 270,
+      title: 'Čtyři kousky a domů',
+      roast_line: 'Domů ses vydal na třetí pokus.',
+      roast_basis: '4 piva · 2 hospody',
+      party_code: 'STUL12',
+      participant_ids: ['11111111-1111-4111-8111-111111111111'],
+      photo_ids: ['22222222-2222-4222-8222-222222222222'],
+      game_ids: ['33333333-3333-4333-8333-333333333333'],
       visibility: 'friends',
       updated_at: '2026-07-19T08:00:00.000Z',
     });
@@ -112,11 +138,18 @@ describe('night wire and parser', () => {
       pubNames: [],
       city: '',
       durationMinutes: null,
+      title: '',
+      roastLine: '',
+      roastBasis: '',
+      participants: [],
+      heroPhotos: [],
+      heroGames: [],
       visibility: 'friends',
       createdAt: '',
       rounds: 0,
       myRound: false,
       isMine: false,
+      commentCount: 0,
     });
   });
 
@@ -135,11 +168,26 @@ describe('night wire and parser', () => {
       pub_names: ['U Testu', null, 42, 'Lokál'],
       city: 'Brno',
       duration_minutes: '180',
+      title: 'Pepa se rozjel',
+      roast_line: 'Lokál zavíral, Pepa ne.',
+      roast_basis: '3 piva · 180 minut',
+      participants: [
+        { id: 'a3', nickname: 'jana', display_name: 'Jana', is_public: true },
+        null,
+      ],
+      hero_photos: [
+        { id: 'photo-1', image_url: 'https://cdn.example/photo.jpg', caption: 'Na zdraví' },
+        { id: 'broken' },
+      ],
+      hero_games: [
+        { id: 'game-1', catalog_key: 'quiz', name: 'Pivní kvíz', scoring: 'points' },
+      ],
       visibility: 'public',
       created_at: 'created',
       rounds: 5,
       my_round: true,
       is_mine: true,
+      comment_count: 7,
     });
     expect(night).toEqual(
       expect.objectContaining({
@@ -147,16 +195,102 @@ describe('night wire and parser', () => {
         beerCount: 3,
         pubNames: ['U Testu', 'Lokál'],
         durationMinutes: 180,
+        title: 'Pepa se rozjel',
+        roastLine: 'Lokál zavíral, Pepa ne.',
+        roastBasis: '3 piva · 180 minut',
+        participants: [
+          {
+            id: 'a3',
+            nickname: 'jana',
+            displayName: 'Jana',
+            avatarUrl: null,
+            isPublic: true,
+          },
+        ],
+        heroPhotos: [
+          {
+            id: 'photo-1',
+            imageUrl: 'https://cdn.example/photo.jpg',
+            caption: 'Na zdraví',
+          },
+        ],
+        heroGames: [
+          {
+            id: 'game-1',
+            catalogKey: 'quiz',
+            name: 'Pivní kvíz',
+            scoring: 'points',
+          },
+        ],
         visibility: 'public',
         rounds: 5,
         myRound: true,
         isMine: true,
+        commentCount: 7,
+      }),
+    );
+  });
+});
+
+describe('pub activity feed', () => {
+  it('sends the normalized-name filter and cursor to the server', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ nights: [], next_cursor: 'next-page' }),
+    })) as jest.Mock;
+    global.fetch = fetchMock;
+
+    await expect(fetchPubNightsFeed('U Zlatého tygra', 'page+/=')).resolves.toEqual({
+      ok: true,
+      nights: [],
+      nextCursor: 'next-page',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/v1/nights/feed?scope=friends&pub=U%20Zlat%C3%A9ho%20tygra&cursor=page%2B%2F%3D&limit=20',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer token' }),
+      }),
+    );
+  });
+});
+
+describe('public profile activity feed', () => {
+  it('uses the server-enforced public-author contract', async () => {
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ nights: [], next_cursor: null }),
+    })) as jest.Mock;
+    global.fetch = fetchMock;
+
+    await expect(fetchProfileNights('account+/=', 'page+/=')).resolves.toEqual({
+      ok: true,
+      nights: [],
+      nextCursor: null,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.test/v1/nights/feed?public_author=account%2B%2F%3D&cursor=page%2B%2F%3D&limit=20',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer token' }),
       }),
     );
   });
 });
 
 describe('nights queue collapse', () => {
+  it('does not accept a publish that failed to reach durable storage', async () => {
+    mockPublishNight.mockResolvedValue(retry());
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(enqueueNightOp({ op: 'publish', payload })).resolves.toBe(false);
+
+    expect(mockPublishNight).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('keeps only the newest publish for one client id', async () => {
     mockPublishNight.mockResolvedValue(retry());
     await enqueueNightOp({ op: 'publish', payload });

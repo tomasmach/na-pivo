@@ -24,9 +24,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { TAB_CHROME } from '@/components/shared/TabBar';
+import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
 import type { Challenge } from '@/data/challengesClient';
 
@@ -95,6 +96,49 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
         </View>
       ))}
 
+      {challenge.friends.length > 0 ? (
+        <>
+          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+            Kdo ještě jede
+          </Text>
+          {challenge.friends.map((friend) => {
+            const person = friend.account;
+            const personLabel = person.nickname ? `@${person.nickname}` : person.displayName;
+            return (
+              <View key={person.id} style={styles.rival}>
+                <Avatar
+                  uri={person.avatarUrl}
+                  nickname={person.nickname}
+                  displayName={person.displayName}
+                  size={40}
+                  border="quiet"
+                />
+                <Text
+                  style={styles.handle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {personLabel}
+                </Text>
+                <View style={styles.rivalProgress}>
+                  <Text style={styles.rivalScore} allowFontScaling={false}>
+                    {friend.done}
+                    <Text style={styles.rivalGoal}> z {challenge.goal}</Text>
+                  </Text>
+                  <View style={styles.trackThin}>
+                    <View
+                      style={[
+                        styles.fill,
+                        { width: `${Math.max(0, Math.min(100, friend.progress * 100))}%` },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -102,7 +146,6 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
   content: { paddingHorizontal: MockLayout.screenPad },
-  grow: { flex: 1 },
 
   title: {
     fontSize: 30,
@@ -152,7 +195,6 @@ const styles = StyleSheet.create({
 
   rule: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginTop: Spacing.md },
   ruleText: { flex: 1, fontSize: 15, fontWeight: '400', color: Colors.foam, lineHeight: 21 },
-
   rival: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -161,9 +203,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: withAlpha(Colors.foam, 0.08),
   },
-  avatar: { width: 40, height: 40, borderRadius: Radius.pill },
-  handle: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
-  handleMe: { color: Colors.foam, fontWeight: '700' },
+  handle: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.foam },
+  rivalProgress: { width: 92, alignItems: 'flex-end' },
   rivalScore: {
     fontSize: 19,
     fontWeight: '700',
@@ -171,12 +212,4 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   rivalGoal: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
-
-  mockNote: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    textAlign: 'center',
-    marginTop: MockLayout.sectionGap,
-  },
 });

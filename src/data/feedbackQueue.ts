@@ -135,5 +135,5 @@ export function clearFeedbackQueue(): Promise<void> {
     } catch {
       // Best-effort privacy cleanup at account boundaries.
     }
-  });
+  }, { allowDuringPrivateTransition: true });
 }

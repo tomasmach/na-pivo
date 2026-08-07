@@ -164,7 +164,9 @@ let _lastFetchRadiusKm: number | null = null;
 /** Honest covered radius of the last fetch — equals the requested radius unless
  *  the backend cap truncated the result (dense areas). */
 let _lastFetchCoveredKm: number | null = null;
-let _lastFetchBeerBrandKey = "";
+/** Includes the wire mode (`scalar:` / `multi:`), so a cached scalar result
+ * cannot satisfy a multi-select request that still needs the v3 acknowledgement. */
+let _lastFetchBeerFilterKey = "";
 let _lastFetchAmenityKey = "";
 let _lastFetchIncludeOtherPlaces = false;
 let _inflight: Promise<void> | null = null;
@@ -183,6 +185,7 @@ interface FetchPubsNearOptions {
    *  uncovered map still triggers a fetch. */
   coverageKm?: number;
   beerBrandKey?: string | null;
+  beerBrandKeys?: readonly string[];
   amenityKeys?: readonly string[];
   includeOtherPlaces?: boolean;
 }
@@ -427,7 +430,7 @@ export function _reset(): void {
   _lastFetchCenter = null;
   _lastFetchRadiusKm = null;
   _lastFetchCoveredKm = null;
-  _lastFetchBeerBrandKey = "";
+  _lastFetchBeerFilterKey = "";
   _lastFetchAmenityKey = "";
   _lastFetchIncludeOtherPlaces = false;
   _inflight = null;
@@ -511,10 +514,24 @@ export async function fetchPubsNear(
     ? Math.max(options.coverageKm ?? 0, 0)
     : undefined;
   const beerBrandKey = (options.beerBrandKey ?? "").trim();
+  const beerBrandKeys = Array.from(
+    new Set((options.beerBrandKeys ?? []).map((key) => key.trim()).filter(Boolean)),
+  ).sort();
+  const usesMultiBeerFilter = beerBrandKeys.length > 0;
+  const effectiveBeerBrandKeys = usesMultiBeerFilter
+    ? beerBrandKeys
+    : beerBrandKey
+      ? [beerBrandKey]
+      : [];
+  const beerFilterKey = usesMultiBeerFilter
+    ? `multi:${beerBrandKeys.join(',')}`
+    : beerBrandKey
+      ? `scalar:${beerBrandKey}`
+      : "";
   const amenityKeys = Array.from(new Set(options.amenityKeys ?? [])).sort();
   const amenityKey = amenityKeys.join(',');
   const includeOtherPlaces = options.includeOtherPlaces === true;
-  const requestKey = `${lat}:${lng}:${radiusKm}:${beerBrandKey}:${amenityKey}:${includeOtherPlaces}`;
+  const requestKey = `${lat}:${lng}:${radiusKm}:${beerFilterKey}:${amenityKey}:${includeOtherPlaces}`;
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
@@ -531,7 +548,7 @@ export async function fetchPubsNear(
       coverageKm,
     );
     if (
-      beerBrandKey === _lastFetchBeerBrandKey &&
+      beerFilterKey === _lastFetchBeerFilterKey &&
       amenityKey === _lastFetchAmenityKey &&
       includeOtherPlaces === _lastFetchIncludeOtherPlaces &&
       cacheStillValid
@@ -553,7 +570,7 @@ export async function fetchPubsNear(
       // Cold-start hydration: consult the persisted snapshot exactly once, and
       // only when not force-refetching. A covering, fresh snapshot lets us skip
       // the network entirely.
-      if (!options.force && !beerBrandKey && !amenityKey && !_hydrationAttempted) {
+      if (!options.force && effectiveBeerBrandKeys.length === 0 && !amenityKey && !_hydrationAttempted) {
         _hydrationAttempted = true;
         const snapshot = await loadSnapshot();
         if (signal?.aborted) return;
@@ -583,7 +600,7 @@ export async function fetchPubsNear(
           _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
           _lastFetchRadiusKm = snapshot.radiusKm;
           _lastFetchCoveredKm = snapshot.coveredKm ?? snapshot.radiusKm;
-          _lastFetchBeerBrandKey = "";
+          _lastFetchBeerFilterKey = "";
           _lastFetchAmenityKey = "";
           _lastFetchIncludeOtherPlaces = false;
           if (!includeOtherPlaces) return;
@@ -595,7 +612,7 @@ export async function fetchPubsNear(
       // round trip before markers can appear on the map.
       const [pubs, blockedReports] = await Promise.all([
         searchPubsNear(lat, lng, radiusKm, signal, {
-          beerBrandKey,
+          ...(usesMultiBeerFilter ? { beerBrandKeys } : { beerBrandKey }),
           amenityKeys,
           ...(includeOtherPlaces ? { includeOtherPlaces: true } : {}),
         }),
@@ -628,22 +645,22 @@ export async function fetchPubsNear(
         }
         coveredKm = Math.min(radiusKm, farthestKm);
       }
-      if (!beerBrandKey && !amenityKey && !includeOtherPlaces) {
+      if (effectiveBeerBrandKeys.length === 0 && !amenityKey && !includeOtherPlaces) {
         _lastUnfilteredPubs = filtered.slice();
         _lastUnfilteredCenter = { lat, lng };
         _lastUnfilteredRadiusKm = radiusKm;
       }
-      _currentIndexIsFiltered = Boolean(beerBrandKey || amenityKey);
-      replaceBasePubs(filtered, !beerBrandKey && !amenityKey);
+      _currentIndexIsFiltered = Boolean(effectiveBeerBrandKeys.length > 0 || amenityKey);
+      replaceBasePubs(filtered, effectiveBeerBrandKeys.length === 0 && !amenityKey);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
       _lastFetchCoveredKm = coveredKm;
-      _lastFetchBeerBrandKey = beerBrandKey;
+      _lastFetchBeerFilterKey = beerFilterKey;
       _lastFetchAmenityKey = amenityKey;
       _lastFetchIncludeOtherPlaces = includeOtherPlaces;
       // Persist the post-block-filtering result so the next cold start can skip
       // the network. Fire-and-forget — saveSnapshot never throws.
-      if (!beerBrandKey && !amenityKey && !includeOtherPlaces) {
+      if (effectiveBeerBrandKeys.length === 0 && !amenityKey && !includeOtherPlaces) {
         // Strip server-owned amenity summaries so they aren't double-cached in the
         // 24h snapshot (spec §4.6); they rehydrate from their own short-TTL cache.
         void saveSnapshot({
@@ -659,7 +676,7 @@ export async function fetchPubsNear(
       // A failed filtered lookup must never leave the previous unfiltered index
       // looking like a valid match. Keep local work intact in its own override
       // map, but expose no result until the user retries or clears the filters.
-      if (beerBrandKey || amenityKey) {
+      if (effectiveBeerBrandKeys.length > 0 || amenityKey) {
         _currentIndexIsFiltered = true;
         replaceBasePubs([], false);
       } else if (_currentIndexIsFiltered || (!includeOtherPlaces && _lastFetchIncludeOtherPlaces)) {
@@ -667,7 +684,7 @@ export async function fetchPubsNear(
         // presented as an unfiltered result. Restore the last known unfiltered
         // catalogue only when it still covers this location; otherwise an old
         // city's pubs would be worse than an honest empty state.
-        _lastFetchBeerBrandKey = "";
+        _lastFetchBeerFilterKey = "";
         _lastFetchAmenityKey = "";
         _lastFetchIncludeOtherPlaces = false;
         _lastFetchCenter = null;
@@ -718,7 +735,7 @@ export async function hydratePubsSnapshot(): Promise<boolean> {
   _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
   _lastFetchRadiusKm = snapshot.radiusKm;
   _lastFetchCoveredKm = snapshot.coveredKm ?? snapshot.radiusKm;
-  _lastFetchBeerBrandKey = "";
+  _lastFetchBeerFilterKey = "";
   _lastFetchIncludeOtherPlaces = false;
   return true;
 }

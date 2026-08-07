@@ -38,6 +38,7 @@ import {
   firstDrinkLabel,
   profileRecords,
   profileSeries,
+  profileTimeline,
   type ProfilePeriod,
 } from '@/profile/profileStats';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -52,7 +53,8 @@ import { Radius, Spacing } from '@/theme/layout';
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
 
-function ProfileActivity({ accountId, reduceMotion }: { accountId: string; reduceMotion: boolean }) {
+function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string; reduceMotion: boolean }) {
+  const router = useRouter();
   const [nights, setNights] = useState<PublishedNight[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,6 +123,10 @@ function ProfileActivity({ accountId, reduceMotion }: { accountId: string; reduc
     persist(merged, result.nextCursor);
   }, [cursor, loadingMore, nights, persist]);
 
+  const openNight = useCallback((night: PublishedNight) => {
+    router.push(`/night/${encodeURIComponent(night.id)}` as Href);
+  }, [router]);
+
   if (loading && !nights) {
     return (
       <View style={styles.activityLoading} accessibilityLabel="Načítám tvoje večery">
@@ -163,7 +169,12 @@ function ProfileActivity({ accountId, reduceMotion }: { accountId: string; reduc
         </Pressable>
       ) : null}
       {nights.map((night, index) => (
-        <FeedCard key={night.id} night={night} first={index === 0} />
+        <FeedCard
+          key={night.id}
+          night={night}
+          first={index === 0}
+          onOpenNight={openNight}
+        />
       ))}
       {cursor ? (
         <Pressable
@@ -180,6 +191,28 @@ function ProfileActivity({ accountId, reduceMotion }: { accountId: string; reduc
   );
 }
 
+/**
+ * Own-night state is private to the active account. Profile tabs stay mounted
+ * while a credential is replaced, so changing the owner must synchronously
+ * unmount the previous list before the replacement account's cache or network
+ * request settles. A stable key keeps ordinary same-account offline refreshes.
+ */
+export function ProfileActivity({
+  accountId,
+  reduceMotion,
+}: {
+  accountId: string;
+  reduceMotion: boolean;
+}) {
+  return (
+    <ProfileActivityContent
+      key={accountId}
+      accountId={accountId}
+      reduceMotion={reduceMotion}
+    />
+  );
+}
+
 export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -190,6 +223,7 @@ export default function ProfileMockScreen() {
   const { stats, status: statsStatus, retry: retryStats } = useMyStatsState();
   const series = useMemo(() => profileSeries(stats, period), [period, stats]);
   const records = useMemo(() => profileRecords(stats), [stats]);
+  const drinkingTimeline = profileTimeline(stats);
   // The header follows your finger. With nothing held it shows the whole window.
   const point = scrubbed === null ? null : series.points[scrubbed];
   const totals = point?.totals ?? series.totals;
@@ -298,17 +332,17 @@ export default function ProfileMockScreen() {
               to a decoration instead of to the streak, which is the only thing
               here worth looking at — so the number is the graphic. */}
           <Text style={styles.streakValue} allowFontScaling={false}>
-            {stats.timeline?.streak.currentWeeks ?? 0}
+            {drinkingTimeline?.streak.currentWeeks ?? 0}
             <Text style={styles.streakUnit}> týdny v řadě</Text>
           </Text>
           <Text style={styles.streakBest} maxFontSizeMultiplier={FontScaleCap.body}>
-            Nejlepší {stats.timeline?.streak.bestWeeks ?? 0} týdnů
+            Nejlepší {drinkingTimeline?.streak.bestWeeks ?? 0} týdnů
           </Text>
           {/* Columns, not dots: the height says how many nights that week had and
               a gap says you missed it, which is the difference between a streak
               you can read and a row of identical ticks. */}
           <View style={styles.weeks}>
-            {(stats.timeline?.weeks ?? []).map((week) => (
+            {(drinkingTimeline?.weeks ?? []).map((week) => (
               <View key={week.period} style={styles.week}>
                 <Text style={styles.weekNights} allowFontScaling={false}>
                   {week.evenings > 0 ? week.evenings : ''}

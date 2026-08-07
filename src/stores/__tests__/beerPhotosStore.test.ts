@@ -7,6 +7,11 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  clearBeerPhotoDeletionTombstones,
+  completeBeerPhotoDeletionTombstone,
+  queueBeerPhotoDeletionTombstone,
+} from '@/data/beerPhotoDeletionTombstones';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -17,7 +22,23 @@ jest.mock('@/data/beerPhotosClient', () => ({
   fetchMyBeerPhotos: (...args: unknown[]) => fetchMyBeerPhotos(...(args as [])),
 }));
 
+let currentAccountId: string | null = 'account-a';
+const ensureAccount = jest.fn(async () =>
+  currentAccountId
+    ? {
+        deviceId: `device-${currentAccountId}`,
+        accountId: currentAccountId,
+        token: `token-${currentAccountId}`,
+        authenticated: true,
+      }
+    : null,
+);
+jest.mock('@/data/account', () => ({
+  ensureAccount: (...args: unknown[]) => ensureAccount(...(args as [])),
+}));
+
 import {
+  clearBeerPhotosAccountData,
   loadBeerPhotos,
   useBeerPhotosStore,
   type PendingBeerPhotoInput,
@@ -53,10 +74,18 @@ function pendingInput(clientId: string, over: Partial<PendingBeerPhotoInput> = {
 }
 
 beforeEach(async () => {
+  await clearBeerPhotoDeletionTombstones();
   jest.clearAllMocks();
+  currentAccountId = 'account-a';
   await AsyncStorage.clear();
   useBeerPhotosStore.setState({ photos: [] });
 });
+
+async function waitForCallCount(mock: jest.Mock, count: number): Promise<void> {
+  for (let attempt = 0; attempt < 20 && mock.mock.calls.length < count; attempt += 1) {
+    await Promise.resolve();
+  }
+}
 
 describe('addPendingPhoto', () => {
   it('inserts an optimistic pending entry with the local uri', () => {
@@ -89,6 +118,40 @@ describe('addPendingPhoto', () => {
     const photos = useBeerPhotosStore.getState().photos;
     expect(photos).toHaveLength(1);
     expect(photos[0].caption).toBe('druhá');
+  });
+
+  it('retains the party association after the queued photo syncs', () => {
+    const store = useBeerPhotosStore.getState();
+    store.addPendingPhoto(
+      pendingInput('c1', { partyCode: 'PIVOXY', partyDrinkingDay: '2026-07-05' }),
+    );
+
+    store.markSynced('c1', serverPhoto('c1'));
+
+    expect(useBeerPhotosStore.getState().photos[0].partyCode).toBe('PIVOXY');
+    expect(useBeerPhotosStore.getState().photos[0].partyDrinkingDay).toBe('2026-07-05');
+  });
+
+  it('replaces a reserved table code only after create is confirmed', async () => {
+    const store = useBeerPhotosStore.getState();
+    store.addPendingPhoto(
+      pendingInput('c1', {
+        pendingPartyCode: 'PIVOXY',
+        partyDrinkingDay: '2026-07-05',
+      }),
+    );
+
+    store.resolvePendingPartyAssociation('pivoxy', 'STUL24');
+
+    expect(useBeerPhotosStore.getState().photos[0]).toMatchObject({
+      partyCode: 'STUL24',
+      partyDrinkingDay: '2026-07-05',
+    });
+    expect(useBeerPhotosStore.getState().photos[0].pendingPartyCode).toBeUndefined();
+    // Let Zustand's async persistence finish before the next test clears the
+    // shared AsyncStorage mock.
+    await Promise.resolve();
+    await Promise.resolve();
   });
 });
 
@@ -130,6 +193,18 @@ describe('setServerPhotos (merge)', () => {
     useBeerPhotosStore.getState().setServerPhotos([serverPhoto('c2')]);
 
     expect(useBeerPhotosStore.getState().photos.map((p) => p.clientId)).toEqual(['c2']);
+  });
+
+  it('never re-adds a stale GET row after its durable delete was acknowledged', async () => {
+    await queueBeerPhotoDeletionTombstone('c1', 'account-a');
+    useBeerPhotosStore.getState().setServerPhotos([serverPhoto('c1')], 'account-a');
+    expect(useBeerPhotosStore.getState().photos).toEqual([]);
+
+    // Server acknowledgement removes the disk retry, but same-process read
+    // suppression stays until the account boundary so an older GET cannot win.
+    await completeBeerPhotoDeletionTombstone('c1', 'account-a');
+    useBeerPhotosStore.getState().setServerPhotos([serverPhoto('c1')], 'account-a');
+    expect(useBeerPhotosStore.getState().photos).toEqual([]);
   });
 });
 
@@ -201,6 +276,21 @@ describe('removePhoto', () => {
 });
 
 describe('loadBeerPhotos', () => {
+  it('does not fetch or apply a server snapshot when tombstones are unreadable', async () => {
+    useBeerPhotosStore.getState().addPendingPhoto(pendingInput('local-safe'));
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<
+      typeof AsyncStorage.getItem
+    >;
+    getItem.mockRejectedValueOnce(new Error('storage unavailable'));
+
+    await loadBeerPhotos();
+
+    expect(fetchMyBeerPhotos).not.toHaveBeenCalled();
+    expect(useBeerPhotosStore.getState().photos.map((photo) => photo.clientId)).toEqual([
+      'local-safe',
+    ]);
+  });
+
   it('reconciles with the server list when the fetch succeeds', async () => {
     fetchMyBeerPhotos.mockResolvedValueOnce([serverPhoto('c1')]);
 
@@ -231,5 +321,151 @@ describe('loadBeerPhotos', () => {
     // markSynced that landed mid-flush) with the stale persisted snapshot.
     expect(rehydrateSpy).not.toHaveBeenCalled();
     rehydrateSpy.mockRestore();
+  });
+
+  it('ignores an account A fetch that resolves after the private-data boundary clear', async () => {
+    let resolveFetch!: (photos: BeerPhoto[] | null) => void;
+    fetchMyBeerPhotos.mockImplementationOnce(
+      () => new Promise<BeerPhoto[] | null>((resolve) => { resolveFetch = resolve; }),
+    );
+
+    const loading = loadBeerPhotos();
+    await waitForCallCount(fetchMyBeerPhotos, 1);
+    expect(fetchMyBeerPhotos).toHaveBeenCalledTimes(1);
+    expect(fetchMyBeerPhotos).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ accountId: 'account-a' }),
+    );
+
+    const clearing = clearBeerPhotosAccountData();
+    currentAccountId = 'account-b';
+    resolveFetch([serverPhoto('account-a-photo')]);
+
+    await Promise.all([loading, clearing]);
+
+    expect(useBeerPhotosStore.getState().photos).toEqual([]);
+    expect(await AsyncStorage.getItem('na-pivo-beer-photos')).toBeNull();
+
+    // Observing the replacement identity releases the exact outgoing-session
+    // guard, so a later login to another account loads normally.
+    fetchMyBeerPhotos.mockResolvedValueOnce(null);
+    await loadBeerPhotos();
+  });
+
+  it('does not start or commit a load inside the account-clear window', async () => {
+    let resolveOutgoing!: (session: {
+      deviceId: string;
+      accountId: string;
+      token: string;
+      authenticated: boolean;
+    }) => void;
+    ensureAccount.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveOutgoing = resolve; }),
+    );
+
+    const clearing = clearBeerPhotosAccountData();
+    const loadingInsideClear = loadBeerPhotos();
+    await loadingInsideClear;
+
+    expect(fetchMyBeerPhotos).not.toHaveBeenCalled();
+    resolveOutgoing({
+      deviceId: 'device-account-a',
+      accountId: 'account-a',
+      token: 'token-account-a',
+      authenticated: true,
+    });
+    await clearing;
+
+    // The old credential is still installed until auth rotates it; it remains
+    // blocked even though the storage clear itself has finished.
+    await loadBeerPhotos();
+    expect(fetchMyBeerPhotos).not.toHaveBeenCalled();
+
+    currentAccountId = 'account-b';
+    fetchMyBeerPhotos.mockResolvedValueOnce(null);
+    await loadBeerPhotos();
+    expect(fetchMyBeerPhotos).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the newest overlapping load win for the same account', async () => {
+    let resolveFirst!: (photos: BeerPhoto[] | null) => void;
+    let resolveSecond!: (photos: BeerPhoto[] | null) => void;
+    fetchMyBeerPhotos
+      .mockImplementationOnce(
+        () => new Promise<BeerPhoto[] | null>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<BeerPhoto[] | null>((resolve) => { resolveSecond = resolve; }),
+      );
+
+    const firstLoad = loadBeerPhotos();
+    await waitForCallCount(fetchMyBeerPhotos, 1);
+    const secondLoad = loadBeerPhotos();
+    await waitForCallCount(fetchMyBeerPhotos, 2);
+    expect(fetchMyBeerPhotos).toHaveBeenCalledTimes(2);
+
+    resolveSecond([serverPhoto('newest')]);
+    await secondLoad;
+    resolveFirst([serverPhoto('stale')]);
+    await firstLoad;
+
+    expect(useBeerPhotosStore.getState().photos.map((photo) => photo.clientId)).toEqual([
+      'newest',
+    ]);
+  });
+});
+
+describe('account-boundary hydration', () => {
+  it('never waits forever when two hydrations start but Zustand completes only the newest', async () => {
+    const stalePhoto = {
+      id: null,
+      clientId: 'account-a-local',
+      imageUrl: null,
+      caption: 'Soukromá fotka A',
+      pubCacheKey: '',
+      pubName: '',
+      pubCity: '',
+      visibility: 'private' as const,
+      takenAt: '2026-07-05T20:00:00.000Z',
+      createdAt: '2026-07-05T20:00:00.000Z',
+      inContest: false,
+      localUri: 'file:///account-a.jpg',
+      syncState: 'pending' as const,
+    };
+    const getItemMock = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    const originalGetItem = getItemMock.getMockImplementation();
+    expect(originalGetItem).toBeDefined();
+    const resolveReads: ((value: string | null) => void)[] = [];
+    getItemMock.mockImplementation((key) => {
+      if (key !== 'na-pivo-beer-photos' || resolveReads.length >= 2) {
+        return originalGetItem!(key);
+      }
+      return new Promise<string | null>((resolve) => { resolveReads.push(resolve); });
+    });
+
+    try {
+      const olderHydration = useBeerPhotosStore.persist.rehydrate();
+      const newestHydration = useBeerPhotosStore.persist.rehydrate();
+      for (let attempt = 0; attempt < 20 && resolveReads.length < 2; attempt += 1) {
+        await Promise.resolve();
+      }
+      expect(resolveReads).toHaveLength(2);
+
+      // The clear must settle without waiting for hydration completion hooks:
+      // Zustand suppresses the older hook once a newer hydration has started.
+      const clearing = clearBeerPhotosAccountData();
+      await clearing;
+      expect(useBeerPhotosStore.getState().photos).toEqual([]);
+
+      const staleSnapshot = JSON.stringify({ state: { photos: [stalePhoto] }, version: 1 });
+      resolveReads[0](staleSnapshot);
+      resolveReads[1](staleSnapshot);
+      await Promise.all([olderHydration, newestHydration]);
+
+      expect(useBeerPhotosStore.getState().photos).toEqual([]);
+      expect(await originalGetItem!('na-pivo-beer-photos')).toBeNull();
+    } finally {
+      getItemMock.mockImplementation(originalGetItem!);
+    }
   });
 });

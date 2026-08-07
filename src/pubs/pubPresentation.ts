@@ -182,14 +182,25 @@ export function beerFilterOptions(pubs: readonly Pub[]): string[] {
 }
 
 export function pubMatchesFilters(pub: PubPresentation, filters: PubListFilters): boolean {
+  // Beer, tank and garden are hard server filters. A nearby response may omit
+  // its bulky beer menu or amenity aggregates even though that pub matched;
+  // filtering those fields again here would erase authoritative results.
   if (filters.openOnly && pub.openState !== 'open') return false;
-  if (filters.tankOnly && !pub.hasTankBeer) return false;
-  if (filters.gardenOnly && !pub.hasGarden) return false;
-  if (filters.beers.length > 0) {
-    const selected = new Set(filters.beers.map(normalize));
-    if (!(pub.pub.beers ?? []).some((beer) => selected.has(normalize(beer.name)))) return false;
-  }
   return true;
+}
+
+/** Translate the redesign's friendly selections to canonical nearby wire keys. */
+export function serverFiltersForPubList(filters: PubListFilters): {
+  beerBrandKeys: string[];
+  amenityKeys: string[];
+} {
+  return {
+    beerBrandKeys: Array.from(new Set(filters.beers.map((key) => key.trim()).filter(Boolean))).sort(),
+    amenityKeys: [
+      ...(filters.tankOnly ? ['practical_tank_beer'] : []),
+      ...(filters.gardenOnly ? ['seating_garden'] : []),
+    ],
+  };
 }
 
 function seededRank(id: string, seed: number): number {

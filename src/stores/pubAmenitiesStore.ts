@@ -29,7 +29,8 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 
 import { isKnownAmenityKey, type AmenityKey } from '@/data/amenities';
 
@@ -131,7 +132,7 @@ export function migratePubAmenities(persisted: unknown, _version: number): PubAm
 
 export const usePubAmenitiesStore = create<PubAmenitiesState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       votes: {},
 
       setVote: (pubKey, amenityKey, vote) =>
@@ -199,7 +200,7 @@ export const usePubAmenitiesStore = create<PubAmenitiesState>()(
 
           return changed ? { votes: next } : state;
         }),
-    }),
+    })),
     {
       name: 'na-pivo-pub-amenities',
       version: 1,

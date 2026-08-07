@@ -28,7 +28,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
 
-import { Face } from '@/feed/FeedMockScreen';
+import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
 import { GameResult } from '@/games/GameResult';
 import {
@@ -79,15 +79,24 @@ export function DiceDuelShell({
   players,
   onFinished,
   onDone,
+  state: sharedState,
+  onRoll,
+  onNextRound,
 }: {
-  players: DicePlayer[];
+  players: (DicePlayer & { id: string })[];
   /** Fired once, when the bill has an owner. */
   onFinished: (result: { paying: string | null; standings: { name: string; score: number }[] }) => void;
   /** Leaving the finished game — the platform decides where that goes. */
   onDone: () => void;
+  /** Folded append-only state. Omit for a local-only game. */
+  state?: DiceState;
+  onRoll?: (result: { playerId: string; dice: [number, number] }) => void;
+  onNextRound?: () => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const [state, setState] = React.useState<DiceState>(() => startDice(players));
+  const [localState, setLocalState] = React.useState<DiceState>(() => startDice(players));
+  const state = sharedState ?? localState;
+  const controlled = sharedState !== undefined;
   const [rolling, setRolling] = React.useState(false);
   const reported = React.useRef(false);
 
@@ -108,10 +117,20 @@ export function DiceDuelShell({
   /** Canvas-less play: the same rules, run here, because there is no page. */
   const localOnly = reduceMotion || !GAME_HOST_AVAILABLE;
 
+  React.useEffect(() => {
+    if (controlled) canvas.current?.command('sync', state);
+  }, [controlled, state]);
+
   const roll = () => {
     if (rolling || !turn) return;
     if (localOnly) {
-      setState((current) => recordRoll(current, turn, throwDice()));
+      const dice = throwDice();
+      const player = players.find((candidate) => candidate.name === turn);
+      if (controlled) {
+        if (player) onRoll?.({ playerId: player.id, dice });
+      } else {
+        setLocalState((current) => recordRoll(current, turn, dice));
+      }
       return;
     }
     setRolling(true);
@@ -119,8 +138,12 @@ export function DiceDuelShell({
   };
 
   const nextRound = () => {
+    if (controlled) {
+      onNextRound?.();
+      return;
+    }
     if (localOnly) {
-      setState((current) => settleRound(current));
+      setLocalState((current) => settleRound(current));
       return;
     }
     canvas.current?.command('next');
@@ -131,6 +154,18 @@ export function DiceDuelShell({
     const sum = (payload.dice[0] ?? 1) + (payload.dice[1] ?? 1);
     setRolling(false);
     setCheer(callFor(payload.playerId, sum));
+    if (controlled && payload.dice.length === 2) {
+      const player = players.find((candidate) => candidate.name === payload.playerId);
+      const left = payload.dice[0];
+      const right = payload.dice[1];
+      if (
+        player &&
+        Number.isInteger(left) && left >= 1 && left <= 6 &&
+        Number.isInteger(right) && right >= 1 && right <= 6
+      ) {
+        onRoll?.({ playerId: player.id, dice: [left, right] });
+      }
+    }
     setTimeout(() => setCheer(null), 1600);
   };
 
@@ -188,7 +223,7 @@ export function DiceDuelShell({
                 key={entry.name}
                 style={[styles.rollRow, winners.includes(entry.name) && styles.rollRowWin]}
               >
-                <Face name={entry.name} tint={tintOf(entry.name)} size={30} />
+                <PersonAvatar name={entry.name} tint={tintOf(entry.name)} size={30} />
                 <Text style={styles.rollName} numberOfLines={1}>
                   {entry.name}
                 </Text>
@@ -223,7 +258,7 @@ export function DiceDuelShell({
       </Text>
 
       <View style={styles.turn}>
-        <Face name={turn ?? ''} tint={tintOf(turn ?? '')} size={64} />
+        <PersonAvatar name={turn ?? ''} tint={tintOf(turn ?? '')} size={64} />
         <Text style={styles.turnName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {turn === 'Ty' ? 'Házíš ty' : `${turn} hází`}
         </Text>
@@ -241,9 +276,11 @@ export function DiceDuelShell({
             // The id IS the name here: this game is local to one phone, and the
             // shell already guarantees names are unique at a table.
             players={players.map((player) => ({ id: player.name, colour: player.tint }))}
-            options={{ count: 2 }}
+            options={{ count: 2, ...(controlled ? { state } : {}) }}
             // The game runs the rules; this is where its state arrives.
-            onState={(next) => setState(next as DiceState)}
+            onState={(next) => {
+              if (!controlled) setLocalState(next as DiceState);
+            }}
             onEvent={(name, payload) => {
               if (name === 'settled') settled(payload as { dice: number[]; playerId: string });
             }}
@@ -301,7 +338,7 @@ function Ladder({ state, tintOf }: { state: DiceState; tintOf: (name: string) =>
         const safe = state.safe.includes(player.name);
         return (
           <View key={player.name} style={styles.ladderRow}>
-            <Face name={player.name} tint={tintOf(player.name)} size={22} />
+            <PersonAvatar name={player.name} tint={tintOf(player.name)} size={22} />
             <Text
               style={[styles.ladderName, safe && styles.ladderSafe]}
               numberOfLines={1}

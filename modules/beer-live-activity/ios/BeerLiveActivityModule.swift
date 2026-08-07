@@ -65,6 +65,24 @@ private enum PendingBeerAddStore {
     }
   }
 
+  static func clearPendingAdds() throws {
+    let directory = try pendingAddsDirectory(createIfMissing: false)
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+
+    let urls = try FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    )
+    for url in urls where url.pathExtension == "json" {
+      do {
+        try FileManager.default.removeItem(at: url)
+      } catch let error as CocoaError where error.code == .fileNoSuchFile {
+        // A concurrent acknowledgement can win; bulk clearing is idempotent.
+      }
+    }
+  }
+
   private static func pendingAddsDirectory(createIfMissing: Bool) throws -> URL {
     guard
       let appGroupIdentifier = Bundle.main.object(
@@ -107,6 +125,10 @@ public final class BeerLiveActivityModule: Module {
 
     AsyncFunction("ackPendingAdds") { (ids: [String]) throws in
       try PendingBeerAddStore.acknowledge(ids: ids)
+    }
+
+    AsyncFunction("clearPendingAdds") { () throws in
+      try PendingBeerAddStore.clearPendingAdds()
     }
   }
 }

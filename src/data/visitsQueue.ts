@@ -120,14 +120,17 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * whole queue. A new operation for a client_id REPLACES any pending operation
  * for the same client_id (last write wins). Never throws.
  */
-export async function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
+export async function enqueueVisitOp(
+  item: VisitQueueItem,
+  options?: { deliver?: boolean },
+): Promise<void> {
   await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => existing.clientId !== item.clientId);
     deduped.push(item);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
-  await flushVisitsQueue();
+  if (options?.deliver !== false) await flushVisitsQueue();
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -140,7 +143,7 @@ export function clearVisitsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**
@@ -151,4 +154,44 @@ export function clearVisitsQueue(): Promise<void> {
  */
 export function flushVisitsQueue(): Promise<void> {
   return _flush();
+}
+
+/**
+ * Resolve visits staged against a locally reserved table code.
+ *
+ * The explicit pub stop is persisted before the table POST so a process kill
+ * cannot lose the move. Delivery is held back until that POST settles. On
+ * success the confirmed code is written into the queued payload; on failure
+ * the visit remains a valid private diary stop and is delivered without a
+ * party association. The PubVisit endpoint is idempotent on client_id, so this
+ * is also safe if a prior attempt reached the server but its response was lost.
+ */
+export async function resolveQueuedVisitPartyAssociation(
+  pendingCode: string,
+  confirmedCode: string | null,
+): Promise<void> {
+  const pending = pendingCode.trim().toUpperCase();
+  const confirmed = confirmedCode?.trim().toUpperCase() || null;
+  if (!pending) return;
+
+  await runMutation(async () => {
+    const queue = await loadQueue();
+    let changed = false;
+    const next = queue.map((item) => {
+      if (
+        item.op !== 'upsert' ||
+        item.entry.party_code?.trim().toUpperCase() !== pending
+      ) {
+        return item;
+      }
+      changed = true;
+      const entry = { ...item.entry };
+      if (confirmed) entry.party_code = confirmed;
+      else delete entry.party_code;
+      return { ...item, entry };
+    });
+    if (changed) await saveQueue(next);
+  });
+
+  await flushVisitsQueue();
 }

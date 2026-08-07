@@ -1173,6 +1173,7 @@ export const cs = {
     savedForContest: 'Fotka je v deníčku a míří do soutěže.',
     contestEntryFailed: 'Fotka je uložená, ale do soutěže se nepřihlásila. Zkus to z jejího detailu.',
     errorPick: 'Fotku se nepodařilo načíst. Zkus to znovu.',
+    errorSave: 'Fotku se nepodařilo bezpečně uložit. Zkus to znovu.',
 
     // — Sync states on a diary tile —
     pendingBadge: 'Čeká na nahrání',
@@ -1196,7 +1197,7 @@ export const cs = {
     deleteConfirmBody: 'Zmizí z alba i ze soutěže. Tohle vrátit neumím.',
     deleteConfirm: 'Smazat',
     deleteCancel: 'Nechat',
-    deletedToast: 'Fotka smazaná.',
+    deletedToast: 'Fotka je schovaná. Ze serveru zmizí, jakmile bude síť.',
     deleteError: 'Fotku se nepodařilo smazat. Zkus to znovu.',
 
     // — Failed-upload messages (codes off POST /v1/beer-photos, persisted by
@@ -1734,6 +1735,9 @@ export const cs = {
     blockConfirm: 'Zablokovat',
     blockAction: 'Zablokovat',
     blocked: 'Zablokováno.',
+    unblockAction: 'Odblokovat',
+    unblocked: 'Odblokováno.',
+    profileBlocked: 'Profil je zablokovaný.',
     reportAction: 'Nahlásit',
     reportDone: 'Díky, mrknu na to.',
     // Row long-press action sheet title.
@@ -2476,8 +2480,11 @@ export const cs = {
     updateCta: 'Vyvěsit znovu',
     publishedToast: 'Noc visí ve Výčepu.',
     publishQueuedToast: 'Vyvěsím ji, až budeš online.',
+    publishErrorToast: 'Noc se nepodařilo bezpečně uložit. Zkus to znovu.',
     unpublishCta: 'Stáhnout z Výčepu',
+    unpublishConfirmBody: 'Večer zmizí z Výčepu i profilů. V deníčku ti zůstane.',
     unpublishedToast: 'Noc už ve Výčepu nevisí.',
+    unpublishErrorToast: 'Stažení se nepodařilo uložit. Zkus to znovu.',
     nicknameNeededTitle: 'Chybí ti přezdívka',
     nicknameNeededBody:
       'Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v profilu za minutku.',

@@ -215,8 +215,23 @@ export default function ProfileScreen() {
         pubCacheKey: failedPhoto.pubCacheKey || undefined,
         pubName: failedPhoto.pubName || undefined,
         pubCity: failedPhoto.pubCity || undefined,
+        partyCode: failedPhoto.partyCode,
+        partyDrinkingDay: failedPhoto.partyDrinkingDay,
         visibility: failedPhoto.visibility,
         takenAt: failedPhoto.takenAt,
+      }).then((queued) => {
+        // A failed durable write must not look like a successful one-tap retry.
+        // Keep the failed tile and open its detail, where the error remains
+        // visible and the user can retry again.
+        const photoStillBelongsToCurrentStore = useBeerPhotosStore
+          .getState()
+          .photos.some((photo) => photo.clientId === failedPhoto.clientId);
+        if (!queued.persisted && photoStillBelongsToCurrentStore) {
+          router.push({
+            pathname: '/photo/[key]',
+            params: { key: failedPhoto.clientId },
+          } as Href);
+        }
       });
       return;
     }

@@ -100,6 +100,7 @@ export default function FriendProfileScreen() {
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const reportProfileContent = useAccountStore((s) => s.reportProfileContent);
+  const viewerAccountId = useAccountStore((s) => s.session?.accountId ?? null);
 
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const accountId = useMemo(() => {
@@ -110,42 +111,73 @@ export default function FriendProfileScreen() {
 
   // Lazy init from the presence of an id so the effect never needs a synchronous
   // "loading" setState (would trip the cascading-render lint rule).
-  const [state, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
+  const [loadedState, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
   // Friends-visible diary photos; null (not allowed / failed) hides the section.
   const [friendPhotos, setFriendPhotos] = useState<BeerPhoto[] | null>(null);
   const [viewerPhoto, setViewerPhoto] = useState<BeerPhoto | null>(null);
+  const [loadedForViewer, setLoadedForViewer] = useState<string | null>(null);
+  const loadControllerRef = useRef<AbortController | null>(null);
+  const loadGenerationRef = useRef(0);
+  const ownerMatches =
+    viewerAccountId !== null && loadedForViewer === viewerAccountId;
+  const state: LoadState = ownerMatches
+    ? loadedState
+    : viewerAccountId && accountId
+      ? 'loading'
+      : 'error';
 
   const mountedRef = useRef(true);
   useEffect(
     () => () => {
       mountedRef.current = false;
+      loadGenerationRef.current += 1;
+      loadControllerRef.current?.abort();
     },
     [],
   );
 
   const load = useCallback(async () => {
-    if (!accountId) return; // state already 'error' from lazy init
+    if (!accountId || !viewerAccountId) return;
+    const requestedViewer = viewerAccountId;
+    const generation = ++loadGenerationRef.current;
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     // The photo gallery is additive — its failure (404 for non-friends /
     // private diary) must never take down the profile, so both fetches run in
     // parallel and only the profile drives the load state.
     const [result, photos] = await Promise.all([
-      fetchFriendProfile(accountId),
-      fetchFriendBeerPhotos(accountId),
+      fetchFriendProfile(accountId, controller.signal),
+      fetchFriendBeerPhotos(accountId, controller.signal),
     ]);
-    if (!mountedRef.current) return;
+    if (
+      !mountedRef.current ||
+      controller.signal.aborted ||
+      generation !== loadGenerationRef.current ||
+      useAccountStore.getState().session?.accountId !== requestedViewer
+    ) return;
     setDetail(result);
     setFriendPhotos(photos);
     setState(result ? 'loaded' : 'error');
-  }, [accountId]);
+    setViewerPhoto(null);
+    setLoadedForViewer(requestedViewer);
+  }, [accountId, viewerAccountId]);
 
   useEffect(() => {
     void load();
+    return () => {
+      loadGenerationRef.current += 1;
+      loadControllerRef.current?.abort();
+    };
   }, [load]);
 
   // Retry is a user event, so setting "loading" here is safe.
   const retry = useCallback(() => {
     setState('loading');
+    setDetail(null);
+    setFriendPhotos(null);
+    setViewerPhoto(null);
     void load();
   }, [load]);
 
@@ -556,7 +588,7 @@ export default function FriendProfileScreen() {
       {/* Fullscreen photo viewer — read-only (no actions apply to a friend's
           photo), so a plain modal beats reusing the own-photo detail route. */}
       <Modal
-        visible={viewerPhoto != null}
+        visible={ownerMatches && viewerPhoto != null}
         transparent
         animationType="fade"
         statusBarTranslucent
@@ -576,7 +608,7 @@ export default function FriendProfileScreen() {
           >
             <XIcon size={22} color={Colors.foam} />
           </Pressable>
-          {viewerPhoto ? (
+          {ownerMatches && viewerPhoto ? (
             <>
               <Image
                 source={{ uri: viewerPhoto.imageUrl }}

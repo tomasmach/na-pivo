@@ -14,6 +14,16 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+let mockCurrentAccountId = 'account-a';
+const ensureAccount = jest.fn(async (signal?: AbortSignal) =>
+  signal?.aborted
+    ? null
+    : { deviceId: 'device', accountId: mockCurrentAccountId, token: 'token' },
+);
+jest.mock('../account', () => ({
+  ensureAccount: (...args: unknown[]) => ensureAccount(...(args as [])),
+}));
+
 const sendPartyGameEvents: jest.Mock = jest.fn(async () => ({
   ok: true,
   cursor: 1,
@@ -29,10 +39,12 @@ import {
   clearPartyGamesQueue,
   enqueuePartyGameEvent,
   flushPartyGamesQueue,
+  remapQueuedPartyGameEvents,
 } from '../partyGamesQueue';
 import type { PartyGameEventInput } from '../partyGamesClient';
 
 const STORAGE_KEY = 'na-pivo-party-games-queue';
+const QUARANTINE_KEY = 'na-pivo-party-games-queue-quarantine-v1';
 
 function score(clientId: string, over: Partial<PartyGameEventInput> = {}): PartyGameEventInput {
   return { clientId, kind: 'score', subjectId: 'acc-1', delta: 1, ...over };
@@ -40,11 +52,19 @@ function score(clientId: string, over: Partial<PartyGameEventInput> = {}): Party
 
 async function readQueue(): Promise<{ event: PartyGameEventInput; queuedAt: number }[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed) ? parsed : parsed.items;
+}
+
+async function readState() {
+  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+  return raw ? JSON.parse(raw) : null;
 }
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockCurrentAccountId = 'account-a';
   sendPartyGameEvents.mockResolvedValue({ ok: true, cursor: 1, accepted: [] });
   await AsyncStorage.clear();
   await clearPartyGamesQueue();
@@ -97,8 +117,8 @@ describe('party games queue', () => {
     sendPartyGameEvents.mockResolvedValue({ ok: false, code: 'network', detail: '' });
     await enqueuePartyGameEvent('ABC123', 'game-1', score('a'));
 
-    const stale = await readQueue();
-    stale[0].queuedAt = Date.now() - 7 * 60 * 60 * 1000;
+    const stale = await readState();
+    stale.items[0].queuedAt = Date.now() - 7 * 60 * 60 * 1000;
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stale));
 
     sendPartyGameEvents.mockClear();
@@ -118,5 +138,123 @@ describe('party games queue', () => {
     await enqueuePartyGameEvent('ABC123', 'game-1', answer);
 
     expect(sendPartyGameEvents.mock.calls[0][2]).toEqual([answer]);
+  });
+
+  it('prunes a resolved local alias after the game lifetime even with no events', async () => {
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    await remapQueuedPartyGameEvents(
+      'ABC123',
+      'local:start-1',
+      'game-1',
+      'account-a',
+    );
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).not.toBeNull();
+
+    clock.mockReturnValue(now + 7 * 60 * 60 * 1000);
+    await flushPartyGamesQueue();
+
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
+    clock.mockRestore();
+  });
+
+  it('uses a durable alias for an event arriving after remap and reload', async () => {
+    await remapQueuedPartyGameEvents(
+      'ABC123',
+      'local:start-1',
+      'game-1',
+      'account-a',
+    );
+
+    const persisted = await AsyncStorage.getItem(STORAGE_KEY);
+    expect(persisted).not.toBeNull();
+    // Mimic a cold launch: only the serialized state survives. The queue must
+    // not depend on an in-memory remap callback from the start request.
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(JSON.parse(persisted!)));
+    sendPartyGameEvents.mockClear();
+
+    await enqueuePartyGameEvent('ABC123', 'local:start-1', score('late'));
+
+    expect(sendPartyGameEvents).toHaveBeenCalledWith(
+      'ABC123',
+      'game-1',
+      [score('late')],
+      expect.any(AbortSignal),
+      'account-a',
+    );
+    expect(await readQueue()).toHaveLength(0);
+  });
+
+  it('never flushes account A gameplay with account B after a cold restart', async () => {
+    sendPartyGameEvents.mockResolvedValue({ ok: false, code: 'network', detail: '' });
+    await enqueuePartyGameEvent('ABC123', 'game-1', score('owned-by-a'));
+    const persisted = await AsyncStorage.getItem(STORAGE_KEY);
+    expect(JSON.parse(persisted!).ownerAccountId).toBe('account-a');
+
+    mockCurrentAccountId = 'account-b';
+    sendPartyGameEvents.mockClear();
+    sendPartyGameEvents.mockResolvedValue({ ok: true, cursor: 2, accepted: [] });
+    await flushPartyGamesQueue();
+
+    expect(sendPartyGameEvents).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(persisted);
+  });
+
+  it('preserves unreadable gameplay in quarantine and recovers a fresh owner queue', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, '{broken');
+    sendPartyGameEvents.mockResolvedValue({ ok: false, code: 'network', detail: '' });
+
+    const stored = await enqueuePartyGameEvent('ABC123', 'game-1', score('safe'));
+
+    expect(stored).toBe(true);
+    expect(JSON.parse((await AsyncStorage.getItem(QUARANTINE_KEY))!).entries).toEqual([
+      expect.objectContaining({ raw: '{broken', reason: 'corrupt' }),
+    ]);
+    expect(await readState()).toMatchObject({
+      ownerAccountId: 'account-a',
+      items: [expect.objectContaining({ event: expect.objectContaining({ clientId: 'safe' }) })],
+    });
+  });
+
+  it('rejects the server-owned start envelope without corrupting persisted events', async () => {
+    sendPartyGameEvents.mockResolvedValue({ ok: false, code: 'network', detail: '' });
+    await enqueuePartyGameEvent('ABC123', 'game-1', score('existing'));
+    const before = await AsyncStorage.getItem(STORAGE_KEY);
+    sendPartyGameEvents.mockClear();
+
+    const stored = await enqueuePartyGameEvent(
+      'ABC123',
+      'game-1',
+      { clientId: 'invalid-start', kind: 'start' } as unknown as PartyGameEventInput,
+    );
+
+    expect(stored).toBe(false);
+    expect(sendPartyGameEvents).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(before);
+  });
+
+  it('rejects overflow without evicting the oldest accepted event', async () => {
+    const queuedAt = Date.now();
+    const items = Array.from({ length: 5_000 }, (_, index) => ({
+      code: 'ABC123',
+      gameId: 'game-1',
+      event: score(`pending-${index}`),
+      queuedAt,
+    }));
+    const before = JSON.stringify({
+      version: 1,
+      ownerAccountId: 'account-a',
+      items,
+      aliases: [],
+      rejectedStarts: [],
+    });
+    await AsyncStorage.setItem(STORAGE_KEY, before);
+
+    const stored = await enqueuePartyGameEvent('ABC123', 'game-1', score('overflow'));
+
+    expect(stored).toBe(false);
+    expect(sendPartyGameEvents).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect((await readQueue())[0].event.clientId).toBe('pending-0');
   });
 });

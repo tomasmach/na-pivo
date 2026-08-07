@@ -30,6 +30,8 @@ import {
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { decodeGeohash8 } from '@/data/geohash';
+import { syncVisit } from '@/data/visitsSync';
+import { flushVisitsQueue } from '@/data/visitsQueue';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { contextFromPubKey, type DrinkType } from '@/drinks/drinkTypes';
 
@@ -39,6 +41,9 @@ export interface PartyBeerPlace {
   pubName: string;
   pubCity?: string;
   pubExternalId?: string;
+  /** Explicit stop selected before the first beer. */
+  visitClientId?: string;
+  visitStartedAt?: string;
 }
 
 /**
@@ -55,6 +60,7 @@ export function logPartyBeer({
   priceCzk,
   volumeMl,
   partyCode,
+  deferDelivery = false,
   at,
 }: {
   place: PartyBeerPlace;
@@ -64,6 +70,8 @@ export function logPartyBeer({
   volumeMl?: number;
   /** The shared evening, when there is one. */
   partyCode?: string | null;
+  /** Persist immediately, but wait to deliver until a new table exists. */
+  deferDelivery?: boolean;
   /** ISO-8601; defaults to now. */
   at?: string;
 }): string {
@@ -71,9 +79,22 @@ export function logPartyBeer({
   const drankAt = at ?? new Date().toISOString();
 
   useTallyStore.getState().addDrink(
-    { pubKey: place.pubKey, pubName: place.pubName, pubCity: place.pubCity },
+    {
+      pubKey: place.pubKey,
+      pubName: place.pubName,
+      pubCity: place.pubCity,
+      pubExternalId: place.pubExternalId,
+      visitClientId: place.visitClientId,
+      visitStartedAt: place.visitStartedAt,
+    },
     { id, beerName, drinkType, priceCzk, volumeMl, at: drankAt },
   );
+  // The private party record derives its stops from PubVisit, not from a drink's
+  // display pub. Reuse the normal visit queue so moving pubs and offline nights
+  // become real record stops without a second party-only write model.
+  syncVisit(useTallyStore.getState().current, drankAt, partyCode, {
+    deliver: !deferDelivery,
+  });
 
   // A pub carries its identity; an evening that is not at a pub carries no
   // coordinates at all — never a guessed pub for a drink at somebody's flat.
@@ -97,11 +118,22 @@ export function logPartyBeer({
     },
     id,
   );
-  void enqueueDrink(entry).then((delivered) => {
+  void enqueueDrink(entry, { deliver: !deferDelivery }).then((delivered) => {
     if (delivered) useTallyStore.getState().markDrinkSynced(id);
   });
 
   return id;
+}
+
+/** Release first-write queues after the table create request has settled. */
+export async function flushPartyBeerWrites(): Promise<void> {
+  await Promise.all([flushDrinksQueue(), flushVisitsQueue()]);
+}
+
+function sessionContainingDrink(drinkId: string): TallySession | null {
+  const { current, history } = useTallyStore.getState();
+  if (current?.drinks.some((drink) => drink.id === drinkId)) return current;
+  return history.find((session) => session.drinks.some((drink) => drink.id === drinkId)) ?? null;
 }
 
 /**
@@ -113,7 +145,11 @@ export function logPartyBeer({
  * not been created yet.
  */
 export function unlogPartyBeer(drinkId: string): void {
-  const removed = useTallyStore.getState().removeDrink(drinkId);
+  const session = sessionContainingDrink(drinkId);
+  if (!session) return;
+  const removed = useTallyStore
+    .getState()
+    .removeDrinkFromSession(session.startedAt, drinkId);
   if (!removed) return;
 
   void removeQueuedDrinkUpdate(drinkId);
@@ -132,9 +168,11 @@ export function unlogPartyBeer(drinkId: string): void {
  * where correcting it belongs. Renaming never touches the price, the pub or the
  * time — those were right, the name was a typo.
  */
-export function renamePartyBeer(session: TallySession, drinkId: string, beerName: string): void {
+export function renamePartyBeer(drinkId: string, beerName: string): void {
   const trimmed = beerName.trim();
   if (!trimmed) return;
+  const session = sessionContainingDrink(drinkId);
+  if (!session) return;
   const changed = useTallyStore
     .getState()
     .updateDrinkNameInSession(session.startedAt, drinkId, trimmed);

@@ -48,11 +48,11 @@ let suppressSync = false;
 /** Run local-only rating mutations without enqueueing server upsert/delete
  *  operations. Used for account-boundary wipes where local data must disappear
  *  from this device without deleting the signed-in account's server copy. */
-export function runWithoutPubRatingsSync(task: () => void): void {
+export function runWithoutPubRatingsSync<T>(task: () => T): T {
   const previous = suppressSync;
   suppressSync = true;
   try {
-    task();
+    return task();
   } finally {
     suppressSync = previous;
   }

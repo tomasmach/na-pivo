@@ -45,15 +45,22 @@ export interface PartyGame {
   name: string;
   scoring: 'points' | 'drinks';
   startedBy: PartyGameProfile;
+  /** Frozen server-owned lobby order. Missing on an older backend. */
+  roster: PartyGameProfile[];
   startedAt: string;
   endedAt: string | null;
+  /** Stable deal seed derived from the table and catalogue-game identity. */
+  seed: number;
 }
 
-/** `score` moves somebody's total, `answer` carries a game's own detail, `finish` ends it. */
-export type PartyGameEventKind = 'score' | 'answer' | 'finish';
+/** `start` is the server-owned discovery envelope; the other kinds are gameplay. */
+export type PartyGameEventKind = 'start' | 'score' | 'answer' | 'action' | 'finish';
+export type PartyGameWritableEventKind = Exclude<PartyGameEventKind, 'start'>;
 
 export interface PartyGameEvent {
   cursor: number;
+  /** Idempotency/optimistic-echo correlation. Null only against a legacy API. */
+  clientId: string | null;
   gameId: string;
   kind: PartyGameEventKind;
   /** Who sent it. */
@@ -69,7 +76,8 @@ export interface PartyGameEvent {
 /** What a phone sends. `clientId` is what makes a resend free. */
 export interface PartyGameEventInput {
   clientId: string;
-  kind: PartyGameEventKind;
+  /** `start` is server-owned and can never be appended by a phone. */
+  kind: PartyGameWritableEventKind;
   subjectId?: string;
   delta?: number;
   payload?: Record<string, unknown>;
@@ -81,6 +89,8 @@ export interface PartyGameStartInput {
   catalogKey: string;
   name: string;
   scoring?: 'points' | 'drinks';
+  /** Explicit lobby selection. Omitted clients get the server's active roster. */
+  rosterIds?: string[];
   startedAt?: string;
 }
 
@@ -133,25 +143,34 @@ export function parsePartyGameProfile(value: unknown): PartyGameProfile {
 
 export function parsePartyGame(value: unknown): PartyGame {
   const data = raw(value);
+  const id = str(data.id);
+  const seed = typeof data.seed === 'number' && Number.isSafeInteger(data.seed) && data.seed > 0
+    ? data.seed
+    : partyGameSeedFromId(id);
   return {
-    id: str(data.id),
+    id,
     catalogKey: str(data.catalog_key),
     name: str(data.name),
     scoring: data.scoring === 'drinks' ? 'drinks' : 'points',
     startedBy: parsePartyGameProfile(data.started_by),
+    roster: Array.isArray(data.roster) ? data.roster.map(parsePartyGameProfile) : [],
     startedAt: str(data.started_at),
     endedAt: typeof data.ended_at === 'string' ? data.ended_at : null,
+    seed,
   };
 }
 
 function parseKind(value: unknown): PartyGameEventKind {
-  return value === 'finish' || value === 'answer' ? value : 'score';
+  return value === 'start' || value === 'finish' || value === 'answer' || value === 'action'
+    ? value
+    : 'score';
 }
 
 export function parsePartyGameEvent(value: unknown): PartyGameEvent {
   const data = raw(value);
   return {
     cursor: typeof data.cursor === 'number' ? data.cursor : 0,
+    clientId: typeof data.client_id === 'string' ? data.client_id : null,
     gameId: str(data.game_id),
     kind: parseKind(data.kind),
     account: parsePartyGameProfile(data.account),
@@ -160,6 +179,32 @@ export function parsePartyGameEvent(value: unknown): PartyGameEvent {
     payload: raw(data.payload),
     at: str(data.at),
   };
+}
+
+/** Stable fallback for a released backend that does not return a game seed. */
+export function partyGameSeedFromId(gameId: string): number {
+  const uuid = gameId.startsWith('local:') ? gameId.slice('local:'.length) : gameId;
+  const hex = uuid.replaceAll('-', '').toLowerCase();
+  let value = 0;
+  if (/^[0-9a-f]{32}$/.test(hex)) {
+    for (const char of hex) value = (value * 16 + Number.parseInt(char, 16)) % 2_147_483_647;
+    return value || 1;
+  }
+  // Released backends have no seed. Their server game UUID is still identical
+  // on every connected phone, so a small stable hash preserves compatibility.
+  for (let index = 0; index < gameId.length; index += 1) {
+    value = (Math.imul(value, 31) + gameId.charCodeAt(index)) & 0x7fffffff;
+  }
+  return value || 1;
+}
+
+/** Match the API's FNV-1a seed while a game start is still offline/pending. */
+export function partyGameSeedForTable(code: string, catalogKey: string): number {
+  let value = 2_166_136_261;
+  for (const char of `${code.toUpperCase()}:${catalogKey}`) {
+    value = Math.imul(value ^ char.charCodeAt(0), 16_777_619) >>> 0;
+  }
+  return (value & 0x7fffffff) || 1;
 }
 
 export function partyGameEventWire(event: PartyGameEventInput): Record<string, unknown> {
@@ -195,7 +240,12 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    expectedAccountId?: string;
+  } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
@@ -210,6 +260,12 @@ async function requestJson(
     return {
       ok: false,
       result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' },
+    };
+  }
+  if (options.expectedAccountId && session.accountId !== options.expectedAccountId) {
+    return {
+      ok: false,
+      result: { ok: false, code: 'account', detail: 'Účet se mezitím změnil.' },
     };
   }
 
@@ -264,6 +320,7 @@ export async function startPartyGame(
   code: string,
   input: PartyGameStartInput,
   signal?: AbortSignal,
+  expectedAccountId?: string,
 ): Promise<PartyGameStartResult> {
   const res = await requestJson(gamesPath(code), {
     method: 'POST',
@@ -272,9 +329,11 @@ export async function startPartyGame(
       catalog_key: input.catalogKey,
       name: input.name,
       scoring: input.scoring ?? 'points',
+      ...(input.rosterIds ? { roster_ids: input.rosterIds } : {}),
       ...(input.startedAt ? { started_at: input.startedAt } : {}),
     },
     signal,
+    expectedAccountId,
   });
   return res.ok ? { ok: true, game: parsePartyGame(res.data) } : res.result;
 }
@@ -304,11 +363,13 @@ export async function sendPartyGameEvents(
   gameId: string,
   events: PartyGameEventInput[],
   signal?: AbortSignal,
+  expectedAccountId?: string,
 ): Promise<PartyGameEventsResult> {
   const res = await requestJson(`${gamesPath(code)}/${encodeURIComponent(gameId)}/events`, {
     method: 'POST',
     body: { events: events.map(partyGameEventWire) },
     signal,
+    expectedAccountId,
   });
   if (!res.ok) return res.result;
   return {

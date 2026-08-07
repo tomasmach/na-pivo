@@ -236,10 +236,17 @@ export default function AccountScreen() {
   const handleLogout = useCallback(async () => {
     if (busy) return;
     setBusy('logout');
-    await logout();
-    setBusy(null);
-    router.back();
-  }, [busy, logout, router]);
+    try {
+      const result = await logout();
+      if (!result.ok) {
+        showToast(result.detail || cs.account.errorGeneric);
+        return;
+      }
+      router.back();
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, logout, router, showToast]);
 
   const handleDelete = useCallback(() => {
     showAppDialog({

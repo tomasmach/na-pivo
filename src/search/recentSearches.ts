@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
 
 const STORAGE_KEY = 'na-pivo-search-recent-v1';
 const MAX_RECENT = 8;

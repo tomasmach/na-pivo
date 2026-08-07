@@ -30,7 +30,7 @@ The Expo mobile app lives in `../na-pivo`.
 | DB (dev) | SQLite |
 | DB (prod) | PostgreSQL via `psycopg[binary]` + `dj-database-url` |
 | Package management | `uv` |
-| WSGI (prod) | `gunicorn` |
+| ASGI (prod) | `gunicorn` + `uvicorn` worker |
 | Scraping/enrichment | `requests`, Firmy.cz parsing, Mapy.cz integration |
 | Opening-hours eval | `opening-hours-py` (Rust-backed OSM grammar) |
 | Name/geo matching | `rapidfuzz` + haversine |
@@ -56,8 +56,8 @@ uv run python manage.py migrate
 # 5. Optional: create a superuser
 uv run python manage.py createsuperuser
 
-# 6. Start the dev server
-uv run python manage.py runserver
+# 6. Start the ASGI dev server
+uv run --extra prod uvicorn config.asgi:application --reload --port 8000
 ```
 
 Useful local URLs:
@@ -71,7 +71,7 @@ Useful local URLs:
 For local Expo testing on a physical device, bind the backend to the LAN interface:
 
 ```bash
-uv run python manage.py runserver 0.0.0.0:8000
+uv run --extra prod uvicorn config.asgi:application --reload --host 0.0.0.0 --port 8000
 ```
 
 Then start the Expo app from `../na-pivo`:

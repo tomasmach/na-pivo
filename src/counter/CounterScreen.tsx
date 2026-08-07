@@ -48,6 +48,7 @@ import {
 
 import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
+import { isPrivateAccountMutationFrozen } from '@/data/privateAccountBoundary';
 import {
   mergeBeerIntoMenu,
   isSameBeerIdentity,
@@ -117,7 +118,10 @@ import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
-import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import {
+  selectConfirmedPartyJoinCode,
+  usePartyEveningStore,
+} from '@/stores/partyEveningStore';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
@@ -331,7 +335,7 @@ function Tacek({
   const outsideContext = place?.kind === 'outside' ? place.context : null;
   // The shared table, if this phone is at one. Only ever a tag on the drink —
   // the counter works exactly the same without it.
-  const partyCode = usePartyEveningStore((s) => s.evening?.joinCode ?? null);
+  const partyCode = usePartyEveningStore(selectConfirmedPartyJoinCode);
   const placeLabel = place
     ? pub
       ? pub.name
@@ -717,6 +721,7 @@ function Tacek({
 
   const countBeer = useCallback(
     (beer: CountableBeer, atOverride?: string) => {
+      if (isPrivateAccountMutationFrozen()) return;
       if (!place || !cell) return;
       const id = generateUuidV4();
       const at = atOverride ?? new Date().toISOString();
@@ -741,6 +746,9 @@ function Tacek({
       // A backdate to an earlier drinking day is a past evening: file it into
       // history so it never becomes/clobbers the live session.
       const backdateToPast = !!atOverride && isPastEveningBackdate(at);
+      // A backdated drink is an edit to the diary, not something happening at
+      // the table right now. Never leak it into the currently active party.
+      const activePartyCode = atOverride ? null : partyCode;
 
       let landedSession: TallySession | null;
       if (backdateToPast) {
@@ -754,7 +762,7 @@ function Tacek({
         void refreshBeerCountReminderAfterBeer(landedSession.clientId);
       }
       // An outside evening is NOT a pub visit — skip the visit record there.
-      if (pub) syncVisit(landedSession);
+      if (pub) syncVisit(landedSession, undefined, activePartyCode);
       if (!atOverride && startsSession) {
         void trackClientEvent({ event: 'counter_session_started' });
       }
@@ -793,7 +801,7 @@ function Tacek({
           // A beer drunk during a shared evening is tagged with it — one write,
           // two readers. The server ignores the code when the evening ended, so
           // a queue that flushes tomorrow morning cannot fail on it.
-          ...(partyCode ? { partyCode } : {}),
+          ...(activePartyCode ? { partyCode: activePartyCode } : {}),
         },
         id,
       );
@@ -923,7 +931,7 @@ function Tacek({
       if (pub) {
         const nextSession = useTallyStore.getState().current;
         if (nextSession && nextSession.drinks.length > 0) {
-          syncVisit(nextSession, visitUpdatedAt);
+          syncVisit(nextSession, visitUpdatedAt, partyCode);
         } else if (currentVisitClientId) {
           deleteVisitByClientId(currentVisitClientId);
         }
@@ -943,7 +951,7 @@ function Tacek({
 
       if (hapticEnabled) fireLightImpactHaptic();
     },
-    [current, hapticEnabled, pub, removeDrink],
+    [current, hapticEnabled, partyCode, pub, removeDrink],
   );
 
   /** Receipt minus: drop the most recent drink of that identity. */

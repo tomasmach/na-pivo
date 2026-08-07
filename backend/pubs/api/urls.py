@@ -45,6 +45,7 @@ from .community_event_views import (
     CommunityEventReportView,
     CommunityEventRequestDecisionView,
     CommunityEventTeamCollectionView,
+    CommunityEventTeamDetailView,
     CommunityEventTeamMembershipView,
 )
 from .party_views import (
@@ -52,6 +53,7 @@ from .party_views import (
     PartyEveningDetailView,
     PartyEveningDrinkView,
     PartyEveningEndView,
+    PartyEveningHistoryView,
     PartyEveningJoinView,
     PartyEveningRecordView,
     PartyGameCollectionView,
@@ -61,6 +63,7 @@ from .party_views import (
 from .pub_event_views import PubEventView
 from .views import (
     AccountAvatarView,
+    AccountDeletionStatusView,
     AccountExportView,
     AccountMeView,
     AccountView,
@@ -106,6 +109,9 @@ from .views import (
     PubAmenityVoteView,
     PubCommunityView,
     PubHoursView,
+    PublishedNightCommentDeleteView,
+    PublishedNightCommentView,
+    PublishedNightDetailView,
     PublishedNightFeedView,
     PublishedNightReactView,
     PublishedNightView,
@@ -146,6 +152,11 @@ urlpatterns = [
         name="community-event-teams",
     ),
     path(
+        "community-events/<uuid:event_id>/teams/<uuid:team_id>",
+        CommunityEventTeamDetailView.as_view(),
+        name="community-event-team-detail",
+    ),
+    path(
         "community-events/<uuid:event_id>/teams/<uuid:team_id>/join",
         CommunityEventTeamMembershipView.as_view(),
         name="community-event-team-join",
@@ -167,6 +178,12 @@ urlpatterns = [
     ),
     path("pub-events", PubEventView.as_view(), name="pub-events"),
     path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
+    # Keep this literal route before the catch-all <code> detail route below.
+    path(
+        "party-evenings/history",
+        PartyEveningHistoryView.as_view(),
+        name="party-evening-history",
+    ),
     path(
         "party-evenings/<str:code>/join",
         PartyEveningJoinView.as_view(),
@@ -225,6 +242,21 @@ urlpatterns = [
     path("nights", PublishedNightView.as_view(), name="nights"),
     path("nights/feed", PublishedNightFeedView.as_view(), name="nights-feed"),
     path(
+        "nights/<uuid:night_id>/detail",
+        PublishedNightDetailView.as_view(),
+        name="night-detail",
+    ),
+    path(
+        "nights/<uuid:night_id>/comments",
+        PublishedNightCommentView.as_view(),
+        name="night-comments",
+    ),
+    path(
+        "nights/<uuid:night_id>/comments/<uuid:comment_id>",
+        PublishedNightCommentDeleteView.as_view(),
+        name="night-comment-delete",
+    ),
+    path(
         "nights/<uuid:night_id>/react",
         PublishedNightReactView.as_view(),
         name="nights-react",
@@ -234,6 +266,11 @@ urlpatterns = [
     path("beers/detail", BeerDetailView.as_view(), name="beer-detail"),
     # --- photo diary + FotoPivař contest ---
     path("beer-photos", BeerPhotoView.as_view(), name="beer-photos"),
+    path(
+        "beer-photos/by-client/<uuid:client_id>",
+        BeerPhotoView.as_view(),
+        name="beer-photos-delete-by-client",
+    ),
     path("beer-photos/<uuid:photo_id>", BeerPhotoView.as_view(), name="beer-photos-delete"),
     path(
         "friends/beer-photos/feed",
@@ -335,6 +372,11 @@ urlpatterns = [
     path("release-notes", ReleaseNotesView.as_view(), name="release-notes"),
     path("health", HealthView.as_view(), name="health"),
     path("account", AccountView.as_view(), name="account"),
+    path(
+        "account/deletion-status",
+        AccountDeletionStatusView.as_view(),
+        name="account-deletion-status",
+    ),
     path("account/me", AccountMeView.as_view(), name="account-me"),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
     path(

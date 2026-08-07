@@ -13,7 +13,7 @@
  * means the app falls back to a network fetch.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage, { privateAccountCleanupStorage } from './privateAccountStorage';
 
 import type { FriendsDashboard } from './friendsClient';
 
@@ -109,7 +109,7 @@ export async function loadFriendsDashboardSnapshot(): Promise<FriendsDashboardSn
 export async function clearFriendsDashboardSnapshot(): Promise<void> {
   boundaryGeneration += 1;
   try {
-    await AsyncStorage.removeItem(FRIENDS_DASHBOARD_SNAPSHOT_KEY);
+    await privateAccountCleanupStorage.removeItem(FRIENDS_DASHBOARD_SNAPSHOT_KEY);
   } catch {
     // Nothing to do — the write guard above already blocks a stale re-persist.
   }

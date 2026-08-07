@@ -16,20 +16,20 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
-import { CheckIcon, UserPlusIcon } from '@/components/shared/IconGlyph';
-import { Face } from '@/feed/FeedMockScreen';
+import { CheckIcon } from '@/components/shared/IconGlyph';
+import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { GameCover } from '@/party/GameCover';
 import type { GameDef } from '@/party/gameCatalog';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export interface LobbyPlayer {
+  /** Stable account id; display names are not a cross-phone identity. */
+  id: string;
   name: string;
   tint: string;
 }
@@ -38,33 +38,21 @@ export function GameLobby({
   def,
   table,
   onStart,
-  onInvite,
 }: {
   def: GameDef | undefined;
   /** Everyone at the night, you first. */
   table: LobbyPlayer[];
   onStart: (players: LobbyPlayer[]) => void;
-  /** Adds somebody to the NIGHT, not just to the game — they are here. */
-  onInvite: (name: string) => void;
 }) {
   const [out, setOut] = React.useState<string[]>([]);
-  const [adding, setAdding] = React.useState(false);
-  const [draft, setDraft] = React.useState('');
 
-  const playing = table.filter((person) => !out.includes(person.name));
+  const playing = table.filter((person) => !out.includes(person.id));
   const enough = playing.length >= 2;
 
-  const toggle = (name: string) =>
+  const toggle = (id: string) =>
     setOut((current) =>
-      current.includes(name) ? current.filter((item) => item !== name) : [...current, name],
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
     );
-
-  const commit = () => {
-    const name = draft.trim();
-    if (name) onInvite(name);
-    setDraft('');
-    setAdding(false);
-  };
 
   return (
     <View style={styles.wrap}>
@@ -89,17 +77,17 @@ export function GameLobby({
         </Text>
 
         {table.map((person) => {
-          const isIn = !out.includes(person.name);
+          const isIn = !out.includes(person.id);
           return (
             <Pressable
-              key={person.name}
-              onPress={() => toggle(person.name)}
+              key={person.id}
+              onPress={() => toggle(person.id)}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: isIn }}
               accessibilityLabel={person.name}
             >
-              <Face name={person.name} tint={person.tint} size={38} />
+              <PersonAvatar name={person.name} tint={person.tint} size={38} />
               <Text
                 style={[styles.name, !isIn && styles.nameOut]}
                 numberOfLines={1}
@@ -114,19 +102,11 @@ export function GameLobby({
           );
         })}
 
-        <Pressable
-          onPress={() => setAdding(true)}
-          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Přizvat dalšího"
-        >
-          <View style={styles.addFace}>
-            <UserPlusIcon size={17} color={Colors.mutedText} />
-          </View>
-          <Text style={[styles.name, styles.nameAdd]} maxFontSizeMultiplier={FontScaleCap.body}>
-            Přizvat dalšího
+        {!enough ? (
+          <Text style={styles.inviteHint} maxFontSizeMultiplier={FontScaleCap.body}>
+            Další hráče přizvi ke stolu z obrazovky večera.
           </Text>
-        </Pressable>
+        ) : null}
       </ScrollView>
 
       <View style={styles.foot}>
@@ -145,38 +125,6 @@ export function GameLobby({
           </Text>
         </Pressable>
       </View>
-
-      <BottomSheetModal visible={adding} onClose={() => setAdding(false)}>
-        <View style={styles.dialog}>
-          <View style={styles.dialogHead}>
-            <Text style={styles.dialogTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Kdo se přidal?
-            </Text>
-            <CloseButton onPress={() => setAdding(false)} />
-          </View>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Jméno nebo přezdívka"
-            placeholderTextColor={MockColors.fieldHint}
-            style={styles.input}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={commit}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          />
-          <Pressable
-            onPress={commit}
-            style={({ pressed }) => [styles.save, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Přidat ke stolu"
-          >
-            <Text style={styles.saveText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Přidat ke stolu
-            </Text>
-          </Pressable>
-        </View>
-      </BottomSheetModal>
     </View>
   );
 }
@@ -211,15 +159,7 @@ const styles = StyleSheet.create({
   },
   name: { flex: 1, fontSize: 18, fontWeight: '700', color: Colors.foam },
   nameOut: { color: withAlpha(Colors.foam, 0.35) },
-  nameAdd: { fontWeight: '600', color: Colors.mutedText },
-  addFace: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.foam, 0.08),
-  },
+  inviteHint: { marginTop: Spacing.md, fontSize: 14, color: Colors.mutedText },
   tick: {
     width: 26,
     height: 26,
@@ -243,34 +183,4 @@ const styles = StyleSheet.create({
   startText: { ...MockType.buttonLabel, color: Colors.stout },
   startTextOff: { color: Colors.mutedText },
 
-  dialog: {
-    backgroundColor: MockColors.surface,
-    borderTopLeftRadius: MockLayout.cardRadius + 6,
-    borderTopRightRadius: MockLayout.cardRadius + 6,
-    paddingHorizontal: MockLayout.screenPad,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.xl,
-    gap: Spacing.md,
-  },
-  dialogHead: { flexDirection: 'row', alignItems: 'center' },
-  dialogTitle: { ...MockType.titleS, fontSize: 22, color: Colors.foam, flex: 1 },
-  input: {
-    height: MockLayout.buttonHeight,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    backgroundColor: MockColors.field,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: MockColors.fieldBorder,
-    color: Colors.foam,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  save: {
-    height: MockLayout.sheetButtonHeight,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  saveText: { ...MockType.buttonLabel, color: Colors.stout },
 });

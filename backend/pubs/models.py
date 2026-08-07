@@ -435,6 +435,27 @@ def hash_account_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
+def account_deletion_fingerprint(account_public_id: uuid.UUID | str) -> str:
+    """One-way account binding for an opaque deletion-operation capability.
+
+    Domain separation prevents this digest from being confused with any other
+    SHA-256 use in the project.  The source is the account's random public UUID,
+    never an e-mail/device id, and the API never exposes the digest.
+    """
+
+    normalized_id = str(uuid.UUID(str(account_public_id)))
+    payload = f"na-pivo:account-deletion-operation:v1:{normalized_id}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def account_merge_fingerprint(account_public_id: uuid.UUID | str) -> str:
+    """One-way account binding for a credential-merge operation."""
+
+    normalized_id = str(uuid.UUID(str(account_public_id)))
+    payload = f"na-pivo:account-merge-operation:v1:{normalized_id}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def account_avatar_path(instance, filename: str) -> str:
     """Storage path for an account avatar: one stable file per account.
 
@@ -527,6 +548,14 @@ class Account(models.Model):
         # NULLs on both sqlite and Postgres. No db_index — see AuthToken.token_hash.
         help_text="DEPRECATED — superseded by AuthToken. SHA-256 digest of the "
         "legacy single bearer token; nullable, kept for backwards compatibility.",
+    )
+    deletion_epoch = models.BigIntegerField(
+        default=0,
+        help_text=(
+            "Server-only generation for account-deletion authorization. "
+            "Credential auth advances it so already-issued sessions cannot "
+            "commit a delayed DELETE after reactivation."
+        ),
     )
 
     # ---------- preferences ----------
@@ -768,6 +797,59 @@ class Account(models.Model):
         return methods
 
 
+class AccountDeletionOperation(models.Model):
+    """Opaque durable proof that one account-deletion request completed.
+
+    The client generates ``operation_id`` with UUIDv4 entropy before sending
+    DELETE /v1/account/me.  A row is inserted in the same database transaction
+    that schedules the deletion, so a client that loses the 204 response (or
+    cannot persist it locally) can later query the public status endpoint using
+    the unguessable operation id.
+
+    Deliberately store no account foreign key or account snapshot.  A one-way,
+    domain-separated fingerprint binds replays to the original account without
+    retaining account data or disappearing during the later hard purge.
+    """
+
+    operation_id = models.UUIDField(primary_key=True, editable=False)
+    account_fingerprint = models.CharField(max_length=64, editable=False, db_index=True)
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Account deletion operation"
+        verbose_name_plural = "Account deletion operations"
+        ordering = ["-completed_at"]
+
+    def __str__(self) -> str:
+        # operation_id is a bearer-like recovery capability; never surface it in
+        # admin labels, logs, or exception strings through the model repr.
+        return "AccountDeletionOperation(completed)"
+
+
+class AccountMergeOperation(models.Model):
+    """Durably bind one anonymous credential transition to one target.
+
+    The UUID is generated and persisted by the client before it starts auth.
+    Both account identifiers are stored only as domain-separated fingerprints,
+    so the binding survives deletion of the anonymous source without retaining
+    an account foreign key or exposing an identifier in diagnostics.
+    """
+
+    operation_id = models.UUIDField(primary_key=True, editable=False)
+    source_account_fingerprint = models.CharField(max_length=64, editable=False)
+    target_account_fingerprint = models.CharField(max_length=64, editable=False)
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Account merge operation"
+        verbose_name_plural = "Account merge operations"
+        ordering = ["-completed_at"]
+
+    def __str__(self) -> str:
+        # operation_id is a bearer-like idempotency capability.
+        return "AccountMergeOperation(completed)"
+
+
 class AuthToken(models.Model):
     """A bearer token (session) for an Account.
 
@@ -802,6 +884,13 @@ class AuthToken(models.Model):
         blank=True,
         default="",
         help_text="Optional human label, e.g. 'iPhone 16 / app 1.2'.",
+    )
+    deletion_epoch = models.BigIntegerField(
+        default=0,
+        help_text=(
+            "Snapshot of Account.deletion_epoch at issuance; never exposed "
+            "on the wire or in request logs."
+        ),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(auto_now=True)
@@ -1558,6 +1647,11 @@ class PublishedNight(models.Model):
         max_length=128,
         help_text="Client-generated idempotency key.",
     )
+    client_aliases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="All released client ids that have addressed this drinking day.",
+    )
     drinking_day = models.DateField()
     started_at = models.DateTimeField()
     ended_at = models.DateTimeField()
@@ -1568,6 +1662,19 @@ class PublishedNight(models.Model):
     pub_names = models.JSONField(default=list, blank=True)
     city = models.CharField(max_length=120, blank=True, default="")
     duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    # Optional, author-written presentation. Released clients omit these
+    # fields; the upsert view therefore preserves their current values unless
+    # a newer client explicitly sends them.
+    title = models.CharField(max_length=120, blank=True, default="")
+    roast_line = models.CharField(max_length=280, blank=True, default="")
+    roast_basis = models.CharField(max_length=280, blank=True, default="")
+    # Consent-filtered references only. They are resolved again for every
+    # viewer, so a later block/privacy change immediately removes the snapshot
+    # without rewriting the post. No party code, GPS, beer name, price or game
+    # payload is copied into the published row.
+    participant_ids = models.JSONField(default=list, blank=True)
+    photo_ids = models.JSONField(default=list, blank=True)
+    game_ids = models.JSONField(default=list, blank=True)
     visibility = models.CharField(max_length=16, choices=Visibility.choices, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(
@@ -1600,6 +1707,36 @@ class PublishedNight(models.Model):
         return f"PublishedNight({self.account_id}: {self.drinking_day})"
 
 
+class PublishedNightPubReference(models.Model):
+    """Indexed normalized pub identity for a published night's explicit names.
+
+    Published nights intentionally do not persist GPS or an inferred venue id.
+    This small child table makes the PubDetail activity feed correctly pageable
+    without scanning private night payloads in application memory.
+    """
+
+    night = models.ForeignKey(
+        PublishedNight,
+        on_delete=models.CASCADE,
+        related_name="pub_references",
+    )
+    # Unicode casefolding may expand an API-valid 80-character display name
+    # (for example, German sharp-s becomes two characters). Keep the normalized
+    # key wide enough for that expansion; the original display name limit stays
+    # unchanged on PublishedNightRequestSerializer.
+    name_key = models.CharField(max_length=255, db_index=True)
+
+    class Meta:
+        verbose_name = "Published night pub reference"
+        verbose_name_plural = "Published night pub references"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["night", "name_key"],
+                name="unique_published_night_pub_name",
+            )
+        ]
+
+
 class NightRound(models.Model):
     """One account's symbolic round reaction on a published night."""
 
@@ -1628,6 +1765,53 @@ class NightRound(models.Model):
 
     def __str__(self) -> str:
         return f"NightRound({self.account_id} -> {self.night_id})"
+
+
+class PublishedNightComment(models.Model):
+    """One explicit comment on a visible published night.
+
+    ``client_id`` makes a retried mobile submit idempotent. Soft removal keeps
+    moderation/audit relationships stable while every public read filters the
+    body out. Comments never inherit access independently: the night visibility
+    and bidirectional block rules are checked for every read and write.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    client_id = models.UUIDField(help_text="Client-generated idempotency key.")
+    night = models.ForeignKey(
+        PublishedNight,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="published_night_comments",
+    )
+    body = models.CharField(max_length=500)
+    is_removed = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Published night comment"
+        verbose_name_plural = "Published night comments"
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_night_comment_account_client",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["night", "is_removed", "created_at"],
+                name="night_comment_visible_idx",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PublishedNightComment({self.account_id} -> {self.night_id})"
 
 
 def beer_photo_path(instance, filename: str) -> str:
@@ -1719,6 +1903,102 @@ class BeerPhoto(models.Model):
 
     def __str__(self) -> str:
         return f"BeerPhoto({self.account_id}: {self.public_id})"
+
+
+class BeerPhotoDeletionTombstone(models.Model):
+    """Durable cancellation for one client-generated beer-photo identity.
+
+    Native multipart uploads may finish on the server after the phone has
+    aborted its request. Keeping the deleted ``client_id`` server-side makes a
+    concurrent or replayed upload a no-op instead of resurrecting a photo the
+    user explicitly removed. The marker contains no image, caption, pub, or
+    location data and is bounded by the account's photo-upload identities.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="beer_photo_deletion_tombstones",
+    )
+    client_id = models.UUIDField(help_text="Deleted client-generated idempotency key.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Beer photo deletion tombstone"
+        verbose_name_plural = "Beer photo deletion tombstones"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_beer_photo_deletion_per_account_client",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerPhotoDeletionTombstone({self.account_id}: {self.client_id})"
+
+
+class BeerPhotoFileDeletion(models.Model):
+    """Durable outbox entry for removing account-owned media from storage.
+
+    The historical model name predates avatar cleanup. The database row is
+    intentionally separate from the owning account/photo: public queries can
+    stop exposing deleted media immediately while a transient storage error
+    remains retryable. ``account`` uses ``SET_NULL`` so an account purge cannot
+    erase the only remaining pointer to a file that still needs to be removed
+    from the public media volume.
+    """
+
+    class FileKind(models.TextChoices):
+        BEER_PHOTO = "beer_photo", "Beer photo"
+        AVATAR = "avatar", "Avatar"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_beer_photo_file_deletions",
+    )
+    client_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Client identity of the deleted beer photo; null for avatars.",
+    )
+    photo_public_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Former public id, retained only while file cleanup is pending.",
+    )
+    image_name = models.CharField(
+        max_length=500,
+        unique=True,
+        help_text="Storage-relative file name queued for deletion.",
+    )
+    file_kind = models.CharField(
+        max_length=16,
+        choices=FileKind.choices,
+        default=FileKind.BEER_PHOTO,
+        help_text="Selects the Django storage field used for physical cleanup.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_attempted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Beer photo file deletion"
+        verbose_name_plural = "Beer photo file deletions"
+        indexes = [
+            models.Index(
+                fields=["account", "client_id"],
+                name="photo_file_del_client_idx",
+            ),
+            models.Index(
+                fields=["account", "photo_public_id"],
+                name="photo_file_del_public_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerPhotoFileDeletion({self.pk})"
 
 
 class PhotoContest(models.Model):
@@ -4079,6 +4359,13 @@ class PartyGame(models.Model):
     catalog_key = models.CharField(max_length=40)
     name = models.CharField(max_length=80)
     scoring = models.CharField(max_length=8, choices=Scoring.choices, default=Scoring.POINTS)
+    # Public Account UUIDs, frozen in lobby order. An empty list means the game
+    # is on the table but its lobby has not selected players yet.
+    # Membership is allowed to change while a game is running; deriving this
+    # list from today's active members would make two phones fold the same quiz
+    # answers against different teams. UUID strings keep the snapshot stable
+    # without turning game participation into another durable social relation.
+    roster_account_ids = models.JSONField(default=list, blank=True)
     started_at = models.DateTimeField(default=timezone.now, db_index=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 
@@ -4087,7 +4374,10 @@ class PartyGame(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["evening", "client_id"], name="unique_party_game_client"
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["evening", "catalog_key"], name="unique_party_game_catalog"
+            ),
         ]
         indexes = [models.Index(fields=["evening", "started_at"], name="party_game_evening_idx")]
 
@@ -4111,12 +4401,19 @@ class PartyGameEvent(models.Model):
     """
 
     class Kind(models.TextChoices):
+        #: System-owned envelope emitted with the PartyGame row so a phone
+        #: already following the table can discover the new game immediately.
+        START = "start", "Start"
         SCORE = "score", "Score"
         FINISH = "finish", "Finish"
         #: An answer in a quiz. The detail lives in `payload`, because a score is
         #: one number and an answer is a question plus a choice — and inventing
         #: two more columns for one game is how an events table stops being one.
         ANSWER = "answer", "Answer"
+        #: Opaque gameplay interaction (a prompt advance, draw, pick or dice
+        #: roll).  The app owns the payload schema; the API only gives every
+        #: phone one append-only order to fold.
+        ACTION = "action", "Action"
 
     game = models.ForeignKey(PartyGame, on_delete=models.CASCADE, related_name="events")
     account = models.ForeignKey(

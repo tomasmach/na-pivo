@@ -359,12 +359,17 @@ connect({
     // The game owns its own progression. The app draws the words from the
     // snapshots below and never recomputes any of this — one set of rules,
     // in one place, next to the thing it governs.
-    let state: DiceState = startDice(
-      session.players.map((player) => ({ name: player.id, tint: player.colour })),
-    );
+    const suppliedState = session.options.state;
+    let state: DiceState =
+      suppliedState && typeof suppliedState === 'object'
+        ? (suppliedState as DiceState)
+        : startDice(
+            session.players.map((player) => ({ name: player.id, tint: player.colour })),
+          );
 
     const colourOf = (id: string | null) =>
       session.players.find((player) => player.id === id)?.colour ?? session.theme.accent;
+    let rollingPlayerId: string | null = null;
 
     const publish = () => {
       session.push(state);
@@ -381,20 +386,38 @@ connect({
     };
 
     table.onSettled = (dice) => {
-      const thrower = whoseTurn(state);
+      // Freeze the thrower when the command starts. A remote roll may hydrate
+      // the canonical fold while these dice are still in the air; attributing
+      // them to the newly-current player would turn two simultaneous throws
+      // into two different turns instead of letting the reducer ignore one.
+      const thrower = rollingPlayerId ?? whoseTurn(state);
+      rollingPlayerId = null;
       if (!thrower) return;
-      state = recordRoll(state, thrower, [dice[0] ?? 1, dice[1] ?? 1]);
+      if (whoseTurn(state) === thrower) {
+        state = recordRoll(state, thrower, [dice[0] ?? 1, dice[1] ?? 1]);
+      }
       session.emit('settled', { dice, playerId: thrower });
       publish();
     };
 
     publish();
 
-    return (name) => {
-      if (name === 'roll' && whoseTurn(state)) table.roll();
+    return (name, payload) => {
+      if (name === 'roll' && whoseTurn(state)) {
+        rollingPlayerId = whoseTurn(state);
+        table.roll();
+      }
       else if (name === 'next') {
         state = settleRound(state);
         publish();
+      } else if (name === 'sync') {
+        // A shared phone folds the canonical append-only log in React Native.
+        // Keep the physics host on that exact turn before its next throw; do
+        // not publish this back or a hydration command would echo forever.
+        if (payload && typeof payload === 'object') {
+          state = payload as DiceState;
+          table.setTint(colourOf(whoseTurn(state)), session.theme.bg);
+        }
       }
     };
   },

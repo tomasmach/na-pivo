@@ -74,5 +74,5 @@ export function flushPubNameCorrectionsQueue(): Promise<void> {
 export function clearPubNameCorrectionsQueue(): Promise<void> {
   return enqueueTask(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }

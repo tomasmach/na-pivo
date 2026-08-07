@@ -9,6 +9,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,8 +43,14 @@ import {
 } from '@/components/shared/IconGlyph';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
-import { updateAccountPreferences } from '@/data/account';
+import { enqueueAccountPreferences } from '@/data/accountPreferencesQueue';
+import {
+  DEFAULT_FRIEND_SOCIAL_SETTINGS,
+  fetchFriendSettings,
+  type FriendSocialSettings,
+} from '@/data/friendsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import FriendSettingsSheet from '@/friends/FriendSettingsSheet';
 import { cs } from '@/i18n/cs';
 import {
   disableBeerCountReminderNotifications,
@@ -60,6 +67,7 @@ import {
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
+import { useToastStore } from '@/stores/toastStore';
 import {
   BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
   useSettingsStore,
@@ -422,10 +430,76 @@ export default function SettingsScreen() {
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const nickname = useAccountStore(selectNickname);
   const profile = useAccountStore((state) => state.profile);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const showToast = useToastStore((state) => state.show);
 
   const [moreOpen, setMoreOpen] = useState(false);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
+  const [privacyOpenFor, setPrivacyOpenFor] = useState<string | null>(null);
+  const [privacyLoadingFor, setPrivacyLoadingFor] = useState<string | null>(null);
+  const [friendSettingsResource, setFriendSettingsResource] = useState<{
+    accountId: string;
+    settings: FriendSocialSettings;
+  } | null>(null);
+  const privacyControllerRef = React.useRef<AbortController | null>(null);
+
+  const privacySettings =
+    friendSettingsResource?.accountId === accountId
+      ? friendSettingsResource.settings
+      : DEFAULT_FRIEND_SOCIAL_SETTINGS;
+  const privacyReady = friendSettingsResource?.accountId === accountId;
+  const privacyBusy = accountId !== null && privacyLoadingFor === accountId;
+
+  // Rendering is account-keyed below, so A's switches disappear in the same
+  // render that selects B. Cleanup then cancels A's in-flight GET.
+  useEffect(
+    () => () => {
+      privacyControllerRef.current?.abort();
+      privacyControllerRef.current = null;
+    },
+    [accountId],
+  );
+
+  const openPrivacySettings = useCallback(async () => {
+    if (!accountId || privacyBusy) return;
+    trackUiInteraction('settings_privacy_open');
+    if (privacyReady) {
+      setPrivacyOpenFor(accountId);
+      return;
+    }
+
+    const requestedAccountId = accountId;
+    const controller = new AbortController();
+    privacyControllerRef.current?.abort();
+    privacyControllerRef.current = controller;
+    setPrivacyLoadingFor(requestedAccountId);
+    const settings = await fetchFriendSettings(controller.signal);
+    const viewerStillMatches =
+      useAccountStore.getState().session?.accountId === requestedAccountId;
+    if (!controller.signal.aborted && viewerStillMatches) {
+      if (settings) {
+        setFriendSettingsResource({ accountId: requestedAccountId, settings });
+        setPrivacyOpenFor(requestedAccountId);
+      } else {
+        showToast(cs.friends.settingsError);
+      }
+    }
+    if (privacyControllerRef.current === controller) {
+      privacyControllerRef.current = null;
+      setPrivacyLoadingFor((current) =>
+        current === requestedAccountId ? null : current,
+      );
+    }
+  }, [accountId, privacyBusy, privacyReady, showToast]);
+
+  const savePrivacySettings = useCallback(
+    (settings: FriendSocialSettings) => {
+      if (!accountId) return;
+      setFriendSettingsResource({ accountId, settings });
+    },
+    [accountId],
+  );
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const readout = distanceReadout(maxDistanceKm);
@@ -437,24 +511,24 @@ export default function SettingsScreen() {
       const next = SLIDER_POSITIONS[index] ?? null;
       trackUiInteraction('settings_distance_change', 'select');
       setMaxDistanceKm(next);
-      void updateAccountPreferences({ maxDistanceKm: next });
+      void enqueueAccountPreferences({ maxDistanceKm: next }, accountId);
     },
-    [setMaxDistanceKm],
+    [accountId, setMaxDistanceKm],
   );
 
   const toggleHaptic = useCallback(() => {
     const next = !hapticEnabled;
     trackUiInteraction('settings_haptics', next ? 'toggle_on' : 'toggle_off');
     setHapticEnabled(next);
-    void updateAccountPreferences({ hapticEnabled: next });
-  }, [hapticEnabled, setHapticEnabled]);
+    void enqueueAccountPreferences({ hapticEnabled: next }, accountId);
+  }, [accountId, hapticEnabled, setHapticEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
     trackUiInteraction('settings_sound', next ? 'toggle_on' : 'toggle_off');
     setSoundEnabled(next);
-    void updateAccountPreferences({ soundEnabled: next });
-  }, [setSoundEnabled, soundEnabled]);
+    void enqueueAccountPreferences({ soundEnabled: next }, accountId);
+  }, [accountId, setSoundEnabled, soundEnabled]);
 
   const toggleWaterNudge = useCallback(() => {
     const next = !waterNudgeEnabled;
@@ -466,8 +540,8 @@ export default function SettingsScreen() {
     const next = !hideClosedPubs;
     trackUiInteraction('settings_hide_closed', next ? 'toggle_on' : 'toggle_off');
     setHideClosedPubs(next);
-    void updateAccountPreferences({ hideClosedPubs: next });
-  }, [hideClosedPubs, setHideClosedPubs]);
+    void enqueueAccountPreferences({ hideClosedPubs: next }, accountId);
+  }, [accountId, hideClosedPubs, setHideClosedPubs]);
 
   const togglePreferRated = useCallback(() => {
     const next = !preferRatedPubs;
@@ -479,15 +553,15 @@ export default function SettingsScreen() {
     const next = !hidePubNames;
     trackUiInteraction('settings_hide_names', next ? 'toggle_on' : 'toggle_off');
     setHidePubNames(next);
-    void updateAccountPreferences({ hidePubNames: next });
-  }, [hidePubNames, setHidePubNames]);
+    void enqueueAccountPreferences({ hidePubNames: next }, accountId);
+  }, [accountId, hidePubNames, setHidePubNames]);
 
   const toggleMarketingEmails = useCallback(() => {
     const next = !marketingEmailsEnabled;
     trackUiInteraction('settings_marketing_emails', next ? 'toggle_on' : 'toggle_off');
     setMarketingEmailsEnabled(next);
-    void updateAccountPreferences({ marketingEmailsEnabled: next });
-  }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
+    void enqueueAccountPreferences({ marketingEmailsEnabled: next }, accountId);
+  }, [accountId, marketingEmailsEnabled, setMarketingEmailsEnabled]);
 
   const togglePubReminders = useCallback(async () => {
     if (pubReminderBusy) return;
@@ -683,13 +757,12 @@ export default function SettingsScreen() {
         <SectionLabel>{cs.settings.privacySection}</SectionLabel>
         <View style={styles.notificationsCard}>
           <Pressable
-            onPress={() => {
-              trackUiInteraction('settings_privacy_open');
-              router.push('/friends?settings=1' as Href);
-            }}
+            onPress={() => void openPrivacySettings()}
+            disabled={!accountId || privacyBusy}
             style={({ pressed }) => [styles.privacyRow, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={cs.settings.privacyDoor.title}
+            accessibilityState={{ disabled: !accountId || privacyBusy, busy: privacyBusy }}
           >
             <View style={styles.privacyText}>
               <Text style={styles.privacyTitle} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -699,11 +772,14 @@ export default function SettingsScreen() {
                 {cs.settings.privacyDoor.subtitle}
               </Text>
             </View>
-            <ChevronRightIcon size={18} color={Colors.mutedText} />
+            {privacyBusy ? (
+              <ActivityIndicator color={Colors.amber} />
+            ) : (
+              <ChevronRightIcon size={18} color={Colors.mutedText} />
+            )}
           </Pressable>
         </View>
 
-        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
         <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
         <View style={styles.notificationsCard}>
           <PreferenceRow
@@ -847,6 +923,18 @@ export default function SettingsScreen() {
         title={cs.settings.more.title}
         rows={moreRows}
         onClose={() => setMoreOpen(false)}
+      />
+
+      <FriendSettingsSheet
+        key={accountId ?? 'no-account'}
+        visible={
+          accountId !== null &&
+          privacyReady &&
+          privacyOpenFor === accountId
+        }
+        onClose={() => setPrivacyOpenFor(null)}
+        settings={privacySettings}
+        onSaved={savePrivacySettings}
       />
     </View>
   );

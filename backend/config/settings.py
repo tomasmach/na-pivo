@@ -307,6 +307,20 @@ PUSH_DEVICES_THROTTLE_RATE: str = os.environ.get("PUSH_DEVICES_THROTTLE_RATE", "
 # activity can fan out notifications, so writes stay bounded while dashboard
 # reads (the friends_dashboard scope below) get their own, larger budget.
 FRIENDS_THROTTLE_RATE: str = os.environ.get("FRIENDS_THROTTLE_RATE", "120/min")
+NIGHT_COMMENTS_THROTTLE_RATE: str = os.environ.get(
+    "NIGHT_COMMENTS_THROTTLE_RATE", "30/hour"
+)
+
+# Personal diary aggregates are read-only but can scan a meaningful amount of
+# history. Give them dedicated per-account budgets so a polling bug does not
+# contend with social writes or repeatedly rebuild the same charts.
+STATS_THROTTLE_RATE: str = os.environ.get("STATS_THROTTLE_RATE", "30/min")
+CHALLENGES_THROTTLE_RATE: str = os.environ.get("CHALLENGES_THROTTLE_RATE", "60/min")
+# Na Pivo has no data older than this product horizon. Keeping the detailed
+# aggregation window explicit bounds Python work and response period arrays
+# even if malformed imports insert arbitrarily old timestamps.
+STATS_HISTORY_YEARS: int = int(os.environ.get("STATS_HISTORY_YEARS", "20"))
+STATS_MAX_DRINK_ROWS: int = int(os.environ.get("STATS_MAX_DRINK_ROWS", "50000"))
 
 # --- Parta 3.0 (dashboard reads, invites, plans, reactions, push, retention) ---
 # Separate, larger budget for the two friend READ paths (GET /v1/friends and
@@ -403,6 +417,10 @@ AMENITY_READ_MAX_KEYS: int = int(os.environ.get("AMENITY_READ_MAX_KEYS", "60"))
 PUBS_NEAR_MAX_AMENITY_FILTERS: int = int(
     os.environ.get("PUBS_NEAR_MAX_AMENITY_FILTERS", "5")
 )
+# The redesigned pub list offers multi-select brands. Keep the OR query and
+# response bounded just like amenity filters; five is already more than the
+# sheet can usefully scan at a pub table.
+PUBS_NEAR_MAX_BEER_FILTERS: int = int(os.environ.get("PUBS_NEAR_MAX_BEER_FILTERS", "5"))
 MAP_AMENITY_CONFIDENCE_FLOOR: float = float(
     os.environ.get("MAP_AMENITY_CONFIDENCE_FLOOR", "0.5")
 )
@@ -510,6 +528,9 @@ REST_FRAMEWORK = {
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,
+        "night_comments": NIGHT_COMMENTS_THROTTLE_RATE,
+        "stats": STATS_THROTTLE_RATE,
+        "challenges": CHALLENGES_THROTTLE_RATE,
         "friends_dashboard": FRIENDS_DASHBOARD_THROTTLE_RATE,
         "auth": AUTH_THROTTLE_RATE,
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,

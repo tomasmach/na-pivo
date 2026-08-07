@@ -33,16 +33,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { BeerIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
+import { generateUuidV4 } from '@/data/account';
+import { partyGameSeedForTable, type PartyGameEventInput } from '@/data/partyGamesClient';
+import { loadPendingPartyGameRuntime } from '@/data/partyGameStartsQueue';
+import { loadQueuedPartyGameEvents } from '@/data/partyGamesQueue';
 import { findGame, type GameDraw } from '@/party/gameCatalog';
-import { GAME_PROMPTS } from '@/party/gameContent';
+import { GAME_PROMPTS, KINGS_CARDS } from '@/party/gameContent';
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
 import type { QuizAnswer, QuizEntrant } from '@/party/quiz/rules';
+import {
+  foldDiceActions,
+  foldSharedGameActions,
+  latestDraw,
+  latestPick,
+  promptStep,
+  type SharedGameActionPayload,
+} from '@/party/sharedGameActions';
 import { DiceDuelShell } from '@/party/shells/DiceDuelShell';
 import { DrawShell } from '@/party/shells/DrawShell';
-import { GameLobby } from '@/party/shells/GameLobby';
+import { GameLobby, type LobbyPlayer } from '@/party/shells/GameLobby';
 import { PickShell } from '@/party/shells/PickShell';
 import { PromptShell } from '@/party/shells/PromptShell';
 import { QuizShell } from '@/party/shells/QuizShell';
+import { tintFor } from '@/party/nightBuilder';
 import { beersOf, nightMe, nightStandings } from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
 import {
@@ -50,7 +63,10 @@ import {
   useFollowPartyGames,
   usePartyGamesStore,
 } from '@/stores/partyGamesStore';
-import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import {
+  selectConfirmedPartyJoinCode,
+  usePartyEveningStore,
+} from '@/stores/partyEveningStore';
 import { usePartyBeer } from '@/party/usePartyBeer';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
@@ -73,6 +89,7 @@ const DRAW_ACTION: Record<GameDraw, string> = {
   person: 'Roztoč',
   card: 'Táhni kartu',
 };
+const KINGS_CARD_IDS = new Set(KINGS_CARDS.map((card) => card.card));
 
 export default function PartyGameScreen() {
   const insets = useSafeAreaInsets();
@@ -81,7 +98,6 @@ export default function PartyGameScreen() {
 
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const finishGame = useLivePartyStore((s) => s.finishGame);
-  const invite = useLivePartyStore((s) => s.invite);
   const games = useLivePartyStore((s) => s.games);
 
   const def = key ? findGame(key) : undefined;
@@ -92,12 +108,13 @@ export default function PartyGameScreen() {
   const prompts = key ? (GAME_PROMPTS[key] ?? []) : [];
   // Varies the deal per game without calling `Math.random()` in render, which
   // is impure and the lint rule is right to stop.
-  const [seed] = React.useState(() => Date.now() & 0xffff);
+  const [localSeed] = React.useState(() => Date.now() & 0xffff);
 
   // Who is at the night, you first. The lobby turns this into who is PLAYING —
   // the two are not the same, and starting a game with everyone in the evening
   // is how the first round becomes an argument about whose turn it is.
   const night = useNightRecord();
+  const currentPlayerId = nightMe(night)?.id;
   const beer = usePartyBeer();
 
   /**
@@ -108,40 +125,90 @@ export default function PartyGameScreen() {
    * evening there is nothing to share with and this stays null — the game plays
    * exactly as it did before, on one phone.
    */
-  useFollowPartyGames(usePartyEveningStore((s) => s.evening?.joinCode ?? null));
+  useFollowPartyGames(usePartyEveningStore(selectConfirmedPartyJoinCode));
+  const sharedGames = usePartyGamesStore((s) => s.games);
   const gameEvents = usePartyGamesStore((s) => s.events);
   const startSharedGame = usePartyGamesStore((s) => s.start);
   const sendGameEvent = usePartyGamesStore((s) => s.send);
   const sharedCode = usePartyGamesStore((s) => s.code);
-  const [gameId, setGameId] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!key || !sharedCode || gameId) return;
-    let cancelled = false;
-    void startSharedGame({
-      catalogKey: key,
-      name,
-      scoring: def?.scoring === 'drinks' ? 'drinks' : 'points',
-    }).then((id) => {
-      if (!cancelled && id) setGameId(id);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [key, name, def, sharedCode, gameId, startSharedGame]);
+  const sharingFailure = usePartyGamesStore((s) =>
+    key ? s.sharingFailures[key] : undefined,
+  );
+  const sharedGame = key && sharedCode
+    ? (sharedGames.find((game) => game.catalogKey === key) ?? null)
+    : null;
   const table = React.useMemo(
-    () => nightStandings(night).map((person) => ({ name: person.name, tint: person.tint })),
+    () =>
+      nightStandings(night)
+        .filter((person) => person.active !== false)
+        .map((person) => ({ id: person.id, name: person.name, tint: person.tint })),
     [night],
   );
   // YOUR tally, not the table's — the strip is your counter.
   const myBeers = beersOf(night, nightMe(night)?.id);
-  const [roster, setRoster] = React.useState<{ name: string; tint: string }[] | null>(null);
-
-  const players = React.useMemo(
-    () => (roster ?? table).map((person) => person.name),
-    [roster, table],
+  const [selectedRoster, setSelectedRoster] = React.useState<LobbyPlayer[] | null>(null);
+  const gameScope = `${sharedCode ?? 'local'}:${key ?? ''}`;
+  const [localGame, setLocalGame] = React.useState<{ scope: string; id: string } | null>(null);
+  const serverRoster = React.useMemo<LobbyPlayer[] | null>(() => {
+    if (!sharedGame || sharedGame.roster.length === 0) return null;
+    return sharedGame.roster.map((person) => ({
+      id: person.id,
+      name: person.nickname ?? person.displayName,
+      tint: table.find((candidate) => candidate.id === person.id)?.tint ?? tintFor(person.id),
+    }));
+  }, [sharedGame, table]);
+  const roster = serverRoster ?? selectedRoster;
+  const localGameId = localGame?.scope === gameScope ? localGame.id : null;
+  // The server id wins as soon as the queued start lands. Until then every
+  // answer and finish uses the durable local correlation stored with the start.
+  const gameId = sharedGame?.id ?? localGameId;
+  const seed = sharedGame?.seed ?? (
+    sharedCode && key ? partyGameSeedForTable(sharedCode, key) : localSeed
   );
-  const [scores, setScores] = React.useState<Record<string, number>>({});
+
+  const beginGame = React.useCallback(
+    async (selected: LobbyPlayer[]) => {
+      if (!key || !sharedCode) {
+        setSelectedRoster(selected);
+        return;
+      }
+      // Stay in the lobby for the few milliseconds needed to durably persist
+      // the correlation. Once the game renders, every tap has somewhere safe
+      // to queue even if the POST is still in flight.
+      const handle = await startSharedGame({
+        catalogKey: key,
+        name,
+        scoring: def?.scoring === 'drinks' ? 'drinks' : 'points',
+        rosterIds: selected.map((person) => person.id),
+      });
+      if (!handle) {
+        // Storage failure disables sharing, not the local pub game.
+        setSelectedRoster(selected);
+        return;
+      }
+      setLocalGame({ scope: gameScope, id: handle.gameId });
+      const candidates = new Map([...table, ...selected].map((person) => [person.id, person]));
+      const persisted = handle.rosterIds.flatMap((id) => {
+        const person = candidates.get(id);
+        return person ? [person] : [];
+      });
+      setSelectedRoster(
+        handle.rosterIds.length > 0 && persisted.length === handle.rosterIds.length
+          ? persisted
+          : selected,
+      );
+    },
+    [def?.scoring, gameScope, key, name, sharedCode, startSharedGame, table],
+  );
+
+  const localScoreSequence = React.useRef(0);
+  const [localScoreEvents, setLocalScoreEvents] = React.useState<{
+    id: string | number;
+    subjectId: string;
+    delta: number;
+    createdAt: string;
+  }[]>([]);
+  const [localActionEvents, setLocalActionEvents] = React.useState<PartyGameEventInput[]>([]);
 
   /**
    * Pub kvíz — the one game that is genuinely played on several phones.
@@ -159,12 +226,12 @@ export default function PartyGameScreen() {
    */
   const entrants = React.useMemo<QuizEntrant[]>(
     () =>
-      night.people.map((person) => ({
+      (roster ?? []).map((person) => ({
         id: person.id,
         teamId: person.id,
         teamName: person.name,
       })),
-    [night],
+    [roster],
   );
 
   // Mine, folded in the moment I tap, and everybody's as the stream delivers
@@ -172,6 +239,150 @@ export default function PartyGameScreen() {
   // answer coming back from the server folds to the same result as the local
   // copy it duplicates.
   const [myAnswers, setMyAnswers] = React.useState<QuizAnswer[]>([]);
+  React.useEffect(() => {
+    if (!sharedCode || !key) return;
+    let cancelled = false;
+    void (async () => {
+      const pendingRuntime = await loadPendingPartyGameRuntime(sharedCode, key);
+      if (cancelled) return;
+
+      const ids = new Set<string>();
+      if (sharedGame?.id) ids.add(sharedGame.id);
+      if (pendingRuntime) {
+        ids.add(pendingRuntime.localGameId);
+        setLocalGame((current) =>
+          current?.scope === gameScope && current.id === pendingRuntime.localGameId
+            ? current
+            : { scope: gameScope, id: pendingRuntime.localGameId },
+        );
+        const candidates = new Map(table.map((person) => [person.id, person]));
+        const restoredRoster = pendingRuntime.rosterIds.flatMap((id) => {
+          const person = candidates.get(id);
+          return person ? [person] : [];
+        });
+        if (
+          restoredRoster.length > 0 &&
+          restoredRoster.length === pendingRuntime.rosterIds.length
+        ) {
+          setSelectedRoster((current) =>
+            current?.map((person) => person.id).join('\u0000') ===
+            restoredRoster.map((person) => person.id).join('\u0000')
+              ? current
+              : restoredRoster,
+          );
+        }
+      }
+      if (gameId) ids.add(gameId);
+      const queued = await loadQueuedPartyGameEvents(sharedCode, [...ids]);
+      if (cancelled || queued.length === 0) return;
+      const me = currentPlayerId;
+      if (me) {
+        const restoredAnswers = queued.flatMap(({ event, queuedAt }) => {
+          if (event.kind !== 'answer') return [];
+          const questionId = event.payload?.questionId;
+          const option = event.payload?.option;
+          if (typeof questionId !== 'string' || typeof option !== 'number') return [];
+          const parsedAt = event.createdAt ? Date.parse(event.createdAt) : queuedAt;
+          return [{
+            entrantId: me,
+            questionId,
+            option,
+            at: Number.isFinite(parsedAt) ? parsedAt : queuedAt,
+          }];
+        });
+        if (restoredAnswers.length > 0) setMyAnswers((current) => {
+          const seen = new Set(
+            current.map((answer) => `${answer.entrantId}\u0000${answer.questionId}`),
+          );
+          const additions = restoredAnswers.filter((answer) => {
+              const identity = `${answer.entrantId}\u0000${answer.questionId}`;
+              if (seen.has(identity)) return false;
+              seen.add(identity);
+              return true;
+            });
+          return additions.length > 0 ? [...current, ...additions] : current;
+        });
+      }
+      const restoredScores = queued.flatMap(({ event, queuedAt }) => {
+        if (
+          event.kind !== 'score' ||
+          typeof event.subjectId !== 'string' ||
+          typeof event.delta !== 'number'
+        ) return [];
+        return [{
+          id: event.clientId,
+          subjectId: event.subjectId,
+          delta: event.delta,
+          createdAt: event.createdAt ?? new Date(queuedAt).toISOString(),
+        }];
+      });
+      if (restoredScores.length > 0) setLocalScoreEvents((current) => {
+        const seen = new Set(current.map((event) => event.id));
+        const additions = restoredScores.filter((event) => {
+            if (seen.has(event.id)) return false;
+            seen.add(event.id);
+            return true;
+          });
+        return additions.length > 0 ? [...current, ...additions] : current;
+      });
+      const restoredActions = queued
+        .map(({ event }) => event)
+        .filter((event): event is PartyGameEventInput => event.kind === 'action');
+      if (restoredActions.length > 0) setLocalActionEvents((current) => {
+        const seen = new Set(current.map((event) => event.clientId));
+        const additions = restoredActions.filter((event) => {
+          if (seen.has(event.clientId)) return false;
+          seen.add(event.clientId);
+          return true;
+        });
+        return additions.length > 0 ? [...current, ...additions] : current;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPlayerId, gameId, gameScope, key, sharedCode, sharedGame?.id, table]);
+  const sharedActions = React.useMemo(
+    () => foldSharedGameActions(eventsOfGame(gameEvents, gameId), localActionEvents),
+    [gameEvents, gameId, localActionEvents],
+  );
+  const rosterIds = React.useMemo(
+    () => new Set((roster ?? []).map((person) => person.id)),
+    [roster],
+  );
+  const appendAction = React.useCallback(
+    (payload: SharedGameActionPayload) => {
+      if (!gameId) return;
+      const clientId = generateUuidV4();
+      const event: PartyGameEventInput = {
+        clientId,
+        kind: 'action',
+        payload,
+        createdAt: new Date(stamp()).toISOString(),
+      };
+      setLocalActionEvents((current) => [...current, event]);
+      void sendGameEvent(
+        gameId,
+        { kind: 'action', payload, createdAt: event.createdAt },
+        clientId,
+      );
+    },
+    [gameId, sendGameEvent],
+  );
+  const sharedPromptStep = promptStep(sharedActions);
+  const sharedDrawKind = def?.draw ?? 'person';
+  const sharedDraw = latestDraw(
+    sharedActions,
+    sharedDrawKind,
+    sharedDrawKind === 'person'
+      ? rosterIds
+      : KINGS_CARD_IDS,
+  );
+  const sharedPick = latestPick(sharedActions, rosterIds);
+  const sharedDiceState = React.useMemo(
+    () => (roster && gameId ? foldDiceActions(roster, sharedActions) : undefined),
+    [gameId, roster, sharedActions],
+  );
   const remoteAnswers = React.useMemo<QuizAnswer[]>(
     () =>
       eventsOfGame(gameEvents, gameId)
@@ -201,7 +412,7 @@ export default function PartyGameScreen() {
   const answer = (option: number) => {
     const current = QUIZ_QUESTIONS[question];
     const me = nightMe(night)?.id;
-    if (!current || !me) return;
+    if (!current || !me || !entrants.some((entrant) => entrant.id === me)) return;
     const at = stamp();
     setMyAnswers((list) =>
       // A team's answer is its first one, so a second tap is not an edit.
@@ -214,15 +425,67 @@ export default function PartyGameScreen() {
       void sendGameEvent(gameId, {
         kind: 'answer',
         payload: { questionId: current.id, option },
+        createdAt: new Date(at).toISOString(),
       });
     }
   };
 
-  const bump = (player: string) =>
-    setScores((current) => ({ ...current, [player]: (current[player] ?? 0) + 1 }));
+  const scoreSignature = (subjectId: string, delta: number, at: string) =>
+    `${subjectId}\u0000${delta}\u0000${Date.parse(at)}`;
+  const serverScoreEvents = gameEvents.filter(
+    (event) => event.gameId === gameId && event.kind === 'score' && event.subject,
+  );
+  const pendingLocalScores = React.useMemo(() => {
+    const me = nightMe(night)?.id;
+    const acknowledgements = new Map<string, number>();
+    for (const event of serverScoreEvents) {
+      if (!event.subject || event.account.id !== me) continue;
+      const signature = scoreSignature(event.subject.id, event.delta, event.at);
+      acknowledgements.set(signature, (acknowledgements.get(signature) ?? 0) + 1);
+    }
+    return localScoreEvents.filter((event) => {
+      const signature = scoreSignature(event.subjectId, event.delta, event.createdAt);
+      const remaining = acknowledgements.get(signature) ?? 0;
+      if (remaining === 0) return true;
+      acknowledgements.set(signature, remaining - 1);
+      return false;
+    });
+  }, [localScoreEvents, night, serverScoreEvents]);
+  const scoresById = React.useMemo(() => {
+    const scores: Record<string, number> = {};
+    for (const event of serverScoreEvents) {
+      if (!event.subject) continue;
+      scores[event.subject.id] = (scores[event.subject.id] ?? 0) + event.delta;
+    }
+    for (const event of pendingLocalScores) {
+      scores[event.subjectId] = (scores[event.subjectId] ?? 0) + event.delta;
+    }
+    return scores;
+  }, [pendingLocalScores, serverScoreEvents]);
+  const bump = (player: LobbyPlayer) => {
+    const createdAt = new Date(stamp()).toISOString();
+    localScoreSequence.current += 1;
+    setLocalScoreEvents((current) => [
+      ...current,
+      {
+        id: localScoreSequence.current,
+        subjectId: player.id,
+        delta: 1,
+        createdAt,
+      },
+    ]);
+    if (gameId) {
+      void sendGameEvent(gameId, {
+        kind: 'score',
+        subjectId: player.id,
+        delta: 1,
+        createdAt,
+      });
+    }
+  };
 
-  const ranked = players
-    .map((player) => ({ name: player, score: scores[player] ?? 0 }))
+  const ranked = (roster ?? [])
+    .map((player) => ({ ...player, score: scoresById[player.id] ?? 0 }))
     .sort((a, b) => b.score - a.score);
   const leader = ranked[0];
   const played = ranked.some((row) => row.score > 0);
@@ -304,19 +567,34 @@ export default function PartyGameScreen() {
         ) : null}
       </View>
 
+      {sharingFailure && roster ? (
+        <Text style={styles.sharingFailure} maxFontSizeMultiplier={FontScaleCap.body}>
+          Hra běží jen na tomhle telefonu. {sharingFailure}
+        </Text>
+      ) : null}
+
       {roster === null ? (
         <GameLobby
           def={def}
           table={table}
-          onStart={setRoster}
-          onInvite={(name) => invite(name)}
+          onStart={(selected) => {
+            void beginGame(selected);
+          }}
         />
       ) : null}
 
       {roster && shell === 'turns' ? (
         <DiceDuelShell
           players={roster}
-          onDone={finish}
+          state={sharedDiceState}
+          onRoll={gameId ? ({ playerId, dice }) => {
+            appendAction({ type: 'dice_roll', playerId, dice });
+          } : undefined}
+          onNextRound={gameId ? () => appendAction({ type: 'dice_next' }) : undefined}
+          // Dice already reported their canonical result before GameResult is
+          // shown. This button only leaves; reporting again would overwrite the
+          // payer and standings with the generic empty score.
+          onDone={() => router.back()}
           onFinished={(result) => {
             // The board is round wins. "Who paid" is the story, and it is the
             // line the recap and the feed lead with.
@@ -343,7 +621,11 @@ export default function PartyGameScreen() {
           }
           // Only the round game ends on the first spin; the bottle keeps going
           // until the table has had enough.
-          onDone={key === 'round' ? finish : undefined}
+          // The wheel reports its payer when it stops. Leaving GameResult must
+          // not append a second, empty finish event over that result.
+          onDone={key === 'round' ? () => router.back() : undefined}
+          pickedId={gameId ? (sharedPick?.playerId ?? null) : undefined}
+          onPicked={gameId ? (playerId) => appendAction({ type: 'pick', playerId }) : undefined}
           onFinished={
             key === 'round'
               ? (paying) => report({ winner: null, scores: [], paying })
@@ -372,15 +654,32 @@ export default function PartyGameScreen() {
       ) : null}
 
       {roster && shell === 'prompt' ? (
-        <PromptShell prompts={prompts} intro={def?.intro} seed={seed} />
+        <PromptShell
+          prompts={prompts}
+          intro={def?.intro}
+          seed={seed}
+          step={gameId ? sharedPromptStep : undefined}
+          onNext={gameId ? () => appendAction({ type: 'prompt_next' }) : undefined}
+        />
       ) : null}
 
       {roster && shell === 'draw' ? (
         <DrawShell
           kind={def?.draw ?? 'person'}
-          players={players}
+          players={roster}
           intro={def?.intro}
           action={DRAW_ACTION[def?.draw ?? 'person']}
+          result={gameId && sharedDraw ? {
+            nonce: sharedDraw.clientId,
+            ...(sharedDraw.drawKind === 'person'
+              ? { personId: sharedDraw.value }
+              : { cardId: sharedDraw.value }),
+          } : gameId ? null : undefined}
+          onDraw={gameId ? (result) => {
+            const drawKind = def?.draw ?? 'person';
+            const value = drawKind === 'person' ? result.personId : result.cardId;
+            if (value) appendAction({ type: 'draw', drawKind, value });
+          } : undefined}
         />
       ) : null}
 
@@ -403,14 +702,14 @@ export default function PartyGameScreen() {
         {ranked.map((row, index) => (
           <Pressable
             key={row.name}
-            onPress={() => bump(row.name)}
+            onPress={() => bump(row)}
             style={({ pressed }) => [
               styles.player,
               onPoints && index === 0 && played && styles.playerLeader,
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`Bod pro ${row.name}`}
+            accessibilityLabel={`Bod pro ${row.name}. Aktuálně ${row.score}`}
           >
             <Text
               style={styles.playerName}
@@ -476,6 +775,14 @@ const styles = StyleSheet.create({
   topTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: Colors.foam },
   end: { paddingHorizontal: Spacing.sm, paddingVertical: 6 },
   endText: { fontSize: 16, fontWeight: '700', color: Colors.amber },
+  sharingFailure: {
+    paddingHorizontal: MockLayout.screenPad,
+    paddingVertical: Spacing.sm,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+  },
   counter: {
     position: 'absolute',
     right: MockLayout.screenPad,

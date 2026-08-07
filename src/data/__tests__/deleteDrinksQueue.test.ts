@@ -34,7 +34,10 @@ async function waitForExpectation(assertion: () => void | Promise<void>): Promis
       return;
     } catch (error) {
       lastError = error;
-      await Promise.resolve();
+      // Queue delivery acquires the process-wide private-account lease before
+      // entering the queue-local lock. Yield the event loop instead of relying
+      // on a fixed number of promise turns inside that implementation.
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
   throw lastError;

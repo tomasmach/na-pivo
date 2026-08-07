@@ -1,5 +1,5 @@
 /**
- * DESIGN MOCK — multi-select beer filter, as a bottom sheet.
+ * Server-backed multi-select beer filter, as a bottom sheet.
  *
  * An action sheet answers one question with one answer; picking several beers
  * is a different control, so this is a sheet with checkable rows and an apply
@@ -7,13 +7,8 @@
  * height bounds on `cardWrap` and never on the card itself (§7.5), presses
  * swallowed inside the card so a row tap never falls through.
  *
- * NOTE FOR SHIPPING, not for the mock: `PubSearchFilters.beerBrand` is a SINGLE
- * `BeerBrandFilterValue | null` today, and unlike the price range it reaches
- * the wire. Multi-select therefore is not a UI change — it needs the filter to
- * become a list on both sides, additively, with released apps still sending the
- * scalar. The real sheet also has server-backed brand suggestions and a price
- * histogram (`src/components/compass/PubFilterSheet.tsx`); this mock is only
- * about the shape of choosing more than one.
+ * Options carry canonical backend keys separately from their Czech labels, so
+ * the UI never sends a presentation string as a filter identity.
  */
 
 import React, { useState } from "react";
@@ -29,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetModal } from "@/components/shared/BottomSheetModal";
 import { CloseButton } from "@/components/shared/CloseButton";
 import { CheckIcon } from "@/components/shared/IconGlyph";
+import type { BeerBrandFilterOption } from "@/data/beerSuggestionsClient";
 import { MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
@@ -42,7 +38,7 @@ export function BeerFilterSheet({
   onApply,
 }: {
   visible: boolean;
-  options: readonly string[];
+  options: readonly BeerBrandFilterOption[];
   value: string[];
   onClose: () => void;
   onApply: (next: string[]) => void;
@@ -71,7 +67,7 @@ function SheetBody({
   onClose,
   onApply,
 }: {
-  options: readonly string[];
+  options: readonly BeerBrandFilterOption[];
   value: string[];
   onClose: () => void;
   onApply: (next: string[]) => void;
@@ -80,11 +76,11 @@ function SheetBody({
   // Local draft, so cancelling really cancels.
   const [draft, setDraft] = useState<string[]>(value);
 
-  const toggle = (beer: string) =>
+  const toggle = (key: string) =>
     setDraft((current) =>
-      current.includes(beer)
-        ? current.filter((b) => b !== beer)
-        : [...current, beer],
+      current.includes(key)
+        ? current.filter((candidate) => candidate !== key)
+        : [...current, key],
     );
 
   return (
@@ -107,11 +103,11 @@ function SheetBody({
             showsVerticalScrollIndicator={false}
           >
             {options.map((beer, index) => {
-              const on = draft.includes(beer);
+              const on = draft.includes(beer.key);
               return (
                 <Pressable
-                  key={beer}
-                  onPress={() => toggle(beer)}
+                  key={beer.key}
+                  onPress={() => toggle(beer.key)}
                   style={({ pressed }) => [
                     styles.row,
                     index === 0 && styles.rowFirst,
@@ -119,14 +115,14 @@ function SheetBody({
                   ]}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: on }}
-                  accessibilityLabel={beer}
+                  accessibilityLabel={beer.label}
                 >
                   <Text
                     style={[styles.rowText, on && styles.rowTextOn]}
                     numberOfLines={1}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {beer}
+                    {beer.label}
                   </Text>
                   <View style={[styles.box, on && styles.boxOn]}>
                     {on ? <CheckIcon size={14} color={Colors.stout} /> : null}

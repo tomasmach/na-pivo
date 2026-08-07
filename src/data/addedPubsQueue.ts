@@ -359,7 +359,7 @@ export function clearAddedPubsQueue(): Promise<void> {
       removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
     }
     await saveRegistry([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 export function restoreQueuedAddedPubs(): Promise<number> {

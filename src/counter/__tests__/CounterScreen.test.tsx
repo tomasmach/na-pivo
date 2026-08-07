@@ -21,6 +21,15 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+jest.mock('../../../modules/beer-live-activity', () => ({
+  ackPendingAdds: jest.fn(async () => undefined),
+  clearPendingAdds: jest.fn(async () => true),
+  end: jest.fn(async () => undefined),
+  getPendingAdds: jest.fn(async () => []),
+  getStatus: jest.fn(async () => ({ active: false, sessionId: null })),
+  startOrUpdate: jest.fn(async () => undefined),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
@@ -161,11 +170,14 @@ jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() 
 
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { geohash8 } from '@/data/geohash';
+import type { PartyEvening } from '@/data/partyClient';
 import { BeerFormModal } from '@/counter/BeerFormModal';
 import { PubPickerModal } from '@/counter/PubPickerModal';
+import { showAppDialog } from '@/components/shared/AppDialog';
 
 const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
@@ -174,6 +186,20 @@ const { act } = TestRenderer;
 const PUB = { id: 'osm:1', name: 'U Zlatého tygra', lat: 50.0876, lng: 14.4214 };
 const CELL = geohash8(PUB.lat, PUB.lng);
 const MIN_PLAUSIBLE_BEER_GAP_MS = 5 * 60 * 1000;
+const PARTY_EVENING = {
+  id: 'party-1',
+  joinCode: 'PIVOXY',
+  joinUrl: 'https://na-pivo.cz/party/PIVOXY',
+  host: { id: 'me', nickname: 'tomas', displayName: 'Tomáš', avatarUrl: null },
+  pubName: PUB.name,
+  pubCity: 'Praha',
+  active: true,
+  startedAt: '2026-08-05T18:00:00.000Z',
+  endedAt: null,
+  isHost: true,
+  members: [],
+  events: [],
+} as PartyEvening;
 
 function nearbyState(over: Record<string, unknown> = {}) {
   return {
@@ -304,6 +330,12 @@ beforeEach(() => {
   fetchPubHours.mockImplementation(() => new Promise(() => undefined) as never);
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
+  usePartyEveningStore.setState({
+    evening: null,
+    confirmedIdentity: null,
+    lastEvening: null,
+    pendingJoinCode: null,
+  });
   useSettingsStore.setState({ priceCurrency: 'CZK', waterNudgeEnabled: false });
 });
 
@@ -519,6 +551,89 @@ describe('CounterScreen counting', () => {
       jest.advanceTimersByTime(400);
     });
     expect(sheetOpen(renderer, copy.counter.pickTitle)).toBe(false);
+  });
+
+  it('tags both the drink and its visit with the active shared table', async () => {
+    usePartyEveningStore.setState({ evening: PARTY_EVENING });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+
+    expect(enqueueDrink.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ party_code: 'PIVOXY' }),
+    );
+    expect(syncVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: expect.any(String) }),
+      undefined,
+      'PIVOXY',
+    );
+  });
+
+  it('keeps tagging offline beers after a cold relaunch restored only the table identity', async () => {
+    usePartyEveningStore.setState({
+      evening: null,
+      confirmedIdentity: {
+        id: PARTY_EVENING.id,
+        joinCode: PARTY_EVENING.joinCode,
+        isHost: PARTY_EVENING.isHost,
+        confirmedAt: Date.now(),
+      },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+
+    expect(enqueueDrink.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ party_code: 'PIVOXY' }),
+    );
+    expect(syncVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: expect.any(String) }),
+      undefined,
+      'PIVOXY',
+    );
+  });
+
+  it('does not leak a code reserved by a slow table create into drink or visit queues', async () => {
+    usePartyEveningStore.setState({
+      evening: null,
+      confirmedIdentity: null,
+      pendingJoinCode: 'PIVOXY',
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+
+    expect(enqueueDrink.mock.calls[0][0]).not.toHaveProperty('party_code');
+    expect(syncVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: expect.any(String) }),
+      undefined,
+      null,
+    );
+  });
+
+  it('never shares a backdated diary entry with the table that is active now', async () => {
+    usePartyEveningStore.setState({ evening: PARTY_EVENING });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterMore).props.onPress());
+    act(() => sheetButton(renderer, copy.counter.moreTitle, copy.counter.backdateLink).props.onPress());
+    act(() => jest.advanceTimersByTime(400));
+    act(() => lastProps(showAppDialog).buttons[0].onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+
+    expect(enqueueDrink.mock.calls[0][0]).not.toHaveProperty('party_code');
+    expect(syncVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: expect.any(String) }),
+      undefined,
+      null,
+    );
   });
 });
 

@@ -142,7 +142,7 @@ export function enqueueRatingOp(item: RatingQueueItem): Promise<void> {
 export function clearPubRatingsQueue(): Promise<void> {
   return runLocked(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

@@ -71,10 +71,11 @@ export function GamesSheet({
             return (
               <Pressable
                 key={game.key}
-                onPress={() => onPick(game.key, game.name)}
+                onPress={added ? undefined : () => onPick(game.key, game.name)}
+                disabled={added}
                 style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityState={{ selected: added }}
+                accessibilityState={{ selected: added, disabled: added }}
                 accessibilityLabel={`${game.name}. ${game.how}`}
               >
                 <View>

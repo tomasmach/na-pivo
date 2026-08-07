@@ -21,9 +21,13 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
 
 import { generateUuidV4 } from '@/data/account';
+import {
+  guardPrivateAccountStateCreator,
+  isPrivateAccountMutationFrozen,
+} from '@/data/privateAccountBoundary';
 import {
   normalizeDrinkType,
   normalizePlaceContext,
@@ -97,6 +101,10 @@ export interface TallyPub {
   pubName: string;
   pubCity?: string;
   pubExternalId?: string;
+  /** Existing explicit Party PubVisit identity, when the table picked this pub
+   * before its first drink. Reusing it prevents a second visit row. */
+  visitClientId?: string;
+  visitStartedAt?: string;
   /** Missing means pub. */
   placeContext?: PlaceContext;
 }
@@ -137,7 +145,7 @@ interface TallyState {
    * caller can sync the right visit). Used when a backdated timestamp would
    * otherwise roll over and clobber the active evening.
    */
-  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession;
+  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession | null;
   /**
    * Append a missed drink to one exact existing evening without reopening it or
    * routing by pub/day. The stable session clientId matters when somebody left
@@ -267,7 +275,7 @@ export function migrateTally(persisted: unknown, version: number): TallyState {
 
 export const useTallyStore = create<TallyState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       current: null,
       history: [],
 
@@ -286,7 +294,9 @@ export const useTallyStore = create<TallyState>()(
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
           if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
 
-          const rollover = shouldStartNewSession(state.current, pub.pubKey, atDate);
+          const rollover =
+            shouldStartNewSession(state.current, pub.pubKey, atDate) ||
+            (!!pub.visitClientId && state.current?.clientId !== pub.visitClientId);
 
           if (rollover) {
             // Archive a non-empty current session before opening a fresh one,
@@ -300,7 +310,7 @@ export const useTallyStore = create<TallyState>()(
                 : state.history;
             return {
               current: {
-                clientId: generateUuidV4(),
+                clientId: pub.visitClientId ?? generateUuidV4(),
                 pubKey: pub.pubKey,
                 pubName: pub.pubName,
                 ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
@@ -308,7 +318,12 @@ export const useTallyStore = create<TallyState>()(
                 ...(pub.placeContext && pub.placeContext !== 'pub'
                   ? { placeContext: pub.placeContext }
                   : {}),
-                startedAt: at,
+                startedAt:
+                  pub.visitStartedAt &&
+                  Number.isFinite(Date.parse(pub.visitStartedAt)) &&
+                  Date.parse(pub.visitStartedAt) <= Date.parse(at)
+                    ? pub.visitStartedAt
+                    : at,
                 drinks: [drink],
               },
               history,
@@ -334,6 +349,7 @@ export const useTallyStore = create<TallyState>()(
         }),
 
       addBackdatedDrink: (pub, beer) => {
+        if (isPrivateAccountMutationFrozen()) return null;
         const box: { session: TallySession | null } = { session: null };
         set((state) => {
           const at = beer.at ?? new Date().toISOString();
@@ -394,7 +410,7 @@ export const useTallyStore = create<TallyState>()(
             history: sortSessionsNewestFirst([created, ...state.history]).slice(0, MAX_HISTORY),
           };
         });
-        return box.session as TallySession;
+        return box.session;
       },
 
       addDrinkToSession: (sessionClientId, beer) => {
@@ -631,7 +647,7 @@ export const useTallyStore = create<TallyState>()(
           }
           return { current: null, history: [] };
         }),
-    }),
+    })),
     {
       name: 'na-pivo-tally',
       version: 1,

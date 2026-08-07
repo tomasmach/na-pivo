@@ -77,14 +77,24 @@ def test_register_creates_account(client):
 
 @pytest.mark.django_db
 def test_register_rolls_back_new_account_when_token_issue_fails(client, monkeypatch):
+    sentinel = "private@example.cz bearer-secret"
+    logged: list[tuple[tuple, dict]] = []
+
     def fail_issue_token(*_args, **_kwargs):
-        raise RuntimeError("forced token issue failure")
+        raise RuntimeError(sentinel)
+
+    def capture_error(*args, **kwargs):
+        logged.append((args, kwargs))
 
     monkeypatch.setattr(accounts, "issue_token", fail_issue_token)
+    monkeypatch.setattr("pubs.api.views.logger.error", capture_error)
     resp = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
 
     assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     assert not Account.objects.filter(device_id=_DEVICE_ID).exists()
+    assert logged
+    assert sentinel not in repr(logged)
+    assert all("exc_info" not in kwargs for _args, kwargs in logged)
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -195,26 +205,46 @@ def test_reregistration_without_bearer_does_not_rotate_token(client):
 
 
 @pytest.mark.django_db
-def test_existing_zero_token_account_recovers_without_bearer(client, monkeypatch):
+def test_existing_zero_token_account_cannot_be_claimed_by_device_id(client, monkeypatch):
     account = Account.objects.create(device_id=_DEVICE_ID)
     logged: dict = {}
 
-    def capture_recovery(_message, *, extra):
+    def capture_failure(_message, *, extra):
         logged.update(extra)
 
-    monkeypatch.setattr("pubs.api.views.auth_logger.warning", capture_recovery)
+    monkeypatch.setattr("pubs.api.views.auth_logger.warning", capture_failure)
     resp = client.post(
         "/v1/account", data={"device_id": _DEVICE_ID}, format="json"
     )
 
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["id"] == str(account.public_id)
-    assert resp.json()["created"] is False
-    assert resp.json()["token"]
-    token = AuthToken.objects.get(account=account)
-    assert token.kind == AuthToken.Kind.DEVICE
-    assert logged["event"] == "account_bootstrap_recovered"
-    assert logged["observability"]["reason"] == "zero_tokens"
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "token" not in resp.json()
+    assert not AuthToken.objects.filter(account=account).exists()
+    assert logged["event"] == "account_bootstrap_failure"
+    assert logged["observability"]["reason"] == "token_missing"
+
+
+@pytest.mark.django_db
+def test_logout_all_cannot_be_undone_with_public_device_id(client):
+    first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    token = first.json()["token"]
+
+    logged_out = client.post(
+        "/v1/auth/logout",
+        data={"all": True},
+        format="json",
+        **_auth(token),
+    )
+    recovered = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+    )
+
+    assert logged_out.status_code == status.HTTP_200_OK
+    assert recovered.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "token" not in recovered.json()
+    assert not AuthToken.objects.filter(account__device_id=_DEVICE_ID).exists()
 
 
 @pytest.mark.django_db

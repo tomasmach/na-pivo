@@ -24,13 +24,22 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage, {
+  privateAccountCleanupStorage,
+  suppressPrivatePersistenceDuringMemoryReset,
+} from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 
 import {
   fetchMyBeerPhotos,
   type BeerPhoto,
   type BeerPhotoVisibility,
 } from '@/data/beerPhotosClient';
+import { ensureAccount } from '@/data/account';
+import {
+  isBeerPhotoDeletionTombstoned,
+  loadBeerPhotoDeletionTombstones,
+} from '@/data/beerPhotoDeletionTombstones';
 
 export type BeerPhotoSyncState = 'pending' | 'synced' | 'failed';
 
@@ -46,6 +55,12 @@ export interface BeerPhotoLocal {
   pubCacheKey: string;
   pubName: string;
   pubCity: string;
+  /** Local association retained until the party record reflects the upload. */
+  partyCode?: string;
+  /** Reserved table code whose create request has not been confirmed yet. */
+  pendingPartyCode?: string;
+  /** Local-only party association for a night that has no server code yet. */
+  partyDrinkingDay?: string;
   visibility: BeerPhotoVisibility;
   takenAt: string;
   createdAt: string;
@@ -70,11 +85,21 @@ export interface PendingBeerPhotoInput {
   pubCacheKey?: string;
   pubName?: string;
   pubCity?: string;
+  partyCode?: string;
+  pendingPartyCode?: string;
+  partyDrinkingDay?: string;
   visibility: BeerPhotoVisibility;
   takenAt: string;
 }
 
-function fromServerPhoto(photo: BeerPhoto): BeerPhotoLocal {
+function fromServerPhoto(
+  photo: BeerPhoto,
+  localParty?: {
+    partyCode?: string;
+    pendingPartyCode?: string;
+    partyDrinkingDay?: string;
+  },
+): BeerPhotoLocal {
   return {
     id: photo.id,
     clientId: photo.clientId,
@@ -83,6 +108,13 @@ function fromServerPhoto(photo: BeerPhoto): BeerPhotoLocal {
     pubCacheKey: photo.pubCacheKey,
     pubName: photo.pubName,
     pubCity: photo.pubCity,
+    ...(localParty?.partyCode ? { partyCode: localParty.partyCode } : {}),
+    ...(localParty?.pendingPartyCode
+      ? { pendingPartyCode: localParty.pendingPartyCode }
+      : {}),
+    ...(localParty?.partyDrinkingDay
+      ? { partyDrinkingDay: localParty.partyDrinkingDay }
+      : {}),
     visibility: photo.visibility,
     takenAt: photo.takenAt,
     createdAt: photo.createdAt,
@@ -108,33 +140,136 @@ interface BeerPhotosState {
    * server does not know yet are kept. A previously-synced local entry missing
    * from the server list was deleted elsewhere — it is dropped.
    */
-  setServerPhotos: (list: BeerPhoto[]) => void;
+  setServerPhotos: (list: BeerPhoto[], accountId?: string) => void;
   /** Insert an optimistic pending entry for a queued upload. */
   addPendingPhoto: (input: PendingBeerPhotoInput) => void;
   /** The queued upload landed: swap in the server photo, drop localUri. */
   markSynced: (clientId: string, serverPhoto: BeerPhoto) => void;
   /** The queued upload was permanently rejected (code → specific error copy). */
   markFailed: (clientId: string, failureCode?: string) => void;
+  /** Replace a reserved table code after its create request settles. */
+  resolvePendingPartyAssociation: (
+    pendingPartyCode: string,
+    confirmedPartyCode: string | null,
+  ) => void;
   /** Remove one photo by server id or clientId (delete flow / failed cleanup). */
   removePhoto: (idOrClientId: string) => void;
 }
 
+/**
+ * Account-boundary and request epochs for the private photo diary.
+ *
+ * A fetch or AsyncStorage rehydrate may finish after logout has already wiped
+ * account A. Both epochs are bumped synchronously at the boundary, before the
+ * clear can yield, so that late work cannot repopulate (or persist) A's photos
+ * under account B. The request epoch also gives overlapping same-account loads
+ * a deterministic newest-request-wins policy.
+ */
+let accountBoundaryGeneration = 0;
+let latestLoadGeneration = 0;
+let accountClearsInProgress = 0;
+let lastClearedSession: { accountId: string; token: string } | null = null;
+let hydrationStarts = 0;
+let resolveInitialHydration!: () => void;
+const initialHydration = new Promise<void>((resolve) => {
+  resolveInitialHydration = resolve;
+});
+
+function beginHydration(): () => void {
+  const generation = accountBoundaryGeneration;
+  const startedDuringAccountClear = accountClearsInProgress > 0;
+  const isInitialHydration = hydrationStarts === 0;
+  hydrationStarts += 1;
+
+  return () => {
+    if (isInitialHydration) resolveInitialHydration();
+    if (
+      startedDuringAccountClear ||
+      accountClearsInProgress > 0 ||
+      generation !== accountBoundaryGeneration
+    ) {
+      // Persist applies the hydrated snapshot before this completion hook.
+      // Undo any snapshot whose read crossed an account boundary. There is no
+      // hydration counter to wait on: Zustand intentionally suppresses the
+      // older completion callback when two rehydrates overlap.
+      useBeerPhotosStore.setState({ photos: [] });
+      void useBeerPhotosStore.persist.clearStorage();
+    }
+  };
+}
+
+function loadIsStale(
+  boundaryGeneration: number,
+  loadGeneration: number,
+  signal?: AbortSignal,
+): boolean {
+  return (
+    signal?.aborted === true ||
+    accountClearsInProgress > 0 ||
+    boundaryGeneration !== accountBoundaryGeneration ||
+    loadGeneration !== latestLoadGeneration
+  );
+}
+
+function belongsToLastClearedSession(session: { accountId: string; token: string }): boolean {
+  if (!lastClearedSession) return false;
+  if (
+    session.accountId === lastClearedSession.accountId &&
+    session.token === lastClearedSession.token
+  ) return true;
+
+  // The identity really rotated. Forget the outgoing credential so a later
+  // login to the same account (with a fresh token) can load normally.
+  lastClearedSession = null;
+  return false;
+}
+
 export const useBeerPhotosStore = create<BeerPhotosState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       photos: [],
 
-      setServerPhotos: (list) =>
+      setServerPhotos: (list, accountId) =>
         set((state) => {
-          const serverByClientId = new Set(list.map((p) => p.clientId).filter(Boolean));
-          const serverIds = new Set(list.map((p) => p.id));
+          // A GET may race the delete request or return a snapshot captured
+          // before it. Never rehydrate a locally-deleted identity while its
+          // durable tombstone is still pending server acknowledgement.
+          const visibleList = list.filter(
+            (photo) => !isBeerPhotoDeletionTombstoned(photo.clientId, accountId),
+          );
+          const serverByClientId = new Set(
+            visibleList.map((p) => p.clientId).filter(Boolean),
+          );
+          const serverIds = new Set(visibleList.map((p) => p.id));
           const keptLocals = state.photos.filter(
             (photo) =>
+              !isBeerPhotoDeletionTombstoned(photo.clientId, accountId) &&
               photo.syncState !== 'synced' &&
               !serverByClientId.has(photo.clientId) &&
               (photo.id == null || !serverIds.has(photo.id)),
           );
-          return { photos: sortNewestFirst([...list.map(fromServerPhoto), ...keptLocals]) };
+          const previousParty = new Map(
+            state.photos.map((photo) => [
+              photo.clientId,
+              {
+                ...(photo.partyCode ? { partyCode: photo.partyCode } : {}),
+                ...(photo.pendingPartyCode
+                  ? { pendingPartyCode: photo.pendingPartyCode }
+                  : {}),
+                ...(photo.partyDrinkingDay
+                  ? { partyDrinkingDay: photo.partyDrinkingDay }
+                  : {}),
+              },
+            ] as const),
+          );
+          return {
+            photos: sortNewestFirst([
+              ...visibleList.map((photo) =>
+                fromServerPhoto(photo, previousParty.get(photo.clientId)),
+              ),
+              ...keptLocals,
+            ]),
+          };
         }),
 
       addPendingPhoto: (input) =>
@@ -147,6 +282,13 @@ export const useBeerPhotosStore = create<BeerPhotosState>()(
             pubCacheKey: input.pubCacheKey ?? '',
             pubName: input.pubName ?? '',
             pubCity: input.pubCity ?? '',
+            ...(input.partyCode ? { partyCode: input.partyCode } : {}),
+            ...(input.pendingPartyCode
+              ? { pendingPartyCode: input.pendingPartyCode }
+              : {}),
+            ...(input.partyDrinkingDay
+              ? { partyDrinkingDay: input.partyDrinkingDay }
+              : {}),
             visibility: input.visibility,
             takenAt: input.takenAt,
             createdAt: input.takenAt,
@@ -161,7 +303,13 @@ export const useBeerPhotosStore = create<BeerPhotosState>()(
       markSynced: (clientId, serverPhoto) =>
         set((state) => ({
           photos: state.photos.map((photo) =>
-            photo.clientId === clientId ? fromServerPhoto(serverPhoto) : photo,
+            photo.clientId === clientId
+              ? fromServerPhoto(serverPhoto, {
+                  partyCode: photo.partyCode,
+                  pendingPartyCode: photo.pendingPartyCode,
+                  partyDrinkingDay: photo.partyDrinkingDay,
+                })
+              : photo,
           ),
         })),
 
@@ -174,27 +322,88 @@ export const useBeerPhotosStore = create<BeerPhotosState>()(
           ),
         })),
 
+      resolvePendingPartyAssociation: (pendingPartyCode, confirmedPartyCode) =>
+        set((state) => ({
+          photos: state.photos.map((photo) => {
+            if (
+              photo.pendingPartyCode?.toUpperCase() !==
+              pendingPartyCode.toUpperCase()
+            ) return photo;
+            const { pendingPartyCode: _pendingPartyCode, partyCode: _partyCode, ...rest } = photo;
+            return confirmedPartyCode
+              ? { ...rest, partyCode: confirmedPartyCode.toUpperCase() }
+              : rest;
+          }),
+        })),
+
       removePhoto: (idOrClientId) =>
         set((state) => ({
           photos: state.photos.filter(
             (photo) => photo.id !== idOrClientId && photo.clientId !== idOrClientId,
           ),
         })),
-    }),
+    })),
     {
       name: 'na-pivo-beer-photos',
       storage: createJSONStorage(() => AsyncStorage),
       version: 1,
+      onRehydrateStorage: () => {
+        const finishHydration = beginHydration();
+        return () => finishHydration();
+      },
     },
   ),
 );
 
 /**
- * Rehydrate exactly once per process: re-running rehydrate() on every
- * loadBeerPhotos call would clobber live in-memory state (e.g. a markSynced
- * that landed mid-flush) with the stale persisted snapshot.
+ * Wipe the private diary at an account boundary. The clear-in-progress flag is
+ * raised synchronously, before any await, and the outgoing credential remains
+ * blocked until a genuinely different session is observed.
  */
-let rehydratedOnce = false;
+export function clearBeerPhotosAccountData(options?: {
+  /** Captured before an already-installed replacement session. */
+  outgoingSession?: { accountId: string; token: string } | null;
+}): Promise<void> {
+  accountClearsInProgress += 1;
+  accountBoundaryGeneration += 1;
+  latestLoadGeneration += 1;
+  suppressPrivatePersistenceDuringMemoryReset(() => {
+    useBeerPhotosStore.setState({ photos: [] });
+  });
+  const outgoingSession = Object.prototype.hasOwnProperty.call(
+    options ?? {},
+    'outgoingSession',
+  )
+    ? Promise.resolve(options?.outgoingSession ?? null)
+    : ensureAccount();
+
+  return (async () => {
+    try {
+      const [session] = await Promise.all([
+        outgoingSession.catch(() => null),
+        privateAccountCleanupStorage.removeItem('na-pivo-beer-photos').catch(() => undefined),
+      ]);
+      if (session) {
+        lastClearedSession = { accountId: session.accountId, token: session.token };
+      }
+    } finally {
+      // Invalidate once more before reopening: a load may have started while a
+      // different private-clear task was yielding after the first bump.
+      accountBoundaryGeneration += 1;
+      latestLoadGeneration += 1;
+      suppressPrivatePersistenceDuringMemoryReset(() => {
+        useBeerPhotosStore.setState({ photos: [] });
+      });
+      try {
+        await privateAccountCleanupStorage.removeItem('na-pivo-beer-photos');
+      } catch {
+        // privateAccountData removes the same key too; memory is already empty.
+      } finally {
+        accountClearsInProgress = Math.max(0, accountClearsInProgress - 1);
+      }
+    }
+  })();
+}
 
 /**
  * Bootstrap the diary: wait for the persisted state to hydrate (so pending
@@ -203,14 +412,40 @@ let rehydratedOnce = false;
  * throws.
  */
 export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
-  if (!rehydratedOnce) {
-    rehydratedOnce = true;
-    try {
-      await useBeerPhotosStore.persist.rehydrate();
-    } catch {
-      // A failed rehydrate only loses the cached view; the fetch below still runs.
-    }
-  }
-  const photos = await fetchMyBeerPhotos(signal);
-  if (photos) useBeerPhotosStore.getState().setServerPhotos(photos);
+  const boundaryGeneration = accountBoundaryGeneration;
+  const loadGeneration = ++latestLoadGeneration;
+
+  if (loadIsStale(boundaryGeneration, loadGeneration, signal)) return;
+  const [, tombstoneLoad] = await Promise.all([
+    initialHydration,
+    loadBeerPhotoDeletionTombstones(),
+  ]);
+  if (
+    !tombstoneLoad.ok ||
+    loadIsStale(boundaryGeneration, loadGeneration, signal)
+  ) return;
+
+  const session = await ensureAccount(signal);
+  if (
+    !session ||
+    loadIsStale(boundaryGeneration, loadGeneration, signal) ||
+    belongsToLastClearedSession(session)
+  ) return;
+
+  const photos = await fetchMyBeerPhotos(signal, session);
+  if (!photos || loadIsStale(boundaryGeneration, loadGeneration, signal)) return;
+
+  // A generation bump is the fast account-boundary guard. Comparing the
+  // captured identity as well also protects unusual session replacements that
+  // did not go through clearLocalPrivateAccountData.
+  const currentSession = await ensureAccount(signal);
+  if (
+    !currentSession ||
+    currentSession.accountId !== session.accountId ||
+    currentSession.token !== session.token ||
+    loadIsStale(boundaryGeneration, loadGeneration, signal) ||
+    belongsToLastClearedSession(currentSession)
+  ) return;
+
+  useBeerPhotosStore.getState().setServerPhotos(photos, session.accountId);
 }

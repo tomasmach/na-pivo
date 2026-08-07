@@ -6,28 +6,51 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { EventDetailScreen } from '@/community/EventDetailScreen';
 import { fetchCommunityEvent, type CommunityEvent } from '@/data/communityEventsClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
+import { useAccountStore } from '@/stores/accountStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 
 export default function EventRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const reduceMotion = useReducedMotion();
-  const [event, setEvent] = React.useState<CommunityEvent | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const viewerAccountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const [resource, setResource] = React.useState<{
+    viewerAccountId: string;
+    event: CommunityEvent | null;
+    status: 'loading' | 'ready' | 'error';
+    error: string | null;
+  } | null>(null);
   const [revision, setRevision] = React.useState(0);
 
+  const visibleResource =
+    resource?.viewerAccountId === viewerAccountId ? resource : null;
+  const event = visibleResource?.event ?? null;
+  const loading = !viewerAccountId || !visibleResource || visibleResource.status === 'loading';
+  const error = visibleResource?.error ?? null;
+
   React.useEffect(() => {
+    if (!viewerAccountId || !id) return;
     let active = true;
     const controller = new AbortController();
+    const requestedViewer = viewerAccountId;
     const kickoff = setTimeout(() => {
-      setLoading(true);
-      setError(null);
+      setResource({
+        viewerAccountId: requestedViewer,
+        event: null,
+        status: 'loading',
+        error: null,
+      });
       void fetchCommunityEvent(id, controller.signal).then((result) => {
-        if (!active) return;
-        setEvent(result.ok ? result.event : null);
-        setError(result.ok ? null : result.detail);
-        setLoading(false);
+        if (
+          !active ||
+          useAccountStore.getState().session?.accountId !== requestedViewer
+        ) return;
+        setResource({
+          viewerAccountId: requestedViewer,
+          event: result.ok ? result.event : null,
+          status: result.ok ? 'ready' : 'error',
+          error: result.ok ? null : result.detail,
+        });
       });
     }, 0);
     return () => {
@@ -35,7 +58,7 @@ export default function EventRoute() {
       clearTimeout(kickoff);
       controller.abort();
     };
-  }, [id, revision]);
+  }, [id, revision, viewerAccountId]);
 
   if (loading) {
     return (

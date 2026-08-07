@@ -35,13 +35,38 @@ jest.mock('@/data/updateDrinksQueue', () => ({
   removeQueuedDrinkUpdate: (...args: unknown[]) => removeQueuedDrinkUpdate(...(args as [])),
 }));
 
+const syncVisit: jest.Mock = jest.fn();
+jest.mock('@/data/visitsSync', () => ({
+  syncVisit: (...args: unknown[]) => syncVisit(...(args as [])),
+}));
+
+const flushVisitsQueue: jest.Mock = jest.fn(async () => undefined);
+jest.mock('@/data/visitsQueue', () => ({
+  flushVisitsQueue: (...args: unknown[]) => flushVisitsQueue(...(args as [])),
+}));
+
 import { logPartyBeer, renamePartyBeer, unlogPartyBeer } from '@/party/logBeer';
-import { useTallyStore } from '@/stores/tallyStore';
+import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 /** Praha, roughly — a real geohash-8, because the client decodes it. */
 const PLACE = { pubKey: 'u2fkbjgx', pubName: 'U Fleků', pubCity: 'Praha' };
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+function storedSession(clientId: string, startedAt: string, drinkIds: string[]): TallySession {
+  return {
+    clientId,
+    pubKey: clientId,
+    pubName: clientId,
+    startedAt,
+    drinks: drinkIds.map((id, index) => ({
+      id,
+      beerName: `Pivo ${index + 1}`,
+      at: new Date(Date.parse(startedAt) + index * 60_000).toISOString(),
+      syncStatus: 'sent',
+    })),
+  };
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -70,6 +95,33 @@ describe('logPartyBeer', () => {
       party_code: 'STUL24',
       beer: { name: 'Plzeň' },
     });
+    expect(syncVisit).toHaveBeenCalledWith(
+      expect.objectContaining({ pubName: 'U Fleků' }),
+      expect.any(String),
+      'STUL24',
+      { deliver: true },
+    );
+  });
+
+  it('durably queues the first table beer without delivering before table creation', async () => {
+    logPartyBeer({
+      place: PLACE,
+      beerName: 'Plzeň',
+      partyCode: 'STUL24',
+      deferDelivery: true,
+    });
+    await flush();
+
+    expect(enqueueDrink).toHaveBeenCalledWith(
+      expect.objectContaining({ party_code: 'STUL24' }),
+      { deliver: false },
+    );
+    expect(syncVisit).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(String),
+      'STUL24',
+      { deliver: false },
+    );
   });
 
   it('leaves the code off a night nobody is sharing', async () => {
@@ -118,13 +170,30 @@ describe('unlogPartyBeer', () => {
 
     expect(removeQueuedDrink).not.toHaveBeenCalled();
   });
+
+  it('deletes an older crawl beer from history and queues its server tombstone', async () => {
+    removeQueuedDrink.mockResolvedValue(false);
+    const older = storedSession('old-stop', '2026-08-05T18:00:00Z', ['old-beer', 'keep']);
+    const current = storedSession('new-stop', '2026-08-05T20:00:00Z', ['current-beer']);
+    useTallyStore.setState({ current, history: [older] });
+
+    unlogPartyBeer('old-beer');
+    await flush();
+    await flush();
+
+    expect(useTallyStore.getState().history[0].drinks.map((drink) => drink.id)).toEqual(['keep']);
+    expect(useTallyStore.getState().current?.drinks.map((drink) => drink.id)).toEqual([
+      'current-beer',
+    ]);
+    expect(flushDrinksQueue).toHaveBeenCalled();
+    expect(enqueueDelete).toHaveBeenCalledWith('old-beer');
+  });
 });
 
 describe('renamePartyBeer', () => {
   it('fixes the name in the session and in the queued payload', async () => {
     const id = logPartyBeer({ place: PLACE, beerName: 'Plze' });
-    const session = useTallyStore.getState().current!;
-    renamePartyBeer(session, id, '  Plzeň  ');
+    renamePartyBeer(id, '  Plzeň  ');
     await flush();
 
     expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Plzeň');
@@ -135,7 +204,7 @@ describe('renamePartyBeer', () => {
   it('sends an update when the drink is already on the server', async () => {
     updateQueuedDrinkBeerName.mockResolvedValue('missing');
     const id = logPartyBeer({ place: PLACE, beerName: 'Plze' });
-    renamePartyBeer(useTallyStore.getState().current!, id, 'Plzeň');
+    renamePartyBeer(id, 'Plzeň');
     await flush();
 
     expect(enqueueDrinkUpdate).toHaveBeenCalledWith({ client_id: id, beer_name: 'Plzeň' });
@@ -143,8 +212,26 @@ describe('renamePartyBeer', () => {
 
   it('refuses to rename a beer to nothing', () => {
     const id = logPartyBeer({ place: PLACE, beerName: 'Plzeň' });
-    renamePartyBeer(useTallyStore.getState().current!, id, '   ');
+    renamePartyBeer(id, '   ');
 
     expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Plzeň');
+  });
+
+  it('renames an older crawl beer in history and queues a server update', async () => {
+    updateQueuedDrinkBeerName.mockResolvedValue('missing');
+    const older = storedSession('old-stop', '2026-08-05T18:00:00Z', ['old-beer']);
+    const current = storedSession('new-stop', '2026-08-05T20:00:00Z', ['current-beer']);
+    useTallyStore.setState({ current, history: [older] });
+
+    renamePartyBeer('old-beer', '  Opravený ležák  ');
+    await flush();
+
+    expect(useTallyStore.getState().history[0].drinks[0].beerName).toBe('Opravený ležák');
+    expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Pivo 1');
+    expect(updateQueuedDrinkBeerName).toHaveBeenCalledWith('old-beer', 'Opravený ležák');
+    expect(enqueueDrinkUpdate).toHaveBeenCalledWith({
+      client_id: 'old-beer',
+      beer_name: 'Opravený ležák',
+    });
   });
 });

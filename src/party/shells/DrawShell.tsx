@@ -40,11 +40,16 @@ const ROLL_MS = 900;
 /** Module scope so `react-hooks/purity` can see these are taps, not render. */
 const pick = <T,>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
 
-interface Result {
+export interface DrawPlayer {
+  id: string;
+  name: string;
+}
+
+export interface DrawResult {
   /** Bumped on every draw so a repeat still re-animates and re-announces. */
-  nonce: number;
-  person?: string;
-  card?: (typeof KINGS_CARDS)[number];
+  nonce: string;
+  personId?: string;
+  cardId?: string;
 }
 
 export function DrawShell({
@@ -53,15 +58,23 @@ export function DrawShell({
   intro,
   /** Label on the button. "Roztoč", "Hoď", "Táhni" — the verb is the game. */
   action,
+  result,
+  onDraw,
 }: {
   kind: DrawKind;
-  players: string[];
+  players: DrawPlayer[];
   intro?: string;
   action: string;
+  /** Latest folded shared result. Omit for local-only state. */
+  result?: DrawResult | null;
+  onDraw?: (result: DrawResult) => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const [result, setResult] = React.useState<Result | null>(null);
+  const [localResult, setLocalResult] = React.useState<DrawResult | null>(null);
   const [rolling, setRolling] = React.useState(false);
+  const shown = result === undefined ? localResult : result;
+  const shownPlayer = players.find((player) => player.id === shown?.personId);
+  const shownCard = KINGS_CARDS.find((card) => card.card === shown?.cardId);
 
   const spin = useSharedValue(0);
   const settle = useSharedValue(1);
@@ -70,12 +83,17 @@ export function DrawShell({
     if (rolling) return;
     // Chosen first, animated to second. The animation is decoration over an
     // answer that already exists, which is what keeps reduced motion honest.
-    const next: Result = { nonce: Date.now() };
-    if (kind === 'person') next.person = pick(players);
-    else next.card = pick(KINGS_CARDS);
+    const next: DrawResult = { nonce: String(Date.now()) };
+    if (kind === 'person') next.personId = pick(players)?.id;
+    else next.cardId = pick(KINGS_CARDS)?.card;
+
+    const publish = () => {
+      if (result === undefined) setLocalResult(next);
+      onDraw?.(next);
+    };
 
     if (reduceMotion) {
-      setResult(next);
+      publish();
       return;
     }
 
@@ -90,8 +108,10 @@ export function DrawShell({
       withTiming(1.08, { duration: 110 }),
       withTiming(1, { duration: 90 }),
     );
+    // Persist the game's chosen answer immediately. Animation is theatre; a
+    // process death halfway through it must not erase the draw.
+    publish();
     setTimeout(() => {
-      setResult(next);
       setRolling(false);
     }, ROLL_MS);
   };
@@ -100,7 +120,7 @@ export function DrawShell({
 
   return (
     <View style={styles.wrap}>
-      {intro && !result ? (
+      {intro && !shown ? (
         <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
           {intro}
         </Text>
@@ -115,12 +135,12 @@ export function DrawShell({
               <RollingNames players={players} />
             ) : (
               <Text
-                key={result?.nonce}
+                key={shown?.nonce}
                 style={styles.person}
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {result?.person ?? '…'}
+                {shownPlayer?.name ?? '…'}
               </Text>
             )}
           </Animated.View>
@@ -128,20 +148,20 @@ export function DrawShell({
 
         {kind === 'card' ? (
           <Animated.View style={[styles.card, settleStyle]}>
-            {rolling || !result?.card ? (
+            {rolling || !shownCard ? (
               <Text style={styles.cardBack} allowFontScaling={false}>
                 ?
               </Text>
             ) : (
-              <Animated.View key={result.nonce} entering={FadeIn.duration(200)}>
+              <Animated.View key={shown?.nonce} entering={FadeIn.duration(200)}>
                 <Text style={styles.cardRank} allowFontScaling={false}>
-                  {result.card.card}
+                  {shownCard.card}
                 </Text>
                 <Text style={styles.cardTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {result.card.title}
+                  {shownCard.title}
                 </Text>
                 <Text style={styles.cardRule} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {result.card.rule}
+                  {shownCard.rule}
                 </Text>
               </Animated.View>
             )}
@@ -157,7 +177,7 @@ export function DrawShell({
         accessibilityLabel={action}
       >
         <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {rolling ? '…' : result ? 'Znovu' : action}
+          {rolling ? '…' : shown ? 'Znovu' : action}
         </Text>
       </Pressable>
     </View>
@@ -165,7 +185,7 @@ export function DrawShell({
 }
 
 /** The names, cycling, while the wheel is still turning. */
-function RollingNames({ players }: { players: string[] }) {
+function RollingNames({ players }: { players: DrawPlayer[] }) {
   const [index, setIndex] = React.useState(0);
 
   React.useEffect(() => {
@@ -175,7 +195,7 @@ function RollingNames({ players }: { players: string[] }) {
 
   return (
     <Text style={[styles.person, styles.personRolling]} numberOfLines={1} allowFontScaling={false}>
-      {players[index % players.length]}
+      {players[index % players.length]?.name ?? '…'}
     </Text>
   );
 }

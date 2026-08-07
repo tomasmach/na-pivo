@@ -12,9 +12,11 @@ account isolation, auth, DELETE idempotence and throttling.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
@@ -194,6 +196,8 @@ def test_visit_links_active_party_and_closing_it_later_preserves_the_link(client
     token = _register(client)
     account = Account.objects.get(device_id=_DEVICE_ID)
     evening = _active_party(account)
+    evening.started_at = datetime(2026, 6, 12, 16, 30, tzinfo=UTC)
+    evening.save(update_fields=["started_at"])
 
     started = client.post(
         "/v1/pub-visits",
@@ -224,6 +228,62 @@ def test_visit_links_active_party_and_closing_it_later_preserves_the_link(client
 
 
 @pytest.mark.django_db
+def test_offline_visit_interval_links_to_ended_party(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    evening = _active_party(account)
+    evening.started_at = datetime(2026, 6, 12, 16, 30, tzinfo=UTC)
+    evening.ended_at = datetime(2026, 6, 12, 22, 0, tzinfo=UTC)
+    evening.active = False
+    evening.save(update_fields=["started_at", "ended_at", "active"])
+    membership = PartyEveningMember.objects.get(evening=evening, account=account)
+
+    response = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            party_code="PRAH24",
+            ended_at="2026-06-12T23:30:00+02:00",
+            # The upload itself happens much later; only the visit interval is
+            # allowed to decide the association.
+            updated_at=timezone.now().isoformat(),
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PubVisit.objects.get().party_evening == evening
+    membership.refresh_from_db()
+    assert membership.active is True
+
+
+@pytest.mark.django_db
+def test_overlong_visit_interval_does_not_claim_historical_party(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    evening = _active_party(account)
+    evening.started_at = datetime(2026, 6, 12, 16, 30, tzinfo=UTC)
+    evening.ended_at = datetime(2026, 6, 12, 22, 0, tzinfo=UTC)
+    evening.active = False
+    evening.save(update_fields=["started_at", "ended_at", "active"])
+
+    response = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            party_code="PRAH24",
+            started_at="2026-06-11T23:00:00+02:00",
+            ended_at="2026-06-13T23:30:00+02:00",
+            updated_at=(timezone.now() + timedelta(seconds=1)).isoformat(),
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PubVisit.objects.get().party_evening is None
+
+
+@pytest.mark.django_db
 def test_foreign_or_stale_party_code_never_rejects_primary_visit(client):
     host_token = _register(client)
     host = Account.objects.get(device_id=_DEVICE_ID)
@@ -251,7 +311,9 @@ def test_foreign_or_stale_party_code_never_rejects_primary_visit(client):
         **_auth(host_token),
     )
     assert stale.status_code == status.HTTP_201_CREATED, stale.content
-    assert PubVisit.objects.get(client_id="00000000-0000-4000-8000-000000000003").party_evening is None
+    assert (
+        PubVisit.objects.get(client_id="00000000-0000-4000-8000-000000000003").party_evening is None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -457,9 +519,12 @@ def test_account_isolation_delete(client):
     resp = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token_b))
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": False}
-    assert PubVisit.objects.filter(
-        account=Account.objects.get(device_id=_DEVICE_ID), client_id=_CLIENT_ID
-    ).count() == 1
+    assert (
+        PubVisit.objects.filter(
+            account=Account.objects.get(device_id=_DEVICE_ID), client_id=_CLIENT_ID
+        ).count()
+        == 1
+    )
 
 
 @pytest.mark.django_db

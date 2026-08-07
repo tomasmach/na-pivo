@@ -4,8 +4,13 @@ const mockGetPermissionsAsync = jest.fn(async () => ({ status: 'granted' }));
 const mockRequestPermissionsAsync = jest.fn(async () => ({ status: 'granted' }));
 const mockScheduleNotificationAsync = jest.fn<Promise<string>, [unknown]>();
 const mockCancelScheduledNotificationAsync = jest.fn(async () => undefined);
+const mockGetAllScheduledNotificationsAsync = jest.fn(async () => [] as unknown[]);
 const mockGetLastNotificationResponseAsync = jest.fn();
 const mockClearLastNotificationResponseAsync = jest.fn(async () => undefined);
+const mockAddNotificationResponseReceivedListener = jest.fn<
+  { remove: jest.Mock },
+  [(value: ReturnType<typeof response>) => void]
+>(() => ({ remove: jest.fn() }));
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -20,21 +25,30 @@ jest.mock('expo-notifications', () => ({
   requestPermissionsAsync: mockRequestPermissionsAsync,
   scheduleNotificationAsync: mockScheduleNotificationAsync,
   cancelScheduledNotificationAsync: mockCancelScheduledNotificationAsync,
+  getAllScheduledNotificationsAsync: mockGetAllScheduledNotificationsAsync,
   getLastNotificationResponseAsync: mockGetLastNotificationResponseAsync,
   clearLastNotificationResponseAsync: mockClearLastNotificationResponseAsync,
-  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: mockAddNotificationResponseReceivedListener,
 }));
 
+/* eslint-disable import/first -- mocks must be installed before this module loads */
 import {
   BEER_COUNT_REMINDER_KIND,
+  clearBeerCountReminderForAccountBoundary,
   consumeInitialBeerCountReminderTap,
   disableBeerCountReminderNotifications,
   initializeBeerCountReminderNotifications,
   refreshBeerCountReminderAfterBeer,
   reschedulePendingBeerCountReminder,
+  subscribeBeerCountReminderTap,
 } from '../beerCountReminder';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '@/data/privateAccountBoundary';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+/* eslint-enable import/first */
 
 const SESSION: TallySession = {
   clientId: 'session-1',
@@ -62,16 +76,22 @@ function response(identifier: string) {
 }
 
 beforeEach(async () => {
+  resetPrivateAccountBoundaryForTests();
   jest.clearAllMocks();
   await AsyncStorage.clear();
   let nextId = 1;
   mockScheduleNotificationAsync.mockImplementation(async () => `notification-${nextId++}`);
   mockGetPermissionsAsync.mockResolvedValue({ status: 'granted' });
+  mockGetAllScheduledNotificationsAsync.mockResolvedValue([]);
   useSettingsStore.setState({
     beerCountReminderEnabled: true,
     beerCountReminderIntervalMinutes: 20,
   });
   useTallyStore.setState({ current: SESSION, history: [] });
+});
+
+afterEach(() => {
+  resetPrivateAccountBoundaryForTests();
 });
 
 it('moves the evening reminder after every newly counted beer', async () => {
@@ -143,6 +163,90 @@ it('fails quietly and turns the preference off when notifications are denied', a
   });
   expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
   expect(useSettingsStore.getState().beerCountReminderEnabled).toBe(false);
+});
+
+it('cancels an OS reminder that finishes scheduling after the account freeze', async () => {
+  let resolveSchedule: (notificationId: string) => void = () => undefined;
+  let notifyScheduleStarted: () => void = () => undefined;
+  const scheduleStarted = new Promise<void>((resolve) => {
+    notifyScheduleStarted = resolve;
+  });
+  mockScheduleNotificationAsync.mockImplementationOnce(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveSchedule = resolve;
+        notifyScheduleStarted();
+      }),
+  );
+
+  const scheduling = refreshBeerCountReminderAfterBeer(SESSION.clientId);
+  await scheduleStarted;
+  const transition = beginPrivateAccountTransition('account-switch', 'account-A');
+  expect(transition).not.toBeNull();
+
+  resolveSchedule('late-account-A-notification');
+  await expect(scheduling).resolves.toEqual({ ok: false, reason: 'unavailable' });
+  await transition!.drain();
+
+  expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith(
+    'late-account-A-notification',
+  );
+  expect(await AsyncStorage.getItem('na-pivo-beer-count-reminder-state')).toBeNull();
+  expect(useSettingsStore.getState().beerCountReminderEnabled).toBe(true);
+  transition!.release();
+});
+
+it('strictly clears every beer reminder while preserving the device preference', async () => {
+  await AsyncStorage.setItem(
+    'na-pivo-beer-count-reminder-state',
+    JSON.stringify({
+      notificationId: 'recorded-A',
+      sessionId: SESSION.clientId,
+      fireAtMs: Date.now() + 60_000,
+    }),
+  );
+  mockGetAllScheduledNotificationsAsync
+    .mockResolvedValueOnce([
+      {
+        identifier: 'recorded-A',
+        content: { data: { kind: BEER_COUNT_REMINDER_KIND } },
+      },
+      {
+        identifier: 'late-A',
+        content: { data: { kind: BEER_COUNT_REMINDER_KIND } },
+      },
+      {
+        identifier: 'unrelated',
+        content: { data: { kind: 'friend_push' } },
+      },
+    ])
+    .mockResolvedValueOnce([]);
+  const transition = beginPrivateAccountTransition('account-switch', 'account-A');
+  await transition!.drain();
+
+  await expect(clearBeerCountReminderForAccountBoundary()).resolves.toBe(true);
+
+  expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('recorded-A');
+  expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('late-A');
+  expect(mockCancelScheduledNotificationAsync).not.toHaveBeenCalledWith('unrelated');
+  expect(await AsyncStorage.getItem('na-pivo-beer-count-reminder-state')).toBeNull();
+  expect(useSettingsStore.getState().beerCountReminderEnabled).toBe(true);
+  transition!.release();
+});
+
+it('ignores a stale notification tap while the private account is frozen', async () => {
+  const onTap = jest.fn();
+  subscribeBeerCountReminderTap(onTap);
+  const listener = mockAddNotificationResponseReceivedListener.mock.calls[0]?.[0];
+  expect(listener).toBeDefined();
+  const transition = beginPrivateAccountTransition('account-switch', 'account-A');
+
+  listener!(response('frozen-account-A'));
+  await Promise.resolve();
+
+  expect(onTap).not.toHaveBeenCalled();
+  expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  transition!.release();
 });
 
 it('cancels the chain when its evening ends', async () => {

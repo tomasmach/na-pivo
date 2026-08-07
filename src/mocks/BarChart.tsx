@@ -16,13 +16,18 @@
  */
 
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
 
 export interface BarPoint {
   label: string;
   value: number;
+}
+
+export function barIndexAt(x: number, width: number, count: number): number | null {
+  if (count <= 0 || !Number.isFinite(x) || !Number.isFinite(width) || width <= 0) return null;
+  return Math.max(0, Math.min(count - 1, Math.floor((x / width) * count)));
 }
 
 export function BarChart({
@@ -36,17 +41,49 @@ export function BarChart({
   onScrub?: (index: number | null) => void;
 }) {
   const [active, setActive] = React.useState<number | null>(null);
+  const [plotWidth, setPlotWidth] = React.useState(0);
   const peak = points.reduce((max, point) => Math.max(max, point.value), 0);
 
-  const scrub = (index: number | null) => {
-    setActive(index);
-    onScrub?.(index);
-  };
+  const scrub = React.useCallback(
+    (index: number | null) => {
+      setActive(index);
+      onScrub?.(index);
+    },
+    [onScrub],
+  );
+
+  const pan = React.useMemo(
+    () =>
+      PanResponder.create({
+        // A still finger remains the individual bar's Pressable. Once it moves,
+        // the plot takes the responder and walks through buckets by x position.
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+          Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2,
+        onPanResponderGrant: (event) => {
+          scrub(barIndexAt(event.nativeEvent.locationX, plotWidth, points.length));
+        },
+        onPanResponderMove: (event) => {
+          scrub(barIndexAt(event.nativeEvent.locationX, plotWidth, points.length));
+        },
+        onPanResponderRelease: () => scrub(null),
+        onPanResponderTerminate: () => scrub(null),
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [plotWidth, points.length, scrub],
+  );
 
   if (points.length === 0) return null;
 
   return (
-    <View style={[styles.plot, { height }]}>
+    <View
+      testID="bar-chart-plot"
+      style={[styles.plot, { height }]}
+      onLayout={(event) => {
+        setPlotWidth(event.nativeEvent.layout.width);
+      }}
+      {...pan.panHandlers}
+    >
       {points.map((point, index) => {
         // Nothing scrubbed → the newest bar is lit, because that is where you
         // are now and a chart with no highlight reads as inert history.

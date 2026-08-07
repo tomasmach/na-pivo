@@ -14,7 +14,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 
-import { Face } from '@/feed/FeedMockScreen';
+import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
 import { GameResult, type GameOutcome } from '@/games/GameResult';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -23,13 +23,14 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export interface PickPlayer {
+  id: string;
   name: string;
   tint: string;
 }
 
 /** Module scope so `react-hooks/purity` can see this is a tap, not render. */
 const pickOne = (players: PickPlayer[]): string =>
-  players[Math.floor(Math.random() * players.length)]?.name ?? '';
+  players[Math.floor(Math.random() * players.length)]?.id ?? '';
 
 export function PickShell({
   game,
@@ -39,6 +40,8 @@ export function PickShell({
   verdict,
   onFinished,
   onDone,
+  pickedId,
+  onPicked,
 }: {
   /** Which page to host: `bottle`, `wheel`. */
   game: string;
@@ -49,38 +52,50 @@ export function PickShell({
   onFinished?: (payingName: string) => void;
   /** Leaving a finished game. Absent for games that never end, like Flaška. */
   onDone?: () => void;
+  /** Latest folded shared pick. Omit for local-only state. */
+  pickedId?: string | null;
+  onPicked?: (playerId: string) => void;
 }) {
   const reduceMotion = useReducedMotion();
   const host = React.useRef<GameHostHandle>(null);
-  const [picked, setPicked] = React.useState<string | null>(null);
+  const [localPickedId, setLocalPickedId] = React.useState<string | null>(null);
   const [spinning, setSpinning] = React.useState(false);
   /** Set only by games that end — Flaška never does. */
   const [outcome, setOutcome] = React.useState<GameOutcome | null>(null);
 
   const canvas = GAME_HOST_AVAILABLE && !reduceMotion;
+  const controlled = pickedId !== undefined;
+  const effectivePickedId = controlled ? pickedId : localPickedId;
+  const pickedPlayer = players.find((player) => player.id === effectivePickedId) ?? null;
+
+  const recordPick = (playerId: string) => {
+    if (!controlled) setLocalPickedId(playerId);
+    onPicked?.(playerId);
+  };
 
   const spin = () => {
     if (spinning) return;
     if (!canvas) {
       // No object to watch, so no spin to wait for. Same answer, no theatre.
-      const name = pickOne(players);
-      setPicked(name);
-      onFinished?.(name);
-      if (onDone) setOutcome({ scores: [], winnerId: null, payingId: name });
+      const playerId = pickOne(players);
+      const player = players.find((candidate) => candidate.id === playerId);
+      recordPick(playerId);
+      if (player) onFinished?.(player.name);
+      if (onDone && player) setOutcome({ scores: [], winnerId: null, payingId: player.name });
       return;
     }
     setSpinning(true);
-    setPicked(null);
+    if (!controlled) setLocalPickedId(null);
     host.current?.command('spin');
   };
 
-  const tintOf = (name: string) =>
-    players.find((player) => player.name === name)?.tint ?? Colors.amber;
-
   // A game that ended hands over to the platform's ending, the same one the
   // dice land on.
-  if (outcome && onDone) {
-    return <GameResult players={players} outcome={outcome} onDone={onDone} />;
+  const foldedOutcome = controlled && pickedPlayer && onDone
+    ? { scores: [], winnerId: null, payingId: pickedPlayer.name }
+    : null;
+  if ((outcome || foldedOutcome) && onDone) {
+    return <GameResult players={players} outcome={outcome ?? foldedOutcome!} onDone={onDone} />;
   }
 
   return (
@@ -93,33 +108,38 @@ export function PickShell({
             // The label is painted on the wheel; the sentence under it is still
             // React Native. See the note on `GamePlayer.label`.
             players={players.map((player) => ({
-              id: player.name,
+              id: player.id,
               colour: player.tint,
               label: player.name,
             }))}
             onEvent={(name, payload) => {
               if (name !== 'picked') return;
               setSpinning(false);
-              setPicked((payload as { playerId: string }).playerId);
+              recordPick((payload as { playerId: string }).playerId);
             }}
             onResult={(result) => {
-              setOutcome(result);
-              if (result.payingId) onFinished?.(result.payingId);
+              const payer = players.find((player) => player.id === result.payingId);
+              const named = {
+                ...result,
+                payingId: payer?.name ?? null,
+              };
+              setOutcome(named);
+              if (payer) onFinished?.(payer.name);
             }}
           />
         ) : null}
 
         {/* The name, over the object. Real text, so it scales and speaks. */}
-        {picked ? (
+        {pickedPlayer ? (
           <Animated.View
-            key={picked}
+            key={pickedPlayer.id}
             entering={FadeIn.duration(220)}
             style={styles.verdict}
             pointerEvents="none"
           >
-            <Face name={picked} tint={tintOf(picked)} size={44} />
+            <PersonAvatar name={pickedPlayer.name} tint={pickedPlayer.tint} size={44} />
             <Text style={styles.verdictText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {verdict(picked)}
+              {verdict(pickedPlayer.name)}
             </Text>
           </Animated.View>
         ) : null}
@@ -133,7 +153,7 @@ export function PickShell({
         accessibilityLabel={action}
       >
         <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {spinning ? '…' : picked ? 'Znovu' : action}
+          {spinning ? '…' : pickedPlayer ? 'Znovu' : action}
         </Text>
       </Pressable>
     </View>

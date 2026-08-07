@@ -7,6 +7,7 @@ import {
   presentOpenStatus,
   presentPub,
   pubMatchesFilters,
+  serverFiltersForPubList,
   sortPubs,
   summarizePubVisits,
 } from '@/pubs/pubPresentation';
@@ -115,7 +116,7 @@ describe('pubPresentation', () => {
     ).toBe('včera');
   });
 
-  it('filters only explicit backend facts for open, beer, tank and garden', () => {
+  it('keeps server-filtered pubs even when bulk rows omit beer and amenity details', () => {
     const model = presentPub(
       pub({
         isOpenNow: true,
@@ -147,6 +148,14 @@ describe('pubPresentation', () => {
       pubMatchesFilters(model, {
         beers: ['Pilsner Urquell'],
         openOnly: false,
+        tankOnly: true,
+        gardenOnly: true,
+      }),
+    ).toBe(true);
+    expect(
+      pubMatchesFilters(presentPub(pub({ isOpenNow: false }), null), {
+        beers: [],
+        openOnly: true,
         tankOnly: false,
         gardenOnly: false,
       }),
@@ -154,6 +163,20 @@ describe('pubPresentation', () => {
     expect(
       presentPub(pub({ name: 'Tankovna bez dat' }), null).hasTankBeer,
     ).toBe(false);
+  });
+
+  it('maps selected brand, tank and garden choices to canonical server keys', () => {
+    expect(
+      serverFiltersForPubList({
+        beers: ['radegast', 'pilsner-urquell', 'radegast'],
+        openOnly: true,
+        tankOnly: true,
+        gardenOnly: true,
+      }),
+    ).toEqual({
+      beerBrandKeys: ['pilsner-urquell', 'radegast'],
+      amenityKeys: ['practical_tank_beer', 'seating_garden'],
+    });
   });
 
   it('derives beer choices from loaded menus and sorts nullable fields honestly', () => {

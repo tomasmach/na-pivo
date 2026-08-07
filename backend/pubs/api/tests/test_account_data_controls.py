@@ -16,8 +16,11 @@ from pubs.models import (
     Account,
     AuthIdentity,
     BeerCheckIn,
+    BeerPhoto,
     CommunityEvent,
     CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
     ContentReport,
     DrinkLog,
     EmailCredential,
@@ -25,7 +28,11 @@ from pubs.models import (
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
+    PartyGame,
+    PartyGameEvent,
     PubEvent,
+    PublishedNight,
+    PublishedNightComment,
     PushDevice,
 )
 
@@ -120,9 +127,9 @@ def test_verification_email_renders_app_link(monkeypatch):
     assert sent is True
     assert captured["to"] == "person@example.com"
     assert captured["subject"] == "Ověř si e-mail – Na Pivo"
-    assert 'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured[
-        "html"
-    ]
+    assert (
+        'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured["html"]
+    )
     assert "Ověřit e-mail" in captured["html"]
     assert "Kód pro ruční zadání" not in captured["html"]
     assert "https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token" in (
@@ -281,6 +288,93 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
 
 
 @pytest.mark.django_db
+def test_account_export_includes_owned_night_story_and_only_owned_comments(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    now = timezone.now().replace(microsecond=0)
+    participant_id = str(uuid.uuid4())
+    photo_id = str(uuid.uuid4())
+    game_id = str(uuid.uuid4())
+    own_night = PublishedNight.objects.create(
+        account=account,
+        client_id="recap-client",
+        client_aliases=["recap-client", "vycep-client"],
+        drinking_day=now.date(),
+        started_at=now - timezone.timedelta(hours=4),
+        ended_at=now,
+        beer_count=4,
+        wine_count=0,
+        soft_drink_count=1,
+        shot_count=0,
+        pub_names=["U Exportu"],
+        city="Praha",
+        duration_minutes=240,
+        title="Můj exportní večer",
+        roast_line="Výčep zavíral první",
+        roast_basis="Čtyři piva a jedna limonáda",
+        participant_ids=[participant_id],
+        photo_ids=[photo_id],
+        game_ids=[game_id],
+        visibility=PublishedNight.Visibility.FRIENDS,
+        updated_at=now,
+    )
+    other_night = PublishedNight.objects.create(
+        account=other,
+        client_id="other-night",
+        drinking_day=now.date(),
+        started_at=now - timezone.timedelta(hours=2),
+        ended_at=now,
+        beer_count=1,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=[],
+        city="",
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=now,
+    )
+    own_comment = PublishedNightComment.objects.create(
+        account=account,
+        night=other_night,
+        client_id=uuid.uuid4(),
+        body="Můj komentář k cizímu večeru",
+        is_removed=True,
+    )
+    PublishedNightComment.objects.create(
+        account=other,
+        night=own_night,
+        client_id=uuid.uuid4(),
+        body="Cizí komentář se nesmí exportovat",
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    exported_night = body["published_nights"][0]
+    assert exported_night["client_aliases"] == ["recap-client", "vycep-client"]
+    assert exported_night["title"] == "Můj exportní večer"
+    assert exported_night["roast_line"] == "Výčep zavíral první"
+    assert exported_night["roast_basis"] == "Čtyři piva a jedna limonáda"
+    assert exported_night["participant_ids"] == [participant_id]
+    assert exported_night["photo_ids"] == [photo_id]
+    assert exported_night["game_ids"] == [game_id]
+    assert body["published_night_comments"] == [
+        {
+            "id": str(own_comment.public_id),
+            "client_id": str(own_comment.client_id),
+            "night_id": str(other_night.public_id),
+            "body": "Můj komentář k cizímu večeru",
+            "is_removed": True,
+            "created_at": own_comment.created_at.isoformat(),
+            "updated_at": own_comment.updated_at.isoformat(),
+        }
+    ]
+    assert "Cizí komentář se nesmí exportovat" not in str(body)
+
+
+@pytest.mark.django_db
 def test_account_export_includes_party_and_community_data(client):
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
@@ -346,6 +440,19 @@ def test_account_export_includes_party_and_community_data(client):
         event=joined_event,
         account=account,
         message="Moje soukromá zpráva",
+        status=CommunityEventMembership.Status.APPROVED,
+    )
+    team = CommunityEventTeam.objects.create(
+        event=joined_event,
+        created_by=account,
+        client_id=uuid.uuid4(),
+        name="Exportní pěna",
+    )
+    team_membership = CommunityEventTeamMembership.objects.create(
+        event=joined_event,
+        team=team,
+        account=account,
+        slot=1,
     )
 
     response = client.get("/v1/account/export", **_auth(token))
@@ -364,13 +471,141 @@ def test_account_export_includes_party_and_community_data(client):
     assert body["pub_event_suggestions"][0]["id"] == str(suggestion.id)
     assert body["pub_event_suggestions"][0]["lat"] == 50.08
     assert body["community_events"]["hosted"][0]["id"] == str(hosted_event.id)
-    assert (
-        body["community_events"]["hosted"][0]["exact_address"]
-        == "Soukromá 12, zvonek Export"
-    )
+    assert body["community_events"]["hosted"][0]["exact_address"] == "Soukromá 12, zvonek Export"
     assert body["community_events"]["memberships"][0]["event_id"] == str(joined_event.id)
     assert body["community_events"]["memberships"][0]["message"] == membership.message
+    assert body["community_events"]["created_teams"][0]["id"] == str(team.id)
+    assert body["community_events"]["created_teams"][0]["name"] == "Exportní pěna"
+    assert body["community_events"]["team_memberships"][0] == {
+        "id": str(team_membership.id),
+        "event_id": str(joined_event.id),
+        "team_id": str(team.id),
+        "team_name": "Exportní pěna",
+        "slot": 1,
+        "joined_at": team_membership.joined_at.isoformat(),
+    }
     assert "Cizí soukromá adresa" not in str(body)
+
+
+@pytest.mark.django_db
+def test_account_export_includes_owned_photo_and_only_relevant_game_payloads(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    now = timezone.now().replace(microsecond=0)
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="GAME42",
+        pub_name="U Exportu",
+        started_at=now,
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account, joined_at=now)
+    PartyEveningMember.objects.create(evening=evening, account=other, joined_at=now)
+    photo = BeerPhoto.objects.create(
+        account=account,
+        party_evening=evening,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/owned.webp",
+        caption="Moje exportní fotka",
+        visibility=BeerPhoto.Visibility.PRIVATE,
+        taken_at=now,
+    )
+    own_game = PartyGame.objects.create(
+        evening=evening,
+        started_by=account,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Pub kvíz",
+        started_at=now,
+    )
+    answer = PartyGameEvent.objects.create(
+        game=own_game,
+        account=account,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"questionId": "q-plzen", "option": 0},
+        created_at=now,
+    )
+    result = PartyGameEvent.objects.create(
+        game=own_game,
+        account=account,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.FINISH,
+        payload={"winner": "Já", "scores": [{"name": "Já", "score": 7}]},
+        created_at=now,
+    )
+    other_game = PartyGame.objects.create(
+        evening=evening,
+        started_by=other,
+        client_id=uuid.uuid4(),
+        catalog_key="dice",
+        name="Kostky",
+        started_at=now,
+    )
+    score_about_owner = PartyGameEvent.objects.create(
+        game=other_game,
+        account=other,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        subject=account,
+        delta=2,
+        payload={"foreign_private_payload": "nesmí ven"},
+        created_at=now,
+    )
+    unrelated = PartyGameEvent.objects.create(
+        game=other_game,
+        account=other,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"unrelated_secret": "také nesmí ven"},
+        created_at=now,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    exported_photo = body["beer_photos"][0]
+    assert exported_photo["id"] == str(photo.public_id)
+    assert exported_photo["image_path"] == photo.image.name
+    assert not exported_photo["image_path"].startswith("/")
+
+    party_games = body["party_games"]
+    assert {game["id"] for game in party_games["games"]} == {
+        str(own_game.public_id),
+        str(other_game.public_id),
+    }
+    own_game_export = next(
+        game for game in party_games["games"] if game["id"] == str(own_game.public_id)
+    )
+    other_game_export = next(
+        game for game in party_games["games"] if game["id"] == str(other_game.public_id)
+    )
+    assert own_game_export["client_id"] == str(own_game.client_id)
+    assert other_game_export["client_id"] is None
+    authored = {event["id"]: event for event in party_games["events_authored"]}
+    assert authored[answer.id]["payload"] == {"questionId": "q-plzen", "option": 0}
+    assert authored[result.id]["payload"]["winner"] == "Já"
+    assert party_games["score_events_as_subject"] == [
+        {
+            "id": score_about_owner.id,
+            "game_id": str(other_game.public_id),
+            "kind": PartyGameEvent.Kind.SCORE,
+            "delta": 2,
+            "created_at": now.isoformat(),
+        }
+    ]
+    serialized = str(body)
+    assert "foreign_private_payload" not in serialized
+    assert "unrelated_secret" not in serialized
+    assert str(unrelated.id) not in {
+        str(event["id"])
+        for event in [
+            *party_games["events_authored"],
+            *party_games["score_events_as_subject"],
+        ]
+    }
 
 
 @pytest.mark.django_db

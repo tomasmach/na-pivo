@@ -20,35 +20,37 @@ export interface MyStatsState {
 export function useMyStatsState(): MyStatsState {
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const [snapshot, setSnapshot] = useState<{
+    requestKey: string;
     accountId: string | null;
-    stats: RemoteStats;
+    stats: RemoteStats | null;
+    status: Exclude<MyStatsState['status'], 'loading'>;
   } | null>(null);
-  const [status, setStatus] = useState<MyStatsState['status']>('loading');
   const [retryNonce, setRetryNonce] = useState(0);
   const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
+  const requestKey = `${accountId ?? 'anonymous'}:${retryNonce}`;
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-    setStatus('loading');
     void fetchMyStats(controller.signal).then((result) => {
       if (!active) return;
       if (result) {
-        setSnapshot({ accountId, stats: result });
-        setStatus('ready');
+        setSnapshot({ requestKey, accountId, stats: result, status: 'ready' });
       } else {
-        setStatus('unavailable');
+        setSnapshot({ requestKey, accountId, stats: null, status: 'unavailable' });
       }
     });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [accountId, retryNonce]);
+  }, [accountId, requestKey]);
+
+  const current = snapshot?.requestKey === requestKey ? snapshot : null;
 
   return {
-    stats: snapshot?.accountId === accountId ? snapshot.stats : null,
-    status,
+    stats: current?.accountId === accountId ? current.stats : null,
+    status: current?.status ?? 'loading',
     retry,
   };
 }

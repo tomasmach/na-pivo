@@ -6,7 +6,7 @@ from django.db.models import Count, Min, Q, Sum
 from django.utils import timezone
 
 from pubs.mapper import maper_progress
-from pubs.models import Account, DrinkLog, Friendship
+from pubs.models import Account, DrinkLog, Friendship, PublishedNight
 
 PRAGUE_TZ = ZoneInfo("Europe/Prague")
 
@@ -131,15 +131,71 @@ def derive_account_achievements(account: Account, stats: dict | None = None) -> 
     }
 
 
-def derive_account_public_stats(account: Account, stats: dict | None = None) -> dict:
-    """Public, non-sensitive stats exposed on friend/public profile detail."""
+def derive_account_public_stats(account: Account, *, is_friend: bool) -> dict:
+    """Stats derived only from nights this viewer may already see.
 
-    stats = stats or derive_account_profile_stats(account)
-    progress = maper_progress(stats["mapper_xp"])
+    A public nickname is not consent to publish the private diary. In
+    particular, never build these counters from ``DrinkLog`` or ``PubVisit``:
+    strangers could otherwise infer alcohol history merely by opening a public
+    profile. Published nights are the explicit, item-level sharing boundary.
+    """
+
+    nights = account.published_nights.filter(is_removed=False)
+    if not is_friend or account.ghost_mode:
+        nights = nights.filter(visibility=PublishedNight.Visibility.PUBLIC)
+
+    total_beers = 0
+    pub_names: set[str] = set()
+    for night in nights.only("beer_count", "pub_names"):
+        total_beers += int(night.beer_count)
+        pub_names.update(
+            name.strip().casefold()
+            for name in night.pub_names
+            if isinstance(name, str) and name.strip()
+        )
+
+    usage = getattr(account, "usage_stats", None)
+    mapper_xp = int(getattr(usage, "mapper_xp", 0) or 0)
+    progress = maper_progress(mapper_xp)
     return {
-        "total_beers": stats["total_beers"],
-        "distinct_pubs": stats["distinct_pubs"],
+        "total_beers": total_beers,
+        "distinct_pubs": len(pub_names),
         "mapper_level": progress["level"],
         "mapper_title": progress["title"],
-        "mapper_xp": stats["mapper_xp"],
+        "mapper_xp": mapper_xp,
+    }
+
+
+def derive_account_public_achievements(account: Account, public_stats: dict) -> dict:
+    """Achievement shape safe for another account to inspect.
+
+    Diary-only achievements stay locked. Publishing a night can unlock the four
+    badges whose complete inputs are already visible in published summaries;
+    public community-contribution counters are safe to expose as badges too.
+    """
+
+    usage = getattr(account, "usage_stats", None)
+    total_beers = int(public_stats["total_beers"])
+    distinct_pubs = int(public_stats["distinct_pubs"])
+    return {
+        "first_ten": total_beers >= 10,
+        "regular": False,
+        "reviewer": False,
+        "first_map": int(getattr(usage, "first_mapper_count", 0) or 0) >= 1,
+        "explorer": int(getattr(usage, "mapped_pubs_count", 0) or 0) >= 10,
+        "cartographer": int(getattr(usage, "mapped_pubs_count", 0) or 0) >= 25,
+        "completionist": int(getattr(usage, "completed_pubs_count", 0) or 0) >= 1,
+        "fact_machine": int(getattr(usage, "amenity_votes_count", 0) or 0) >= 100,
+        "foto_pivar": int(getattr(usage, "photo_contest_wins_count", 0) or 0) >= 1,
+        "first_beer": total_beers >= 1,
+        "century": total_beers >= 100,
+        "pilgrim": distinct_pubs >= 25,
+        "stamgast": False,
+        "night_owl": False,
+        "taster": False,
+        "party_animal": False,
+        "chatar": False,
+        "pod_sirakem": False,
+        "lahvacovy_filozof": False,
+        "plechovkac": False,
     }

@@ -91,18 +91,29 @@ export function peopleOf(evening: PartyEvening | null, meId: string, meName = 'T
   return [withJoin(me), ...others];
 }
 
-/** My own drinks, straight off the counter — no round trip, no waiting. */
-function myDrinks(session: TallySession | null, meId: string, stopId: string | null) {
-  if (!session) return [];
-  return session.drinks.map((drink: TallyDrink) => ({
-    id: drink.id,
-    at: drink.at,
-    by: meId,
-    beerName: drink.beerName,
-    drinkType: drink.drinkType ?? ('beer' as const),
-    ...(drink.volumeMl !== undefined ? { volumeMl: drink.volumeMl } : {}),
-    stopId,
-  }));
+/** My own drinks, straight off every sitting in the crawl — one id, one row. */
+function myDrinks(sessions: TallySession[], meId: string, stops: NightStop[]) {
+  const seen = new Set<string>();
+  return sessions.flatMap((session) => {
+    const exactStop = stops.find((stop) => stop.id === session.clientId);
+    const matchingStop = stops.find(
+      (stop) => stop.cacheKey === session.pubKey && stop.arrivedAt === session.startedAt,
+    );
+    const stopId = exactStop?.id ?? matchingStop?.id ?? stops.at(-1)?.id ?? null;
+    return session.drinks.flatMap((drink: TallyDrink) => {
+      if (seen.has(drink.id)) return [];
+      seen.add(drink.id);
+      return [{
+        id: drink.id,
+        at: drink.at,
+        by: meId,
+        beerName: drink.beerName,
+        drinkType: drink.drinkType ?? ('beer' as const),
+        ...(drink.volumeMl !== undefined ? { volumeMl: drink.volumeMl } : {}),
+        stopId,
+      }];
+    });
+  });
 }
 
 /**
@@ -139,6 +150,7 @@ function theirDrinks(evening: PartyEvening | null, meId: string, stopId: string 
 export function buildNightRecord({
   evening,
   session,
+  sessions,
   meId,
   meName,
   stops = [],
@@ -149,6 +161,8 @@ export function buildNightRecord({
 }: {
   evening: PartyEvening | null;
   session: TallySession | null;
+  /** Every counter sitting on this drinking day. Defaults to `session`. */
+  sessions?: TallySession[];
   meId: string;
   meName?: string;
   stops?: NightStop[];
@@ -162,8 +176,13 @@ export function buildNightRecord({
   // the common case and gets it exactly right; the walk is threaded through
   // properly once stops come from `PubVisit` rather than being passed in.
   const currentStop = stops.length > 0 ? stops[stops.length - 1].id : null;
+  const localSessions = sessions ?? (session ? [session] : []);
   const started =
-    startedAt ?? evening?.startedAt ?? session?.startedAt ?? new Date(0).toISOString();
+    startedAt ??
+    evening?.startedAt ??
+    localSessions.at(0)?.startedAt ??
+    session?.startedAt ??
+    new Date(0).toISOString();
 
   return {
     id: evening?.id ?? session?.clientId ?? 'night',
@@ -173,7 +192,7 @@ export function buildNightRecord({
     people: peopleOf(evening, meId, meName),
     stops,
     drinks: [
-      ...myDrinks(session, meId, currentStop),
+      ...myDrinks(localSessions, meId, stops),
       ...theirDrinks(evening, meId, currentStop),
     ].sort((a, b) => a.at.localeCompare(b.at)),
     games,

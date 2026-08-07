@@ -93,5 +93,5 @@ export function flushPubReportQueue(): Promise<void> {
 export function clearPubReportQueue(): Promise<void> {
   return enqueueTask(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }

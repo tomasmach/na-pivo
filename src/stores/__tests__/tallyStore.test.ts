@@ -77,6 +77,39 @@ describe('addDrink', () => {
     expect(history).toHaveLength(0);
   });
 
+  it('reuses the explicit Party PubVisit identity selected before the first beer', () => {
+    useTallyStore.getState().addDrink(
+      {
+        ...PUB_A,
+        visitClientId: 'party-stop-a',
+        visitStartedAt: '2026-06-12T18:45:00.000Z',
+      },
+      beer({ at: '2026-06-12T19:00:00.000Z' }),
+    );
+
+    expect(useTallyStore.getState().current).toMatchObject({
+      clientId: 'party-stop-a',
+      startedAt: '2026-06-12T18:45:00.000Z',
+      pubKey: PUB_A.pubKey,
+    });
+  });
+
+  it('starts a distinct session when a crawl returns to the same pub with a new visit id', () => {
+    useTallyStore.getState().addDrink(
+      { ...PUB_A, visitClientId: 'party-stop-a' },
+      beer({ at: '2026-06-12T19:00:00.000Z' }),
+    );
+    useTallyStore.getState().addDrink(
+      { ...PUB_A, visitClientId: 'party-stop-a-return' },
+      beer({ at: '2026-06-12T22:00:00.000Z' }),
+    );
+
+    expect(useTallyStore.getState().current?.clientId).toBe('party-stop-a-return');
+    expect(useTallyStore.getState().history.map((session) => session.clientId)).toEqual([
+      'party-stop-a',
+    ]);
+  });
+
   it('rolls into a new session and archives the old one when the pub changes', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
     useTallyStore.getState().addDrink(PUB_B, beer());
@@ -158,7 +191,7 @@ describe('addBackdatedDrink', () => {
     const { history } = useTallyStore.getState();
     expect(history).toHaveLength(1);
     expect(history[0].drinks).toHaveLength(2);
-    expect(landed.drinks).toHaveLength(2);
+    expect(landed?.drinks).toHaveLength(2);
   });
 });
 

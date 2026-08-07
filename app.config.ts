@@ -219,6 +219,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Activity, adds NSSupportsLiveActivities and configures its shared app
       // group. Counting updates are local, so APNs/frequent-update capability
       // is intentionally not enabled.
+      // expo-widgets currently creates the extension target with a hard-coded
+      // 1.0 marketing version. App Store validation requires every embedded
+      // extension to match its containing app. Config-plugin mods unwind in
+      // reverse order, so this parity pass must wrap expo-widgets here.
+      './plugins/with-widget-version-parity',
       [
         'expo-widgets',
         {

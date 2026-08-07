@@ -50,6 +50,19 @@ function isQueueItem(value: unknown): value is NightQueueItem {
         (item.payload.city === undefined || typeof item.payload.city === 'string') &&
         (item.payload.durationMinutes === undefined ||
           typeof item.payload.durationMinutes === 'number') &&
+        (item.payload.title === undefined || typeof item.payload.title === 'string') &&
+        (item.payload.roastLine === undefined || typeof item.payload.roastLine === 'string') &&
+        (item.payload.roastBasis === undefined || typeof item.payload.roastBasis === 'string') &&
+        (item.payload.partyCode === undefined || typeof item.payload.partyCode === 'string') &&
+        (item.payload.participantIds === undefined ||
+          (Array.isArray(item.payload.participantIds) &&
+            item.payload.participantIds.every((id) => typeof id === 'string'))) &&
+        (item.payload.photoIds === undefined ||
+          (Array.isArray(item.payload.photoIds) &&
+            item.payload.photoIds.every((id) => typeof id === 'string'))) &&
+        (item.payload.gameIds === undefined ||
+          (Array.isArray(item.payload.gameIds) &&
+            item.payload.gameIds.every((id) => typeof id === 'string'))) &&
         (item.payload.visibility === 'friends' || item.payload.visibility === 'public') &&
         typeof item.payload.updatedAt === 'string'
       );
@@ -119,15 +132,17 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
 
-export async function enqueueNightOp(item: NightQueueItem): Promise<void> {
+export async function enqueueNightOp(item: NightQueueItem): Promise<boolean> {
   const key = dedupKey(item);
-  await runMutation(async () => {
+  const persisted = await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    return saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
+  if (!persisted) return false;
   await flushNightsQueue();
+  return true;
 }
 
 export function flushNightsQueue(): Promise<void> {
@@ -138,5 +153,5 @@ export function clearNightsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }

@@ -31,7 +31,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 
 import { CheckIcon } from '@/components/shared/IconGlyph';
-import { Face } from '@/feed/FeedMockScreen';
+import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { GameResult } from '@/games/GameResult';
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
 import {
@@ -227,7 +227,7 @@ export function QuizShell({
         <View style={styles.board}>
           {state.standings.map((row) => (
             <View key={row.teamId} style={styles.boardRow}>
-              <Face name={row.teamName} tint={tintOf(row.teamName)} size={22} />
+              <PersonAvatar name={row.teamName} tint={tintOf(row.teamName)} size={22} />
               <Text
                 style={styles.boardName}
                 numberOfLines={1}

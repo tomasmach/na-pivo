@@ -16,27 +16,22 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import QRCode from 'react-native-qrcode-svg';
 
 import { CheckIcon, CopyIcon } from '@/components/shared/IconGlyph';
+import { fetchFriendsDashboard, type FriendProfile } from '@/data/friendsClient';
+import { Avatar } from '@/profile/Avatar';
+import { useToastStore } from '@/stores/toastStore';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-
-/** Friends the app already knows about — the mock's stand-in for the friends
- *  list. Real one comes from `friendsClient`. */
-const FRIENDS = [
-  { name: 'Klára', tint: '#A8896A' },
-  { name: 'Míša', tint: '#FBF3E0' },
-  { name: 'Tomáš', tint: '#F0BE5C' },
-  { name: 'Verča', tint: '#7DD66B' },
-];
 
 export function InviteSheet({
   visible,
@@ -44,7 +39,6 @@ export function InviteSheet({
   code,
   link,
   onClose,
-  onInvite,
 }: {
   visible: boolean;
   /** Who is already at the table — they get a tick instead of a button. */
@@ -59,9 +53,53 @@ export function InviteSheet({
   code: string | null;
   link: string | null;
   onClose: () => void;
-  onInvite: (name: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const showToast = useToastStore((state) => state.show);
+  const [friends, setFriends] = React.useState<FriendProfile[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
+
+  const loadFriends = React.useCallback((signal?: AbortSignal) => {
+    setLoading(true);
+    setFailed(false);
+    void fetchFriendsDashboard(signal).then((dashboard) => {
+      if (signal?.aborted) return;
+      setLoading(false);
+      if (!dashboard) {
+        setFailed(true);
+        return;
+      }
+      setFriends(dashboard.friends);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => loadFriends(controller.signal), 0);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [visible, loadFriends]);
+
+  const inviteMessage = React.useMemo(() => {
+    if (!code) return null;
+    return link
+      ? `Přisedni ke stolu v Na pivo: ${link}\nKód: ${code}`
+      : `Přisedni ke stolu v Na pivo. Kód: ${code}`;
+  }, [code, link]);
+
+  const shareLink = React.useCallback(() => {
+    if (!inviteMessage) return;
+    void Share.share({ message: inviteMessage });
+  }, [inviteMessage]);
+
+  const copyLink = React.useCallback(() => {
+    if (!link) return;
+    void Clipboard.setStringAsync(link).then(() => showToast('Odkaz je ve schránce.'));
+  }, [link, showToast]);
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose}>
@@ -85,16 +123,18 @@ export function InviteSheet({
           {/* White quiet zone, because a QR on a dark surface is a QR that does
                 not scan — the contrast has to be the code's, not the app's. */}
           <View style={styles.qrWrap}>
-            {code && link ? (
+            {code ? (
               <>
-                <View style={styles.qr}>
-                  <QRCode
-                    value={link}
-                    size={148}
-                    backgroundColor="#FFFFFF"
-                    color="#000000"
-                  />
-                </View>
+                {link ? (
+                  <View style={styles.qr}>
+                    <QRCode
+                      value={link}
+                      size={148}
+                      backgroundColor="#FFFFFF"
+                      color="#000000"
+                    />
+                  </View>
+                ) : null}
                 <Text style={styles.code} allowFontScaling={false}>
                   {code}
                 </Text>
@@ -102,7 +142,9 @@ export function InviteSheet({
                   style={styles.codeHint}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  Nasnímej, nebo si kód přečti nahlas.
+                  {link
+                    ? 'Nasnímej, nebo si kód přečti nahlas.'
+                    : 'Přečti kód nahlas.'}
                 </Text>
               </>
             ) : (
@@ -117,6 +159,7 @@ export function InviteSheet({
 
           {link ? (
             <Pressable
+              onPress={copyLink}
               style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Zkopírovat odkaz"
@@ -138,21 +181,35 @@ export function InviteSheet({
           >
             Kamarádi
           </Text>
-          {FRIENDS.map((friend) => {
-            const here = present.includes(friend.name);
+          {loading && friends.length === 0 ? (
+            <ActivityIndicator color={Colors.amber} style={styles.loader} />
+          ) : null}
+          {failed ? (
+            <Pressable onPress={() => loadFriends()} style={styles.retry} accessibilityRole="button">
+              <Text style={styles.retryText}>Načíst znovu</Text>
+            </Pressable>
+          ) : null}
+          {!loading && !failed && friends.length === 0 ? (
+            <Text style={styles.empty}>V partě zatím nikdo není.</Text>
+          ) : null}
+          {friends.map((friend) => {
+            const here = present.includes(friend.id);
+            const name = friend.nickname ?? friend.displayName;
             return (
-              <View key={friend.name} style={styles.friendRow}>
-                <View style={[styles.avatar, { backgroundColor: friend.tint }]}>
-                  <Text style={styles.avatarText} allowFontScaling={false}>
-                    {friend.name.slice(0, 1).toUpperCase()}
-                  </Text>
-                </View>
+              <View key={friend.id} style={styles.friendRow}>
+                <Avatar
+                  uri={friend.avatarUrl}
+                  nickname={friend.nickname}
+                  displayName={friend.displayName}
+                  size={34}
+                  border="quiet"
+                />
                 <Text
                   style={styles.friendName}
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {friend.name}
+                  {name}
                 </Text>
                 {here ? (
                   <View style={styles.hereRow}>
@@ -163,16 +220,16 @@ export function InviteSheet({
                   </View>
                 ) : (
                   <Pressable
-                    onPress={() => onInvite(friend.name)}
+                    onPress={shareLink}
                     style={({ pressed }) => [
                       styles.invite,
                       pressed && styles.pressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Přizvat ${friend.name}`}
+                    accessibilityLabel={`Poslat kód: ${name}`}
                   >
                     <Text style={styles.inviteText} allowFontScaling={false}>
-                      Přizvat
+                      Poslat kód
                     </Text>
                   </Pressable>
                 )}
@@ -241,14 +298,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     minHeight: 60,
   },
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { fontSize: 14, fontWeight: '700', color: Colors.stout },
   friendName: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.foam },
   invite: {
     height: 38,
@@ -261,4 +310,8 @@ const styles = StyleSheet.create({
   inviteText: { fontSize: 13, fontWeight: '700', color: Colors.amber },
   hereRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   here: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
+  loader: { marginVertical: Spacing.lg },
+  retry: { alignSelf: 'flex-start', paddingVertical: Spacing.md },
+  retryText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
+  empty: { paddingVertical: Spacing.lg, fontSize: 14, color: Colors.mutedText },
 });

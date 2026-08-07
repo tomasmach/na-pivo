@@ -6,6 +6,7 @@ import {
   clearNightFeedCaches,
   loadNightFeedCache,
   parseNightFeedCache,
+  removeAccountFromNightFeedCaches,
   saveNightFeedCache,
 } from '../feedCache';
 
@@ -34,6 +35,13 @@ function night(id: string): PublishedNight {
     pubNames: ['U Testu'],
     city: 'Brno',
     durationMinutes: 240,
+    title: '',
+    roastLine: '',
+    roastBasis: '',
+    participants: [],
+    heroPhotos: [],
+    heroGames: [],
+    commentCount: 0,
     visibility: 'friends',
     createdAt: '2026-08-05T22:05:00.000Z',
     rounds: 2,
@@ -87,5 +95,36 @@ describe('night feed cache', () => {
     expect(await loadNightFeedCache('account-a', 'friends')).toBeNull();
     expect(await loadNightFeedCache('account-b', 'global')).toBeNull();
     expect(await AsyncStorage.getItem('keep-me')).toBe('yes');
+  });
+
+  it('removes a blocked account as author or participant for only the active viewer', async () => {
+    const blockedNight = night('blocked');
+    const survivingNight = night('surviving');
+    blockedNight.author.id = 'blocked-author';
+    survivingNight.participants = [{ ...blockedNight.author }];
+
+    for (const scope of ['friends', 'global', 'mine'] as const) {
+      await saveNightFeedCache('account-a', scope, {
+        nights: [blockedNight, survivingNight],
+        nextCursor: 'next',
+        savedAt: 1234,
+      });
+      await saveNightFeedCache('account-b', scope, {
+        nights: [blockedNight],
+        nextCursor: null,
+        savedAt: 5678,
+      });
+    }
+
+    await removeAccountFromNightFeedCaches('account-a', 'blocked-author');
+
+    for (const scope of ['friends', 'global', 'mine'] as const) {
+      expect(await loadNightFeedCache('account-a', scope)).toEqual({
+        nights: [{ ...survivingNight, participants: [] }],
+        nextCursor: 'next',
+        savedAt: 1234,
+      });
+      expect((await loadNightFeedCache('account-b', scope))?.nights).toEqual([blockedNight]);
+    }
   });
 });

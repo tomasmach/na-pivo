@@ -46,10 +46,15 @@ export interface NightPerson {
   tint: string;
   /** When they sat down. Absent for a night nobody shared. */
   joinedAt?: string;
+  /** False after leaving; recap keeps the person, live UI filters them out. */
+  active?: boolean;
+  leftAt?: string;
 }
 
 export interface NightStop {
   id: string;
+  /** Account that recorded this visit. Absent on legacy/local-only records. */
+  by?: string;
   pubName: string;
   /** Geohash-8 of the pub, the app's identity for a place. Null off-grid. */
   cacheKey: string | null;
@@ -83,6 +88,8 @@ export interface NightGame {
   key: string;
   name: string;
   startedAt: string;
+  /** Account that put the game on the table. */
+  by?: string;
   /** Absent while it is still being played. */
   result?: {
     /** Null for a game scored in sips — see `gameCatalog.ts`. */
@@ -306,13 +313,40 @@ export interface NightStopTally extends NightStop {
   minutes: number;
 }
 
+function stopIdentity(stop: NightStop): string {
+  return stop.cacheKey || stop.pubName.trim().toLocaleLowerCase('cs');
+}
+
+/** Collapse one shared venue reported once per participant into one table stop. */
+export function uniqueNightStops(night: NightRecord): NightStop[] {
+  const ordered = [...night.stops].sort((a, b) => ms(a.arrivedAt) - ms(b.arrivedAt));
+  const unique: NightStop[] = [];
+  for (const stop of ordered) {
+    const previous = unique.at(-1);
+    if (previous && stopIdentity(previous) === stopIdentity(stop)) continue;
+    unique.push(stop);
+  }
+  return unique;
+}
+
 /** The walk: each stop with what happened there, in the order it happened. */
 export function nightStops(night: NightRecord, now: number): NightStopTally[] {
-  const ordered = [...night.stops].sort((a, b) => ms(a.arrivedAt) - ms(b.arrivedAt));
+  const ordered = uniqueNightStops(night);
+  const canonicalByStop = new Map<string, string>();
+  let groupIndex = -1;
+  let previousIdentity = '';
+  for (const stop of [...night.stops].sort((a, b) => ms(a.arrivedAt) - ms(b.arrivedAt))) {
+    const identity = stopIdentity(stop);
+    if (identity !== previousIdentity) groupIndex += 1;
+    const canonical = ordered[groupIndex];
+    if (canonical) canonicalByStop.set(stop.id, canonical.id);
+    previousIdentity = identity;
+  }
   const beersAt = new Map<string, number>();
   for (const drink of night.drinks) {
     if (!drink.stopId || !isBeer(drink)) continue;
-    beersAt.set(drink.stopId, (beersAt.get(drink.stopId) ?? 0) + 1);
+    const stopId = canonicalByStop.get(drink.stopId) ?? drink.stopId;
+    beersAt.set(stopId, (beersAt.get(stopId) ?? 0) + 1);
   }
   const end = night.endedAt ? ms(night.endedAt) : now;
   return ordered.map((stop, index) => {
@@ -363,7 +397,7 @@ export function nightBrokenRecords(
   const broken: NightBroken[] = [];
   const beers = nightTally(night).beers;
   const minutes = nightMinutes(night, now);
-  const stops = night.stops.length;
+  const stops = uniqueNightStops(night).length;
 
   if (beers > best.beers) broken.push({ kind: 'beers', value: beers, previous: best.beers });
   if (minutes > best.minutes) {
@@ -447,12 +481,12 @@ export function nightThread(night: NightRecord): NightThreadEntry[] {
     });
   }
 
-  for (const stop of night.stops) {
+  for (const stop of uniqueNightStops(night)) {
     entries.push({
       id: `pub:${stop.id}`,
       at: stop.arrivedAt,
       kind: 'pub',
-      by: null,
+      by: stop.by ?? null,
       refId: stop.id,
       label: stop.pubName,
     });
@@ -492,9 +526,7 @@ export function nightThread(night: NightRecord): NightThreadEntry[] {
       id: `game:${game.key}:${game.startedAt}`,
       at: game.startedAt,
       kind: 'game',
-      // Who put it on the table is the game's own business; the row leads with
-      // the game, not with a name.
-      by: null,
+      by: game.by ?? null,
       refId: game.key,
       label: game.name,
       gameKey: game.key,

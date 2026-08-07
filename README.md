@@ -74,11 +74,11 @@ npm run dev:stop
 Interactively, prefer plain `npm run dev` — you want Ctrl+C to tidy up.
 
 
-Start the Django backend on the LAN interface:
+Start the Django ASGI backend on the LAN interface:
 
 ```bash
 cd backend
-uv run python manage.py runserver 0.0.0.0:8000
+uv run --extra prod uvicorn config.asgi:application --reload --host 0.0.0.0 --port 8000
 ```
 
 Then build and run the local iOS app with backend mode enabled:

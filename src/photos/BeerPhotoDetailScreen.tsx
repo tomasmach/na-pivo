@@ -31,7 +31,6 @@ import {
   TrophyIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
-import { deleteBeerPhoto } from '@/data/beerPhotosClient';
 import {
   deleteBeerPhotoLocalFile,
   enqueueBeerPhoto,
@@ -112,20 +111,16 @@ export default function BeerPhotoDetailScreen() {
     if (!photo || busy) return;
     setBusy(true);
     try {
-      if (photo.syncState === 'synced' && photo.id) {
-        const res = await deleteBeerPhoto(photo.id);
-        if (!res.ok) {
-          showToast(cs.photoDiary.deleteError);
-          return;
-        }
-        removePhoto(photo.id);
-      } else {
-        // Never uploaded (or permanently rejected): cancel the queued op and
-        // clean up the durable local JPEG — nothing lives server-side.
-        await removeQueuedBeerPhoto(photo.clientId);
-        deleteBeerPhotoLocalFile(photo.clientId);
-        removePhoto(photo.clientId);
+      // Synced, pending, and failed photos share one durable client-id delete.
+      // This also suppresses a stale GET captured before DELETE and cancels a
+      // multipart upload that may otherwise commit after its native abort.
+      const deletionQueued = await removeQueuedBeerPhoto(photo.clientId);
+      if (!deletionQueued) {
+        showToast(cs.photoDiary.deleteError);
+        return;
       }
+      deleteBeerPhotoLocalFile(photo.clientId);
+      removePhoto(photo.clientId);
       showToast(cs.photoDiary.deletedToast);
       goBack();
     } finally {
@@ -144,21 +139,30 @@ export default function BeerPhotoDetailScreen() {
     });
   }, [doDelete]);
 
-  const retryUpload = useCallback(() => {
+  const retryUpload = useCallback(async () => {
     if (!photo?.localUri) return;
-    void enqueueBeerPhoto({
+    const queued = await enqueueBeerPhoto({
       clientId: photo.clientId,
       localUri: photo.localUri,
       caption: photo.caption,
       pubCacheKey: photo.pubCacheKey || undefined,
       pubName: photo.pubName || undefined,
       pubCity: photo.pubCity || undefined,
+      partyCode: photo.partyCode,
+      partyDrinkingDay: photo.partyDrinkingDay,
       visibility: photo.visibility,
       takenAt: photo.takenAt,
     });
-    showToast(cs.photoDiary.retryQueuedToast, {
-      icon: <RefreshCwIcon size={18} color={Colors.amber} />,
-    });
+    showToast(
+      queued.persisted ? cs.photoDiary.retryQueuedToast : cs.photoDiary.errorSave,
+      {
+        icon: queued.persisted ? (
+          <RefreshCwIcon size={18} color={Colors.amber} />
+        ) : (
+          <InfoIcon size={18} color={Colors.foamMuted} />
+        ),
+      },
+    );
   }, [photo, showToast]);
 
   const enterContest = useCallback(async () => {

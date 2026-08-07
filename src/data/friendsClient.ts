@@ -22,6 +22,14 @@ export interface FriendProfile {
   isPublic: boolean;
 }
 
+export type FriendSuggestionReason =
+  | { kind: 'shared_pubs'; count: number }
+  | { kind: 'mutual_friends'; count: number };
+
+export interface FriendSuggestion extends FriendProfile {
+  suggestionReason: FriendSuggestionReason;
+}
+
 export interface Friendship {
   id: string;
   status: 'pending' | 'accepted' | 'declined';
@@ -293,6 +301,10 @@ interface RawFriendProfile {
   display_name?: string;
   avatar_url?: string | null;
   is_public?: boolean;
+  suggestion_reason?: {
+    kind?: unknown;
+    count?: unknown;
+  };
 }
 
 interface RawFriendship {
@@ -457,6 +469,25 @@ function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
     displayName: raw?.display_name ?? '',
     avatarUrl: raw?.avatar_url ?? null,
     isPublic: raw?.is_public !== false,
+  };
+}
+
+function parseSuggestion(raw: RawFriendProfile): FriendSuggestion | null {
+  const reason = raw.suggestion_reason;
+  if (
+    (reason?.kind !== 'shared_pubs' && reason?.kind !== 'mutual_friends')
+    || typeof reason.count !== 'number'
+    || !Number.isFinite(reason.count)
+    || reason.count < 1
+  ) {
+    return null;
+  }
+  return {
+    ...parseProfile(raw),
+    suggestionReason: {
+      kind: reason.kind,
+      count: Math.floor(reason.count),
+    },
   };
 }
 
@@ -856,11 +887,13 @@ export async function searchFriends(query: string, signal?: AbortSignal): Promis
     : [];
 }
 
-export async function fetchFriendSuggestions(signal?: AbortSignal): Promise<FriendProfile[] | null> {
+export async function fetchFriendSuggestions(signal?: AbortSignal): Promise<FriendSuggestion[] | null> {
   const res = await requestJson('/v1/friends/search?suggest=true', { signal });
   if (!res.ok) return null;
   return Array.isArray(res.data.results)
-    ? (res.data.results as RawFriendProfile[]).map(parseProfile)
+    ? (res.data.results as RawFriendProfile[])
+        .map(parseSuggestion)
+        .filter((profile): profile is FriendSuggestion => profile !== null)
     : [];
 }
 
@@ -1085,6 +1118,16 @@ export async function updateFriendSettings(
   }
   const res = await requestJson('/v1/friends/settings', { method: 'PATCH', body });
   return res.ok ? { ok: true } : res.result;
+}
+
+/** Load only the current account's social privacy switches. */
+export async function fetchFriendSettings(
+  signal?: AbortSignal,
+): Promise<FriendSocialSettings | null> {
+  const res = await requestJson('/v1/friends/settings', { signal });
+  return res.ok
+    ? parseSocialSettings(res.data as RawFriendSocialSettings)
+    : null;
 }
 
 export async function markFriendNotificationsRead(ids?: string[]): Promise<void> {

@@ -31,7 +31,6 @@ jest.mock('@/components/shared/IconGlyph', () => {
   return { CheckIcon: () => ReactModule.createElement('Icon') };
 });
 
-jest.mock('@/feed/FeedMockScreen', () => ({ Face: () => null }));
 
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
 import type { QuizAnswer, QuizEntrant } from '@/party/quiz/rules';

@@ -85,6 +85,11 @@ class AccountTokenAuthentication(authentication.BaseAuthentication):
         # Attach only the public account id to the underlying HttpRequest so logs
         # can be correlated without ever exposing request.auth / bearer tokens.
         request._request.na_pivo_account_id = str(account.public_id)
+        # Private request-only authorization generation. Account deletion checks
+        # this again under the Account row lock so a request authenticated before
+        # credential reactivation cannot commit afterward. Middleware/logging
+        # must never serialize this internal attribute.
+        request._request.na_pivo_deletion_epoch = auth_token.deletion_epoch
         return (account, token)
 
     def authenticate_header(self, request):  # noqa: ARG002

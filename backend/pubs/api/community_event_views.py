@@ -91,6 +91,10 @@ class CommunityEventTeamCreateSerializer(serializers.Serializer):
     name = serializers.CharField(min_length=1, max_length=40, trim_whitespace=True)
 
 
+class CommunityEventTeamUpdateSerializer(serializers.Serializer):
+    name = serializers.CharField(min_length=1, max_length=40, trim_whitespace=True)
+
+
 def _claimed_or_error(request: Request) -> Response | None:
     if request.user.is_claimed:
         return None
@@ -244,6 +248,18 @@ def _serialize_team_roster(
     my_team_id = None
     teams = []
     for team in event.teams.all():
+        creator = team.created_by
+        if (
+            creator is None
+            or creator.status != Account.Status.ACTIVE
+            or creator.ghost_mode
+            or creator.id in blocked_account_ids
+        ):
+            # Team names are user-generated content. A deleted, hidden or
+            # blocked author must not leave their text visible through a roster.
+            # Other visible participants simply become unassigned for this
+            # viewer; the team may reappear if a temporary ghost/block ends.
+            continue
         all_members = [
             membership for membership in team.memberships.all() if membership.event_id == event.id
         ]
@@ -865,12 +881,18 @@ class CommunityEventTeamMembershipView(APIView):
                     {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-            if team.created_by_id in blocked_ids or (
-                blocked_ids
-                and CommunityEventTeamMembership.objects.filter(
-                    team=team,
-                    account_id__in=blocked_ids,
-                ).exists()
+            if (
+                team.created_by is None
+                or team.created_by.status != Account.Status.ACTIVE
+                or team.created_by.ghost_mode
+                or team.created_by_id in blocked_ids
+                or (
+                    blocked_ids
+                    and CommunityEventTeamMembership.objects.filter(
+                        team=team,
+                        account_id__in=blocked_ids,
+                    ).exists()
+                )
             ):
                 return Response(
                     {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
@@ -924,6 +946,79 @@ class CommunityEventTeamMembershipView(APIView):
         if _team_access_error(event, request.user, require_open=False) is None:
             payload["team_roster"] = _serialize_team_roster(event, request.user)
         return Response(payload)
+
+
+class CommunityEventTeamDetailView(APIView):
+    """Rename a creator's team or remove it as creator/event host."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "community"
+
+    def patch(self, request: Request, event_id, team_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+        serializer = CommunityEventTeamUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            event = (
+                CommunityEvent.objects.select_for_update()
+                .select_related("host")
+                .filter(pk=event_id)
+                .first()
+            )
+            access_error = _team_access_error(event, request.user, require_open=True)
+            if access_error is not None:
+                return access_error
+            team = (
+                CommunityEventTeam.objects.select_for_update()
+                .filter(pk=team_id, event=event, created_by=request.user)
+                .first()
+            )
+            if team is None:
+                return Response(
+                    {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            team.name = serializer.validated_data["name"]
+            team.save(update_fields=["name", "updated_at"])
+
+        event = _event_queryset(include_teams=True).get(pk=event_id)
+        roster = _serialize_team_roster(event, request.user)
+        team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
+        return Response({"team": team_payload, "team_roster": roster})
+
+    def delete(self, request: Request, event_id, team_id) -> Response:
+        error = _claimed_or_error(request)
+        if error:
+            return error
+        with transaction.atomic():
+            event = (
+                CommunityEvent.objects.select_for_update()
+                .select_related("host")
+                .filter(pk=event_id)
+                .first()
+            )
+            access_error = _team_access_error(event, request.user, require_open=False)
+            if access_error is not None:
+                return access_error
+            team = (
+                CommunityEventTeam.objects.select_for_update()
+                .filter(pk=team_id, event=event)
+                .first()
+            )
+            if team is None or (
+                team.created_by_id != request.user.id and event.host_id != request.user.id
+            ):
+                return Response(
+                    {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            team.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CommunityEventRequestDecisionView(APIView):

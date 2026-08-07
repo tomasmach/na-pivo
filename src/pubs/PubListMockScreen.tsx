@@ -1,5 +1,5 @@
 /**
- * DESIGN MOCK — Hospody, as a Packeta-style branch list.
+ * Production Hospody screen, as a Packeta-style branch list.
  *
  * The shape borrowed from Packeta is the LIST, not the palette: a search field
  * pinned at the top, then dense cells that answer the question on the cell
@@ -48,6 +48,11 @@ import {
 } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { GlassIconButton, GlassPill } from '@/components/shared/GlassIconButton';
+import {
+  fallbackPopularBeerBrands,
+  fetchPopularBeerBrands,
+  type BeerBrandFilterOption,
+} from '@/data/beerSuggestionsClient';
 import { geohash8 } from '@/data/geohash';
 import { getAllLoadedPubs, hydratePubsSnapshot, type Pub } from '@/data/pubs';
 import { useCompass } from '@/hooks/useCompass';
@@ -60,9 +65,9 @@ import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
 import {
-  beerFilterOptions,
   presentPub,
   pubMatchesFilters,
+  serverFiltersForPubList,
   sortPubs,
   type PubListFilters,
   type PubPresentation,
@@ -122,16 +127,21 @@ function FilterChips({
   /** Fires on EVERY pick, including re-picking the current one — that is how
    *  "Náhodně v okolí" reshuffles a second time. */
   onSort: (next: Sort) => void;
-  beerOptions: readonly string[];
+  beerOptions: readonly BeerBrandFilterOption[];
   filters: PubListFilters;
   onFilters: (next: PubListFilters) => void;
 }) {
   const [beerSheet, setBeerSheet] = React.useState(false);
+  const labelByKey = React.useMemo(
+    () => new Map(beerOptions.map((option) => [option.key, option.label])),
+    [beerOptions],
+  );
+  const selectedLabels = filters.beers.map((key) => labelByKey.get(key) ?? key);
   const beerLabel =
     filters.beers.length === 0
       ? 'Pivo'
       : filters.beers.length === 1
-        ? filters.beers[0]
+        ? selectedLabels[0]
         : `Pivo (${filters.beers.length})`;
 
   const activeToggle = (label: (typeof TOGGLES)[number]) => {
@@ -167,8 +177,7 @@ function FilterChips({
         onChange={(next) => onSort(next as Sort)}
       />
 
-      {/* Beer is a value, not a toggle — one answer at a time — so it is a
-          dropdown like the sort, and sits right beside "Otevřeno". */}
+      {/* Beer is an ANY-of multi-select backed by canonical server brand keys. */}
       {beerOptions.length > 0 || filters.beers.length > 0 ? (
         <>
           <Pressable
@@ -180,7 +189,7 @@ function FilterChips({
             ]}
             accessibilityRole="button"
             accessibilityLabel={
-              filters.beers.length > 0 ? `Pivo: ${filters.beers.join(', ')}` : 'Vybrat piva'
+              filters.beers.length > 0 ? `Pivo: ${selectedLabels.join(', ')}` : 'Vybrat piva'
             }
           >
             <Text
@@ -337,8 +346,25 @@ export default function PubListMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { height } = useWindowDimensions();
-  const compass = useCompass(null, [], null, null, true, false);
+  const [filters, setFilters] = React.useState<PubListFilters>({
+    beers: [],
+    openOnly: false,
+    tankOnly: false,
+    gardenOnly: false,
+  });
+  const serverFilters = serverFiltersForPubList(filters);
+  const compass = useCompass(
+    serverFilters.beerBrandKeys,
+    serverFilters.amenityKeys,
+    null,
+    null,
+    true,
+    false,
+  );
   const visits = usePubVisits();
+  const [beerOptions, setBeerOptions] = React.useState<BeerBrandFilterOption[]>(() =>
+    fallbackPopularBeerBrands(),
+  );
   const [snapshotReady, setSnapshotReady] = React.useState(false);
   const [detent, setDetent] = React.useState<Detent>('half');
   // One move signal with its destination, bumped by whoever wants the sheet
@@ -386,12 +412,6 @@ export default function PubListMockScreen() {
   });
   const [selectedPub, setSelectedPub] = React.useState<string | null>(null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
-  const [filters, setFilters] = React.useState<PubListFilters>({
-    beers: [],
-    openOnly: false,
-    tankOnly: false,
-    gardenOnly: false,
-  });
   const [recenterSignal, setRecenterSignal] = React.useState(0);
   // The detail opens INSIDE the sheet rather than as a push: the map behind is
   // the context for the place you just tapped, and pushing a screen throws that
@@ -411,7 +431,27 @@ export default function PubListMockScreen() {
     };
   }, []);
 
-  const rawPubs = mergeCurrentPub(getAllLoadedPubs(), compass.pub);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void fetchPopularBeerBrands(controller.signal).then((options) => {
+      if (!controller.signal.aborted) setBeerOptions(options);
+    });
+    return () => controller.abort();
+  }, []);
+
+  const hasServerFilters = filters.beers.length > 0 || filters.tankOnly || filters.gardenOnly;
+  // Keep the previous catalogue out of sight while a hard server filter is in
+  // flight. It has not been acknowledged for the new selection yet.
+  const rawPubs = React.useMemo(
+    () => {
+      const loaded = getAllLoadedPubs();
+      if (!snapshotReady && loaded.length === 0) return [];
+      return hasServerFilters && compass.isLoading
+        ? []
+        : mergeCurrentPub(loaded, compass.pub);
+    },
+    [compass.isLoading, compass.pub, hasServerFilters, snapshotReady],
+  );
   const amenitiesByKey = usePubAmenities(rawPubs);
   const presentations = React.useMemo(
     () =>
@@ -425,7 +465,6 @@ export default function PubListMockScreen() {
       ),
     [amenitiesByKey, compass.currentPosition, rawPubs, visits],
   );
-  const beerOptions = React.useMemo(() => beerFilterOptions(rawPubs), [rawPubs]);
   const ordered = React.useMemo(
     () =>
       sortPubs(
@@ -447,11 +486,7 @@ export default function PubListMockScreen() {
   const openPub = openPubId
     ? (presentations.find((pub) => pub.id === openPubId) ?? null)
     : null;
-  const hasActiveFilters =
-    filters.beers.length > 0 ||
-    filters.openOnly ||
-    filters.tankOnly ||
-    filters.gardenOnly;
+  const hasActiveFilters = hasServerFilters || filters.openOnly;
 
   // Opening a detail raises the sheet in the SAME action, not in an effect
   // watching the id: at `peek` the detail would land in a one-line slot, and an
@@ -621,126 +656,134 @@ export default function PubListMockScreen() {
               onFilters={setFilters}
             />
 
-            <Animated.ScrollView
+            <Animated.FlatList
               ref={listRef as never}
+              data={listPubs}
+              keyExtractor={(pub) => pub.id}
+              renderItem={({ item: pub, index }) => (
+                <PubRow
+                  pub={pub}
+                  first={index === 0}
+                  onPress={() => openPubDetail(pub.id)}
+                />
+              )}
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              windowSize={7}
+              removeClippedSubviews
               contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               scrollEnabled={detent === 'full'}
               scrollEventThrottle={16}
               onScroll={onListScroll}
-            >
-              {compass.searchFailed && presentations.length > 0 ? (
-                <View style={styles.statusBanner}>
-                  <Text style={styles.statusBannerText}>Ukazuju poslední uložené hospody.</Text>
-                  <Pressable onPress={compass.retrySearch} accessibilityRole="button">
-                    <Text style={styles.statusActionText}>Obnovit</Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {compass.permissionState === 'denied' && presentations.length > 0 ? (
-                <View style={styles.statusBanner}>
-                  <Text style={styles.statusBannerText}>Vzdálenost bez polohy nespočítám.</Text>
-                  <Pressable
-                    onPress={() => void compass.requestPermission()}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.statusActionText}>Povolit</Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {head && compass.currentPosition ? (
-                <CompassCell
-                  pub={head}
-                  position={compass.currentPosition}
-                  badge={BADGE[sort]}
-                  // It is a pub row, so it opens the pub. It used to open the
-                  // map, which meant the one cell naming a place was the one
-                  // cell that would not take you to it.
-                  onPress={() => openPubDetail(head.id)}
-                />
-              ) : null}
-
-              <View style={styles.list}>
-                {listPubs.map((pub, index) => (
-                  <PubRow
-                    key={pub.id}
-                    pub={pub}
-                    first={index === 0}
-                    onPress={() => openPubDetail(pub.id)}
-                  />
-                ))}
-              </View>
-
-              {!snapshotReady ||
-              (presentations.length === 0 &&
-                compass.isLoading &&
-                compass.permissionState !== 'denied') ? (
-                <View style={styles.listState}>
-                  <ActivityIndicator color={Colors.amber} />
-                  <Text style={styles.listStateText}>Hledám hospody…</Text>
-                </View>
-              ) : null}
-
-              {snapshotReady &&
-              presentations.length === 0 &&
-              compass.permissionState === 'denied' ? (
-                <View style={styles.listState}>
-                  <Text style={styles.listStateText}>Povol polohu a mrkneme, co je kolem.</Text>
-                  <Pressable
-                    onPress={() => void compass.requestPermission()}
-                    style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.stateButtonText}>Povolit polohu</Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {snapshotReady &&
-              presentations.length === 0 &&
-              compass.permissionState !== 'denied' &&
-              !compass.isLoading ? (
-                <View style={styles.listState}>
-                  <Text style={styles.listStateText}>
-                    {compass.searchFailed
-                      ? 'Hospody se teď nenačetly.'
-                      : 'V okolí zatím nic nemáme.'}
-                  </Text>
-                  <Pressable
-                    onPress={compass.retrySearch}
-                    style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.stateButtonText}>Zkusit znovu</Text>
-                  </Pressable>
-                </View>
-              ) : null}
-
-              {presentations.length > 0 && ordered.length === 0 ? (
-                <View style={styles.listState}>
-                  <Text style={styles.listStateText}>Tahle kombinace je prázdná.</Text>
-                  {hasActiveFilters ? (
-                    <Pressable
-                      onPress={() =>
-                        setFilters({
-                          beers: [],
-                          openOnly: false,
-                          tankOnly: false,
-                          gardenOnly: false,
-                        })
-                      }
-                      style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.stateButtonText}>Zrušit filtry</Text>
-                    </Pressable>
+              ListHeaderComponent={
+                <>
+                  {compass.searchFailed && presentations.length > 0 ? (
+                    <View style={styles.statusBanner}>
+                      <Text style={styles.statusBannerText}>Ukazuju poslední uložené hospody.</Text>
+                      <Pressable onPress={compass.retrySearch} accessibilityRole="button">
+                        <Text style={styles.statusActionText}>Obnovit</Text>
+                      </Pressable>
+                    </View>
                   ) : null}
-                </View>
-              ) : null}
-            </Animated.ScrollView>
+
+                  {compass.permissionState === 'denied' && presentations.length > 0 ? (
+                    <View style={styles.statusBanner}>
+                      <Text style={styles.statusBannerText}>Vzdálenost bez polohy nespočítám.</Text>
+                      <Pressable
+                        onPress={() => void compass.requestPermission()}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.statusActionText}>Povolit</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
+                  {head && compass.currentPosition ? (
+                    <CompassCell
+                      pub={head}
+                      position={compass.currentPosition}
+                      badge={BADGE[sort]}
+                      // It is a pub row, so it opens the pub. It used to open the
+                      // map, which meant the one cell naming a place was the one
+                      // cell that would not take you to it.
+                      onPress={() => openPubDetail(head.id)}
+                    />
+                  ) : null}
+                </>
+              }
+              ListFooterComponent={
+                <>
+                  {!snapshotReady ||
+                  (presentations.length === 0 &&
+                    compass.isLoading &&
+                    compass.permissionState !== 'denied') ? (
+                    <View style={styles.listState}>
+                      <ActivityIndicator color={Colors.amber} />
+                      <Text style={styles.listStateText}>Hledám hospody…</Text>
+                    </View>
+                  ) : null}
+
+                  {snapshotReady &&
+                  presentations.length === 0 &&
+                  compass.permissionState === 'denied' ? (
+                    <View style={styles.listState}>
+                      <Text style={styles.listStateText}>Povol polohu a mrkneme, co je kolem.</Text>
+                      <Pressable
+                        onPress={() => void compass.requestPermission()}
+                        style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.stateButtonText}>Povolit polohu</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
+                  {snapshotReady &&
+                  presentations.length === 0 &&
+                  compass.permissionState !== 'denied' &&
+                  !compass.isLoading ? (
+                    <View style={styles.listState}>
+                      <Text style={styles.listStateText}>
+                        {compass.searchFailed
+                          ? 'Hospody se teď nenačetly.'
+                          : 'V okolí zatím nic nemáme.'}
+                      </Text>
+                      <Pressable
+                        onPress={compass.retrySearch}
+                        style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.stateButtonText}>Zkusit znovu</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
+                  {presentations.length > 0 && ordered.length === 0 ? (
+                    <View style={styles.listState}>
+                      <Text style={styles.listStateText}>Tahle kombinace je prázdná.</Text>
+                      {hasActiveFilters ? (
+                        <Pressable
+                          onPress={() =>
+                            setFilters({
+                              beers: [],
+                              openOnly: false,
+                              tankOnly: false,
+                              gardenOnly: false,
+                            })
+                          }
+                          style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.stateButtonText}>Zrušit filtry</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </>
+              }
+            />
           </>
         )}
       </PlacesSheet>

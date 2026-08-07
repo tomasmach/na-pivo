@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import uuid
 
 from asgiref.sync import sync_to_async
 from django.db import IntegrityError, transaction
@@ -17,6 +18,8 @@ from rest_framework.views import APIView
 
 from pubs.api.authentication import AccountTokenAuthentication
 from pubs.api.party_serializers import (
+    PARTY_GAME_EVENT_MAX_PER_EVENING,
+    PARTY_GAME_EVENT_MAX_PER_GAME,
     PartyEveningCreateSerializer,
     PartyEveningDrinkSerializer,
     PartyGameCreateSerializer,
@@ -34,6 +37,19 @@ from pubs.models import (
     PartyGameEvent,
     PubVisit,
 )
+
+# A record is a recap for one real table, not an unbounded export endpoint.
+# Keep the caps comfortably above a plausible night while bounding database
+# reads, legacy quantity expansion, JSON serialization and response size.
+PARTY_RECORD_MAX_PARTICIPANTS = 64
+PARTY_RECORD_MAX_STOPS = 256
+PARTY_RECORD_MAX_DRINKS = 1_000
+PARTY_RECORD_MAX_PHOTOS = 256
+PARTY_RECORD_MAX_GAMES = 64
+PARTY_RECORD_MAX_GAME_EVENTS = 2_000
+PARTY_RECORD_MAX_TIMELINE_EVENTS = 2_000
+# A recap picker is deliberately a small recent-history surface, not an export.
+PARTY_HISTORY_MAX_EVENINGS = 20
 
 
 def _profile(account: Account) -> dict:
@@ -62,7 +78,12 @@ def _blocked_account_ids(account: Account) -> set[int]:
 
 
 def _can_access(evening: PartyEvening, account: Account) -> bool:
-    if account.ghost_mode or evening.host.ghost_mode:
+    if (
+        account.status != Account.Status.ACTIVE
+        or evening.host.status != Account.Status.ACTIVE
+        or account.ghost_mode
+        or evening.host.ghost_mode
+    ):
         return False
     if _blocked(account, evening.host):
         return False
@@ -71,11 +92,30 @@ def _can_access(evening: PartyEvening, account: Account) -> bool:
     return evening.memberships.filter(account=account, active=True).exists()
 
 
-def _visible_participants(
-    evening: PartyEvening, viewer: Account
-) -> list[PartyEveningMember]:
-    """Every historical participant this viewer may still see."""
-    return list(
+def _can_access_ended_history(evening: PartyEvening, account: Account) -> bool:
+    """Whether a past explicit member may recover an ended table's recap.
+
+    Leaving an active table revokes access immediately. Once the host ends the
+    table, its historical membership is the durable consent record that lets a
+    former member recover their own recap on another device. Current privacy
+    state still wins: ghost mode, deletion, or a block hides it again.
+    """
+    if evening.active or evening.ended_at is None:
+        return False
+    if (
+        account.status != Account.Status.ACTIVE
+        or evening.host.status != Account.Status.ACTIVE
+        or account.ghost_mode
+        or evening.host.ghost_mode
+    ):
+        return False
+    if _blocked(account, evening.host):
+        return False
+    return evening.memberships.filter(account=account).exists()
+
+
+def _visible_participant_rows(evening: PartyEvening, viewer: Account):
+    return (
         evening.memberships.select_related("account")
         .filter(
             account__status=Account.Status.ACTIVE,
@@ -86,9 +126,22 @@ def _visible_participants(
     )
 
 
+def _visible_participants(evening: PartyEvening, viewer: Account) -> list[PartyEveningMember]:
+    """Every historical participant this viewer may still see."""
+    return list(_visible_participant_rows(evening, viewer))
+
+
+def _limited_rows(queryset, limit: int) -> tuple[list, bool]:
+    """Evaluate at most ``limit + 1`` rows and report whether one was omitted."""
+    rows = list(queryset[: limit + 1])
+    return rows[:limit], len(rows) > limit
+
+
 def _visible_members(evening: PartyEvening, viewer: Account) -> list[PartyEveningMember]:
     """Active participants, preserving the released ``members`` semantics."""
-    return [membership for membership in _visible_participants(evening, viewer) if membership.active]
+    return [
+        membership for membership in _visible_participants(evening, viewer) if membership.active
+    ]
 
 
 def _serialize_participant(membership: PartyEveningMember) -> dict:
@@ -121,6 +174,17 @@ def _active_membership_conflict() -> Response:
     )
 
 
+def _drink_visible_to_viewer(viewer: Account) -> Q:
+    """Keep an opted-out account's linked rows private to their owner.
+
+    The setting is evaluated when a table is read, not only when a row is
+    linked. That makes an opt-out take effect immediately for legacy rows and
+    offline DrinkLog rows which reached the server before the preference
+    changed, without deleting anything from the owner's private diary.
+    """
+    return Q(account=viewer) | Q(account__share_drinks_with_parta=True)
+
+
 def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
     participants = _visible_participants(evening, viewer)
     members = [membership for membership in participants if membership.active]
@@ -147,12 +211,13 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
             account_id__in=participant_ids,
             account__ghost_mode=False,
             account__status=Account.Status.ACTIVE,
-        )
+        ).filter(_drink_visible_to_viewer(viewer))
     )
     # The same evening, from the diary. Two sources, one timeline:
     #
     #   PartyEveningDrink   released apps, which POST a beer here as well as
-    #                       into their diary. Untouched — they cannot be updated.
+    #                       into their diary. Kept for wire compatibility and
+    #                       privacy-filtered against the owner's current choice.
     #   DrinkLog            the current app, which writes a beer ONCE and tags
     #                       it with the evening it happened in.
     #
@@ -171,7 +236,7 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
             account_id__in=participant_ids,
             account__ghost_mode=False,
             account__status=Account.Status.ACTIVE,
-        )
+        ).filter(_drink_visible_to_viewer(viewer))
     )
     events.sort(key=lambda event: (event["at"], event["id"]))
     return {
@@ -194,6 +259,17 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
 def _member_evening(code: str, account: Account) -> PartyEvening | None:
     evening = PartyEvening.objects.select_related("host").filter(join_code=code.upper()).first()
     return evening if evening and _can_access(evening, account) else None
+
+
+def _record_evening(code: str, account: Account) -> PartyEvening | None:
+    evening = PartyEvening.objects.select_related("host").filter(join_code=code.upper()).first()
+    if not evening:
+        return None
+    return (
+        evening
+        if _can_access(evening, account) or _can_access_ended_history(evening, account)
+        else None
+    )
 
 
 class PartyEveningCollectionView(APIView):
@@ -272,6 +348,46 @@ class PartyEveningCollectionView(APIView):
         )
 
 
+class PartyEveningHistoryView(APIView):
+    """GET /v1/party-evenings/history — recent ended tables this account joined."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        if request.user.ghost_mode:
+            return Response({"evenings": [], "truncated": False})
+
+        rows = list(
+            PartyEvening.objects.select_related("host")
+            .filter(
+                active=False,
+                ended_at__isnull=False,
+                host__status=Account.Status.ACTIVE,
+                host__ghost_mode=False,
+                memberships__account=request.user,
+            )
+            .exclude(host_id__in=_blocked_account_ids(request.user))
+            .order_by("-ended_at", "-id")[: PARTY_HISTORY_MAX_EVENINGS + 1]
+        )
+        truncated = len(rows) > PARTY_HISTORY_MAX_EVENINGS
+        evenings = [
+            {
+                "id": str(evening.public_id),
+                "join_code": evening.join_code,
+                "pub_name": evening.pub_name,
+                "pub_city": evening.pub_city,
+                "started_at": evening.started_at.isoformat(),
+                "ended_at": evening.ended_at.isoformat(),
+                "is_host": evening.host_id == request.user.id,
+            }
+            for evening in rows[:PARTY_HISTORY_MAX_EVENINGS]
+        ]
+        return Response({"evenings": evenings, "truncated": truncated})
+
+
 class PartyEveningDetailView(APIView):
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -297,7 +413,11 @@ class PartyEveningJoinView(APIView):
     def post(self, request: Request, code: str) -> Response:
         evening = (
             PartyEvening.objects.select_related("host")
-            .filter(join_code=code.upper(), active=True)
+            .filter(
+                join_code=code.upper(),
+                active=True,
+                host__status=Account.Status.ACTIVE,
+            )
             .first()
         )
         if not evening:
@@ -396,6 +516,14 @@ class PartyEveningDrinkView(APIView):
                 },
                 status=status.HTTP_409_CONFLICT,
             )
+        if not request.user.share_drinks_with_parta:
+            return Response(
+                {
+                    "detail": "Turn on drink sharing before sharing a drink.",
+                    "code": "drink_sharing_disabled",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         data = serializer.validated_data
         drink, created = PartyEveningDrink.objects.update_or_create(
             account=request.user,
@@ -425,15 +553,46 @@ class PartyEveningDrinkView(APIView):
 # ---------------------------------------------------------------------------
 
 
-def _serialize_game(game: PartyGame) -> dict:
+def _game_roster_profiles(game: PartyGame, viewer: Account) -> list[dict]:
+    """The frozen lobby roster, filtered only by current privacy state.
+
+    Active membership is deliberately not part of this read. Somebody leaving
+    the table after question two must remain an entrant in the game that already
+    started; somebody joining at question three must not appear in it.
+
+    An empty snapshot is meaningful: the game is visible on the table, but its
+    lobby has not bound a roster yet. Migration 0107 populated every legacy row,
+    so no read-time fallback is needed and another phone cannot accidentally
+    make a pending lobby look started.
+    """
+    snapshot = [str(value) for value in (game.roster_account_ids or [])]
+    memberships = list(_visible_participant_rows(game.evening, viewer))
+    profiles = {
+        str(membership.account.public_id): _profile(membership.account)
+        for membership in memberships
+    }
+    return [profiles[account_id] for account_id in snapshot if account_id in profiles]
+
+
+def _serialize_game(game: PartyGame, viewer: Account) -> dict:
+    seed = 2_166_136_261
+    # FNV-1a over the table/game identity. Both values are restricted to ASCII,
+    # so the tiny client implementation produces exactly the same 32-bit seed
+    # even before a pending start has received its server UUID.
+    for byte in f"{game.evening.join_code}:{game.catalog_key}".encode("ascii"):
+        seed = ((seed ^ byte) * 16_777_619) & 0xFFFF_FFFF
     return {
         "id": str(game.public_id),
         "catalog_key": game.catalog_key,
         "name": game.name,
         "scoring": game.scoring,
         "started_by": _profile(game.started_by),
+        "roster": _game_roster_profiles(game, viewer),
         "started_at": game.started_at.isoformat(),
         "ended_at": game.ended_at.isoformat() if game.ended_at else None,
+        # Known before an offline local-id -> server-id remap. Prompt decks use
+        # it to deal the same order on every phone and after a cold restart.
+        "seed": (seed & 0x7FFF_FFFF) or 1,
     }
 
 
@@ -442,6 +601,9 @@ def _serialize_game_event(event: PartyGameEvent) -> dict:
         # The row id IS the cursor. Clients store the highest one they have seen
         # and hand it straight back as `since`.
         "cursor": event.id,
+        # Additive correlation for optimistic local folds.  A phone can replace
+        # its queued copy with this echo without guessing from timestamps.
+        "client_id": str(event.client_id),
         "game_id": str(event.game.public_id),
         "kind": event.kind,
         "account": _profile(event.account),
@@ -455,7 +617,7 @@ def _serialize_game_event(event: PartyGameEvent) -> dict:
 def _party_photo_url(photo: BeerPhoto, request: Request) -> str | None:
     try:
         return request.build_absolute_uri(photo.image.url)
-    except (AttributeError, ValueError):
+    except AttributeError, ValueError:
         return None
 
 
@@ -476,18 +638,29 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
     record is members-only and may contain individual drink names because it is
     the table's private recap, not a PublishedNight payload.
     """
-    participants = _visible_participants(evening, viewer)
+    participants, participants_truncated = _limited_rows(
+        _visible_participant_rows(evening, viewer),
+        PARTY_RECORD_MAX_PARTICIPANTS,
+    )
+    if not any(membership.account_id == viewer.pk for membership in participants):
+        viewer_membership = (
+            _visible_participant_rows(evening, viewer).filter(account=viewer).first()
+        )
+        if viewer_membership is not None:
+            if participants:
+                participants[-1] = viewer_membership
+            else:
+                participants.append(viewer_membership)
     participant_ids = {membership.account_id for membership in participants}
     profiles = {membership.account_id: _profile(membership.account) for membership in participants}
 
-    visits = list(
+    visits, stops_truncated = _limited_rows(
         evening.party_visits.select_related("account")
         .filter(account_id__in=participant_ids)
-        .order_by("started_at", "id")
+        .order_by("started_at", "id"),
+        PARTY_RECORD_MAX_STOPS,
     )
-    stop_ids = {
-        visit.pk: f"visit:{visit.account.public_id}:{visit.client_id}" for visit in visits
-    }
+    stop_ids = {visit.pk: f"visit:{visit.account.public_id}:{visit.client_id}" for visit in visits}
     stops = [
         {
             "id": stop_ids[visit.pk],
@@ -519,18 +692,20 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
             return None
         return stop_ids[max(candidates, key=lambda visit: visit.started_at).pk]
 
-    drinks: list[dict] = []
-    diary_drinks = list(
+    drink_candidates: list[dict] = []
+    diary_drinks, diary_drinks_truncated = _limited_rows(
         evening.logged_drinks.select_related("account")
         .filter(
             account_id__in=participant_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
         )
-        .order_by("drank_at", "id")
+        .filter(_drink_visible_to_viewer(viewer))
+        .order_by("drank_at", "id"),
+        PARTY_RECORD_MAX_DRINKS,
     )
     for drink in diary_drinks:
-        drinks.append(
+        drink_candidates.append(
             {
                 "id": str(drink.client_id),
                 "source": "diary",
@@ -550,18 +725,29 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
             }
         )
 
-    legacy_drinks = list(
+    legacy_drinks, legacy_rows_truncated = _limited_rows(
         evening.shared_drinks.select_related("account")
         .filter(
             account_id__in=participant_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
         )
-        .order_by("shared_at", "id")
+        .filter(_drink_visible_to_viewer(viewer))
+        .order_by("shared_at", "id"),
+        PARTY_RECORD_MAX_DRINKS,
     )
+    legacy_candidates: list[dict] = []
+    legacy_expansion_truncated = False
     for drink in legacy_drinks:
-        for index in range(drink.quantity):
-            drinks.append(
+        available = PARTY_RECORD_MAX_DRINKS + 1 - len(legacy_candidates)
+        if available <= 0:
+            legacy_expansion_truncated = True
+            break
+        included_quantity = min(drink.quantity, available)
+        if included_quantity < drink.quantity:
+            legacy_expansion_truncated = True
+        for index in range(included_quantity):
+            legacy_candidates.append(
                 {
                     "id": f"legacy:{drink.client_id}:{index}",
                     "source": "legacy_party",
@@ -576,16 +762,29 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
                     "pub": None,
                 }
             )
-    drinks.sort(key=lambda item: (item["at"], item["id"]))
+    drink_candidates.extend(legacy_candidates)
+    drink_candidates.sort(key=lambda item: (item["at"], item["id"]))
+    drinks_truncated = (
+        diary_drinks_truncated
+        or legacy_rows_truncated
+        or legacy_expansion_truncated
+        or len(drink_candidates) > PARTY_RECORD_MAX_DRINKS
+    )
+    drinks = drink_candidates[:PARTY_RECORD_MAX_DRINKS]
 
-    photo_rows = list(
+    photo_rows, photos_truncated = _limited_rows(
         evening.party_photos.select_related("account")
         .filter(
             account_id__in=participant_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
         )
-        .order_by("taken_at", "id")
+        .filter(
+            Q(visibility=BeerPhoto.Visibility.FRIENDS)
+            | Q(account=viewer, visibility=BeerPhoto.Visibility.PRIVATE)
+        )
+        .order_by("taken_at", "id"),
+        PARTY_RECORD_MAX_PHOTOS,
     )
     photos = [
         {
@@ -605,23 +804,27 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
         for photo in photo_rows
     ]
 
-    game_rows = list(
+    game_rows, games_truncated = _limited_rows(
         evening.games.select_related("started_by")
         .filter(started_by_id__in=participant_ids)
-        .order_by("started_at", "id")
+        .order_by("started_at", "id"),
+        PARTY_RECORD_MAX_GAMES,
     )
     game_events: dict[int, list[PartyGameEvent]] = {game.pk: [] for game in game_rows}
+    game_events_truncated = False
     if game_rows:
-        for event in (
+        event_rows, game_events_truncated = _limited_rows(
             PartyGameEvent.objects.filter(
                 game_id__in=game_events,
                 account_id__in=participant_ids,
             )
+            .filter(Q(subject_id__isnull=True) | Q(subject_id__in=participant_ids))
             .select_related("game", "account", "subject")
-            .order_by("id")
-        ):
-            if event.subject_id is None or event.subject_id in participant_ids:
-                game_events[event.game_id].append(event)
+            .order_by("id"),
+            PARTY_RECORD_MAX_GAME_EVENTS,
+        )
+        for event in event_rows:
+            game_events[event.game_id].append(event)
 
     games: list[dict] = []
     finish_by_game: dict[int, PartyGameEvent] = {}
@@ -720,6 +923,8 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
                 }
             )
     timeline.sort(key=lambda event: (event["at"], event["id"]))
+    timeline_truncated = len(timeline) > PARTY_RECORD_MAX_TIMELINE_EVENTS
+    timeline = timeline[:PARTY_RECORD_MAX_TIMELINE_EVENTS]
 
     return {
         "id": str(evening.public_id),
@@ -733,6 +938,15 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
         "games": games,
         "photos": photos,
         "events": timeline,
+        "truncated": {
+            "participants": participants_truncated,
+            "stops": stops_truncated,
+            "drinks": drinks_truncated,
+            "photos": photos_truncated,
+            "games": games_truncated,
+            "game_events": game_events_truncated,
+            "events": timeline_truncated,
+        },
     }
 
 
@@ -745,7 +959,7 @@ class PartyEveningRecordView(APIView):
     throttle_scope = "friends_dashboard"
 
     def get(self, request: Request, code: str) -> Response:
-        evening = _member_evening(code, request.user)
+        evening = _record_evening(code, request.user)
         if not evening:
             return Response(
                 {"detail": "Party evening not found.", "code": "party_not_found"},
@@ -754,11 +968,39 @@ class PartyEveningRecordView(APIView):
         return Response(_serialize_party_record(evening, request.user, request))
 
 
-def game_events_since(evening: PartyEvening, since: int, limit: int = 200) -> list[PartyGameEvent]:
-    """Everything that happened in this evening's games after `since`, in order."""
-    return list(
-        PartyGameEvent.objects.filter(game__evening=evening, id__gt=since)
+def _visible_party_account_ids(evening: PartyEvening, viewer: Account) -> set[int]:
+    return set(_visible_participant_rows(evening, viewer).values_list("account_id", flat=True))
+
+
+def _visible_game_event_rows(
+    evening: PartyEvening,
+    participant_ids: set[int],
+):
+    return (
+        PartyGameEvent.objects.filter(
+            game__evening=evening,
+            game__started_by_id__in=participant_ids,
+            account_id__in=participant_ids,
+        )
+        .filter(Q(subject_id__isnull=True) | Q(subject_id__in=participant_ids))
         .select_related("game", "account", "subject")
+    )
+
+
+def game_events_since(
+    evening: PartyEvening,
+    viewer: Account,
+    since: int,
+    limit: int = 200,
+    *,
+    participant_ids: set[int] | None = None,
+) -> list[PartyGameEvent]:
+    """Visible events after ``since``; blocked or hidden profiles never serialize."""
+    if participant_ids is None:
+        participant_ids = _visible_party_account_ids(evening, viewer)
+    return list(
+        _visible_game_event_rows(evening, participant_ids)
+        .filter(id__gt=since)
         .order_by("id")[:limit]
     )
 
@@ -783,22 +1025,27 @@ class PartyGameCollectionView(APIView):
         except ValueError:
             since = 0
 
-        events = game_events_since(evening, since)
-        games = (
-            evening.games.select_related("started_by").order_by("started_at", "id")
-            if since == 0
-            # After the first load the client already has the games it knows
-            # about; only ones started since need to come down with the events.
-            else evening.games.select_related("started_by")
-            .filter(events__id__gt=since)
-            .distinct()
-            .order_by("started_at", "id")
+        participant_ids = _visible_party_account_ids(evening, request.user)
+        events = game_events_since(
+            evening,
+            request.user,
+            since,
+            participant_ids=participant_ids,
         )
-        latest = PartyGameEvent.objects.filter(game__evening=evening).order_by("-id").first()
+        games = evening.games.select_related("started_by", "evening").filter(
+            started_by_id__in=participant_ids
+        )
+        if since:
+            # After the first load the client already has the games it knows
+            # about; only games represented in this visible catch-up batch need
+            # to come down with their events.
+            games = games.filter(pk__in={event.game_id for event in events})
+        games = games.order_by("started_at", "id")
+        latest = _visible_game_event_rows(evening, participant_ids).order_by("-id").first()
         return Response(
             {
                 "cursor": events[-1].id if events else (latest.id if latest else since),
-                "games": [_serialize_game(game) for game in games],
+                "games": [_serialize_game(game, request.user) for game in games],
                 "events": [_serialize_game_event(event) for event in events],
             }
         )
@@ -814,21 +1061,117 @@ class PartyGameCollectionView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         data = serializer.validated_data
-        # Idempotent by (evening, client_id): a retry from a phone that never saw
-        # our 201 must not put the same game on the table twice.
-        game, created = PartyGame.objects.get_or_create(
-            evening=evening,
-            client_id=data["client_id"],
-            defaults={
-                "started_by": request.user,
-                "catalog_key": data["catalog_key"],
-                "name": data["name"],
-                "scoring": data["scoring"],
-                "started_at": data.get("started_at") or timezone.now(),
-            },
-        )
+        participant_ids = _visible_party_account_ids(evening, request.user)
+        # The whole table plays one copy of a catalogue game per evening. Lock
+        # the parent so two phones opening it together converge even without a
+        # schema change that could make legacy duplicate rows unmigratable.
+        with transaction.atomic():
+            locked_evening = PartyEvening.objects.select_for_update().get(pk=evening.pk)
+            if not locked_evening.active:
+                return Response(
+                    {"detail": "Party evening is not active.", "code": "party_not_active"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            game = (
+                locked_evening.games.filter(catalog_key=data["catalog_key"])
+                .order_by("started_at", "id")
+                .first()
+            )
+            if game is None:
+                # Preserve released idempotency if a buggy retry changed its
+                # catalogue payload while keeping the same client UUID.
+                game = locked_evening.games.filter(client_id=data["client_id"]).first()
+            created = game is None
+            if game is None:
+                active_memberships = list(
+                    _visible_participant_rows(locked_evening, request.user)
+                    .select_for_update()
+                    .filter(active=True)
+                )
+                active_roster_ids = [
+                    str(membership.account.public_id)
+                    for membership in active_memberships
+                ]
+                if "roster_ids" in data:
+                    roster_account_ids = [str(value) for value in data["roster_ids"]]
+                    unknown_ids = set(roster_account_ids) - set(active_roster_ids)
+                    if unknown_ids:
+                        return Response(
+                            {
+                                "detail": "Sestava obsahuje někoho, kdo už u stolu není.",
+                                "code": "roster_member_not_active",
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                else:
+                    # Released clients have no lobby field on the wire. The
+                    # server still freezes one canonical roster so every newer
+                    # phone sees the same entrants.
+                    roster_account_ids = active_roster_ids
+                game = PartyGame.objects.create(
+                    evening=locked_evening,
+                    client_id=data["client_id"],
+                    started_by=request.user,
+                    catalog_key=data["catalog_key"],
+                    name=data["name"],
+                    scoring=data["scoring"],
+                    roster_account_ids=roster_account_ids,
+                    started_at=data.get("started_at") or timezone.now(),
+                )
+            elif not game.roster_account_ids:
+                # A new client first places the game with an explicit empty
+                # roster, then the first confirmed lobby binds it. Locking the
+                # evening above makes that first non-empty selection win even
+                # when two phones open the lobby together. Released clients
+                # omit the field, so they still get the whole active table.
+                requested_roster = data.get("roster_ids")
+                if requested_roster is None:
+                    requested_roster = [
+                        membership.account.public_id
+                        for membership in _visible_members(locked_evening, request.user)
+                    ]
+                roster_account_ids = [str(value) for value in requested_roster]
+                if roster_account_ids:
+                    active_roster_ids = {
+                        str(membership.account.public_id)
+                        for membership in _visible_participant_rows(
+                            locked_evening,
+                            request.user,
+                        ).filter(active=True)
+                    }
+                    unknown_ids = set(roster_account_ids) - active_roster_ids
+                    if unknown_ids:
+                        return Response(
+                            {
+                                "detail": "Sestava obsahuje někoho, kdo už u stolu není.",
+                                "code": "roster_member_not_active",
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                    game.roster_account_ids = roster_account_ids
+                    game.save(update_fields=["roster_account_ids"])
+            # The event id is the shared cursor. Without an event, a game row
+            # created after another phone's initial catch-up is invisible until
+            # somebody actually plays. A deterministic system event makes the
+            # creation observable through the existing SSE/catch-up contract
+            # and keeps retries free. Old clients parse unknown kinds as a
+            # zero-delta score, which is intentionally harmless.
+            PartyGameEvent.objects.get_or_create(
+                game=game,
+                client_id=uuid.uuid5(game.client_id, "na-pivo-party-game-start"),
+                defaults={
+                    "account": game.started_by,
+                    "kind": PartyGameEvent.Kind.START,
+                    "created_at": game.started_at,
+                },
+            )
+        if game.started_by_id not in participant_ids:
+            return Response(
+                {"detail": "Game not found.", "code": "game_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         return Response(
-            _serialize_game(game),
+            _serialize_game(game, request.user),
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
@@ -851,47 +1194,133 @@ class PartyGameEventView(APIView):
                 {"detail": "Party evening is not active.", "code": "party_not_active"},
                 status=status.HTTP_409_CONFLICT,
             )
-        game = evening.games.filter(public_id=game_id).first()
+        participant_ids = _visible_party_account_ids(evening, request.user)
+        game = evening.games.filter(
+            public_id=game_id,
+            started_by_id__in=participant_ids,
+        ).first()
         if not game:
             return Response(
                 {"detail": "Game not found.", "code": "game_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        participant_memberships = _visible_participants(evening, request.user)
+        frozen_roster_ids = {
+            str(value) for value in (game.roster_account_ids or [])
+        }
+        roster_ids = frozen_roster_ids or {
+            str(member.account.public_id)
+            for member in participant_memberships
+            if member.active
+        }
+        # Scores may still name somebody who left after the game began. New
+        # table members, on the other hand, do not join a quiz halfway through.
         members = {
             str(member.account.public_id): member.account
-            for member in _visible_members(evening, request.user)
+            for member in participant_memberships
+            if str(member.account.public_id) in roster_ids
         }
-        written: list[PartyGameEvent] = []
+        requester_is_entrant = str(request.user.public_id) in roster_ids
+        requester_is_bound_entrant = str(request.user.public_id) in frozen_roster_ids
+        candidate_items = []
         for item in serializer.validated_data["events"]:
             subject = members.get(str(item.get("subject_id"))) if item.get("subject_id") else None
             if item["kind"] == "score" and subject is None:
-                # Scoring for somebody who is not at the table is not an error
-                # worth failing the batch over — it is a stale phone. Skip it and
-                # let the rest through, or one departed member jams the queue.
+                # Scoring somebody outside the frozen lobby is not an error
+                # worth failing the batch over — it is a stale phone. Skip it
+                # and let the rest through.
                 continue
-            try:
-                with transaction.atomic():
-                    event = PartyGameEvent.objects.create(
-                        game=game,
-                        account=request.user,
-                        client_id=item["client_id"],
-                        kind=item["kind"],
-                        subject=subject,
-                        delta=item.get("delta") or 0,
-                        payload=item.get("payload") or {},
-                        created_at=item.get("created_at") or timezone.now(),
-                    )
-            except IntegrityError:
-                # Already have it. A retried event must not double-count, which
-                # is the whole reason `client_id` is on the row.
+            if item["kind"] == "answer" and not requester_is_entrant:
+                # An active table member may watch a game they sat out, but the
+                # frozen lobby roster — not today's membership — decides who
+                # can commit a quiz answer.
                 continue
-            written.append(event)
-            if event.kind == PartyGameEvent.Kind.FINISH and game.ended_at is None:
-                game.ended_at = event.created_at
-                game.save(update_fields=["ended_at"])
+            if item["kind"] == "action" and not requester_is_bound_entrant:
+                # Empty roster means the cover is merely on the table. Gameplay
+                # starts only after one lobby atomically binds its players.
+                continue
+            candidate_items.append((item, subject))
 
-        latest = PartyGameEvent.objects.filter(game__evening=evening).order_by("-id").first()
+        written: list[PartyGameEvent] = []
+        with transaction.atomic():
+            # Every event writer takes the evening lock first, then its game.
+            # That serialises the per-evening budget even when two games receive
+            # offline batches at once, without relying on an eventually
+            # consistent count.
+            locked_evening = PartyEvening.objects.select_for_update().get(pk=evening.pk)
+            if not locked_evening.active:
+                return Response(
+                    {"detail": "Party evening is not active.", "code": "party_not_active"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            locked_game = PartyGame.objects.select_for_update().get(pk=game.pk)
+
+            requested_ids = {item["client_id"] for item, _subject in candidate_items}
+            existing_ids = set(
+                locked_game.events.filter(client_id__in=requested_ids).values_list(
+                    "client_id", flat=True
+                )
+            )
+            new_event_count = len(requested_ids - existing_ids)
+            # The one server-owned start envelope is transport bookkeeping, not
+            # part of the player's event allowance.
+            game_event_count = locked_game.events.exclude(
+                kind=PartyGameEvent.Kind.START
+            ).count()
+            if (
+                new_event_count
+                and game_event_count + new_event_count > PARTY_GAME_EVENT_MAX_PER_GAME
+            ):
+                return Response(
+                    {
+                        "detail": "Tahle hra už má maximum událostí.",
+                        "code": "game_event_limit_reached",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            evening_event_count = PartyGameEvent.objects.filter(
+                game__evening=locked_evening
+            ).exclude(kind=PartyGameEvent.Kind.START).count()
+            if (
+                new_event_count
+                and evening_event_count + new_event_count > PARTY_GAME_EVENT_MAX_PER_EVENING
+            ):
+                return Response(
+                    {
+                        "detail": "Tenhle večer už má maximum herních událostí.",
+                        "code": "evening_event_limit_reached",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            seen_ids = set(existing_ids)
+            for item, subject in candidate_items:
+                if item["client_id"] in seen_ids:
+                    continue
+                try:
+                    with transaction.atomic():
+                        event = PartyGameEvent.objects.create(
+                            game=locked_game,
+                            account=request.user,
+                            client_id=item["client_id"],
+                            kind=item["kind"],
+                            subject=subject,
+                            delta=item.get("delta") or 0,
+                            payload=item.get("payload") or {},
+                            created_at=item.get("created_at") or timezone.now(),
+                        )
+                except IntegrityError:
+                    # Already have it. A retried event must not double-count,
+                    # which is the whole reason `client_id` is on the row.
+                    continue
+                seen_ids.add(item["client_id"])
+                written.append(event)
+                if event.kind == PartyGameEvent.Kind.FINISH and locked_game.ended_at is None:
+                    locked_game.ended_at = event.created_at
+                    locked_game.save(update_fields=["ended_at"])
+
+        latest = _visible_game_event_rows(evening, participant_ids).order_by("-id").first()
         return Response(
             {
                 "cursor": latest.id if latest else 0,
@@ -956,6 +1385,17 @@ def _account_for_stream(request) -> Account | None:
     return result[0] if result else None
 
 
+def _stream_game_events(request, code: str, cursor: int) -> list[PartyGameEvent] | None:
+    """Reauthenticate and reauthorize immediately before every stream query."""
+    account = _account_for_stream(request)
+    if account is None:
+        return None
+    evening = _member_evening(code, account)
+    if evening is None:
+        return None
+    return game_events_since(evening, account, cursor)
+
+
 async def party_game_stream(request, code: str):
     """`GET .../games/stream?since=<cursor>` — the same events, as they happen."""
     account = await sync_to_async(_account_for_stream, thread_sensitive=True)(request)
@@ -993,7 +1433,16 @@ async def party_game_stream(request, code: str):
         yield _frame("open", {"cursor": cursor})
 
         while time.monotonic() - started < _STREAM_SECONDS:
-            events = await sync_to_async(game_events_since, thread_sensitive=True)(evening, cursor)
+            events = await sync_to_async(_stream_game_events, thread_sensitive=True)(
+                request,
+                code,
+                cursor,
+            )
+            # Tokens can be revoked and memberships/access can change while an
+            # SSE response is open. Stop before querying or serializing another
+            # event as soon as any of those checks fails.
+            if events is None:
+                return
             if events:
                 for event in events:
                     payload = await sync_to_async(_serialize_game_event, thread_sensitive=True)(

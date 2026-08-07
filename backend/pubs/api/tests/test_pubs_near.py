@@ -811,6 +811,95 @@ def test_beer_brand_filter_returns_empty_when_no_local_signals(client):
 
 
 @pytest.mark.django_db
+def test_multi_beer_filter_returns_any_selected_brand_and_acknowledges_contract(client):
+    pilsner, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell", defaults={"name": "Pilsner Urquell"}
+    )
+    radegast, _ = BeerBrand.objects.get_or_create(
+        key="radegast", defaults={"name": "Radegast"}
+    )
+    kozel, _ = BeerBrand.objects.get_or_create(
+        key="velkopopovicky-kozel", defaults={"name": "Kozel"}
+    )
+    rows = [
+        ("U Plzně", 50.080, 14.420, pilsner),
+        ("U Radegastu", 50.081, 14.421, radegast),
+        ("U Kozla", 50.082, 14.422, kozel),
+    ]
+    for name, lat, lng, brand in rows:
+        PubBeerBrand.objects.create(
+            cache_key=geohash8(lat, lng),
+            name=name,
+            lat=lat,
+            lng=lng,
+            brand=brand,
+            brand_key=brand.key,
+            brand_name=brand.name,
+            source=PubBeerBrand.Source.COMMUNITY,
+        )
+    # One physical pub can carry a signal for both selected brands; it still
+    # belongs in the response only once.
+    PubBeerBrand.objects.create(
+        cache_key=geohash8(50.080, 14.420),
+        name="U Plzně",
+        lat=50.080,
+        lng=14.420,
+        brand=radegast,
+        brand_key=radegast.key,
+        brand_name=radegast.name,
+        source=PubBeerBrand.Source.DRINK,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "beer_brands": "radegast,pilsner-urquell,radegast",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["items"]]
+    assert set(names) == {"U Plzně", "U Radegastu"}
+    assert len(names) == 2
+    assert resp.json()["applied_filters"] == {
+        "version": 3,
+        "match": "all",
+        "amenities": [],
+        "beer_brand": None,
+        "beer_brands": ["radegast", "pilsner-urquell"],
+        "beer_match": "any",
+    }
+
+
+@pytest.mark.django_db
+def test_multi_beer_filter_rejects_unknown_and_over_limit_brands(client, settings):
+    for key in ("pilsner-urquell", "radegast", "gambrinus"):
+        BeerBrand.objects.get_or_create(key=key, defaults={"name": key})
+    settings.PUBS_NEAR_MAX_BEER_FILTERS = 2
+
+    unknown = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "beer_brands": "pilsner-urquell,not-a-beer"},
+    )
+    too_many = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "beer_brands": "pilsner-urquell,radegast,gambrinus",
+        },
+    )
+
+    assert unknown.status_code == status.HTTP_400_BAD_REQUEST
+    assert "not-a-beer" in str(unknown.json()["beer_brands"])
+    assert too_many.status_code == status.HTTP_400_BAD_REQUEST
+    assert "At most 2" in str(too_many.json()["beer_brands"])
+
+
+@pytest.mark.django_db
 def test_beer_brand_filter_keeps_nearest_pub_over_recent_far_rows(client):
     brand, _ = BeerBrand.objects.get_or_create(
         key="pilsner-urquell",

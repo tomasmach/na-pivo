@@ -14,7 +14,8 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 
@@ -84,7 +85,7 @@ interface CommunityState {
 
 export const useCommunityStore = create<CommunityState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       overrides: {},
 
       setOverride: (cell, patch) =>
@@ -114,7 +115,7 @@ export const useCommunityStore = create<CommunityState>()(
           };
           return { overrides: { ...state.overrides, [cell]: next } };
         }),
-    }),
+    })),
     {
       name: 'na-pivo-community',
       storage: createJSONStorage(() => AsyncStorage),

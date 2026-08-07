@@ -17,6 +17,7 @@
 import {
   beerPhotoFromWire,
   deleteBeerPhoto,
+  deleteBeerPhotoByClientId,
   fetchFriendBeerPhotos,
   fetchMyBeerPhotos,
   resolveBeerPhotoUrl,
@@ -99,6 +100,7 @@ const FIELDS: BeerPhotoUploadFields = {
   pubCacheKey: 'u2fkbnhq',
   pubName: 'U Palmy',
   pubCity: 'Brno',
+  partyCode: 'PIVOXY',
   visibility: 'friends',
   takenAt: '2026-07-01T19:00:00.000Z',
 };
@@ -199,6 +201,7 @@ describe('uploadBeerPhoto', () => {
       pub_cache_key: 'u2fkbnhq',
       pub_name: 'U Palmy',
       pub_city: 'Brno',
+      party_code: 'PIVOXY',
       visibility: 'friends',
       taken_at: '2026-07-01T19:00:00.000Z',
     });
@@ -221,6 +224,7 @@ describe('uploadBeerPhoto', () => {
       pub_cache_key: '',
       pub_name: '',
       pub_city: '',
+      party_code: '',
       visibility: 'private',
       taken_at: '2026-07-01T19:00:00.000Z',
     });
@@ -319,6 +323,37 @@ describe('deleteBeerPhoto', () => {
     const result = await deleteBeerPhoto('p1');
 
     expect(result).toEqual({ ok: false, code: 'not_found', detail: 'Fotka neexistuje.' });
+  });
+});
+
+describe('deleteBeerPhotoByClientId', () => {
+  it('uses the durable idempotent by-client endpoint', async () => {
+    const fetchSpy = fetchResolving(204, undefined);
+
+    await expect(deleteBeerPhotoByClientId('client/1')).resolves.toBe(true);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.test/v1/beer-photos/by-client/client%2F1',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ Authorization: 'Bearer cur-tok' }),
+      }),
+    );
+  });
+
+  it('keeps every failure retryable, including an older backend 404', async () => {
+    fetchResolving(404, { code: 'photo_not_found' });
+
+    await expect(deleteBeerPhotoByClientId('c1')).resolves.toBe(false);
+  });
+
+  it('accepts cleanup-pending because the privacy tombstone is already durable', async () => {
+    fetchResolving(503, {
+      code: 'photo_cleanup_pending',
+      detail: 'Fotka je skrytá, soubor ještě uklízíme.',
+    });
+
+    await expect(deleteBeerPhotoByClientId('c1')).resolves.toBe(true);
   });
 });
 

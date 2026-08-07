@@ -6,6 +6,10 @@ def deduplicate_published_nights(apps, schema_editor):
     PublishedNight = apps.get_model("pubs", "PublishedNight")
     NightRound = apps.get_model("pubs", "NightRound")
 
+    for night in PublishedNight.objects.all().iterator():
+        aliases = list(dict.fromkeys([*(night.client_aliases or []), night.client_id]))
+        PublishedNight.objects.filter(pk=night.pk).update(client_aliases=aliases)
+
     duplicates = (
         PublishedNight.objects.values("account_id", "drinking_day")
         .annotate(row_count=Count("id"))
@@ -19,7 +23,10 @@ def deduplicate_published_nights(apps, schema_editor):
             ).order_by("-updated_at", "-id")
         )
         keeper, *removed = rows
+        aliases = list(keeper.client_aliases or [])
         for duplicate in removed:
+            aliases.extend(duplicate.client_aliases or [])
+            aliases.append(duplicate.client_id)
             reacting_account_ids = NightRound.objects.filter(
                 night_id=duplicate.id
             ).values_list("account_id", flat=True)
@@ -30,6 +37,8 @@ def deduplicate_published_nights(apps, schema_editor):
                         account_id=account_id,
                     )
             duplicate.delete()
+        keeper.client_aliases = list(dict.fromkeys([*aliases, keeper.client_id]))
+        keeper.save(update_fields=["client_aliases"])
 
 
 class Migration(migrations.Migration):
@@ -38,6 +47,15 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AddField(
+            model_name="publishednight",
+            name="client_aliases",
+            field=models.JSONField(
+                blank=True,
+                default=list,
+                help_text="All released client ids that have addressed this drinking day.",
+            ),
+        ),
         migrations.RunPython(deduplicate_published_nights, migrations.RunPython.noop),
         migrations.RemoveIndex(
             model_name="publishednight",

@@ -13,8 +13,10 @@ Sdílený stůl je čtenář těchto řádků, ne druhé místo na zápis.
 - `POST /v1/drinks` přijímá volitelný `party_code`.
 - Kód se **nikdy** nevaliduje tak, aby mohl zápis odmítnout. Neznámý, cizí nebo
   už ukončený večer se tiše ignoruje a pivo se uloží.
-- `PartyEveningDrink` a `POST /party-evenings/<code>/drinks` zůstávají
-  nedotčené. Vydané appky je volají a nejde je updatnout.
+- `PartyEveningDrink` a `POST /party-evenings/<code>/drinks` zůstávají dostupné
+  se stejným request payloadem pro vydané appky. Při vypnutém
+  `share_drinks_with_parta` server explicitní sdílení odmítne a už existující
+  řádky ukáže jen jejich vlastníkovi.
 - Večer skládá časovou osu ze **dvou zdrojů**: `PartyEveningDrink` (staré
   appky) a `DrinkLog.party_evening` (současná). Duplicity nevznikají, protože
   žádný klient nepíše do obou.

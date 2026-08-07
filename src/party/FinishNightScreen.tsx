@@ -1,169 +1,217 @@
-/**
- * DESIGN MOCK — the screen between the last beer and the post.
- *
- * Strava's save-activity screen, in a pub: the night's numbers, then the few
- * things only you can add — what to call it, photos, a note — and then publish.
- *
- * The one thing that is ours is the ROAST TOGGLE. With it on, the caption is
- * written from the data rather than by you, and it takes the piss. That is the
- * product's voice, and it is also the honest framing of an automatic caption:
- * you are handing the mic over, so it is a switch you flip, defaulted ON because
- * it is why the feed is worth reading — but one tap to take back.
- *
- * The generator itself is `roast.ts`, the same rules the feed card uses, so the
- * line you approve here IS the line that gets posted. Nothing regenerates behind
- * your back. When the rules have nothing fair to say, the toggle is disabled and
- * says so rather than inventing something — a roast that is not true about this
- * night is just a random insult.
- */
+/** Review and publish the real shared night. */
 
 import React from 'react';
-import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { CameraIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
-import { buildRoast } from '@/feed/roast';
-import { usePublishedStore } from '@/mocks/publishedStore';
+import { CameraIcon, XIcon } from '@/components/shared/IconGlyph';
 import {
   isRetriableNightError,
   publishNight as publishNightToServer,
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
-import { nightPublishPayload } from '@/party/nightPublish';
-import { nightByBeer, nightMe, nightTally } from '@/party/nightRecord';
-import { useNightRecord } from '@/party/useNightRecord';
+import { buildRoast } from '@/feed/roast';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
+import { nightPhotoReferences, nightPublishPayload } from '@/party/nightPublish';
+import { nightByBeer, nightMe, nightMinutes, nightTally } from '@/party/nightRecord';
+import { rememberNightRecord, useNightRecord } from '@/party/useNightRecord';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import { useAccountStore } from '@/stores/accountStore';
+import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { usePartyGamesStore } from '@/stores/partyGamesStore';
+import { drinkingDayKey, useTallyStore } from '@/stores/tallyStore';
 import { StatGrid } from '@/mocks/StatGrid';
-import {
-  formatElapsed,
-  useLivePartyStore,
-  useNightClock,
-} from '@/mocks/livePartyStore';
+import { formatElapsed, useLivePartyStore, useNightClock } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-/** Illustrative only — real ones come from `BeerPhoto`. MUST NOT ship. */
-const PHOTOS = [
-  'https://picsum.photos/seed/napivo-1/300/300',
-  'https://picsum.photos/seed/napivo-2/300/300',
-  'https://picsum.photos/seed/napivo-3/300/300',
-  'https://picsum.photos/seed/napivo-4/300/300',
-];
+function currentTime(): number {
+  return Date.now();
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function usualBeerPace(
+  history: ReturnType<typeof useTallyStore.getState>['history'],
+): number | null {
+  const rates = history.flatMap((session) => {
+    const beers = session.drinks.filter((drink) => (drink.drinkType ?? 'beer') === 'beer');
+    if (beers.length < 2) return [];
+    const stamps = beers.map((drink) => Date.parse(drink.at)).filter(Number.isFinite).sort((a, b) => a - b);
+    if (stamps.length < 2) return [];
+    const hours = Math.max(0.5, (stamps.at(-1)! - stamps[0]) / 3_600_000);
+    return [beers.length / hours];
+  });
+  if (rates.length === 0) return null;
+  return rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
+}
 
 export default function FinishNightScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-
-  const startedAt = useLivePartyStore((s) => s.startedAt);
-  const minutes = useNightClock(startedAt);
-  const photos = useLivePartyStore((s) => s.photos);
-  const games = useLivePartyStore((s) => s.games);
-  const pubName = useLivePartyStore((s) => s.pubName);
-  const endParty = useLivePartyStore((s) => s.end);
-  // Closing the shared evening too, when there is one. Leaving it open would
-  // leave the table joinable by a code for a night that is already published.
-  const endEvening = usePartyEveningStore((s) => s.end);
-  const publishNight = usePublishedStore((s) => s.publish);
-
-  const [title, setTitle] = React.useState('');
-  const [note, setNote] = React.useState('');
-  const [roastOn, setRoastOn] = React.useState(true);
-
-  const played = games.filter((game) => game.result);
-  // The night as data — the same record the hub was showing a moment ago, so
-  // what you publish is what you were looking at.
   const night = useNightRecord();
+  const accountId = useAccountStore((state) => state.session?.accountId);
+
+  const clockStartedAt = useLivePartyStore((state) => state.startedAt);
+  const clockMinutes = useNightClock(clockStartedAt);
+  const endParty = useLivePartyStore((state) => state.end);
+  const evening = usePartyEveningStore((state) => state.evening);
+  const confirmedIdentity = usePartyEveningStore((state) => state.confirmedIdentity);
+  const endEvening = usePartyEveningStore((state) => state.end);
+  const leaveEvening = usePartyEveningStore((state) => state.leave);
+  const archiveCurrent = useTallyStore((state) => state.archiveCurrent);
+  const history = useTallyStore((state) => state.history);
+  const ownPhotos = useBeerPhotosStore((state) => state.photos);
+  const sharedGames = usePartyGamesStore((state) => state.games);
+
+  const [photoOpen, setPhotoOpen] = React.useState(false);
+  const [publishing, setPublishing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const now = night.endedAt
+    ? new Date(night.endedAt).getTime()
+    : clockStartedAt !== null
+      ? clockStartedAt + clockMinutes * 60_000
+      : new Date(night.startedAt).getTime();
+  const minutes = nightMinutes(night, now);
   const me = nightMe(night);
   const people = night.people.slice(1);
-  const beerCount = nightTally(night).beers;
+  const tally = nightTally(night);
   const byType = nightByBeer({
     ...night,
     drinks: night.drinks.filter((drink) => drink.by === me?.id),
-  }).map((row) => ({ beer: row.beer, count: row.count }));
-
-  // The same rules the feed card runs, on this night's real numbers.
-  const roast = buildRoast({
-    beers: beerCount,
-    duration: minutes,
-    pubs: 1,
-    people: people.length + 1,
-    photos,
-    games: played.length,
-    gamesWon: played.filter((game) => game.result?.winner === 'Ty').length,
-    // No history in the mock, so the tempo rules stay silent — which is exactly
-    // what should happen on a first night.
-    usualPerHour: 1.6,
-    visitsToSamePub: 1,
   });
-
-  const fallbackTitle = `Večer v ${pubName || 'hospodě'}`;
-  const caption = roastOn && roast ? roast.line : title.trim() || fallbackTitle;
-
-  const publish = () => {
-    // Built BEFORE `endParty()`, which resets the live store — the whole point
-    // of publishing is that the evening outlives the night that made it.
-    publishNight({
-      id: `mine-${startedAt ?? 0}`,
-      author: 'Ty',
-      authorTint: Colors.amber,
-      when: 'právě teď',
-      title: title.trim() || fallbackTitle,
-      note: note.trim() || undefined,
-      stops: [{ name: pubName, lat: 50.0785, lng: 14.42 }],
-      beers: beerCount,
-      duration: formatElapsed(minutes),
-      people: [
-        // No avatar url: `Face` falls back to the initial on a tint, which is
-        // what a real table looks like anyway — half of them never set a photo.
-        { name: 'Ty', tint: Colors.amber, avatar: '' },
-        ...people.map((person) => ({ name: person.name, tint: person.tint, avatar: '' })),
-      ],
-      photos,
-      cheers: 0,
-      comments: 0,
-      highlight:
-        played.length > 0 && played[0].result
-          ? {
-              kind: 'game',
-              game: played[0].name,
-              winner: played[0].result.winner ?? '—',
-              scores: played[0].result.scores,
-            }
-          : { kind: 'map' },
-      durationMinutes: minutes,
+  const played = night.games.filter((game) => game.result);
+  const partyCode = evening?.joinCode ?? confirmedIdentity?.joinCode ?? night.code ?? undefined;
+  const partyDrinkingDay = drinkingDayKey(new Date(night.startedAt));
+  const defaultTitle = night.stops[0]?.pubName
+    ? `Večer v ${night.stops[0].pubName}`
+    : 'Pivní večer';
+  const roast = React.useMemo(
+    () => buildRoast({
+      beers: tally.beers,
+      duration: minutes,
+      pubs: new Set(night.stops.map((stop) => stop.pubName)).size,
+      people: night.people.length,
+      photos: night.photos.length,
       games: played.length,
-      gamesWon: played.filter((game) => game.result?.winner === 'Ty').length,
-      // Roast off means the night keeps its own words: the rules read this and
-      // stay silent, rather than the card having to know about a toggle.
-      usualPerHour: roastOn ? 1.6 : null,
-      visitsToSamePub: 1,
-    });
-    // …and to the feed that actually exists. The card above is the optimistic
-    // local copy so Kocoviny has something at the top the moment you land
-    // there; this is the post itself, through the same endpoint and the same
-    // durable queue the Výčep publishes with. One night, one row, keyed by the
-    // drinking day — publishing the same night twice updates it.
+      gamesWon: played.filter((game) => game.result?.winner === me?.name).length,
+      usualPerHour: usualBeerPace(history),
+      visitsToSamePub: history.filter(
+        (session) => session.pubName === night.stops[0]?.pubName,
+      ).length,
+    }),
+    [history, me?.name, minutes, night.people.length, night.photos.length, night.stops, played, tally.beers],
+  );
+  const [roastEnabled, setRoastEnabled] = React.useState(() => roast !== null);
+  const [customTitle, setCustomTitle] = React.useState(defaultTitle);
+  const publishTitle = roastEnabled && roast ? roast.line : customTitle.trim() || defaultTitle;
+
+  const closeSharedEvening = async (published: boolean): Promise<boolean> => {
+    const isHost = evening?.isHost ?? confirmedIdentity?.isHost;
+    if (isHost === undefined) return true;
+    const closed = isHost ? await endEvening() : await leaveEvening();
+    if (closed) return true;
+    setError(
+      published
+        ? isHost
+          ? 'Příspěvek je uložený, ale stůl se nepodařilo zavřít. Zkus to znovu.'
+          : 'Příspěvek je uložený, ale od stolu se nepodařilo odejít. Zkus to znovu.'
+        : isHost
+          ? 'Stůl se nepodařilo zavřít. Zkus to znovu.'
+          : 'Od stolu se nepodařilo odejít. Zkus to znovu.',
+    );
+    return false;
+  };
+
+  const finishLocally = async (endedAt: string): Promise<void> => {
+    // Persist the private recap before clearing the live stores or navigating.
+    await rememberNightRecord({ ...night, endedAt }, accountId);
+    archiveCurrent('manual');
+    endParty();
+    router.replace('/friends/party-recap' as Href);
+  };
+
+  const publish = async () => {
+    if (publishing) return;
+    setPublishing(true);
+    setError(null);
+    const photoIds = nightPhotoReferences(
+      ownPhotos,
+      partyCode,
+      partyDrinkingDay,
+    );
     const payload = nightPublishPayload(night, {
       visibility: 'friends',
-      now: (startedAt ?? 0) + minutes * 60000,
+      now: currentTime(),
+      city: evening?.pubCity || undefined,
+      ownerId: accountId ?? me?.id,
+      title: publishTitle,
+      roastLine: roastEnabled && roast ? roast.line : '',
+      roastBasis: roastEnabled && roast ? roast.basis : '',
+      ...(photoIds.length > 0 ? { photoIds } : {}),
+      ...(partyCode ? {
+        partyCode,
+        participantIds: night.people
+          .map((person) => person.id)
+          .filter(
+            (id, index, all) =>
+              id !== accountId && UUID_RE.test(id) && all.indexOf(id) === index,
+          )
+          .slice(0, 8),
+        gameIds: sharedGames
+          .map((game) => game.id)
+          .filter((id, index, all) => UUID_RE.test(id) && all.indexOf(id) === index)
+          .slice(0, 3),
+      } : {}),
     });
-    void publishNightToServer(payload).then((result) => {
-      // Offline is the normal case at the end of an evening. The queue will
-      // land it; nothing is lost and nobody is told to try again.
-      if (!result.ok && isRetriableNightError(result)) {
-        void enqueueNightOp({ op: 'publish', payload });
+    const result = await publishNightToServer(payload);
+    if (!result.ok) {
+      if (isRetriableNightError(result)) {
+        const queued = await enqueueNightOp({ op: 'publish', payload });
+        if (!queued) {
+          setError('Příspěvek se nepodařilo bezpečně uložit. Zkus to znovu.');
+          setPublishing(false);
+          return;
+        }
+      } else {
+        setError(result.detail);
+        setPublishing(false);
+        return;
       }
-    });
+    }
 
-    endParty();
-    void endEvening();
-    // Into Kocoviny, not back to a recap: you published to a feed, so the feed
-    // with your night at the top of it is the proof that it worked.
-    router.replace('/friends' as Href);
+    // A host closes the table; a guest only leaves it. The record hook has a
+    // last-good snapshot before either membership-changing call runs.
+    if (!(await closeSharedEvening(true))) {
+      setPublishing(false);
+      return;
+    }
+    await finishLocally(payload.endedAt);
+  };
+
+  const finishPrivately = async () => {
+    if (publishing) return;
+    setPublishing(true);
+    setError(null);
+    if (!(await closeSharedEvening(false))) {
+      setPublishing(false);
+      return;
+    }
+    await finishLocally(new Date(currentTime()).toISOString());
   };
 
   return (
@@ -187,111 +235,38 @@ export default function FinishNightScreen() {
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* The numbers first, because that is what you are here to confirm. */}
         <StatGrid
           columns={4}
           compact
           stats={[
-            { label: 'Piva', value: String(beerCount) },
+            { label: 'Piva', value: String(tally.beers) },
             { label: 'Večer', value: formatElapsed(minutes) },
             { label: 'U stolu', value: String(people.length + 1) },
             { label: 'Druhů', value: String(byType.length) },
           ]}
         />
 
-        {/* The switch that hands the caption over. */}
-        <View style={styles.roastCard}>
-          <View style={styles.roastHead}>
-            <View style={styles.medallion}>
-              <SparklesIcon size={17} color={Colors.amber} />
-            </View>
-            <View style={styles.grow}>
-              <Text style={styles.roastTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                Roast
-              </Text>
-              <Text style={styles.roastSub} maxFontSizeMultiplier={FontScaleCap.body}>
-                {roast
-                  ? 'Popisek napíšeme z dat. A nebudeme se šetřit.'
-                  : 'Dneska nemáme co vyčítat. Napiš si to sám.'}
-              </Text>
-            </View>
-            <Switch
-              value={roastOn && Boolean(roast)}
-              onValueChange={setRoastOn}
-              disabled={!roast}
-              trackColor={{ false: withAlpha(Colors.foam, 0.16), true: Colors.amber }}
-              thumbColor={Colors.foam}
-              accessibilityLabel="Nechat popisek napsat z dat"
-            />
-          </View>
-
-          {roastOn && roast ? (
-            <View style={styles.roastPreview}>
-              <Text style={styles.roastLine} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {roast.line}
-              </Text>
-              <Text style={styles.roastBasis} maxFontSizeMultiplier={FontScaleCap.body}>
-                {roast.basis}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Only offered when the roast is off — two captions competing for one
-            slot is the ambiguity the toggle exists to remove. */}
-        {roastOn && roast ? null : (
-          <View style={styles.field}>
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              Jak to nazveme
-            </Text>
-            <TextInput
-              value={title}
-              onChangeText={setTitle}
-              placeholder={fallbackTitle}
-              placeholderTextColor={MockColors.fieldHint}
-              style={styles.input}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-          </View>
-        )}
-
         <View style={styles.field}>
           <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
             Fotky
           </Text>
-          <View style={styles.photoRow}>
-            {/* Round, like the hub's controls — adding a photo is an action, and
-                actions in this product are discs. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.photoRow}
+          >
             <Pressable
+              onPress={() => setPhotoOpen(true)}
               style={({ pressed }) => [styles.addPhoto, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel="Přidat fotku"
             >
               <CameraIcon size={20} color={Colors.stout} />
             </Pressable>
-            {Array.from({ length: Math.max(photos, 3) }).map((_, index) => (
-              <Image
-                key={index}
-                source={{ uri: PHOTOS[index % PHOTOS.length] }}
-                style={styles.photo}
-              />
+            {night.photos.map((photo) => (
+              <Image key={photo.id} source={{ uri: photo.url }} style={styles.photo} />
             ))}
-          </View>
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-            Poznámka
-          </Text>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Co se stalo, co se nesmí opakovat…"
-            placeholderTextColor={MockColors.fieldHint}
-            style={[styles.input, styles.noteInput]}
-            multiline
-            maxFontSizeMultiplier={FontScaleCap.body}
-          />
+          </ScrollView>
         </View>
 
         {played.length > 0 ? (
@@ -300,44 +275,113 @@ export default function FinishNightScreen() {
               Hry
             </Text>
             {played.map((game) => (
-              <Text
-                key={game.key}
-                style={styles.gameLine}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {game.result?.winner
-                  ? `${game.name} — vyhrál ${game.result.winner}`
-                  : `${game.name} — odehráno`}
+              <Text key={`${game.key}:${game.startedAt}`} style={styles.gameLine}>
+                {game.result?.paying
+                  ? `${game.name} — platí ${game.result.paying}`
+                  : game.result?.winner
+                    ? `${game.name} — vyhrál ${game.result.winner}`
+                    : `${game.name} — odehráno`}
               </Text>
             ))}
           </View>
         ) : null}
+
+        <View style={styles.field}>
+          <View style={styles.roastRow}>
+            <Text style={styles.roastLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              Roast večera
+            </Text>
+            <Switch
+              value={roastEnabled && roast !== null}
+              disabled={roast === null}
+              onValueChange={setRoastEnabled}
+              trackColor={{ false: withAlpha(Colors.foam, 0.14), true: Colors.amber }}
+              thumbColor={Colors.foam}
+              accessibilityLabel="Přidat roast k příspěvku"
+            />
+          </View>
+          {roastEnabled && roast ? (
+            <View style={styles.roastPreview}>
+              <Text style={styles.roastLine}>{roast.line}</Text>
+              <Text style={styles.roastBasis}>{roast.basis}</Text>
+            </View>
+          ) : (
+            <TextInput
+              value={customTitle}
+              onChangeText={setCustomTitle}
+              maxLength={120}
+              placeholder="Jak to nazveme"
+              placeholderTextColor={Colors.mutedText}
+              style={styles.titleInput}
+              accessibilityLabel="Název večera"
+            />
+          )}
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+            Takhle to půjde ven
+          </Text>
+          <View style={styles.postPreview}>
+            <Text style={styles.postPreviewTitle}>{publishTitle}</Text>
+            {roastEnabled && roast ? (
+              <Text style={styles.postPreviewBasis}>{roast.basis}</Text>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.visibility}>
+          <Text style={styles.visibilityTitle}>Uvidí tvoje parta</Text>
+        </View>
       </KeyboardAwareScrollView>
 
       <View style={[styles.foot, { paddingBottom: insets.bottom + Spacing.md }]}>
-        <Text style={styles.captionPreview} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {caption}
-        </Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable
-          onPress={publish}
-          style={({ pressed }) => [styles.publish, pressed && styles.pressed]}
+          onPress={() => void publish()}
+          disabled={publishing}
+          style={({ pressed }) => [
+            styles.publish,
+            publishing && styles.publishDisabled,
+            pressed && styles.pressed,
+          ]}
           accessibilityRole="button"
-          accessibilityLabel="Zveřejnit večer"
+          accessibilityLabel="Ukončit a zveřejnit večer"
         >
           <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Zveřejnit
+            {publishing ? 'Ukládám…' : 'Ukončit a zveřejnit'}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void finishPrivately()}
+          disabled={publishing}
+          style={({ pressed }) => [
+            styles.privateFinish,
+            publishing && styles.publishDisabled,
+            pressed && styles.pressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Ukončit večer bez zveřejnění"
+        >
+          <Text style={styles.privateFinishText} maxFontSizeMultiplier={FontScaleCap.body}>
+            Ukončit bez zveřejnění
           </Text>
         </Pressable>
       </View>
+
+      <BeerPhotoCaptureFlow
+        open={photoOpen}
+        onClose={() => setPhotoOpen(false)}
+        partyCode={partyCode}
+        partyDrinkingDay={partyDrinkingDay}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: MockColors.bg },
-  grow: { flex: 1 },
   pressed: { opacity: 0.7 },
-
   top: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -354,47 +398,45 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.09),
   },
   topTitle: { fontSize: 17, fontWeight: '700', color: Colors.foam },
-
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.md, gap: Spacing.xl },
-
-  // — Roast —
-  roastCard: { padding: Spacing.md, borderRadius: 22, backgroundColor: MockColors.surfaceHigh },
-  roastHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  medallion: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-  },
-  roastTitle: { ...MockType.bodySemibold, color: Colors.foam },
-  roastSub: { fontSize: 12, fontWeight: '400', color: Colors.mutedText, marginTop: 1 },
-  roastPreview: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
-  roastLine: { fontSize: 21, fontWeight: '800', color: Colors.foam, letterSpacing: -0.4 },
-  roastBasis: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 4 },
-
-  // — Fields —
   field: { gap: Spacing.sm },
   label: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
-  input: {
-    minHeight: MockLayout.buttonHeight,
+  roastRow: {
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  roastLabel: { fontSize: 16, fontWeight: '700', color: Colors.foam },
+  roastPreview: {
+    gap: 4,
+    padding: Spacing.md,
+    borderRadius: Radius.medium,
+    backgroundColor: MockColors.surfaceHigh,
+  },
+  roastLine: { fontSize: 19, fontWeight: '800', color: Colors.foam, lineHeight: 25 },
+  roastBasis: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, lineHeight: 19 },
+  titleInput: {
+    minHeight: HitArea.min,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderRadius: 18,
-    backgroundColor: MockColors.surfaceHigh,
+    borderRadius: Radius.medium,
     color: Colors.foam,
+    backgroundColor: MockColors.surfaceHigh,
     fontSize: 16,
     fontWeight: '600',
   },
-  noteInput: { minHeight: 90, textAlignVertical: 'top' },
-
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  postPreview: {
+    gap: 4,
+    padding: Spacing.md,
+    borderRadius: Radius.medium,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.amber, 0.28),
+    backgroundColor: withAlpha(Colors.amber, 0.07),
+  },
+  postPreviewTitle: { fontSize: 18, fontWeight: '800', color: Colors.foam, lineHeight: 24 },
+  postPreviewBasis: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, lineHeight: 18 },
+  photoRow: { alignItems: 'center', gap: Spacing.sm },
   addPhoto: {
     width: 62,
     height: 62,
@@ -403,11 +445,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: Colors.amber,
   },
-  photo: { width: 62, height: 62, borderRadius: 18 },
-
+  photo: { width: 62, height: 62, borderRadius: 18, backgroundColor: Colors.stout3 },
   gameLine: { fontSize: 15, fontWeight: '600', color: Colors.foam },
-
-  // — Foot —
+  visibility: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: MockColors.surfaceHigh,
+  },
+  visibilityTitle: { fontSize: 14, fontWeight: '700', color: Colors.foam },
   foot: {
     paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.sm,
@@ -415,7 +462,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  captionPreview: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
+  error: { fontSize: 13, color: Colors.amber },
   publish: {
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,
@@ -424,5 +471,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
     minWidth: HitArea.min,
   },
+  publishDisabled: { opacity: 0.55 },
   publishText: { ...MockType.buttonLabel, color: Colors.stout },
+  privateFinish: {
+    minHeight: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privateFinishText: { fontSize: 14, fontWeight: '700', color: Colors.mutedText },
 });

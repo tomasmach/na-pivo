@@ -1,17 +1,12 @@
 /**
- * DESIGN MOCK — what is left of the running night that has no real source yet.
+ * Ephemeral UI state for the running night.
  *
  * The beers and the people are GONE from here. They live where they belong: the
  * counter's own session and the shared evening, read back through
  * `src/party/nightRecord.ts`. What stays is the bookkeeping around them —
- * whether a night is open, which pub it is at, what "+1" pours — plus photos and
- * games, which are the last two things a running night makes that the app does
- * not yet write anywhere real (`BeerPhoto` and `PartyGame` both exist).
- *
- * The point of the outputs living here is the loop: the feed card can only lead
- * with a pub-quiz scoreboard or a photo strip if the party mode actually MAKES
- * one. Until now the card could render five kinds of highlight and the party
- * produced none of them.
+ * whether a night is open, which pub it is at, what "+1" pours, and the local
+ * copy of an opened game. Members, drinks, visits, photos and shared game
+ * results all come from their real stores or the private party record.
  *
  * The clock is REAL, and the night is a stopwatch.
  *
@@ -28,14 +23,17 @@
  * and the timeline, the per-type counters and the tempo chart are all just
  * different readings of the same list.
  *
- * Deliberately not persisted and deliberately small: the real thing hangs off
- * the party evening client.
+ * Deliberately small. This local chrome is persisted for at most one day so an
+ * offline table survives a process kill; the authenticated evening API remains
+ * the canonical source and resumes it when a connection is available.
  */
 
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-
-import { geohash8 } from '@/data/geohash';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { generateUuidV4 } from '@/data/account';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 
 export interface GameResult {
   game: string;
@@ -69,43 +67,43 @@ export interface GameEntry {
   result?: GameResult;
 }
 
-export interface PartyPersonLive {
-  id: string;
+export interface PartyTap {
   name: string;
-  tint: string;
-  beers: number;
+  priceCzk: number | null;
 }
 
-/**
- * Exactly the five things the control row can do, and nothing else.
- *
- * A thread may only carry content the app can actually produce. A mocked "note"
- * and "round" looked good and promised two features that have no way in — the
- * log would have been advertising buttons that do not exist.
- */
-export type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
+/** One explicit stop in the running crawl. Its id is also PubVisit.client_id
+ * and, once the first drink arrives, TallySession.clientId. One identity keeps
+ * the immediate move event and the later diary session from becoming two
+ * visits on the backend. */
+export interface PartyPubVisit {
+  clientId: string;
+  pubKey: string;
+  pubName: string;
+  pubCity?: string;
+  pubExternalId?: string;
+  startedAt: string;
+  endedAt?: string;
+}
 
-/**
- * One thing that happened, and WHO did it.
- *
- * The log is a thread, not a system journal: at a table of four, "Fotka" with no
- * name is the app talking to itself. Every entry carries its author, and a game
- * entry carries the key of the game so the row can start it.
- */
-export interface LogEvent {
-  id: string;
-  at: number;
-  kind: LogKind;
-  text: string;
-  /** Display name. "Ty" is you — the mock has no user ids. */
-  by: string;
-  /** Only on `game` rows: what the row launches. */
-  gameKey?: string;
-  /** Only on `beer` rows: which entry to correct when you tap it. */
-  beerId?: string;
-  /** Only on `photo` rows: the shot itself, so the thread shows it rather than
-   *  reporting that it exists. */
-  photo?: string;
+export interface PartyPubTransition {
+  previous?: PartyPubVisit;
+  current: PartyPubVisit;
+}
+
+export function partyTapOptions(...groups: PartyTap[][]): PartyTap[] {
+  const taps = new Map<string, PartyTap>();
+  for (const tap of groups.flat()) {
+    const name = tap.name.trim();
+    if (!name) continue;
+    const key = name.toLocaleLowerCase('cs-CZ');
+    const previous = taps.get(key);
+    taps.set(key, {
+      name: previous?.name ?? name,
+      priceCzk: previous?.priceCzk ?? tap.priceCzk,
+    });
+  }
+  return [...taps.values()];
 }
 
 interface LivePartyState {
@@ -121,183 +119,251 @@ interface LivePartyState {
   pickingPub: boolean;
   /** What "+1 pivo" pours without asking — the pub's own tap. */
   houseBeer: string;
+  /** The selected pub's current server/community tap menu. */
+  pubTaps: PartyTap[];
   /**
    * The pub's IDENTITY, not just its name — geohash-8, the same key the counter
    * and the diary use. Null until a pub has been picked, and a beer logged
    * without one is filed as an evening outside a pub rather than at a guess.
    */
   pubKey: string | null;
+  /** Explicit pub stops, including a selected pub where no beer was ordered. */
+  pubVisits: PartyPubVisit[];
   /** Epoch ms of the first beer — the stopwatch's zero. Null until it starts. */
   startedAt: number | null;
-  people: PartyPersonLive[];
-  photos: number;
   games: GameEntry[];
-  log: LogEvent[];
 
-  start: (pubName: string, beer: string, pubKey?: string | null) => void;
+  start: (
+    pubName: string,
+    beer: string,
+    pubKey?: string | null,
+    pubTaps?: PartyTap[],
+    pubCity?: string,
+    pubExternalId?: string,
+  ) => PartyPubTransition | null;
+  /** Rebuild ephemeral chrome from the server after a process restart. */
+  resume: (pubName: string, startedAt: string) => void;
   /** Set where you are — before a night, or when you move mid-evening. */
-  setPub: (pubName: string, beer: string, pubKey?: string | null) => void;
+  setPub: (
+    pubName: string,
+    beer: string,
+    pubKey?: string | null,
+    pubTaps?: PartyTap[],
+    pubCity?: string,
+    pubExternalId?: string,
+  ) => PartyPubTransition | null;
+  /** Follow a stop another phone published without creating a visit for me. */
+  adoptSharedPub: (pubName: string, pubKey?: string | null) => void;
   beginPickingPub: () => void;
   endPickingPub: () => void;
-  /** Take back anything else you put in the thread — a photo, a game. Only your
-   *  own; the row menu is not offered on somebody else's entry. */
-  dropEvent: (eventId: string) => void;
-  addPhoto: () => void;
   addGame: (key: string, name: string) => void;
   finishGame: (key: string, result: GameResult) => void;
-  invite: (name: string) => void;
   end: () => void;
 }
 
-let seq = 0;
-const nextId = (prefix: string) => {
-  seq += 1;
-  return `${prefix}-${seq}`;
-};
-
-/** The table you walk in with. Mock — the real thing comes from members. */
-const TABLE: PartyPersonLive[] = [
-  { id: 'u2', name: 'Honza', tint: '#7DD66B', beers: 1 },
-  { id: 'u3', name: 'Petr', tint: '#F0BE5C', beers: 0 },
-];
-
-/** Where the app assumes you are before you say otherwise. Mock. */
-const DEFAULT_PUB = {
-  name: 'U Fleků',
-  beer: 'Flekovský ležák 13°',
-  /** geohash-8 of 50.0785, 14.42 — a real key, so a beer logged before you have
-   *  picked anywhere still lands at a real place. */
-  key: geohash8(50.0785, 14.42),
-};
-
 const EMPTY = {
   live: false,
-  pubName: DEFAULT_PUB.name,
-  houseBeer: DEFAULT_PUB.beer,
-  pubKey: DEFAULT_PUB.key as string | null,
+  pubName: '',
+  houseBeer: 'Pivo',
+  pubTaps: [] as PartyTap[],
+  pubKey: null as string | null,
   pickingPub: false,
   startedAt: null as number | null,
-  people: [] as PartyPersonLive[],
-  photos: 0,
+  pubVisits: [] as PartyPubVisit[],
   games: [] as GameEntry[],
-  log: [] as LogEvent[],
 };
 
-/** Whoever is holding the phone. */
-const ME = 'Ty';
+const LIVE_PARTY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** Stand-ins so the thread can show a picture. `picsum.photos` is a placeholder
- *  service and MUST NOT ship — real ones come from `BeerPhoto`. */
-const MOCK_PHOTOS = [
-  'https://picsum.photos/seed/napivo-1/400/400',
-  'https://picsum.photos/seed/napivo-2/400/400',
-  'https://picsum.photos/seed/napivo-3/400/400',
-  'https://picsum.photos/seed/napivo-4/400/400',
-];
+function mergePersistedState(
+  persisted: unknown,
+  current: LivePartyState,
+  now = Date.now(),
+): LivePartyState {
+  if (!persisted || typeof persisted !== 'object' || Array.isArray(persisted)) return current;
+  const saved = persisted as Partial<LivePartyState>;
+  const startedAt = typeof saved.startedAt === 'number' && Number.isFinite(saved.startedAt)
+    ? saved.startedAt
+    : null;
+  if (startedAt === null || now - startedAt > LIVE_PARTY_MAX_AGE_MS || now < startedAt) {
+    return current;
+  }
 
-function logged(
-  state: { log: LogEvent[] },
-  at: number,
-  kind: LogKind,
-  text: string,
-  by: string = ME,
-  extra?: { gameKey?: string; beerId?: string; photo?: string },
-): LogEvent[] {
-  return [...state.log, { id: nextId('ev'), at, kind, text, by, ...extra }];
+  const games = Array.isArray(saved.games)
+    ? saved.games.filter((game): game is GameEntry =>
+        !!game &&
+        typeof game === 'object' &&
+        typeof game.key === 'string' &&
+        typeof game.name === 'string' &&
+        typeof game.at === 'number' &&
+        Number.isFinite(game.at),
+      )
+    : [];
+  const pubTaps = Array.isArray(saved.pubTaps)
+    ? saved.pubTaps.filter((tap): tap is PartyTap =>
+        !!tap &&
+        typeof tap === 'object' &&
+        typeof tap.name === 'string' &&
+        (tap.priceCzk === null ||
+          (typeof tap.priceCzk === 'number' && Number.isFinite(tap.priceCzk))),
+      )
+    : [];
+  const pubVisits = Array.isArray(saved.pubVisits)
+    ? saved.pubVisits
+        .filter((visit): visit is PartyPubVisit =>
+          !!visit &&
+          typeof visit === 'object' &&
+          typeof visit.clientId === 'string' &&
+          typeof visit.pubKey === 'string' &&
+          typeof visit.pubName === 'string' &&
+          typeof visit.startedAt === 'string' &&
+          Number.isFinite(Date.parse(visit.startedAt)) &&
+          (visit.endedAt === undefined ||
+            (typeof visit.endedAt === 'string' && Number.isFinite(Date.parse(visit.endedAt)))),
+        )
+        .slice(-25)
+    : [];
+
+  return {
+    ...current,
+    live: saved.live === true,
+    pubName: typeof saved.pubName === 'string' ? saved.pubName : '',
+    pickingPub: false,
+    houseBeer: typeof saved.houseBeer === 'string' ? saved.houseBeer : 'Pivo',
+    pubTaps,
+    pubKey: typeof saved.pubKey === 'string' ? saved.pubKey : null,
+    startedAt,
+    pubVisits,
+    games,
+  };
 }
 
-export const useLivePartyStore = create<LivePartyState>((set) => ({
-  ...EMPTY,
+/** Exported only as a pure persistence-boundary regression seam. */
+export const restoreLivePartyState = mergePersistedState;
 
-  /**
-   * Open the night.
-   *
-   * No beers here any more: the first one is logged through the counter's own
-   * path like every other beer (`src/party/logBeer.ts`), and read back out of
-   * the night record. This only opens the evening and says where it is.
-   */
-  start: (pubName, beer, pubKey) => {
-    const now = Date.now();
-    set({
-      live: true,
-      pubName,
-      houseBeer: beer,
-      ...(pubKey !== undefined ? { pubKey } : {}),
-      startedAt: now,
-      people: TABLE.map((person) => ({ ...person })),
-      photos: 0,
-      games: [],
-      log: [],
-    });
-  },
+export const useLivePartyStore = create<LivePartyState>()(
+  persist(
+    guardPrivateAccountStateCreator((set, get) => ({
+      ...EMPTY,
 
-  setPub: (pubName, beer, pubKey) =>
-    set((s) =>
-      s.live
-        ? {
-            pubName,
-            houseBeer: beer,
-            ...(pubKey !== undefined ? { pubKey } : {}),
-            log: logged(s, Date.now(), 'pub', `Přesun do ${pubName}`),
-          }
-        : { pubName, houseBeer: beer, ...(pubKey !== undefined ? { pubKey } : {}) },
-    ),
+      /**
+       * Open the night.
+       *
+       * No beers here any more: the first one is logged through the counter's own
+       * path like every other beer (`src/party/logBeer.ts`), and read back out of
+       * the night record. This only opens the evening and says where it is.
+       */
+      start: (pubName, beer, pubKey, pubTaps, pubCity, pubExternalId) => {
+        const startedAtIso = new Date().toISOString();
+        const current = pubKey
+          ? {
+              clientId: generateUuidV4(),
+              pubKey,
+              pubName,
+              ...(pubCity ? { pubCity } : {}),
+              ...(pubExternalId ? { pubExternalId } : {}),
+              startedAt: startedAtIso,
+            }
+          : null;
+        set({
+          live: true,
+          pubName,
+          houseBeer: beer,
+          pubTaps: pubTaps ?? [{ name: beer, priceCzk: null }],
+          ...(pubKey !== undefined ? { pubKey } : {}),
+          startedAt: Date.parse(startedAtIso),
+          pubVisits: current ? [current] : [],
+          games: [],
+        });
+        return current ? { current } : null;
+      },
 
-  beginPickingPub: () => set({ pickingPub: true }),
-  endPickingPub: () => set({ pickingPub: false }),
+      resume: (pubName, startedAt) =>
+        set((state) => ({
+          live: true,
+          pubName: pubName || state.pubName || 'Mimo hospodu',
+          startedAt: Number.isFinite(Date.parse(startedAt)) ? Date.parse(startedAt) : Date.now(),
+        })),
 
-  dropEvent: (eventId) =>
-    set((s) => {
-      const event = s.log.find((entry) => entry.id === eventId);
-      if (!event) return s;
-      return {
-        log: s.log.filter((entry) => entry.id !== eventId),
-        // The side effects go with it, or the counters keep claiming a photo
-        // that is no longer in the thread.
-        photos: event.kind === 'photo' ? Math.max(0, s.photos - 1) : s.photos,
-        games: event.gameKey ? s.games.filter((game) => game.key !== event.gameKey) : s.games,
-      };
-    }),
+      setPub: (pubName, beer, pubKey, pubTaps, pubCity, pubExternalId) => {
+        const state = get();
+        const previous = state.pubVisits.at(-1);
+        const changedStop =
+          state.live && !!pubKey && (!previous || previous.pubKey !== pubKey);
+        const movedAt = new Date().toISOString();
+        const closedPrevious = changedStop && previous && !previous.endedAt
+          ? { ...previous, endedAt: movedAt }
+          : undefined;
+        const current = changedStop
+          ? {
+              clientId: generateUuidV4(),
+              pubKey,
+              pubName,
+              ...(pubCity ? { pubCity } : {}),
+              ...(pubExternalId ? { pubExternalId } : {}),
+              startedAt: movedAt,
+            }
+          : null;
+        const pubVisits = changedStop && current
+          ? [
+              ...state.pubVisits.slice(0, -1),
+              ...(closedPrevious ? [closedPrevious] : previous ? [previous] : []),
+              current,
+            ].slice(-25)
+          : state.pubVisits;
+        set({
+          pubName,
+          houseBeer: beer,
+          pubTaps: pubTaps ?? [{ name: beer, priceCzk: null }],
+          ...(pubKey !== undefined ? { pubKey } : {}),
+          pubVisits,
+        });
+        return current ? { ...(closedPrevious ? { previous: closedPrevious } : {}), current } : null;
+      },
 
-  addPhoto: () =>
-    set((s) => ({
-      photos: s.photos + 1,
-      log: logged(s, Date.now(), 'photo', 'Fotka', ME, {
-        photo: MOCK_PHOTOS[s.photos % MOCK_PHOTOS.length],
+      adoptSharedPub: (pubName, pubKey) =>
+        set({ pubName, ...(pubKey !== undefined ? { pubKey } : {}) }),
+
+      beginPickingPub: () => set({ pickingPub: true }),
+      endPickingPub: () => set({ pickingPub: false }),
+
+      addGame: (key, name) =>
+        set((state) =>
+          state.games.some((game) => game.key === key)
+            ? state
+            : { games: [...state.games, { key, name, at: Date.now() }] },
+        ),
+
+      // No second log entry when it ends: the game's own row grows a scoreboard.
+      // Two rows for one game read as two games.
+      finishGame: (key, result) =>
+        set((state) => ({
+          games: state.games.map((game) => (game.key === key ? { ...game, result } : game)),
+        })),
+
+      end: () => set({ ...EMPTY }),
+    })),
+    {
+      name: 'na-pivo-live-party',
+      version: 1,
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        live: state.live,
+        pubName: state.pubName,
+        pickingPub: false,
+        houseBeer: state.houseBeer,
+        pubTaps: state.pubTaps,
+        pubKey: state.pubKey,
+        startedAt: state.startedAt,
+        pubVisits: state.pubVisits,
+        games: state.games,
       }),
-    })),
-
-  addGame: (key, name) =>
-    set((s) =>
-      s.games.some((game) => game.key === key)
-        ? s
-        : {
-            games: [...s.games, { key, name, at: Date.now() }],
-            // Carries the key: the thread row IS the game, and starting it
-            // happens from where it was put on the table.
-            log: logged(s, Date.now(), 'game', name, ME, { gameKey: key }),
-          },
-    ),
-
-  // No second log entry when it ends: the game's own row grows a scoreboard.
-  // Two rows for one game read as two games.
-  finishGame: (key, result) =>
-    set((s) => ({
-      games: s.games.map((game) => (game.key === key ? { ...game, result } : game)),
-    })),
-
-  invite: (name) =>
-    set((s) =>
-      s.people.some((person) => person.name === name)
-        ? s
-        : {
-            people: [...s.people, { id: nextId('u'), name, tint: '#A8896A', beers: 0 }],
-            log: logged(s, Date.now(), 'join', 'Dorazil k stolu', name),
-          },
-    ),
-
-  end: () => set({ ...EMPTY }),
-}));
+      // An undelivered table can survive a process kill, not become a zombie
+      // days later. Real online tables are independently restored by the API.
+      merge: mergePersistedState,
+    },
+  ),
+);
 
 /** "1h 12m" / "48m". Shared, so the bar, the hub and the recap agree. */
 export function formatElapsed(minutes: number): string {
@@ -382,5 +448,3 @@ export function useNightClock(startedAt: number | null): number {
 
   return startedAt === null ? 0 : minutesBetween(startedAt, now);
 }
-
-

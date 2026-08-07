@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 import type { Pub } from '@/data/pubs';
 
 interface PubState {
@@ -19,7 +20,7 @@ interface PubState {
 
 export const usePubStore = create<PubState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       revealedPub: null,
       reportedPubIds: [],
       reportedCacheKeys: [],
@@ -41,7 +42,7 @@ export const usePubStore = create<PubState>()(
         }),
       setIsDataLoaded: (v) => set({ isDataLoaded: v }),
       bumpCatalogRevision: () => set((state) => ({ catalogRevision: state.catalogRevision + 1 })),
-    }),
+    })),
     {
       name: 'na-pivo-pub',
       storage: createJSONStorage(() => AsyncStorage),

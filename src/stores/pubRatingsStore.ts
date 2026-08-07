@@ -26,7 +26,8 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 
 /** The personal verdict on a pub. */
 export type PubVerdict = 'like' | 'dislike';
@@ -121,7 +122,7 @@ export function migratePubRatings(persisted: unknown, version: number): PubRatin
 
 export const usePubRatingsStore = create<PubRatingsState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       ratings: {},
 
       setRating: (pubKey, input) =>
@@ -177,7 +178,7 @@ export const usePubRatingsStore = create<PubRatingsState>()(
           }
           return changed ? { ratings: next } : state;
         }),
-    }),
+    })),
     {
       name: 'na-pivo-pub-ratings',
       version: 1,

@@ -714,3 +714,114 @@ def test_team_join_recovers_when_a_concurrent_insert_wins_a_slot(
     assert response.status_code == status.HTTP_201_CREATED
     assert state["raised"] is True
     assert CommunityEventTeamMembership.objects.get(account=guest).slot == 3
+
+
+@pytest.mark.django_db
+def test_team_creator_can_rename_and_event_host_can_delete(client):
+    host, host_token = _account("host")
+    _creator, creator_token = _account("creator")
+    _outsider, outsider_token = _account("outsider")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    _join_and_approve(client, event_id, host_token, outsider_token)
+    created = _create_team(client, event_id, creator_token)
+    team_id = created.json()["team"]["id"]
+
+    renamed = client.patch(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        data={"name": "Pěna a říz"},
+        format="json",
+        **_auth(creator_token),
+    )
+    host_rename = client.patch(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        data={"name": "Host nepřejmenovává"},
+        format="json",
+        **_auth(host_token),
+    )
+    outsider_delete = client.delete(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        **_auth(outsider_token),
+    )
+
+    assert renamed.status_code == status.HTTP_200_OK
+    assert renamed.json()["team"]["name"] == "Pěna a říz"
+    assert host_rename.status_code == status.HTTP_404_NOT_FOUND
+    assert outsider_delete.status_code == status.HTTP_404_NOT_FOUND
+
+    deleted = client.delete(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        **_auth(host_token),
+    )
+    assert deleted.status_code == status.HTTP_204_NO_CONTENT
+    assert not CommunityEventTeam.objects.filter(pk=team_id).exists()
+    assert not CommunityEventTeamMembership.objects.filter(team_id=team_id).exists()
+    assert CommunityEvent.objects.filter(pk=event_id, host=host).exists()
+
+
+@pytest.mark.django_db
+def test_team_roster_hides_blocked_ghost_and_inactive_creators(client):
+    _host, host_token = _account("host")
+    creator, creator_token = _account("creator")
+    viewer, viewer_token = _account("viewer")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    _join_and_approve(client, event_id, host_token, viewer_token)
+    team_id = _create_team(client, event_id, creator_token).json()["team"]["id"]
+
+    visible = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    assert [team["id"] for team in visible.json()["teams"]] == [team_id]
+
+    block = FriendBlock.objects.create(blocker=creator, blocked=viewer)
+    blocked = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    blocked_join = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(viewer_token),
+    )
+    assert blocked.json()["teams"] == []
+    assert blocked_join.status_code == status.HTTP_404_NOT_FOUND
+    block.delete()
+
+    creator.ghost_mode = True
+    creator.save(update_fields=["ghost_mode"])
+    ghosted = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    assert ghosted.json()["teams"] == []
+
+    creator.ghost_mode = False
+    creator.status = Account.Status.PENDING_DELETION
+    creator.save(update_fields=["ghost_mode", "status"])
+    inactive = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    assert inactive.json()["teams"] == []
+
+
+@pytest.mark.django_db
+def test_hard_deleted_team_creator_cascades_team_and_memberships(client):
+    _host, host_token = _account("host")
+    creator, creator_token = _account("creator")
+    _member, member_token = _account("member")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    _join_and_approve(client, event_id, host_token, member_token)
+    team_id = _create_team(client, event_id, creator_token).json()["team"]["id"]
+    joined = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(member_token),
+    )
+    assert joined.status_code == status.HTTP_201_CREATED
+
+    creator.delete()
+
+    assert not CommunityEventTeam.objects.filter(pk=team_id).exists()
+    assert not CommunityEventTeamMembership.objects.filter(team_id=team_id).exists()

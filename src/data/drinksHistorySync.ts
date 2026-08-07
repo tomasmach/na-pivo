@@ -14,7 +14,7 @@
  * A permanent API rejection counts as processed, matching the queue contract.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from './privateAccountStorage';
 
 import { buildDrinkEntry, type DrinkEntry } from './drinksClient';
 import {

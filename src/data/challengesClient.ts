@@ -2,10 +2,17 @@ import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { chainAbortSignal } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
+import type { FriendProfile } from './friendsClient';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
 export type ChallengeGlyph = 'places' | 'rhythm' | 'taste';
+
+export interface ChallengeFriendProgress {
+  account: FriendProfile;
+  done: number;
+  progress: number;
+}
 
 export interface Challenge {
   id: string;
@@ -19,12 +26,40 @@ export interface Challenge {
   deadline: string;
   reward: string;
   rules: string[];
+  friends: ChallengeFriendProgress[];
 }
 
 let cache: { accountId: string; rows: Challenge[] } | null = null;
 
 function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function parseFriendProgress(value: unknown): ChallengeFriendProgress | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  if (!row.account || typeof row.account !== 'object') return null;
+  const account = row.account as Record<string, unknown>;
+  if (typeof account.id !== 'string' || account.id.length === 0) return null;
+  const nickname =
+    typeof account.nickname === 'string' && account.nickname.length > 0
+      ? account.nickname
+      : null;
+  const displayName =
+    typeof account.display_name === 'string' && account.display_name.length > 0
+      ? account.display_name
+      : nickname ?? 'Pivař';
+  return {
+    account: {
+      id: account.id,
+      nickname,
+      displayName,
+      avatarUrl: typeof account.avatar_url === 'string' ? account.avatar_url : null,
+      isPublic: account.is_public !== false,
+    },
+    done: Math.max(0, Math.floor(number(row.done))),
+    progress: Math.max(0, Math.min(1, number(row.progress))),
+  };
 }
 
 function parseChallenge(value: unknown): Challenge | null {
@@ -44,6 +79,11 @@ function parseChallenge(value: unknown): Challenge | null {
     reward: typeof row.reward === 'string' ? row.reward : '',
     rules: Array.isArray(row.rules)
       ? row.rules.filter((rule): rule is string => typeof rule === 'string')
+      : [],
+    friends: Array.isArray(row.friends)
+      ? row.friends
+          .map(parseFriendProgress)
+          .filter((friend): friend is ChallengeFriendProgress => friend !== null)
       : [],
   };
 }
@@ -106,4 +146,3 @@ export async function fetchChallenge(id: string, signal?: AbortSignal): Promise<
 export function clearChallengesCache(): void {
   cache = null;
 }
-

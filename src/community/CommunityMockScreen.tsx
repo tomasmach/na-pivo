@@ -140,7 +140,7 @@ async function coarseLocation(): Promise<{ lat: number; lng: number } | undefine
   }
 }
 
-export default function CommunityMockScreen() {
+function CommunityMockScreenContent() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const profile = useAccountStore((state) => state.profile);
@@ -156,8 +156,13 @@ export default function CommunityMockScreen() {
   const [events, setEvents] = React.useState<CommunityEvent[] | null>(null);
   const [eventsLoading, setEventsLoading] = React.useState(true);
   const [eventsFailed, setEventsFailed] = React.useState(false);
+  const [eventsAuthRequired, setEventsAuthRequired] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   const [revision, setRevision] = React.useState(0);
+  // Mapér XP is an exact lifetime counter. Its durable ledgers do not preserve
+  // every historical bonus amount by timestamp, so pretending that Týden and
+  // Letos are different boards would be worse than an honest fixed window.
+  const effectivePeriod: Period = metric === 'Mapér XP' ? 'Celkem' : period;
 
   React.useEffect(() => {
     let active = true;
@@ -165,7 +170,7 @@ export default function CommunityMockScreen() {
     const kickoff = setTimeout(() => {
       setBoardLoading(true);
       setBoardFailed(false);
-      void fetchLeaderboard(CATEGORY[metric], WINDOW[period], {
+      void fetchLeaderboard(CATEGORY[metric], WINDOW[effectivePeriod], {
         signal: controller.signal,
         force: revision > 0,
       }).then((result) => {
@@ -180,7 +185,7 @@ export default function CommunityMockScreen() {
       clearTimeout(kickoff);
       controller.abort();
     };
-  }, [metric, period, revision]);
+  }, [effectivePeriod, metric, revision]);
 
   React.useEffect(() => {
     let active = true;
@@ -190,6 +195,7 @@ export default function CommunityMockScreen() {
       setChallengesFailed(false);
       setEventsLoading(true);
       setEventsFailed(false);
+      setEventsAuthRequired(false);
       void Promise.all([
         fetchChallenges({ signal: controller.signal, force: revision > 0 }),
         coarseLocation().then((location) => fetchCommunityEvents(location, controller.signal)),
@@ -209,7 +215,8 @@ export default function CommunityMockScreen() {
         } else {
           setEvents([]);
         }
-        setEventsFailed(!eventResult.ok);
+        setEventsAuthRequired(!eventResult.ok && eventResult.code === 'auth');
+        setEventsFailed(!eventResult.ok && eventResult.code !== 'auth');
         setEventsLoading(false);
         setRefreshing(false);
       });
@@ -260,7 +267,12 @@ export default function CommunityMockScreen() {
         <>
           <View style={styles.chips}>
             <MenuChip value={metric} options={METRICS} title="Podle čeho" onChange={(value) => setMetric(value as Metric)} />
-            <MenuChip value={period} options={PERIODS} title="Za jaké období" onChange={(value) => setPeriod(value as Period)} />
+            <MenuChip
+              value={effectivePeriod}
+              options={metric === 'Mapér XP' ? ['Celkem'] : PERIODS}
+              title="Za jaké období"
+              onChange={(value) => setPeriod(value as Period)}
+            />
           </View>
           {boardLoading ? <LoadingRows /> : boardFailed ? (
             <Text style={styles.empty}>Žebříček se teď nedotáhl. Potáhni dolů a zkus to znovu.</Text>
@@ -313,7 +325,7 @@ export default function CommunityMockScreen() {
 
       {section === 'Akce' ? (
         eventsLoading ? <LoadingRows /> : <>
-          {eventsFailed ? (
+          {eventsAuthRequired ? null : eventsFailed ? (
             <Text style={styles.empty}>Akce se teď nedotáhly. Potáhni dolů a zkus to znovu.</Text>
           ) : (events ?? []).map((event) => (
             <Pressable
@@ -331,14 +343,30 @@ export default function CommunityMockScreen() {
               <ChevronRightIcon size={18} color={Colors.mutedText} />
             </Pressable>
           ))}
-          {!eventsFailed && (events?.length ?? 0) === 0 ? <Text style={styles.empty}>V okolí teď žádná akce není.</Text> : null}
-          <Pressable style={({ pressed }) => [styles.create, pressed && styles.pressed]} onPress={() => router.push('/community-events' as Href)} accessibilityRole="button">
-            <Text style={styles.createText}>Moje akce a nové setkání</Text>
+          {!eventsAuthRequired && !eventsFailed && (events?.length ?? 0) === 0 ? <Text style={styles.empty}>V okolí teď žádná akce není.</Text> : null}
+          <Pressable
+            style={({ pressed }) => [styles.create, pressed && styles.pressed]}
+            onPress={() => router.push((eventsAuthRequired ? '/auth' : '/community-events') as Href)}
+            accessibilityRole="button"
+            accessibilityLabel={eventsAuthRequired ? 'Přihlásit se pro akce' : 'Moje akce a nové setkání'}
+          >
+            <Text style={styles.createText}>{eventsAuthRequired ? 'Přihlásit se pro akce' : 'Moje akce a nové setkání'}</Text>
           </Pressable>
         </>
       ) : null}
     </ScrollView>
   );
+}
+
+/**
+ * Community state contains personalized ranks, challenge progress and joined
+ * events. Tabs remain mounted across login/logout, so remount this local state
+ * at the account boundary before any replacement-account request can settle.
+ * The key remains unchanged for same-account offline refreshes.
+ */
+export default function CommunityMockScreen() {
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  return <CommunityMockScreenContent key={accountId ?? 'account-pending'} />;
 }
 
 const styles = StyleSheet.create({

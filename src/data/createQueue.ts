@@ -15,6 +15,12 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountCleanupMutation,
+  runPrivateAccountMutation,
+} from './privateAccountBoundary';
+
 /** A validated, AsyncStorage-backed list of queue entries under one key. */
 export interface QueueStorage<T> {
   /** Load the persisted queue, dropping anything that fails `isValid`. Never throws. */
@@ -72,12 +78,36 @@ export function createQueueStorage<T>(
  * caller). Each queue owns its own instance, so its mutations never interleave
  * with a concurrent enqueue/flush of the same queue.
  */
-export function createQueueLock(): <T>(task: () => Promise<T>) => Promise<T> {
+export interface QueueLockRunOptions {
+  /** Strict account cleanup is the only writer allowed after the global freeze. */
+  allowDuringPrivateTransition?: boolean;
+}
+
+export interface QueueLockOptions {
+  /** Photo/game queues own a stronger subsystem boundary and opt out explicitly. */
+  protectPrivateAccount?: boolean;
+}
+
+export function createQueueLock(
+  options: QueueLockOptions = {},
+): <T>(task: () => Promise<T>, runOptions?: QueueLockRunOptions) => Promise<T> {
   let chain: Promise<unknown> = Promise.resolve();
-  return function runLocked<T>(task: () => Promise<T>): Promise<T> {
-    const next = chain.then(task, task);
-    chain = next.catch(() => undefined);
-    return next;
+  return function runLocked<T>(
+    task: () => Promise<T>,
+    runOptions: QueueLockRunOptions = {},
+  ): Promise<T> {
+    const enqueue = (): Promise<T> => {
+      const next = chain.then(task, task);
+      chain = next.catch(() => undefined);
+      return next;
+    };
+    if (options.protectPrivateAccount === false) return enqueue();
+    // Capture the global lease NOW, before waiting behind this queue's local
+    // mutex. Otherwise an A task delayed here could wake after B is installed.
+    if (runOptions.allowDuringPrivateTransition) {
+      return runPrivateAccountCleanupMutation(enqueue);
+    }
+    return runPrivateAccountMutation(async () => enqueue());
   };
 }
 
@@ -110,6 +140,7 @@ export interface CoalescingFlush {
  */
 export function createCoalescingFlush(
   run: (signal: AbortSignal) => Promise<void>,
+  options: QueueLockOptions = {},
 ): CoalescingFlush {
   let flushPromise: Promise<void> | null = null;
   let flushAgain: Promise<void> | null = null;
@@ -125,7 +156,28 @@ export function createCoalescingFlush(
       return flushAgain;
     }
     controller = new AbortController();
-    flushPromise = run(controller.signal).finally(() => {
+    const localController = controller;
+    const execute = options.protectPrivateAccount === false
+      ? run(localController.signal)
+      : runPrivateAccountMutation(async (scope) => {
+          const combined = new AbortController();
+          const abort = () => combined.abort();
+          for (const signal of [localController.signal, scope.signal]) {
+            if (signal.aborted) combined.abort();
+            else signal.addEventListener('abort', abort);
+          }
+          try {
+            await run(combined.signal);
+          } finally {
+            localController.signal.removeEventListener('abort', abort);
+            scope.signal.removeEventListener('abort', abort);
+          }
+        }).catch((error) => {
+          // A retry flush during the short credential freeze is a safe no-op;
+          // the durable queue remains for the next foreground pass.
+          if (!(error instanceof PrivateAccountMutationFrozenError)) throw error;
+        });
+    flushPromise = execute.finally(() => {
       flushPromise = null;
       controller = null;
     });

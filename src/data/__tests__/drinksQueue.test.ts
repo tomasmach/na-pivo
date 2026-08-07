@@ -52,7 +52,10 @@ async function readQueue(): Promise<DrinkEntry[]> {
 
 async function flushMicrotasks(times = 5): Promise<void> {
   for (let i = 0; i < times; i++) {
-    await Promise.resolve();
+    // Queue delivery acquires the process-wide private-account lease before
+    // entering its local lock, so let the whole event loop progress instead of
+    // assuming a fixed number of promise continuations reaches submitDrink.
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -74,6 +77,24 @@ describe('enqueueDrink', () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     await expect(enqueueDrink(entry())).resolves.toBe(false);
     expect(await readQueue()).toHaveLength(1);
+  });
+
+  it('keeps a restored Party code through offline persistence and later sync', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrink(entry({ client_id: 'cold-party-beer', party_code: 'PIVOXY' }));
+
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({ client_id: 'cold-party-beer', party_code: 'PIVOXY' }),
+    ]);
+
+    (submitDrink as jest.Mock).mockResolvedValue('ok');
+    await flushDrinksQueue();
+
+    expect(submitDrink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ client_id: 'cold-party-beer', party_code: 'PIVOXY' }),
+      expect.any(AbortSignal),
+    );
+    expect(await readQueue()).toEqual([]);
   });
 
   it('drops a permanently-rejected drink (4xx) from the queue', async () => {

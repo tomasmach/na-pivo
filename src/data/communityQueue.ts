@@ -107,5 +107,5 @@ export function flushCommunityQueue(): Promise<void> {
 export function clearCommunityQueue(): Promise<void> {
   return enqueueTask(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }

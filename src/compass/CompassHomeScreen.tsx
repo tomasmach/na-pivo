@@ -33,7 +33,7 @@ import { getAllLoadedPubs, type Pub, type PubPrice } from '@/data/pubs';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
 import type { PubReportReason } from '@/data/pubReportsClient';
-import { updateAccountPreferences } from '@/data/account';
+import { enqueueAccountPreferences } from '@/data/accountPreferencesQueue';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
@@ -631,7 +631,7 @@ export default function CompassScreen() {
         'select',
       );
       setMode(next);
-      void updateAccountPreferences({ mode: next });
+      void enqueueAccountPreferences({ mode: next });
     },
     [setMode],
   );

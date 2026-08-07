@@ -124,7 +124,7 @@ export function clearBeerCheckinsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 export async function getPendingBeerCheckIns(): Promise<BeerCheckInInput[]> {

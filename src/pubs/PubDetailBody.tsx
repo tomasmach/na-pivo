@@ -7,7 +7,7 @@ import { BeerIcon, MapPinIcon, StarIcon } from '@/components/shared/IconGlyph';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { geohash8 } from '@/data/geohash';
 import {
-  fetchNightsFeed,
+  fetchPubNightsFeed,
   type PublishedNight,
 } from '@/data/nightsClient';
 import type { WireVisit } from '@/data/visitsClient';
@@ -22,7 +22,15 @@ import {
   type PubPresentation,
 } from '@/pubs/pubPresentation';
 import { usePubDetails } from '@/pubs/usePubDetails';
-import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import {
+  selectConfirmedPartyJoinCode,
+  selectPartyJoinCode,
+  usePartyEveningStore,
+} from '@/stores/partyEveningStore';
+import { useAccountStore } from '@/stores/accountStore';
+import { generateJoinCode } from '@/data/partyClient';
+import { flushPartyBeerWrites } from '@/party/logBeer';
+import { enqueuePartyPubTransition } from '@/party/partyPubVisits';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -66,18 +74,15 @@ function PillAction({
 const TABS = ['Info', 'Aktivita'] as const;
 
 type ActivityState =
-  | { status: 'loading'; nights: PublishedNight[] }
-  | { status: 'ready'; nights: PublishedNight[] }
-  | { status: 'error'; nights: PublishedNight[] };
+  | { status: 'loading'; nights: PublishedNight[]; nextCursor: null }
+  | { status: 'ready'; nights: PublishedNight[]; nextCursor: string | null }
+  | { status: 'error'; nights: PublishedNight[]; nextCursor: string | null };
 
-function normalizePubName(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('cs-CZ');
-}
-
-function nightMentionsPub(night: PublishedNight, pubName: string): boolean {
-  const wanted = normalizePubName(pubName);
-  return night.pubNames.some((name) => normalizePubName(name) === wanted);
-}
+const LOADING_ACTIVITY: ActivityState = {
+  status: 'loading',
+  nights: [],
+  nextCursor: null,
+};
 
 function openStatusColor(pub: PubPresentation): string {
   if (pub.openState === 'open') return Colors.open;
@@ -98,10 +103,20 @@ export function PubDetailBody({
 }) {
   const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
   const [activityNonce, setActivityNonce] = React.useState(0);
-  const [activity, setActivity] = React.useState<ActivityState>({
-    status: 'loading',
-    nights: [],
-  });
+  const viewerAccountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const [activityResource, setActivityResource] = React.useState<{
+    viewerAccountId: string;
+    state: ActivityState;
+  } | null>(null);
+  const [activityLoadingMoreFor, setActivityLoadingMoreFor] = React.useState<string | null>(null);
+  const [activityMoreErrorFor, setActivityMoreErrorFor] = React.useState<string | null>(null);
+  const moreControllerRef = React.useRef<AbortController | null>(null);
+  const activity =
+    activityResource?.viewerAccountId === viewerAccountId
+      ? activityResource.state
+      : LOADING_ACTIVITY;
+  const activityLoadingMore = activityLoadingMoreFor === viewerAccountId;
+  const activityMoreError = activityMoreErrorFor === viewerAccountId;
   const detailedPub = usePubDetails(initialPub.pub);
   const pub = React.useMemo(
     () => presentPub(detailedPub, position, visits),
@@ -113,53 +128,144 @@ export function PubDetailBody({
   const picking = useLivePartyStore((state) => state.pickingPub);
   const endPicking = useLivePartyStore((state) => state.endPickingPub);
   const localPartyLive = useLivePartyStore((state) => state.live);
-  const sharedEvening = usePartyEveningStore((state) => state.evening);
+  const sharedEveningCode = usePartyEveningStore(selectPartyJoinCode);
+  const confirmedEveningCode = usePartyEveningStore(selectConfirmedPartyJoinCode);
   const sharedEveningBusy = usePartyEveningStore((state) => state.busy);
   const startSharedEvening = usePartyEveningStore((state) => state.start);
 
   React.useEffect(() => {
+    if (!viewerAccountId) return;
     let active = true;
-    void fetchNightsFeed('friends').then((result) => {
-      if (!active) return;
-      if (!result.ok) {
-        setActivity({ status: 'error', nights: [] });
-        return;
-      }
-      setActivity({
-        status: 'ready',
-        nights: result.nights.filter((night) => nightMentionsPub(night, initialPub.name)),
+    const controller = new AbortController();
+    const requestedViewer = viewerAccountId;
+    const kickoff = setTimeout(() => {
+      setActivityResource({ viewerAccountId: requestedViewer, state: LOADING_ACTIVITY });
+      void fetchPubNightsFeed(initialPub.name, undefined, controller.signal).then((result) => {
+        if (
+          !active ||
+          useAccountStore.getState().session?.accountId !== requestedViewer
+        ) return;
+        setActivityResource({
+          viewerAccountId: requestedViewer,
+          state: result.ok
+            ? {
+                status: 'ready',
+                nights: result.nights,
+                nextCursor: result.nextCursor,
+              }
+            : { status: 'error', nights: [], nextCursor: null },
+        });
       });
-    });
+    }, 0);
     return () => {
       active = false;
+      clearTimeout(kickoff);
+      controller.abort();
+      moreControllerRef.current?.abort();
     };
-  }, [activityNonce, initialPub.name]);
+  }, [activityNonce, initialPub.name, viewerAccountId]);
 
   const primaryLabel = picking ? 'Vybrat tuhle hospodu' : 'Začít tu večer';
   const houseBeer = pub.featuredTap?.name ?? 'Pivo';
   const pubKey = geohash8(pub.pub.lat, pub.pub.lng);
+  const taps = pub.pub.beers ?? [];
+  const partyTaps = taps.flatMap((tap) => {
+    const name = tap.name.trim();
+    return name
+      ? [{ name, priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null }]
+      : [];
+  });
 
   const startHere = () => {
+    const partyArgs = [
+      pub.name,
+      houseBeer,
+      pubKey,
+      partyTaps,
+      pub.pub.city,
+      pub.pub.googlePlaceId,
+    ] as const;
+    const transition = picking
+      ? setLocalPub(...partyArgs)
+      : localPartyLive
+        ? setLocalPub(...partyArgs)
+        : startLocalParty(...partyArgs);
+
+    const shouldEnsureTable = !picking || localPartyLive;
+    let stagedCode = sharedEveningCode;
+    let table: ReturnType<typeof startSharedEvening> | null = null;
+    if (shouldEnsureTable && !sharedEveningCode && !sharedEveningBusy) {
+      stagedCode = generateJoinCode();
+      table = startSharedEvening(pub.name, pub.pub.city, stagedCode);
+    }
+    void enqueuePartyPubTransition(transition, stagedCode, {
+      deferDelivery: table !== null || (!!stagedCode && !confirmedEveningCode),
+    });
+    if (table) void table.finally(() => flushPartyBeerWrites());
+
     if (picking) {
-      setLocalPub(pub.name, houseBeer, pubKey);
       endPicking();
       onClose?.();
       router.back();
       return;
     }
-
-    if (localPartyLive) setLocalPub(pub.name, houseBeer, pubKey);
-    else startLocalParty(pub.name, houseBeer, pubKey);
-
-    if (!sharedEvening && !sharedEveningBusy) {
-      void startSharedEvening(pub.name, pub.pub.city);
-    }
     router.push('/party-live' as Href);
   };
 
   const retryActivity = () => {
-    setActivity({ status: 'loading', nights: [] });
+    if (viewerAccountId) {
+      setActivityResource({ viewerAccountId, state: LOADING_ACTIVITY });
+    }
+    setActivityMoreErrorFor(null);
     setActivityNonce((nonce) => nonce + 1);
+  };
+
+  const loadMoreActivity = () => {
+    if (
+      activity.status !== 'ready' ||
+      !activity.nextCursor ||
+      activityLoadingMore
+    ) {
+      return;
+    }
+    if (!viewerAccountId) return;
+    const requestedViewer = viewerAccountId;
+    const cursor = activity.nextCursor;
+    const controller = new AbortController();
+    moreControllerRef.current?.abort();
+    moreControllerRef.current = controller;
+    setActivityLoadingMoreFor(requestedViewer);
+    setActivityMoreErrorFor(null);
+    void fetchPubNightsFeed(initialPub.name, cursor, controller.signal).then((result) => {
+      if (
+        controller.signal.aborted ||
+        useAccountStore.getState().session?.accountId !== requestedViewer
+      ) return;
+      setActivityLoadingMoreFor(null);
+      if (!result.ok) {
+        setActivityMoreErrorFor(requestedViewer);
+        return;
+      }
+      setActivityResource((current) => {
+        if (
+          current?.viewerAccountId !== requestedViewer ||
+          current.state.status !== 'ready' ||
+          current.state.nextCursor !== cursor
+        ) return current;
+        const existing = new Set(current.state.nights.map((night) => night.id));
+        return {
+          viewerAccountId: requestedViewer,
+          state: {
+            status: 'ready',
+            nights: [
+              ...current.state.nights,
+              ...result.nights.filter((night) => !existing.has(night.id)),
+            ],
+            nextCursor: result.nextCursor,
+          },
+        };
+      });
+    });
   };
 
   const meta = [
@@ -169,8 +275,6 @@ export function PubDetailBody({
       ? []
       : [{ key: 'distance', text: pub.distanceLabel, color: Colors.foam }]),
   ];
-  const taps = pub.pub.beers ?? [];
-
   return (
     <View style={styles.body}>
       <View style={styles.titleRow}>
@@ -296,10 +400,20 @@ export function PubDetailBody({
                   key={night.id}
                   night={night}
                   onRemoved={() =>
-                    setActivity((current) => ({
-                      status: 'ready',
-                      nights: current.nights.filter((item) => item.id !== night.id),
-                    }))
+                    setActivityResource((current) => {
+                      if (
+                        current?.viewerAccountId !== viewerAccountId ||
+                        current.state.status !== 'ready'
+                      ) return current;
+                      return {
+                        viewerAccountId: current.viewerAccountId,
+                        state: {
+                          status: 'ready',
+                          nights: current.state.nights.filter((item) => item.id !== night.id),
+                          nextCursor: current.state.nextCursor,
+                        },
+                      };
+                    })
                   }
                   onChanged={retryActivity}
                 />
@@ -309,6 +423,23 @@ export function PubDetailBody({
             <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
               Zatím sem nikdo nic nezapsal. Buď první.
             </Text>
+          ) : null}
+          {activity.status === 'ready' && activity.nextCursor ? (
+            <Pressable
+              onPress={loadMoreActivity}
+              disabled={activityLoadingMore}
+              style={({ pressed }) => [styles.loadMore, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Načíst další aktivitu hospody"
+            >
+              {activityLoadingMore ? (
+                <ActivityIndicator color={Colors.amber} />
+              ) : (
+                <Text style={styles.retryText}>
+                  {activityMoreError ? 'Zkusit další znovu' : 'Načíst další'}
+                </Text>
+              )}
+            </Pressable>
           ) : null}
         </View>
       ) : null}
@@ -337,6 +468,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   retryText: { fontSize: 14, fontWeight: '700', color: Colors.foam },
+  loadMore: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
   title: {
     flex: 1,
     fontSize: 30,

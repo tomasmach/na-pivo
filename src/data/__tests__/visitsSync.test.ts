@@ -99,6 +99,10 @@ describe('buildVisitEntry', () => {
     );
     expect(entry).toEqual(expect.objectContaining({ city: 'Praha', external_id: 'mapy:pub-1' }));
   });
+
+  it('associates the visit with the shared table when supplied', () => {
+    expect(buildVisitEntry(session(), undefined, 'PIVOXY')?.party_code).toBe('PIVOXY');
+  });
 });
 
 describe('syncVisit', () => {
@@ -106,6 +110,23 @@ describe('syncVisit', () => {
     syncVisit(session());
     expect(enqueueVisitOp).toHaveBeenCalledWith(
       expect.objectContaining({ op: 'upsert', clientId: 'v1' }),
+    );
+  });
+
+  it('keeps the party code in the queued visit entry', () => {
+    syncVisit(session(), '2026-06-14T21:00:00.000Z', 'PIVOXY');
+
+    expect(enqueueVisitOp).toHaveBeenCalledWith(
+      expect.objectContaining({ entry: expect.objectContaining({ party_code: 'PIVOXY' }) }),
+    );
+  });
+
+  it('can persist a first table visit without racing the table create', () => {
+    syncVisit(session(), '2026-06-14T21:00:00.000Z', 'PIVOXY', { deliver: false });
+
+    expect(enqueueVisitOp).toHaveBeenCalledWith(
+      expect.objectContaining({ entry: expect.objectContaining({ party_code: 'PIVOXY' }) }),
+      { deliver: false },
     );
   });
 

@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.core.cache import cache
 from django.core.management import call_command
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -250,19 +252,64 @@ def test_friend_suggestions_are_public_unrelated_and_privacy_filtered(client):
     _public_token, public = _register(client, "novy")
     _friend_token, friend = _register(client, "kamos")
     _ghost_token, ghost = _register(client, "duch")
-    _private_token, _private = _register(client, "tajny", is_public=False)
+    _private_token, private = _register(client, "tajny", is_public=False)
     _blocked_token, blocked = _register(client, "blok")
     ghost.ghost_mode = True
     ghost.save(update_fields=["ghost_mode"])
     _make_friends(viewer, friend)
+    _make_friends(public, friend)
+    _make_friends(ghost, friend)
+    _make_friends(private, friend)
+    _make_friends(blocked, friend)
     FriendBlock.objects.create(blocker=blocked, blocked=viewer)
 
     response = client.get("/v1/friends/search?suggest=true", **_auth(viewer_token))
 
     assert response.status_code == status.HTTP_200_OK, response.content
-    assert [item["id"] for item in response.json()["results"]] == [
-        str(public.public_id)
+    assert response.json()["results"] == [
+        {
+            "id": str(public.public_id),
+            "nickname": "novy",
+            "display_name": "Novy",
+            "avatar_url": None,
+            "is_public": True,
+            "suggestion_reason": {"kind": "mutual_friends", "count": 1},
+        }
     ]
+
+
+@pytest.mark.django_db
+def test_friend_suggestions_never_use_private_pub_overlap_for_non_friends(client):
+    viewer_token, viewer = _register(client, "divak")
+    _bridge_token, bridge = _register(client, "spojka")
+    _shared_token, shared = _register(client, "stejnastamgast")
+    _mutual_token, mutual = _register(client, "preskamarada")
+    _private_diary_token, private_diary = _register(client, "skrytypijan")
+    _unrelated_token, unrelated = _register(client, "nahodny")
+    _make_friends(viewer, bridge)
+    _make_friends(mutual, bridge)
+    _visit(viewer, pub_name="Tajná společná hospoda")
+    _visit(shared, pub_name="Jiné jméno stejného místa")
+    _visit(private_diary, pub_name="Ještě jiné jméno")
+    shared.share_drinks_with_parta = True
+    shared.save(update_fields=["share_drinks_with_parta"])
+    private_diary.share_drinks_with_parta = False
+    private_diary.save(update_fields=["share_drinks_with_parta"])
+
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get("/v1/friends/search?suggest=true", **_auth(viewer_token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    results = response.json()["results"]
+    assert [item["id"] for item in results] == [str(mutual.public_id)]
+    assert results[0]["suggestion_reason"] == {"kind": "mutual_friends", "count": 1}
+    assert str(shared.public_id) not in {item["id"] for item in results}
+    assert str(private_diary.public_id) not in {item["id"] for item in results}
+    assert str(unrelated.public_id) not in {item["id"] for item in results}
+    assert "Tajná společná hospoda" not in str(results)
+    assert "u2fkbn1z" not in str(results)
+    assert str(_LAT) not in str(results)
+    assert len(queries) <= 10
 
 
 @pytest.mark.django_db
@@ -1345,9 +1392,9 @@ def test_friend_profile_detail(client):
     assert body["friendship_status"] == "accepted"
     assert body["incoming_request_id"] is None
     assert body["profile"]["nickname"] == "petr"
-    assert body["public_stats"]["total_beers"] == 1
+    assert body["public_stats"]["total_beers"] == 0
     assert body["public_stats"]["mapper_level"] == 3
-    assert body["achievements"]["first_beer"] is True
+    assert body["achievements"]["first_beer"] is False
     assert body["stats"]["shared_pub_count"] == 1
     assert body["stats"]["nights_together"] == 1
     assert len(body["recent_together"]) == 1
@@ -1428,7 +1475,7 @@ def test_public_non_friend_profile_is_visible_without_private_activity_leaks(cli
     assert body["plan"] is None
     assert body["recent_together"] == []
     assert body["latest_beers"] == []
-    assert body["public_stats"]["total_beers"] == 1
+    assert body["public_stats"]["total_beers"] == 2
     assert body["achievements"]["first_beer"] is True
     assert body["published_timeline"]["windows"]["week"]["beers"] == 2
     assert "Veřejná hospoda" not in str(body["published_timeline"])

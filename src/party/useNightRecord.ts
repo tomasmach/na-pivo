@@ -1,72 +1,291 @@
 /**
- * Dnešní večer, jak ho vidí obrazovky.
+ * The current shared evening as one release-grade record.
  *
- * One hook, so the hub, the glass bar, the game screen and the finish screen all
- * read the SAME night. Before this each of them held its own copy and they could
- * disagree about how many beers there had been — which is exactly the bug that
- * makes a shared table not worth trusting.
- *
- * Where the parts come from is `buildNightRecord`'s business
- * (`src/party/nightBuilder.ts`). This only wires it to the stores:
- *
- *   me       `tallyStore` — the counter, the diary's own truth
- *   others   `partyEveningStore` — the shared evening, when there is one
- *   games    `livePartyStore` for the ones YOU put down, plus `partyGamesStore`
- *            for the ones somebody else did
- *   photos   `livePartyStore` — still local; the real ones are `BeerPhoto`
- *
- * Photos are the last mocked part of a running night, and they are passed in
- * rather than special-cased, so replacing them is a change of source and not a
- * change of shape.
+ * The server's private `/record` endpoint is canonical for the table: members,
+ * everybody else's drinks, visits, games and photos. This phone's tally stays
+ * in the result immediately, so counting still works offline and a queued drink
+ * never disappears while the server catches up. The last good server record is
+ * cached privately for the finish → recap transition, cold restart and cellar
+ * signal. With no local evening, bounded server history recovers the latest
+ * ended table on another signed-in device.
  */
 
 import React from 'react';
 
+import { fetchPartyEveningHistory, fetchPartyNightRecord } from '@/data/partyClient';
 import { useAccountStore } from '@/stores/accountStore';
+import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { usePartyGamesStore } from '@/stores/partyGamesStore';
-import { useTallyStore } from '@/stores/tallyStore';
-import { buildNightRecord, tintFor } from '@/party/nightBuilder';
+import { drinkingDayKey, useTallyStore, type TallySession } from '@/stores/tallyStore';
+import { buildNightRecord } from '@/party/nightBuilder';
+import {
+  loadLatestNightRecordCache,
+  loadNightRecordCache,
+  readNightRecordCache,
+  writeNightRecordCache,
+} from '@/party/nightRecordCache';
 import type { NightGame, NightPhoto, NightRecord, NightStop } from '@/party/nightRecord';
 
-/** Whoever is holding the phone, before an account id is known. */
 const ME_FALLBACK = 'me';
+const REFRESH_MS = 10_000;
 
-export function useNightRecord(): NightRecord {
-  const session = useTallyStore((s) => s.current);
-  const evening = usePartyEveningStore((s) => s.evening);
-  const accountId = useAccountStore((s) => s.session?.accountId);
+export type NightRecordRecoveryState = 'loading' | 'ready' | 'empty' | 'unavailable';
 
-  const live = useLivePartyStore((s) => s.live);
-  const pubName = useLivePartyStore((s) => s.pubName);
-  const startedAt = useLivePartyStore((s) => s.startedAt);
-  const guests = useLivePartyStore((s) => s.people);
-  const games = useLivePartyStore((s) => s.games);
-  const log = useLivePartyStore((s) => s.log);
-  const sharedGames = usePartyGamesStore((s) => s.games);
-  const sharedEvents = usePartyGamesStore((s) => s.events);
+interface NightRecordOptions {
+  recoverLatestEnded?: boolean;
+  onRecoveryStateChange?: (state: NightRecordRecoveryState) => void;
+}
 
-  // The account id matters: it is how a drink of mine is told apart from the
-  // copy the server sends back. Without it the two would be counted twice.
+/** The epoch placeholder is an internal builder fallback, never recap content. */
+export function hasRenderableNightRecord(night: NightRecord): boolean {
+  const startedAt = Date.parse(night.startedAt);
+  if (!Number.isFinite(startedAt) || startedAt <= 0) return false;
+  return Boolean(
+    night.code ||
+    night.endedAt ||
+    night.stops.length ||
+    night.drinks.length ||
+    night.games.length ||
+    night.photos.length,
+  );
+}
+
+/** Freeze the fully merged record before finish mutates membership/local stores. */
+export function rememberNightRecord(
+  record: NightRecord,
+  accountId: string | null | undefined,
+): Promise<void> {
+  return writeNightRecordCache(accountId, record);
+}
+
+function mergeByKey<T>(remote: T[], local: T[], keyOf: (item: T) => string): T[] {
+  const merged = new Map(remote.map((item) => [keyOf(item), item]));
+  for (const item of local) merged.set(keyOf(item), item);
+  return [...merged.values()];
+}
+
+function earliestStartedAt(values: (string | null | undefined)[]): string | null {
+  let earliest: { value: string; time: number } | null = null;
+  for (const value of values) {
+    if (!value) continue;
+    const time = Date.parse(value);
+    // Epoch is the builder's internal empty-record sentinel, not a real night.
+    if (!Number.isFinite(time) || time <= 0) continue;
+    if (!earliest || time < earliest.time) earliest = { value, time };
+  }
+  return earliest?.value ?? null;
+}
+
+/** Exported for a focused no-double-count regression test. */
+export function mergeNightRecords(remote: NightRecord, local: NightRecord): NightRecord {
+  const people = remote.people.length > 0 ? remote.people : local.people;
+  const meId = local.people[0]?.id;
+  const remoteStopsByLocalId = new Map<string, NightStop>();
+  for (const stop of remote.stops) {
+    // Server stop ids deliberately include the PubVisit client id. That lets an
+    // optimistic local visit become the same stop as soon as it comes back.
+    const clientId = stop.id.split(':').at(-1);
+    if (clientId) remoteStopsByLocalId.set(clientId, stop);
+  }
+  const stopAliases = new Map<string, string>();
+  const pendingStops = local.stops.filter((stop) => {
+    const exact = remoteStopsByLocalId.get(stop.id);
+    const equivalent =
+      exact ??
+      remote.stops.find(
+        (candidate) =>
+          candidate.by === stop.by &&
+          candidate.cacheKey === stop.cacheKey &&
+          candidate.arrivedAt === stop.arrivedAt,
+      );
+    if (!equivalent) return true;
+    stopAliases.set(stop.id, equivalent.id);
+    return false;
+  });
+  const stops = [...remote.stops, ...pendingStops].sort((a, b) =>
+    a.arrivedAt.localeCompare(b.arrivedAt),
+  );
+  const optimisticDrinks = meId ? local.drinks.filter((drink) => drink.by === meId) : [];
+  const remoteDrinks = new Map(remote.drinks.map((drink) => [drink.id, drink]));
+  const mergedOptimisticDrinks = optimisticDrinks.map((drink) => {
+    const serverTwin = remoteDrinks.get(drink.id);
+    return {
+      ...serverTwin,
+      ...drink,
+      // The server has the canonical visit id. Preserve optimistic names and
+      // timestamps, but never leave a drink pointing at a vanished local stop.
+      stopId:
+        serverTwin?.stopId ??
+        (drink.stopId ? (stopAliases.get(drink.stopId) ?? drink.stopId) : null),
+    };
+  });
+  const games = new Map(remote.games.map((game) => [game.key, game]));
+  for (const localGame of local.games) {
+    const serverGame = games.get(localGame.key);
+    games.set(localGame.key, {
+      ...serverGame,
+      ...localGame,
+      ...((localGame.result ?? serverGame?.result)
+        ? { result: localGame.result ?? serverGame?.result }
+        : {}),
+    });
+  }
+  const startedAt =
+    earliestStartedAt([remote.startedAt, local.startedAt]) ?? remote.startedAt;
+  return {
+    ...remote,
+    // A local drinking day may already contain earlier sittings than the table
+    // or cached record. They are part of the same recap, so its clock must span
+    // the whole crawl rather than restarting at the latest pub.
+    startedAt,
+    people,
+    stops,
+    // Diary client ids are the wire ids, so the optimistic local row replaces
+    // its server twin instead of adding a second beer.
+    drinks: mergeByKey(remote.drinks, mergedOptimisticDrinks, (drink) => drink.id).sort((a, b) =>
+      a.at.localeCompare(b.at),
+    ),
+    games: [...games.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+    photos: mergeByKey(remote.photos, local.photos, (photo) => photo.id).sort((a, b) =>
+      a.at.localeCompare(b.at),
+    ),
+  };
+}
+
+export function sessionsForRecord(
+  current: TallySession | null,
+  history: TallySession[],
+  startedAt: string | undefined,
+): TallySession[] {
+  const anchor = startedAt ?? current?.startedAt;
+  if (!anchor || !Number.isFinite(Date.parse(anchor))) return [];
+  const day = drinkingDayKey(new Date(anchor));
+  const seenSessions = new Set<string>();
+  const candidates = current ? [current, ...history] : history;
+  const sessions: TallySession[] = [];
+
+  for (const session of candidates) {
+    if (!Number.isFinite(Date.parse(session.startedAt))) continue;
+    if (drinkingDayKey(new Date(session.startedAt)) !== day) continue;
+    // A resumed session can transiently exist in both buckets while persisted
+    // state settles. Prefer `current` (it is first) and never draw its stop or
+    // drinks twice.
+    if (seenSessions.has(session.clientId)) continue;
+    seenSessions.add(session.clientId);
+
+    const seenDrinks = new Set<string>();
+    const drinks = session.drinks.filter((drink) => {
+      if (seenDrinks.has(drink.id)) return false;
+      seenDrinks.add(drink.id);
+      return true;
+    });
+    sessions.push(drinks.length === session.drinks.length ? session : { ...session, drinks });
+  }
+
+  return sessions.sort(
+    (left, right) =>
+      left.startedAt.localeCompare(right.startedAt) || left.clientId.localeCompare(right.clientId),
+  );
+}
+
+/** Kept for callers that need the latest sitting rather than the whole crawl. */
+export function sessionForRecord(
+  current: TallySession | null,
+  history: TallySession[],
+  startedAt: string | undefined,
+): TallySession | null {
+  return sessionsForRecord(current, history, startedAt).at(-1) ?? null;
+}
+
+export function stopsForSessions(sessions: TallySession[], meId: string): NightStop[] {
+  const seen = new Set<string>();
+  return sessions.flatMap((session) => {
+    if (seen.has(session.clientId) || !session.pubName.trim()) return [];
+    seen.add(session.clientId);
+    return [
+      {
+        id: session.clientId,
+        by: meId,
+        pubName: session.pubName,
+        cacheKey: session.pubKey || null,
+        arrivedAt: session.startedAt,
+      },
+    ];
+  });
+}
+
+export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
+  const recoverLatestEnded = options.recoverLatestEnded === true;
+  const onRecoveryStateChange = options.onRecoveryStateChange;
+  const currentSession = useTallyStore((state) => state.current);
+  const history = useTallyStore((state) => state.history);
+  const evening = usePartyEveningStore((state) => state.evening);
+  const confirmedIdentity = usePartyEveningStore((state) => state.confirmedIdentity);
+  const lastEvening = usePartyEveningStore((state) => state.lastEvening);
+  const accountId = useAccountStore((state) => state.session?.accountId);
+
+  const live = useLivePartyStore((state) => state.live);
+  const pubName = useLivePartyStore((state) => state.pubName);
+  const pubKey = useLivePartyStore((state) => state.pubKey);
+  const partyPubVisits = useLivePartyStore((state) => state.pubVisits);
+  const startedAt = useLivePartyStore((state) => state.startedAt);
+  const localGames = useLivePartyStore((state) => state.games);
+  const sharedGames = usePartyGamesStore((state) => state.games);
+  const sharedEvents = usePartyGamesStore((state) => state.events);
+  const allPhotos = useBeerPhotosStore((state) => state.photos);
+
+  const targetEvening = evening ?? lastEvening;
+  const code = targetEvening?.joinCode ?? confirmedIdentity?.joinCode ?? null;
+  const initialCachedRecord = code && accountId ? readNightRecordCache(accountId, code) : null;
+  const [remote, setRemote] = React.useState<{
+    code: string | null;
+    accountId: string;
+    record: NightRecord;
+  } | null>(() =>
+    code && accountId && initialCachedRecord
+      ? { code, accountId, record: initialCachedRecord }
+      : null,
+  );
+  const accountRemote = remote && remote.accountId === accountId ? remote.record : null;
+  const recoveredRecord =
+    recoverLatestEnded &&
+    !code &&
+    !live &&
+    accountRemote &&
+    accountRemote.endedAt !== null
+      ? accountRemote
+      : null;
+  const effectiveCode = code ?? recoveredRecord?.code ?? null;
   const meId = accountId ?? ME_FALLBACK;
+  const localAnchor =
+    targetEvening?.startedAt ??
+    recoveredRecord?.startedAt ??
+    (startedAt !== null ? new Date(startedAt).toISOString() : undefined);
+  const sessions = React.useMemo(
+    () => sessionsForRecord(currentSession, history, localAnchor),
+    [currentSession, history, localAnchor],
+  );
+  const session = sessions.at(-1) ?? null;
+  const targetDrinkingDay = localAnchor
+    ? drinkingDayKey(new Date(localAnchor))
+    : sessions[0]
+      ? drinkingDayKey(new Date(sessions[0].startedAt))
+      : null;
 
-  /** What each shared game said when it ended. Last `finish` wins — a game only
-   *  ends once, and a resend of the same event carries the same result. */
   const finishedResults = React.useMemo(() => {
     const byGame = new Map<string, NonNullable<NightGame['result']>>();
     for (const event of sharedEvents) {
       if (event.kind !== 'finish') continue;
-      const winner = event.payload.winner;
-      const paying = event.payload.paying;
       const scores = Array.isArray(event.payload.scores) ? event.payload.scores : [];
       byGame.set(event.gameId, {
-        winner: typeof winner === 'string' ? winner : null,
-        ...(typeof paying === 'string' ? { paying } : {}),
-        scores: scores.flatMap((row) => {
-          const entry = row as { name?: unknown; score?: unknown };
-          return typeof entry?.name === 'string' && typeof entry?.score === 'number'
-            ? [{ name: entry.name, score: entry.score }]
+        winner: typeof event.payload.winner === 'string' ? event.payload.winner : null,
+        ...(typeof event.payload.paying === 'string' ? { paying: event.payload.paying } : {}),
+        scores: scores.flatMap((value) => {
+          const row = value as { name?: unknown; score?: unknown };
+          return typeof row?.name === 'string' && typeof row?.score === 'number'
+            ? [{ name: row.name, score: row.score }]
             : [];
         }),
       });
@@ -74,92 +293,195 @@ export function useNightRecord(): NightRecord {
     return byGame;
   }, [sharedEvents]);
 
-  return React.useMemo(() => {
-    // No `Date.now()` here: a night that has not started has no start, and the
-    // builder already knows what to do with that. (It is also impure, and the
-    // lint rule cannot tell a memo from a render.)
-    const opened = startedAt ?? (session ? new Date(session.startedAt).getTime() : 0);
-    const openedIso = new Date(opened).toISOString();
+  const localRecord = React.useMemo(() => {
+    const openedIso =
+      earliestStartedAt([
+        localAnchor,
+        ...sessions.flatMap((selectedSession) => [
+          selectedSession.startedAt,
+          ...selectedSession.drinks.map((drink) => drink.at),
+        ]),
+        ...partyPubVisits.map((visit) => visit.startedAt),
+      ]) ?? new Date(0).toISOString();
+    const opened = Date.parse(openedIso);
 
-    // One stop for now — where you are. The walk arrives with `PubVisit`.
-    const stops: NightStop[] = live
-      ? [
-          {
-            id: session?.pubKey ?? 'stop',
-            pubName: session?.pubName ?? pubName,
-            cacheKey: session?.pubKey ?? null,
-            arrivedAt: openedIso,
-          },
-        ]
-      : [];
+    const sessionStops = stopsForSessions(sessions, meId);
+    const explicitStops = partyPubVisits.map((visit): NightStop => ({
+      id: visit.clientId,
+      by: meId,
+      pubName: visit.pubName,
+      cacheKey: visit.pubKey,
+      arrivedAt: visit.startedAt,
+    }));
+    const stopById = new Map(sessionStops.map((stop) => [stop.id, stop]));
+    for (const stop of explicitStops) stopById.set(stop.id, stop);
+    const localStops = [...stopById.values()].sort((left, right) =>
+      left.arrivedAt.localeCompare(right.arrivedAt),
+    );
+    const stops: NightStop[] =
+      live || targetEvening || confirmedIdentity || recoveredRecord
+        ? localStops.length > 0
+          ? localStops
+          : pubName
+            ? [
+                {
+                  id: pubKey ?? 'local-stop',
+                  by: meId,
+                  pubName,
+                  cacheKey: pubKey ?? null,
+                  arrivedAt: openedIso,
+                },
+              ]
+            : []
+        : [];
 
-    const nightGames: NightGame[] = games.map((game) => ({
+    const games: NightGame[] = localGames.map((game) => ({
       key: game.key,
       name: game.name,
-      // `at` is minutes into the evening in the local store; the record speaks
-      // in instants, because a recap read tomorrow has no "now" to count from.
-      startedAt: new Date(opened + game.at * 60000).toISOString(),
-      ...(game.result
-        ? {
-            result: {
-              winner: game.result.winner,
-              ...(game.result.paying !== undefined ? { paying: game.result.paying } : {}),
-              scores: game.result.scores,
-            },
-          }
-        : {}),
+      // `at` is already an epoch stamp in livePartyStore.
+      startedAt: new Date(game.at).toISOString(),
+      ...(game.result ? { result: game.result } : {}),
     }));
-
-    const photos: NightPhoto[] = log
-      .filter((event) => event.kind === 'photo' && event.photo)
-      .map((event) => ({
-        id: event.id,
-        url: event.photo as string,
-        at: new Date(event.at).toISOString(),
-        by: event.by === 'Ty' ? meId : event.by,
-      }));
-
-    // Games somebody ELSE put on the table. Keyed by catalogue key, because
-    // that is what a thread row launches — and the same game twice at one table
-    // at the same moment is not a case worth splitting rows over.
-    const local = new Set(nightGames.map((game) => game.key));
+    const known = new Set(games.map((game) => game.key));
     for (const shared of sharedGames) {
-      if (local.has(shared.catalogKey)) continue;
-      nightGames.push({
+      if (known.has(shared.catalogKey)) continue;
+      games.push({
         key: shared.catalogKey,
         name: shared.name,
         startedAt: shared.startedAt,
-        // The result as the game STATED it, not one re-derived here. Two phones
-        // recomputing an outcome from partial events is how a table ends up
-        // arguing about who is paying.
         ...(finishedResults.get(shared.id) ? { result: finishedResults.get(shared.id)! } : {}),
       });
     }
 
-    const record = buildNightRecord({
-      evening,
-      session,
-      meId,
-      stops,
-      games: nightGames,
-      photos,
-      ...(opened > 0 ? { startedAt: openedIso } : {}),
+    const photos: NightPhoto[] = allPhotos.flatMap((photo) => {
+      const belongsToServerTable =
+        !!effectiveCode && photo.partyCode?.toUpperCase() === effectiveCode.toUpperCase();
+      const belongsToLocalNight =
+        !!targetDrinkingDay && photo.partyDrinkingDay === targetDrinkingDay;
+      if (!belongsToServerTable && !belongsToLocalNight) return [];
+      const url = photo.localUri ?? photo.imageUrl;
+      return url ? [{ id: photo.id ?? photo.clientId, url, at: photo.takenAt, by: meId }] : [];
     });
 
-    // Guests: people at the table who are not in the shared evening — either
-    // there is no evening, or they have no phone in it. They carry no drinks,
-    // because nobody logged any for them, and inventing some would put numbers
-    // in a scoreboard that nothing backs up.
-    const known = new Set(record.people.map((person) => person.id));
-    const extra = guests
-      .filter((guest) => !known.has(guest.id))
-      .map((guest) => ({
-        id: guest.id,
-        name: guest.name,
-        avatarUrl: null,
-        tint: guest.tint || tintFor(guest.id),
-      }));
+    const record = buildNightRecord({
+      evening: targetEvening,
+      session,
+      sessions,
+      meId,
+      stops,
+      games,
+      photos,
+      ...(opened > 0 ? { startedAt: openedIso } : {}),
+      endedAt: targetEvening?.endedAt ?? recoveredRecord?.endedAt ?? null,
+    });
+    return confirmedIdentity && !record.code
+      ? { ...record, id: confirmedIdentity.id, code: confirmedIdentity.joinCode }
+      : record;
+  }, [
+    targetEvening,
+    confirmedIdentity,
+    session,
+    sessions,
+    meId,
+    live,
+    pubName,
+    pubKey,
+    partyPubVisits,
+    localAnchor,
+    localGames,
+    sharedGames,
+    finishedResults,
+    allPhotos,
+    effectiveCode,
+    targetDrinkingDay,
+    recoveredRecord,
+  ]);
 
-    return extra.length > 0 ? { ...record, people: [...record.people, ...extra] } : record;
-  }, [evening, session, meId, live, pubName, startedAt, games, log, guests, sharedGames, finishedResults]);
+  React.useEffect(() => {
+    if (!code || !accountId) return;
+    const controller = new AbortController();
+    let inFlight = false;
+    void loadNightRecordCache(accountId, code).then((record) => {
+      if (!record || controller.signal.aborted) return;
+      setRemote({ code, accountId, record });
+    });
+    const refresh = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      const result = await fetchPartyNightRecord(code, accountId, controller.signal);
+      inFlight = false;
+      if (!result.ok || controller.signal.aborted) return;
+      void writeNightRecordCache(accountId, result.record);
+      setRemote({ code, accountId, record: result.record });
+    };
+    const kickoff = setTimeout(() => void refresh(), 0);
+    const interval = targetEvening?.active ? setInterval(() => void refresh(), REFRESH_MS) : null;
+    return () => {
+      clearTimeout(kickoff);
+      if (interval) clearInterval(interval);
+      controller.abort();
+    };
+  }, [code, accountId, targetEvening?.active]);
+
+  React.useEffect(() => {
+    if (!recoverLatestEnded) return;
+    if (code || live) {
+      onRecoveryStateChange?.('ready');
+      return;
+    }
+    if (!accountId) {
+      onRecoveryStateChange?.('unavailable');
+      return;
+    }
+    const controller = new AbortController();
+    onRecoveryStateChange?.('loading');
+    void (async () => {
+      let recovered = false;
+      const cached = await loadLatestNightRecordCache(accountId);
+      if (cached && !controller.signal.aborted) {
+        recovered = true;
+        setRemote({ code: cached.code, accountId, record: cached });
+        onRecoveryStateChange?.('ready');
+      }
+
+      const historyResult = await fetchPartyEveningHistory(controller.signal);
+      if (controller.signal.aborted) return;
+      if (!historyResult.ok) {
+        if (!recovered) onRecoveryStateChange?.('unavailable');
+        return;
+      }
+      const latest = historyResult.evenings[0];
+      if (!latest) {
+        if (!recovered) onRecoveryStateChange?.('empty');
+        return;
+      }
+      const recordResult = await fetchPartyNightRecord(
+        latest.joinCode,
+        accountId,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      if (!recordResult.ok) {
+        if (!recovered) onRecoveryStateChange?.('unavailable');
+        return;
+      }
+      void writeNightRecordCache(accountId, recordResult.record);
+      setRemote({
+        code: latest.joinCode,
+        accountId,
+        record: recordResult.record,
+      });
+      onRecoveryStateChange?.('ready');
+    })();
+    return () => controller.abort();
+  }, [recoverLatestEnded, onRecoveryStateChange, code, accountId, live]);
+
+  const remoteCode = code ?? recoveredRecord?.code ?? null;
+  const serverRecord =
+    remote?.code === remoteCode && remote.accountId === accountId
+      ? remote.record
+      : code && accountId
+        ? readNightRecordCache(accountId, code)
+        : null;
+  return serverRecord ? mergeNightRecords(serverRecord, localRecord) : localRecord;
 }

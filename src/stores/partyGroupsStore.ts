@@ -1,4 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import {
+  guardPrivateAccountStateCreator,
+  isPrivateAccountMutationFrozen,
+} from '@/data/privateAccountBoundary';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -28,10 +32,11 @@ function uniqueIds(ids: string[]): string[] {
 
 export const usePartyGroupsStore = create<PartyGroupsState>()(
   persist(
-    (set, get) => ({
+    guardPrivateAccountStateCreator((set, get) => ({
       groups: [],
 
       upsertGroup: (rawName, rawMemberIds, id) => {
+        if (isPrivateAccountMutationFrozen()) return null;
         const name = cleanName(rawName);
         const memberIds = uniqueIds(rawMemberIds);
         if (!name || memberIds.length === 0) return null;
@@ -71,7 +76,7 @@ export const usePartyGroupsStore = create<PartyGroupsState>()(
             .filter((group) => group.memberIds.length > 0),
         }));
       },
-    }),
+    })),
     {
       name: 'na-pivo-party-groups',
       storage: createJSONStorage(() => AsyncStorage),

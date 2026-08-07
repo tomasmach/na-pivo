@@ -1,4 +1,4 @@
-import { ensureAccount, type AccountSession } from './account';
+import { ensureAccount, generateUuidV4, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
@@ -9,16 +9,31 @@ const FEED_PAGE_SIZE = 20;
 export type NightVisibility = 'friends' | 'public';
 export type NightsFeedScope = 'friends' | 'global';
 
+export interface NightAuthor {
+  id: string;
+  nickname: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  isPublic: boolean;
+}
+
+export interface PublishedNightHeroPhoto {
+  id: string;
+  imageUrl: string;
+  caption: string;
+}
+
+export interface PublishedNightHeroGame {
+  id: string;
+  catalogKey: string;
+  name: string;
+  scoring: 'points' | 'drinks';
+}
+
 export interface PublishedNight {
   id: string;
   clientId?: string;
-  author: {
-    id: string;
-    nickname: string | null;
-    displayName: string;
-    avatarUrl: string | null;
-    isPublic: boolean;
-  };
+  author: NightAuthor;
   drinkingDay: string;
   startedAt: string;
   endedAt: string;
@@ -29,11 +44,18 @@ export interface PublishedNight {
   pubNames: string[];
   city: string;
   durationMinutes: number | null;
+  title: string;
+  roastLine: string;
+  roastBasis: string;
+  participants: NightAuthor[];
+  heroPhotos: PublishedNightHeroPhoto[];
+  heroGames: PublishedNightHeroGame[];
   visibility: NightVisibility;
   createdAt: string;
   rounds: number;
   myRound: boolean;
   isMine: boolean;
+  commentCount: number;
 }
 
 export interface NightPublishPayload {
@@ -48,6 +70,13 @@ export interface NightPublishPayload {
   pubNames: string[];
   city?: string;
   durationMinutes?: number;
+  title?: string;
+  roastLine?: string;
+  roastBasis?: string;
+  partyCode?: string;
+  participantIds?: string[];
+  photoIds?: string[];
+  gameIds?: string[];
   visibility: NightVisibility;
   updatedAt: string;
 }
@@ -66,6 +95,19 @@ export type NightsFeedResult =
 export type NightReactionResult =
   | { ok: true; rounds: number; myRound: boolean }
   | NightActionError;
+
+export interface NightComment {
+  id: string;
+  author: NightAuthor;
+  body: string;
+  createdAt: string;
+  isMine: boolean;
+  canDelete: boolean;
+}
+
+export type NightDetailResult = { ok: true; night: PublishedNight } | NightActionError;
+export type NightCommentsResult = { ok: true; comments: NightComment[] } | NightActionError;
+export type NightCommentResult = { ok: true; comment: NightComment } | NightActionError;
 
 interface RawNightAuthor {
   id?: string | null;
@@ -89,11 +131,27 @@ interface RawPublishedNight {
   pub_names?: unknown;
   city?: string | null;
   duration_minutes?: number | string | null;
+  title?: string | null;
+  roast_line?: string | null;
+  roast_basis?: string | null;
+  participants?: unknown;
+  hero_photos?: unknown;
+  hero_games?: unknown;
   visibility?: string | null;
   created_at?: string | null;
   rounds?: number | string | null;
   my_round?: boolean | null;
   is_mine?: boolean | null;
+  comment_count?: number | string | null;
+}
+
+interface RawNightComment {
+  id?: string | null;
+  author?: RawNightAuthor | null;
+  body?: string | null;
+  created_at?: string | null;
+  is_mine?: boolean | null;
+  can_delete?: boolean | null;
 }
 
 interface RequestOk {
@@ -120,23 +178,30 @@ function parseVisibility(value: unknown): NightVisibility {
   return value === 'public' ? 'public' : 'friends';
 }
 
+function parseAuthor(raw: RawNightAuthor | undefined | null): NightAuthor {
+  const nickname = typeof raw?.nickname === 'string' ? raw.nickname : null;
+  return {
+    id: typeof raw?.id === 'string' ? raw.id : '',
+    nickname,
+    displayName:
+      typeof raw?.display_name === 'string' ? raw.display_name : nickname ?? 'Kamarád',
+    avatarUrl: typeof raw?.avatar_url === 'string' ? raw.avatar_url : null,
+    isPublic: raw?.is_public !== false,
+  };
+}
+
+function rawAuthor(value: unknown): RawNightAuthor | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as RawNightAuthor)
+    : null;
+}
+
 export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
-  const author = raw.author ?? undefined;
-  const nickname = typeof author?.nickname === 'string' ? author.nickname : null;
   const clientId = typeof raw.client_id === 'string' ? raw.client_id : undefined;
   return {
     id: typeof raw.id === 'string' ? raw.id : '',
     ...(clientId ? { clientId } : {}),
-    author: {
-      id: typeof author?.id === 'string' ? author.id : '',
-      nickname,
-      displayName:
-        typeof author?.display_name === 'string'
-          ? author.display_name
-          : nickname ?? 'Kamarád',
-      avatarUrl: typeof author?.avatar_url === 'string' ? author.avatar_url : null,
-      isPublic: author?.is_public !== false,
-    },
+    author: parseAuthor(raw.author),
     drinkingDay: typeof raw.drinking_day === 'string' ? raw.drinking_day : '',
     startedAt: typeof raw.started_at === 'string' ? raw.started_at : '',
     endedAt: typeof raw.ended_at === 'string' ? raw.ended_at : '',
@@ -149,11 +214,47 @@ export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
       : [],
     city: typeof raw.city === 'string' ? raw.city : '',
     durationMinutes: parseNumber(raw.duration_minutes),
+    title: typeof raw.title === 'string' ? raw.title : '',
+    roastLine: typeof raw.roast_line === 'string' ? raw.roast_line : '',
+    roastBasis: typeof raw.roast_basis === 'string' ? raw.roast_basis : '',
+    participants: Array.isArray(raw.participants)
+      ? raw.participants.map(rawAuthor).filter((value): value is RawNightAuthor => value !== null).map(parseAuthor)
+      : [],
+    heroPhotos: Array.isArray(raw.hero_photos)
+      ? raw.hero_photos.flatMap((value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+          const row = value as Record<string, unknown>;
+          return typeof row.id === 'string' && typeof row.image_url === 'string'
+            ? [{
+                id: row.id,
+                imageUrl: row.image_url,
+                caption: typeof row.caption === 'string' ? row.caption : '',
+              }]
+            : [];
+        })
+      : [],
+    heroGames: Array.isArray(raw.hero_games)
+      ? raw.hero_games.flatMap((value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+          const row = value as Record<string, unknown>;
+          return typeof row.id === 'string' &&
+            typeof row.catalog_key === 'string' &&
+            typeof row.name === 'string'
+            ? [{
+                id: row.id,
+                catalogKey: row.catalog_key,
+                name: row.name,
+                scoring: row.scoring === 'drinks' ? 'drinks' as const : 'points' as const,
+              }]
+            : [];
+        })
+      : [],
     visibility: parseVisibility(raw.visibility),
     createdAt: typeof raw.created_at === 'string' ? raw.created_at : '',
     rounds: parseCount(raw.rounds),
     myRound: raw.my_round === true,
     isMine: raw.is_mine === true,
+    commentCount: parseCount(raw.comment_count),
   };
 }
 
@@ -172,6 +273,15 @@ export function nightPublishWire(payload: NightPublishPayload): Record<string, u
     ...(payload.durationMinutes !== undefined
       ? { duration_minutes: payload.durationMinutes }
       : {}),
+    ...(payload.title !== undefined ? { title: payload.title } : {}),
+    ...(payload.roastLine !== undefined ? { roast_line: payload.roastLine } : {}),
+    ...(payload.roastBasis !== undefined ? { roast_basis: payload.roastBasis } : {}),
+    ...(payload.partyCode !== undefined ? { party_code: payload.partyCode } : {}),
+    ...(payload.participantIds !== undefined
+      ? { participant_ids: payload.participantIds }
+      : {}),
+    ...(payload.photoIds !== undefined ? { photo_ids: payload.photoIds } : {}),
+    ...(payload.gameIds !== undefined ? { game_ids: payload.gameIds } : {}),
     visibility: payload.visibility,
     updated_at: payload.updatedAt,
   };
@@ -250,6 +360,20 @@ function rawObject(value: unknown): RawPublishedNight {
     : {};
 }
 
+function parseNightComment(value: unknown): NightComment | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as RawNightComment;
+  if (typeof raw.id !== 'string' || typeof raw.body !== 'string') return null;
+  return {
+    id: raw.id,
+    author: parseAuthor(raw.author),
+    body: raw.body,
+    createdAt: typeof raw.created_at === 'string' ? raw.created_at : '',
+    isMine: raw.is_mine === true,
+    canDelete: raw.can_delete === true,
+  };
+}
+
 export async function publishNight(payload: NightPublishPayload): Promise<NightPublishResult> {
   const res = await requestJson('/v1/nights', {
     method: 'POST',
@@ -283,6 +407,87 @@ export async function fetchNightsFeed(
   };
 }
 
+/** Friends-visible published nights that explicitly named one pub. */
+export async function fetchPubNightsFeed(
+  pubName: string,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<NightsFeedResult> {
+  const query =
+    `scope=friends&pub=${encodeURIComponent(pubName)}` +
+    `&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
+  const res = await requestJson(`/v1/nights/feed?${query}`, { signal });
+  if (!res.ok) return res.result;
+  return {
+    ok: true,
+    nights: Array.isArray(res.data.nights)
+      ? res.data.nights.map((night) => parsePublishedNight(rawObject(night)))
+      : [],
+    nextCursor: typeof res.data.next_cursor === 'string' ? res.data.next_cursor : null,
+  };
+}
+
+export async function fetchNightDetail(
+  nightId: string,
+  signal?: AbortSignal,
+): Promise<NightDetailResult> {
+  const res = await requestJson(
+    `/v1/nights/${encodeURIComponent(nightId)}/detail`,
+    { signal },
+  );
+  return res.ok
+    ? { ok: true, night: parsePublishedNight(rawObject(res.data.night)) }
+    : res.result;
+}
+
+export async function fetchNightComments(
+  nightId: string,
+  signal?: AbortSignal,
+): Promise<NightCommentsResult> {
+  const res = await requestJson(
+    `/v1/nights/${encodeURIComponent(nightId)}/comments`,
+    { signal },
+  );
+  return res.ok
+    ? {
+        ok: true,
+        comments: Array.isArray(res.data.comments)
+          ? res.data.comments.flatMap((value) => {
+              const comment = parseNightComment(value);
+              return comment ? [comment] : [];
+            })
+          : [],
+      }
+    : res.result;
+}
+
+export async function createNightComment(
+  nightId: string,
+  body: string,
+  clientId = generateUuidV4(),
+): Promise<NightCommentResult> {
+  const res = await requestJson(
+    `/v1/nights/${encodeURIComponent(nightId)}/comments`,
+    { method: 'POST', body: { client_id: clientId, body } },
+  );
+  if (!res.ok) return res.result;
+  const comment = parseNightComment(res.data.comment);
+  return comment
+    ? { ok: true, comment }
+    : { ok: false, code: 'invalid_response', detail: 'Komentář se nevrátil celý.' };
+}
+
+export async function deleteNightComment(
+  nightId: string,
+  commentId: string,
+): Promise<NightActionResult> {
+  const res = await requestJson(
+    `/v1/nights/${encodeURIComponent(nightId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE' },
+  );
+  return res.ok ? { ok: true } : res.result;
+}
+
 export async function fetchMyNights(cursor?: string): Promise<NightsFeedResult> {
   const query = `scope=global&mine=true&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
   const res = await requestJson(`/v1/nights/feed?${query}`);
@@ -299,9 +504,12 @@ export async function fetchMyNights(cursor?: string): Promise<NightsFeedResult> 
 export async function fetchProfileNights(
   accountId: string,
   cursor?: string,
+  signal?: AbortSignal,
 ): Promise<NightsFeedResult> {
-  const query = `scope=friends&author=${encodeURIComponent(accountId)}&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
-  const res = await requestJson(`/v1/nights/feed?${query}`);
+  // The dedicated server parameter always applies public-post visibility,
+  // independent of friendship or any future default-scope changes.
+  const query = `public_author=${encodeURIComponent(accountId)}&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
+  const res = await requestJson(`/v1/nights/feed?${query}`, { signal });
   if (!res.ok) return res.result;
   return {
     ok: true,

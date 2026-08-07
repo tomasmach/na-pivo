@@ -1,26 +1,47 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+  clearLiveBeerActivityForAccountBoundary,
   reconcileLiveBeerActivityAndAutoArchive,
   reconcilePendingLiveBeerAdds,
 } from '@/liveActivity/liveBeerActivity';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import type { PartyEvening } from '@/data/partyClient';
 import {
   ackPendingAdds,
+  clearPendingAdds,
   getPendingAdds,
 } from '../../../modules/beer-live-activity';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '@/data/privateAccountBoundary';
 import { ensureDrinkQueued, isDrinkQueued } from '@/data/drinksQueue';
 import { syncVisit } from '@/data/visitsSync';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+const mockIosEnd = jest.fn(async () => undefined);
+const mockIosGetInstances = jest.fn(() => [] as { end: typeof mockIosEnd }[]);
+
+jest.mock('@/liveActivity/BeerEveningLiveActivity', () => ({
+  default: {
+    getInstances: mockIosGetInstances,
+    start: jest.fn(),
+  },
+}));
+
 jest.mock('../../../modules/beer-live-activity', () => ({
   ackPendingAdds: jest.fn(async () => undefined),
+  clearPendingAdds: jest.fn(async () => true),
   end: jest.fn(async () => undefined),
   getPendingAdds: jest.fn(async () => []),
+  getStatus: jest.fn(async () => ({ active: false, sessionId: null })),
   startOrUpdate: jest.fn(async () => undefined),
 }));
 
@@ -44,6 +65,20 @@ jest.mock('@/data/telemetryClient', () => ({
 }));
 
 const TALLY_STORAGE_KEY = 'na-pivo-tally';
+const PARTY_EVENING = {
+  id: 'party-1',
+  joinCode: 'PIVOXY',
+  joinUrl: 'https://na-pivo.cz/party/PIVOXY',
+  host: { id: 'me', nickname: 'tomas', displayName: 'Tomáš', avatarUrl: null },
+  pubName: 'U Fleků',
+  pubCity: 'Praha',
+  active: true,
+  startedAt: '2026-07-21T18:00:00.000Z',
+  endedAt: null,
+  isHost: true,
+  members: [],
+  events: [],
+} as PartyEvening;
 
 function liveSession(extraDrinks: TallySession['drinks'] = []): TallySession {
   return {
@@ -74,10 +109,22 @@ async function seedTally(current: TallySession): Promise<void> {
 }
 
 beforeEach(async () => {
+  resetPrivateAccountBoundaryForTests();
   jest.clearAllMocks();
+  mockIosGetInstances.mockReturnValue([]);
   await AsyncStorage.clear();
   await seedTally(liveSession());
+  usePartyEveningStore.setState({
+    evening: null,
+    confirmedIdentity: null,
+    lastEvening: null,
+    pendingJoinCode: null,
+  });
   (isDrinkQueued as jest.Mock).mockResolvedValue(true);
+});
+
+afterEach(() => {
+  resetPrivateAccountBoundaryForTests();
 });
 
 describe('reconcilePendingLiveBeerAdds', () => {
@@ -121,6 +168,71 @@ describe('reconcilePendingLiveBeerAdds', () => {
     expect(ackPendingAdds).toHaveBeenCalledWith([
       '70c0d363-f6f1-492f-87e5-e89ced398544',
     ]);
+  });
+
+  it('only acknowledges a late A action after the account boundary installed B', async () => {
+    const transition = beginPrivateAccountTransition('account-switch', 'account-A');
+    expect(transition).not.toBeNull();
+    await transition!.drain();
+    transition!.release();
+
+    await seedTally({
+      ...liveSession(),
+      clientId: 'session-B',
+      drinks: [
+        {
+          id: 'beer-B',
+          beerName: 'Pivo B',
+          at: '2026-07-21T20:00:00.000Z',
+        },
+      ],
+    });
+    (getPendingAdds as jest.Mock).mockResolvedValue([
+      {
+        id: '2170d363-f6f1-492f-87e5-e89ced398599',
+        sessionId: 'session-A',
+        createdAt: Date.now(),
+      },
+    ]);
+
+    await reconcilePendingLiveBeerAdds();
+
+    expect(useTallyStore.getState().current?.clientId).toBe('session-B');
+    expect(useTallyStore.getState().current?.drinks).toEqual([
+      expect.objectContaining({ id: 'beer-B' }),
+    ]);
+    expect(ensureDrinkQueued).not.toHaveBeenCalled();
+    expect(syncVisit).not.toHaveBeenCalled();
+    expect(refreshBeerCountReminderAfterBeer).not.toHaveBeenCalled();
+    expect(ackPendingAdds).toHaveBeenCalledWith([
+      '2170d363-f6f1-492f-87e5-e89ced398599',
+    ]);
+  });
+
+  it('strictly ends the iOS activity and drains a late native add with readback', async () => {
+    mockIosGetInstances
+      .mockReturnValueOnce([{ end: mockIosEnd }])
+      .mockReturnValueOnce([]);
+    (getPendingAdds as jest.Mock)
+      .mockResolvedValueOnce([
+        {
+          id: '3170d363-f6f1-492f-87e5-e89ced398511',
+          sessionId: 'session-A',
+          createdAt: Date.now(),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const transition = beginPrivateAccountTransition('account-switch', 'account-A');
+    await transition!.drain();
+
+    await expect(clearLiveBeerActivityForAccountBoundary()).resolves.toBe(true);
+
+    expect(mockIosEnd).toHaveBeenCalledWith('immediate');
+    expect(clearPendingAdds).toHaveBeenCalledTimes(2);
+    expect(ackPendingAdds).toHaveBeenCalledWith([
+      '3170d363-f6f1-492f-87e5-e89ced398511',
+    ]);
+    transition!.release();
   });
 
   it('is idempotent when a committed event is replayed before native ack', async () => {
@@ -185,6 +297,86 @@ describe('reconcilePendingLiveBeerAdds', () => {
         }),
       }),
     );
+  });
+
+  it('tags a lock-screen +1 and its visit with the active shared table', async () => {
+    usePartyEveningStore.setState({ evening: PARTY_EVENING });
+    (getPendingAdds as jest.Mock).mockResolvedValue([
+      {
+        id: 'ca66db75-06a2-46c0-a2a0-f57d7d65f277',
+        sessionId: 'session-live',
+        createdAt: Date.now(),
+      },
+    ]);
+
+    await reconcilePendingLiveBeerAdds();
+
+    expect(ensureDrinkQueued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_id: 'ca66db75-06a2-46c0-a2a0-f57d7d65f277',
+        party_code: 'PIVOXY',
+      }),
+    );
+    expect(syncVisit).toHaveBeenCalledWith(
+      useTallyStore.getState().current,
+      undefined,
+      'PIVOXY',
+    );
+  });
+
+  it('tags a lock-screen +1 after a cold relaunch restored only the table identity', async () => {
+    usePartyEveningStore.setState({
+      evening: null,
+      confirmedIdentity: {
+        id: PARTY_EVENING.id,
+        joinCode: PARTY_EVENING.joinCode,
+        isHost: PARTY_EVENING.isHost,
+        confirmedAt: Date.now(),
+      },
+    });
+    (getPendingAdds as jest.Mock).mockResolvedValue([
+      {
+        id: 'da77db75-06a2-46c0-a2a0-f57d7d65f288',
+        sessionId: 'session-live',
+        createdAt: Date.now(),
+      },
+    ]);
+
+    await reconcilePendingLiveBeerAdds();
+
+    expect(ensureDrinkQueued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_id: 'da77db75-06a2-46c0-a2a0-f57d7d65f288',
+        party_code: 'PIVOXY',
+      }),
+    );
+    expect(syncVisit).toHaveBeenCalledWith(
+      useTallyStore.getState().current,
+      undefined,
+      'PIVOXY',
+    );
+  });
+
+  it('does not leak a code reserved by a slow table create from the lock screen', async () => {
+    usePartyEveningStore.setState({
+      evening: null,
+      confirmedIdentity: null,
+      pendingJoinCode: 'PIVOXY',
+    });
+    (getPendingAdds as jest.Mock).mockResolvedValue([
+      {
+        id: 'ea77db75-06a2-46c0-a2a0-f57d7d65f299',
+        sessionId: 'session-live',
+        createdAt: Date.now(),
+      },
+    ]);
+
+    await reconcilePendingLiveBeerAdds();
+
+    expect(ensureDrinkQueued).toHaveBeenCalledWith(
+      expect.not.objectContaining({ party_code: expect.anything() }),
+    );
+    expect(syncVisit).toHaveBeenCalledWith(useTallyStore.getState().current);
   });
 
   it('commits a fresh native tap before applying the idle cutoff', async () => {

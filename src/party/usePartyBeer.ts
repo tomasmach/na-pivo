@@ -21,14 +21,24 @@
 import React from 'react';
 
 import { contextPubKey } from '@/drinks/drinkTypes';
-import { useLivePartyStore } from '@/mocks/livePartyStore';
+import { useLivePartyStore, type PartyPubVisit } from '@/mocks/livePartyStore';
 import { logPartyBeer, renamePartyBeer, unlogPartyBeer, type PartyBeerPlace } from '@/party/logBeer';
-import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import {
+  selectPartyJoinCode,
+  usePartyEveningStore,
+} from '@/stores/partyEveningStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
 export interface PartyBeerActions {
   /** Count one. Returns its id, which is the id everywhere else too. */
-  add: (beerName: string) => string;
+  add: (
+    beerName: string,
+    options?: {
+      partyCode?: string | null;
+      deferDelivery?: boolean;
+      visit?: PartyPubVisit;
+    },
+  ) => string;
   /** Take one back — a mis-tap, or a beer that never came. */
   remove: (drinkId: string) => void;
   /** Fix a typo in what it was called. */
@@ -39,9 +49,28 @@ export function usePartyBeer(): PartyBeerActions {
   const session = useTallyStore((s) => s.current);
   const pubName = useLivePartyStore((s) => s.pubName);
   const pubKey = useLivePartyStore((s) => s.pubKey);
-  const partyCode = usePartyEveningStore((s) => s.evening?.joinCode ?? null);
+  const selectedVisit = useLivePartyStore((s) => s.pubVisits.at(-1) ?? null);
+  const partyCode = usePartyEveningStore(selectPartyJoinCode);
+  const tableCreatePending = usePartyEveningStore(
+    (s) => !s.evening && s.pendingJoinCode !== null,
+  );
 
   const place: PartyBeerPlace = React.useMemo(() => {
+    if (selectedVisit && selectedVisit.pubKey === pubKey) {
+      return {
+        pubKey: selectedVisit.pubKey,
+        pubName: selectedVisit.pubName,
+        pubCity: selectedVisit.pubCity,
+        pubExternalId: selectedVisit.pubExternalId,
+        visitClientId: selectedVisit.clientId,
+        visitStartedAt: selectedVisit.startedAt,
+      };
+    }
+    // A pub explicitly picked in the hub wins when it differs from the current
+    // counter session: that difference means the table moved, and the next
+    // drink must roll the tally into a new visit instead of staying at the old
+    // pub forever.
+    if (pubKey && pubKey !== session?.pubKey) return { pubKey, pubName };
     if (session) {
       return {
         pubKey: session.pubKey,
@@ -52,18 +81,35 @@ export function usePartyBeer(): PartyBeerActions {
     }
     if (pubKey) return { pubKey, pubName };
     return { pubKey: contextPubKey('other'), pubName };
-  }, [session, pubKey, pubName]);
+  }, [session, pubKey, pubName, selectedVisit]);
 
   return React.useMemo(
     () => ({
-      add: (beerName: string) => logPartyBeer({ place, beerName, partyCode }),
+      add: (
+        beerName: string,
+        options?: {
+          partyCode?: string | null;
+          deferDelivery?: boolean;
+          visit?: PartyPubVisit;
+        },
+      ) => logPartyBeer({
+        place: options?.visit
+          ? {
+              pubKey: options.visit.pubKey,
+              pubName: options.visit.pubName,
+              pubCity: options.visit.pubCity,
+              pubExternalId: options.visit.pubExternalId,
+              visitClientId: options.visit.clientId,
+              visitStartedAt: options.visit.startedAt,
+            }
+          : place,
+        beerName,
+        partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
+        deferDelivery: options?.deferDelivery ?? tableCreatePending,
+      }),
       remove: (drinkId: string) => unlogPartyBeer(drinkId),
-      rename: (drinkId: string, beerName: string) => {
-        // Renaming needs the session the drink lives in; without one there is
-        // nothing logged to rename.
-        if (session) renamePartyBeer(session, drinkId, beerName);
-      },
+      rename: (drinkId: string, beerName: string) => renamePartyBeer(drinkId, beerName),
     }),
-    [place, partyCode, session],
+    [place, partyCode, tableCreatePending],
   );
 }

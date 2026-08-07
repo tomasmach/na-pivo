@@ -1,6 +1,6 @@
 # Na pivo 3.0 — produktová specifikace
 
-Stav k 6. 8. 2026. Větev `feat/napivo-3-0`.
+Stav k 7. 8. 2026. Větev `feat/napivo-3-0-backend`.
 
 Tenhle dokument popisuje, **co 3.0 je a podle jakých pravidel se chová**. Vizuál
 je v `docs/design-system.md`, zadání pro designéra v `docs/design-brief-3-0.md`,
@@ -156,13 +156,13 @@ hospod. **Nikdy ceny, souřadnice telefonu ani konkrétní piva.**
 | Devět her | hratelné |
 | Sdílené hry (řádek, události, výsledek) | hotové, klient i backend |
 | Kvíz na víc telefonů | hotové |
-| Recap na reálných datech | hotové kromě fotek |
-| Příspěvek na `/v1/nights` | hotové |
-| **Fotky večera** | mock — `BeerPhoto` existuje, chybí picker → upload |
-| **Cizí příspěvky ve feedu** | mock (`mockFeed`) |
-| **Týmy pro komunitní eventy** | pravidla hotová, model a obrazovka ne |
-| **Skeleton loadingy** | jen ve starší půlce appky |
-| **Placeholder fotky** (`pravatar`, `picsum`) | v 9 souborech, **nesmí ven** |
+| Recap na reálných datech | hotové včetně fotek, historie a offline cache |
+| Příspěvek na `/v1/nights` | hotové včetně detailu, komentářů a reakcí |
+| Fotky večera | hotové — picker, upload, offline fronta i pozdější napojení na příspěvek |
+| Cizí příspěvky ve feedu | hotové — serverový feed, stránkování, detail, komentáře a reakce |
+| Týmy pro komunitní eventy | hotové, klient i backend |
+| Skeleton loadingy | hotové pro serverové obrazovky 3.0 |
+| Placeholder fotky (`pravatar`, `picsum`) | odstraněné z runtime kódu |
 | **ASGI/SSE na produkci** | zacommitované, **nenasazené** |
 
 ## 8. Otevřená rozhodnutí
