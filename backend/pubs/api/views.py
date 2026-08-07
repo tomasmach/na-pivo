@@ -5444,7 +5444,7 @@ class PublishedNightView(APIView):
 
 
 class PublishedNightFeedView(APIView):
-    """GET /v1/nights/feed — cursor-paginated friends or global Výčep."""
+    """GET /v1/nights/feed — cursor-paginated own, friends or global Výčep."""
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -5465,7 +5465,9 @@ class PublishedNightFeedView(APIView):
         if blocked_ids:
             rows = rows.exclude(account_id__in=blocked_ids)
 
-        if data["scope"] == "friends":
+        if data["scope"] == "mine":
+            rows = rows.filter(account=request.user)
+        elif data["scope"] == "friends":
             friend_ids = set(_accepted_friend_ids(request.user))
             friend_ids.difference_update(blocked_ids)
             rows = rows.filter(

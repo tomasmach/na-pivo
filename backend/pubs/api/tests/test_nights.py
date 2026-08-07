@@ -216,6 +216,27 @@ def test_feed_scopes_and_global_nickname_rule(client):
 
 
 @pytest.mark.django_db
+def test_mine_feed_returns_only_callers_published_nights(client):
+    viewer_token, viewer = _register(client, "divak")
+    other_token, _other = _register(client, "cizi")
+    own_friends = _publish(client, viewer_token, visibility="friends")
+    own_public = _publish(client, viewer_token, visibility="public")
+    _publish(client, other_token, visibility="public")
+
+    mine_feed = client.get("/v1/nights/feed?scope=mine", **_auth(viewer_token))
+
+    assert mine_feed.status_code == status.HTTP_200_OK, mine_feed.content
+    nights = mine_feed.json()["nights"]
+    assert {item["id"] for item in nights} == {
+        own_friends.json()["night"]["id"],
+        own_public.json()["night"]["id"],
+    }
+    assert all(item["author"]["id"] == str(viewer.public_id) for item in nights)
+    assert all(item["is_mine"] is True for item in nights)
+    assert all("client_id" in item for item in nights)
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("viewer_blocks", [True, False])
 def test_feed_excludes_blocks_in_both_directions(client, viewer_blocks):
     viewer_token, viewer = _register(client, "divak")

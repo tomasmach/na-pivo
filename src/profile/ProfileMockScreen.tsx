@@ -1,59 +1,158 @@
-/**
- * DESIGN MOCK — the profile, rebuilt as Strava's "You".
- *
- * The Tácek profile stacked a hero card, a level ring, a four-up stat strip, a
- * nudge, a primary CTA and a secondary button — six competing blocks before you
- * reached anything you did. This is the same information in the order Strava
- * uses: who you are, your numbers, then your activities.
- *
- * What went, and why:
- *   level ring       a locked padlock is a screen advertising its own emptiness
- *   "Založ si profil" a CTA is only earned when there is no account (below)
- *   "Pivní fotky"    a button to a place; the photos belong IN the list
- *   nudge strip      one more thing shouting on a screen about your history
- *
- * The only CTA left is sign-in, and only when signed out — that is the one
- * moment the screen genuinely has something to ask for.
- */
+/** The 3.0 profile layout backed by the private diary and published nights. */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
 
+import SkeletonBlock from '@/friends/SkeletonBlock';
 import { Face, FeedCard } from '@/feed/FeedMockScreen';
-import { MOCK_FEED } from '@/feed/mockFeed';
+import type { FeedEntry } from '@/feed/mockFeed';
+import { fetchNightsFeed, type PublishedNight } from '@/data/nightsClient';
+import { EMPTY_ACHIEVEMENTS } from '@/data/achievements';
+import { cs } from '@/i18n/cs';
 import { BarChart } from '@/mocks/BarChart';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
 import { AchievementGrid } from '@/profile/AchievementGrid';
-import { MOCK_ACHIEVEMENTS } from '@/profile/mockStats';
-import { RECORDS, SERIES, STREAK, type StatPeriod } from '@/profile/mockStats';
+import type { StatPeriod } from '@/profile/mockStats';
+import {
+  buildProfileDiary,
+  computeProfileRecords,
+  computeProfileSeries,
+  computeProfileStreak,
+} from '@/profile/profileStats';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
-import { useAccountStore } from '@/stores/accountStore';
+import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
+import { useTallyStore } from '@/stores/tallyStore';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+import { useReduceMotion } from '@/utils/useReduceMotion';
 
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: StatPeriod[] = ['Týden', 'Měsíc', 'Rok'];
 
+const MONTH_GENITIVE = [
+  'ledna',
+  'února',
+  'března',
+  'dubna',
+  'května',
+  'června',
+  'července',
+  'srpna',
+  'září',
+  'října',
+  'listopadu',
+  'prosince',
+];
+
+function memberSince(createdAt: string | null | undefined): string | null {
+  if (!createdAt) return null;
+  const date = new Date(createdAt);
+  if (!Number.isFinite(date.getTime())) return null;
+  return `Pije s Na pivo od ${MONTH_GENITIVE[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function durationLabel(minutes: number | null, startedAt: string, endedAt: string): string {
+  const derived = (Date.parse(endedAt) - Date.parse(startedAt)) / 60_000;
+  const value = minutes ?? (Number.isFinite(derived) ? derived : 0);
+  const rounded = Math.max(0, Math.round(value));
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return hours > 0 ? `${hours}h ${String(rest).padStart(2, '0')}m` : `${rest}m`;
+}
+
+function nightToFeedEntry(night: PublishedNight): FeedEntry {
+  const name = night.author.nickname
+    ? `@${night.author.nickname}`
+    : night.author.displayName || cs.profile.noDisplayName;
+  const pubs = night.pubNames.length > 0 ? night.pubNames : ['Mimo hospodu'];
+  const date = new Date(night.startedAt);
+  const when = Number.isFinite(date.getTime())
+    ? date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' })
+    : night.drinkingDay;
+  return {
+    id: night.id,
+    author: name,
+    authorTint: Colors.amber,
+    when,
+    title: pubs.join(' → '),
+    stops: pubs.map((name) => ({ name, lat: 0, lng: 0 })),
+    beers: night.beerCount,
+    duration: durationLabel(night.durationMinutes, night.startedAt, night.endedAt),
+    people: [{ name, tint: Colors.amber, avatar: night.author.avatarUrl ?? '' }],
+    photos: 0,
+    cheers: night.rounds,
+    comments: 0,
+    cheered: night.myRound,
+    highlight: { kind: 'record', title: 'Večer ve Výčepu', detail: pubs.join(' → ') },
+    durationMinutes: night.durationMinutes ?? 0,
+    games: 0,
+    gamesWon: 0,
+    usualPerHour: null,
+    visitsToSamePub: 0,
+  };
+}
+
 export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const reduceMotion = useReduceMotion();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
   const [period, setPeriod] = useState<StatPeriod>('Týden');
   const [scrubbed, setScrubbed] = useState<number | null>(null);
-  const series = SERIES[period];
-  // The header follows your finger. With nothing held it shows the whole window.
+  const [activitySnapshot, setActivitySnapshot] = useState<{
+    accountId: string;
+    nights: PublishedNight[] | null;
+  } | null>(null);
+  const session = useAccountStore((state) => state.session);
+  const profile = useAccountStore((s) => s.profile);
+  const signedIn = useAccountStore(selectIsSignedIn);
+  const diarySnapshot = useAccountStore((state) => {
+    const snapshot = state.diarySnapshot;
+    return snapshot && snapshot.accountId === state.session?.accountId ? snapshot.data : null;
+  });
+  const current = useTallyStore((state) => state.current);
+  const history = useTallyStore((state) => state.history);
+  const entries = useMemo(
+    () => buildProfileDiary(current, history, diarySnapshot),
+    [current, diarySnapshot, history],
+  );
+  const allSeries = useMemo(() => computeProfileSeries(entries), [entries]);
+  const streak = useMemo(() => computeProfileStreak(entries), [entries]);
+  const records = useMemo(() => computeProfileRecords(entries), [entries]);
+  const series = allSeries[period];
   const point = scrubbed === null ? null : series.points[scrubbed];
   const totals = point?.totals ?? series.totals;
-  const session = useAccountStore((s) => s.session);
-  const profile = useAccountStore((s) => s.profile);
-  const signedIn = Boolean(session);
 
-  const handle = profile?.nickname ? `@${profile.nickname}` : '@sudík';
+  const handle = signedIn
+    ? profile?.nickname
+      ? `@${profile.nickname}`
+      : cs.profile.noDisplayName
+    : cs.profile.noAccountNick;
+  const since = signedIn ? memberSince(profile?.createdAt) : cs.profile.noAccountNick;
+  const activity =
+    activitySnapshot && activitySnapshot.accountId === session?.accountId
+      ? activitySnapshot.nights
+      : undefined;
+
+  useEffect(() => {
+    const accountId = session?.accountId;
+    if (tab !== 'Aktivita' || !accountId || activitySnapshot?.accountId === accountId) return;
+    let active = true;
+    void fetchNightsFeed('mine').then((result) => {
+      if (!active) return;
+      setActivitySnapshot({ accountId, nights: result.ok ? result.nights : null });
+    });
+    return () => {
+      active = false;
+    };
+  }, [activitySnapshot?.accountId, session?.accountId, tab]);
 
   return (
     <ScrollView
@@ -72,7 +171,7 @@ export default function ProfileMockScreen() {
             {handle}
           </Text>
           <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
-            {signedIn ? 'Pije s Na pivo od června' : 'Zatím bez účtu'}
+            {since ?? 'Načítám profil…'}
           </Text>
         </View>
       </View>
@@ -81,6 +180,7 @@ export default function ProfileMockScreen() {
           is genuinely nothing to ask twice. */}
       {signedIn ? null : (
         <Pressable
+          onPress={() => router.push('/auth' as Href)}
           style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Založit profil"
@@ -95,11 +195,11 @@ export default function ProfileMockScreen() {
           first a place you check where you stand; Aktivita is the same posts the
           feed shows, so a night looks identical wherever you meet it. */}
       <UnderlineTabs
-                options={TABS}
-                value={tab}
-                onChange={setTab}
-                inset={MockLayout.screenPad}
-              />
+        options={TABS}
+        value={tab}
+        onChange={setTab}
+        inset={MockLayout.screenPad}
+      />
 
       {tab === 'Statistiky' ? (
         <>
@@ -130,18 +230,18 @@ export default function ProfileMockScreen() {
               to a decoration instead of to the streak, which is the only thing
               here worth looking at — so the number is the graphic. */}
           <Text style={styles.streakValue} allowFontScaling={false}>
-            {STREAK.current}
+            {streak.current}
             <Text style={styles.streakUnit}> týdny v řadě</Text>
           </Text>
           <Text style={styles.streakBest} maxFontSizeMultiplier={FontScaleCap.body}>
-            Nejlepší {STREAK.best} týdnů · {STREAK.weeks.reduce((sum, w) => sum + w.nights, 0)}{' '}
-            večerů za {STREAK.weeks.length} týdnů
+            Nejlepší {streak.best} týdnů · {streak.weeks.reduce((sum, w) => sum + w.nights, 0)}{' '}
+            večerů za {streak.weeks.length} týdnů
           </Text>
           {/* Columns, not dots: the height says how many nights that week had and
               a gap says you missed it, which is the difference between a streak
               you can read and a row of identical ticks. */}
           <View style={styles.weeks}>
-            {STREAK.weeks.map((week) => (
+            {streak.weeks.map((week) => (
               <View key={week.label} style={styles.week}>
                 <Text style={styles.weekNights} allowFontScaling={false}>
                   {week.nights > 0 ? week.nights : ''}
@@ -162,7 +262,7 @@ export default function ProfileMockScreen() {
           </View>
 
           <SectionBreak title="Rekordy" />
-          {RECORDS.map((record) => (
+          {records.map((record) => (
             <View key={record.id} style={styles.record}>
               <View style={styles.grow}>
                 <Text
@@ -189,15 +289,35 @@ export default function ProfileMockScreen() {
               Rendering the shipped grid too, so the mock cannot drift from what
               the profile actually shows. */}
           <SectionBreak title="Odznaky" />
-          <AchievementGrid mapper={undefined} achievements={MOCK_ACHIEVEMENTS} />
+          <AchievementGrid
+            mapper={profile?.mapper}
+            achievements={profile?.achievements ?? EMPTY_ACHIEVEMENTS}
+          />
         </>
       ) : (
-        MOCK_FEED.map((entry) => <FeedCard key={entry.id} entry={entry} />)
+        activity !== undefined && activity !== null ? (
+          activity.length > 0 ? (
+            activity.map((night) => <FeedCard key={night.id} entry={nightToFeedEntry(night)} />)
+          ) : (
+            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+              Zatím jsi žádný večer nezveřejnil.
+            </Text>
+          )
+        ) : activity === null ? (
+          <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+            Výčep teď nedotáhl tvoje večery. Zkus to za chvíli.
+          </Text>
+        ) : (
+          <View style={styles.activitySkeleton}>
+            <SkeletonBlock width={44} height={44} radius={Radius.pill} reduceMotion={reduceMotion} />
+            <View style={styles.grow}>
+              <SkeletonBlock width="48%" height={15} reduceMotion={reduceMotion} />
+              <View style={styles.skeletonGap} />
+              <SkeletonBlock width="72%" height={22} reduceMotion={reduceMotion} />
+            </View>
+          </View>
+        )
       )}
-
-      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-        Design mock — data jsou napevno.
-      </Text>
     </ScrollView>
   );
 }
@@ -269,11 +389,18 @@ const styles = StyleSheet.create({
 
 
 
-  mockNote: {
+  empty: {
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '500',
     color: Colors.mutedText,
     textAlign: 'center',
     marginTop: MockLayout.sectionGap,
   },
+  activitySkeleton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+  },
+  skeletonGap: { height: Spacing.sm },
 });
