@@ -13,7 +13,8 @@
  * reconstruct a representative coordinate from the cell centre via
  * decodeGeohash8 — the server re-derives the SAME cache_key from it. `name` is
  * the session's pubName; `started_at` is the session start; `ended_at` is the
- * timestamp of the last counted beer (or null for an empty/just-opened session).
+ * timestamp of the last counted beer, while `closed_at` marks an explicit local
+ * session closure independently of that last sign of activity.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -61,7 +62,8 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
     ...(session.pubExternalId ? { external_id: session.pubExternalId } : {}),
     started_at: session.startedAt,
     ended_at: endedAt,
-    updated_at: updatedAt ?? endedAt ?? session.startedAt,
+    closed_at: session.closedAt ?? null,
+    updated_at: updatedAt ?? session.closedAt ?? endedAt ?? session.startedAt,
   };
   return entry;
 }

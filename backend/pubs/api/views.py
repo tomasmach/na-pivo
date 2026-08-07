@@ -2825,6 +2825,7 @@ def _visit_item(visit: PubVisit) -> dict:
         "external_id": visit.external_id,
         "started_at": visit.started_at.isoformat(),
         "ended_at": visit.ended_at.isoformat() if visit.ended_at else None,
+        "closed_at": visit.closed_at.isoformat() if visit.closed_at else None,
         "updated_at": visit.client_updated_at.isoformat(),
     }
 
@@ -2837,8 +2838,8 @@ class PubVisitView(APIView):
 
     Records that the user spent an evening at a pub even when no beer was
     counted. Idempotent on (account, client_id): a re-POST (offline retry, or a
-    later POST filling in ``ended_at``) updates the same row. ``cache_key`` is
-    the geohash-8 cell computed server-side. Throttled per-IP (scope
+    later POST filling in ``ended_at`` / ``closed_at``) updates the same row.
+    ``cache_key`` is the geohash-8 cell computed server-side. Throttled per-IP (scope
     "pub_visits").
     """
 
@@ -2895,6 +2896,7 @@ class PubVisitView(APIView):
                         "external_id": data.get("external_id") or "",
                         "started_at": data["started_at"],
                         "ended_at": data.get("ended_at"),
+                        "closed_at": data.get("closed_at"),
                         "client_updated_at": data["updated_at"],
                     },
                 )
@@ -3250,7 +3252,7 @@ def _friend_presence_slice(
     )
 
     visits = (
-        PubVisit.objects.filter(account_id__in=account_ids)
+        PubVisit.objects.filter(account_id__in=account_ids, closed_at__isnull=True)
         .annotate(
             last_seen_at=Coalesce("ended_at", "started_at"),
             presence_activity_id=Subquery(active_activity.values("public_id")[:1]),

@@ -401,6 +401,42 @@ describe('CounterScreen CTA state machine', () => {
     });
   });
 
+  it('syncs the explicitly closed visit when the user confirms Dopito', () => {
+    useTallyStore.setState({
+      current: session({
+        clientId: 'session-dopito',
+        drinks: [beerDrink('drink-dopito', 15)],
+      }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterMore).props.onPress());
+    act(() => {
+      sheetButton(renderer, copy.counter.moreTitle, copy.a11y.counterDone).props.onPress();
+      jest.runOnlyPendingTimers();
+    });
+
+    const dialog = (showAppDialog as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(dialog.title).toBe(copy.counter.doneTitle);
+
+    act(() => {
+      dialog.buttons
+        .find((button: { text: string }) => button.text === copy.counter.doneConfirm)
+        .onPress();
+    });
+
+    const archived = useTallyStore.getState().history[0];
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(archived).toMatchObject({
+      clientId: 'session-dopito',
+      archivedReason: 'manual',
+      closedAt: expect.any(String),
+    });
+    expect(syncVisit).toHaveBeenCalledWith(archived);
+  });
+
   it('once something was drunk here the CTA repeats that exact beer', async () => {
     useTallyStore.setState({
       current: session({ clientId: 'session-repeat', drinks: [beerDrink('drink-1', 30)] }),

@@ -2049,13 +2049,19 @@ class PubVisitRequestSerializer(PubInputSerializer):
     )
     started_at = serializers.DateTimeField()
     ended_at = serializers.DateTimeField(required=False, allow_null=True)
+    closed_at = serializers.DateTimeField(required=False, allow_null=True)
     updated_at = serializers.DateTimeField()
 
     def validate(self, attrs: dict) -> dict:
         ended_at = attrs.get("ended_at")
+        closed_at = attrs.get("closed_at")
         if ended_at is not None and ended_at < attrs["started_at"]:
             raise serializers.ValidationError(
                 {"ended_at": "ended_at must be greater than or equal to started_at."}
+            )
+        if closed_at is not None and closed_at < attrs["started_at"]:
+            raise serializers.ValidationError(
+                {"closed_at": "closed_at must be greater than or equal to started_at."}
             )
         return attrs
 

@@ -70,6 +70,22 @@ describe('buildVisitEntry', () => {
     expect(buildVisitEntry(session())?.updated_at).toBe('2026-06-14T20:30:00.000Z');
   });
 
+  it('marks an archived session explicitly closed and uses that as its newest update', () => {
+    const entry = buildVisitEntry(
+      session({
+        archivedReason: 'manual',
+        closedAt: '2026-06-14T21:15:00.000Z',
+      }),
+    );
+
+    expect(entry?.closed_at).toBe('2026-06-14T21:15:00.000Z');
+    expect(entry?.updated_at).toBe('2026-06-14T21:15:00.000Z');
+  });
+
+  it('keeps an active session explicitly unclosed', () => {
+    expect(buildVisitEntry(session())?.closed_at).toBeNull();
+  });
+
   it('returns null for an outside ("ctx:*") session — never a PubVisit', () => {
     expect(buildVisitEntry(session({ pubKey: 'ctx:private', pubName: 'Doma / na chatě' }))).toBeNull();
     expect(buildVisitEntry(session({ pubKey: 'ctx:outdoors' }))).toBeNull();
