@@ -46,6 +46,7 @@ npm audit --omit=dev --audit-level=high
 
 cd backend
 uv run ruff check .
+uv run pip-audit
 uv run pytest
 ```
 

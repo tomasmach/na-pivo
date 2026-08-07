@@ -10,7 +10,7 @@
 - [ ] `npm run lint`
 - [ ] `npm test -- --runInBand`
 - [ ] `npm audit --omit=dev --audit-level=high`
-- [ ] `cd backend && uv run ruff check . && uv run pytest`
+- [ ] `cd backend && uv run ruff check . && uv run pip-audit && uv run pytest`
 - [ ] Not applicable checks are explained below
 
 ## Checklist
