@@ -156,14 +156,17 @@ hospod. **Nikdy ceny, souřadnice telefonu ani konkrétní piva.**
 | Devět her | hratelné |
 | Sdílené hry (řádek, události, výsledek) | hotové, klient i backend |
 | Kvíz na víc telefonů | hotové |
-| Recap na reálných datech | hotové kromě fotek |
+| Recap na reálných datech | hotové, včetně fotek |
 | Příspěvek na `/v1/nights` | hotové |
-| **Fotky večera** | mock — `BeerPhoto` existuje, chybí picker → upload |
-| **Cizí příspěvky ve feedu** | mock (`mockFeed`) |
-| **Týmy pro komunitní eventy** | pravidla hotová, model a obrazovka ne |
-| **Skeleton loadingy** | jen ve starší půlce appky |
-| **Placeholder fotky** (`pravatar`, `picsum`) | v 9 souborech, **nesmí ven** |
-| **ASGI/SSE na produkci** | zacommitované, **nenasazené** |
+| Fotky večera | hotové — reálný picker → offline fronta → upload |
+| Cizí příspěvky ve feedu | hotové — `GET /v1/nights/feed` + reakce |
+| Hospody: seznam, kompas, mapy, detail, hledání | hotové na reálných datech |
+| Komunita: žebříčky, výzvy (`GET /v1/challenges`), akce | hotové; texty seedovaných výzev čekají na schválení |
+| Profil: statistiky, rekordy, odznaky, aktivita (`scope=mine`) | hotové |
+| Skeleton loadingy | hotové i v nové půlce appky |
+| Placeholder fotky (`pravatar`, `picsum`) | odstraněné z appky (zbývají jen v docs) |
+| **Týmy pro komunitní eventy** | pravidla hotová, model a obrazovka ne — mock je neukazuje, odloženo |
+| **ASGI/SSE na produkci** | zacommitované, **nenasazené** — nutný api-* deploy (migrace 0094–0097) před releasem |
 
 ## 8. Otevřená rozhodnutí
 
