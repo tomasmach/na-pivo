@@ -1,5 +1,5 @@
 /**
- * DESIGN MOCK — Hospody, as a Packeta-style branch list.
+ * Hospody, as a Packeta-style branch list.
  *
  * The shape borrowed from Packeta is the LIST, not the palette: a search field
  * pinned at the top, then dense cells that answer the question on the cell
@@ -55,7 +55,13 @@ import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
-import { MOCK_PUBS, shuffled, type MockPub } from '@/pubs/mockPubs';
+import { shuffled, type PubListItem } from '@/pubs/pubPresentation';
+import {
+  EMPTY_NEARBY_PUB_FILTERS,
+  useNearbyPubs,
+  type NearbyPubFilters,
+} from '@/pubs/useNearbyPubs';
+import { POPULAR_BEER_BRANDS } from '@/data/beerSuggestionsClient';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -75,51 +81,35 @@ const CAROUSEL_H = 140;
 const SORTS = ['Nejbližší', 'Nejlépe hodnocené', 'Náhodně v okolí'] as const;
 type Sort = (typeof SORTS)[number];
 
-/** What the head cell's badge says, per sort — it has to explain why THIS pub
- *  is the one the compass points at. */
-const BADGE: Record<Sort, string> = {
-  'Nejbližší': 'Nejbližší',
-  'Nejlépe hodnocené': 'Nejlíp hodnocená',
-  'Náhodně v okolí': 'Náhodná',
-};
-
-/**
- * The beer is why you pick one pub over another, so it gets its own pill next
- * to "Otevřeno" rather than hiding behind the sliders. This maps onto the
- * filter the app already has — `PubSearchFilters.beerBrand`.
- */
-const BEERS = ['Pilsner Urquell', 'Kozel', 'Matuška', 'Únětické', 'Kacíř'] as const;
-
-/**
- * Independent toggles, on top of whatever the sort is. These are real
- * `mapFilterable` amenity keys from `src/data/amenities.ts`
- * (`practical_tank_beer`, `seating_garden`) plus the open-now state — not
- * invented labels.
- */
-const TOGGLES = ['Otevřeno', 'Tank', 'Zahrádka'] as const;
+const TOGGLES = ['Otevřeno', 'Zahrádka'] as const;
 
 function FilterChips({
   sort,
   onSort,
+  filters,
+  onFilters,
 }: {
   sort: Sort;
   /** Fires on EVERY pick, including re-picking the current one — that is how
    *  "Náhodně v okolí" reshuffles a second time. */
   onSort: (next: Sort) => void;
+  filters: NearbyPubFilters;
+  onFilters: (next: NearbyPubFilters) => void;
 }) {
-  const [on, setOn] = React.useState<string[]>([]);
-
-  // Several beers at once, so a sheet with checkboxes rather than an action
-  // sheet — the latter answers one question with one answer.
-  const [beers, setBeers] = React.useState<string[]>([]);
   const [beerSheet, setBeerSheet] = React.useState(false);
-  const beerLabel =
-    beers.length === 0 ? 'Pivo' : beers.length === 1 ? beers[0] : `Pivo (${beers.length})`;
+  const beerLabel = filters.beerBrand?.label ?? 'Pivo';
 
-  const toggle = (label: string) =>
-    setOn((current) =>
-      current.includes(label) ? current.filter((l) => l !== label) : [...current, label],
-    );
+  const toggle = (label: (typeof TOGGLES)[number]) => {
+    if (label === 'Otevřeno') {
+      onFilters({ ...filters, openNow: !filters.openNow });
+      return;
+    }
+    const active = filters.amenityKeys.includes('seating_garden');
+    onFilters({
+      ...filters,
+      amenityKeys: active ? [] : ['seating_garden'],
+    });
+  };
 
   return (
     <ScrollView
@@ -148,37 +138,40 @@ function FilterChips({
         onPress={() => setBeerSheet(true)}
         style={({ pressed }) => [
           styles.chip,
-          beers.length > 0 && styles.chipActive,
+          filters.beerBrand && styles.chipActive,
           pressed && styles.pressed,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={beers.length > 0 ? `Pivo: ${beers.join(', ')}` : 'Vybrat piva'}
+        accessibilityLabel={filters.beerBrand ? `Pivo: ${filters.beerBrand.label}` : 'Vybrat pivo'}
       >
         <Text
-          style={[styles.chipText, beers.length > 0 && styles.chipTextActive]}
+          style={[styles.chipText, filters.beerBrand && styles.chipTextActive]}
           allowFontScaling={false}
         >
           {beerLabel}
         </Text>
         <ChevronDownIcon
           size={14}
-          color={beers.length > 0 ? Colors.amber : Colors.mutedText}
+          color={filters.beerBrand ? Colors.amber : Colors.mutedText}
         />
       </Pressable>
 
       <BeerFilterSheet
         visible={beerSheet}
-        options={BEERS}
-        value={beers}
+        options={POPULAR_BEER_BRANDS}
+        value={filters.beerBrand}
         onClose={() => setBeerSheet(false)}
         onApply={(next) => {
-          setBeers(next);
+          onFilters({ ...filters, beerBrand: next });
           setBeerSheet(false);
         }}
       />
 
       {TOGGLES.map((label) => {
-        const active = on.includes(label);
+        const active =
+          label === 'Otevřeno'
+            ? filters.openNow
+            : filters.amenityKeys.includes('seating_garden');
         return (
           <Pressable
             key={label}
@@ -210,7 +203,7 @@ function PubRow({
   first,
   onPress,
 }: {
-  pub: MockPub;
+  pub: PubListItem;
   first?: boolean;
   onPress: () => void;
 }) {
@@ -237,14 +230,18 @@ function PubRow({
           <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {pub.name}
           </Text>
-          <StarIcon size={12} color={Colors.amber} />
-          <Text style={styles.rating} allowFontScaling={false}>
-            {pub.rating.toFixed(1)}
-          </Text>
+          {typeof pub.rating === 'number' ? (
+            <>
+              <StarIcon size={12} color={Colors.amber} />
+              <Text style={styles.rating} allowFontScaling={false}>
+                {pub.rating.toFixed(1)}
+              </Text>
+            </>
+          ) : null}
           {/* Been here before. Just the fact — how many times and when is a
               detail-screen answer, and spelling it out on every row was a
               second sentence competing with the ones you actually scan. */}
-          {pub.lastParty ? (
+          {pub.visit ? (
             <View accessible accessibilityLabel="Už jsi tu byl">
               <HeartIcon size={13} color={Colors.amber} />
             </View>
@@ -254,22 +251,25 @@ function PubRow({
         {/* Distance belongs with the address — both answer "where is it", and
             splitting them made the row read as two separate facts. */}
         <Text style={styles.address} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.address} · {pub.distance}
+          {pub.addressLine} · {pub.distance}
         </Text>
 
         {/* No "Nejbližší" tag down here: the nearest pub is the tinted compass
             row at the top of the list, so repeating it on a row is the same
             claim twice. The line that is left is the one you actually scan. */}
         <Text
-          style={[styles.factText, { color: pub.open ? Colors.open : Colors.mutedText }]}
+          style={[
+            styles.factText,
+            { color: pub.open === true ? Colors.open : Colors.mutedText },
+          ]}
           numberOfLines={1}
           allowFontScaling={false}
         >
-          {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`}
+          {pub.hoursLabel}
         </Text>
 
         <Text style={styles.beer} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.beer}
+          {pub.beerLabel}
           {pub.priceCzk !== null ? (
             <Text style={styles.price}>{`  (${pub.priceCzk} Kč)`}</Text>
           ) : null}
@@ -335,7 +335,9 @@ export default function PubListMockScreen() {
       transform: [{ translateY: -8 * shut }],
     };
   });
-  const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
+  const [filters, setFilters] = React.useState<NearbyPubFilters>(EMPTY_NEARBY_PUB_FILTERS);
+  const nearby = useNearbyPubs(filters);
+  const [selectedPub, setSelectedPub] = React.useState<string | null>(null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
   // The detail opens INSIDE the sheet rather than as a push: the map behind is
@@ -346,19 +348,19 @@ export default function PubListMockScreen() {
   // deals a new order instead of returning the same "random" one.
   const [shuffleSeed, setShuffleSeed] = React.useState(0);
 
+  const nearest = nearby.pubs[0] ?? null;
   const ordered = React.useMemo(() => {
+    const rest = nearest ? nearby.pubs.filter((pub) => pub.id !== nearest.id) : nearby.pubs;
     if (sort === 'Nejlépe hodnocené') {
-      return [...MOCK_PUBS].sort((a, b) => b.rating - a.rating);
+      return [...rest].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
     }
-    if (sort === 'Náhodně v okolí') return shuffled(MOCK_PUBS, shuffleSeed);
-    // MOCK_PUBS is already in distance order.
-    return MOCK_PUBS;
-  }, [sort, shuffleSeed]);
+    if (sort === 'Náhodně v okolí') return shuffled(rest, shuffleSeed);
+    return rest;
+  }, [nearby.pubs, nearest, sort, shuffleSeed]);
 
-  // The compass head cell points at whatever the sort put first, so the needle
-  // and the list always agree about where you are being sent.
-  const head = ordered[0];
-  const openPub = openPubId ? (MOCK_PUBS.find((pub) => pub.id === openPubId) ?? null) : null;
+  // The compass remains the nearest-pub head cell regardless of how the rest
+  // of the list is ordered.
+  const openPub = openPubId ? (nearby.pubs.find((pub) => pub.id === openPubId) ?? null) : null;
 
   // Opening a detail raises the sheet in the SAME action, not in an effect
   // watching the id: at `peek` the detail would land in a one-line slot, and an
@@ -394,19 +396,26 @@ export default function PubListMockScreen() {
       {/* The map is the screen; the places ride over it in a sheet you drag. */}
       <View style={styles.map}>
         <PubsMap
+          pubs={nearby.pubs}
+          position={nearby.position}
           recenterSignal={recenterSignal}
           onPressPub={openPubDetail}
           onPan={() => moveSheet('peek')}
-          selectedId={selectedPub}
+          selectedId={selectedPub ?? nearest?.id ?? null}
         />
       </View>
 
       {/* Map mode: one card above the sheet, swipeable, and the map follows it.
           At the other detents the list is on screen, so this would be the same
           pubs twice. */}
-      {detent === 'peek' ? (
+      {detent === 'peek' && nearby.position && nearby.pubs.length > 0 ? (
         <View style={[styles.carousel, { bottom: carouselBottom }]}>
-          <PubCarousel onSelect={setSelectedPub} onOpen={openPubDetail} />
+          <PubCarousel
+            pubs={nearby.pubs}
+            position={nearby.position}
+            onSelect={setSelectedPub}
+            onOpen={openPubDetail}
+          />
         </View>
       ) : null}
 
@@ -498,7 +507,12 @@ export default function PubListMockScreen() {
 
             {/* The chips stay. They are how you change what the list IS, so
                 losing them on scroll would mean scrolling back up to filter. */}
-            <FilterChips sort={sort} onSort={pickSort} />
+            <FilterChips
+              sort={sort}
+              onSort={pickSort}
+              filters={filters}
+              onFilters={setFilters}
+            />
 
             <Animated.ScrollView
               ref={listRef as never}
@@ -509,19 +523,44 @@ export default function PubListMockScreen() {
               scrollEventThrottle={16}
               onScroll={onListScroll}
             >
-              {head ? (
+              {nearby.loading && nearby.pubs.length === 0 ? <PubListSkeleton /> : null}
+
+              {!nearby.loading && nearby.permissionState !== 'granted' ? (
+                <EmptyState
+                  title="Bez polohy hospody neseřadím"
+                  action="Povolit polohu"
+                  onPress={nearby.requestPermission}
+                />
+              ) : null}
+
+              {!nearby.loading && nearby.permissionState === 'granted' && nearby.pubs.length === 0 ? (
+                <EmptyState
+                  title={
+                    nearby.failed
+                      ? 'Hospody se teď nenačetly. Signál asi sedí ve sklepě.'
+                      : filters.openNow
+                        ? 'Teď tu nemám potvrzenou žádnou otevřenou hospodu.'
+                        : 'V okolí jsem žádnou hospodu nenašel.'
+                  }
+                  action="Zkusit znovu"
+                  onPress={nearby.retry}
+                />
+              ) : null}
+
+              {nearest && nearby.position ? (
                 <CompassCell
-                  pub={head}
-                  badge={BADGE[sort]}
+                  pub={nearest}
+                  position={nearby.position}
+                  badge="Nejbližší"
                   // It is a pub row, so it opens the pub. It used to open the
                   // map, which meant the one cell naming a place was the one
                   // cell that would not take you to it.
-                  onPress={() => openPubDetail(head.id)}
+                  onPress={() => openPubDetail(nearest.id)}
                 />
               ) : null}
 
               <View style={styles.list}>
-                {ordered.slice(1).map((pub, index) => (
+                {ordered.map((pub, index) => (
                   <PubRow
                     key={pub.id}
                     pub={pub}
@@ -531,13 +570,49 @@ export default function PubListMockScreen() {
                 ))}
               </View>
 
-              <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-                Design mock — data jsou napevno.
-              </Text>
             </Animated.ScrollView>
           </>
         )}
       </PlacesSheet>
+    </View>
+  );
+}
+
+function PubListSkeleton() {
+  return (
+    <View accessibilityLabel="Načítám hospody">
+      <View style={styles.skeletonCompass} />
+      {[0, 1, 2, 3].map((item) => (
+        <View key={item} style={styles.skeletonRow}>
+          <View style={styles.skeletonThumb} />
+          <View style={styles.skeletonBody}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonLine} />
+            <View style={styles.skeletonLineShort} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function EmptyState({
+  title,
+  action,
+  onPress,
+}: {
+  title: string;
+  action: string;
+  onPress: () => void | Promise<void>;
+}) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+        {title}
+      </Text>
+      <Pressable onPress={() => void onPress()} style={styles.emptyAction} accessibilityRole="button">
+        <Text style={styles.emptyActionText}>{action}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -696,11 +771,27 @@ const styles = StyleSheet.create({
   locate: { position: 'absolute', right: MockLayout.screenPad },
   places: { position: 'absolute', left: MockLayout.screenPad },
   placesLabel: { fontSize: 14, fontWeight: '700', color: Colors.foam },
-  mockNote: {
-    fontWeight: '400',
-    fontSize: 12,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    marginTop: Spacing.lg,
+  skeletonCompass: {
+    height: 98,
+    borderRadius: MockLayout.cardRadius,
+    backgroundColor: Colors.stout3,
+    marginBottom: Spacing.xs,
   },
+  skeletonRow: {
+    minHeight: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  skeletonThumb: { width: THUMB, height: THUMB, borderRadius: MockLayout.thumbRadius, backgroundColor: Colors.stout3 },
+  skeletonBody: { flex: 1, gap: 7 },
+  skeletonTitle: { width: '62%', height: 14, borderRadius: 7, backgroundColor: Colors.stout3 },
+  skeletonLine: { width: '82%', height: 10, borderRadius: 5, backgroundColor: Colors.stout3 },
+  skeletonLineShort: { width: '44%', height: 10, borderRadius: 5, backgroundColor: Colors.stout3 },
+  emptyState: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
+  emptyText: { ...MockType.body, color: Colors.mutedText, textAlign: 'center' },
+  emptyAction: { minHeight: 44, justifyContent: 'center', paddingHorizontal: Spacing.lg, borderRadius: Radius.pill, backgroundColor: Colors.stout3 },
+  emptyActionText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
 });

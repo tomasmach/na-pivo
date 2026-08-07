@@ -14,21 +14,19 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { MOCK_PUBS } from '@/pubs/mockPubs';
+import type { PubListItem } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
 
-/** Prague, roughly where the mocked pubs are — real coordinates per pub would
- *  come from `Pub.lat/lng`; the mock list carries names and distances only, so
- *  they are laid out around the city centre here. */
-const CENTRE = { lat: 50.079, lng: 14.432 };
-const SPREAD = 0.012;
-
 export function PubsMap({
+  pubs,
+  position,
   recenterSignal = 0,
   onPressPub,
   onPan,
   selectedId,
 }: {
+  pubs: PubListItem[];
+  position: { lat: number; lng: number } | null;
   /** Bump to fly the map back to where you are. */
   recenterSignal?: number;
   onPressPub?: (id: string) => void;
@@ -39,6 +37,21 @@ export function PubsMap({
   onPan?: () => void;
 }) {
   const mapRef = useRef<MapView>(null);
+  const framedRealPosition = useRef(false);
+
+  useEffect(() => {
+    if (!position || framedRealPosition.current) return;
+    framedRealPosition.current = true;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: position.lat,
+        longitude: position.lng,
+        latitudeDelta: 0.04,
+        longitudeDelta: 0.04,
+      },
+      350,
+    );
+  }, [position]);
 
   // Recentring is a MAP action, so it moves the map — it used to push a whole
   // separate screen, which is a strange answer to "put me back where I am".
@@ -48,35 +61,32 @@ export function PubsMap({
     seenRecenter.current = recenterSignal;
     mapRef.current?.animateToRegion(
       {
-        latitude: CENTRE.lat,
-        longitude: CENTRE.lng,
+        latitude: position?.lat ?? pubs[0]?.lat ?? 50.0755,
+        longitude: position?.lng ?? pubs[0]?.lng ?? 14.4378,
         latitudeDelta: 0.012,
         longitudeDelta: 0.012,
       },
       450,
     );
-  }, [recenterSignal]);
+  }, [position?.lat, position?.lng, pubs, recenterSignal]);
 
   const pins = useMemo(
     () =>
-      MOCK_PUBS.map((pub, index) => {
-        const angle = (index / MOCK_PUBS.length) * Math.PI * 2;
-        return {
+      pubs.map((pub) => ({
           id: pub.id,
           name: pub.name,
           open: pub.open,
-          lat: CENTRE.lat + Math.sin(angle) * SPREAD * (0.5 + index / MOCK_PUBS.length),
-          lng: CENTRE.lng + Math.cos(angle) * SPREAD * (0.5 + index / MOCK_PUBS.length),
-        };
-      }),
-    [],
+          lat: pub.lat,
+          lng: pub.lng,
+        })),
+    [pubs],
   );
 
   const region: Region = {
-    latitude: CENTRE.lat,
-    longitude: CENTRE.lng,
-    latitudeDelta: SPREAD * 3.4,
-    longitudeDelta: SPREAD * 3.4,
+    latitude: position?.lat ?? pubs[0]?.lat ?? 50.0755,
+    longitude: position?.lng ?? pubs[0]?.lng ?? 14.4378,
+    latitudeDelta: 0.04,
+    longitudeDelta: 0.04,
   };
 
   return (
@@ -105,7 +115,7 @@ export function PubsMap({
           <View
             style={[
               styles.pin,
-              !pin.open && styles.pinClosed,
+              pin.open === false && styles.pinClosed,
               pin.id === selectedId && styles.pinSelected,
             ]}
           >

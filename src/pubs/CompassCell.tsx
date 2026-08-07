@@ -21,7 +21,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
-import { splitDistance, type MockPub } from '@/pubs/mockPubs';
+import { splitDistance, type PubListItem } from '@/pubs/pubPresentation';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -29,29 +29,38 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
 const DIAL = 66;
-/** Stand-in for the device position until the mock is wired to location. */
-const HERE = { lat: 50.077, lng: 14.4165 };
 
-/**
- * The compass points at the pub at the TOP OF THE LIST, not at a fixed target.
- * It used to hold a constant, so picking "Náhodně v okolí" reshuffled the rows
- * while the needle kept sending you to U Fleků — the head cell and the list
- * disagreed about where you were going.
- */
+type CompassPub = PubListItem | {
+  name: string;
+  distance: string;
+  lat: number;
+  lng: number;
+  open: boolean;
+  hours: string;
+  beer: string;
+};
+
+/** The list's head cell always points at the nearest real pub. */
 export function CompassCell({
   pub,
+  position,
   badge,
   onPress,
 }: {
-  pub: MockPub;
-  /** Why THIS pub is at the top — "Nejbližší", "Nejlíp hodnocená", "Náhodná".
-   *  It follows the sort, because a row hard-labelled "Nejbližší" while the
-   *  list is shuffled is simply wrong. */
+  pub: CompassPub;
+  position?: { lat: number; lng: number };
+  /** Why this pub owns the head cell. */
   badge: string;
   onPress?: () => void;
 }) {
   const distance = splitDistance(pub.distance);
-  const rotation = useCompassRotation(HERE, { lat: pub.lat, lng: pub.lng });
+  const rotation = useCompassRotation(
+    position ?? { lat: pub.lat, lng: pub.lng },
+    { lat: pub.lat, lng: pub.lng },
+  );
+  const meta = 'hoursLabel' in pub
+    ? `${pub.hoursLabel} · ${pub.beerLabel}`
+    : `${pub.open ? 'Otevřeno' : 'Zavřeno'} ${pub.hours} · ${pub.beer}`;
 
   return (
     <Pressable
@@ -83,7 +92,7 @@ export function CompassCell({
           </View>
         </View>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          Otevřeno {pub.hours} · {pub.beer}
+          {meta}
         </Text>
       </View>
     </Pressable>
