@@ -1,4 +1,5 @@
 import {
+  deriveReconciledDiarySessions,
   deriveReconciledDiaryStats,
   reconcileDiarySnapshot,
   type DiarySnapshot,
@@ -125,4 +126,78 @@ it('uses only the server snapshot on a fresh install with no local history', () 
     maxVisitsToOnePub: 1,
     totalSpentCzk: 120,
   });
+});
+
+it('restores older server visits beyond the bounded local history', () => {
+  const olderVisit = {
+    ...remoteVisit('visit-older', PUB_B),
+    name: 'Stará hospoda',
+    started_at: '2025-02-10T18:00:00Z',
+    ended_at: '2025-02-10T20:00:00Z',
+  };
+  const olderDrink = {
+    ...remoteDrink('drink-older', PUB_B, 49),
+    name: 'Stará hospoda',
+    drank_at: '2025-02-10T19:00:00Z',
+  };
+  const local = [localSession('visit-local', PUB_A, ['drink-local'])];
+
+  const result = deriveReconciledDiarySessions(
+    { drinks: [olderDrink], visits: [olderVisit] },
+    local,
+  );
+
+  expect(result.map((item) => item.session.clientId)).toEqual(['visit-local', 'visit-older']);
+  expect(result[1]).toMatchObject({
+    source: 'remote',
+    session: {
+      pubName: 'Stará hospoda',
+      drinks: [{ id: 'drink-older', beerName: 'Plzeň', priceCzk: 49 }],
+    },
+  });
+});
+
+it('does not duplicate synced local sessions or drinks', () => {
+  const local = [localSession('visit-synced', PUB_A, ['drink-synced'])];
+  const result = deriveReconciledDiarySessions(
+    {
+      drinks: [remoteDrink('drink-synced', PUB_A)],
+      visits: [remoteVisit('visit-synced', PUB_A)],
+    },
+    local,
+  );
+
+  expect(result).toHaveLength(1);
+  expect(result[0].source).toBe('local');
+  expect(result[0].session.drinks).toHaveLength(1);
+});
+
+it('keeps legacy server drinks even when no visit row exists', () => {
+  const result = deriveReconciledDiarySessions(
+    {
+      drinks: [
+        remoteDrink('legacy-1', PUB_A, 50),
+        { ...remoteDrink('legacy-2', PUB_A, 55), drank_at: '2026-07-19T19:00:00Z' },
+      ],
+      visits: [],
+    },
+    [],
+  );
+
+  expect(result).toHaveLength(1);
+  expect(result[0]).toMatchObject({
+    source: 'remote',
+    session: { drinks: [{ id: 'legacy-1' }, { id: 'legacy-2' }] },
+  });
+});
+
+it('never mutates the Zustand-owned local sessions while sorting the view', () => {
+  const local = localSession('visit-local', PUB_A, ['later', 'earlier']);
+  local.drinks[0].at = '2026-07-19T20:00:00Z';
+  local.drinks[1].at = '2026-07-19T18:00:00Z';
+
+  const result = deriveReconciledDiarySessions({ drinks: [], visits: [] }, [local]);
+
+  expect(local.drinks.map((drink) => drink.id)).toEqual(['later', 'earlier']);
+  expect(result[0].session.drinks.map((drink) => drink.id)).toEqual(['earlier', 'later']);
 });

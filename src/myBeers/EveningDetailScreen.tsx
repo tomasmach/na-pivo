@@ -82,6 +82,8 @@ import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { useToastStore } from '@/stores/toastStore';
+import { useAccountStore } from '@/stores/accountStore';
+import { deriveReconciledDiarySessions } from '@/data/diarySync';
 
 function latestDrinkAt(session: TallySession): string {
   let latest = session.startedAt;
@@ -101,8 +103,10 @@ export default function EveningDetailScreen() {
   const insets = useSafeAreaInsets();
   const now = new Date();
 
-  const params = useLocalSearchParams<{ startedAt?: string }>();
+  const params = useLocalSearchParams<{ startedAt?: string; visitClientId?: string }>();
   const startedAt = typeof params.startedAt === 'string' ? params.startedAt : '';
+  const visitClientId =
+    typeof params.visitClientId === 'string' ? params.visitClientId : '';
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -112,25 +116,41 @@ export default function EveningDetailScreen() {
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
+  const diarySnapshot = useAccountStore((state) => {
+    const snapshot = state.diarySnapshot;
+    if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
+    return snapshot.data;
+  });
   const [editingGroup, setEditingGroup] = useState<DrinkActionGroup | null>(null);
   const [addingDrink, setAddingDrink] = useState(false);
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
   const [publishSheetVisible, setPublishSheetVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
-  const session = useMemo(
+  const localSession = useMemo(
     () => findSessionByStart(current, history, startedAt),
     [current, history, startedAt],
   );
+  const remoteSession = useMemo(() => {
+    if (!visitClientId || !diarySnapshot) return null;
+    const localSessions = current && current.drinks.length > 0 ? [current, ...history] : history;
+    return (
+      deriveReconciledDiarySessions(diarySnapshot, localSessions).find(
+        (item) => item.source === 'remote' && item.session.clientId === visitClientId,
+      )?.session ?? null
+    );
+  }, [current, diarySnapshot, history, visitClientId]);
+  const session = localSession ?? remoteSession;
+  const isEditable = localSession !== null;
 
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
   // The Výčep publishes the whole drinking day (a pub crawl is one night), so
   // the summary re-groups every session sharing this evening's drinking day.
   const nightSummary = useMemo(() => {
-    if (!session) return null;
+    if (!session || !isEditable) return null;
     const dayKey = drinkingDayKey(new Date(session.startedAt));
     return buildNightSummary(sessionsOfNight(current, history, dayKey));
-  }, [session, current, history]);
+  }, [session, isEditable, current, history]);
   const publishedRecord = useVycepStore((s) =>
     nightSummary ? s.published[nightSummary.clientKey] : undefined,
   );
@@ -329,7 +349,7 @@ export default function EveningDetailScreen() {
                 return <Icon size={18} color={Colors.amber} />;
               })()}
               <Text style={styles.pubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {session.pubName}
+                {session.pubName || cs.diary.noPub}
               </Text>
             </View>
             <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -352,68 +372,73 @@ export default function EveningDetailScreen() {
             />
           </View>
 
-          <View style={styles.card}>
-            <View style={styles.cardSectionHeader}>
-              <Text style={styles.cardSectionHeaderText}>{cs.myBeers.drinkActionsHeader}</Text>
-              <View style={styles.headerFlex} />
-              <Pressable
-                onPress={openAddDrink}
-                style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
-              >
-                <PlusIcon size={15} color={Colors.stout} />
-                <Text style={styles.addDrinkButtonText}>{cs.myBeers.addDrinkToEvening}</Text>
-              </Pressable>
-            </View>
-            {drinkActionGroups.map((group, index) => (
-              <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
-                <View style={styles.drinkInfo}>
-                  <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
-                    {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
-                    {group.count > 1 ? ` · ${group.count}×` : ''}
-                  </Text>
-                  <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {[
-                      group.servingType
-                        ? cs.counter.servingTypeLabel(group.servingType)
-                        : null,
-                      group.pricedCount === group.count
-                        ? group.count > 1
-                          ? cs.myBeers.drinkGroupTotal(
-                              formatPrice(group.totalCzk, priceCurrency),
-                            )
-                          : formatPrice(group.totalCzk, priceCurrency)
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
-                  </Text>
-                </View>
-                <View style={styles.drinkActions}>
-                  <Pressable
-                    onPress={() => setEditingGroup(group)}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.myBeers.editDrink}
-                  >
-                    <PencilIcon size={17} color={Colors.amber} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.myBeers.deleteDrink}
-                  >
-                    <MinusIcon size={17} color={Colors.mutedText} />
-                  </Pressable>
-                </View>
+          {isEditable ? (
+            <View style={styles.card}>
+              <View style={styles.cardSectionHeader}>
+                <Text style={styles.cardSectionHeaderText}>{cs.myBeers.drinkActionsHeader}</Text>
+                <View style={styles.headerFlex} />
+                <Pressable
+                  onPress={openAddDrink}
+                  style={({ pressed }) => [
+                    styles.addDrinkButton,
+                    pressed && styles.iconButtonPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
+                >
+                  <PlusIcon size={15} color={Colors.stout} />
+                  <Text style={styles.addDrinkButtonText}>{cs.myBeers.addDrinkToEvening}</Text>
+                </Pressable>
               </View>
-            ))}
-          </View>
+              {drinkActionGroups.map((group, index) => (
+                <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
+                  <View style={styles.drinkInfo}>
+                    <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
+                      {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
+                      {group.count > 1 ? ` · ${group.count}×` : ''}
+                    </Text>
+                    <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {[
+                        group.servingType
+                          ? cs.counter.servingTypeLabel(group.servingType)
+                          : null,
+                        group.pricedCount === group.count
+                          ? group.count > 1
+                            ? cs.myBeers.drinkGroupTotal(
+                                formatPrice(group.totalCzk, priceCurrency),
+                              )
+                            : formatPrice(group.totalCzk, priceCurrency)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.drinkActions}>
+                    <Pressable
+                      onPress={() => setEditingGroup(group)}
+                      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.myBeers.editDrink}
+                    >
+                      <PencilIcon size={17} color={Colors.amber} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
+                      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.myBeers.deleteDrink}
+                    >
+                      <MinusIcon size={17} color={Colors.mutedText} />
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {/* Výčep — hang the night on the feed and/or share it as a story.
               Only a night with something on it qualifies. */}

@@ -19,8 +19,8 @@
  * in the evening detail (`EveningDetailScreen`), and two paths to one thing was
  * the single worst habit of the old screens.
  *
- * Read-only over the counter's data (tallyStore) exactly like its predecessors,
- * so it can never break counting, and it works offline and without an account.
+ * Local counter data remains the offline base; an account snapshot and
+ * backdated check-ins fill in older server history without changing counting.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -46,7 +46,10 @@ import { ScrollFade } from '@/components/shared/ScrollFade';
 
 import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/data/beerCheckinsClient';
 import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
-import { deriveReconciledDiaryStats } from '@/data/diarySync';
+import {
+  deriveReconciledDiarySessions,
+  deriveReconciledDiaryStats,
+} from '@/data/diarySync';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
@@ -128,6 +131,87 @@ function nightNoun(session: TallySession): { count: number; noun: string } {
   return { count: total, noun: czechPlural(total, OTHER_NOUN[dominant]).toUpperCase() };
 }
 
+type DiaryCheckIn = Pick<
+  BeerCheckIn,
+  | 'clientId'
+  | 'beerName'
+  | 'breweryName'
+  | 'quantity'
+  | 'priceCzk'
+  | 'pubCacheKey'
+  | 'pubName'
+  | 'pubCity'
+  | 'visitClientId'
+  | 'checkedInAt'
+  | 'endedAt'
+>;
+
+type DiaryNight =
+  | { key: string; session: TallySession; kind: 'session'; source: 'local' | 'remote' }
+  | { key: string; session: TallySession; kind: 'checkin'; checkIn: DiaryCheckIn };
+
+function pendingDiaryCheckIn(input: BeerCheckInInput): DiaryCheckIn {
+  return {
+    clientId: input.clientId,
+    beerName: input.beerName,
+    breweryName: input.breweryName ?? '',
+    quantity: input.quantity ?? 1,
+    priceCzk: input.priceCzk ?? null,
+    pubCacheKey: input.pubCacheKey ?? '',
+    pubName: input.pubName ?? '',
+    pubCity: input.pubCity ?? '',
+    visitClientId: input.visitClientId ?? null,
+    checkedInAt: input.checkedInAt ?? new Date().toISOString(),
+    endedAt: input.endedAt ?? null,
+  };
+}
+
+/** Group the backdated beer diary into evenings. These entries intentionally
+ * live outside tallyStore, so omitting them here was the regression that made
+ * "Dopiš večer" records disappear from the merged Deník screen. */
+function checkInNights(
+  checkIns: DiaryCheckIn[],
+  knownVisitIds: Set<string>,
+): DiaryNight[] {
+  const groups = new Map<string, DiaryCheckIn[]>();
+  for (const checkIn of checkIns) {
+    if (checkIn.visitClientId && knownVisitIds.has(checkIn.visitClientId)) continue;
+    const key = checkIn.visitClientId ?? `checkin:${checkIn.clientId}`;
+    const group = groups.get(key) ?? [];
+    group.push(checkIn);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.entries()).map(([key, entries]) => {
+    entries.sort((a, b) => Date.parse(a.checkedInAt) - Date.parse(b.checkedInAt));
+    const first = entries[0];
+    const drinks = entries.flatMap((entry) =>
+      Array.from({ length: Math.max(1, Math.floor(entry.quantity || 1)) }, (_, index) => ({
+        id: `${entry.clientId}:${index}`,
+        beerName: entry.beerName,
+        ...(entry.priceCzk == null ? {} : { priceCzk: entry.priceCzk }),
+        at: entry.checkedInAt,
+        syncStatus: 'sent' as const,
+      })),
+    );
+    return {
+      key,
+      kind: 'checkin' as const,
+      checkIn: first,
+      session: {
+        clientId: first.visitClientId ?? first.clientId,
+        pubKey: first.pubCacheKey || `historical:${first.visitClientId ?? first.clientId}`,
+        pubName: first.pubName,
+        ...(first.pubCity ? { pubCity: first.pubCity } : {}),
+        startedAt: first.checkedInAt,
+        drinks,
+        archivedReason: 'manual' as const,
+        ...(first.endedAt ? { closedAt: first.endedAt } : {}),
+      },
+    };
+  });
+}
+
 // ─── One older night ──────────────────────────────────────────────────────────
 
 function NightRow({
@@ -156,11 +240,11 @@ function NightRow({
       onPress={onPress}
       style={({ pressed }) => [styles.row, !isFirst && styles.rowDivider, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.diaryNight(session.pubName, meta)}
+      accessibilityLabel={cs.a11y.diaryNight(session.pubName || cs.diary.noPub, meta)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {session.pubName}
+          {session.pubName || cs.diary.noPub}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {meta}
@@ -223,26 +307,51 @@ export default function DiaryScreen({
     if (statsControlled) onStatsClose?.();
     else setOwnStatsOpen(false);
   }, [statsControlled, onStatsClose]);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCheckIns, setPendingCheckIns] = useState<BeerCheckInInput[]>([]);
+  const [remoteCheckIns, setRemoteCheckIns] = useState<BeerCheckIn[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [diaryToken, setDiaryToken] = useState(0);
 
-  // The diary fetch only feeds the "waiting to send" nudge and the failure
-  // strip; the trail itself is local, so nothing here blocks the screen.
+  // Backdated entries use the check-in diary rather than tallyStore. Keep them
+  // in the same chronology and retain the local queue while offline.
   useEffect(() => {
     const controller = new AbortController();
     void getPendingBeerCheckIns().then((pending) => {
-      if (!controller.signal.aborted) setPendingCount(pending.length);
+      if (!controller.signal.aborted) setPendingCheckIns(pending);
     });
     void fetchMyBeerCheckIns(controller.signal).then((items: BeerCheckIn[] | null) => {
       if (controller.signal.aborted) return;
       setLoadFailed(items === null);
+      if (items) setRemoteCheckIns(items);
     });
     return () => controller.abort();
   }, [diaryToken]);
 
   const sessions = useMemo(() => allSessionsNewestFirst(current, history), [current, history]);
-  const nights = useMemo(() => sessions.filter((s) => s.drinks.length > 0), [sessions]);
+  const reconciledSessions = useMemo(
+    () => deriveReconciledDiarySessions(diarySnapshot, sessions),
+    [diarySnapshot, sessions],
+  );
+  const allCheckIns = useMemo(() => {
+    const byClientId = new Map<string, DiaryCheckIn>();
+    for (const item of remoteCheckIns) byClientId.set(item.clientId, item);
+    for (const item of pendingCheckIns) {
+      if (!byClientId.has(item.clientId)) byClientId.set(item.clientId, pendingDiaryCheckIn(item));
+    }
+    return Array.from(byClientId.values());
+  }, [pendingCheckIns, remoteCheckIns]);
+  const nights = useMemo<DiaryNight[]>(() => {
+    const knownVisitIds = new Set(reconciledSessions.map((item) => item.session.clientId));
+    const sessionNights: DiaryNight[] = reconciledSessions.map((item) => ({
+      key: item.session.clientId,
+      session: item.session,
+      kind: 'session',
+      source: item.source,
+    }));
+    return [...sessionNights, ...checkInNights(allCheckIns, knownVisitIds)].sort(
+      (a, b) => Date.parse(b.session.startedAt) - Date.parse(a.session.startedAt),
+    );
+  }, [allCheckIns, reconciledSessions]);
   const lastNight = nights[0] ?? null;
   const olderNights = nights.slice(1);
 
@@ -419,31 +528,54 @@ export default function DiaryScreen({
         },
       };
     }
-    if (pendingCount > 0) {
-      return { kind: 'dopito', label: cs.diary.queued(pendingCount), onPress: () => undefined };
+    if (pendingCheckIns.length > 0) {
+      return {
+        kind: 'dopito',
+        label: cs.diary.queued(pendingCheckIns.length),
+        onPress: () => undefined,
+      };
     }
     return null;
-  }, [loadFailed, pendingCount]);
+  }, [loadFailed, pendingCheckIns.length]);
 
   const openEvening = useCallback(
-    (session: TallySession) => {
+    (night: DiaryNight) => {
       trackUiInteraction('diary_evening_open');
-      router.push({ pathname: '/evening', params: { startedAt: session.startedAt } });
+      if (night.kind === 'checkin') {
+        router.push({
+          pathname: '/beer-detail',
+          params: { beer: night.checkIn.beerName, brewery: night.checkIn.breweryName },
+        });
+        return;
+      }
+      router.push({
+        pathname: '/evening',
+        params: {
+          startedAt: night.session.startedAt,
+          ...(night.source === 'remote' ? { visitClientId: night.session.clientId } : {}),
+        },
+      });
     },
     [router],
   );
 
-  const handleHistoricalSaved = useCallback((_entries: BeerCheckInInput[]) => {
+  const handleHistoricalSaved = useCallback((entries: BeerCheckInInput[]) => {
+    setPendingCheckIns((current) => {
+      const ids = new Set(entries.map((entry) => entry.clientId));
+      return [...entries, ...current.filter((entry) => !ids.has(entry.clientId))];
+    });
     setDiaryToken((token) => token + 1);
   }, []);
 
-  const lastNoun = lastNight ? nightNoun(lastNight) : null;
-  const lastSpentCzk = lastNight ? sessionTotalCzk(lastNight) : 0;
+  const lastNoun = lastNight ? nightNoun(lastNight.session) : null;
+  const lastSpentCzk = lastNight ? sessionTotalCzk(lastNight.session) : 0;
   const isRunning =
     lastNight !== null &&
+    lastNight.kind === 'session' &&
+    lastNight.source === 'local' &&
     current !== null &&
-    lastNight.startedAt === current.startedAt &&
-    eveningDayRelation(lastNight.startedAt, now) === 'today';
+    lastNight.session.startedAt === current.startedAt &&
+    eveningDayRelation(lastNight.session.startedAt, now) === 'today';
 
   const topInset = embedded ? 0 : insets.top;
 
@@ -489,17 +621,17 @@ export default function DiaryScreen({
               nounLabel={lastNoun.noun}
               whenLabel={
                 isRunning
-                  ? `${eveningDateLabel(lastNight.startedAt, now)} · ${cs.diary.running}`
-                  : eveningDateLabel(lastNight.startedAt, now)
+                  ? `${eveningDateLabel(lastNight.session.startedAt, now)} · ${cs.diary.running}`
+                  : eveningDateLabel(lastNight.session.startedAt, now)
               }
-              placeLabel={lastNight.pubName || cs.diary.noPub}
+              placeLabel={lastNight.session.pubName || cs.diary.noPub}
               spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
               nights={nights.length}
               onPress={() => openEvening(lastNight)}
               accessibilityLabel={cs.a11y.diaryCard(
                 beerCountLabel(lastNoun.count),
-                lastNight.pubName || cs.diary.noPub,
-                eveningDateLabel(lastNight.startedAt, now),
+                lastNight.session.pubName || cs.diary.noPub,
+                eveningDateLabel(lastNight.session.startedAt, now),
               )}
             />
 
@@ -509,14 +641,14 @@ export default function DiaryScreen({
                   {cs.diary.olderHeader}
                 </Text>
                 <View style={styles.rowsCard}>
-                  {olderNights.map((session, index) => (
+                  {olderNights.map((night, index) => (
                     <NightRow
-                      key={session.startedAt}
-                      session={session}
+                      key={night.key}
+                      session={night.session}
                       priceCurrency={priceCurrency}
                       now={now}
                       isFirst={index === 0}
-                      onPress={() => openEvening(session)}
+                      onPress={() => openEvening(night)}
                     />
                   ))}
                 </View>
