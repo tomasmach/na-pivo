@@ -19,6 +19,7 @@ import {
   geocodePubLocation,
   isAcceptablePubName,
   isSpecificGeocodeResult,
+  reverseGeocodePubLocation,
   searchPubsNear,
   suggestPubLocations,
 } from '../mapyClient';
@@ -566,6 +567,38 @@ describe('geocodePubLocation', () => {
     expect(calledUrl.search).toBe('');
   });
 
+  it('passes a selected Google place id to the backend resolver', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Občerstvení U Smrku',
+            type: 'regional.address',
+            position: { lat: 50.080123, lon: 16.510616 },
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await geocodePubLocation({
+      name: 'Občerstvení U Smrku',
+      placeId: 'place-smrk',
+      near: { lat: 50.08, lng: 16.51 },
+    });
+
+    expect(requestJson(fetchMock.mock.calls[0] as unknown[])).toEqual({
+      query: 'Občerstvení U Smrku',
+      place_id: 'place-smrk',
+      lat: 50.08,
+      lng: 16.51,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to an address-only geocode when the named pub is not a Mapy POI', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
     const fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
@@ -837,6 +870,44 @@ describe('suggestPubLocations', () => {
     expect(calledUrl.search).toBe('');
   });
 
+  it('keeps unresolved Google predictions selectable by place id', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            id: 'google:place-smrk',
+            provider: 'google',
+            providerPlaceId: 'place-smrk',
+            name: 'Občerstvení U Smrku',
+            location: 'Líšnice ev. č. 7, Líšnice',
+            type: 'poi',
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const suggestions = await suggestPubLocations({
+      name: 'Občerstvení U Smrku',
+      near: { lat: 50.080123, lng: 16.510616 },
+    });
+
+    expect(suggestions).toEqual([
+      {
+        id: 'google:place-smrk',
+        name: 'Občerstvení U Smrku',
+        city: undefined,
+        address: undefined,
+        location: 'Líšnice ev. č. 7, Líšnice',
+        provider: 'google',
+        placeId: 'place-smrk',
+      },
+    ]);
+  });
+
   it('does not fall back to direct Mapy suggestions when the backend lookup is unavailable', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
     const fetchMock = jest.fn(async (url: string) => {
@@ -870,5 +941,60 @@ describe('suggestPubLocations', () => {
     if (!backendUrl) throw new Error('Expected backend suggest call');
     expect(backendUrl.origin + backendUrl.pathname).toBe('https://api.example.com/v1/pubs/suggest');
     expect(calledUrls.some((url) => url.origin === 'https://api.mapy.cz')).toBe(false);
+  });
+});
+
+describe('reverseGeocodePubLocation', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
+
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_BACKEND === undefined) {
+      delete process.env.EXPO_PUBLIC_BACKEND_URL;
+    } else {
+      process.env.EXPO_PUBLIC_BACKEND_URL = ORIGINAL_BACKEND;
+    }
+  });
+
+  it('returns editable city and address for a selected map point', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Líšnice ev. č. 7',
+            type: 'regional.address',
+            position: { lat: 50.080123, lon: 16.510616 },
+            regionalStructure: [
+              { name: 'Líšnice', type: 'regional.municipality' },
+              { name: 'Líšnice ev. č. 7', type: 'regional.street' },
+            ],
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await reverseGeocodePubLocation({
+      lat: 50.080123,
+      lng: 16.510616,
+    });
+
+    expect(result).toEqual({
+      lat: 50.080123,
+      lng: 16.510616,
+      city: 'Líšnice',
+      address: 'Líšnice ev. č. 7',
+      type: 'regional.address',
+    });
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.pathname).toBe('/v1/pubs/reverse-geocode');
+    expect(requestJson(fetchMock.mock.calls[0] as unknown[])).toEqual({
+      lat: 50.080123,
+      lng: 16.510616,
+    });
   });
 });

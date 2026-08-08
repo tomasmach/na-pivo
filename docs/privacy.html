@@ -49,7 +49,7 @@
   <p>K anonymnímu účtu ukládáme také součet nachozených metrů v aplikaci. Součet se počítá přímo v telefonu a na server se odesílají pouze přírůstky v metrech – nikdy GPS body, trasa ani historie polohy.</p>
 
   <h3>Vyhledávání a přidávání hospod</h3>
-  <p>Běžné hledání okolních hospod i našeptávání názvů používá náš vlastní lokální adresář podniků. Když přidáváte chybějící podnik a zadáte adresu, může ji náš server geokódovat přes službu <strong>Google Geocoding</strong> (viz „Služby třetích stran"). Vámi přidané podniky se veřejně zobrazují ostatním uživatelům.</p>
+  <p>Běžné hledání okolních hospod používá náš vlastní lokální adresář podniků. Při přidávání chybějícího podniku hledáme název v tomto adresáři a výsledky můžeme doplnit ze služby <strong>Google Places</strong>. Když vyberete bod na mapě nebo svou aktuální polohu, může server jeho souřadnice převést na adresu přes <strong>Google Geocoding</strong>. Odesílá se hledaný název nebo vámi potvrzený bod, nikoli vaše identita. Vámi přidané podniky se veřejně zobrazují ostatním uživatelům.</p>
 
   <h3>Anonymní účet zařízení</h3>
   <p>Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.</p>
@@ -128,8 +128,8 @@
   <h3>Vlastní server provozovatele</h3>
   <p>Na vlastním serveru zpracováváme anonymní účet zařízení, případný uživatelský účet a profil, Pivní deník a vaše záznamy, fotky, sociální data Party, komunitní setkání, dobrovolně doplněné údaje o hospodách, push tokeny, zpětnou vazbu a provozní a produktové statistiky. Tato data slouží pouze k provozu, měření používání a zlepšování aplikace; neposíláme je žádné reklamní síti ani externímu analytickému nástroji.</p>
 
-  <h3>Google Maps a Google Geocoding</h3>
-  <p>Obrazovka s mapou používá <strong>Google Maps SDK</strong>, které pro vykreslení mapy komunikuje se servery Google (mimo jiné zobrazovaný výřez mapy a technické identifikátory zařízení). Při přidávání chybějícího podniku může náš server geokódovat zadanou adresu přes <strong>Google Geocoding API</strong>; odesílá se jen text adresy, nikoli vaše identita. Zásady: <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a></p>
+  <h3>Google Maps, Google Places a Google Geocoding</h3>
+  <p>Obrazovka s mapou používá <strong>Google Maps SDK</strong>, které pro vykreslení mapy komunikuje se servery Google (mimo jiné zobrazovaný výřez mapy a technické identifikátory zařízení). Při přidávání chybějícího podniku může náš server hledat zadaný název přes <strong>Google Places API</strong> a převést vámi potvrzený bod nebo adresu přes <strong>Google Geocoding API</strong>. Googlu se odešle hledaný název, text adresy nebo souřadnice vybraného bodu, nikoli vaše identita. Zásady: <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a></p>
 
   <h3>Zpracování fotky menu (OpenRouter + AI model)</h3>
   <p>Fotku pivního lístku z funkce „Vyfoť menu" předává náš server službě <strong>OpenRouter</strong>, která ji zpracuje AI modelem (aktuálně Google Gemini). Fotku neukládáme my ani ji podle našeho nastavení nesmí poskytovatel používat k trénování. Zásady: <a href="https://openrouter.ai/privacy">https://openrouter.ai/privacy</a></p>

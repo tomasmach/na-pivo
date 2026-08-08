@@ -843,9 +843,10 @@ class FriendSearchQuerySerializer(serializers.Serializer):
     q = serializers.CharField(max_length=40, trim_whitespace=True)
 
     def validate_q(self, value: str) -> str:
-        if len(value.strip()) < 2:
+        value = value.strip().removeprefix("@")
+        if len(value) < 2:
             raise serializers.ValidationError("q must contain at least 2 characters.")
-        return value.strip()
+        return value
 
 
 class LeaderboardQuerySerializer(serializers.Serializer):
@@ -2049,13 +2050,19 @@ class PubVisitRequestSerializer(PubInputSerializer):
     )
     started_at = serializers.DateTimeField()
     ended_at = serializers.DateTimeField(required=False, allow_null=True)
+    closed_at = serializers.DateTimeField(required=False, allow_null=True)
     updated_at = serializers.DateTimeField()
 
     def validate(self, attrs: dict) -> dict:
         ended_at = attrs.get("ended_at")
+        closed_at = attrs.get("closed_at")
         if ended_at is not None and ended_at < attrs["started_at"]:
             raise serializers.ValidationError(
                 {"ended_at": "ended_at must be greater than or equal to started_at."}
+            )
+        if closed_at is not None and closed_at < attrs["started_at"]:
+            raise serializers.ValidationError(
+                {"closed_at": "closed_at must be greater than or equal to started_at."}
             )
         return attrs
 
@@ -2142,6 +2149,12 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
     """Query params for local-first pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
+    place_id = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
     lat = serializers.FloatField(required=False)
     lng = serializers.FloatField(required=False)
 
@@ -2156,6 +2169,16 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
         if has_lat != has_lng:
             raise serializers.ValidationError("lat and lng must be provided together.")
         return attrs
+
+
+class PubLocationReverseGeocodeSerializer(
+    _LatLngBoundsValidationMixin,
+    serializers.Serializer,
+):
+    """An explicit map point that should be converted to a display address."""
+
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
 
 
 # ---------------------------------------------------------------------------

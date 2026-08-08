@@ -1,6 +1,6 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config';
 import type { ConfigPlugin } from 'expo/config-plugins';
-import { withInfoPlist } from 'expo/config-plugins.js';
+import { withGradleProperties, withInfoPlist } from 'expo/config-plugins.js';
 
 const LOCATION_REASON =
   'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru; GPS trasu ani historii neukládáme.';
@@ -59,6 +59,23 @@ const withoutBackgroundAudio: ConfigPlugin = (config) =>
       } else {
         config.modResults.UIBackgroundModes = filteredModes;
       }
+    }
+
+    return config;
+  });
+
+const withAndroidGradleMemory: ConfigPlugin = (config) =>
+  withGradleProperties(config, (config) => {
+    const key = 'org.gradle.jvmargs';
+    const value = '-Xmx2048m -XX:MaxMetaspaceSize=1g';
+    const property = config.modResults.find(
+      (item) => item.type === 'property' && item.key === key,
+    );
+
+    if (property?.type === 'property') {
+      property.value = value;
+    } else {
+      config.modResults.push({ type: 'property', key, value });
     }
 
     return config;
@@ -245,5 +262,5 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
   };
 
-  return withoutBackgroundAudio(expoConfig);
+  return withAndroidGradleMemory(withoutBackgroundAudio(expoConfig));
 };

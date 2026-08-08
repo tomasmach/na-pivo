@@ -253,6 +253,45 @@ def test_accepted_private_friend_is_visible_even_when_not_public(client):
 
 
 @pytest.mark.django_db
+def test_friend_search_ranks_normalized_exact_nickname_first(client):
+    token, _viewer = _register(client, "hledajici")
+    _register(client, "amatys")
+    _register(client, "MatysJunior")
+    _register(client, "Matys")
+    _register(client, "xmatysx")
+
+    search = client.get("/v1/friends/search", {"q": "mAtYs"}, **_auth(token))
+
+    assert search.status_code == status.HTTP_200_OK
+    assert [profile["nickname"] for profile in search.json()["results"]] == [
+        "Matys",
+        "MatysJunior",
+        "amatys",
+        "xmatysx",
+    ]
+
+
+@pytest.mark.django_db
+def test_friend_search_ignores_optional_at_sign_and_case(client):
+    token, _viewer = _register(client, "hledajici")
+    _register(client, "Matys")
+
+    search = client.get("/v1/friends/search", {"q": "@mAtYs"}, **_auth(token))
+
+    assert search.status_code == status.HTTP_200_OK
+    assert [profile["nickname"] for profile in search.json()["results"]] == ["Matys"]
+
+
+@pytest.mark.django_db
+def test_friend_search_rejects_query_made_only_of_at_sign(client):
+    token, _viewer = _register(client, "hledajici")
+
+    search = client.get("/v1/friends/search", {"q": "@"}, **_auth(token))
+
+    assert search.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_friend_pub_activity_notifies_friends_and_returns_active_status(client, monkeypatch):
     token_a, account_a = _register(client, "janek")
     token_b, account_b = _register(client, "petr")

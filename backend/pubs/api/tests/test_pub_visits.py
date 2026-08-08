@@ -61,6 +61,7 @@ def _payload(**overrides):
         "external_id": "mapy:50.08755,14.42141",
         "started_at": "2026-06-12T19:00:00+02:00",
         "ended_at": None,
+        "closed_at": None,
         "updated_at": "2026-06-12T19:00:00+02:00",
     }
     data.update(overrides)
@@ -159,7 +160,20 @@ def test_post_creates_visit_with_geohash_cache_key(client):
     assert visit.external_id == "mapy:50.08755,14.42141"
     assert visit.started_at.isoformat() == "2026-06-12T17:00:00+00:00"
     assert visit.ended_at is None
+    assert visit.closed_at is None
     assert visit.client_updated_at.isoformat() == "2026-06-12T17:00:00+00:00"
+
+
+@pytest.mark.django_db
+def test_post_accepts_legacy_payload_without_closed_at(client):
+    token = _register(client)
+    payload = _payload()
+    payload.pop("closed_at")
+
+    resp = client.post("/v1/pub-visits", data=payload, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert PubVisit.objects.get().closed_at is None
 
 
 @pytest.mark.django_db
@@ -173,6 +187,24 @@ def test_post_with_ended_at(client):
     )
     assert resp.status_code == status.HTTP_201_CREATED
     assert PubVisit.objects.get().ended_at.isoformat() == "2026-06-12T21:30:00+00:00"
+
+
+@pytest.mark.django_db
+def test_post_with_closed_at(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            ended_at="2026-06-12T23:00:00+02:00",
+            closed_at="2026-06-12T23:30:00+02:00",
+            updated_at="2026-06-12T23:30:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert PubVisit.objects.get().closed_at.isoformat() == "2026-06-12T21:30:00+00:00"
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +339,7 @@ def test_get_lists_all_visits(client):
     assert first["cache_key"] == _KEY
     assert first["started_at"] == "2026-06-12T17:00:00+00:00"
     assert first["ended_at"] is None
+    assert first["closed_at"] is None
     assert first["updated_at"] == "2026-06-12T17:00:00+00:00"
 
 

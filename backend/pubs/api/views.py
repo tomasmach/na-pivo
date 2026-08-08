@@ -9,6 +9,7 @@ POST   /v1/pub-reports → PubReportView
 GET    /v1/pub-reports/blocked → BlockedPubReportsView
 GET/POST /v1/pubs/suggest → PubLocationSuggestView
 GET/POST /v1/pubs/geocode → PubLocationGeocodeView
+POST   /v1/pubs/reverse-geocode → PubLocationReverseGeocodeView
 GET    /v1/beer-brands/suggest → BeerBrandSuggestView
 POST   /v1/drinks      → DrinksView
 PATCH  /v1/drinks/<client_id> → DrinksView
@@ -56,7 +57,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce, NullIf, TruncDate
+from django.db.models.functions import Coalesce, Lower, NullIf, TruncDate
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -80,6 +81,8 @@ from pubs.beer_catalog import (
 from pubs.enrichment import (
     GoogleGeocodingSource,
     GoogleGeocodingUnavailableError,
+    GooglePlacesAutocompleteSource,
+    GooglePlacesUnavailableError,
     OpenRouterDailyCapExceededError,
     OpenRouterUnavailableError,
     community_hours_to_osm,
@@ -229,6 +232,7 @@ from .serializers import (
     PublishedNightRequestSerializer,
     PublishedNightSerializer,
     PubLocationLookupQuerySerializer,
+    PubLocationReverseGeocodeSerializer,
     PubNameCorrectionRequestSerializer,
     PubNameCorrectionSerializer,
     PubRatingRequestSerializer,
@@ -2825,6 +2829,7 @@ def _visit_item(visit: PubVisit) -> dict:
         "external_id": visit.external_id,
         "started_at": visit.started_at.isoformat(),
         "ended_at": visit.ended_at.isoformat() if visit.ended_at else None,
+        "closed_at": visit.closed_at.isoformat() if visit.closed_at else None,
         "updated_at": visit.client_updated_at.isoformat(),
     }
 
@@ -2837,8 +2842,8 @@ class PubVisitView(APIView):
 
     Records that the user spent an evening at a pub even when no beer was
     counted. Idempotent on (account, client_id): a re-POST (offline retry, or a
-    later POST filling in ``ended_at``) updates the same row. ``cache_key`` is
-    the geohash-8 cell computed server-side. Throttled per-IP (scope
+    later POST filling in ``ended_at`` / ``closed_at``) updates the same row.
+    ``cache_key`` is the geohash-8 cell computed server-side. Throttled per-IP (scope
     "pub_visits").
     """
 
@@ -2895,6 +2900,7 @@ class PubVisitView(APIView):
                         "external_id": data.get("external_id") or "",
                         "started_at": data["started_at"],
                         "ended_at": data.get("ended_at"),
+                        "closed_at": data.get("closed_at"),
                         "client_updated_at": data["updated_at"],
                     },
                 )
@@ -3250,7 +3256,7 @@ def _friend_presence_slice(
     )
 
     visits = (
-        PubVisit.objects.filter(account_id__in=account_ids)
+        PubVisit.objects.filter(account_id__in=account_ids, closed_at__isnull=True)
         .annotate(
             last_seen_at=Coalesce("ended_at", "started_at"),
             presence_activity_id=Subquery(active_activity.values("public_id")[:1]),
@@ -3855,6 +3861,7 @@ class FriendSearchView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         q = serializer.validated_data["q"]
+        normalized_q = q.casefold()
         profiles = (
             Account.objects.filter(
                 status=Account.Status.ACTIVE,
@@ -3863,8 +3870,18 @@ class FriendSearchView(APIView):
             .exclude(pk=request.user.pk)
             # A block (either direction) hides both parties from search.
             .exclude(pk__in=_blocked_account_ids(request.user))
+            .annotate(normalized_nickname=Lower("nickname"))
             .filter(Q(nickname__icontains=q) | Q(display_name__icontains=q))
-            .order_by("nickname", "display_name")[:20]
+            .annotate(
+                search_rank=Case(
+                    When(normalized_nickname=normalized_q, then=Value(0)),
+                    When(normalized_nickname__startswith=normalized_q, then=Value(1)),
+                    When(display_name__iexact=q, then=Value(2)),
+                    When(display_name__istartswith=q, then=Value(3)),
+                    default=Value(4),
+                )
+            )
+            .order_by("search_rank", "normalized_nickname", "display_name")[:20]
         )
         return Response(
             {
@@ -7664,7 +7681,72 @@ class _PubLocationLookupBaseView(APIView):
 
 
 class PubLocationSuggestView(_PubLocationLookupBaseView):
-    """Cheap local-only autocomplete; it never calls a paid provider."""
+    """Local-first autocomplete with a capped Google Places fallback."""
+
+    def _lookup_response(self, data: dict) -> Response:
+        # Keep a few local results, but leave room for a missing place that has
+        # not made it into the reviewed directory yet. This screen exists
+        # specifically for filling those catalogue gaps.
+        local_limit = min(4, self.max_items)
+        local_items = self._local_items(
+            data["query"],
+            data.get("lat"),
+            data.get("lng"),
+            local_limit,
+        )
+        api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
+        if not api_key or len(data["query"].strip()) < 3:
+            return Response({"items": local_items}, status=status.HTTP_200_OK)
+
+        daily_cap = int(getattr(settings, "GOOGLE_MAPS_DAILY_CAP", 250))
+        try:
+            with GooglePlacesAutocompleteSource(
+                api_key=api_key,
+                timeout=int(getattr(settings, "GOOGLE_MAPS_TIMEOUT", 8)),
+                reserve_request=lambda: reserve_external_api_request(
+                    provider="google_maps",
+                    operation="billable",
+                    cap=daily_cap,
+                ),
+            ) as source:
+                predictions = source.autocomplete(
+                    query=data["query"],
+                    lat=data.get("lat"),
+                    lng=data.get("lng"),
+                    limit=max(0, self.max_items - len(local_items)),
+                )
+        except GooglePlacesUnavailableError as exc:
+            logger.warning(
+                "pubs-suggest: Google Places unavailable: %s",
+                type(exc).__name__,
+            )
+            return Response({"items": local_items}, status=status.HTTP_200_OK)
+
+        seen_names = {
+            normalize_pub_name(str(item.get("name") or ""))
+            for item in local_items
+        }
+        google_items = []
+        for prediction in predictions:
+            name_key = normalize_pub_name(prediction.name)
+            if name_key in seen_names:
+                continue
+            seen_names.add(name_key)
+            google_items.append(
+                {
+                    "id": f"google:{prediction.place_id}",
+                    "provider": "google",
+                    "providerPlaceId": prediction.place_id,
+                    "name": prediction.name,
+                    "label": "Google Maps",
+                    "location": prediction.location,
+                    "type": "poi",
+                }
+            )
+        return Response(
+            {"items": [*local_items, *google_items][: self.max_items]},
+            status=status.HTTP_200_OK,
+        )
 
 
 class PubLocationGeocodeView(_PubLocationLookupBaseView):
@@ -7673,14 +7755,16 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
     max_items = 3
 
     def _lookup_response(self, data: dict) -> Response:
-        local_items = self._local_items(
-            data["query"],
-            data.get("lat"),
-            data.get("lng"),
-            self.max_items,
-        )
-        if local_items:
-            return Response({"items": local_items}, status=status.HTTP_200_OK)
+        place_id = data.get("place_id") or ""
+        if not place_id:
+            local_items = self._local_items(
+                data["query"],
+                data.get("lat"),
+                data.get("lng"),
+                self.max_items,
+            )
+            if local_items:
+                return Response({"items": local_items}, status=status.HTTP_200_OK)
 
         api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
         if not api_key:
@@ -7699,7 +7783,11 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
                     cap=daily_cap,
                 ),
             ) as source:
-                candidate = source.geocode_address(address=data["query"], city="")
+                candidate = (
+                    source.geocode_place_id(place_id)
+                    if place_id
+                    else source.geocode_address(address=data["query"], city="")
+                )
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
                 "pubs-geocode: Google lookup unavailable: %s",
@@ -7733,6 +7821,83 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
             "attributions": ["Google Maps"],
         }
         return Response({"items": [item]}, status=status.HTTP_200_OK)
+
+
+class PubLocationReverseGeocodeView(APIView):
+    """Resolve one user-confirmed map point to editable city/address fields."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_location_lookup"
+
+    def post(self, request: Request) -> Response:
+        serializer = PubLocationReverseGeocodeSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+
+        api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
+        if not api_key:
+            return Response(
+                {"detail": "Location lookup is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        daily_cap = int(getattr(settings, "GOOGLE_MAPS_DAILY_CAP", 250))
+        try:
+            with GoogleGeocodingSource(
+                api_key=api_key,
+                timeout=int(getattr(settings, "GOOGLE_MAPS_TIMEOUT", 8)),
+                reserve_request=lambda: reserve_external_api_request(
+                    provider="google_maps",
+                    operation="billable",
+                    cap=daily_cap,
+                ),
+            ) as source:
+                candidate = source.reverse_geocode(lat=data["lat"], lng=data["lng"])
+        except GoogleGeocodingUnavailableError as exc:
+            logger.warning(
+                "pubs-reverse-geocode: Google lookup unavailable: %s",
+                type(exc).__name__,
+            )
+            return Response(
+                {"detail": "Location lookup is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if candidate is None:
+            return Response({"items": []}, status=status.HTTP_200_OK)
+
+        regional_structure = []
+        if candidate.city:
+            regional_structure.append(
+                {"name": candidate.city, "type": "regional.municipality"}
+            )
+        if candidate.address:
+            regional_structure.append(
+                {"name": candidate.address, "type": "regional.street"}
+            )
+        return Response(
+            {
+                "items": [
+                    {
+                        "id": (
+                            f"google:{candidate.place_id}"
+                            if candidate.place_id
+                            else "google:reverse-geocode"
+                        ),
+                        "provider": "google",
+                        "providerPlaceId": candidate.place_id,
+                        "name": candidate.address or candidate.city or "Vybraný bod",
+                        "label": "Adresa",
+                        "position": {"lat": candidate.lat, "lon": candidate.lng},
+                        "type": "regional.address",
+                        "regionalStructure": regional_structure,
+                        "attributions": ["Google Maps"],
+                    }
+                ]
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ReleaseNotesView(APIView):

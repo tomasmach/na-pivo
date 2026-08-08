@@ -67,6 +67,7 @@ def _visit(
     *,
     started_at,
     ended_at=None,
+    closed_at=None,
     cache_key: str = _CACHE_KEY,
     name: str = "Bar Na Pile",
 ) -> PubVisit:
@@ -81,6 +82,7 @@ def _visit(
         external_id="mapy:test",
         started_at=started_at,
         ended_at=ended_at,
+        closed_at=closed_at,
         client_updated_at=ended_at or started_at,
     )
 
@@ -175,6 +177,25 @@ def test_presence_expires_after_configured_window(client, settings):
         friend,
         started_at=now - timedelta(hours=4),
         ended_at=now - timedelta(hours=3, minutes=1),
+    )
+
+    response = client.get("/v1/friends/live", **_auth(token_owner))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["presence"] == []
+
+
+@pytest.mark.django_db
+def test_explicitly_closed_visit_disappears_from_presence_immediately(client):
+    token_owner, owner = _register(client, "majitel")
+    _token_friend, friend = _register(client, "jarek")
+    _make_friends(owner, friend)
+    now = timezone.now()
+    _visit(
+        friend,
+        started_at=now - timedelta(hours=1),
+        ended_at=now - timedelta(minutes=5),
+        closed_at=now,
     )
 
     response = client.get("/v1/friends/live", **_auth(token_owner))

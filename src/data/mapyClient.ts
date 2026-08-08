@@ -117,6 +117,8 @@ interface MapyGeocodeItem {
   /** Additive backend-only field: Google Place ID, attached by our backend's
    *  nearby endpoint when known. Never present on raw Mapy.cz responses. */
   googlePlaceId?: string | null;
+  provider?: 'local' | 'google';
+  providerPlaceId?: string | null;
   /** Additive cache-only detail attached by our backend's nearby endpoint. */
   pubDetails?: {
     opening_hours?: string | null;
@@ -145,6 +147,7 @@ export interface PubLocationGeocodeInput {
   city?: string;
   address?: string;
   near?: { lat: number; lng: number } | null;
+  placeId?: string;
 }
 
 export interface PubLocationGeocodeResult {
@@ -173,11 +176,13 @@ export function isSpecificGeocodeResult(result: PubLocationGeocodeResult | null)
 export interface PubLocationSuggestion {
   id: string;
   name: string;
-  lat: number;
-  lng: number;
+  lat?: number;
+  lng?: number;
   city?: string;
   address?: string;
   location?: string;
+  provider?: 'local' | 'google';
+  placeId?: string;
 }
 
 /** Shape of the backend's pubs-near response. items are RAW Mapy suggest items
@@ -289,6 +294,7 @@ async function backendLocationLookup(
   query: string,
   near?: { lat: number; lng: number } | null,
   signal?: AbortSignal,
+  placeId?: string,
 ): Promise<MapyGeocodeItem[] | null> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || signal?.aborted) return null;
@@ -300,6 +306,7 @@ async function backendLocationLookup(
       body: JSON.stringify({
         query,
         ...(near ? { lat: near.lat, lng: near.lng } : {}),
+        ...(placeId ? { place_id: placeId } : {}),
       }),
       signal,
     });
@@ -393,8 +400,9 @@ async function lookupGeocodeItems(
   query: string,
   near?: { lat: number; lng: number } | null,
   signal?: AbortSignal,
+  placeId?: string,
 ): Promise<MapyGeocodeItem[] | null> {
-  return backendLocationLookup('/v1/pubs/geocode', query, near, signal);
+  return backendLocationLookup('/v1/pubs/geocode', query, near, signal, placeId);
 }
 
 export async function geocodePubLocation(
@@ -408,13 +416,13 @@ export async function geocodePubLocation(
 
   const queries = [primaryQuery];
   const addressQuery = buildAddressLocationQuery(input);
-  if (addressQuery && addressQuery !== primaryQuery) {
+  if (!input.placeId && addressQuery && addressQuery !== primaryQuery) {
     queries.push(addressQuery);
   }
 
   let firstValid: MapyGeocodeItem | null = null;
   for (const query of queries) {
-    const items = await lookupGeocodeItems(query, input.near, signal);
+    const items = await lookupGeocodeItems(query, input.near, signal, input.placeId);
     if (items === null) continue;
 
     for (const item of items) {
@@ -428,20 +436,64 @@ export async function geocodePubLocation(
 }
 
 function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {
-  if (!item.name || !isValidPosition(item.position)) return null;
+  if (!item.name) return null;
+
+  const hasPosition = isValidPosition(item.position);
+  const placeId = item.providerPlaceId?.trim() || undefined;
+  if (!hasPosition && !placeId) return null;
 
   const city = pickCity(item);
   const address = pickAddress(item);
-  const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
+  const key = hasPosition
+    ? `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`
+    : placeId!;
   return {
     id: item.id?.trim() || `mapy:${key}:${item.name.trim()}`,
     name: item.name.trim(),
-    lat: item.position.lat,
-    lng: item.position.lon,
+    ...(hasPosition ? { lat: item.position.lat, lng: item.position.lon } : {}),
     city,
     address,
     location: address || city ? [address, city].filter(Boolean).join(', ') : item.location,
+    ...(item.provider ? { provider: item.provider } : {}),
+    ...(placeId ? { placeId } : {}),
   };
+}
+
+export async function reverseGeocodePubLocation(
+  location: { lat: number; lng: number },
+  signal?: AbortSignal,
+): Promise<PubLocationGeocodeResult | null> {
+  const endpoint = getBackendEndpoint('/v1/pubs/reverse-geocode');
+  if (!endpoint || signal?.aborted) return null;
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(location),
+      signal,
+    });
+    if (!resp.ok) {
+      trackApiFailure('pub_location_geocode_backend', {
+        endpoint: '/v1/pubs/reverse-geocode',
+        status: resp.status,
+      });
+      return null;
+    }
+    const data = (await resp.json()) as BackendLocationLookupResponse;
+    const item = data.items?.find((candidate) => isValidPosition(candidate.position));
+    return item ? geocodeResultFromItem(item) : null;
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('pub_location_geocode_backend', {
+        endpoint: '/v1/pubs/reverse-geocode',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return null;
+  }
 }
 
 export async function suggestPubLocations(

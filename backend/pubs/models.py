@@ -3340,8 +3340,8 @@ class PubVisit(models.Model):
     user was at a pub at all, so a dry visit (a soda, a coffee, just meeting
     friends) still counts. Identity of one evening is (account, ``client_id``):
     the client generates a UUID per visit and re-POSTs it verbatim on offline
-    retries / when it later fills in ``ended_at``, so the unique constraint lets
-    the endpoint update_or_create the same row instead of duplicating it.
+    retries / when it later fills in ``ended_at`` or ``closed_at``, so the unique
+    constraint lets the endpoint update_or_create the same row instead of duplicating it.
     ``started_at`` is when the evening began; ``cache_key`` is the geohash-8 cell
     computed server-side.
 
@@ -3380,6 +3380,11 @@ class PubVisit(models.Model):
         null=True,
         blank=True,
         help_text="When the evening ended (None = still open / unknown).",
+    )
+    closed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Explicit client-side session closure; None preserves legacy recency inference.",
     )
     client_updated_at = models.DateTimeField(
         help_text="Client's local updatedAt; the last-write-wins conflict key.",

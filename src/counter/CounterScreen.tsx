@@ -1270,7 +1270,8 @@ function Tacek({
         {
           text: cs.counter.doneConfirm,
           onPress: () => {
-            archiveCurrent('manual');
+            const archived = archiveCurrent('manual');
+            syncVisit(archived);
             setDopitoNudgedFor(clientId);
             setLastCounted(null);
             setCheckInBeerName(null);

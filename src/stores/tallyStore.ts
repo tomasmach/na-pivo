@@ -89,6 +89,10 @@ export interface TallySession {
   /** Set only on archived (history) sessions — why the evening was closed. The
    *  live `current` session never carries it. Drives the resume affordance. */
   archivedReason?: ArchivedReason;
+  /** ISO-8601 timestamp of the explicit local session closure. This is kept
+   *  separate from the last drink so Parta can stop showing the user as seated
+   *  immediately after "Dopito". */
+  closedAt?: string;
 }
 
 /** The minimal place identity a count needs. */
@@ -177,7 +181,7 @@ interface TallyState {
    * sweeper). A no-op on an empty/absent session — except it clears an empty
    * pinned session object so the counter resets cleanly.
    */
-  archiveCurrent: (reason: ArchivedReason) => void;
+  archiveCurrent: (reason: ArchivedReason) => TallySession | null;
   /**
    * Auto-complete the current session IFF it has gone idle (no drink within
    * IDLE_TIMEOUT_MS). Archives it with reason 'timeout' so it stays resumable.
@@ -296,7 +300,10 @@ export const useTallyStore = create<TallyState>()(
               state.current && state.current.pubKey !== pub.pubKey ? 'pub-change' : 'day-rollover';
             const history =
               state.current && state.current.drinks.length > 0
-                ? [{ ...state.current, archivedReason: reason }, ...state.history].slice(0, MAX_HISTORY)
+                ? [
+                    { ...state.current, archivedReason: reason, closedAt: at },
+                    ...state.history,
+                  ].slice(0, MAX_HISTORY)
                 : state.history;
             return {
               current: {
@@ -388,6 +395,7 @@ export const useTallyStore = create<TallyState>()(
             startedAt: at,
             drinks: [drink],
             archivedReason: 'manual',
+            closedAt: at,
           };
           box.session = created;
           return {
@@ -567,14 +575,22 @@ export const useTallyStore = create<TallyState>()(
           return { current: { ...state.current, pubName: trimmed } };
         }),
 
-      archiveCurrent: (reason) =>
+      archiveCurrent: (reason) => {
+        let result: TallySession | null = null;
         set((state) => {
           if (!state.current) return state;
           // An empty pinned session is not an evening — just drop it.
           if (state.current.drinks.length === 0) return { current: null };
-          const archived: TallySession = { ...state.current, archivedReason: reason };
+          const archived: TallySession = {
+            ...state.current,
+            archivedReason: reason,
+            closedAt: new Date().toISOString(),
+          };
+          result = archived;
           return { current: null, history: [archived, ...state.history].slice(0, MAX_HISTORY) };
-        }),
+        });
+        return result;
+      },
 
       maybeAutoArchive: (nowMs = Date.now()) => {
         let archived = false;
@@ -582,7 +598,11 @@ export const useTallyStore = create<TallyState>()(
           if (!state.current || state.current.drinks.length === 0) return state;
           if (nowMs - sessionLastActivityMs(state.current) < IDLE_TIMEOUT_MS) return state;
           archived = true;
-          const arch: TallySession = { ...state.current, archivedReason: 'timeout' };
+          const arch: TallySession = {
+            ...state.current,
+            archivedReason: 'timeout',
+            closedAt: new Date(sessionLastActivityMs(state.current) + IDLE_TIMEOUT_MS).toISOString(),
+          };
           return { current: null, history: [arch, ...state.history].slice(0, MAX_HISTORY) };
         });
         return archived;
@@ -601,7 +621,7 @@ export const useTallyStore = create<TallyState>()(
             return state;
           }
           resumed = true;
-          const { archivedReason: _omit, ...restored } = last;
+          const { archivedReason: _reason, closedAt: _closedAt, ...restored } = last;
           return { current: restored, history: state.history.slice(1) };
         });
         return resumed;

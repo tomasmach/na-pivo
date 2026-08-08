@@ -553,11 +553,13 @@ describe('maybeAutoArchive', () => {
 describe('archiveCurrent (Dopito)', () => {
   it('archives the current session with the given reason and clears it', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
-    useTallyStore.getState().archiveCurrent('manual');
+    const archived = useTallyStore.getState().archiveCurrent('manual');
     const { current, history } = useTallyStore.getState();
     expect(current).toBeNull();
     expect(history).toHaveLength(1);
     expect(history[0].archivedReason).toBe('manual');
+    expect(history[0].closedAt).toEqual(expect.any(String));
+    expect(archived).toBe(history[0]);
   });
 
   it('drops an empty pinned session without archiving it', () => {
@@ -587,6 +589,7 @@ describe('resumeLast', () => {
     expect(current?.clientId).toBe(archivedClientId); // same backend visit
     expect(current?.drinks).toHaveLength(1);
     expect(current?.archivedReason).toBeUndefined();
+    expect(current?.closedAt).toBeUndefined();
   });
 
   it('refuses to resume an evening at a different pub', () => {
