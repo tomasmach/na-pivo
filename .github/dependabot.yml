@@ -64,6 +64,9 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: uv
     directory: /backend
@@ -83,6 +86,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
