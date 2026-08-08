@@ -27,9 +27,20 @@ AuthKey.p8
 google-service-account.json
 *-service-account*.json
 
+# Local screenshots and generated design renders
+/output/
+/screenshots*/
+/Simulator Screenshot*.png
+/*-preview.png
+/*.jpg
+/*.jpeg
+/design/*-concept.png
+/na-pivo-feature-graphic-*.png
+/store-assets/reference/
+
 # Local environment
-.env
-.env.local
+.env*
+!.env.example
 .codex/
 
 # macOS

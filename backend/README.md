@@ -20,7 +20,7 @@ Current responsibilities include:
 - privacy-safe client events and usage stats;
 - management commands and operational reports for debugging production behavior.
 
-The Expo mobile app lives in `../na-pivo`.
+The Expo mobile app is in the monorepo root (`..`).
 
 ## Tech stack
 
@@ -40,8 +40,8 @@ The Expo mobile app lives in `../na-pivo`.
 ## Quick start
 
 ```bash
-# 1. Clone the monorepo and enter the backend
-git clone git@github.com:tomasmach/na-pivo.git && cd na-pivo/backend
+# 1. Clone your fork, then open the backend directory
+git clone git@github.com:YOUR-USERNAME/na-pivo.git && cd na-pivo/backend
 
 # 2. Create a .env file
 cp .env.example .env
@@ -74,9 +74,10 @@ For local Expo testing on a physical device, bind the backend to the LAN interfa
 uv run python manage.py runserver 0.0.0.0:8000
 ```
 
-Then start the Expo app from `../na-pivo`:
+Then start Expo from the repository root:
 
 ```bash
+cd ..
 npm run ios:local
 ```
 

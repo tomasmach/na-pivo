@@ -1,0 +1,58 @@
+name: Bug report
+description: Tell us about a problem you can reproduce in the app or backend
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues before filing a new one. Remove tokens, email addresses, raw GPS, private account data and production credentials from your report.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - iOS app
+        - Android app
+        - Django backend
+        - Local development setup
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: App 1.5.1, commit SHA, or branch name
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or cleaned logs
+      description: Remove personal data, coordinates, tokens, cookies and request bodies before you post them.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues for this problem.
+          required: true
+        - label: This report contains no secrets or personal data.
+          required: true
