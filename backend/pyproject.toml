@@ -9,9 +9,9 @@ dependencies = [
     "dj-database-url>=3.1.2",
     "django>=6.0.8,<6.1",
     "django-cors-headers>=4.9.0",
-    "djangorestframework>=3.17.1",
+    "djangorestframework>=3.17.2",
     "geohash2>=1.1",
-    "google-auth>=2.54.0",
+    "google-auth>=2.56.2",
     "opening-hours-py>=1.4.0",
     "pillow>=12.3.0",
     "psycopg[binary]>=3.3.4",
@@ -19,7 +19,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "rapidfuzz>=3.14.5",
     "requests>=2.34.2",
-    "resend>=2.10.0",
+    "resend>=2.35.0",
 ]
 
 [project.optional-dependencies]
@@ -30,9 +30,9 @@ prod = [
 [dependency-groups]
 dev = [
     "pip-audit>=2.10.1",
-    "pytest>=9.0.3",
+    "pytest>=9.1.1",
     "pytest-django>=4.12.0",
-    "ruff>=0.15.16",
+    "ruff>=0.16.1",
 ]
 
 [tool.pytest.ini_options]
