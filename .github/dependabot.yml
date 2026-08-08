@@ -22,7 +22,6 @@ updates:
           - react-native-*
           - "@react-native/*"
         update-types:
-          - minor
           - patch
       npm:
         patterns:
@@ -37,6 +36,34 @@ updates:
         update-types:
           - minor
           - patch
+    # Expo SDK releases pin a compatible native dependency set. Keep routine
+    # updates to patches and handle larger upgrades with the Expo SDK workflow.
+    # SemVer ignore rules affect version updates, not security updates.
+    ignore:
+      - dependency-name: expo
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: expo-*
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: "@expo/*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native-*
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: "@react-native/*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
 
   - package-ecosystem: uv
     directory: /backend
