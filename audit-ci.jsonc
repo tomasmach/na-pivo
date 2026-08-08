@@ -1,0 +1,12 @@
+{
+  "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
+  "high": true,
+  "skip-dev": true,
+  // Both advisories are infinite-loop DoS bugs in image-size (ICNS and JXL/HEIF
+  // parsers), pulled in via expo -> @expo/metro -> metro. Upstream image-size was
+  // archived in June 2026 with no patched release, and even the latest metro still
+  // depends on it, so no upgrade path exists. The code only runs at bundle time on
+  // dev/CI machines and never ships in the app bundle. Remove these entries once
+  // metro replaces or fixes the dependency.
+  "allowlist": ["GHSA-w3rx-r6r6-pgpr", "GHSA-5p2g-fcmc-qvqq"]
+}

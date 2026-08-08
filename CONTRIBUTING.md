@@ -42,7 +42,7 @@ You can run the checks without environment variables or cloud credentials:
 npm run typecheck
 npm run lint
 npm test -- --runInBand
-npm audit --omit=dev --audit-level=high
+npm run audit:ci
 
 cd backend
 uv run ruff check .

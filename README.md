@@ -41,7 +41,7 @@ npm ci
 npm run typecheck
 npm run lint
 npm test -- --runInBand
-npm audit --omit=dev --audit-level=high
+npm run audit:ci
 
 cd backend
 uv sync --locked

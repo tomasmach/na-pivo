@@ -9,7 +9,7 @@
 - [ ] `npm run typecheck`
 - [ ] `npm run lint`
 - [ ] `npm test -- --runInBand`
-- [ ] `npm audit --omit=dev --audit-level=high`
+- [ ] `npm run audit:ci`
 - [ ] `cd backend && uv run ruff check . && uv run pip-audit && uv run pytest`
 - [ ] I explained below why any skipped check does not apply
 
