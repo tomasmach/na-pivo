@@ -7,11 +7,11 @@ requires-python = ">=3.14"
 dependencies = [
     "argon2-cffi>=25.1.0",
     "dj-database-url>=3.1.2",
-    "django>=6.0.8,<6.1",
+    "django>=6.1,<6.2",
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.17.2",
     "geohash2>=1.1",
-    "google-auth>=2.56.2",
+    "google-auth>=2.56.3",
     "opening-hours-py>=1.4.0",
     "pillow>=12.3.0",
     "psycopg[binary]>=3.3.4",
@@ -31,7 +31,7 @@ prod = [
 dev = [
     "pip-audit>=2.10.1",
     "pytest>=9.1.1",
-    "pytest-django>=4.12.0",
+    "pytest-django>=4.13.0",
     "ruff>=0.16.1",
 ]
 
