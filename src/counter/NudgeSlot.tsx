@@ -89,6 +89,8 @@ function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> })
         <Text
           style={styles.ghostPillLabel}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {nudge.undoLabel}

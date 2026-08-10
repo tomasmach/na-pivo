@@ -74,9 +74,14 @@ export const GlowButton = memo(function GlowButton({
           ) : icon != null ? (
             <View style={styles.iconSlot}>{icon}</View>
           ) : null}
+          {/* Shrink before truncating (§3.3): at the largest Dynamic Type sizes
+              "Dopiš večer" came out as "Dopiš v…", which turns the one label
+              that says what the tap does into a guess. */}
           <Text
             style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}
             numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
             {label}
