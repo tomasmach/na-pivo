@@ -63,9 +63,14 @@ const PILL_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 } as const;
 
 function StripText({ text }: { text: string }) {
   return (
+    // The slot is a fixed 52pt row so the button under it never jumps, which
+    // means the sentence cannot have more room at large Dynamic Type sizes —
+    // it has to get smaller instead of ending in "nenač…" (§3.3).
     <Text
       style={styles.stripText}
       numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.8}
       maxFontSizeMultiplier={FontScaleCap.body}
     >
       {text}

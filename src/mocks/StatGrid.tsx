@@ -96,9 +96,18 @@ export function StatGrid({
             </Text>
           </View>
           <View style={[styles.labelRow, endsRow && styles.rowEnd]}>
+            {/* Shrink before truncating, exactly like the value above it. The
+                cell is a fixed percentage of its container, so it does not grow
+                with Dynamic Type — at the largest sizes "Utraceno · Délka ·
+                Tempo" came out as "Utrac… · D… · Te…", which is three numbers
+                with no idea what they count. `flexShrink` is what gives the
+                label something to shrink INTO; without it the row hands it its
+                natural width and `numberOfLines` clips the overflow instead. */}
             <Text
               style={[styles.label, endsRow && styles.textEnd]}
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
               {stat.label}
@@ -138,6 +147,8 @@ const styles = StyleSheet.create({
   prText: { fontSize: 9, fontWeight: '800', color: Colors.stout, letterSpacing: 0.2 },
   cellRoomy: { marginBottom: Spacing.lg },
   label: {
+    flexShrink: 1,
+    minWidth: 0,
     fontWeight: '400',
     fontSize: 13,
     color: Colors.mutedText,

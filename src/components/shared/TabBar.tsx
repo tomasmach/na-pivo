@@ -287,9 +287,14 @@ const TabItem = memo(function TabItem({
         <Icon size={24} color={iconColor} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
+      {/* A fifth of the screen is all a tab label ever gets, so at large
+          Dynamic Type sizes it has to shrink rather than truncate — "Koco… /
+          Hosp… / Komu… / Pr…" turns the bar into initials (§3.3). */}
       <Text
         style={[styles.label, { color: labelColor }]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
         {running && meta.accent ? 'Večer' : meta.label}
