@@ -1981,16 +1981,14 @@ export const cs = {
     // — Chronology under the card —
     olderHeader: 'Starší večery',
     manualHeader: 'Dopsaná piva',
-    pending: 'čeká na odeslání',
     /** Discreet markers on a row, and what a screen reader says about it. */
     privateTag: 'Jen pro tebe',
     queuedTag: 'Čeká na odeslání',
     // "12. 6. · 5 piv · 320 Kč"
     nightMeta: (parts: string[]) => parts.filter(Boolean).join(' · '),
-    nightSheetTitle: 'Co teklo',
 
     // — Nudge slot —
-    loadFailed: 'Deník se mi nenačetl.',
+    loadFailed: 'Deníček se mi nenačetl.',
     retry: 'Zkusit znovu',
     queued: (count: number) =>
       count === 1
@@ -2003,7 +2001,7 @@ export const cs = {
     cta: 'Dopiš večer',
 
     // — Empty state —
-    emptyTitle: 'Zatím prázdná stopa',
+    emptyTitle: 'Prázdný deníček',
     emptyBody: 'Ťukni pivo v Počítadle, nebo dopiš večer, na který si vzpomeneš.',
 
     // — "Kolik jich už bylo?" sheet: every lifetime number, one tap deep —
@@ -2028,7 +2026,7 @@ export const cs = {
     // Second line under a year: "průměr 3,4 na večer"
     statsYearAvg: (avg: string) => `průměr ${avg} na večer`,
     statsFooter:
-      'Počítám jen piva, útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
+      'Počítám jen piva, ale útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
   },
 
   profile: {
@@ -2557,6 +2555,8 @@ export const cs = {
 
     // — Empty state —
     emptyTitle: 'Zatím žádná pivní stopa',
+    // Shown when the detail is opened for an evening that is no longer there.
+    eveningGoneTitle: 'Tenhle večer už v deníčku není.',
     emptyBody:
       'Ťukni na pivo v Počítadle a večer se uloží sem. Uvidíš, kde to bylo, co teklo a kolik to dalo.',
 
@@ -2586,7 +2586,7 @@ export const cs = {
     historicalCityLabel: 'Město',
     historicalVisibilityHint: 'Starší zápisy jsou nejdřív jen pro tebe.',
     historicalVisibilityFriendsHint: 'Parta uvidí piva, hospodu, čas a poznámku.',
-    historicalVisibilityPrivateHint: 'Uloží se jen do tvého deníčku.',
+    historicalVisibilityPrivateHint: 'Nechám si to jen v tvém deníčku.',
     historicalSubmit: 'Uložit vzpomínku',
     historicalSaved: (count: number) =>
       count === 1 ? 'Vzpomínka zapsaná.' : count < 5 ? `${count} piva zapsaná.` : `${count} piv zapsáno.`,

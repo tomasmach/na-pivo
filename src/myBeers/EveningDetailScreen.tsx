@@ -353,7 +353,7 @@ export default function EveningDetailScreen() {
       {!session ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.emptyTitle}
+            {cs.myBeers.eveningGoneTitle}
           </Text>
         </View>
       ) : (
