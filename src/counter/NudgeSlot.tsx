@@ -37,6 +37,10 @@ export type Nudge =
       undoLabel: string;
       onUndo: () => void;
       actionAccessibilityLabel?: string;
+      /** Same escape hatch as `rapid`: a check beside "nenačetlo se" is a lie
+       *  about what happened. Defaults to the check, which is right for
+       *  "spočítáno · Vrátit". */
+      icon?: React.ComponentType<IconProps>;
     }
   | { kind: 'dopito'; label: string; onPress: () => void }
   | { kind: 'checkin'; text: string; ctaLabel: string; onPress: () => void; onDismiss: () => void }
@@ -70,9 +74,10 @@ function StripText({ text }: { text: string }) {
 }
 
 function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> }) {
+  const Icon = nudge.icon ?? CheckIcon;
   return (
     <View style={[styles.strip, styles.stripNeutralBorder]}>
-      <CheckIcon size={ICON_SIZE} color={Colors.amber} />
+      <Icon size={ICON_SIZE} color={Colors.amber} />
       <StripText text={nudge.text} />
       <Pressable
         onPress={nudge.onUndo}

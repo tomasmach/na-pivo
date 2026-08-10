@@ -16,10 +16,10 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 
-import { MockColors } from '@/mocks/mockTheme';
+import { MockColors, MockType } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { Radius } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import {
   ThumbsUpIcon,
@@ -90,12 +90,13 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
 
   return (
     <View>
-      <View style={styles.sectionHeader}>
-        <ThumbsUpIcon size={14} color={Colors.amber} />
-        <Text style={styles.sectionHeaderText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.myBeers.ratingHeader}
-        </Text>
-      </View>
+      {/* Sentence case, foam, 18pt — the section heading shape the rest of 3.0
+          uses (`SectionBreak`). The amber 11pt uppercase kicker with an icon
+          beside it was the decoration §0.5 bans, and it competed with the
+          verdict buttons right under it. */}
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {cs.myBeers.ratingTitle}
+      </Text>
 
       {/* Thumb verdict */}
       <View style={styles.verdictRow}>
@@ -211,17 +212,11 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
 }
 
 const styles = StyleSheet.create({
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-  sectionHeaderText: {
-    fontWeight: '700',
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: Colors.amber,
+  sectionTitle: {
+    ...MockType.titleS,
+    color: Colors.foam,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
   },
 
   verdictRow: {

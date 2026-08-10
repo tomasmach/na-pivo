@@ -459,8 +459,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     marginTop: Spacing.lg,
-    paddingHorizontal: MockLayout.screenPad,
-    borderRadius: Radius.cardLarge,
+    paddingHorizontal: Spacing.md,
+    // A door, not a capsule: at 28 on a 68pt row the corners meet in the middle
+    // and the entry read as a pill floating over the profile.
+    borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.07),
     backgroundColor: Colors.stout2,

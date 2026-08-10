@@ -1,7 +1,36 @@
+/**
+ * "Dopsat piva" — the one way to put an evening into the diary from memory.
+ *
+ * It is the canonical 3.0 sheet (§7): the shared `BottomSheetModal` so the card
+ * rises and the scrim fades, `MockLayout.screenPad` inside it, a fixed header
+ * with the shared `CloseButton`, `KeyboardAwareScrollView` for the body (§13.12)
+ * and the single amber action pinned below the scroll, where the thumb can
+ * always reach it even with the keyboard up.
+ *
+ * What the design pass changed, and why:
+ *
+ *   uppercase micro-labels    12pt letter-spaced capitals over every field is
+ *                             the Tácek habit that made this read as a form
+ *                             rather than as a page of the diary (§0.5)
+ *   two lines of helper copy  the section labels say what the fields are; a
+ *                             subtitle and a hint under the title said it twice
+ *   fields darker than the    a field is a hole you type into, so it is LIGHTER
+ *   sheet                     than what it lies on and carries a hairline (§20.9)
+ *   three amber surfaces      "Přidat pivo", both visibility pills and the
+ *                             submit button were all filled amber. One filled
+ *                             amber surface per screen (§2.2) — the submit. The
+ *                             rest is the outline recipe from §6.2.
+ *   `Colors.glow` on errors   glow is a shadow colour and nothing else (§2.1);
+ *                             "needs your attention" is amber (§2.2)
+ *
+ * Everything it does is unchanged: many beers per evening with brand
+ * suggestions, pub, interval, note, visibility, and one enqueue per beer line
+ * through the released offline queue.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +44,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BeerIcon, LockKeyholeIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { generateUuidV4 } from '@/data/account';
 import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
@@ -22,7 +53,7 @@ import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggesti
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { MockColors } from '@/mocks/mockTheme';
+import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -85,6 +116,18 @@ function useKeyboardHeight(): number {
     };
   }, []);
   return height;
+}
+
+/** Sentence-case section label — the shape of a heading, not a kicker. */
+function FieldLabel({ children, first = false }: { children: string; first?: boolean }) {
+  return (
+    <Text
+      style={[styles.label, first && styles.labelFirst]}
+      maxFontSizeMultiplier={FontScaleCap.body}
+    >
+      {children}
+    </Text>
+  );
 }
 
 export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: HistoricalBeerEntrySheetProps) {
@@ -175,6 +218,20 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
     },
     [updateBeerLine],
   );
+
+  /**
+   * Suggestions belong to the field you are typing in. They used to survive the
+   * jump to "Hospoda", so a list of Kozels sat over a third of the sheet while
+   * you typed a pub name into a field it had nothing to do with.
+   */
+  const dismissSuggestions = useCallback(() => {
+    setActiveBeerLineId(null);
+    setBeerLines((current) =>
+      current.some((line) => line.suggestions.length > 0)
+        ? current.map((line) => (line.suggestions.length > 0 ? { ...line, suggestions: [] } : line))
+        : current,
+    );
+  }, []);
 
   const addBeerLine = useCallback(() => {
     if (beerLines.length >= MAX_BEER_LINES) return;
@@ -270,517 +327,542 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
     visibility,
   ]);
 
+  // The card is lifted above the keyboard rather than shrunk into it, so the
+  // pinned action stays reachable while a field is focused. The scroll is told
+  // about it (`keyboardAvoidedExternally`) so it does not inset a second time.
   const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
-  const bottomPad = keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.md);
+  const bottomPad = keyboardHeight > 0 ? Spacing.md : insets.bottom + Spacing.lg;
   const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.md;
+  const isPrivate = visibility === 'private';
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <View style={[styles.sheet, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.myBeers.historicalTitle}
-              </Text>
-              <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.historicalSubtitle}
-              </Text>
-              <Text style={styles.hint} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.historicalRequiredHint}
-              </Text>
-            </View>
-            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
-              <XIcon size={18} color={Colors.foamMuted} />
-            </Pressable>
-          </View>
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      {/* Height bound and keyboard lift on the card itself, not on a wrapper:
+          the bound has to be a definite pixel height (the keyboard changes it),
+          and a definite parent is exactly what lets the scroll below shrink and
+          keep the pinned action on screen (§7.5). */}
+      <Pressable
+        style={[styles.card, { marginBottom: sheetBottomOffset, maxHeight, paddingBottom: bottomPad }]}
+        onPress={() => undefined}
+      >
+        <View style={styles.grabber} />
 
-          <KeyboardAwareScrollView
-            ref={scrollRef}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.scrollContent}
-            bounces={false}
-          >
-            <View style={styles.sectionLabelRow}>
-              <Text style={styles.label}>{cs.myBeers.historicalBeersLabel}</Text>
-              <Pressable
-                onPress={addBeerLine}
-                disabled={beerLines.length >= MAX_BEER_LINES}
-                style={[styles.addBeerButton, beerLines.length >= MAX_BEER_LINES && styles.dim]}
-                accessibilityRole="button"
-              >
-                <PlusIcon size={15} color={Colors.stout} />
-                <Text style={styles.addBeerText}>{cs.myBeers.historicalAddBeer}</Text>
-              </Pressable>
-            </View>
-            <View style={styles.beerLines}>
-              {beerLines.map((line, index) => {
-                const parsed = parsedBeerLines[index];
-                return (
-                  <View key={line.id} style={styles.beerLine}>
-                    <View style={styles.beerLineTop}>
+        <View style={styles.header}>
+          <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.myBeers.historicalTitle}
+          </Text>
+          <CloseButton onPress={onClose} label={cs.myBeers.editDrinkCancel} />
+        </View>
+
+        <KeyboardAwareScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardAvoidedExternally
+          contentContainerStyle={styles.scrollContent}
+        >
+          <FieldLabel first>{cs.myBeers.historicalBeersLabel}</FieldLabel>
+          {beerLines.map((line, index) => {
+            const parsed = parsedBeerLines[index];
+            return (
+              <View key={line.id} style={[styles.beerLine, index > 0 && styles.beerLineDivider]}>
+                <View style={styles.beerLineTop}>
+                  <TextInput
+                    value={line.beerName}
+                    onFocus={() => setActiveBeerLineId(line.id)}
+                    onChangeText={(value) => onChangeBeerName(line.id, value)}
+                    placeholder={index === 0 ? cs.beerCheckins.beerPlaceholder : cs.myBeers.historicalNextBeerPlaceholder}
+                    placeholderTextColor={MockColors.fieldHint}
+                    style={[styles.input, styles.beerNameInput]}
+                    maxLength={80}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  />
+                  {beerLines.length > 1 ? (
+                    <Pressable
+                      onPress={() => removeBeerLine(line.id)}
+                      style={({ pressed }) => [styles.removeBeerButton, pressed && styles.dim]}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.a11y.myBeersRemoveHistoricalBeer(line.beerName || `${index + 1}`)}
+                    >
+                      <XIcon size={16} color={Colors.mutedText} />
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                {line.suggestions.length > 0 ? (
+                  <View style={styles.suggestionsBox}>
+                    {line.suggestions.map((suggestion, suggestionIndex) => (
+                      <Pressable
+                        key={suggestion.slug}
+                        onPress={() => selectSuggestion(line.id, suggestion)}
+                        style={({ pressed }) => [
+                          styles.suggestionRow,
+                          suggestionIndex > 0 && styles.suggestionRowDivider,
+                          pressed && styles.dim,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={suggestion.name}
+                      >
+                        <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {suggestion.name}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+
+                <View style={styles.lineMetaRow}>
+                  <View style={styles.countCol}>
+                    <Text style={styles.miniLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.myBeers.historicalQuantityLabel}
+                    </Text>
+                    <TextInput
+                      value={line.quantityText}
+                      onFocus={dismissSuggestions}
+                      onChangeText={(value) =>
+                        updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
+                      }
+                      placeholder="1"
+                      placeholderTextColor={MockColors.fieldHint}
+                      style={[styles.input, !parsed.quantityValid && styles.inputError]}
+                      keyboardType="number-pad"
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    />
+                  </View>
+                  <View style={styles.priceCol}>
+                    <Text style={styles.miniLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.myBeers.historicalPriceLabel}
+                    </Text>
+                    <View style={[styles.priceInputWrap, !parsed.priceValid && styles.inputError]}>
                       <TextInput
-                        value={line.beerName}
-                        onFocus={() => setActiveBeerLineId(line.id)}
-                        onChangeText={(value) => onChangeBeerName(line.id, value)}
-                        placeholder={index === 0 ? cs.beerCheckins.beerPlaceholder : cs.myBeers.historicalNextBeerPlaceholder}
+                        value={line.priceText}
+                        onFocus={dismissSuggestions}
+                        onChangeText={(value) =>
+                          updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
+                        }
+                        placeholder={cs.myBeers.historicalPricePlaceholder}
                         placeholderTextColor={MockColors.fieldHint}
-                        style={[styles.input, styles.beerNameInput]}
-                        maxLength={80}
+                        style={styles.priceInput}
+                        keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       />
-                      {beerLines.length > 1 ? (
-                        <Pressable
-                          onPress={() => removeBeerLine(line.id)}
-                          style={styles.removeBeerButton}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel={cs.a11y.myBeersRemoveHistoricalBeer(line.beerName || `${index + 1}`)}
-                        >
-                          <XIcon size={16} color={Colors.mutedText} />
-                        </Pressable>
-                      ) : null}
-                    </View>
-                    {line.suggestions.length > 0 ? (
-                      <View style={styles.suggestionsBox}>
-                        {line.suggestions.map((suggestion, suggestionIndex) => (
-                          <Pressable
-                            key={suggestion.slug}
-                            onPress={() => selectSuggestion(line.id, suggestion)}
-                            style={[styles.suggestionRow, suggestionIndex > 0 && styles.suggestionRowDivider]}
-                            accessibilityRole="button"
-                            accessibilityLabel={suggestion.name}
-                          >
-                            <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                              {suggestion.name}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : null}
-                    <View style={styles.lineMetaRow}>
-                      <View style={styles.countCol}>
-                        <Text style={styles.miniLabel}>{cs.myBeers.historicalQuantityLabel}</Text>
-                        <TextInput
-                          value={line.quantityText}
-                          onChangeText={(value) =>
-                            updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
-                          }
-                          placeholder="1"
-                          placeholderTextColor={MockColors.fieldHint}
-                          style={[styles.input, styles.compactInput, !parsed.quantityValid && styles.inputError]}
-                          keyboardType="number-pad"
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        />
-                      </View>
-                      <View style={styles.priceCol}>
-                        <Text style={styles.miniLabel}>{cs.myBeers.historicalPriceLabel}</Text>
-                        <View style={[styles.priceInputWrap, styles.compactPriceInputWrap, !parsed.priceValid && styles.inputError]}>
-                          <TextInput
-                            value={line.priceText}
-                            onChangeText={(value) =>
-                              updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
-                            }
-                            placeholder={cs.myBeers.historicalPricePlaceholder}
-                            placeholderTextColor={MockColors.fieldHint}
-                            style={styles.priceInput}
-                            keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          />
-                          <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
-                            {currencySuffix(priceCurrency)}
-                          </Text>
-                        </View>
-                      </View>
+                      <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {currencySuffix(priceCurrency)}
+                      </Text>
                     </View>
                   </View>
-                );
-              })}
-            </View>
-
-            <Text style={styles.label}>{cs.myBeers.historicalPubLabel}</Text>
-            <TextInput
-              value={pubName}
-              onChangeText={setPubName}
-              placeholder={cs.myBeers.historicalPubPlaceholder}
-              placeholderTextColor={MockColors.fieldHint}
-              style={styles.input}
-              maxLength={120}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <View style={styles.dateTimeRow}>
-              <View style={styles.dateCol}>
-                <Text style={styles.label}>{cs.myBeers.historicalDateLabel}</Text>
-                <TextInput
-                  value={dateText}
-                  onChangeText={(value) => {
-                    setDateError(false);
-                    setDateText(value);
-                  }}
-                  placeholder={cs.myBeers.historicalDatePlaceholder}
-                  placeholderTextColor={MockColors.fieldHint}
-                  style={[styles.input, dateError && styles.inputError]}
-                  keyboardType="numbers-and-punctuation"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
+                </View>
               </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.label}>{cs.myBeers.historicalTimeFromLabel}</Text>
-                <TextInput
-                  value={startTimeText}
-                  onChangeText={(value) => {
-                    setDateError(false);
-                    setStartTimeText(value);
-                  }}
-                  placeholder={cs.myBeers.historicalTimePlaceholder}
-                  placeholderTextColor={MockColors.fieldHint}
-                  style={[styles.input, dateError && styles.inputError]}
-                  keyboardType="numbers-and-punctuation"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-              <View style={styles.timeCol}>
-                <Text style={styles.label}>{cs.myBeers.historicalTimeToLabel}</Text>
-                <TextInput
-                  value={endTimeText}
-                  onChangeText={(value) => {
-                    setDateError(false);
-                    setEndTimeText(value);
-                  }}
-                  placeholder={cs.myBeers.historicalTimeToPlaceholder}
-                  placeholderTextColor={MockColors.fieldHint}
-                  style={[styles.input, styles.timeInput, dateError && styles.inputError]}
-                  keyboardType="numbers-and-punctuation"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-            </View>
-            {dateError ? (
-              <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.historicalDateError}
-              </Text>
-            ) : null}
+            );
+          })}
 
-            <Text style={styles.label}>{cs.beerCheckins.noteLabel}</Text>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder={cs.beerCheckins.notePlaceholder}
-              placeholderTextColor={MockColors.fieldHint}
-              style={[styles.input, styles.noteInput]}
-              multiline
-              maxLength={1000}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <Text style={styles.label}>{cs.beerCheckins.visibilityLabel}</Text>
-            <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {visibility === 'friends'
-                ? cs.myBeers.historicalVisibilityFriendsHint
-                : cs.myBeers.historicalVisibilityPrivateHint}
-            </Text>
-            <View style={styles.visibilityRow}>
-              <Pressable
-                onPress={() => setVisibility('private')}
-                style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'private' }}
-              >
-                <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
-                <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
-                  {cs.beerCheckins.visibilityPrivate}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setVisibility('friends')}
-                style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'friends' }}
-              >
-                <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
-                <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
-                  {cs.beerCheckins.visibilityFriends}
-                </Text>
-              </Pressable>
-            </View>
-
+          {/* Outline, never filled: the one filled amber surface on this sheet
+              is the button that saves the evening (§2.2, §6.2). */}
+          {beerLines.length < MAX_BEER_LINES ? (
             <Pressable
-              onPress={submit}
-              disabled={!canSubmit}
-              style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+              onPress={addBeerLine}
+              style={({ pressed }) => [styles.addBeer, pressed && styles.dim]}
               accessibilityRole="button"
+              accessibilityLabel={cs.myBeers.historicalAddBeer}
             >
-              <Text style={styles.submitText}>{cs.myBeers.historicalSubmit}</Text>
+              <PlusIcon size={16} color={Colors.amber} />
+              <Text style={styles.addBeerText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.myBeers.historicalAddBeer}
+              </Text>
             </Pressable>
-          </KeyboardAwareScrollView>
+          ) : null}
+
+          <FieldLabel>{cs.myBeers.historicalPubLabel}</FieldLabel>
+          <TextInput
+            value={pubName}
+            onFocus={dismissSuggestions}
+            onChangeText={setPubName}
+            placeholder={cs.myBeers.historicalPubPlaceholder}
+            placeholderTextColor={MockColors.fieldHint}
+            style={styles.input}
+            maxLength={120}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+
+          <View style={styles.dateTimeRow}>
+            <View style={styles.dateCol}>
+              <FieldLabel>{cs.myBeers.historicalDateLabel}</FieldLabel>
+              <TextInput
+                value={dateText}
+                onFocus={dismissSuggestions}
+                onChangeText={(value) => {
+                  setDateError(false);
+                  setDateText(value);
+                }}
+                placeholder={cs.myBeers.historicalDatePlaceholder}
+                placeholderTextColor={MockColors.fieldHint}
+                style={[styles.input, dateError && styles.inputError]}
+                keyboardType="numbers-and-punctuation"
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
+            </View>
+            <View style={styles.timeCol}>
+              <FieldLabel>{cs.myBeers.historicalTimeFromLabel}</FieldLabel>
+              <TextInput
+                value={startTimeText}
+                onFocus={dismissSuggestions}
+                onChangeText={(value) => {
+                  setDateError(false);
+                  setStartTimeText(value);
+                }}
+                placeholder={cs.myBeers.historicalTimePlaceholder}
+                placeholderTextColor={MockColors.fieldHint}
+                style={[styles.input, styles.timeInput, dateError && styles.inputError]}
+                keyboardType="numbers-and-punctuation"
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
+            </View>
+            <View style={styles.timeCol}>
+              <FieldLabel>{cs.myBeers.historicalTimeToLabel}</FieldLabel>
+              <TextInput
+                value={endTimeText}
+                onFocus={dismissSuggestions}
+                onChangeText={(value) => {
+                  setDateError(false);
+                  setEndTimeText(value);
+                }}
+                placeholder={cs.myBeers.historicalTimeToPlaceholder}
+                placeholderTextColor={MockColors.fieldHint}
+                style={[styles.input, styles.timeInput, dateError && styles.inputError]}
+                keyboardType="numbers-and-punctuation"
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
+            </View>
+          </View>
+          {dateError ? (
+            <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.myBeers.historicalDateError}
+            </Text>
+          ) : null}
+
+          <FieldLabel>{cs.beerCheckins.noteLabel}</FieldLabel>
+          <TextInput
+            value={note}
+            onFocus={dismissSuggestions}
+            onChangeText={setNote}
+            placeholder={cs.beerCheckins.notePlaceholder}
+            placeholderTextColor={MockColors.fieldHint}
+            style={[styles.input, styles.noteInput]}
+            multiline
+            maxLength={1000}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+
+          {/* The one place helper copy earns its line: this decides who else
+              ever sees the evening, and the two words alone do not say it. */}
+          <FieldLabel>{cs.beerCheckins.visibilityLabel}</FieldLabel>
+          <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
+            {isPrivate
+              ? cs.myBeers.historicalVisibilityPrivateHint
+              : cs.myBeers.historicalVisibilityFriendsHint}
+          </Text>
+          <View style={styles.visibilityRow}>
+            <Pressable
+              onPress={() => setVisibility('private')}
+              style={({ pressed }) => [
+                styles.visibilityButton,
+                isPrivate && styles.visibilityButtonActive,
+                pressed && styles.dim,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isPrivate }}
+              accessibilityLabel={cs.beerCheckins.visibilityPrivate}
+            >
+              <LockKeyholeIcon size={16} color={isPrivate ? Colors.amber : Colors.mutedText} />
+              <Text
+                style={[styles.visibilityText, isPrivate && styles.visibilityTextActive]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.beerCheckins.visibilityPrivate}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setVisibility('friends')}
+              style={({ pressed }) => [
+                styles.visibilityButton,
+                !isPrivate && styles.visibilityButtonActive,
+                pressed && styles.dim,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !isPrivate }}
+              accessibilityLabel={cs.beerCheckins.visibilityFriends}
+            >
+              <UsersIcon size={16} color={!isPrivate ? Colors.amber : Colors.mutedText} />
+              <Text
+                style={[styles.visibilityText, !isPrivate && styles.visibilityTextActive]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.beerCheckins.visibilityFriends}
+              </Text>
+            </Pressable>
+          </View>
+        </KeyboardAwareScrollView>
+
+        {/* Pinned outside the scroll: the action must never be the thing you
+            have to scroll for, and with the card lifted it also stays clear
+            of the keyboard (§7.2, §13.11). */}
+        <View style={styles.actions}>
+          <Pressable
+            onPress={submit}
+            disabled={!canSubmit}
+            style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canSubmit }}
+            accessibilityLabel={cs.myBeers.historicalSubmit}
+          >
+            <Text style={styles.submitText} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.myBeers.historicalSubmit}
+            </Text>
+          </Pressable>
         </View>
-      </View>
-    </Modal>
+      </Pressable>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.stout, 0.76),
-  },
-  sheet: {
-    maxHeight: '92%',
-    backgroundColor: Colors.stout,
+  // Height bounds on the wrapper, never on the card: a percentage resolves
+  // against the parent, and a card whose scroll is unbounded silently hides
+  // everything below the fold (§7.5). This one is capped in points because the
+  // keyboard changes the available height.
+  card: {
+    width: '100%',
+    backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingHorizontal: MockLayout.screenPad,
+  },
+  grabber: {
+    width: 40,
+    height: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    marginBottom: Spacing.xs,
   },
-  headerText: { flex: 1 },
   title: {
+    flexShrink: 1,
     fontWeight: '800',
-    fontSize: 21,
+    fontSize: 22,
+    letterSpacing: -0.3,
     color: Colors.foam,
+    includeFontPadding: false,
   },
-  subtitle: {
-    marginTop: 2,
-    fontWeight: '500',
-    fontSize: 12,
-    lineHeight: 16,
-    color: Colors.foamMuted,
-  },
-  hint: {
-    marginTop: 3,
-    fontWeight: '500',
-    fontSize: 11,
-    lineHeight: 15,
-    color: Colors.mutedText,
-  },
-  closeBtn: {
-    width: HitArea.min,
-    height: HitArea.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollContent: {
-    paddingBottom: Spacing.sm,
-  },
-  sectionLabelRow: {
-    marginTop: Spacing.sm,
-    marginBottom: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
+
+  // `flexShrink` rather than `flex: 1`: the card is sized by its content up to
+  // maxHeight, so the scroll must be allowed to be short on a two-field form
+  // and to give way to the pinned footer on a ten-beer one.
+  scroll: { flexShrink: 1 },
+  scrollContent: { paddingBottom: Spacing.md },
+
   label: {
-    marginTop: Spacing.sm,
-    marginBottom: 5,
-    fontWeight: '700',
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    fontWeight: '600',
+    fontSize: 14,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  labelFirst: { marginTop: Spacing.md },
+  miniLabel: {
+    marginBottom: 6,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    includeFontPadding: false,
   },
-  miniLabel: {
-    marginBottom: 4,
-    fontWeight: '700',
-    fontSize: 10,
-    color: Colors.mutedText,
-    letterSpacing: 0.35,
-    textTransform: 'uppercase',
+
+  // A field is a hole you type into: lighter than the sheet it lies on, with a
+  // hairline around it (§20.9). Never darker, never borderless.
+  input: {
+    minHeight: HitArea.min,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: MockColors.fieldBorder,
+    backgroundColor: MockColors.field,
+    color: Colors.foam,
+    paddingHorizontal: Spacing.md,
+    fontWeight: '500',
+    fontSize: 15,
   },
-  addBeerButton: {
-    minHeight: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-    paddingHorizontal: 10,
+  inputError: { borderColor: withAlpha(Colors.amber, 0.5) },
+  errorText: {
+    marginTop: Spacing.sm,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.amber,
   },
-  addBeerText: {
-    fontWeight: '700',
-    fontSize: 11,
-    color: Colors.stout,
+  noteInput: {
+    minHeight: 64,
+    paddingTop: Spacing.sm,
+    textAlignVertical: 'top',
   },
-  beerLines: {
-    gap: Spacing.xs,
-  },
-  beerLine: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: Spacing.xs,
-    gap: Spacing.xs,
+
+  beerLine: { gap: Spacing.sm },
+  beerLineDivider: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.08),
   },
   beerLineTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
-  beerNameInput: {
-    flex: 1,
-    minHeight: 42,
-    backgroundColor: Colors.stout,
-  },
+  beerNameInput: { flex: 1 },
   removeBeerButton: {
-    width: 34,
-    height: 34,
+    width: HitArea.min,
+    height: HitArea.min,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   lineMetaRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  input: {
-    minHeight: 46,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
-    color: Colors.foam,
-    paddingHorizontal: Spacing.md,
-    fontWeight: '500',
-    fontSize: 14,
-  },
-  inputError: {
-    borderColor: Colors.glow,
-  },
-  errorText: {
-    marginTop: Spacing.xs,
-    fontWeight: '500',
-    fontSize: 12,
-    color: Colors.glow,
-  },
-  noteInput: {
-    minHeight: 56,
-    paddingTop: Spacing.sm,
-    textAlignVertical: 'top',
-  },
-  dateTimeRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  dateCol: {
-    flex: 1.25,
-  },
-  timeCol: {
-    flex: 1,
-  },
-  countCol: {
-    flex: 0.8,
-  },
-  priceCol: {
-    flex: 1.2,
-  },
-  timeInput: {
-    paddingHorizontal: Spacing.sm,
-  },
-  compactInput: {
-    minHeight: 40,
-    backgroundColor: Colors.stout,
-  },
+  countCol: { flex: 0.8 },
+  priceCol: { flex: 1.2 },
   priceInputWrap: {
-    minHeight: 46,
+    minHeight: HitArea.min,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
     borderRadius: Radius.medium,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
+    borderColor: MockColors.fieldBorder,
+    backgroundColor: MockColors.field,
     paddingHorizontal: Spacing.md,
-  },
-  compactPriceInputWrap: {
-    minHeight: 40,
-    backgroundColor: Colors.stout,
   },
   priceInput: {
     flex: 1,
     color: Colors.foam,
     fontWeight: '500',
-    fontSize: 14,
+    fontSize: 15,
     padding: 0,
   },
   priceSuffix: {
-    fontWeight: '700',
-    fontSize: 12,
+    fontWeight: '600',
+    fontSize: 13,
     color: Colors.mutedText,
   },
+
+  addBeer: {
+    marginTop: Spacing.md,
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.18),
+    backgroundColor: withAlpha(Colors.amber, 0.06),
+  },
+  addBeerText: {
+    fontWeight: '600',
+    fontSize: 15,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+
   suggestionsBox: {
-    marginTop: Spacing.xs,
     borderRadius: Radius.medium,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
+    borderColor: MockColors.fieldBorder,
+    backgroundColor: MockColors.field,
     overflow: 'hidden',
   },
   suggestionRow: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
     paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
+    paddingVertical: Spacing.sm,
   },
   suggestionRowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: withAlpha(Colors.foam, 0.08),
   },
   suggestionText: {
     fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
-  visibilityHint: {
-    marginTop: -2,
-    marginBottom: Spacing.xs,
-    fontWeight: '500',
-    fontSize: 11,
-    lineHeight: 15,
-    color: Colors.mutedText,
+
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
+  dateCol: { flex: 1.25 },
+  timeCol: { flex: 1 },
+  timeInput: { paddingHorizontal: Spacing.sm },
+
   visibilityRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
   },
+  // Amber marks the ACTIVE state, it does not fill the control (§2.2). Two
+  // filled pills beside a filled button was three amber surfaces on one sheet.
   visibilityButton: {
     flex: 1,
-    minHeight: 44,
+    minHeight: HitArea.min,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
+    gap: 6,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
+    borderColor: MockColors.fieldBorder,
+    backgroundColor: MockColors.field,
   },
   visibilityButtonActive: {
-    backgroundColor: Colors.amber,
-    borderColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: withAlpha(Colors.amber, 0.32),
   },
   visibilityText: {
-    fontWeight: '700',
-    fontSize: 12,
-    color: Colors.foamMuted,
+    fontWeight: '600',
+    fontSize: 14,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  visibilityTextActive: {
-    color: Colors.stout,
+  visibilityTextActive: { color: Colors.amber },
+  visibilityHint: {
+    marginTop: -6,
+    marginBottom: Spacing.md,
+    fontWeight: '400',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+  },
+
+  actions: {
+    paddingTop: Spacing.md,
+    marginTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   submit: {
-    minHeight: 50,
+    height: MockLayout.sheetButtonHeight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.md,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
   },
@@ -788,8 +870,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
     color: Colors.stout,
+    includeFontPadding: false,
   },
-  dim: {
-    opacity: 0.6,
-  },
+  dim: { opacity: 0.6 },
 });

@@ -14,10 +14,10 @@ export default function ProfileDiaryRoute() {
 
   return (
     <>
+      {/* Title, tint and the dark bar itself belong to the stack (`_layout`);
+          this route only hangs its own action on the trailing slot. */}
       <Stack.Screen
         options={{
-          title: cs.profile.diaryTitle,
-          headerLargeTitle: false,
           headerRight: () => (
             <Pressable
               onPress={() => setStatsOpen(true)}

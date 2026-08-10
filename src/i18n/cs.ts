@@ -1970,19 +1970,27 @@ export const cs = {
     running: 'pořád běží',
     // Shown small under the big numeral when the night had no drink at all.
     emptyNoun: 'ZATÍM NIC',
-    breakdownLink: 'Rozpis',
     noPub: 'Bez hospody',
+    // Three facts about the night that the big number cannot hold.
+    factSpent: 'Utraceno',
+    factSpan: 'Délka',
+    factPace: 'Tempo',
+    // Shown when a night has no price, no span or too few drinks to have a pace.
+    factEmpty: '—',
 
     // — Chronology under the card —
     olderHeader: 'Starší večery',
     manualHeader: 'Dopsaná piva',
     pending: 'čeká na odeslání',
+    /** Discreet markers on a row, and what a screen reader says about it. */
+    privateTag: 'Jen pro tebe',
+    queuedTag: 'Čeká na odeslání',
     // "12. 6. · 5 piv · 320 Kč"
     nightMeta: (parts: string[]) => parts.filter(Boolean).join(' · '),
     nightSheetTitle: 'Co teklo',
 
     // — Nudge slot —
-    loadFailed: 'Deníček se mi nepovedlo načíst.',
+    loadFailed: 'Deník se mi nenačetl.',
     retry: 'Zkusit znovu',
     queued: (count: number) =>
       count === 1
@@ -2005,19 +2013,20 @@ export const cs = {
     statsPubs: 'Hospod',
     statsSpent: 'Utraceno',
     statsThisMonth: 'Tenhle měsíc',
+    statsMonthBeers: 'Piv',
+    statsMonthAvgLabel: 'Průměr na večer',
     // Moved here from the profile's stats grid — numbers have one home now.
     statsRatings: 'Hodnocení',
     statsWalked: 'Nachozeno',
-    statsMonthAvg: (avg: string) => `průměr ${avg} na večer`,
-    statsRecordsCaption: 'REKORDY',
+    statsRecordsTitle: 'Rekordy',
     statsRecordMost: 'Nejvíc za večer',
     statsRecordFastest: 'Nejrychlejší pivo',
     statsRecordLongest: 'Nejdelší večer',
     statsEmptyValue: 'Zatím nic',
-    statsPubsCaption: 'NEJVÍC JSI VYPIL',
-    statsYearsCaption: 'ROKY',
-    // "210 piv · průměr 3,4 na večer"
-    statsYearValue: (beers: string, avg: string) => `${beers} · průměr ${avg} na večer`,
+    statsPubsTitle: 'Tvoje hospody',
+    statsYearsTitle: 'Roky',
+    // Second line under a year: "průměr 3,4 na večer"
+    statsYearAvg: (avg: string) => `průměr ${avg} na večer`,
     statsFooter:
       'Počítám jen piva, útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
   },
@@ -2527,6 +2536,7 @@ export const cs = {
     },
 
     // — Evening detail entry —
+    sectionTitle: 'Výčep',
     sectionHeader: 'VÝČEP',
     publishEntryTitle: 'Vyvěsit na Výčep',
     publishEntryBody: 'Pochlub se partě nebo celému světu, jak šla noc.',
@@ -2557,8 +2567,6 @@ export const cs = {
     historicalCta: 'Zapsat zpětně',
     historicalCtaBody: 'Dopiš piva, hospodu, čas a cenu.',
     historicalTitle: 'Dopsat piva',
-    historicalSubtitle: 'Stejný zápis, jen dopitý zpětně.',
-    historicalRequiredHint: 'Piva po řádcích, hospoda a čas společně.',
     historicalBeersLabel: 'Piva',
     historicalAddBeer: 'Přidat pivo',
     historicalNextBeerPlaceholder: 'Další pivo',
@@ -2600,11 +2608,13 @@ export const cs = {
       })}`,
 
     // — Detail —
-    breakdownHeader: 'CO PADLO',
+    breakdownTitle: 'Co padlo',
+    // Hero stats above the breakdown.
+    statBeers: 'Piv',
+    statOther: 'Ostatní',
     // Meta shown to the right of a beer name, e.g. "2× · 124 Kč" (count × subtotal).
     // The volume is appended to the name separately in EveningBreakdown.
     breakdownLine: (count: number, price: string) => `${count}× · ${price}`,
-    drinkActionsHeader: 'ZAPSANÉ NÁPOJE',
     drinkGroupTotal: (price: string) => `Celkem ${price}`,
     addDrinkToEvening: 'Dopsat pivo',
     addDrinkToEveningTitle: 'Co ještě padlo?',
@@ -2626,7 +2636,7 @@ export const cs = {
     totalLabel: 'Celkem',
 
     // — Personal pub rating ("Stálo to za návrat?") —
-    ratingHeader: 'STÁLO TO ZA TO?',
+    ratingTitle: 'Stálo to za to?',
     ratingHint: 'Jen pro tebe. Soukromě se synchronizuje mezi tvými zařízeními.',
     verdictLike: 'Dobrý',
     verdictDislike: 'Slabý',
@@ -2980,7 +2990,6 @@ export const cs = {
     diaryCard: (count: string, pub: string, when: string) =>
       `Poslední večer: ${count} v hospodě ${pub}, ${when}. Ťukni pro rozpis.`,
     diaryCardEmpty: 'Zatím žádný zapsaný večer',
-    diaryBreakdown: 'Otevřít rozpis večera',
     diaryNight: (pub: string, meta: string) => `Večer ${pub}, ${meta}. Ťukni pro detail.`,
     diaryStats: 'Ukázat čísla za celou dobu',
     diaryStatsClose: 'Zavřít čísla',
