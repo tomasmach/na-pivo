@@ -1,18 +1,207 @@
-# Na pivo — design system
+# Na pivo — DESIGN
 
-> **Etalon:** obrazovka Štamgast → Počítat.
-> Soubory: `src/counter/CounterScreen.tsx`, `CoasterCard.tsx`, `CounterCta.tsx`,
-> `CounterQuickActions.tsx`, `NudgeSlot.tsx`, `PlaceChip.tsx`, `DrinkPickSheet.tsx`,
-> `ReceiptSheet.tsx`, `CounterMoreSheet.tsx`, `src/components/shared/CardSurface.tsx`,
-> `src/components/shared/DoorRail.tsx`, `src/beer/BeerScreen.tsx`.
+Jeden dokument pro celý design Na pivo: **co produkt je** (Část I), **podle
+jakých pravidel se kreslí a staví** (Část II) a **co je rozpracované nebo
+nerozhodnuté** (Část III). Vznikl v srpnu 2026 sloučením `design-system.md`,
+`product-spec-3-0.md` a `design-brief-3-0.md`. Jednotlivá rozhodnutí
+s odůvodněním jsou v `docs/decisions/`.
+
+> **Tenhle dokument je závazný.** Když stavíš nebo přestavuješ obrazovku,
+> hodnoty se neopisují „přibližně“ — kopírují se. Když ti nějaké pravidlo brání,
+> řekni to nahlas a navrhni změnu dokumentu; netiš to lokální výjimkou v jednom
+> souboru. Rozhodnutí (barvy, pravidla, kde co je) se zapisují sem — rozpor se
+> řeší změnou dokumentu, ne výjimkou v kódu.
 >
-> Tenhle dokument je **závazný**. Když stavíš nebo přestavuješ obrazovku, hodnoty se neopisují
-> „přibližně“ — kopírují se. Když ti nějaké pravidlo brání, řekni to nahlas a navrhni změnu
-> dokumentu; netiš to lokální výjimkou v jednom souboru.
->
-> Kód, tokeny a identifikátory anglicky. UI copy česky, tykáním. Viz `src/i18n/cs.ts`.
+> Kód, tokeny a identifikátory anglicky. UI copy česky, tykáním.
+> Viz `src/i18n/cs.ts`.
+
+**Etalon:** obrazovka Štamgast → Počítat.
+Soubory: `src/counter/CounterScreen.tsx`, `CoasterCard.tsx`, `CounterCta.tsx`,
+`CounterQuickActions.tsx`, `NudgeSlot.tsx`, `PlaceChip.tsx`, `DrinkPickSheet.tsx`,
+`ReceiptSheet.tsx`, `CounterMoreSheet.tsx`, `src/components/shared/CardSurface.tsx`,
+`src/components/shared/DoorRail.tsx`, `src/beer/BeerScreen.tsx`.
+
+Tři pravidla, která rozhodují o všem ostatním:
+
+- **Zákon zjednodušení** (§0) je nadřazený zbytku. Když je něco v rozporu, mění
+  se dokument, ne se dělá lokální výjimka.
+- **Jedna svítící věc na obrazovce** (§6.1). Jantar je akcent, ne barva pozadí.
+- **Pohyb kopíruje prst, ne sám sebe** (§10). Nekonečné smyčky, dýchající prvky
+  a ambientní animace jsou zakázané.
+
+Podklad je stout (tmavě hnědá), akcent jantar. Světlý režim je **vědomě
+odložený** — zdvojil by práci na každé obrazovce.
 
 ---
+
+# ČÁST I — Produkt 3.0
+
+Stav k 7. 8. 2026.
+
+## Co se mění
+
+2.x byl **pivní deníček s kompasem**. 3.0 je **companion celého večera**:
+
+```
+PŘED          BĚHEM                     PO
+kam jít   →   večer u stolu s lidmi  →  recap a příspěvek
+kompas        piva, hry, fotky          statistiky, rekordy, feed
+```
+
+Kompas nezmizel — je první buňkou seznamu hospod a pořád je to nejrozpoznatelnější
+věc produktu. Přestal ale být celou appkou.
+
+## Navigace
+
+Pět tabů, Party uprostřed:
+
+| tab | co tam je |
+|---|---|
+| **Kocoviny** | feed — večery, které lidi zveřejnili |
+| **Hospody** | kompas v hlavě seznamu, hledání, filtry, detail hospody |
+| **Party** | běžící večer: piva, lidi, hry, fotky, vlákno |
+| **Komunita** | žebříčky, výzvy, akce |
+| **Profil** | statistiky, rekordy, aktivita, účet a nastavení |
+
+Pravidla tab baru, rout a deep-linků: §17.
+
+## Večer — jádro produktu
+
+### Jeden zápis, dva čtenáři
+
+**Nejdůležitější pravidlo celé 3.0.** Pivo se zapisuje **jednou**, do deníčku
+(`DrinkLog`), tam kde vždycky. Když u toho běží sdílený večer, řádek se jen
+**označí** jeho kódem. Sdílený stůl je čtenář těch řádků, ne druhé místo zápisu.
+
+Předchozí party se v červenci 2026 mazala právě proto, že chtěla každé pivo
+podruhé. Detail v `docs/decisions/one-write-two-readers.md`.
+
+Důsledek: „+1 pivo“ v hubu, v minimalizované liště i během hry je **to samé +1**
+jako v počítadle — stejný store, stejná offline fronta, stejný řádek.
+
+### Sdílený stůl
+
+Jeden člověk večer založí a přečte přes stůl **šestimístný kód**; ostatní
+přisednou. Kód nemá O, I, L, S, Z ani 0, 1, 5 — znaky, které si hospoda mezi
+sebou plete. Od té chvíle na kódu visí všechno sdílené: členové, hry, kvíz.
+
+- Přisednutí je souhlas se sdílením. Kdo má vypnuté „kamarádi vidí můj
+  automatický pivní feed“, tomu se pivo k večeru **nenaváže** — zapíše se do
+  deníčku a v cizí časové ose se neobjeví.
+- Odejít ≠ ukončit. Stůl hraje dál, jen ten telefon je venku.
+- Neúspěšné načtení večera **nezavře stůl**. Projít sklepem není odchod.
+
+### Večer jako data
+
+Jeden tvar (`NightRecord`), ze kterého čte hub, recap i příspěvek. Všechna čísla
+jsou **čisté funkce** nad ním — nic se neukládá ani neinkrementuje, takže když se
+pivo vezme zpátky, změní se všude.
+
+Pravidla, která jsou produktová, ne matematická:
+
+1. **Pivo je pivo.** Nealko, panák a víno se počítají, ale nikdy jako piva.
+2. **Remíza je remíza.** MVP je `null`, když se o špičku dělí dva.
+3. **Prázdná hodina dostane sloupec.** Jinak se večer nakreslí klidnější, než byl.
+4. **Vyrovnat rekord není překonat rekord.**
+5. Ceny, útrata, promile a čas do řízení se v datech večera **neobjevují nikdy**
+   (`docs/decisions/no-bac-or-driving-estimates.md`).
+
+Zdroje jsou řádky, které už existují: `DrinkLog`, `PartyEveningMember`,
+`PubVisit`, `PartyGame`, `BeerPhoto`. Pro party se neukládá nic nového.
+
+### Vlákno
+
+Log večera je **odvozený**, ne ukládaný: pivo, fotka, hra, přisednutí, přesun —
+seřazené v čase a podepsané. U stolu pro čtyři je nepodepsaný řádek appka, která
+mluví sama se sebou. Když se pivo vezme zpátky, zmizí i z vlákna.
+
+## Hry
+
+Devět her v katalogu. Hra je **obsah plus skořápka**, ne vlastní obrazovka —
+desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
+
+| hra | jak se hraje | skóre |
+|---|---|---|
+| Pub kvíz | každý na svém telefonu | body |
+| Kostky | 3D, fyzika, telefon koluje | body → kdo platí |
+| Kdo platí rundu | 3D kolo se jmény | doušky |
+| Flaška | 3D láhev | doušky |
+| Nikdy jsem…, Kategorie, Palec, Pravidlo večera | balíček karet | doušky |
+| King's Cup | tažení karty | doušky |
+
+### Platforma a hra
+
+Fyzické hry běží v **WebView** (three.js + cannon-es), textové v React Native.
+Mezi nimi je pevný protokol (`src/games/protocol.ts`) a tři pravidla:
+
+1. Plátno smí **zdobit, ne vyprávět** — text je vždycky nativní.
+2. **Hra je zdroj náhody.**
+3. **Každá hra končí tím, že to řekne** — `result`, ne domněnka platformy.
+
+Konec kreslí platforma (`GameResult`) a **tvar se odvozuje z dat**, ne z příznaku:
+je tam `payingId` → někdo platí; je tam `winnerId` → někdo vyhrál; víc skóre →
+žebříček. Hra na pití nikdy nekorunuje vítěze — jediná tabulka, kterou by mohla
+vyrobit, je kdo nejvíc pil.
+
+Stavební pravidla her (skořápky, WebView, protokol, konec hry): §21.
+
+### Sdílení
+
+Hra položená na stůl je řádek `PartyGame`, všechno v ní je **append-only
+událost**. Každý telefon skládá stejný seznam do stejného obrazu — žádný merge,
+žádný last-writer-wins. Dva lidi, kteří odpoví ve stejnou vteřinu, oba dorazí.
+
+Kvíz: odpovědi jdou frontou ven a streamem dovnitř. **Odpověď týmu je ta první**,
+takže tvoje vlastní odpověď vrácená serverem složí na stejný výsledek jako
+lokální kopie — idempotence padá z pravidel hry, ne z infrastruktury. Kvíz je
+**samospádem**: každý telefon má svůj index otázky a odhalení je po otázce,
+jakmile odpověděly všechny týmy.
+
+## Po večeru
+
+**Recap** — velká čísla, kdo tam byl a co vypil, štace, tempo po hodinách, hry,
+a „Padlo tenhle večer“ jen tehdy, když opravdu něco padlo. Rekordy se měří proti
+**tvé vlastní** historii, nikdy proti ostatním; pijácký den (04:00) je jeden
+večer, i když jsi prošel tři hospody.
+
+**Příspěvek** jde na `POST /v1/nights` — endpoint, který už má feed, reakce i
+offline frontu. Klíčem je **pijácký den**, takže večer publikovaný z hubu a ten
+samý z Výčepu je jeden příspěvek, který se aktualizuje. Ven jdou počty a jména
+hospod. **Nikdy ceny, souřadnice telefonu ani konkrétní piva.**
+
+## Provozní pravidla
+
+- **Offline first.** Počítadlo, vlákno a hry fungují bez signálu; sdílení je
+  best-effort navrch. Kód, který se nepodařilo doručit, nikdy nesmí zablokovat
+  zápis piva.
+- **Fronty jsou idempotentní** přes `client_id`. Retry nezdvojí nic.
+- **API zůstává kompatibilní** s vydanými appkami — nová pole jen aditivně.
+- **SSE má strop 10 minut** a pak řekne klientovi, ať se vrátí. Klient umí spadnout
+  na polling, takže rollback backendu appku nerozbije.
+
+## Stav (k 7. 8. 2026)
+
+| oblast | stav |
+|---|---|
+| Navigace, pět tabů | hotové |
+| Večer: založit, přisednout, odejít, ukončit | hotové |
+| Piva jedním zápisem, s kódem večera | hotové |
+| `NightRecord` + statistiky + vlákno | hotové |
+| Devět her | hratelné |
+| Sdílené hry (řádek, události, výsledek) | hotové, klient i backend |
+| Kvíz na víc telefonů | hotové |
+| Recap na reálných datech | hotové včetně fotek, historie a offline cache |
+| Příspěvek na `/v1/nights` | hotové včetně detailu, komentářů a reakcí |
+| Fotky večera | hotové — picker, upload, offline fronta i pozdější napojení na příspěvek |
+| Cizí příspěvky ve feedu | hotové — serverový feed, stránkování, detail, komentáře a reakce |
+| Týmy pro komunitní eventy | hotové, klient i backend |
+| Skeleton loadingy | hotové pro serverové obrazovky 3.0 |
+| Placeholder fotky (`pravatar`, `picsum`) | odstraněné z runtime kódu |
+| **ASGI/SSE na produkci** | zacommitované, **nenasazené** |
+
+---
+
+# ČÁST II — Design systém (závazný)
 
 ## 0. Zákon zjednodušení (nadřazený všemu ostatnímu)
 
@@ -22,7 +211,7 @@ podle etalonu“ a „je toho na obrazovce míň“, vyhrává „je toho míň�
 Zjednodušení znamená **prázdnější plochu, ne chudší produkt**. Tácek je důkaz: nepřišel o jedinou
 funkci, jen přestal ukazovat všechno naráz. Postup je vždycky stejný:
 
-1. **Jedna primární akce.** Na obrazovce právě jedna věc, která svítí. Zbytek ztiší nebo přesuň.
+1. **Jedna primární akce.** Na obrazovce právě jedna věc, která svítí. Zbytek ztiš nebo přesuň.
 2. **Tři bloky nad ohybem, víc ne.** Co se nevejde, patří níž, do sheetu nebo o obrazovku dál.
 3. **Jedna cesta k jedné věci.** Tři způsoby, jak udělat totéž, byly hlavní problém starého
    počítadla. Když najdeš duplicitní cestu, **zruš ji** — nezachovávej ji „pro jistotu“.
@@ -71,15 +260,6 @@ Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a ro
 | `Colors.stout2` | `#1C1815` | Plocha karty a bottom sheetu. O stupeň světlejší než root. |
 | `Colors.stout3` | `#262019` | Vnořený prvek uvnitř karty/sheetu: řádek, strip, chip, close button. |
 | `Colors.border` | `#3A322A` | Plný okraj sheetu, grabber, dělítka uvnitř sheetu. Často s alfou. |
-
-> **Změna 3.0.** Tyhle čtyři byly teplejší hnědé (`#1F1308` / `#2B1A0E` / `#3A2515` /
-> `#5A3A20`). Proti referencím — Strava i Packeta sedí na skoro černé — ta hnědá
-> nečetla jako hloubka, ale jako tint přes celou appku, a je z velké části důvod,
-> proč rané návrhy působily levněji, než byly. **Hnědá z produktu nezmizela**,
-> jen se přestěhovala z pozadí do světla: žije v gradientech (§16).
->
-> Nikdy ne čistě černá. Na appce s teplým akcentem čte jako díra a OLED smear
-> při scrollu stojí víc, než kolik ten tint ušetří.
 | `Colors.amber` | `#E8A317` | Akcent. Primární tlačítko, hlavní číslo, ikony, aktivní stav. |
 | `Colors.amberLight` | `#F5B642` | Jen uvnitř ilustrací (horní stop gradientu piva). |
 | `Colors.glow` | `#FF7A1A` | **Jen** `shadowColor` v `amberGlow*`. Nikdy jako fill nebo text. |
@@ -92,6 +272,15 @@ Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a ro
 | `Colors.closed` | `#A8896A` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
 | `Colors.black` | `#000000` | Jen backdrop (`withAlpha(Colors.black, 0.6)`) a `softDrop()`. |
 | `Colors.white` | `#FFFFFF` | Nepoužívat na text. Text je `foam`. |
+
+> **Změna 3.0.** Čtyři stouty byly teplejší hnědé (`#1F1308` / `#2B1A0E` / `#3A2515` /
+> `#5A3A20`). Proti referencím — Strava i Packeta sedí na skoro černé — ta hnědá
+> nečetla jako hloubka, ale jako tint přes celou appku, a je z velké části důvod,
+> proč rané návrhy působily levněji, než byly. **Hnědá z produktu nezmizela**,
+> jen se přestěhovala z pozadí do světla: žije v gradientech (§16).
+>
+> Nikdy ne čistě černá. Na appce s teplým akcentem čte jako díra a OLED smear
+> při scrollu stojí víc, než kolik ten tint ušetří.
 
 `withAlpha(hex, alpha)` z `@/theme/colors` přidá alfa kanál k šestimístnému hexu. Alfu píšeme vždycky
 přes něj, nikdy ručně `'#FBF3E01A'` a nikdy `opacity` na kontejneru s textem.
@@ -175,7 +364,14 @@ ořízne shora.
 
 Zbylé TTF zůstávají v `assets/fonts/` nenačtené.
 
-Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se to má číst, je to Inter.**
+Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se to má
+číst, je to systémové písmo.**
+
+> **Dluh po přechodu na systémové písmo.** Deset a víc míst kompenzuje metriku
+> Baloo 2 — `lineHeight: size * 1.24`, protože ExtraBold přetéká, a odhad šířky
+> číslice `0.62 × fontSize` v `CoasterCard`. SF má jinou metriku: řádkové boxy
+> jsou teď volnější a odhad šířky konzervativnější, než je potřeba. Nic
+> rozbitého, ale při dalším zásahu do těch souborů to přepočítej.
 
 ### 3.1 Čtyřstupňová škála (přesně z etalonu)
 
@@ -294,9 +490,7 @@ popisek: `-8`, protože je to doslova jeden objekt; ikona a text: 6–8). Věci 
 Různé bloky 20–24. Nikdy nedávej stejnou mezeru mezi „ikona ↔ její label“ a „blok ↔ blok“ — kompozice
 se pak čte jako seznam náhodných prvků.
 
----
-
-### 4.4 Hustota: co dělá „lacině" (3.0)
+### 4.1 Hustota: co dělá „lacině“ (3.0)
 
 Tři věci, které se opakovaně vracely a pokaždé to vypadalo levněji, než produkt
 je. Všechny jsou rozměrové, takže nejsou věc vkusu.
@@ -306,7 +500,7 @@ je. Všechny jsou rozměrové, takže nejsou věc vkusu.
 | Řádek seznamu | **60 pt**, u dvouřádkového **68** | 44 je minimum pro *dotyk*, ne pro čtení. Seznam natěsnaný na dotykové minimum čte jako tabulka. |
 | Vnitřní okraj sheetu | `MockLayout.screenPad` (20) | Sheet je obrazovka, ne popup. Menší okraj tlačí obsah na sklo. |
 | Nadpis → jeho obsah | `MockLayout.controlGap` (24) | Nadpis nalepený na první řádek se čte jako jeho součást. |
-| Sekce → sekce | `SectionBreak` (§ 4.5) | Mezera sama nestačí, viz níž. |
+| Sekce → sekce | `SectionBreak` | Mezera sama nestačí — 10pt tmavý pás (vědomá odchylka mocků, viz Část III). |
 
 **Pravidlo:** když se ptáš, jestli je něčeho moc, je ho málo. Tenhle produkt se
 používá v hospodě, jednou rukou, v šeru — vzduch není luxus, je to čitelnost.
@@ -317,6 +511,8 @@ A dvě věci, které se pojí s tím samým dojmem:
   pod dotykovým minimem a na skleněném povrchu čte jako díra.
 - **Ovládací prvky mají být systémové**, kde existují (§18). Ruční nápodoba
   nativního prvku je nejlevněji vypadající věc, kterou lze na iOS udělat.
+
+---
 
 ## 5. Karty
 
@@ -392,19 +588,19 @@ i velké číslo v kartě počítadla (§3.1) a ciferník kompasu.
 
 V patce karty kompasu jde **nejdřív název hospody, pak otevírací doba na vlastním řádku se stavovou
 tečkou, a teprve pak pivo s cenou**. Dřív to byla jedna 13pt věta („Otevřeno do 23:00 · Pilsner
-Urquell 95 Kč"), takže údaj, kvůli kterému člověk kouká do telefonu na ulici, se ořezával první.
+Urquell 95 Kč“), takže údaj, kvůli kterému člověk kouká do telefonu na ulici, se ořezával první.
 
 - Tečka 6 × 6 pt, `Radius.pill`, barva `Colors.open` / `Colors.closed` / `Colors.mutedText`. Je to
   jediná tečka v appce, která smí být ozdobného tvaru, protože nese skutečný stav.
 - Oba řádky sedí v jednom slotu s **pevnou výškou 38** — hodiny dojdou ze sítě chvíli po názvu a
   ciferník se kvůli nim nesmí přeměřovat.
-- Když hledání dojede naprázdno, řekne se to („Otevírací doba neznámá") — a tečka zůstává, protože
-  ten řádek je pořád o otevírací době. Vedle toho stojí dveře „Zmapuj", takže z neznalosti rovnou
-  plyne úkol. Ticho drží jen po dobu, kdy dotaz běží — nikdo nečte „Načítám".
+- Když hledání dojede naprázdno, řekne se to („Otevírací doba neznámá“) — a tečka zůstává, protože
+  ten řádek je pořád o otevírací době. Vedle toho stojí dveře „Zmapuj“, takže z neznalosti rovnou
+  plyne úkol. Ticho drží jen po dobu, kdy dotaz běží — nikdo nečte „Načítám“.
 - **Stejná anatomie platí pro kartu na mapě** (`PlaceCard`): název na vlastním řádku přes celou
   šířku, pod tím hlasitá otevírací doba s tečkou, pod tím tichý řádek (hodnocení, město, „byl jsi
-  tu"). Slot má pevných 38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
-- **Dveře stojí na tichém řádku, ne vedle názvu.** Vedle názvu braly „Restauraci U Parlamentu"
+  tu“). Slot má pevných 38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
+- **Dveře stojí na tichém řádku, ne vedle názvu.** Vedle názvu braly „Restauraci U Parlamentu“
   půlku šířky a lámaly ji na dva řádky; vycentrované proti celému bloku zase nesedí na žádný
   řádek. Tichý řádek je nejkratší, takže na dveře má místo a obě půlky sdílí jednu osu.
 
@@ -414,7 +610,7 @@ Karta drží pod velkým číslem nanejvýš dva řádky, a jsou to jediné povo
 
 | Řádek | Co v něm je | Jak vypadá |
 |---|---|---|
-| `CounterQuickActions` | „Jiné pivo", „Zmapuj" | outline chipy, `height: 44`, jantar na 6 % / okraj 18 %, `flex: 1` každý |
+| `CounterQuickActions` | „Jiné pivo“, „Zmapuj“ | outline chipy, `height: 44`, jantar na 6 % / okraj 18 %, `flex: 1` každý |
 | `DoorRail` | Výčep, Žebříčky, FotoPivař (v kartě Party) | tři stejné sloupce, jantarový medailonek 34 pt, label 13 Baloo bold, svislý hairline mezi nimi |
 | `LayerSwitch` (karta na mapě) | V okolí, Moje stopy, Parta teď | segmentovaná dráha `foam 4 %` / okraj 8 %, aktivní `foam 10 %`, výška 38 |
 
@@ -422,9 +618,9 @@ Pravidla, aby z toho nebyla mřížka tlačítek:
 
 - **Oddělují se světlem, ne rámečkem.** Hairline nad řádkem (`foam 10 %`) a mezi sloupci
   (`foam 10 %`, výška 26–28). Tři ohraničené dlaždice v ohraničené kartě je rámeček na rámečku (§14.10).
-- **Chip se zobrazí jen když jeho akce něco dělá jinak než CTA.** „Jiné pivo" existuje pouze ve
+- **Chip se zobrazí jen když jeho akce něco dělá jinak než CTA.** „Jiné pivo“ existuje pouze ve
   chvíli, kdy tlačítko opakuje poslední pivo; jinak by to byly dvě dveře do jednoho sheetu (§14.4).
-  „Zmapuj" existuje jen v hospodě.
+  „Zmapuj“ existuje jen v hospodě.
 - **Lišta je navigace, ne akce.** Vede na povrch (Výčep, žebříček, soutěž), nic nepočítá a nic
   nemaže. Proto neporušuje pravidlo jedné akce (§6.3) — to mluví o akcích, ne o dveřích.
 - **Jeden živý údaj, a jen když je zdarma.** Badge čte číslo z už uloženého snapshotu. Vymyšlené
@@ -544,7 +740,7 @@ spodní panel. Modal, ne knihovna.
 | Rozhodnutí | Důvod |
 |---|---|
 | `transparent` + `statusBarTranslucent` + `presentationStyle="overFullScreen"` | Sheet musí kreslit přes status bar i přes tab bar. Bez `statusBarTranslucent` zůstane na Androidu nad backdropem pruh. |
-| `animationType="none"` + `BottomSheetModal` | Viz níž. Ani `fade`, ani `slide`. |
+| `animationType="none"` + `BottomSheetModal` | Viz §7.2b. Ani `fade`, ani `slide`. |
 | Backdrop je **absolutní sourozenec** karty (`StyleSheet.absoluteFill`), ne její rodič | Kdyby backdrop kartu obaloval, karta by nesedla nadoraz na spodní hranu a backdrop by polykal její gesta. |
 | `cardWrap` má `marginBottom: -insets.bottom` | Vytáhne kartu pod home indicator, takže mezi kartou a spodní hranou displeje nezůstane proužek pozadí. |
 | Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se přitom nedostane pod home indicator. Ty dvě věci jdou vždycky spolu. |
@@ -863,9 +1059,9 @@ nenese — a přesně na tom umřely dvě ilustrace, které tu dřív byly povin
 |---|---|
 | `BeerGlass` (krýgl na počítadle) | Byl to obrázek piva na obrazovce, která chtěla ukázat počet piv. Vedle velkého čísla říkal totéž podruhé a hůř. |
 | `CoasterStack` (štos tácků na profilu) | Kódoval kariéru jako nečitelnou výšku hromádky, a level byl vedle toho stejně napsaný slovy v patce. |
-| čárky na tácku v kartě počítadla | Zkoušené jako náhrada krýglu. U jednoho piva je jedna čárka vedle velké „1" jen škrábanec. |
+| čárky na tácku v kartě počítadla | Zkoušené jako náhrada krýglu. U jednoho piva je jedna čárka vedle velké „1“ jen škrábanec. |
 
-Pravidlo tedy **není** „aspoň jeden kreslený prvek na obrazovku". Pravidlo je:
+Pravidlo tedy **není** „aspoň jeden kreslený prvek na obrazovku“. Pravidlo je:
 
 1. **Kreslí se to, co se jinak přečíst nedá.** Směr (`CompassDial`), rozjezd levelu v rámci
    stupně (`LevelRing`), noc na tácku ve sdíleném obrázku (`TallyCoaster`, `TallyMarks`),
@@ -873,7 +1069,7 @@ Pravidlo tedy **není** „aspoň jeden kreslený prvek na obrazovku". Pravidlo 
 2. **Když to jde říct číslem, řekne se to číslem.** Velké jantarové číslo je silnější než jakákoli
    kresba téhož (§14.5 platí i obráceně).
 3. **Osobnost nese i chrome.** Baloo, tácková karta se světelnou hranou, jantar na 10 %, hospodský
-   copy. Obrazovka bez kresby proto není „jen typografie na hnědém pozadí".
+   copy. Obrazovka bez kresby proto není „jen typografie na hnědém pozadí“.
 4. **Uvolněné místo patří funkci, ne dekoraci.** Když ilustrace zmizí, na její místo jde něco, co
    něco dělá — v kartě počítadla je to `CounterQuickActions`, v kartě Party `DoorRail` (§5.5).
 
@@ -882,11 +1078,13 @@ hex uvnitř SVG, **reaguje na data, ne na čas**, komponenta je `memo`, pevný `
 odvozená od šířky konstantním poměrem, prázdný stav je vidět (`foam` na 4–8 %) a dekorativní
 kresba je pro čtečku skrytá (`accessibilityElementsHidden`).
 
+---
+
 ## 10. Pohyb
 
 **Žádné smyčkové animace.** Ani bublinky, ani pulzující glow, ani dýchající ikony, ani shimmer.
 Autor je nesnáší a byly kvůli tomu už jednou odstraněny. Dekorativní pohyb na jádrových obrazovkách
-je zakázaný.
+je zakázaný. (Jediná povolená výjimka je prstenec Party ikony při běžícím večeru, §20.6.)
 
 Povolený je **jeden pop jako reakce na akci uživatele**:
 
@@ -1235,7 +1433,16 @@ nevykreslí.
 
 ---
 
-## 19. Ikonografie: co znamená půllitr
+## 19. Ikonografie
+
+Používáme Lucide (dnes 80+ glyfů). Vlastní sada by byla samostatné rozhodnutí.
+
+**Ikona musí něco rozlišovat.** Tři výzvy se stejnou jiskřičkou jsou dekorace na
+místě myšlenky — každá výzva má glyf podle toho, co je (špendlík / hodiny /
+půllitr). A **v detailu ikona většinou nepatří**: na obrazovce, která je o jedné
+věci, zdobí titulek, co už všechno řekl.
+
+### 19.1 Co znamená půllitr
 
 Jeden glyf = jeden význam, napříč celou appkou.
 
@@ -1258,7 +1465,22 @@ nutně poloviční a v 17 pt z nich je šmouha.
 
 ---
 
-### 18.4 Živý večer nemá grafy
+## 20. Obrazovky 3.0
+
+### 20.1 Jedna šířka skrz celou app
+
+Vodorovný okraj obsahu je **vždycky** `MockLayout.screenPad` (20) — na
+obrazovce, v sheetu i v detailu. Žádných 16 „protože je to sheet“.
+
+Hostitel obsahu si k tomu **nesmí přidat vlastní padding**. Detail hospody měl
+20 ze `PubDetailBody` a 16 z ScrollView okolo, takže text seděl na 36, zatímco
+full-bleed pásy (`SectionBreak`, `UnderlineTabs`) přetékaly jen o 20 a končily
+16 před krajem. Tři různé hrany na jednom sheetu.
+
+Komponenty, které přetékají přes okraj, dostávají `inset` rovný té jedné šířce.
+Když se okraj mění, mění se `MockLayout.screenPad`, ne lokální číslo.
+
+### 20.2 Živý večer nemá grafy
 
 Běžící večer a jeho recap jsou dvě různé obrazovky s různou prací.
 
@@ -1269,284 +1491,157 @@ graf vlastního večera je věc, kterou nikdo nestuduje uprostřed hospody.
 Statistiky, grafy a rozbor patří do **recapu** (`/party-recap`), po ukončení a
 odeslání. Tam je ohlédnutí celý smysl obrazovky.
 
-### 18.3b Jedna šířka skrz celou app
-
-Vodorovný okraj obsahu je **vždycky** `MockLayout.screenPad` (20) — na
-obrazovce, v sheetu i v detailu. Žádných 16 „protože je to sheet".
-
-Hostitel obsahu si k tomu **nesmí přidat vlastní padding**. Detail hospody měl
-20 ze `PubDetailBody` a 16 z ScrollView okolo, takže text seděl na 36, zatímco
-full-bleed pásy (`SectionBreak`, `UnderlineTabs`) přetékaly jen o 20 a končily
-16 před krajem. Tři různé hrany na jednom sheetu.
-
-Komponenty, které přetékají přes okraj, dostávají `inset` rovný té jedné šířce.
-Když se okraj mění, mění se `MockLayout.screenPad`, ne lokální číslo.
-
-### 18.5 Log je thread, ne systémový žurnál
+### 20.3 Log je thread, ne systémový žurnál
 
 Log běžícího večera je společný thread. U každého záznamu musí být vidět **kdo
-to tam dal** — u stolu pro čtyři je „Fotka" bez jména aplikace mluvící sama se
+to tam dal** — u stolu pro čtyři je „Fotka“ bez jména aplikace mluvící sama se
 sebou. Obsah do něj přidávají tlačítka dole (pozvat, foto, pivo, hra, přesun) a
 každý typ má svůj glyf na lince.
 
 Hra v threadu **není zpráva o hře** — ten řádek hru spouští a po dohrání na místě
 vyroste ve výsledkovku. Dva řádky (založení + výsledek) čtou jako dvě hry.
 
-Thread smí nést **jen obsah, který app umí vyrobit**. Namockovaná „poznámka" a
-„runda" vypadaly dobře a slibovaly dvě funkce, ke kterým nevede žádné tlačítko —
+Thread smí nést **jen obsah, který app umí vyrobit**. Namockovaná „poznámka“ a
+„runda“ vypadaly dobře a slibovaly dvě funkce, ke kterým nevede žádné tlačítko —
 log by inzeroval něco, co neexistuje. Typy obsahu = přesně ta akce dole.
 
 Vodicí linka se kreslí **uvnitř řádku**, takže mezi řádky nesmí být gap; jinak se
 z linky stane čárkovaná. Odsazení si nese řádek sám.
 
 Hlavička hubu (hospoda, lidi, čísla) je **sticky**, scrolluje jen thread. Odpověď
-na „co se děje" nesmí odjet nahoru, když se koukáš, co se stalo.
+na „co se děje“ nesmí odjet nahoru, když se koukáš, co se stalo.
 
 Nově přidaný záznam **přijede animací** (`FadeInDown` + `LinearTransition`, §10),
 ale jen ten — řádky, které tam byly při otevření, se nesmí rozdávat jako karty.
 Rozhoduje o tom razítko mountu, ne pořadí.
 
 Akce, které něco přidávají, nesou na ikoně malý **plus badge**. Řádek samotných
-podstatných jmen („Foto", „Hry") čte jako navigace, ne jako přidávání.
+podstatných jmen („Foto“, „Hry“) čte jako navigace, ne jako přidávání.
 
-### 18.5b Opravy patří do logu
+### 20.4 Opravy patří do logu
 
 Do hospody se ťuká špatně. Log je jediné místo, kde uživatel vidí, **který**
 záznam je špatný, takže oprava patří tam — ne do samostatné obrazovky historie.
 
 Řádek s pivem nese `RowMenu` (`src/mocks/MenuChip.tsx`): nativní kotvené menu
-jako v Spendee, čepované pivo jako zaškrtnutý seznam a „Smazat" jako destructive
+jako v Spendee, čepované pivo jako zaškrtnutý seznam a „Smazat“ jako destructive
 položka pod ním. Oprava **přepíše původní řádek**; thread ve stylu „Pilsner / no
-vlastně Kozel" je horší záznam večera než ten, co prostě říká, co jsi pil.
+vlastně Kozel“ je horší záznam večera než ten, co prostě říká, co jsi pil.
 
 Pozor na hranici: SwiftUI `Menu` si kreslí vlastní label, takže se kotví na
 glyf, který mu dáme — **neumí obalit existující RN řádek** a udělat z long-pressu
 na něm kontextové menu. To by chtělo `react-native-ios-context-menu`, což je ta
-knihovna, která nešla slinkovat.
+knihovna, která nešla slinkovat (§18.2).
 
-### 18.5c Běžící večer v chrome
+### 20.5 Běžící večer v chrome
 
 Live bar nad tab barem se **vysvětluje sám**: hospoda a pod ní běžící stopky a
 počet piv. Zelená tečka je pryč — stavová kontrolka se musí naučit, kdežto
-tikající čas říká „běží to" slovy, která už čteš. Plurály česky (1 pivo, 3 piva,
+tikající čas říká „běží to“ slovy, která už čteš. Plurály česky (1 pivo, 3 piva,
 7 piv); špatný plurál je na takhle malém pruhu první, čeho si všimneš.
 
 Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
-„Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
+„Večer“. Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
 v něm.
 
-### 18.12 Jedna smyčka v celé app
+### 20.6 Jedna smyčka v celé app
 
 Tab bar je na každé obrazovce, takže cokoliv, co v něm běží ve smyčce, běží
 pořád. §10 to zakazuje a ten zákaz platí dál — **s jednou výjimkou**: prstenec
 kolem Party ikony při běžícím večeru.
 
 Proč zrovna tenhle: běžící večer je jediná věc v appce, která se **opravdu děje**,
-zatímco se díváš na něco jiného. Statický prstenec říká „je zapnutý režim",
-pulzující říká „běží to". „Kamarád je live" tuhle výjimku nedostane — to je cizí
+zatímco se díváš na něco jiného. Statický prstenec říká „je zapnutý režim“,
+pulzující říká „běží to“. „Kamarád je live“ tuhle výjimku nedostane — to je cizí
 novinka a ta počká na pohled.
 
 Podmínky: **2,4 s na cyklus**, tam a zpět (skok zpátky na malý je bliknutí a
 blikající tab bar je alarm), hýbe se **jen prstenec, nikdy glyf**, a při reduced
 motion se nehýbe nic.
 
-### 18.11a Herní vrstva
+### 20.7 Velká čísla se neklikají
 
-Mezi appkou a hrou je **definovaná vrstva**, ne most šitý na míru jedné hře.
-Tři soubory, a desátá hra nepřidá čtvrtý:
+Blok velkých numerálů je nadpis, ne ovládací prvek. Nedávej pod něj `Pressable`
+ani „rozklikni pro víc“ — vypadá jako obsah, chová se jako tlačítko, a uživatel
+to najde omylem.
 
-| soubor | čí je | co dělá |
+Které číslo se ukáže, je **produktové pravidlo s testy**, ne pevný řádek. „U
+stolu“ dává smysl jen když u stolu někdo je; sám sobě by uživatel četl vlastní
+počet dvakrát. Radši dvě pravdivá čísla než tři s pomlčkou. Viz
+`src/party/nightPulse.ts` (`hubStats`).
+
+### 20.8 Cizí profil
+
+Cizí profil je **stejná obrazovka jako tvoje**, jen zvenku. Člověk má vypadat
+jako člověk, ať ho potkáš kdekoli; jinak nakreslený profil cizího čte jako jiný
+produkt.
+
+Co se mění:
+
+- vztah v hlavičce — „Byli jste spolu 4× na pivu“. To je poctivá verze „12
+  společných přátel“ v hospodské appce;
+- dvě akce: **Sledovat** a **Na pivo?**. Druhá je vlastně smysl celé appky;
+- **žádná série a žádné rekordy**. Na svém profilu tlačí tebe; na cizím je série
+  běžící součet cizího pití, který si ten člověk nezveřejnil.
+
+Statistiky jsou **agregáty**. „12 hospod“ je fakt o tom, jak často chodí ven;
+seznam kterých dvanáct je rozvrh, a rozvrh jednoho člověka tahle app druhému
+nedává.
+
+**Otevřená otázka (Část III):** jak se ta akce jmenuje. Teď „Sledovat“, protože je
+jednoznačné. Ve hře je „Parťák“ (hospodštější, ale svádí k tomu, že je to
+vzájemné, což follow není).
+
+### 20.9 Textová pole
+
+Pole je díra, do které se píše — musí být **světlejší než to, na čem leží**, a
+nést vlásečnicový okraj. Search v Hospodách byl `surface` na sheetu, jehož
+podklad je taky `surface`; pilulku šlo najít jen podle placeholderu uvnitř.
+
+Tokeny (`MockColors`): `field`, `fieldBorder`, `fieldHint`. Placeholder je
+foam na 55 %, ne hnědý `mutedText` — ten je na tmavém poli sotva čitelný.
+
+Platí to na **všechna** pole: search, sheety, dialogy. Nekresli si vlastní
+podklad pole ve screenu.
+
+### 20.10 Avatary a fotky
+
+- Profilová fotka je **reálná, jinak iniciála na barvě** (`Face`). Cizí obličej
+  ze stocku je lež, která se pozná ve chvíli, kdy si toho někdo všimne.
+- Barvy iniciál: šest odstínů, **deterministicky z id**, takže je člověk stejně
+  barevný na všech telefonech. Jantar je vyhrazený tobě samotnému.
+- Fotky večera a menu jsou skutečný upload (`BeerPhoto`), avatary `Account.avatar`.
+- **`pravatar.cc` a `picsum.photos` placeholdery nesmí opustit mocky.**
+
+### 20.11 Skeletony
+
+Primitiva je `SkeletonBlock`: foam wash, 900 ms ping-pong, při reduce-motion se
+**zastaví**, nezpomalí. (Tohle není shimmer z §14.7 — reaguje na čekání na síť,
+ne dekorace.)
+
+Skeleton je jen tam, **kde se opravdu čeká na síť** (feed, komunita, detail
+hospody). Kde jsou data lokálně (party hub, počítadlo), není **nic** — bliknutí
+kostry pod obrazovkou, která má data hned, je horší než nic.
+
+### 20.12 Prázdné stavy
+
+Prázdný stav je **jedna věta a jedna akce**. Ne „0 výsledků“, ne odstavec
+vysvětlování, ne ilustrace ke každému — ilustrace jen tam, kde je opravdu na
+místě (Kocoviny), a stačí jedna.
+
+| kde | kdy je prázdno | co má říct |
 |---|---|---|
-| `src/games/protocol.ts` | **obou stran** | tvary zpráv a verze |
-| `src/games/web/sdk.ts` | hra | obálka, verze, dev harness |
-| `src/games/GameHost.tsx` | appka | jeden WebView hostitel pro všechny hry |
+| Kocoviny | nikdo z tvých kamarádů nic nepostnul | „zatím ticho“ + cesta k pozvání |
+| Party | před prvním pivem | co večer bude sbírat |
+| Hospody | filtr nic nenašel | ne „0 výsledků“, ale co zkusit |
+| Komunita → Výzvy | žádná výzva neběží | kdy budou |
+| Profil → Aktivita | ještě nic | první krok |
 
-Protokol importují **obě strany** — RN i stránka přes esbuild alias — takže když
-se tvar zprávy změní, nepřeloží se ani jedna. To je ten smysl.
+---
 
-**Zprávy do hry:** `init` (hráči, téma, options), `turn`, `command` (sloveso,
-které si hra deklaruje — „roll", „spin", „draw").
-**Ven:** `ready`, `state` (celý stav po každé změně), `event` (jednorázová
-novinka), `result` (skóre, vítěz, kdo platí), `error`.
+## 21. Hry — pravidla stavby
 
-**Pravidla vlastní hra, ne platforma.** Hra si počítá kola, pořadí i konec a po
-každé změně pošle **snímek celého stavu**. Appka z něj kreslí všechen text —
-„Honza hází", žebříček, výsledky kola. Logika je tak na jednom místě vedle věci,
-kterou řídí, a texty zůstávají skutečnými texty s Dynamic Type a VoiceOverem.
-
-Snímek, ne rozdíl: obrazovka, která se kreslí z celého stavu, se nemůže rozejít
-s hrou, když jí unikne jeden rámec.
-
-Pravidla jsou obyčejný TypeScript v repu (`src/games/web/dice/rules.ts`), takže
-je jest testuje jako cokoliv jiného — sedm testů hlídá konec hry. Appka si ten
-samý modul importuje **jen pro případ, kdy plátno není vůbec** (reduced motion,
-build bez WebView). Jedna pravidla, dva hostitelé, nikdy dvě implementace.
-
-Tři pravidla, která ty tvary vynucují:
-
-1. **Plátno smí zdobit, ne vyprávět.** Hráč je `id`, `barva` a — jen tam, kde je
-   popsaný sám předmět, třeba jméno na výseči kola — krátký `label`. Popisek
-   **namalovaný na** točícím se předmětu je jeho součást, jako číslo v ruletové
-   kapse. Věta, která říká, kdo byl vybrán, se pořád kreslí v RN, kde má typografii
-   aplikace, Dynamic Type a hlas.
-2. **Hra je zdroj náhody.** Výsledky jdou ven, ne dovnitř.
-3. **Hra končí tím, že to řekne.** `result` má stejný tvar pro všechny hry —
-   je to to, co konzumuje recap, feed i sdílený backend.
-
-Appka pošle `init` **až po `ready`**. Dřív by dorazil, než se SDK stihne
-přihlásit, a tiše by se ztratil.
-
-### 18.11d Konec hry patří platformě
-
-Hra ohlásí `result` a skončí; obrazovku kreslí **`GameResult`**, jedna pro
-všechny hry. Výsledek nese jména a tváře, musí vypadat stejně napříč hrami a ta
-samá data pak čte thread, recap i feed.
-
-**Tvar se odvozuje z dat, ne z příznaku, který hra pošle.** Jedno jméno nahoře
-vzniká z `payingId` nebo `winnerId`; tabulka pod ním se objeví, když hra vrátila
-**víc než jedno skóre**, a nezobrazí se, když ne. Hra, která vybírá jednoho
-člověka, pošle prázdné skóre a dostane jednu tvář; kvíz pošle pět a dostane
-žebříček s vítězem vypsaným nad ním. Ani jedna neříká, co chce.
-
-`variant` prop je věc, kterou může hra splést. „Je tu `payingId`, takže někdo
-platí" splést nejde.
-
-Hra na pití dojde k „Dohráno" nebo „Platí X", **nikdy k vítězi** — jediná
-tabulka, kterou by mohla vyrobit, je kdo nejvíc pil.
-
-Plátno si přesto smí konec **oslavit** — konfety, rozsvícená vítězná výseč. To je
-zdobení, ne vyprávění.
-
-### 18.11e Hra na víc telefonů má tři stavy, ne dva
-
-Pub kvíz je první hra, kde **každý hraje na svém**. To mění, co obrazovka je:
-nekreslí stůl, kreslí pohled jednoho hráče na společnou otázku a nikdy nepředstírá,
-že ví víc, než ten telefon může vidět.
-
-| stav | co je vidět |
-|---|---|
-| ptá se | otázka a čtyři možnosti |
-| **zamknuto** | tvoje odpověď je daná, chybějící jména jsou vypsaná |
-| odhaleno | správná odpověď — až když odpověděli všichni |
-
-**Zamknuto je vlastní stav, ne mezikrok.** Odhalit ve chvíli, kdy odpovíš *ty*,
-znamená, že nejrychlejší u stolu odpověď přečte nahlas — a hospoda je přesně
-místo, kde tohle nezůstane teoretické. Odpověď se taky nedá měnit; kvíz, ve kterém
-si můžeš odpověď rozmyslet, když vidíš ostatní, není kvíz.
-
-Čekání musí jít **přerušit** („Nečekat"). Někdo je na baru a hra, kterou odemkne
-jenom člověk, co odešel, končí právě tam.
-
-Skóruje se **po týmech**, a člověk hrající sám je tým o jednom. Party a komunitní
-event jsou tím pádem jedna hra, ne dvě — kdyby se to psalo po lidech a týmy se
-přidaly potom, každé pravidlo by existovalo dvakrát a ty dvě verze by se rozešly.
-
-Stav je fold nad **append-only seznamem odpovědí**, nikdy uložený součet. Dva
-telefony můžou odpovědět ve stejnou chvíli, pořadí nehraje roli, retry nemůže
-započítat dvakrát a telefon, co byl offline, pošle svoje pozdě a nic se neslučuje.
-Je to zároveň přesně tvar, který drží backend (`PartyGameEvent`, kind `answer`).
-
-### 18.11c Hry, které máme
-
-| hra | plátno | co vrací |
-|---|---|---|
-| Kostky | 3D, fyzika (three + cannon) | `state` po každém hodu, `result` na konci |
-| Flaška | 3D, roztočená láhev | `picked` po každém zastavení, nikdy nekončí |
-| Kdo platí rundu | 3D kolo štěstí se jmény | `picked` a rovnou `result` — runda má jednoho plátce |
-
-Kostky a Flaška se točí dál, dokud stůl nemá dost. Kolo **končí prvním
-zastavením**, protože runda má právě jednoho plátce — a přesně kvůli tomuhle
-rozdílu je v protokolu `result` a nestačí `event`.
-
-Každá hra je jeden HTML soubor (~520–600 kB s vloženými knihovnami). Tři.js je
-v každém zvlášť; při osmi hrách to bude stát za sdílený chunk, do té doby je
-samostatnost souboru cennější než ušetřené megabajty.
-
-### 18.11b Fyzické hry žijí ve WebView
-
-Devět her je obsah plus skořápka v React Native. **Výjimka je jedna: hra, jejíž
-podstata je fyzika.** Kostky, které se odrazí od mantinelu a dokutálí se nakřivo,
-se v RN nedají udělat bez `expo-gl` + three + fyzikálního enginu, tedy tří
-nativních závislostí a megabajtů v binárce.
-
-Ve WebView stojí three.js i cannon-es **nulu navíc**, protože jsou to jen skripty
-na stránce. `react-native-webview` obaluje systémový WKWebView, takže do velikosti
-appky nepřidává engine — a od té chvíle je každá další fyzická hra jen HTML
-soubor, co jde ven přes `eas update`.
-
-Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
-
-1. **Do WebView jde jen plátno.** Texty, seznamy, počítadla a jména zůstávají
-   v RN — to je UI aplikace, ne hra.
-2. **Most je úzký.** Sem „hoď" a „obarvi se", ven „padlo tohle". Barva je
-   jediná věc, kterou plátno o hráčích ví — **žádná jména dovnitř**. U telefonu,
-   co koluje kolem stolu, se „tyhle jsou Honzovy" přečte z barvy dřív, než by
-   kdo četl popisek.
-3. **Text zůstává v RN, i když leží přes plátno.** Zvolání po dosednutí je
-   vrstva nad WebView, ne text ve stránce — tím zůstane skutečným textem
-   s Dynamic Type, VoiceOver a písmem aplikace, a přitom vypadá, že dopadlo na
-   sukno.
-4. **Simulace JE náhoda.** Čísla jdou ven, ne dovnitř. Nic si předem nevybere
-   výsledek a neanimuje se k němu — hod je opravdu spravedlivý, což předstíraný
-   hod nikdy není.
-5. **Žádná síť.** Hra se sestaví do jednoho HTML s vloženými knihovnami
-   (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
-6. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
-
-**Hra se ladí v prohlížeči, ne v simulátoru.** `npm run games:dev` ji sestaví a
-otevře jako obyčejnou stránku; když si všimne, že na druhé straně není most,
-přidá si vlastní tlačítko a výpis výsledku. Doladit pocit z hodu tak stojí
-reload, ne nativní build, simulátor a čtyři obrazovky proklikávání. To je rozdíl
-mezi hrou, která se doladí, a hrou, co vyjde tak, jak poprvé spadla.
-
-Past, na kterou se přijde těžko: hra se načítá jako asset (`.html` v
-`assetExts`). Když Metro drží cache z doby před tou změnou konfigurace, import
-routy selže a expo-router to nahlásí jako **„Cannot read property 'ErrorBoundary'
-of undefined"** — hláška, která nemíří ani zdaleka k příčině. Řeší to
-`npx expo start --clear`.
-
-### 18.11 Rekvizity vypadají jako rekvizity
-
-Kostka je **kostka**, ne číslo na čtverci. Celé kouzlo házení je v tom, že
-stěnu poznáš dřív, než ji spočítáš — a „4" jako kostku nepoznal nikdo. Puntíky
-v uspořádání, které všichni znají, na slonovinové stěně.
-
-Prostorovost je **falešná a levná záměrně**: skutečná 3D kostka znamená
-renderer, mesh a fyziku kvůli dvěma kostkám, co dopadnou za vteřinu. Stačí
-zaoblený čtverec se světlem vlevo nahoře, tmavší hrana pod ním místo vytažení a
-stín. Ve velikosti, v jaké to telefon na stole ukazuje, to čte jako předmět —
-a víc dělat nemusí. Kreslené `react-native-svg`, žádný nový balík.
-
-**Rekvizita je hlavní, tlačítko vedlejší.** Jantarový pruh přes celou šířku pod
-kostkami dělal z tlačítka nejhlasitější věc na obrazovce, jejíž celý smysl je,
-co právě dopadlo.
-
-### 18.10 Hra má sestavu, kolo a konec
-
-**Sestava napřed.** Stůl není parta: někdo je u baru, někdo nehraje, někdo si
-právě sedl. Před každou hrou je lobby se jmény z večera — předzaškrtnutými,
-protože běžný případ je, že hrají všichni — a s možností někoho přizvat rovnou
-odtud. Bez toho se první kolo změní v hádku, kdo je na řadě.
-
-**Obrazovka během hry říká jednu věc: kdo je na tahu.** Jméno 34pt, kostky ve
-velikosti skutečných. Žebříček je pod tím a potichu — je to kontext, ne otázka.
-
-**Hra musí skončit sama.** Tabulka, která jen roste, nemá konec a někdo u stolu
-musí říct „tak dost". Kostky proto vítěze **odebírají**: třikrát vyhrané kolo a
-jsi z obliga, hra se zrychluje a kdo zbude poslední, platí rundu. Napětí jde
-nahoru, ne dolů.
-
-Kdo platí, přebíjí kdo vyhrál — je to ta věta, o které stůl bude ještě mluvit.
-
-**Pravidla žijí mimo komponentu.** `diceDuel.ts` je čistá data a funkce
-s testy; skořápka je jen kreslí. Hra se špatným koncem je horší než žádná hra a
-tohle se neověřuje klikáním v simulátoru.
-
-**Konec je nahoře**, co nejdál od všeho, na co se během hry ťuká, a je to text —
-ne druhý jantarový pruh soupeřící s tlačítkem, které se opravdu mačká. Počítadlo
-piv naopak plave dole u palce.
-
-### 18.9 Hry: tři skořápky, ne devět obrazovek
+### 21.1 Tři skořápky, ne devět obrazovek
 
 Hra je **obsah plus skořápka**, nikdy vlastní obrazovka. Desátá hra má být řádek
 v `gameCatalog.ts` a seznam promptů, ne další složka.
@@ -1575,71 +1670,286 @@ nejvíc pil.
 **Dohraná hra nese výsledek na svém coveru** — pod obrázkem to byl popisek, na
 něm je cover samotný ten výsledek.
 
-### 18.7 Cizí profil
+### 21.2 Hra má sestavu, kolo a konec
 
-Cizí profil je **stejná obrazovka jako tvoje**, jen zvenku. Člověk má vypadat
-jako člověk, ať ho potkáš kdekoli; jinak nakreslený profil cizího čte jako jiný
-produkt.
+**Sestava napřed.** Stůl není parta: někdo je u baru, někdo nehraje, někdo si
+právě sedl. Před každou hrou je lobby se jmény z večera — předzaškrtnutými,
+protože běžný případ je, že hrají všichni — a s možností někoho přizvat rovnou
+odtud. Bez toho se první kolo změní v hádku, kdo je na řadě.
 
-Co se mění:
+**Obrazovka během hry říká jednu věc: kdo je na tahu.** Jméno 34pt, kostky ve
+velikosti skutečných. Žebříček je pod tím a potichu — je to kontext, ne otázka.
 
-- vztah v hlavičce — „Byli jste spolu 4× na pivu". To je poctivá verze „12
-  společných přátel" v hospodské appce;
-- dvě akce: **Sledovat** a **Na pivo?**. Druhá je vlastně smysl celé appky;
-- **žádná série a žádné rekordy**. Na svém profilu tlačí tebe; na cizím je série
-  běžící součet cizího pití, který si ten člověk nezveřejnil.
+**Hra musí skončit sama.** Tabulka, která jen roste, nemá konec a někdo u stolu
+musí říct „tak dost“. Kostky proto vítěze **odebírají**: třikrát vyhrané kolo a
+jsi z obliga, hra se zrychluje a kdo zbude poslední, platí rundu. Napětí jde
+nahoru, ne dolů.
 
-Statistiky jsou **agregáty**. „12 hospod" je fakt o tom, jak často chodí ven;
-seznam kterých dvanáct je rozvrh, a rozvrh jednoho člověka tahle app druhému
-nedává.
+Kdo platí, přebíjí kdo vyhrál — je to ta věta, o které stůl bude ještě mluvit.
 
-**Otevřená otázka (§20):** jak se ta akce jmenuje. Teď „Sledovat", protože je
-jednoznačné. Ve hře je „Parťák" (hospodštější, ale svádí k tomu, že je to
-vzájemné, což follow není).
+**Pravidla žijí mimo komponentu.** `diceDuel.ts` je čistá data a funkce
+s testy; skořápka je jen kreslí. Hra se špatným koncem je horší než žádná hra a
+tohle se neověřuje klikáním v simulátoru.
 
-### 18.8 Textová pole
+**Konec je nahoře**, co nejdál od všeho, na co se během hry ťuká, a je to text —
+ne druhý jantarový pruh soupeřící s tlačítkem, které se opravdu mačká. Počítadlo
+piv naopak plave dole u palce.
 
-Pole je díra, do které se píše — musí být **světlejší než to, na čem leží**, a
-nést vlásečnicový okraj. Search v Hospodách byl `surface` na sheetu, jehož
-podklad je taky `surface`; pilulku šlo najít jen podle placeholderu uvnitř.
+### 21.3 Rekvizity vypadají jako rekvizity
 
-Tokeny (`MockColors`): `field`, `fieldBorder`, `fieldHint`. Placeholder je
-foam na 55 %, ne hnědý `mutedText` — ten je na tmavém poli sotva čitelný.
+Kostka je **kostka**, ne číslo na čtverci. Celé kouzlo házení je v tom, že
+stěnu poznáš dřív, než ji spočítáš — a „4“ jako kostku nepoznal nikdo. Puntíky
+v uspořádání, které všichni znají, na slonovinové stěně.
 
-Platí to na **všechna** pole: search, sheety, dialogy. Nekresli si vlastní
-podklad pole ve screenu.
+Prostorovost je **falešná a levná záměrně**: skutečná 3D kostka znamená
+renderer, mesh a fyziku kvůli dvěma kostkám, co dopadnou za vteřinu. Stačí
+zaoblený čtverec se světlem vlevo nahoře, tmavší hrana pod ním místo vytažení a
+stín. Ve velikosti, v jaké to telefon na stole ukazuje, to čte jako předmět —
+a víc dělat nemusí. Kreslené `react-native-svg`, žádný nový balík.
 
-### 18.6 Velká čísla se neklikají
+**Rekvizita je hlavní, tlačítko vedlejší.** Jantarový pruh přes celou šířku pod
+kostkami dělal z tlačítka nejhlasitější věc na obrazovce, jejíž celý smysl je,
+co právě dopadlo.
 
-Blok velkých numerálů je nadpis, ne ovládací prvek. Nedávej pod něj `Pressable`
-ani "rozklikni pro víc" — vypadá jako obsah, chová se jako tlačítko, a uživatel
-to najde omylem.
+### 21.4 Fyzické hry žijí ve WebView
 
-Které číslo se ukáže, je **produktové pravidlo s testy**, ne pevný řádek. „U
-stolu" dává smysl jen když u stolu někdo je; sám sobě by uživatel četl vlastní
-počet dvakrát. Radši dvě pravdivá čísla než tři s pomlčkou. Viz
-`src/party/nightPulse.ts` (`hubStats`).
+Devět her je obsah plus skořápka v React Native. **Výjimka je jedna: hra, jejíž
+podstata je fyzika.** Kostky, které se odrazí od mantinelu a dokutálí se nakřivo,
+se v RN nedají udělat bez `expo-gl` + three + fyzikálního enginu, tedy tří
+nativních závislostí a megabajtů v binárce.
 
-## 20. Otevřená rozhodnutí 3.0
+Ve WebView stojí three.js i cannon-es **nulu navíc**, protože jsou to jen skripty
+na stránce. `react-native-webview` obaluje systémový WKWebView, takže do velikosti
+appky nepřidává engine — a od té chvíle je každá další fyzická hra jen HTML
+soubor, co jde ven přes `eas update`.
 
-Mocky v `src/mocks/`, `src/feed/`, `src/party/`, `src/pubs/`, `src/community/`, `src/profile/`
-a `src/search/` se v pěti věcech **vědomě rozcházejí s tímhle dokumentem**. Rozcházejí se, protože
-jsou to návrhy k posouzení, ne přijatá pravidla. Dokud rozhodnutí nepadne, neaplikuj je na
-produkční obrazovky — a až padne, změň **dokument**, ne kód lokální výjimkou (§0).
+Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
+
+1. **Do WebView jde jen plátno.** Texty, seznamy, počítadla a jména zůstávají
+   v RN — to je UI aplikace, ne hra.
+2. **Most je úzký.** Sem „hoď“ a „obarvi se“, ven „padlo tohle“. Barva je
+   jediná věc, kterou plátno o hráčích ví — **žádná jména dovnitř**. U telefonu,
+   co koluje kolem stolu, se „tyhle jsou Honzovy“ přečte z barvy dřív, než by
+   kdo četl popisek.
+3. **Text zůstává v RN, i když leží přes plátno.** Zvolání po dosednutí je
+   vrstva nad WebView, ne text ve stránce — tím zůstane skutečným textem
+   s Dynamic Type, VoiceOver a písmem aplikace, a přitom vypadá, že dopadlo na
+   sukno.
+4. **Simulace JE náhoda.** Čísla jdou ven, ne dovnitř. Nic si předem nevybere
+   výsledek a neanimuje se k němu — hod je opravdu spravedlivý, což předstíraný
+   hod nikdy není.
+5. **Žádná síť.** Hra se sestaví do jednoho HTML s vloženými knihovnami
+   (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
+6. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
+
+**Hra se ladí v prohlížeči, ne v simulátoru.** `npm run games:dev` ji sestaví a
+otevře jako obyčejnou stránku; když si všimne, že na druhé straně není most,
+přidá si vlastní tlačítko a výpis výsledku. Doladit pocit z hodu tak stojí
+reload, ne nativní build, simulátor a čtyři obrazovky proklikávání. To je rozdíl
+mezi hrou, která se doladí, a hrou, co vyjde tak, jak poprvé spadla.
+
+Past, na kterou se přijde těžko: hra se načítá jako asset (`.html` v
+`assetExts`). Když Metro drží cache z doby před tou změnou konfigurace, import
+routy selže a expo-router to nahlásí jako **„Cannot read property 'ErrorBoundary'
+of undefined“** — hláška, která nemíří ani zdaleka k příčině. Řeší to
+`npx expo start --clear`.
+
+### 21.5 Herní vrstva
+
+Mezi appkou a hrou je **definovaná vrstva**, ne most šitý na míru jedné hře.
+Tři soubory, a desátá hra nepřidá čtvrtý:
+
+| soubor | čí je | co dělá |
+|---|---|---|
+| `src/games/protocol.ts` | **obou stran** | tvary zpráv a verze |
+| `src/games/web/sdk.ts` | hra | obálka, verze, dev harness |
+| `src/games/GameHost.tsx` | appka | jeden WebView hostitel pro všechny hry |
+
+Protokol importují **obě strany** — RN i stránka přes esbuild alias — takže když
+se tvar zprávy změní, nepřeloží se ani jedna. To je ten smysl.
+
+**Zprávy do hry:** `init` (hráči, téma, options), `turn`, `command` (sloveso,
+které si hra deklaruje — „roll“, „spin“, „draw“).
+**Ven:** `ready`, `state` (celý stav po každé změně), `event` (jednorázová
+novinka), `result` (skóre, vítěz, kdo platí), `error`.
+
+**Pravidla vlastní hra, ne platforma.** Hra si počítá kola, pořadí i konec a po
+každé změně pošle **snímek celého stavu**. Appka z něj kreslí všechen text —
+„Honza hází“, žebříček, výsledky kola. Logika je tak na jednom místě vedle věci,
+kterou řídí, a texty zůstávají skutečnými texty s Dynamic Type a VoiceOverem.
+
+Snímek, ne rozdíl: obrazovka, která se kreslí z celého stavu, se nemůže rozejít
+s hrou, když jí unikne jeden rámec.
+
+Pravidla jsou obyčejný TypeScript v repu (`src/games/web/dice/rules.ts`), takže
+je jest testuje jako cokoliv jiného — sedm testů hlídá konec hry. Appka si ten
+samý modul importuje **jen pro případ, kdy plátno není vůbec** (reduced motion,
+build bez WebView). Jedna pravidla, dva hostitelé, nikdy dvě implementace.
+
+Tři pravidla, která ty tvary vynucují:
+
+1. **Plátno smí zdobit, ne vyprávět.** Hráč je `id`, `barva` a — jen tam, kde je
+   popsaný sám předmět, třeba jméno na výseči kola — krátký `label`. Popisek
+   **namalovaný na** točícím se předmětu je jeho součást, jako číslo v ruletové
+   kapse. Věta, která říká, kdo byl vybrán, se pořád kreslí v RN, kde má typografii
+   aplikace, Dynamic Type a hlas.
+2. **Hra je zdroj náhody.** Výsledky jdou ven, ne dovnitř.
+3. **Hra končí tím, že to řekne.** `result` má stejný tvar pro všechny hry —
+   je to to, co konzumuje recap, feed i sdílený backend.
+
+Appka pošle `init` **až po `ready`**. Dřív by dorazil, než se SDK stihne
+přihlásit, a tiše by se ztratil.
+
+### 21.6 Konec hry patří platformě
+
+Hra ohlásí `result` a skončí; obrazovku kreslí **`GameResult`**, jedna pro
+všechny hry. Výsledek nese jména a tváře, musí vypadat stejně napříč hrami a ta
+samá data pak čte thread, recap i feed.
+
+**Tvar se odvozuje z dat, ne z příznaku, který hra pošle.** Jedno jméno nahoře
+vzniká z `payingId` nebo `winnerId`; tabulka pod ním se objeví, když hra vrátila
+**víc než jedno skóre**, a nezobrazí se, když ne. Hra, která vybírá jednoho
+člověka, pošle prázdné skóre a dostane jednu tvář; kvíz pošle pět a dostane
+žebříček s vítězem vypsaným nad ním. Ani jedna neříká, co chce.
+
+`variant` prop je věc, kterou může hra splést. „Je tu `payingId`, takže někdo
+platí“ splést nejde.
+
+Hra na pití dojde k „Dohráno“ nebo „Platí X“, **nikdy k vítězi** — jediná
+tabulka, kterou by mohla vyrobit, je kdo nejvíc pil.
+
+Plátno si přesto smí konec **oslavit** — konfety, rozsvícená vítězná výseč. To je
+zdobení, ne vyprávění.
+
+### 21.7 Hra na víc telefonů má tři stavy, ne dva
+
+Pub kvíz je první hra, kde **každý hraje na svém**. To mění, co obrazovka je:
+nekreslí stůl, kreslí pohled jednoho hráče na společnou otázku a nikdy nepředstírá,
+že ví víc, než ten telefon může vidět.
+
+| stav | co je vidět |
+|---|---|
+| ptá se | otázka a čtyři možnosti |
+| **zamknuto** | tvoje odpověď je daná, chybějící jména jsou vypsaná |
+| odhaleno | správná odpověď — až když odpověděli všichni |
+
+**Zamknuto je vlastní stav, ne mezikrok.** Odhalit ve chvíli, kdy odpovíš *ty*,
+znamená, že nejrychlejší u stolu odpověď přečte nahlas — a hospoda je přesně
+místo, kde tohle nezůstane teoretické. Odpověď se taky nedá měnit; kvíz, ve kterém
+si můžeš odpověď rozmyslet, když vidíš ostatní, není kvíz.
+
+Čekání musí jít **přerušit** („Nečekat“). Někdo je na baru a hra, kterou odemkne
+jenom člověk, co odešel, končí právě tam.
+
+Skóruje se **po týmech**, a člověk hrající sám je tým o jednom. Party a komunitní
+event jsou tím pádem jedna hra, ne dvě — kdyby se to psalo po lidech a týmy se
+přidaly potom, každé pravidlo by existovalo dvakrát a ty dvě verze by se rozešly.
+
+Stav je fold nad **append-only seznamem odpovědí**, nikdy uložený součet. Dva
+telefony můžou odpovědět ve stejnou chvíli, pořadí nehraje roli, retry nemůže
+započítat dvakrát a telefon, co byl offline, pošle svoje pozdě a nic se neslučuje.
+Je to zároveň přesně tvar, který drží backend (`PartyGameEvent`, kind `answer`).
+
+### 21.8 Hry, které máme (WebView)
+
+| hra | plátno | co vrací |
+|---|---|---|
+| Kostky | 3D, fyzika (three + cannon) | `state` po každém hodu, `result` na konci |
+| Flaška | 3D, roztočená láhev | `picked` po každém zastavení, nikdy nekončí |
+| Kdo platí rundu | 3D kolo štěstí se jmény | `picked` a rovnou `result` — runda má jednoho plátce |
+
+Kostky a Flaška se točí dál, dokud stůl nemá dost. Kolo **končí prvním
+zastavením**, protože runda má právě jednoho plátce — a přesně kvůli tomuhle
+rozdílu je v protokolu `result` a nestačí `event`.
+
+Každá hra je jeden HTML soubor (~520–600 kB s vloženými knihovnami). Three.js je
+v každém zvlášť; při osmi hrách to bude stát za sdílený chunk, do té doby je
+samostatnost souboru cennější než ušetřené megabajty.
+
+---
+
+# ČÁST III — Otevřená práce a rozhodnutí
+
+## Cover artwork her — největší kus
+
+Dnes má každá hra dvoubarevný gradient a Lucide glyf. Funguje to a šlo to ven,
+ale devět gradientů vedle sebe vypadá jako devět tlačítek. Potřeba: **devět
+coverů, jeden styl.**
+
+| | |
+|---|---|
+| formát | PNG, průhledné pozadí **ne** — cover je plná plocha |
+| poměr | 3:2 (kreslí se na šířku karty, výška 112–150 pt) |
+| export | `assets/games/covers/<key>@3x.png` + `@2x` |
+| velikost | @3x ≈ 1200×800 px; generuj větší a zmenši |
+| klíče | `quiz`, `dice`, `categories`, `never`, `kings`, `round`, `bottle`, `thumb`, `rules` |
+
+**Na co si dát pozor.** Devět samostatných pokusů = devět stylů. Postup, který
+fungoval u odznaků (`docs/badge-art-brief.md`): udělej **jeden** cover, dolaď ho
+do finále, a pak ho přikládej ke každému dalšímu jako referenci stylu.
+
+Cover se překrývá názvem hry a play buttonem, takže **dolní třetina musí být
+klidná** — tam jde text. Žádný text v obrázku; názvy jsou v appce a musí jít
+změnit bez překreslení.
+
+## Onboarding
+
+Ilustrace jsou pryč, místo nich jsou tři skutečné kusy appky: kompasová buňka,
+čísla večera s vláknem, žebříček. Reálné komponenty s natvrdo danými propsy, ne
+obrázky — takže když se změní design buňky, změní se i promo.
+
+Tři staré PNG v `assets/images/onboarding/` čekají na smazání, až autor
+potvrdí, že náhrada sedí.
+
+## Akce v komunitě
+
+Dnes: gradient s datem v rohu. Události mají místo, čas a lidi — poster tam dává
+smysl líp než u výzev. Otevřená otázka: **kdo poster dodá?** Pořadatel při
+zakládání akce, nebo se generuje z názvu a data?
+
+## Paleta iniciálových avatarů
+
+Šest odstínů pro iniciálová pozadí (§20.10) čeká na potvrzení nebo přepsání:
+`#7DD66B`, `#F0BE5C`, `#A8896A`, `#FBF3E0`, `#6FB3D9`, `#D98C6F`.
+
+## Vědomé odchylky mocků
+
+Mocky v `src/mocks/`, `src/feed/`, `src/party/`, `src/pubs/`, `src/community/`,
+`src/profile/` a `src/search/` se v těchhle věcech **vědomě rozcházejí s tímhle
+dokumentem**. Jsou to návrhy k posouzení, ne přijatá pravidla. Dokud rozhodnutí
+nepadne, neaplikuj je na produkční obrazovky — a až padne, změň **dokument**, ne
+kód lokální výjimkou (§0).
 
 | Věc | Dokument říká | Mocky dělají |
 |---|---|---|
-| ~~Ground~~ | **Rozhodnuto 1. 8. 2026** — tmavší zem přijata, §2.1 přepsán. `MockColors` je teď jen alias. |
-| ~~Písmo~~ | **Rozhodnuto 1. 8. 2026** — systémové, §3.1 přepsán. `fontFamily` z appky pryč. |
 | Radiusy | 12–24 | 20–34 |
 | Karty | Obsah žije v kartách (§5) | Posty na ploše, oddělené tmavým pásem |
 | Sekce | Oddělené mezerou | `SectionBreak` — 10 pt tmavý pás, nadpis **pod** ním |
 
-**Dluh po přechodu na systémové písmo.** Deset a víc míst kompenzuje metriku
-Baloo 2 — `lineHeight: size * 1.24`, protože ExtraBold přetéká, a odhad šířky
-číslice `0.62 × fontSize` v `CoasterCard`. SF má jinou metriku: řádkové boxy jsou
-teď volnější a odhad šířky konzervativnější, než je potřeba. Nic rozbitého, ale
-při dalším zásahu do těch souborů to přepočítej.
+Už rozhodnuté (1. 8. 2026): tmavší zem (§2.1 přepsán, `MockColors` je alias)
+a systémové písmo (§3 přepsán, `fontFamily` z appky pryč).
 
-Šestá věc, která rozhodnutí nepotřebuje, ale nesmí se zapomenout: **`pravatar.cc` a `picsum.photos`
-placeholdery nesmí opustit mocky.** Reálné avatary jsou `Account.avatar`, fotky `BeerPhoto`.
+## Otevřená produktová rozhodnutí
+
+- **Auto-friendship.** Doporučení: auto-**návrh**, ne automatická vazba. Sedět
+  s někým v hospodě není souhlas s trvalou sociální vazbou.
+- **Verze bez přihlášení** — co se stane s lokálními záznamy, když se člověk
+  přihlásí do účtu, který už data má (`docs/no-account-mode.md`).
+- **Názvosloví** pro sledování: „Sledovat“ vs „Parťák“ (§20.8).
+- **Monetizace.** Free/pro hranice není daná. Sdílený večer a hry jsou levné;
+  drahé jsou datové a proxy části.
+
+## Co nedělat
+
+- **Světlý režim.** Odložený vědomě — zdvojil by práci na každé obrazovce.
+- **Grafy v běžícím večeru.** Patří do recapu (§20.2).
+- **Cokoliv, co počítá promile, útratu nebo čas do řízení.** Rozhodnuto
+  a nediskutovatelné (`docs/decisions/no-bac-or-driving-estimates.md`).
+- **Žebříček, který korunuje toho, kdo nejvíc vypil.** Hra na pití nemá vítěze.
+
+## Jak předávat assety
+
+Cokoliv rastrového do `assets/`, `@2x` a `@3x`, nic většího než 3x. Rozhodnutí
+(barvy, pravidla, kde co je) rovnou do tohohle dokumentu — je závazný a rozpor
+se řeší jeho změnou.
+

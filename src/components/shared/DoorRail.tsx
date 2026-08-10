@@ -6,7 +6,7 @@
  * treatment for the same reason, so the presentation lives here and each screen
  * only decides which doors it shows.
  *
- * Rules it carries (docs/design-system.md §5.5): equal columns, one 34pt amber
+ * Rules it carries (docs/DESIGN.md §5.5): equal columns, one 34pt amber
  * medallion each, separated by light and never by a frame, and it navigates —
  * it never counts, mutates or competes with the screen's one amber button.
  */

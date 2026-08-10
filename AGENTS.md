@@ -44,6 +44,8 @@ Kód, názvy proměnných, názvy souborů a kódové komentáře piš anglicky.
 
 ## Design and UX
 
+**Závazný zdroj pravdy pro design je `docs/DESIGN.md`** — produktová specifikace 3.0, kompletní design systém (barvy, typografie, karty, sheety, pohyb, navigace, hry) i otevřená designová rozhodnutí. Když stavíš nebo měníš UI, čti ho a hodnoty z něj kopíruj; rozpor se řeší změnou toho dokumentu, ne lokální výjimkou.
+
 Směr je premium deníček se statistikami, profily a komunitou, ale pořád hravý a český. Nemá to být levná pivní sranda ani šedý formulář.
 
 Kompas je zatím hlavní funkce a ikonický prvek. Nové funkce ho nemají zbytečně rozbít, i když dlouhodobě už nebude celý produkt stát jen na něm.

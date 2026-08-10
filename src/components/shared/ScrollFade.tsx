@@ -8,7 +8,7 @@
  * instead. Purely decorative: absolute, `pointerEvents="none"`, no layout cost.
  *
  * It is NOT a full-screen gradient (see the anti-pattern list in
- * docs/design-system.md) — it is 28pt of the page's own background colour.
+ * docs/DESIGN.md) — it is 28pt of the page's own background colour.
  */
 import React from 'react';
 import { StyleSheet, View } from 'react-native';

@@ -1,7 +1,7 @@
 /**
  * The contract between the app and a game — the only thing both sides share.
  *
- * Games are HTML pages in a WebView (see `docs/design-system.md` §18.11b). The
+ * Games are HTML pages in a WebView (see `docs/DESIGN.md` §21.4). The
  * app is the platform: it owns who is playing, whose turn it is, the score and
  * what the evening does with the result. A game owns a rectangle, and inside it
  * whatever it needs to be fun.
