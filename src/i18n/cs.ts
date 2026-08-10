@@ -1975,6 +1975,7 @@ export const cs = {
 
     // — Chronology under the card —
     olderHeader: 'Starší večery',
+    manualHeader: 'Dopsaná piva',
     pending: 'čeká na odeslání',
     // "12. 6. · 5 piv · 320 Kč"
     nightMeta: (parts: string[]) => parts.filter(Boolean).join(' · '),
@@ -2024,6 +2025,8 @@ export const cs = {
   profile: {
     // — Tab header —
     title: 'Profil',
+    diaryTitle: 'Pivní deník',
+    privateDiary: 'Soukromý pivní deník',
 
     // — Tácek rebuild: one card, one amber button, the rest behind "…" —
 
@@ -2947,6 +2950,7 @@ export const cs = {
       `${beers} za život. ${level}. Ťukni pro odznaky.`,
     profileBadges: 'Otevřít odznaky',
     profileIdentity: 'Upravit profil',
+    profileDiary: 'Otevřít soukromý pivní deník',
 
     // — Parta —
     partaMore: 'Co ještě? Nastavení, žebříčky a další',

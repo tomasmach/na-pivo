@@ -2,6 +2,7 @@ import { Pressable } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SettingsIcon } from '@/components/shared/IconGlyph';
+import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
 
 /**
@@ -46,6 +47,19 @@ export default function ProfileLayout() {
               <SettingsIcon size={20} color={Colors.amber} />
             </Pressable>
           ),
+        }}
+      />
+      <Stack.Screen
+        name="diary"
+        options={{
+          title: cs.profile.diaryTitle,
+          headerLargeTitle: false,
+          // A pushed small-title bar otherwise picks iOS' light scroll-edge
+          // material even though the whole diary is stout. Pin this route to
+          // the dark product surface so the foam title keeps its contrast.
+          headerStyle: { backgroundColor: Colors.stout },
+          headerTintColor: Colors.foam,
+          headerTitleStyle: { color: Colors.foam },
         }}
       />
     </Stack>

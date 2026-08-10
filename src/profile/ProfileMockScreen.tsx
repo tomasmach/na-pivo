@@ -46,12 +46,43 @@ import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { useMyStatsState } from '@/stats/useMyStats';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
+import { ChevronRightIcon, HistoryIcon } from '@/components/shared/IconGlyph';
+import { trackUiInteraction } from '@/data/uxTelemetry';
+import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
+
+/**
+ * The private diary is a first-class profile surface, not another activity
+ * filter. Published nights stay under Aktivita; this door opens every local,
+ * private and queued record without requiring an account or a network.
+ */
+export function ProfileDiaryDoor({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.diaryDoor, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.a11y.profileDiary}
+    >
+      <View style={styles.diaryDoorIcon}>
+        <HistoryIcon size={20} color={Colors.amber} />
+      </View>
+      <Text
+        style={styles.diaryDoorLabel}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.heading}
+      >
+        {cs.profile.privateDiary}
+      </Text>
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
 
 function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string; reduceMotion: boolean }) {
   const router = useRouter();
@@ -261,6 +292,13 @@ export default function ProfileMockScreen() {
         </View>
       </View>
 
+      <ProfileDiaryDoor
+        onPress={() => {
+          trackUiInteraction('profile_diary_open');
+          router.push('/profile/diary' as Href);
+        }}
+      />
+
       {/* Sign-in is the one thing this screen may ask for, and only when there
           is genuinely nothing to ask twice. */}
       {signedIn ? null : (
@@ -414,6 +452,34 @@ const styles = StyleSheet.create({
   avatar: { width: 68, height: 68, borderRadius: 34 },
   handle: { fontSize: 24, fontWeight: '800', color: Colors.foam, letterSpacing: -0.4 },
   since: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
+
+  diaryDoor: {
+    minHeight: MockLayout.rowHeight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    backgroundColor: Colors.stout2,
+  },
+  diaryDoorIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  diaryDoorLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.foam,
+  },
 
   cta: {
     height: MockLayout.buttonHeight,

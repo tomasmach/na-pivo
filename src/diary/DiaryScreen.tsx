@@ -34,11 +34,12 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel, beerNoun, czechPlural } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
-import { ChevronRightIcon, MenuIcon } from '@/components/shared/IconGlyph';
+import { ChevronRightIcon, LockKeyholeIcon, MenuIcon } from '@/components/shared/IconGlyph';
 
 import { NightCard } from '@/diary/NightCard';
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { DiaryStatsSheet, type StatRow } from '@/diary/DiaryStatsSheet';
+import { mergeDiaryCheckIns } from '@/diary/diaryCheckIns';
 
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -49,7 +50,7 @@ import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useAccountStore } from '@/stores/accountStore';
+import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import {
   useTallyStore,
   allSessionsNewestFirst,
@@ -172,10 +173,139 @@ function NightRow({
   );
 }
 
+function shortHistoricalDate(startIso: string, endIso?: string | null): string {
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs)) return '';
+  const start = new Date(startMs);
+  const date = start.toLocaleDateString('cs-CZ', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+  const startTime = start.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const endMs = endIso ? Date.parse(endIso) : Number.NaN;
+  if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
+  const end = new Date(endMs);
+  const endTime = end.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${date} ${startTime}–${endTime}${end.toDateString() !== start.toDateString() ? ' +1' : ''}`;
+}
+
+function historicalMeta(checkIn: BeerCheckIn, priceCurrency: PriceCurrency): string {
+  const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
+  return cs.diary.nightMeta([
+    quantity > 1 ? `${quantity}×` : '',
+    checkIn.priceCzk != null ? formatPrice(checkIn.priceCzk * quantity, priceCurrency) : '',
+    checkIn.pubName || cs.myBeers.historicalNoPub,
+    shortHistoricalDate(checkIn.checkedInAt, checkIn.endedAt),
+  ]);
+}
+
+function optimisticCheckIn(input: BeerCheckInInput): BeerCheckIn {
+  const now = new Date().toISOString();
+  return {
+    id: input.clientId,
+    account: {
+      id: '',
+      nickname: null,
+      displayName: '',
+      avatarUrl: null,
+      isPublic: false,
+    },
+    clientId: input.clientId,
+    beerName: input.beerName,
+    breweryName: input.breweryName ?? '',
+    beerStyle: input.beerStyle ?? '',
+    abv: input.abv ?? null,
+    quantity: input.quantity ?? 1,
+    priceCzk: input.priceCzk ?? null,
+    rating: input.rating ?? null,
+    note: input.note ?? '',
+    tags: input.tags ?? [],
+    pubCacheKey: input.pubCacheKey ?? '',
+    pubName: input.pubName ?? '',
+    pubCity: input.pubCity ?? '',
+    visitClientId: input.visitClientId ?? null,
+    visibility: input.visibility,
+    checkedInAt: input.checkedInAt ?? now,
+    endedAt: input.endedAt ?? null,
+    reactions: { cheers: 0 },
+    myReaction: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+interface DiaryCheckInState {
+  owner: string;
+  pendingCount: number;
+  loadFailed: boolean;
+  remote: BeerCheckIn[];
+  pending: BeerCheckIn[];
+}
+
+function emptyCheckInState(owner: string): DiaryCheckInState {
+  return {
+    owner,
+    pendingCount: 0,
+    loadFailed: false,
+    remote: [],
+    pending: [],
+  };
+}
+
+function HistoricalCheckInRow({
+  checkIn,
+  priceCurrency,
+  isFirst,
+  onPress,
+}: {
+  checkIn: BeerCheckIn;
+  priceCurrency: PriceCurrency;
+  isFirst: boolean;
+  onPress: () => void;
+}) {
+  const meta = historicalMeta(checkIn, priceCurrency);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        !isFirst && styles.rowDivider,
+        pressed && styles.rowPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
+    >
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {checkIn.beerName}
+        </Text>
+        <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {meta}
+        </Text>
+      </View>
+      {checkIn.visibility === 'private' ? (
+        <LockKeyholeIcon size={15} color={Colors.mutedText} />
+      ) : null}
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export interface DiaryScreenProps {
   embedded?: boolean;
+  /** Room for absolutely positioned bottom chrome, such as the 3.0 tab bar. */
+  bottomInset?: number;
   /** Set by the host (BeerScreen) when the "…" door sits in its header row
    *  instead of ours; leaving it undefined keeps the screen self-contained. */
   statsOpen?: boolean;
@@ -184,6 +314,7 @@ export interface DiaryScreenProps {
 
 export default function DiaryScreen({
   embedded = false,
+  bottomInset = 0,
   statsOpen: statsOpenProp,
   onStatsClose,
 }: DiaryScreenProps = {}) {
@@ -206,6 +337,8 @@ export default function DiaryScreen({
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const remote = useMyStats();
+  const signedIn = useAccountStore(selectIsSignedIn);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   // Inherited from the profile's stats grid, which the rebuild removed.
   const ratingsCount = usePubRatingsStore((s) => Object.keys(s.ratings).length);
   const walkedM = useAccountStore((s) => s.profile?.usage?.walkedDistanceM ?? null);
@@ -223,23 +356,56 @@ export default function DiaryScreen({
     if (statsControlled) onStatsClose?.();
     else setOwnStatsOpen(false);
   }, [statsControlled, onStatsClose]);
-  const [pendingCount, setPendingCount] = useState(0);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [diaryToken, setDiaryToken] = useState(0);
+  const checkInOwner = accountId ?? 'local';
+  const [checkInState, setCheckInState] = useState<DiaryCheckInState>(() =>
+    emptyCheckInState(checkInOwner),
+  );
+  const activeCheckIns = useMemo(
+    () =>
+      checkInState.owner === checkInOwner
+        ? checkInState
+        : emptyCheckInState(checkInOwner),
+    [checkInOwner, checkInState],
+  );
 
-  // The diary fetch only feeds the "waiting to send" nudge and the failure
-  // strip; the trail itself is local, so nothing here blocks the screen.
+  // Manual historical entries use the released beer-check-in API and its
+  // offline queue. Keep both sources on this surface: a queued row must appear
+  // immediately and remain visible until the server returns that client id.
   useEffect(() => {
     const controller = new AbortController();
     void getPendingBeerCheckIns().then((pending) => {
-      if (!controller.signal.aborted) setPendingCount(pending.length);
+      if (controller.signal.aborted) return;
+      setCheckInState((current) => {
+        const base = current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
+        return {
+          ...base,
+          pendingCount: pending.length,
+          pending: pending.map(optimisticCheckIn),
+        };
+      });
     });
+    // No-account mode owns only local/queued data. A missing account is not a
+    // network failure and must not turn the offline diary into an error state.
+    if (!signedIn) return () => controller.abort();
     void fetchMyBeerCheckIns(controller.signal).then((items: BeerCheckIn[] | null) => {
       if (controller.signal.aborted) return;
-      setLoadFailed(items === null);
+      setCheckInState((current) => {
+        const base = current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
+        return {
+          ...base,
+          loadFailed: items === null,
+          remote: items ?? [],
+        };
+      });
     });
     return () => controller.abort();
-  }, [diaryToken]);
+  }, [checkInOwner, diaryToken, signedIn]);
+
+  const visibleCheckIns = useMemo(
+    () => mergeDiaryCheckIns(activeCheckIns.pending, activeCheckIns.remote),
+    [activeCheckIns.pending, activeCheckIns.remote],
+  );
 
   const sessions = useMemo(() => allSessionsNewestFirst(current, history), [current, history]);
   const nights = useMemo(() => sessions.filter((s) => s.drinks.length > 0), [sessions]);
@@ -407,23 +573,31 @@ export default function DiaryScreen({
 
   // ── One nudge, one priority, never two at once.
   const nudge: Nudge | null = useMemo(() => {
-    if (loadFailed) {
+    if (activeCheckIns.loadFailed) {
       return {
         kind: 'counted',
         text: cs.diary.loadFailed,
         undoLabel: cs.diary.retry,
         onUndo: () => {
           trackUiInteraction('diary_retry', 'retry');
-          setLoadFailed(false);
+          setCheckInState((current) => {
+            const base =
+              current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
+            return { ...base, loadFailed: false };
+          });
           setDiaryToken((token) => token + 1);
         },
       };
     }
-    if (pendingCount > 0) {
-      return { kind: 'dopito', label: cs.diary.queued(pendingCount), onPress: () => undefined };
+    if (activeCheckIns.pendingCount > 0) {
+      return {
+        kind: 'dopito',
+        label: cs.diary.queued(activeCheckIns.pendingCount),
+        onPress: () => undefined,
+      };
     }
     return null;
-  }, [loadFailed, pendingCount]);
+  }, [activeCheckIns.loadFailed, activeCheckIns.pendingCount, checkInOwner]);
 
   const openEvening = useCallback(
     (session: TallySession) => {
@@ -433,9 +607,20 @@ export default function DiaryScreen({
     [router],
   );
 
-  const handleHistoricalSaved = useCallback((_entries: BeerCheckInInput[]) => {
-    setDiaryToken((token) => token + 1);
-  }, []);
+  const handleHistoricalSaved = useCallback(
+    (entries: BeerCheckInInput[]) => {
+      setCheckInState((current) => {
+        const base = current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
+        return {
+          ...base,
+          pending: mergeDiaryCheckIns(entries.map(optimisticCheckIn), base.pending),
+          pendingCount: base.pendingCount + entries.length,
+        };
+      });
+      setDiaryToken((token) => token + 1);
+    },
+    [checkInOwner],
+  );
 
   const lastNoun = lastNight ? nightNoun(lastNight) : null;
   const lastSpentCzk = lastNight ? sessionTotalCzk(lastNight) : 0;
@@ -451,7 +636,10 @@ export default function DiaryScreen({
     <View
       style={[
         styles.root,
-        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        {
+          paddingTop: topInset,
+          paddingBottom: Math.max(insets.bottom, Spacing.sm) + bottomInset,
+        },
       ]}
     >
       {/* Embedded in the Štamgast tab the "…" door sits next to the segmented
@@ -471,7 +659,7 @@ export default function DiaryScreen({
         </View>
       )}
 
-      {lastNight && lastNoun ? (
+      {lastNight || visibleCheckIns.length > 0 ? (
         // The trail and the fade that ends it share one box, exactly like Parta:
         // an absolute child that overflows its parent gets clipped on Android.
         <View style={styles.body}>
@@ -480,28 +668,33 @@ export default function DiaryScreen({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <NightCard
-              // With nothing under it the card takes the leftover height, exactly
-              // like the counter's coaster — a short card with 300pt of empty
-              // stout beneath it is the wireframe look, not airy design.
-              style={olderNights.length === 0 ? styles.cardGrow : undefined}
-              count={lastNoun.count}
-              nounLabel={lastNoun.noun}
-              whenLabel={
-                isRunning
-                  ? `${eveningDateLabel(lastNight.startedAt, now)} · ${cs.diary.running}`
-                  : eveningDateLabel(lastNight.startedAt, now)
-              }
-              placeLabel={lastNight.pubName || cs.diary.noPub}
-              spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
-              nights={nights.length}
-              onPress={() => openEvening(lastNight)}
-              accessibilityLabel={cs.a11y.diaryCard(
-                beerCountLabel(lastNoun.count),
-                lastNight.pubName || cs.diary.noPub,
-                eveningDateLabel(lastNight.startedAt, now),
-              )}
-            />
+            {lastNight && lastNoun ? (
+              <NightCard
+                // A manual row is real content below the hero, so the card only
+                // grows when it is genuinely the diary's single item.
+                style={
+                  olderNights.length === 0 && visibleCheckIns.length === 0
+                    ? styles.cardGrow
+                    : undefined
+                }
+                count={lastNoun.count}
+                nounLabel={lastNoun.noun}
+                whenLabel={
+                  isRunning
+                    ? `${eveningDateLabel(lastNight.startedAt, now)} · ${cs.diary.running}`
+                    : eveningDateLabel(lastNight.startedAt, now)
+                }
+                placeLabel={lastNight.pubName || cs.diary.noPub}
+                spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
+                nights={nights.length}
+                onPress={() => openEvening(lastNight)}
+                accessibilityLabel={cs.a11y.diaryCard(
+                  beerCountLabel(lastNoun.count),
+                  lastNight.pubName || cs.diary.noPub,
+                  eveningDateLabel(lastNight.startedAt, now),
+                )}
+              />
+            ) : null}
 
             {olderNights.length > 0 ? (
               <>
@@ -517,6 +710,37 @@ export default function DiaryScreen({
                       now={now}
                       isFirst={index === 0}
                       onPress={() => openEvening(session)}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : null}
+
+            {visibleCheckIns.length > 0 ? (
+              <>
+                <Text
+                  style={[styles.olderHeader, !lastNight && styles.firstListHeader]}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.diary.manualHeader}
+                </Text>
+                <View style={styles.rowsCard}>
+                  {visibleCheckIns.map((checkIn, index) => (
+                    <HistoricalCheckInRow
+                      key={checkIn.clientId || checkIn.id}
+                      checkIn={checkIn}
+                      priceCurrency={priceCurrency}
+                      isFirst={index === 0}
+                      onPress={() => {
+                        trackUiInteraction('diary_beer_open');
+                        router.push({
+                          pathname: '/beer-detail',
+                          params: {
+                            beer: checkIn.beerName,
+                            brewery: checkIn.breweryName,
+                          },
+                        });
+                      }}
                     />
                   ))}
                 </View>
@@ -579,7 +803,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
-    paddingHorizontal: 24,
+    paddingHorizontal: Spacing.lg,
     gap: 12,
   },
   header: {
@@ -617,6 +841,9 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     includeFontPadding: false,
   },
+  firstListHeader: {
+    marginTop: 0,
+  },
   rowsCard: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.cardLarge,
@@ -626,7 +853,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   row: {
-    minHeight: 64,
+    minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,

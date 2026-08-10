@@ -18,6 +18,7 @@ describe('productScreenFromPathname', () => {
   it.each([
     ['/', 'compass'],
     ['/beer', 'beer'],
+    ['/profile/diary', 'diary'],
     ['/profile/parta/', 'party_settings'],
     ['/parta/abc-123', 'friend_profile'],
     ['/photo/u2fkbn1z?source=diary', 'photo_detail'],

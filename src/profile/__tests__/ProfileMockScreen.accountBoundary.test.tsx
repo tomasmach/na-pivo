@@ -1,8 +1,9 @@
 import React from 'react';
 
 import type { PublishedNight } from '@/data/nightsClient';
+import { cs } from '@/i18n/cs';
 
-import { ProfileActivity } from '../ProfileMockScreen';
+import { ProfileActivity, ProfileDiaryDoor } from '../ProfileMockScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,6 +42,10 @@ jest.mock('@/profile/AchievementGrid', () => ({ AchievementGrid: () => null }));
 jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('@/components/shared/TabBar', () => ({ TAB_CHROME: 80 }));
 jest.mock('@/components/shared/UnderlineTabs', () => ({ UnderlineTabs: () => null }));
+jest.mock('@/components/shared/IconGlyph', () => ({
+  ChevronRightIcon: () => null,
+  HistoryIcon: () => null,
+}));
 jest.mock('@/stores/accountStore', () => ({
   selectIsSignedIn: () => true,
   useAccountStore: () => null,
@@ -173,5 +178,20 @@ describe('ProfileActivity account boundary', () => {
     await act(settleEffects);
 
     expect(renderedNights(renderer!)).toEqual([cachedNight]);
+  });
+});
+
+describe('ProfileDiaryDoor', () => {
+  it('exposes the private diary as a normal profile action', () => {
+    const onPress = jest.fn();
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(<ProfileDiaryDoor onPress={onPress} />);
+    });
+
+    const door = renderer!.root.findByProps({ accessibilityLabel: cs.a11y.profileDiary });
+    act(() => door.props.onPress());
+
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 });
