@@ -402,11 +402,15 @@ function BeerFormBody({
     Spacing.xs + actionsHeight + bottomPad + 2;
   const hasMeasuredEditSheet =
     formContentHeight > 0 && headerHeight > 0 && actionsHeight > 0;
+  const measuredVisibleEditHeight =
+    keyboardHeight > 0
+      ? measuredEditHeight - actionsHeight - Spacing.xs
+      : measuredEditHeight;
   const sheetHeight =
     mode === 'edit'
       ? Math.min(
           maxHeight,
-          hasMeasuredEditSheet ? measuredEditHeight : EDIT_SHEET_FALLBACK_HEIGHT,
+          hasMeasuredEditSheet ? measuredVisibleEditHeight : EDIT_SHEET_FALLBACK_HEIGHT,
         )
       : undefined;
 
