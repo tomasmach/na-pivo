@@ -70,6 +70,7 @@ from rest_framework.views import APIView
 from pubs import accounts, emailer
 from pubs.accounts import AccountError
 from pubs.beer_catalog import (
+    ALLOWED_BEER_VOLUMES_ML,
     BeerCatalogMatchCache,
     match_beer_brand,
     match_beer_identity,
@@ -2397,7 +2398,7 @@ class DrinksView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        beer_name = serializer.validated_data["beer_name"]
+        update = serializer.validated_data
         try:
             with transaction.atomic():
                 drink = (
@@ -2408,9 +2409,25 @@ class DrinksView(APIView):
                 if drink is None:
                     return Response({"updated": False}, status=status.HTTP_200_OK)
 
+                old_drink_type = drink.drink_type
+                beer_name = update.get("beer_name", drink.beer_name)
+                drink_type = update.get("drink_type", drink.drink_type)
+                volume_ml = update.get("volume_ml", drink.volume_ml)
+                if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
+                    if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
+                        return Response(
+                            {"volume_ml": [f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."]},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
+                    return Response(
+                        {"volume_ml": ["A shot volume must not exceed 200 ml."]},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
                 brand_match = (
                     match_beer_brand(beer_name, match_cache=match_cache)
-                    if drink.drink_type == DrinkLog.DrinkType.BEER
+                    if drink_type == DrinkLog.DrinkType.BEER
                     else None
                 )
 
@@ -2418,6 +2435,10 @@ class DrinksView(APIView):
                 old_product_key = drink.beer_product_key
 
                 drink.beer_name = beer_name
+                drink.drink_type = drink_type
+                drink.price_czk = update.get("price_czk", drink.price_czk)
+                drink.volume_ml = volume_ml
+                drink.serving_type = update.get("serving_type", drink.serving_type)
                 drink.beer_brand = brand_match.brand if brand_match else None
                 drink.beer_brand_key = brand_match.brand.key if brand_match else ""
                 drink.beer_brand_name = brand_match.brand.name if brand_match else ""
@@ -2431,6 +2452,10 @@ class DrinksView(APIView):
                 drink.save(
                     update_fields=[
                         "beer_name",
+                        "drink_type",
+                        "price_czk",
+                        "volume_ml",
+                        "serving_type",
                         "beer_brand",
                         "beer_brand_key",
                         "beer_brand_name",
@@ -2442,7 +2467,7 @@ class DrinksView(APIView):
 
                 if (
                     drink.place_context == DrinkLog.PlaceContext.PUB
-                    and drink.drink_type == DrinkLog.DrinkType.BEER
+                    and (old_drink_type == DrinkLog.DrinkType.BEER or drink.drink_type == DrinkLog.DrinkType.BEER)
                 ):
                     self._refresh_drink_brand_indexes_after_patch(
                         drink=drink,
@@ -2450,6 +2475,7 @@ class DrinksView(APIView):
                         old_product_key=old_product_key,
                         account=request.user,
                         match_cache=match_cache,
+                        upsert_new=drink.drink_type == DrinkLog.DrinkType.BEER,
                     )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -2635,6 +2661,7 @@ class DrinksView(APIView):
         old_product_key: str,
         account: Account,
         match_cache: BeerCatalogMatchCache | None = None,
+        upsert_new: bool = True,
     ) -> None:
         data = {
             "name": drink.name,
@@ -2648,14 +2675,15 @@ class DrinksView(APIView):
             "price_czk": drink.price_czk,
             "volume_ml": drink.volume_ml,
         }
-        upsert_pub_beer_brand(
-            cache_key=drink.cache_key,
-            data=data,
-            beer=beer,
-            source=PubBeerBrand.Source.DRINK,
-            account=account,
-            match_cache=match_cache,
-        )
+        if upsert_new:
+            upsert_pub_beer_brand(
+                cache_key=drink.cache_key,
+                data=data,
+                beer=beer,
+                source=PubBeerBrand.Source.DRINK,
+                account=account,
+                match_cache=match_cache,
+            )
 
         if old_brand_key and old_brand_key != drink.beer_brand_key:
             has_other_drink = DrinkLog.objects.filter(

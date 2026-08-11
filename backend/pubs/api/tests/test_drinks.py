@@ -1102,6 +1102,64 @@ def test_patch_updates_logged_drink_beer_name(client):
 
 
 @pytest.mark.django_db
+def test_patch_updates_full_private_drink_details(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={
+            "beer_name": "Ryzlink",
+            "drink_type": "wine",
+            "price_czk": 85,
+            "volume_ml": 200,
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert (drink.beer_name, drink.drink_type, drink.price_czk, drink.volume_ml) == (
+        "Ryzlink", "wine", 85, 200,
+    )
+    assert drink.beer_brand_key == ""
+    assert drink.beer_product_key == ""
+
+
+@pytest.mark.django_db
+def test_patch_can_clear_optional_price_and_volume(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"price_czk": None, "volume_ml": None},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert (drink.price_czk, drink.volume_ml) == (None, None)
+
+
+@pytest.mark.django_db
+def test_patch_rejects_invalid_volume_for_resulting_type(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"drink_type": "shot", "volume_ml": 500},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_patch_reuses_catalog_cache_for_private_and_community_signals(client):
     token = _register(client)
     created = client.post(

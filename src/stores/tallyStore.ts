@@ -174,6 +174,12 @@ interface TallyState {
   removeDrinkFromSession: (startedAt: string, drinkId: string) => RemovedDrinkResult | null;
   /** Rename one logged beer in the selected evening. Used for typo fixes. */
   updateDrinkNameInSession: (startedAt: string, drinkId: string, beerName: string) => boolean;
+  /** Update the private details of one logged drink without moving its time or place. */
+  updateDrinkInSession: (
+    startedAt: string,
+    drinkId: string,
+    update: Pick<TallyBeerInput, 'beerName' | 'drinkType' | 'priceCzk' | 'volumeMl' | 'servingType'>,
+  ) => boolean;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
   markDrinkSynced: (id: string) => void;
   /** The pub was renamed from the mapping hub — keep the live session's display
@@ -549,6 +555,40 @@ export const useTallyStore = create<TallyState>()(
             });
             return changed ? { ...session, drinks } : session;
           });
+          return changed ? { history } : state;
+        });
+        return changed;
+      },
+
+      updateDrinkInSession: (startedAt, drinkId, update) => {
+        const beerName = update.beerName.trim();
+        if (!beerName) return false;
+        let changed = false;
+        const replace = (session: TallySession): TallySession => {
+          const drinks = session.drinks.map((drink) => {
+            if (drink.id !== drinkId) return drink;
+            const next = {
+              ...drink,
+              beerName,
+              drinkType: update.drinkType,
+              priceCzk: update.priceCzk,
+              volumeMl: update.volumeMl,
+              servingType: update.servingType,
+            };
+            if (JSON.stringify(next) === JSON.stringify(drink)) return drink;
+            changed = true;
+            return next;
+          });
+          return changed ? { ...session, drinks } : session;
+        };
+        set((state) => {
+          if (state.current?.startedAt === startedAt) {
+            const current = replace(state.current);
+            return changed ? { current } : state;
+          }
+          const history = state.history.map((session) =>
+            session.startedAt === startedAt ? replace(session) : session,
+          );
           return changed ? { history } : state;
         });
         return changed;

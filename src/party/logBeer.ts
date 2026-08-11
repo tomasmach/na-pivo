@@ -25,6 +25,7 @@ import {
   enqueueDrink,
   flushDrinksQueue,
   removeQueuedDrink,
+  updateQueuedDrink,
   updateQueuedDrinkBeerName,
 } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
@@ -33,7 +34,7 @@ import { decodeGeohash8 } from '@/data/geohash';
 import { syncVisit } from '@/data/visitsSync';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
-import { contextFromPubKey, type DrinkType } from '@/drinks/drinkTypes';
+import { contextFromPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
 
 export interface PartyBeerPlace {
   /** Geohash-8 of the pub — the durable identity of a place. */
@@ -59,6 +60,7 @@ export function logPartyBeer({
   drinkType = 'beer',
   priceCzk,
   volumeMl,
+  servingType,
   partyCode,
   deferDelivery = false,
   at,
@@ -68,6 +70,7 @@ export function logPartyBeer({
   drinkType?: DrinkType;
   priceCzk?: number;
   volumeMl?: number;
+  servingType?: ServingType;
   /** The shared evening, when there is one. */
   partyCode?: string | null;
   /** Persist immediately, but wait to deliver until a new table exists. */
@@ -87,7 +90,7 @@ export function logPartyBeer({
       visitClientId: place.visitClientId,
       visitStartedAt: place.visitStartedAt,
     },
-    { id, beerName, drinkType, priceCzk, volumeMl, at: drankAt },
+    { id, beerName, drinkType, priceCzk, volumeMl, servingType, at: drankAt },
   );
   // The private party record derives its stops from PubVisit, not from a drink's
   // display pub. Reuse the normal visit queue so moving pubs and offline nights
@@ -112,7 +115,7 @@ export function logPartyBeer({
     {
       ...where,
       drinkType,
-      beer: { name: beerName, priceCzk, volumeMl },
+      beer: { name: beerName, priceCzk, volumeMl, servingType },
       drankAt,
       ...(partyCode ? { partyCode } : {}),
     },
@@ -154,7 +157,12 @@ export function unlogPartyBeer(drinkId: string): void {
 
   void removeQueuedDrinkUpdate(drinkId);
   void removeQueuedDrink(drinkId).then((pulledFromQueue) => {
-    if (pulledFromQueue) return;
+    if (pulledFromQueue) {
+      // A newer undo timer may also have been holding older drinks. Once the
+      // visible latest one is gone, release whatever remains.
+      void flushDrinksQueue();
+      return;
+    }
     void flushDrinksQueue()
       .then(() => enqueueDelete(drinkId))
       .catch(() => undefined);
@@ -182,5 +190,39 @@ export function renamePartyBeer(drinkId: string, beerName: string): void {
     // Not in the queue any more means it is already on the server, so the fix
     // has to travel as its own update.
     if (state !== 'queued') void enqueueDrinkUpdate({ client_id: drinkId, beer_name: trimmed });
+  });
+}
+
+export function updatePartyDrink(
+  drinkId: string,
+  update: {
+    beerName: string;
+    drinkType: DrinkType;
+    priceCzk?: number;
+    volumeMl?: number;
+    servingType?: ServingType;
+  },
+): void {
+  const session = sessionContainingDrink(drinkId);
+  if (!session) return;
+  const changed = useTallyStore.getState().updateDrinkInSession(session.startedAt, drinkId, update);
+  if (!changed) return;
+  const wire = {
+    beer_name: update.beerName.trim(),
+    drink_type: update.drinkType,
+    price_czk: update.priceCzk ?? null,
+    volume_ml: update.volumeMl ?? null,
+    serving_type: update.servingType ?? 'unknown',
+  };
+  void updateQueuedDrink(drinkId, wire).then((state) => {
+    if (state === 'queued') return;
+    if (state === 'in-flight') {
+      // The initial POST already captured its old payload. Wait for it to
+      // settle before PATCHing, otherwise a fast PATCH can arrive first and be
+      // discarded as "not found".
+      void flushDrinksQueue().then(() => enqueueDrinkUpdate({ client_id: drinkId, ...wire }));
+      return;
+    }
+    void enqueueDrinkUpdate({ client_id: drinkId, ...wire });
   });
 }

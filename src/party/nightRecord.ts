@@ -444,6 +444,8 @@ export interface NightThreadEntry {
   label: string;
   /** `beer` rows only: their nth beer of the night, counted per person. */
   ordinal?: number;
+  /** Drink rows keep the legacy `beer` kind for compatibility, but carry their real type. */
+  drinkType?: DrinkType;
   /** `photo` rows only. */
   url?: string;
   /** `game` rows only: what the row can start. */
@@ -494,10 +496,11 @@ export function nightThread(night: NightRecord): NightThreadEntry[] {
 
   // "Your third beer" — counted per person over the night in the order things
   // happened, so somebody else's row counts theirs and not the table's.
-  const nth = new Map<string, number>();
+  const nthBeer = new Map<string, number>();
   for (const drink of [...night.drinks].sort((a, b) => a.at.localeCompare(b.at))) {
-    const ordinal = (nth.get(drink.by) ?? 0) + 1;
-    nth.set(drink.by, ordinal);
+    const drinkType = normalizeDrinkType(drink.drinkType);
+    const ordinal = drinkType === 'beer' ? (nthBeer.get(drink.by) ?? 0) + 1 : undefined;
+    if (ordinal !== undefined) nthBeer.set(drink.by, ordinal);
     entries.push({
       id: `beer:${drink.id}`,
       at: drink.at,
@@ -506,6 +509,7 @@ export function nightThread(night: NightRecord): NightThreadEntry[] {
       refId: drink.id,
       label: drink.beerName,
       ordinal,
+      drinkType,
     });
   }
 

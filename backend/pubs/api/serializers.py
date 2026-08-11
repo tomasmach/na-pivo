@@ -2261,17 +2261,35 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
 class DrinkUpdateSerializer(serializers.Serializer):
     """Request body for PATCH /v1/drinks/<client_id>.
 
-    This is deliberately narrow: the mobile app only needs to fix a typo in the
-    user's private drink log. Pub, price, time and community menu contributions
-    are not rewritten by this endpoint.
+    The original released client only sends ``beer_name``. Newer clients may
+    also correct the private type, price, volume and serving without moving the
+    drink to another pub or timestamp.
     """
 
-    beer_name = serializers.CharField(max_length=80, trim_whitespace=True)
+    beer_name = serializers.CharField(max_length=80, trim_whitespace=True, required=False)
+    drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices, required=False)
+    price_czk = serializers.IntegerField(min_value=1, max_value=1000, required=False, allow_null=True)
+    volume_ml = serializers.IntegerField(min_value=10, max_value=3000, required=False, allow_null=True)
+    serving_type = serializers.ChoiceField(choices=DrinkLog.ServingType.choices, required=False)
 
     def validate_beer_name(self, value: str) -> str:
         if not value:
             raise serializers.ValidationError("Beer name must not be empty.")
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        if not attrs:
+            raise serializers.ValidationError("At least one drink field must be provided.")
+        drink_type = attrs.get("drink_type")
+        volume_ml = attrs.get("volume_ml")
+        if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
+            if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
+                raise serializers.ValidationError(
+                    {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}
+                )
+        if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
+            raise serializers.ValidationError({"volume_ml": "A shot volume must not exceed 200 ml."})
+        return attrs
 
 
 # ---------------------------------------------------------------------------

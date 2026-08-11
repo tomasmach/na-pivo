@@ -4,6 +4,7 @@ import {
   submitDrink,
   deleteDrink,
   updateDrinkName,
+  updateDrink,
   type DrinkInput,
 } from '../drinksClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
@@ -456,5 +457,22 @@ describe('updateDrinkName', () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
     await expect(updateDrinkName('c', 'Kozel')).resolves.toBe('retry');
+  });
+});
+
+describe('updateDrink', () => {
+  it('PATCHes all private drink details', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({ ok: true, status: 200 }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(updateDrink('client-1', {
+      beer_name: 'Ryzlink', drink_type: 'wine', price_czk: 85, volume_ml: 200,
+    })).resolves.toBe('ok');
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      beer_name: 'Ryzlink', drink_type: 'wine', price_czk: 85, volume_ml: 200,
+    });
   });
 });

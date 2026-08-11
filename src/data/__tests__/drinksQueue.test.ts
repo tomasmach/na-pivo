@@ -8,6 +8,7 @@ import {
   getDrinksQueueBoundaryGeneration,
   releaseHistoricalDrinkBatch,
   removeQueuedDrink,
+  updateQueuedDrink,
   updateQueuedDrinkBeerName,
 } from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
@@ -454,6 +455,27 @@ describe('updateQueuedDrinkBeerName', () => {
 
   it('reports missing when the drink is no longer queued', async () => {
     await expect(updateQueuedDrinkBeerName('missing', 'Kozel')).resolves.toBe('missing');
+  });
+});
+
+describe('updateQueuedDrink', () => {
+  it('clears optional values from a queued create', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrink(entry({
+      client_id: 'a',
+      beer: { name: 'Plzeň', price_czk: 62, volume_ml: 500, serving_type: 'draft' },
+    }));
+
+    await expect(updateQueuedDrink('a', {
+      price_czk: null,
+      volume_ml: null,
+      serving_type: 'unknown',
+    })).resolves.toBe('queued');
+
+    expect((await readQueue())[0].beer).toEqual({
+      name: 'Plzeň',
+      serving_type: 'unknown',
+    });
   });
 });
 

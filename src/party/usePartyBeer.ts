@@ -22,7 +22,8 @@ import React from 'react';
 
 import { contextPubKey } from '@/drinks/drinkTypes';
 import { useLivePartyStore, type PartyPubVisit } from '@/mocks/livePartyStore';
-import { logPartyBeer, renamePartyBeer, unlogPartyBeer, type PartyBeerPlace } from '@/party/logBeer';
+import { logPartyBeer, renamePartyBeer, unlogPartyBeer, updatePartyDrink, type PartyBeerPlace } from '@/party/logBeer';
+import type { DrinkType, ServingType } from '@/drinks/drinkTypes';
 import {
   selectPartyJoinCode,
   usePartyEveningStore,
@@ -37,12 +38,17 @@ export interface PartyBeerActions {
       partyCode?: string | null;
       deferDelivery?: boolean;
       visit?: PartyPubVisit;
+      drinkType?: DrinkType;
+      priceCzk?: number;
+      volumeMl?: number;
+      servingType?: ServingType;
     },
   ) => string;
   /** Take one back — a mis-tap, or a beer that never came. */
   remove: (drinkId: string) => void;
   /** Fix a typo in what it was called. */
   rename: (drinkId: string, beerName: string) => void;
+  update: typeof updatePartyDrink;
 }
 
 export function usePartyBeer(): PartyBeerActions {
@@ -91,6 +97,10 @@ export function usePartyBeer(): PartyBeerActions {
           partyCode?: string | null;
           deferDelivery?: boolean;
           visit?: PartyPubVisit;
+          drinkType?: DrinkType;
+          priceCzk?: number;
+          volumeMl?: number;
+          servingType?: ServingType;
         },
       ) => logPartyBeer({
         place: options?.visit
@@ -104,11 +114,16 @@ export function usePartyBeer(): PartyBeerActions {
             }
           : place,
         beerName,
+        drinkType: options?.drinkType,
+        priceCzk: options?.priceCzk,
+        volumeMl: options?.volumeMl,
+        servingType: options?.servingType,
         partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
         deferDelivery: options?.deferDelivery ?? tableCreatePending,
       }),
       remove: (drinkId: string) => unlogPartyBeer(drinkId),
       rename: (drinkId: string, beerName: string) => renamePartyBeer(drinkId, beerName),
+      update: updatePartyDrink,
     }),
     [place, partyCode, tableCreatePending],
   );

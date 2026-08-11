@@ -41,16 +41,24 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import {
   BeerIcon,
   CameraIcon,
+  CircleDotIcon,
   DicesIcon,
   ChevronDownIcon,
+  GlassWaterIcon,
   MapPinIcon,
   PlayIcon,
   PlusIcon,
   TrophyIcon,
   UserPlusIcon,
+  WineIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassPill } from '@/components/shared/GlassIconButton';
-import { BeerSheet } from '@/party/BeerSheet';
+import { PartyDrinkSheet, type PartyDrinkChoice } from '@/party/PartyDrinkSheet';
+import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
+import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
+import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
+import { ScanMenuSheet, type MenuScanSource } from '@/components/contribute/ScanMenuSheet';
+import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { GameCover } from '@/party/GameCover';
 import { GAME_CATALOG } from '@/party/gameCatalog';
 import { Avatar } from '@/profile/Avatar';
@@ -64,11 +72,13 @@ import { hubStats } from '@/party/nightPulse';
 import { NightRoute } from '@/mocks/NightRoute';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
+import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
+import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
 import { formatDistanceCs } from '@/compass/distance';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { presentOpenStatus } from '@/pubs/pubPresentation';
-import { drinkingDayKey } from '@/stores/tallyStore';
+import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
   clockAt,
   minutesBetween,
@@ -104,6 +114,11 @@ import {
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { cs, formatVolume } from '@/i18n/cs';
+import { formatPrice } from '@/utils/currency';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
+import { contextFromPubKey, type DrinkType } from '@/drinks/drinkTypes';
 
 /** Resolved once: constant for the process (iOS 26+, false everywhere else). */
 const GLASS = isLiquidGlassAvailable();
@@ -122,6 +137,17 @@ const MAP_IDLE = 460;
  *  cut through the back chevron and "Ukončit" on a tall phone. */
 const MAP_LIVE_MIN = 128;
 const TOP_BAR_H = HitArea.min + Spacing.sm * 2;
+
+const drinkTypeOf = (drink: TallyDrink): DrinkType => drink.drinkType ?? 'beer';
+const drinkIdentity = (drink: Pick<TallyDrink, 'beerName' | 'drinkType' | 'priceCzk' | 'volumeMl'>) =>
+  `${drink.drinkType ?? 'beer'}|${drink.beerName}|${drink.volumeMl ?? ''}|${drink.priceCzk ?? ''}`;
+
+function DrinkGlyph({ type, color = Colors.amber }: { type: DrinkType; color?: string }) {
+  if (type === 'beer') return <BeerIcon size={17} color={color} />;
+  if (type === 'wine') return <WineIcon size={17} color={color} />;
+  if (type === 'soft_drink') return <GlassWaterIcon size={17} color={color} />;
+  return <CircleDotIcon size={17} color={color} />;
+}
 
 /** One glyph per kind of thing that happens in an evening. */
 const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
@@ -205,6 +231,7 @@ export default function LivePartyMockScreen() {
   const resumeParty = useLivePartyStore((s) => s.resume);
   const endParty = useLivePartyStore((s) => s.end);
   const addGame = useLivePartyStore((s) => s.addGame);
+  const selectedVisit = useLivePartyStore((s) => s.pubVisits.at(-1) ?? null);
 
   // The real shared evening, which is what makes the code, the games and the
   // quiz reach anybody else's phone. The hub's own state stays local and
@@ -218,8 +245,14 @@ export default function LivePartyMockScreen() {
   const finishFromServer = usePartyEveningStore((s) => s.finishFromServer);
   const accountId = useAccountStore((s) => s.session?.accountId);
   const nearby = useNearbyPub();
+  const tallyCurrent = useTallyStore((s) => s.current);
+  const tallyHistory = useTallyStore((s) => s.history);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const [undoDrink, setUndoDrink] = React.useState<TallyDrink | null>(null);
+  const undoTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const stagedPartyCode = confirmedPartyCode ?? pendingJoinCode;
   const active = live || evening?.active === true || confirmedIdentity !== null;
+  const partyPlaceKey = pubKey ?? 'ctx:other';
   const effectiveStartedAt = startedAt ?? (
     evening?.startedAt && Number.isFinite(Date.parse(evening.startedAt))
       ? Date.parse(evening.startedAt)
@@ -227,6 +260,15 @@ export default function LivePartyMockScreen() {
   );
   // The stopwatch. Ticks on its own; every reading below is derived from it.
   const minutes = useNightClock(effectiveStartedAt);
+  const rememberUndo = (drink: TallyDrink) => {
+    setUndoDrink(drink);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => {
+      setUndoDrink(null);
+      undoTimer.current = null;
+      void flushPartyBeerWrites();
+    }, 5_000);
+  };
   // The table's games, live. The hub is normally the screen that is open when
   // somebody else puts one down.
   useFollowPartyGames(confirmedPartyCode);
@@ -291,26 +333,35 @@ export default function LivePartyMockScreen() {
    * in a cellar with no signal. The evening is a best-effort extra — when it
    * lands there is a code to read out, and when it does not the night still runs.
    */
-  const beginNight = (firstBeer: string) => {
+  const beginNight = (firstDrink: BeerFormResult) => {
     const placeName = pubName.trim() || 'Mimo hospodu';
-    const transition = startParty(placeName, firstBeer, pubKey, pubTaps);
+    const transition = startParty(placeName, firstDrink.name, pubKey, pubTaps);
     const joinCode = stagedPartyCode ?? generateJoinCode();
-    const table = confirmedPartyCode
-      ? null
-      : startEvening(placeName, undefined, joinCode);
-    const deferForTable = table !== null || (!!pendingJoinCode && !confirmedPartyCode);
+    if (!confirmedPartyCode) void startEvening(placeName, undefined, joinCode);
     void enqueuePartyPubTransition(transition, joinCode, {
-      deferDelivery: deferForTable,
+      deferDelivery: true,
     });
     // The first beer is a real beer: it goes into the diary through the same
     // path as every other one. Its queue is durable immediately, but delivery
     // waits for the table create so a fast POST cannot outrun its party code.
-    beer.add(firstBeer, {
+    const id = beer.add(firstDrink.name, {
       partyCode: joinCode,
-      deferDelivery: deferForTable,
+      deferDelivery: true,
+      drinkType: firstDrink.drinkType,
+      priceCzk: firstDrink.priceCzk,
+      volumeMl: firstDrink.volumeMl,
+      servingType: firstDrink.servingType,
       ...(transition?.current ? { visit: transition.current } : {}),
     });
-    if (table) void table.finally(() => flushPartyBeerWrites());
+    rememberUndo({
+      id,
+      beerName: firstDrink.name,
+      drinkType: firstDrink.drinkType,
+      priceCzk: firstDrink.priceCzk,
+      volumeMl: firstDrink.volumeMl,
+      servingType: firstDrink.servingType,
+      at: new Date().toISOString(),
+    });
   };
 
   const openInvite = () => {
@@ -343,6 +394,22 @@ export default function LivePartyMockScreen() {
   const [joinOpen, setJoinOpen] = React.useState(false);
   const [beersOpen, setBeersOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
+  const [receiptOpen, setReceiptOpen] = React.useState(false);
+  const [formOpen, setFormOpen] = React.useState(false);
+  const [formMode, setFormMode] = React.useState<'add' | 'edit'>('add');
+  const [formDrinkType, setFormDrinkType] = React.useState<DrinkType>('beer');
+  const [formDrink, setFormDrink] = React.useState<TallyDrink | null>(null);
+  const [formNonce, setFormNonce] = React.useState(0);
+  const [scanOpen, setScanOpen] = React.useState(false);
+  const [scannedDrinks, setScannedDrinks] = React.useState<ScannedDrink[]>([]);
+  const [checkInDrink, setCheckInDrink] = React.useState<TallyDrink | null>(null);
+
+  React.useEffect(() => () => {
+    if (undoTimer.current) {
+      clearTimeout(undoTimer.current);
+      void flushPartyBeerWrites();
+    }
+  }, []);
 
   const mapHeight = active
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
@@ -387,7 +454,168 @@ export default function LivePartyMockScreen() {
     [{ name: houseBeer, priceCzk: null }],
     byType.map((row) => ({ name: row.beer, priceCzk: null })),
   );
+  const myDrinkIds = new Set(myDrinks.map((drink) => drink.id));
+  const tallySessions = [tallyCurrent, ...tallyHistory]
+    .filter((session): session is NonNullable<typeof session> => session !== null);
+  const privateDrinks = tallySessions
+    .flatMap((session) => session.drinks)
+    .filter((drink) => myDrinkIds.has(drink.id));
+  const privateDrinksAtPlace = tallySessions
+    .filter((session) => session.pubKey === partyPlaceKey)
+    .flatMap((session) => session.drinks)
+    .filter((drink) => myDrinkIds.has(drink.id));
+  const drinkPlaceById = new Map(tallySessions.flatMap((session) =>
+    session.drinks.map((drink) => [drink.id, session.pubKey] as const),
+  ));
+  const privateById = new Map(privateDrinks.map((drink) => [drink.id, drink]));
+  const latestDrink = [...privateDrinksAtPlace].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null;
+  const groupedDrinks = new Map<string, PartyDrinkChoice>();
+  for (const drink of privateDrinksAtPlace) {
+    const key = drinkIdentity(drink);
+    const current = groupedDrinks.get(key);
+    groupedDrinks.set(key, {
+      key,
+      name: drink.beerName,
+      drinkType: drinkTypeOf(drink),
+      priceCzk: drink.priceCzk,
+      volumeMl: drink.volumeMl,
+      count: (current?.count ?? 0) + 1,
+      meta: [
+        drink.volumeMl ? formatVolume(drink.volumeMl) : null,
+        drink.priceCzk ? formatPrice(drink.priceCzk, priceCurrency) : null,
+      ].filter(Boolean).join(' · ') || null,
+    });
+  }
+  for (const tap of taps) {
+    const candidate: PartyDrinkChoice = {
+      key: `beer|${tap.name}|500|${tap.priceCzk ?? ''}`,
+      name: tap.name,
+      drinkType: 'beer',
+      priceCzk: tap.priceCzk ?? undefined,
+      volumeMl: 500,
+      count: 0,
+      meta: [formatVolume(500), tap.priceCzk ? formatPrice(tap.priceCzk, priceCurrency) : null]
+        .filter(Boolean).join(' · '),
+    };
+    if (![...groupedDrinks.values()].some((row) => row.name === tap.name && row.drinkType === 'beer')) {
+      groupedDrinks.set(candidate.key, candidate);
+    }
+  }
+  const drinkChoices = [...groupedDrinks.values()];
+  const totalCzk = privateDrinks.reduce((sum, drink) => sum + (drink.priceCzk ?? 0), 0);
+  const hasCompletePrice = privateDrinks.length > 0 &&
+    privateDrinks.every((drink) => typeof drink.priceCzk === 'number');
+  const receiptGrouped = new Map<string, PartyDrinkChoice>();
+  for (const drink of privateDrinks) {
+    const key = drinkIdentity(drink);
+    const current = receiptGrouped.get(key);
+    receiptGrouped.set(key, {
+      key,
+      name: drink.beerName,
+      drinkType: drinkTypeOf(drink),
+      priceCzk: drink.priceCzk,
+      volumeMl: drink.volumeMl,
+      count: (current?.count ?? 0) + 1,
+      meta: null,
+    });
+  }
+  const receiptRows = [...receiptGrouped.values()]
+    .map<ReceiptItem>((choice) => ({
+      key: choice.key,
+      name: choice.name,
+      meta: choice.volumeMl ? formatVolume(choice.volumeMl) : null,
+      count: choice.count,
+      totalLabel: choice.priceCzk
+        ? formatPrice(choice.priceCzk * choice.count, priceCurrency)
+        : null,
+    }));
+  const receiptBeerRows = receiptRows.filter((row) =>
+    privateDrinks.some((drink) => drinkIdentity(drink) === row.key && drinkTypeOf(drink) === 'beer'),
+  );
+  const receiptOtherRows = receiptRows.filter((row) => !receiptBeerRows.includes(row));
+  const openDrinkForm = (mode: 'add' | 'edit', type: DrinkType, drink: TallyDrink | null = null) => {
+    setBeersOpen(false);
+    setFormMode(mode);
+    setFormDrinkType(type);
+    setFormDrink(drink);
+    setFormNonce((value) => value + 1);
+    setFormOpen(true);
+  };
+  const logDrink = (result: BeerFormResult) => {
+    if (!active) {
+      beginNight(result);
+      return;
+    }
+    const at = new Date().toISOString();
+    const id = beer.add(result.name, {
+      deferDelivery: true,
+      drinkType: result.drinkType,
+      priceCzk: result.priceCzk,
+      volumeMl: result.volumeMl,
+      servingType: result.servingType,
+    });
+    rememberUndo({
+      id,
+      beerName: result.name,
+      drinkType: result.drinkType,
+      priceCzk: result.priceCzk,
+      volumeMl: result.volumeMl,
+      servingType: result.servingType,
+      at,
+    });
+  };
+  const repeatDrink = (drink: TallyDrink) => {
+    if (drinkPlaceById.get(drink.id) !== partyPlaceKey) {
+      openDrinkForm('add', drinkTypeOf(drink), {
+        ...drink,
+        id: '',
+        priceCzk: undefined,
+      });
+      return;
+    }
+    logDrink({
+      name: drink.beerName,
+      drinkType: drinkTypeOf(drink),
+      priceCzk: drink.priceCzk,
+      volumeMl: drink.volumeMl,
+      servingType: drink.servingType,
+    });
+  };
+  const removeReceiptIdentity = (key: string) => {
+    const drink = [...privateDrinks].reverse().find((candidate) => drinkIdentity(candidate) === key);
+    if (drink) beer.remove(drink.id);
+  };
+  const runDrinkScan = async (source: MenuScanSource) => {
+    setScanOpen(false);
+    const toast = useToastStore.getState().show;
+    const { pickAndPrepareMenuPhoto } = await import('@/data/menuPhotoPicker');
+    const picked = await pickAndPrepareMenuPhoto(source);
+    if (picked.status === 'cancelled') return;
+    if (picked.status !== 'picked') {
+      toast(picked.status.startsWith('denied')
+        ? cs.contribute.scanMenu.permissionDenied
+        : cs.contribute.scanMenu.errorToast);
+      return;
+    }
+    const result = await scanMenuPhoto(picked.uri);
+    if (result.status === 'ok' && result.drinks.length > 0) {
+      setScannedDrinks(result.drinks);
+      return;
+    }
+    toast(result.status === 'empty' ? cs.counter.scanDrinksEmpty : cs.contribute.scanMenu.errorToast);
+  };
   const displayPubName = pubName.trim() || evening?.pubName.trim() || 'Vyber hospodu';
+  const currentVisit = selectedVisit?.pubKey === partyPlaceKey ? selectedVisit : null;
+  const partyPub: Pub | null = detectedPub ?? (
+    /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(partyPlaceKey)
+      ? {
+          id: currentVisit?.pubExternalId ?? '',
+          name: displayPubName,
+          ...decodeGeohash8(partyPlaceKey),
+          city: currentVisit?.pubCity,
+        }
+      : null
+  );
   const idlePubMeta = detectedPub
     ? [
         detectedCandidate ? formatDistanceCs(detectedCandidate.distanceMeters) : null,
@@ -427,6 +655,7 @@ export default function LivePartyMockScreen() {
         by: entry.by === myId ? 'Ty' : nameOf(entry.by),
         // Only your own beer can be corrected — somebody else's row is theirs.
         beerId: entry.kind === 'beer' && entry.by === myId ? entry.refId : undefined,
+        drinkType: entry.drinkType,
         photo: entry.url,
         gameKey: entry.gameKey,
         ordinal: entry.ordinal,
@@ -438,7 +667,9 @@ export default function LivePartyMockScreen() {
   const beerTimes =
     effectiveStartedAt === null
       ? []
-      : myDrinks.map((drink) => minutesBetween(effectiveStartedAt, new Date(drink.at).getTime()));
+      : myDrinks
+          .filter((drink) => drink.drinkType === 'beer')
+          .map((drink) => minutesBetween(effectiveStartedAt, new Date(drink.at).getTime()));
   const stats = active
     ? hubStats({ beerTimes, now: minutes, mine, table, others: people.length })
     : [];
@@ -465,6 +696,19 @@ export default function LivePartyMockScreen() {
         </Pressable>
 
         <View style={styles.grow} />
+
+        {active && privateDrinks.length > 0 ? (
+          <Pressable
+            onPress={() => setReceiptOpen(true)}
+            style={({ pressed }) => [styles.receiptPill, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Otevřít účet"
+          >
+            <Text style={styles.receiptText} allowFontScaling={false}>
+              {hasCompletePrice ? formatPrice(totalCzk, priceCurrency) : 'Účet'}
+            </Text>
+          </Pressable>
+        ) : null}
 
         {/* Top right, as far from "+1 pivo" as the screen allows. */}
         {active ? (
@@ -647,6 +891,7 @@ export default function LivePartyMockScreen() {
                 const game = event.gameKey
                   ? games.find((entry) => entry.key === event.gameKey)
                   : undefined;
+                const privateDrink = event.beerId ? privateById.get(event.beerId) : undefined;
                 return (
                   <Animated.View
                     key={event.id}
@@ -678,10 +923,12 @@ export default function LivePartyMockScreen() {
                       // something, which the row already said by existing; the
                       // number is the fact you cannot get any other way.
                       <View style={[styles.logIcon, styles.logIconBeer]}>
-                        <BeerIcon size={15} color={Colors.stout} />
-                        <Text style={styles.logIconCount} allowFontScaling={false}>
-                          {event.ordinal ?? 1}
-                        </Text>
+                        <DrinkGlyph type={event.drinkType ?? 'beer'} color={Colors.stout} />
+                        {event.ordinal !== undefined ? (
+                          <Text style={styles.logIconCount} allowFontScaling={false}>
+                            {event.ordinal}
+                          </Text>
+                        ) : null}
                       </View>
                     ) : (
                       <View style={styles.logIcon}>{LOG_GLYPH[event.kind]}</View>
@@ -802,7 +1049,13 @@ export default function LivePartyMockScreen() {
                           numberOfLines={2}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {event.text}
+                          {privateDrink
+                            ? [
+                                privateDrink.beerName,
+                                privateDrink.volumeMl ? formatVolume(privateDrink.volumeMl) : null,
+                                privateDrink.priceCzk ? formatPrice(privateDrink.priceCzk, priceCurrency) : null,
+                              ].filter(Boolean).join(' · ')
+                            : event.text}
                         </Text>
                       )}
 
@@ -831,14 +1084,29 @@ export default function LivePartyMockScreen() {
                         <RowMenu
                           title="Co to bylo?"
                           value={event.text}
-                          options={Array.from(new Set([event.text, ...taps.map((tap) => tap.name)]))}
+                          options={privateDrink && drinkTypeOf(privateDrink) === 'beer'
+                            ? Array.from(new Set([privateDrink.beerName, ...taps.map((tap) => tap.name)]))
+                            : undefined}
                           onChange={(next) => beer.rename(event.beerId as string, next)}
                           // The thing you most often want from a beer you
                           // already had is another one of it — and this row is
                           // the only place that knows WHICH one you mean.
-                          repeat={{ label: 'Ještě jedno', onPress: () => beer.add(event.text) }}
+                          repeat={{
+                            label: 'Ještě jedno',
+                            onPress: () => privateDrink ? repeatDrink(privateDrink) : beer.add(event.text),
+                          }}
+                          actions={[
+                            ...(privateDrink ? [{
+                              label: 'Upravit',
+                              onPress: () => openDrinkForm('edit', drinkTypeOf(privateDrink), privateDrink),
+                            }] : []),
+                            ...(privateDrink && drinkTypeOf(privateDrink) === 'beer' && partyPub ? [{
+                              label: 'Check-in',
+                              onPress: () => setCheckInDrink(privateDrink),
+                            }] : []),
+                          ]}
                           destructive={{
-                            label: 'Smazat pivo',
+                            label: 'Smazat nápoj',
                             onPress: () => beer.remove(event.beerId as string),
                           }}
                         />
@@ -850,6 +1118,25 @@ export default function LivePartyMockScreen() {
             </View>
           ) : null}
         </ScrollView>
+
+        <View style={styles.undoSlot}>
+          {undoDrink ? <View style={styles.undoStrip}>
+            <Text style={styles.undoText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              Zapsáno: {undoDrink.beerName}
+            </Text>
+            <Pressable
+              onPress={() => {
+                beer.remove(undoDrink.id);
+                setUndoDrink(null);
+                if (undoTimer.current) clearTimeout(undoTimer.current);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Vrátit zápis ${undoDrink.beerName}`}
+            >
+              <Text style={styles.undoAction} maxFontSizeMultiplier={FontScaleCap.body}>Vrátit</Text>
+            </Pressable>
+          </View> : null}
+        </View>
 
         {/* The controls float ON the thread, not on a plate under a rule. The
             hairline said "this is a different panel" and pushed the buttons up
@@ -895,19 +1182,19 @@ export default function LivePartyMockScreen() {
               right edge would be a seam with nothing on the other side. */}
           <View style={[styles.primaryWrap, !active && styles.primaryWhole]}>
             <Pressable
-              onPress={() => (active ? beer.add(houseBeer) : setBeersOpen(true))}
+              onPress={() => (active && latestDrink ? repeatDrink(latestDrink) : setBeersOpen(true))}
               style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={active ? `Přidat ${houseBeer}` : 'Začít večer prvním pivem'}
+              accessibilityLabel={active && latestDrink ? `Přidat ${latestDrink.beerName}` : 'Začít večer prvním nápojem'}
             >
               <PlusIcon size={17} color={Colors.stout} />
-              <BeerIcon size={21} color={Colors.stout} />
+              <DrinkGlyph type={latestDrink ? drinkTypeOf(latestDrink) : 'beer'} color={Colors.stout} />
               <Text
                 style={[styles.primaryLabel, !active && styles.primaryLabelWhole]}
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {active ? (byType.length > 1 ? `${byType.length} druhy` : houseBeer) : 'Začni večer'}
+                {active ? (latestDrink?.beerName ?? houseBeer) : 'Začni večer'}
               </Text>
             </Pressable>
           </View>
@@ -921,7 +1208,7 @@ export default function LivePartyMockScreen() {
               onPress={() => setBeersOpen(true)}
               style={({ pressed }) => [styles.primaryPick, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
+              accessibilityLabel="Vybrat jiný nápoj"
             >
               <ChevronDownIcon size={18} color={Colors.stout} />
             </Pressable>
@@ -957,26 +1244,102 @@ export default function LivePartyMockScreen() {
         }}
       />
 
-      <BeerSheet
+      <PartyDrinkSheet
         visible={beersOpen}
-        rows={byType}
-        onTaps={taps}
-        title={active ? 'Co piješ' : 'Čím začínáš?'}
-        subtitle={
-          active
-            ? 'Ťukni a je to v logu.'
-            : 'První pivo nastaví, co bude nalévat „+1 pivo“.'
-        }
+        choices={drinkChoices}
         onClose={() => setBeersOpen(false)}
-        // One tap, sheet closed, beer in the log. Staying open to let you add
-        // three in a row was designing for a case that does not happen: you
-        // order a beer, you log a beer.
-        onAdd={(picked) => {
-          if (active) beer.add(picked);
-          else beginNight(picked);
+        onPick={(picked) => {
+          if (contextFromPubKey(partyPlaceKey) === null && picked.priceCzk === undefined) {
+            openDrinkForm('add', picked.drinkType, {
+              id: '', beerName: picked.name, drinkType: picked.drinkType,
+              priceCzk: picked.priceCzk, volumeMl: picked.volumeMl,
+              at: new Date().toISOString(),
+            });
+          } else {
+            logDrink({
+              name: picked.name, drinkType: picked.drinkType,
+              priceCzk: picked.priceCzk, volumeMl: picked.volumeMl,
+            });
+          }
           setBeersOpen(false);
         }}
+        onNew={(type) => openDrinkForm('add', type)}
+        onScan={() => { setBeersOpen(false); setScanOpen(true); }}
       />
+
+      <ReceiptSheet
+        visible={receiptOpen}
+        startedAtLabel={effectiveStartedAt ? cs.counter.receiptStarted(clockAt(effectiveStartedAt)) : null}
+        beerItems={receiptBeerRows}
+        otherItems={receiptOtherRows}
+        totalLabel={hasCompletePrice ? formatPrice(totalCzk, priceCurrency) : null}
+        onRemove={(item) => removeReceiptIdentity(item.key)}
+        onDone={() => setReceiptOpen(false)}
+        onClose={() => setReceiptOpen(false)}
+      />
+
+      <BeerFormModal
+        visible={formOpen}
+        mode={formMode}
+        beer={formDrink ? { name: formDrink.beerName, priceCzk: formDrink.priceCzk, volumeMl: formDrink.volumeMl } : null}
+        initialDrinkType={formDrinkType}
+        lockNameInEdit={false}
+        placeContext={contextFromPubKey(partyPlaceKey) ?? 'pub'}
+        formKey={formNonce}
+        titleOverride={formMode === 'edit' ? 'Upravit nápoj' : undefined}
+        onCancel={() => setFormOpen(false)}
+        onSubmit={(result) => {
+          if (formMode === 'edit' && formDrink) beer.update(formDrink.id, {
+            beerName: result.name,
+            drinkType: result.drinkType,
+            priceCzk: result.priceCzk,
+            volumeMl: result.volumeMl,
+            servingType: result.servingType,
+          });
+          else logDrink(result);
+          setFormOpen(false);
+          setFormDrink(null);
+        }}
+        onScanMenu={() => {
+          setFormOpen(false);
+          setTimeout(() => setScanOpen(true), 300);
+        }}
+      />
+
+      <ScanMenuSheet
+        visible={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onPick={(source) => {
+          setScanOpen(false);
+          setTimeout(() => void runDrinkScan(source), 220);
+        }}
+      />
+      <ScannedDrinkPicker
+        visible={scannedDrinks.length > 0}
+        drinks={scannedDrinks}
+        priceCurrency={priceCurrency}
+        onClose={() => setScannedDrinks([])}
+        onSelect={(drink) => {
+          setScannedDrinks([]);
+          setTimeout(() => openDrinkForm('add', drink.drinkType, {
+              id: '', beerName: drink.name, drinkType: drink.drinkType,
+              priceCzk: drink.priceCzk, volumeMl: drink.volumeMl,
+              at: new Date().toISOString(),
+            }), 220);
+        }}
+      />
+      {partyPub && checkInDrink ? (
+        <BeerCheckInSheet
+          visible
+          key={checkInDrink.id}
+          beerName={checkInDrink.beerName}
+          pub={partyPub}
+          pubKey={partyPlaceKey}
+          visitClientId={currentVisit?.clientId}
+          onClose={() => setCheckInDrink(null)}
+          onSubmitted={() => setCheckInDrink(null)}
+        />
+      ) : null}
 
       <JoinTableSheet
         visible={joinOpen}
@@ -1105,6 +1468,15 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.2),
   },
+  receiptPill: {
+    height: 40,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+  },
+  receiptText: { fontSize: 14, fontWeight: '800', color: Colors.stout, fontVariant: ['tabular-nums'] },
   endText: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 
   // — Sheet —
@@ -1281,6 +1653,21 @@ const styles = StyleSheet.create({
   },
   logIconCount: { fontFamily: Fonts.numeral, fontSize: 14, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
+
+  undoSlot: { height: 44, justifyContent: 'center' },
+  undoStrip: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.14),
+  },
+  undoText: { flex: 1, color: Colors.foam, fontSize: 14, fontWeight: '600' },
+  undoAction: { color: Colors.amber, fontSize: 14, fontWeight: '800' },
 
   // — Controls —
   // Five equal columns. The primary is bigger but occupies the same slot, so

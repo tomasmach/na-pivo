@@ -157,6 +157,7 @@ export function RowMenu({
   title,
   onChange,
   repeat,
+  actions,
   destructive,
 }: {
   value?: string;
@@ -167,6 +168,7 @@ export function RowMenu({
   onChange?: (next: string) => void;
   /** The obvious thing to do with a beer you already had: have it again. */
   repeat?: { label: string; onPress: () => void };
+  actions?: readonly { label: string; onPress: () => void }[];
   /** The one item that is not a choice — "Smazat". */
   destructive?: { label: string; onPress: () => void };
 }) {
@@ -185,6 +187,11 @@ export function RowMenu({
               <UIText>{repeat.label}</UIText>
             </Button>
           ) : null}
+          {actions?.map((action) => (
+            <Button key={action.label} onPress={action.onPress}>
+              <UIText>{action.label}</UIText>
+            </Button>
+          ))}
           {options && options.length > 0 ? (
             <Picker
               label={title}
@@ -213,21 +220,24 @@ export function RowMenu({
 
   const open = () => {
     const extras = repeat ? [repeat.label] : [];
+    const actionLabels = actions?.map((action) => action.label) ?? [];
     const choices = options ?? [];
-    const labels = [...extras, ...choices, ...(destructive ? [destructive.label] : []), 'Zrušit'];
+    const labels = [...extras, ...actionLabels, ...choices, ...(destructive ? [destructive.label] : []), 'Zrušit'];
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options: labels,
         cancelButtonIndex: labels.length - 1,
-        destructiveButtonIndex: destructive ? extras.length + choices.length : undefined,
+        destructiveButtonIndex: destructive ? extras.length + actionLabels.length + choices.length : undefined,
         title,
         userInterfaceStyle: 'dark',
       },
       (index) => {
         if (repeat && index === 0) repeat.onPress();
-        else if (index < extras.length + choices.length)
-          onChange?.(choices[index - extras.length]);
-        else if (destructive && index === extras.length + choices.length) destructive.onPress();
+        else if (index < extras.length + actionLabels.length)
+          actions?.[index - extras.length]?.onPress();
+        else if (index < extras.length + actionLabels.length + choices.length)
+          onChange?.(choices[index - extras.length - actionLabels.length]);
+        else if (destructive && index === extras.length + actionLabels.length + choices.length) destructive.onPress();
       },
     );
   };

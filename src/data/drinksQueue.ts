@@ -297,13 +297,39 @@ export function updateQueuedDrinkBeerName(
   clientId: string,
   beerName: string,
 ): Promise<QueuedDrinkUpdateResult> {
+  return updateQueuedDrink(clientId, { beer_name: beerName });
+}
+
+export function updateQueuedDrink(
+  clientId: string,
+  update: {
+    beer_name?: string;
+    drink_type?: DrinkEntry['drink_type'];
+    price_czk?: number | null;
+    volume_ml?: number | null;
+    serving_type?: DrinkEntry['beer']['serving_type'];
+  },
+): Promise<QueuedDrinkUpdateResult> {
   return runMutation(async () => {
     const queue = await loadQueue();
     let changed = false;
     const next = queue.map((entry) => {
       if (entry.client_id !== clientId) return entry;
       changed = true;
-      return { ...entry, beer: { ...entry.beer, name: beerName } };
+      const beer = {
+        ...entry.beer,
+        ...(update.beer_name !== undefined ? { name: update.beer_name } : {}),
+        ...(typeof update.price_czk === 'number' ? { price_czk: update.price_czk } : {}),
+        ...(typeof update.volume_ml === 'number' ? { volume_ml: update.volume_ml } : {}),
+        ...(update.serving_type !== undefined ? { serving_type: update.serving_type } : {}),
+      };
+      if (update.price_czk === null) delete beer.price_czk;
+      if (update.volume_ml === null) delete beer.volume_ml;
+      return {
+        ...entry,
+        ...(update.drink_type !== undefined ? { drink_type: update.drink_type } : {}),
+        beer,
+      };
     });
     if (changed) await saveQueue(next);
     if (!changed) return 'missing';

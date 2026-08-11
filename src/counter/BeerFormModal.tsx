@@ -114,6 +114,7 @@ interface BeerFormModalProps {
   /** Prefilled beer (name locked in 'price'/'edit'; price/volume seed the form). */
   beer?: CommunityBeer | null;
   initialDrinkType?: DrinkType;
+  lockNameInEdit?: boolean;
   /** Where the drink is being logged. Outside a pub ('private'/'outdoors'/
    *  'other') the form asks how the beer is served and the price is optional. */
   placeContext?: PlaceContext;
@@ -145,6 +146,7 @@ export function BeerFormModal({
   mode,
   beer,
   initialDrinkType = 'beer',
+  lockNameInEdit = true,
   placeContext = 'pub',
   initialServingType,
   formKey,
@@ -172,6 +174,7 @@ export function BeerFormModal({
           mode={mode}
           beer={beer}
           initialDrinkType={initialDrinkType}
+          lockNameInEdit={lockNameInEdit}
           placeContext={placeContext}
           initialServingType={initialServingType}
           onCancel={onCancel}
@@ -192,6 +195,7 @@ interface BeerFormBodyProps {
   mode: BeerFormMode;
   beer?: CommunityBeer | null;
   initialDrinkType: DrinkType;
+  lockNameInEdit: boolean;
   placeContext: PlaceContext;
   initialServingType?: ServingType;
   onCancel: () => void;
@@ -208,6 +212,7 @@ function BeerFormBody({
   mode,
   beer,
   initialDrinkType,
+  lockNameInEdit,
   placeContext,
   initialServingType,
   onCancel,
@@ -223,7 +228,7 @@ function BeerFormBody({
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const menuMode = mode === 'menu';
-  const nameLocked = mode === 'price' || mode === 'edit';
+  const nameLocked = mode === 'price' || (mode === 'edit' && lockNameInEdit);
   const outside = placeContext !== 'pub';
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const [drinkType, setDrinkType] = useState<DrinkType>(initialDrinkType);
@@ -261,7 +266,7 @@ function BeerFormBody({
   // Volume: either a preset pill (300/400/500) or a free-typed custom ml ("Jiné").
   const initialPresets = menuMode
     ? [VOLUME_SMALL, VOLUME_DEFAULT]
-    : volumePresets(initialDrinkType, outside);
+    : volumePresets(drinkType, outside);
   const seedVolume = beer?.volumeMl ?? (mode === 'add' ? defaultVolume(initialDrinkType) : undefined);
   const seedIsPreset = typeof seedVolume === 'number' && initialPresets.includes(seedVolume);
   const [selectedPreset, setSelectedPreset] = useState<number | undefined>(seedIsPreset ? seedVolume : undefined);
@@ -423,7 +428,7 @@ function BeerFormBody({
             contentContainerStyle={styles.cardContent}
             bounces={false}
           >
-            {mode === 'add' ? (
+            {mode === 'add' || (mode === 'edit' && !lockNameInEdit) ? (
               <View style={styles.typeGroup}>
                 {(['beer', 'wine', 'soft_drink', 'shot'] as const).map((type) => {
                   const selected = drinkType === type;

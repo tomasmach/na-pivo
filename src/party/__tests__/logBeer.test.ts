@@ -16,11 +16,13 @@ const enqueueDrink: jest.Mock = jest.fn(async () => true);
 const removeQueuedDrink: jest.Mock = jest.fn(async () => true);
 const flushDrinksQueue: jest.Mock = jest.fn(async () => undefined);
 const updateQueuedDrinkBeerName: jest.Mock = jest.fn(async () => 'queued');
+const updateQueuedDrink: jest.Mock = jest.fn(async () => 'queued');
 jest.mock('@/data/drinksQueue', () => ({
   enqueueDrink: (...args: unknown[]) => enqueueDrink(...(args as [])),
   removeQueuedDrink: (...args: unknown[]) => removeQueuedDrink(...(args as [])),
   flushDrinksQueue: (...args: unknown[]) => flushDrinksQueue(...(args as [])),
   updateQueuedDrinkBeerName: (...args: unknown[]) => updateQueuedDrinkBeerName(...(args as [])),
+  updateQueuedDrink: (...args: unknown[]) => updateQueuedDrink(...(args as [])),
 }));
 
 const enqueueDelete: jest.Mock = jest.fn(async () => undefined);
@@ -45,7 +47,7 @@ jest.mock('@/data/visitsQueue', () => ({
   flushVisitsQueue: (...args: unknown[]) => flushVisitsQueue(...(args as [])),
 }));
 
-import { logPartyBeer, renamePartyBeer, unlogPartyBeer } from '@/party/logBeer';
+import { logPartyBeer, renamePartyBeer, unlogPartyBeer, updatePartyDrink } from '@/party/logBeer';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 /** Praha, roughly — a real geohash-8, because the client decodes it. */
@@ -73,7 +75,38 @@ beforeEach(() => {
   enqueueDrink.mockResolvedValue(true);
   removeQueuedDrink.mockResolvedValue(true);
   updateQueuedDrinkBeerName.mockResolvedValue('queued');
+  updateQueuedDrink.mockResolvedValue('queued');
+  flushDrinksQueue.mockResolvedValue(undefined);
   useTallyStore.setState({ current: null, history: [] });
+});
+
+describe('updatePartyDrink', () => {
+  it('waits for an in-flight create before sending the edit', async () => {
+    let finishCreate: (() => void) | undefined;
+    flushDrinksQueue.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      finishCreate = resolve;
+    }));
+    updateQueuedDrink.mockResolvedValue('in-flight');
+    const id = logPartyBeer({ place: PLACE, beerName: 'Ryzlink' });
+
+    updatePartyDrink(id, {
+      beerName: 'Ryzlink vlašský',
+      drinkType: 'wine',
+      priceCzk: 85,
+      volumeMl: 200,
+    });
+    await flush();
+
+    expect(enqueueDrinkUpdate).not.toHaveBeenCalled();
+    finishCreate?.();
+    await flush();
+
+    expect(enqueueDrinkUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      client_id: id,
+      beer_name: 'Ryzlink vlašský',
+      drink_type: 'wine',
+    }));
+  });
 });
 
 describe('logPartyBeer', () => {

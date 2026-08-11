@@ -77,8 +77,8 @@ export interface DrinkInput {
 /** A single beer in backend (snake_case) wire form for a drink. */
 interface WireDrinkBeer {
   name: string;
-  price_czk?: number;
-  volume_ml?: number;
+  price_czk?: number | null;
+  volume_ml?: number | null;
   serving_type?: ServingType;
 }
 
@@ -447,9 +447,20 @@ export async function deleteDrink(
  * narrow typo-fix path: it does not rewrite pub, price, volume, timestamp or the
  * public community menu contribution.
  */
-export async function updateDrinkName(
+export interface DrinkUpdate {
+  beer_name?: string;
+  drink_type?: DrinkType;
+  price_czk?: number | null;
+  volume_ml?: number | null;
+  serving_type?: ServingType;
+}
+
+/** PATCH one previously logged private drink. All fields are additive to the
+ * original narrow rename contract, so released clients can keep sending only
+ * `beer_name` while the full party editor syncs type, price and volume too. */
+export async function updateDrink(
   clientId: string,
-  beerName: string,
+  update: DrinkUpdate,
   signal?: AbortSignal,
 ): Promise<SubmitDrinkResult> {
   if (signal?.aborted) return 'retry';
@@ -483,7 +494,7 @@ export async function updateDrinkName(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify({ beer_name: beerName }),
+      body: JSON.stringify(update),
       signal: abort.signal,
     });
 
@@ -512,4 +523,12 @@ export async function updateDrinkName(
   } finally {
     abort.cleanup();
   }
+}
+
+export function updateDrinkName(
+  clientId: string,
+  beerName: string,
+  signal?: AbortSignal,
+): Promise<SubmitDrinkResult> {
+  return updateDrink(clientId, { beer_name: beerName }, signal);
 }

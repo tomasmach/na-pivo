@@ -289,6 +289,23 @@ describe('nightThread', () => {
     ]);
   });
 
+  it('numbers only beers while keeping each drink type in the thread', () => {
+    const mixed = night({
+      drinks: [
+        drink('me', 20),
+        drink('me', 21, { drinkType: 'soft_drink', beerName: 'Kofola' }),
+        drink('me', 22),
+      ],
+    });
+    const drinks = nightThread(mixed).filter((entry) => entry.kind === 'beer');
+
+    expect(drinks.map((entry) => [entry.drinkType, entry.ordinal])).toEqual([
+      ['beer', 1],
+      ['soft_drink', undefined],
+      ['beer', 2],
+    ]);
+  });
+
   it('leaves a game unsigned — the row leads with the game', () => {
     const game = nightThread(record).find((entry) => entry.kind === 'game');
 

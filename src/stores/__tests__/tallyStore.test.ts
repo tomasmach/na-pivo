@@ -406,6 +406,21 @@ describe('updateDrinkNameInSession', () => {
   });
 });
 
+describe('updateDrinkInSession', () => {
+  it('updates type, name, price and volume together', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ beerName: 'Plzeň', priceCzk: 62, volumeMl: 500 }));
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+
+    expect(useTallyStore.getState().updateDrinkInSession(startedAt, 'id-1', {
+      beerName: 'Ryzlink', drinkType: 'wine', priceCzk: 85, volumeMl: 200,
+    })).toBe(true);
+
+    expect(useTallyStore.getState().current?.drinks[0]).toMatchObject({
+      beerName: 'Ryzlink', drinkType: 'wine', priceCzk: 85, volumeMl: 200,
+    });
+  });
+});
+
 describe('markDrinkSynced', () => {
   it('marks a newly added drink in archived history as sent', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
