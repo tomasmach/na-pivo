@@ -337,6 +337,10 @@ Always pass `-p na-pivo`: the compose project name is pinned in
 `docker-compose.yml`, but the explicit flag keeps a stray invocation from a
 different directory from ever creating a parallel project with empty volumes.
 
+Never deploy from `/opt/na-pivo.pre-monorepo-2026-07-17` — it is an archived
+checkout of the old backend-only repo, and deploying it would roll production
+back.
+
 Migrations run inside the container on start. `set -e` means a failed migration stops `napivo-web` before gunicorn; check `docker compose logs napivo-web` if it will not go healthy.
 
 Tests run on SQLite, which does not create PostgreSQL `varchar_pattern_ops` `_like` indexes, so verify migrations that depend on PostgreSQL behavior before deploying.

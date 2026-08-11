@@ -828,7 +828,7 @@ export default function FriendsScreen() {
 
   // Žebříčky, FotoPivař and Výčep are three whole features that used to be
   // invisible behind the "…" glyph. They belong on the card, in the same rail
-  // idiom the counter uses (docs/DESIGN.md §5.5).
+  // idiom the counter uses (DESIGN.md §5.5).
   const railTiles = useMemo<DoorRailTile[]>(
     () => [
       {

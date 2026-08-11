@@ -15,11 +15,17 @@ s odůvodněním jsou v `docs/decisions/`.
 > Kód, tokeny a identifikátory anglicky. UI copy česky, tykáním.
 > Viz `src/i18n/cs.ts`.
 
-**Etalon:** obrazovka Štamgast → Počítat.
-Soubory: `src/counter/CounterScreen.tsx`, `CoasterCard.tsx`, `CounterCta.tsx`,
-`CounterQuickActions.tsx`, `NudgeSlot.tsx`, `PlaceChip.tsx`, `DrinkPickSheet.tsx`,
-`ReceiptSheet.tsx`, `CounterMoreSheet.tsx`, `src/components/shared/CardSurface.tsx`,
-`src/components/shared/DoorRail.tsx`, `src/beer/BeerScreen.tsx`.
+**Etalon:** mockový jazyk 3.0 (rozhodnuto 11. 8. 2026 — mocky jsou kánon).
+Soubory: `src/mocks/mockTheme.ts` (jediný zdroj `MockType` / `MockColors` /
+`MockLayout`), `src/party/LivePartyMockScreen.tsx`, `src/pubs/PubListMockScreen.tsx`,
+`src/pubs/PlacesSheet.tsx`, `src/mocks/StatGrid.tsx`, `src/mocks/SectionBreak.tsx`,
+`src/mocks/Leaderboard.tsx`, `src/mocks/LivePartyBar.tsx`,
+`src/components/shared/TabBar.tsx`, `src/profile/ProfileMockScreen.tsx`,
+`src/feed/FeedScreen.tsx`.
+
+Starý etalon 2.x (`src/counter/*`, `CardSurface`, `DoorRail`) zůstává v kódu,
+dokud ho 3.0 obrazovky nenahradí, ale **nové UI se z něj nekopíruje**. Konkrétně
+`amberGlow*` a `CardSheen` do nového UI nepatří vůbec.
 
 Tři pravidla, která rozhodují o všem ostatním:
 
@@ -27,7 +33,7 @@ Tři pravidla, která rozhodují o všem ostatním:
   se dokument, ne se dělá lokální výjimka.
 - **Jedna svítící věc na obrazovce** (§6.1). Jantar je akcent, ne barva pozadí.
 - **Pohyb kopíruje prst, ne sám sebe** (§10). Nekonečné smyčky, dýchající prvky
-  a ambientní animace jsou zakázané.
+  a ambientní animace jsou zakázané; povolené jsou jen stavové výjimky z §10.
 
 Podklad je stout (tmavě hnědá), akcent jantar. Světlý režim je **vědomě
 odložený** — zdvojil by práci na každé obrazovce.
@@ -134,9 +140,11 @@ desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
 Fyzické hry běží v **WebView** (three.js + cannon-es), textové v React Native.
 Mezi nimi je pevný protokol (`src/games/protocol.ts`) a tři pravidla:
 
-1. Plátno smí **zdobit, ne vyprávět** — text je vždycky nativní.
+1. Plátno smí **zdobit, ne vyprávět** — narativní text je vždycky nativní. Krátký label
+   namalovaný na fyzické rekvizitě (jméno na výseči kola) je součást rekvizity a smí dovnitř.
 2. **Hra je zdroj náhody.**
-3. **Každá hra končí tím, že to řekne** — `result`, ne domněnka platformy.
+3. **Hra s definovaným koncem končí tím, že to řekne** — `result`, ne domněnka platformy.
+   Nekonečná rekvizita (Flaška) konec nemá a emituje opakované eventy (`picked`).
 
 Konec kreslí platforma (`GameResult`) a **tvar se odvozuje z dat**, ne z příznaku:
 je tam `payingId` → někdo platí; je tam `winnerId` → někdo vyhrál; víc skóre →
@@ -221,7 +229,7 @@ funkci, jen přestal ukazovat všechno naráz. Postup je vždycky stejný:
    není. Když povrch pustíš do headeru, **musíš** jeho řádek ze sheetu smazat (§14.4).
 5. **Zruš dekoraci, která nic neříká.** Rozmazané záře na pozadí, jantarové kickery nad každou
    sekcí, rámečky kolem rámečků, emoji v chromu, ikona u každého řádku.
-6. **Slučuj sekce.** Dvě sekce, které uživatel čte jako jednu věc, mají být jedna karta.
+6. **Slučuj sekce.** Dvě sekce, které uživatel čte jako jednu věc, mají být jeden blok.
 
 ### Co „nesmí zmizet ani jedna funkce“ znamená
 
@@ -231,7 +239,7 @@ Funkce se **nesmí ztratit**, ale skoro jistě se **má přestěhovat**. Povolen
 |---|---|
 | trvale viditelná sekundární akce | `…` sheet |
 | tři chipy vedle sebe | jeden sheet s jedním záměrem |
-| dvě sekce se stejným kickerem | jedna karta |
+| dvě sekce se stejným nadpisem | jeden blok |
 | pole formuláře uprostřed scrollu | sheet, který ho vlastní |
 | údaj, který nikdo nečte | pryč z povrchu, zůstává v detailu |
 
@@ -244,9 +252,12 @@ vypsaný jako „odkud → kam“.
 
 Vizuální jazyk Na pivo je **tácek pod pivem v tmavé hospodě**. Pozadí je stout — skoro černá s teplým
 hnědým podtónem — a všechno, co na něm leží, je papírově světlé nebo jantarové. Na obrazovce je vždycky
-**jedno velké číslo nebo jedna velká věc, jedna jantarová akce a nic dalšího, co svítí**. Karta drží
-obsah, aby uprostřed obrazovky nikdy nezůstala prázdná plocha, která by ji shodila na drátěný model.
-Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a rozhodně ne emoji v chromu.
+**jedno velké číslo nebo jedna velká věc, jedna jantarová akce a nic dalšího, co svítí**.
+
+Obsah **leží přímo na ploše obrazovky** — řádky oddělené hairlinem, sekce oddělené tmavým pásem
+(`SectionBreak`), ne karta v kartě. Karta je výjimka pro věci, které opravdu plavou nad obsahem
+(§5). Osobnost nesou skutečné věci — velká čísla, reálná mapa, nativní grafy, hospodská copy — ne
+dekorace, ne animace a rozhodně ne emoji v chromu.
 
 ---
 
@@ -256,13 +267,13 @@ Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a ro
 
 | Token | Hex | K čemu to je |
 |---|---|---|
-| `Colors.stout` | `#15120F` | Pozadí obrazovky (root). Nic jiného. |
-| `Colors.stout2` | `#1C1815` | Plocha karty a bottom sheetu. O stupeň světlejší než root. |
-| `Colors.stout3` | `#262019` | Vnořený prvek uvnitř karty/sheetu: řádek, strip, chip, close button. |
-| `Colors.border` | `#3A322A` | Plný okraj sheetu, grabber, dělítka uvnitř sheetu. Často s alfou. |
-| `Colors.amber` | `#E8A317` | Akcent. Primární tlačítko, hlavní číslo, ikony, aktivní stav. |
+| `Colors.stout` | `#15120F` | Zem obrazovky **i intent sheetu** (§7). Plochý seznam leží přímo na ní. |
+| `Colors.stout2` | `#1C1815` | Karta (výjimka, §5.3) a filtrační chip. O stupeň světlejší než zem. |
+| `Colors.stout3` | `#262019` | Tichá sekundární pilulka (§6.2), textové pole (`MockColors.field`), karta rozehrané hry. |
+| `Colors.border` | `#3A322A` | Jazyk 2.x. Nové UI odděluje hairliny z pěny (§2.2), ne plným okrajem. |
+| `Colors.amber` | `#E8A317` | Akcent. Primární tlačítko, aktivní stav, akcentované akce a ikony. Číslice jsou pěna (§3.2). |
 | `Colors.amberLight` | `#F5B642` | Jen uvnitř ilustrací (horní stop gradientu piva). |
-| `Colors.glow` | `#FF7A1A` | **Jen** `shadowColor` v `amberGlow*`. Nikdy jako fill nebo text. |
+| `Colors.glow` | `#FF7A1A` | Jazyk 2.x (`amberGlow*`). **V novém UI se nepoužívá vůbec** (§6.1). |
 | `Colors.neon` | `#FFD27A` | Rezerva pro zvýrazněné stavy. Na etalonu se nepoužívá. |
 | `Colors.foam` | `#FBF3E0` | Primární text a světlé hairliny (s alfou). |
 | `Colors.foamMuted` | `#E8DCC0` | Sekundární text, popisek pod číslem, ikona zavírání. |
@@ -285,48 +296,51 @@ Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a ro
 `withAlpha(hex, alpha)` z `@/theme/colors` přidá alfa kanál k šestimístnému hexu. Alfu píšeme vždycky
 přes něj, nikdy ručně `'#FBF3E01A'` a nikdy `opacity` na kontejneru s textem.
 
+**Mimo `colors.ts` žijí tři pojmenované barvy mockového jazyka** (druhou paletu nezavádějí —
+`MockColors` je jinak čistý alias na `Colors`):
+
+| Konstanta | Hex | Kde žije | K čemu |
+|---|---|---|---|
+| `MockColors.live` | `#35D07F` | `src/mocks/mockTheme.ts` | Běžící večer (live stav). Jediná zelená v appce mimo `success`. |
+| `BAND_COLOR` | `#0F0A05` | `src/mocks/SectionBreak.tsx` | Pás mezi sekcemi a mezi posty — tmavší než každá zem v appce. |
+| `HEADER_GRADIENT` / `LIVE_GRADIENT` | `['#5A3418','#2A1A0C', bg]` / `['#0F4429','#122A1B', bg]` | `src/mocks/mockTheme.ts` | Shader hlavičky; zelená varianta, když běží večer (§16.3). |
+
 ### 2.2 Pravidla užití
 
-**Plná jantarová plocha smí být na obrazovce právě jednou.** Patří primárnímu tlačítku
-(`backgroundColor: Colors.amber`). Druhá plná jantarová plocha je bug. Výjimka existuje jen pro
-malý potvrzovací pill uvnitř nudge stripu (`filledPill` v `NudgeSlot`), a i ten je vidět max
-5 vteřin a nikdy zároveň s ničím jiným jantarovým.
+**Plná jantarová plocha smí být v obsahu obrazovky nejvýš jednou** (čtecí obrazovka nemusí mít CTA). Patří primárnímu tlačítku
+(`backgroundColor: Colors.amber`). Druhá plná jantarová plocha v obsahu je bug. **Chrome se počítá
+zvlášť:** jantarový disk Party v tab baru (§17.2) a `+1` CTA v live baru (§20.5) jsou trvalé
+kotvy chromu a s obsahem nesoupeří — právě proto v obsahu platí pravidlo o to přísněji.
 
-**Jantar jako text/ikona** patří hlavnímu číslu (`CoasterCard.count`), ikonám v jantarových
-„medailoncích“, akcentovaným captionům a odkazu typu „Účet →“. To je tenká, ne plošná barva.
+**Jantar jako text/ikona** patří aktivnímu stavu, akcentovaným akcím („Zkusit znovu“, „Obnovit“)
+a aktivnímu kusu baseline. Hlavní číslice jsou **pěna**, ne jantar (§3.2). Malé stavové prvky —
+`PR` kapsle, jantarový medailonek pod ikonou, podium bloky na alfě — se za „plochu“ nepočítají;
+plocha znamená velký plný jantarový panel nebo tlačítko.
 
-**Sekundární akce = jantar na 6 %:**
+**Sekundární akce = tichá `stout3` pilulka, bez okraje** (§6.2). Jantarový 6% outline byl jazyk
+2.x a do nového UI nepatří.
 
-```ts
-backgroundColor: withAlpha(Colors.amber, 0.06),
-borderWidth: 1,
-borderColor: withAlpha(Colors.amber, 0.18),
-```
-
-To je přesně `CounterSecondary`. Dost na to, aby to patřilo do rodiny, ani zdaleka ne dost na to,
-aby to soupeřilo s plným tlačítkem.
-
-**Neutrální chrome (segmenty, rámečky, hairliny) = pěna na 4–14 %:**
+**Neutrální chrome (dráhy, hairliny, grabbery) = pěna na 6–26 %:**
 
 | Použití | Hodnota |
 |---|---|
-| Pozadí segmentovaného přepínače | `withAlpha(Colors.foam, 0.04)` |
-| Okraj karty | `withAlpha(Colors.foam, 0.07)` |
-| Okraj segmentovaného přepínače | `withAlpha(Colors.foam, 0.08)` |
-| Hairline dělítko uvnitř karty / patka sheetu | `withAlpha(Colors.foam, 0.10)` |
-| Aktivní segment (fill) | `withAlpha(Colors.foam, 0.10)` |
-| Světelný hairline na horní hraně CTA | `withAlpha(Colors.foam, 0.55)` |
-| Jantarový medailonek pod ikonou v řádku | `withAlpha(Colors.amber, 0.12)` |
-| Okraj jantarového chipu (stav „vyžaduje akci“) | `withAlpha(Colors.amber, 0.32)` |
-| Okraj rapid-confirm stripu | `withAlpha(Colors.amber, 0.42)` |
-| Neutrální okraj stripu | `withAlpha(Colors.border, 0.6)` |
-| Dělítko mezi řádky v sheetu | `withAlpha(Colors.border, 0.4)` |
+| Podklad stale-data baru | `withAlpha(Colors.foam, 0.06)` |
+| Dráha segmentu / track grafu | `withAlpha(Colors.foam, 0.07)` |
+| Track žebříčku, hairline rekordu | `withAlpha(Colors.foam, 0.08)` |
+| Klidná baseline pod podtržítkovými taby | `withAlpha(Colors.foam, 0.09)` |
+| **Hairline mezi řádky seznamu — hlavní dělítko** | `withAlpha(Colors.foam, 0.10)` |
+| Vodicí linka threadu, okraj `PlacesSheet`, hairline nad fakty | `withAlpha(Colors.foam, 0.12)` |
+| Okraj plovoucí pilulky / live baru | `withAlpha(Colors.foam, 0.14)` |
+| Grabber sheetu | `withAlpha(Colors.foam, 0.22–0.26)` |
+| Placeholder v poli (`fieldHint`) | `withAlpha(Colors.foam, 0.55)` |
+| Medailonek pod ikonou / tint skla / podklad varovného pruhu | `withAlpha(Colors.amber, 0.10–0.12)` |
+| Okraj aktivního filtračního chipu | `withAlpha(Colors.amber, 0.5)` |
+| Aktivní kus baseline (`UnderlineTabs`) | `withAlpha(Colors.amber, 0.85)` |
+| Fallback plovoucí pilulky pod sklem | `withAlpha(Colors.stout, 0.92)` / `withAlpha(Colors.stout2, 0.96)` |
 
-**Segmentovaný přepínač mimo kartu je plný `stout3`.** Pěna na 4 % funguje jen na světlejší ploše
-karty (`LayerSwitch` v kartě mapy). Přímo na `stout` je ten rozdíl skoro neviditelný, dráha zmizí a
-přepínač se rozpadne na tři volná slova. Přepínač, který leží na holé obrazovce (`BoardSegmented` na
-Žebříčcích), má proto `backgroundColor: Colors.stout3`, okraj `withAlpha(Colors.border, 0.6)` a jeden
-posuvný thumb `withAlpha(Colors.foam, 0.10)` se stejným okrajem.
+**Segmentovaný přepínač je nativní** (§18): SwiftUI `Picker` se `pickerStyle('segmented')`. Ruční
+RN fallback (Android) má dráhu `withAlpha(Colors.foam, 0.07)` a **aktivní segment plný
+`Colors.amber`** se `stout` labelem — aktivní stav je odpověď, ne odstín pěny.
 
 **Rozpad 60 / 30 / 10.** 60 % plochy je `stout` + `stout2` (pozadí a karta), 30 % je text v odstínech
 `foam` / `foamMuted` / `mutedText`, 10 % je jantar. Když se při návrhu dostaneš přes ~10 % jantaru,
@@ -337,7 +351,7 @@ něco jsi udělal plochou místo textem.
 ## 3. Typografie
 
 Typografie je **systémové písmo** (San Francisco), všude. `src/theme/fonts.ts`
-neexportuje žádné rodiny — jen `FontScaleCap`.
+exportuje `FontScaleCap` a jedinou vlastní rodinu: `Fonts.numeral`.
 
 Váha se píše jako `fontWeight`, nikdy jako název rodiny. Dřív ji nesl název
 (`Baloo2-ExtraBold`), takže `fontFamily` a `fontWeight` si na jednom stylu
@@ -348,15 +362,17 @@ kotvená menu, SwiftUI grafy, nativní velké titulky (§18). Vlastní rodina ve
 nich staví na jednu obrazovku dvě abecedy. SF navíc nese optical sizing a
 škáluje s Dynamic Type, což přibalená TTF neumí.
 
-**Jedna výjimka: `Fonts.numeral` — Baloo 2 ExtraBold, jen na display číslice.**
+**Jedna výjimka: `Fonts.numeral` — Baloo 2 ExtraBold, jen na display hodnoty** (číslice a krátké
+formátované údaje ve statistickém bloku: „2 h 41 m“, „3×“, cena).
 
 SF je záměrně neutrální. To je správně pro řádek v nastavení a špatně pro číslo,
 které říká, jak dopadl večer — v SF čtou jako tabulka, v Baloo jako tahle appka.
 Ta čísla jsou nejblíž tomu, co má produkt místo tváře.
 
-Platí to **jen pro číslice** (`StatGrid`, hero čísla, série, postup výzvy). Body
-text, popisky, nadpisy a tlačítka zůstávají systémové — dvě abecedy v odstavci
-je přesně to, co jsme odstranili.
+Platí to **jen pro display hodnoty** (`StatGrid`, hero čísla, série, postup výzvy) a dvě
+pojmenované výjimky: wordmark „Na pivo“ v hlavičce feedu a výsledek hry („Platí
+Honza“) — věci, které mají znít. Ostatní body text, popisky, nadpisy a tlačítka
+zůstávají systémové — dvě abecedy v odstavci je přesně to, co jsme odstranili.
 
 Baloo 2 ExtraBold **přetéká svůj řádkový box**, takže každý styl, který ho
 používá, potřebuje `lineHeight` kolem 1,24× velikosti (§3.2). Bez toho se číslo
@@ -373,75 +389,80 @@ Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se t
 > jsou teď volnější a odhad šířky konzervativnější, než je potřeba. Nic
 > rozbitého, ale při dalším zásahu do těch souborů to přepočítej.
 
-### 3.1 Čtyřstupňová škála (přesně z etalonu)
+### 3.1 Škála (`MockType`, `src/mocks/mockTheme.ts`)
 
-| Stupeň | Velikost | Rodina | Barva | Kde |
-|---|---|---|---|---|
-| **display numeral** | 88 / 72 / 56 | `Fonts.display.extrabold` | `Colors.amber` | Hlavní číslo v kartě |
-| **nadpis** | 20 | `Fonts.display.extrabold` | `Colors.stout` (na jantaru) | Label primárního tlačítka |
-| **body** | 15 | `Fonts.ui.semibold` | `Colors.foam` | Řádky seznamů, fakta, sekundární label |
-| **caption** | 13 | `Fonts.ui.medium` | `Colors.mutedText` | Meta pod řádkem, „před 12 min“, subLabel |
+| Token | Velikost / váha | Tracking | Kde |
+|---|---|---|---|
+| `MockType.titleXL` | 30 / 700 | **−0.5** | Titulek obrazovky, vlevo nahoře |
+| `MockType.titleS` | 18 / 700 | **−0.2** | Nadpis sekce — **sentence case, nikdy verzálky** |
+| `MockType.body` | 16 / 500 | — | Titulek řádku |
+| `MockType.bodySemibold` | 16 / 600 | — | Název hospody / handle v řádku |
+| `MockType.bodySmall` | 14 / 500 | — | Druhá řádka, sekundární text |
+| `MockType.label` | 12 / 600 | — | Kapsle, caption |
+| `MockType.buttonLabel` | 16 / 700 | — | Label tlačítka |
 
-Doplňkové, odvozené stupně (používej je, ale nezaváděj páté a šesté):
-`22` Baloo extrabold = titulek bottom sheetu · `18` Baloo extrabold = `PlaceChip` (název místa) ·
-`17` Baloo extrabold = řádek „Celkem“ · `14` Baloo bold = label pilulky / segmentu ·
-`13` Baloo bold `letterSpacing: 3` = popisek pod číslem (verzálky) ·
-`11` Inter bold `letterSpacing: 1.5` = jantarový caption sekce v sheetu.
+Displejové stupně nad škálou: hero číslice `34/42` (`StatGrid`), streak `40/50`, handle `24/800`,
+recap titulek `32/800`. Rodina je u číslic `Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
 
-Velké číslo se **zmenšuje podle počtu číslic**, aby nikdy nerozbilo kartu:
+**Negativní tracking roste s velikostí:** −0.2 u titulků sekcí a zvýrazněných názvů, přes
+−0.4/−0.5 u titulků obrazovek, po −0.7 u největších displejových stupňů. Běžný body text jede bez
+trackingu. Jediný **pozitivní** tracking mají verzálkové mikro-labely (+0.2 label tab baru a `PR`;
+caption typu „ODEHRÁNO“ až +1.2).
 
-```ts
-function countFontSize(count: number): number {
-  if (count < 10) return 88;
-  if (count < 100) return 72;
-  return 56;
-}
-```
+**Verzálkové mikro-kickery jsou zakázané.** Nadpis sekce je 18pt bold v sentence case
+(`MockType.titleS`), ne 11pt verzálky s prostrkáním — přesně ty dělaly z mocků „starou appku“
+(`mockTheme.ts:20–24`). Páté a šesté stupně nezaváděj; když ti škála nestačí, uprav tenhle
+dokument.
 
-**Když je číslo jediný obsah karty, je 88 podlaha, ne strop.** Karta počítadla nemá ilustraci, takže
-se číslo měří z karty (`countNumeralSize` v `CoasterCard.tsx`): výška těla mínus místo na popisek,
-lomeno 1.24, zastropováno na 132 a navíc omezeno šířkou (`digits × 0.62 × fontSize ≤ šířka`), aby
-tříciferný večer nepřetekl na iPhonu SE. `adjustsFontSizeToFit` je pojistka, ne návrh — číslo, které
-si velikost tiše určí samo, je číslo, jehož velikost nikdo neřídí.
+**Číslo se nezvětšuje podle karty — zmenšuje se podle místa.** Hero číslo je `34/42`
+s `adjustsFontSizeToFit` + `minimumFontScale={0.7}`; label vedle něj má `flexShrink: 1` +
+`minWidth: 0` a `minimumFontScale={0.75}`. **Shrink, ne truncate** — useknutý label je fail,
+zmenšený je v pořádku (`StatGrid.tsx`).
 
 ### 3.2 Povinná pravidla pro velká čísla
 
 ```tsx
 <Text
-  style={[
-    styles.count,
-    { fontSize: countFontSize(count), lineHeight: countFontSize(count) * 1.24 },
-  ]}
+  style={styles.value}
   numberOfLines={1}
-  maxFontSizeMultiplier={FontScaleCap.display}
+  allowFontScaling={false}
+  adjustsFontSizeToFit
+  minimumFontScale={0.7}
 >
   {count}
 </Text>
 ```
 
 ```ts
-count: {
-  fontFamily: Fonts.display.extrabold,
-  color: Colors.amber,
+value: {
+  fontFamily: Fonts.numeral,        // Baloo2-ExtraBold, jen displejové číslice
+  fontSize: 34,
+  lineHeight: 42,                   // ≈ 1.24× — jinak iOS ořízne vršek cifer
+  letterSpacing: -0.6,
+  color: Colors.foam,               // číslice jsou pěna; jantar je akce a aktivní stav
   includeFontPadding: false,
   fontVariant: ['tabular-nums'],
 },
 ```
 
-- **`lineHeight = fontSize * 1.24` je povinné.** Baloo 2 ExtraBold má výrazný overshoot horních
-  partií číslic. Když `lineHeight` chybí (RN dopočítá zhruba `fontSize`), **iOS svisle ořízne vršek
-  cifer** — u „8“ zmizí horní oblouk. 1.24 nechá reálnou hlavičku. Prázdné místo, které tím vznikne
-  dole, se zavírá zápornou horní marží popisku (`marginTop: -8` na `noun`), aby číslo + popisek
-  četly jako jeden objekt, ne jako dva labely nad sebou.
-- **`fontVariant: ['tabular-nums']` je povinné** u čehokoliv, co se v čase mění (počty, ceny, časy).
-  Bez toho číslo při každé změně poskočí do stran.
+- **`lineHeight ≈ fontSize × 1.24` je povinné u displejových stupňů.** Baloo 2 ExtraBold má
+  výrazný overshoot horních partií číslic. Když `lineHeight` chybí (RN dopočítá zhruba
+  `fontSize`), **iOS svisle ořízne vršek cifer** — u „8“ zmizí horní oblouk. Doložené páry:
+  22/27, 19/24, 34/42, 40/50. Menší `Fonts.numeral` použití bez `lineHeight` (wordmark, výsledek
+  hry) jsou dluh, ne vzor.
+- **`fontVariant: ['tabular-nums']` je povinné** u čehokoliv, co se v čase mění (počty, časy,
+  skóre). Bez toho číslo při každé změně poskočí do stran.
+- **`allowFontScaling={false}` na číslicích v pevných buňkách** (`StatGrid`, žebříček, tikající
+  hodiny) — jsou to sloupce, ne věty; škálování rozbije mřížku. Běžný text má místo toho
+  `maxFontSizeMultiplier` (§3.3).
 - **`includeFontPadding: false`** dávej **na každý `<Text>`** s vlastním `fontFamily`. Android jinak
   přidává neviditelné odsazení a rozbíjí svislé zarovnání proti ikonám.
 
 ### 3.3 Dynamic Type
 
-**Každý `<Text>` musí mít `maxFontSizeMultiplier`.** Bez stropu Samsung škáluje až ~2.0× a rozbije
-kompozici. Používej `FontScaleCap` z `@/theme/fonts`:
+**Každý `<Text>` má buď `maxFontSizeMultiplier`, nebo — u číslic v pevných buňkách —
+`allowFontScaling={false}` (§3.2).** Nikdy obojí a nikdy nic. Bez stropu Samsung škáluje až ~2.0×
+a rozbije kompozici. Používej `FontScaleCap` z `@/theme/fonts`:
 
 | Cap | Hodnota | Pro co |
 |---|---|---|
@@ -456,39 +477,36 @@ Nikdy ne `numberOfLines` bez `flexShrink: 1` na rodiči — jinak text netruncuj
 
 ## 4. Mezery a grid
 
-Osmibodový grid. Povolené hodnoty: **4 / 8 / 12 / 16 / 20 / 24 / 28 / 32 / 40 / 48**.
-Tokeny (`src/theme/layout.ts`): `Spacing.xs 4`, `sm 8`, `md 14`, `lg 20`, `xl 28`, `xxl 40`.
-Literál (`12`, `16`, `24`) je v pořádku tam, kde token neexistuje — etalon to tak dělá — ale nikdy
-nevymýšlej `13`, `18`, `22`.
+Pojmenovaná spacing škála (`src/theme/layout.ts`): `Spacing.xs 4`, `sm 8`, `md 14`, `lg 20`,
+`xl 28`, `xxl 40`, plus `MockLayout.screenPad 20`, `controlGap 24`, `sectionGap 32`. Layout se
+skládá z tokenů; malé optické hodnoty uvnitř komponenty (2, 6, 10…) jsou v pořádku, ale nový
+layoutový odstup si nevymýšlej — vezmi token.
 
 Konkrétní hodnoty z etalonu:
 
 ```ts
-surface: {
-  paddingHorizontal: 24,   // boční okap celé obrazovky
-  gap: 12,                 // mezera mezi hlavními bloky
-},
-header: {
-  minHeight: 40,           // řádek headeru; dotykový cíl dělá hitSlop dětí
-  marginBottom: 4,         // + gap 12 = 16 pod headerem
-},
+// jedna šířka skrz celou app — obrazovky i sheety (§20.1)
+screen: { paddingHorizontal: MockLayout.screenPad },   // 20
 // horní okap obrazovky: paddingTop: insets.top — bez přídavku
+// detail s vlastním headerem: paddingTop: insets.top + 52
 ```
 
-- **Vnitřní padding karty: 24** vodorovně, 24 nahoře (dole 8, protože patka má vlastní `paddingTop`).
-- **Mezera mezi bloky: 12.** Jedna `gap` na kontejneru, ne marginy na dětech.
-- **Kolem headeru: 24 po stranách, 16 pod ním** (4 marginBottom + 12 gap). Header je vizuálně
-  oddělený, ale pořád patří k obsahu.
+- **Boční okap: `MockLayout.screenPad` (20), všude.** Obrazovka, sheet i detail. Soukromých 16
+  nebo 24 „protože je to sheet“ neexistuje.
 - **Nad headerem nic navíc: `paddingTop: insets.top`.** Status bar je na telefonu s ostrovem sám o
-  sobě ~60 pt hnědého čela; každý přidaný bod se pak čte jako prázdné čelo, ne jako vzduch. Řádek
-  headeru je proto 40 a jeho tlačítka si 44pt dotykový cíl dodělávají `hitSlop`em, ne výškou řádku.
-- **Uvnitř sheetu:** `paddingHorizontal: Spacing.lg` (20), `paddingTop: Spacing.sm` (8).
-- **Spodní okap obrazovky:** `paddingBottom: Math.max(insets.bottom, Spacing.sm)`.
+  sobě ~60 pt hnědého čela; každý přidaný bod se pak čte jako prázdné čelo, ne jako vzduch.
+- **Spodní okap scrollovatelné obrazovky s tab barem: `paddingBottom: insets.bottom + TAB_CHROME`**
+  (`TAB_CHROME = 132`, `src/components/shared/TabBar.tsx`). Bar je absolutně pozicovaný a scénu
+  neinsetuje, takže rezervu si přidává každá obrazovka sama — a rezervuje se vždycky vyšší hodnota
+  (bar + safe area + live pilulka), protože obsah, který se vejde jen když nikdo nepije, není
+  layout, ale náhoda. Obrazovky bez tab baru: `paddingBottom: Math.max(insets.bottom, Spacing.sm)`.
+- **Nadpis → jeho obsah: `MockLayout.controlGap` (24).** Sekce → sekce: `MockLayout.sectionGap`
+  (32), nebo `SectionBreak` (§5.2).
 
-**Relationship-based spacing.** Vzdálenost = vztah. Věci, které patří k sobě, mají 4–8 (číslo a jeho
-popisek: `-8`, protože je to doslova jeden objekt; ikona a text: 6–8). Věci ve stejné skupině 12.
-Různé bloky 20–24. Nikdy nedávej stejnou mezeru mezi „ikona ↔ její label“ a „blok ↔ blok“ — kompozice
-se pak čte jako seznam náhodných prvků.
+**Relationship-based spacing.** Vzdálenost = vztah. Věci, které patří k sobě, mají 2–8 (hodnota
+a její popisek: 2, `StatGrid`; ikona a text: 6–8). Věci ve stejné skupině 12–14. Různé bloky 20–24.
+Nikdy nedávej stejnou mezeru mezi „ikona ↔ její label“ a „blok ↔ blok“ — kompozice se pak čte jako
+seznam náhodných prvků.
 
 ### 4.1 Hustota: co dělá „lacině“ (3.0)
 
@@ -500,7 +518,7 @@ je. Všechny jsou rozměrové, takže nejsou věc vkusu.
 | Řádek seznamu | **60 pt**, u dvouřádkového **68** | 44 je minimum pro *dotyk*, ne pro čtení. Seznam natěsnaný na dotykové minimum čte jako tabulka. |
 | Vnitřní okraj sheetu | `MockLayout.screenPad` (20) | Sheet je obrazovka, ne popup. Menší okraj tlačí obsah na sklo. |
 | Nadpis → jeho obsah | `MockLayout.controlGap` (24) | Nadpis nalepený na první řádek se čte jako jeho součást. |
-| Sekce → sekce | `SectionBreak` | Mezera sama nestačí — 10pt tmavý pás (vědomá odchylka mocků, viz Část III). |
+| Sekce → sekce | `SectionBreak` | Mezera sama nestačí — 10pt tmavý pás (§5.2). |
 
 **Pravidlo:** když se ptáš, jestli je něčeho moc, je ho málo. Tenhle produkt se
 používá v hospodě, jednou rukou, v šeru — vzduch není luxus, je to čitelnost.
@@ -514,323 +532,238 @@ A dvě věci, které se pojí s tím samým dojmem:
 
 ---
 
-## 5. Karty
+## 5. Plocha, řádky a karty
 
-### 5.1 Recept
+**Default je plochý seznam přímo na zemi obrazovky. Karta je výjimka.** Obalit každý řádek
+vlastním ohraničeným obdélníkem znamená obdélník v obdélníku v sheetu — tři rámy hluboko, a přesně
+to zabíjí §14.10 (`PubListMockScreen.tsx:906–910`).
 
-**Recept není v žádné obrazovce. Je v `src/components/shared/CardSurface.tsx`** a všechny hero
-karty (počítadlo, kompas, profil, deník, parta, příchod) ho jen rozbalí:
-
-```ts
-card: {
-  ...CardSurface.card,     // stout2, radius 28, okraj foam 7 %, padding 24/24/8, softDrop
-  flex: 1,                 // karta žere prostor mezi headerem a tlačítkem
-},
-```
-
-A jako **první dítě** karty jde `<CardSheen />`: jeden světelný hairline po horní hraně
-(`foam 22 %`, vsazený 14 % z každé strany) a jemný přeliv shora dolů (`foam 5 % → 0` na horních
-42 % karty). Bez toho je karta plochý hnědý obdélník; s tím čte jako nasvícený fyzický povrch.
-
-**Tohle není zakázaná záře.** `Colors.glow` v tom nevystupuje, nic se nerozmazává, nic nesvítí
-za obsahem a nic se nehýbe — je to pěna na 5–22 % na hraně panelu. Radiální halo za obsahem
-zůstává zakázané (§14.3).
-
-Karta si vlastní i patku: `CardSurface.footer` je ten hairline + `space-between` řádek.
-
-Vnořené prvky uvnitř karty jsou `Colors.stout3` s `Radius.medium` (16) nebo `Radius.pill`.
-Patka karty je hairline, ne plná linka:
+### 5.1 Kanonický řádek
 
 ```ts
-footer: {
-  marginTop: 20,
-  paddingTop: 12,
+row: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: Spacing.sm,                        // 8
+  paddingVertical: Spacing.sm + 2,        // 10
   borderTopWidth: StyleSheet.hairlineWidth,
   borderTopColor: withAlpha(Colors.foam, 0.1),
 },
+rowFirst: { borderTopWidth: 0 },
 ```
 
-Radiusy (`Radius`): `small 8`, `medium 16` (řádky, stripy), `card 22`, `cardLarge 28` (karty a horní
-rohy sheetů), `pill 999` (tlačítka, chipy, ikonové cíle).
+- Řádek leží na `Colors.stout`, drží ho jen hairline **nahoře** a vlastní vertikální padding.
+  Žádný podklad, žádný okraj, žádný radius.
+- **`first` prop je povinný mechanismus:** první řádek nemá horní hairline, protože hairline pod
+  plnou plochou čte jako podtržítko, ne jako oddělovač. Stejný vzor drží `PubListMockScreen`,
+  `CommunityMockScreen` i `FeedScreen`.
+- Výšky: `MockLayout.rowHeight` (68) pro dvouřádkový řádek s ovládacím prvkem, 64 pro thread,
+  56 pro žebříček a recap. Thumb 56 v seznamu hospod, jinak `MockLayout.thumb` (48).
+- Hierarchie v řádku hospody (`PubListMockScreen`): **název + hodnocení + srdce → adresa se
+  vzdáleností → otevírací doba barvou (`Colors.open` / `Colors.closed`, bez tečky) → pivo.**
+  Údaj, kvůli kterému člověk kouká do telefonu na ulici, se nikdy neořezává první.
+- Post ve feedu není karta, je to **pás**: `borderTopWidth: 10`, `borderTopColor: '#0F0A05'` —
+  stejná myšlenka jako `SectionBreak` (tmavý pás místo dělítka), zapečená do řádku. Feed dnes
+  přetéká jen o `-Spacing.md` (−14) místo plných −20; sjednocení na screen padding je dluh
+  (Část III).
 
-### 5.2 Nikdy dva `flex: 1` sourozenci
+### 5.2 SectionBreak
+
+Sekce se neoddělují mezerou ani 1px linkou — linka mezi dvěma plochami stejné barvy je jen
+škrábanec přes jeden dlouhý panel. Odděluje je **pás tmavší barvy**, který čte jako prostor mezi
+dvěma povrchy (`src/mocks/SectionBreak.tsx`):
+
+```ts
+band:  { height: 10, backgroundColor: '#0F0A05', marginTop: Spacing.xl },  // BAND_COLOR
+title: { ...MockType.titleS, color: Colors.foam, marginTop: Spacing.lg, marginBottom: Spacing.md },
+```
+
+- Pás **záměrně přetéká přes screen padding** (`marginHorizontal: -inset`) — mezera, která končí
+  před hranou, je dělítko, a dělítko je přesně to, co tenhle prvek nahrazuje.
+- **Nadpis je POD pásem**, ne nad ním — nadpis patří k tomu, co po něm následuje.
+- Lehčí varianta bez pásu (uvnitř jedné plochy): nadpis `MockType.titleS` s `marginTop:
+  MockLayout.sectionGap` (32).
+
+### 5.3 Kdy je karta správně
+
+Karta (`stout2` nebo `stout3`, radius z tabulky níž) zůstává jen pro věci, které opravdu **plavou
+nad obsahem nebo nesou vlastní svět**: karta akce v Komunitě (`stout2`, radius 28), karta rozehrané
+hry (`stout3`, radius 22), plovoucí pilulky chromu (§20.5). `CardSurface` a `CardSheen` jsou jazyk
+2.x — **nové UI je nepoužívá**.
+
+Radiusy (`Radius`, `src/theme/layout.ts`): `small 10`, `medium 20` (stripy, stale bar),
+`card 28` (karty, sheet večera), `cardLarge 34` (`PlacesSheet`), `pill 999` (tlačítka, chipy,
+avatary). Mimo tokeny žijí v mocích 16/18 (thumby, covery) a 22 (karta hry) — drž se hodnot
+z etalonních souborů, nevymýšlej mezistupně.
+
+### 5.4 Nikdy dva `flex: 1` sourozenci
 
 Na jedné úrovni smí být **maximálně jeden** prvek s `flex: 1`. Ten je „ten, co dýchá“. Ostatní mají
 pevnou výšku nebo `flexShrink: 1`. Dva `flex: 1` sourozenci znamenají, že se prostor dělí půl na půl
 bez ohledu na obsah, a na malém telefonu se oba useknou uprostřed.
 
-Etalon: `CoasterCard` má `flex: 1`, `NudgeSlot` má pevných 52, `CounterCta` pevných 84, header
-`minHeight: 40`. Přesně jeden dýchá.
+### 5.5 Obsah se dimenzuje z kontejneru, ne naopak
 
-### 5.3 Obsah se dimenzuje Z karty, ne naopak
-
-Nikdy nedávej ilustraci ani velký prvek pevnou velikost a nedoufej, že se karta přizpůsobí.
-Změř kartu a odvoď od ní velikost obsahu:
-
-```tsx
-const [bodyHeight, setBodyHeight] = useState(0);
-// clamp: nikdy menší než 72, nikdy větší než 108
-const ringSize = bodyHeight > 0
-  ? Math.max(72, Math.min(108, Math.round(bodyHeight * 0.52)))
-  : 92;
-
-<View style={styles.body} onLayout={(e) => setBodyHeight(e.nativeEvent.layout.height)}>
-  …
-  <LevelRing level={level} title={title} progress={progress} size={ringSize} />
-</View>
-```
-
-Na iPhonu SE se prstenec zmenší; na iPhonu 16 Pro Max naroste na strop. Nikdy nepřeteče kartu.
-Vždycky měř s fallbackem (`bodyHeight > 0 ? … : 92`), aby první frame nebyl nulový. Stejně se měří
-i velké číslo v kartě počítadla (§3.1) a ciferník kompasu.
-
-### 5.4 Otevírací doba má vlastní řádek
-
-V patce karty kompasu jde **nejdřív název hospody, pak otevírací doba na vlastním řádku se stavovou
-tečkou, a teprve pak pivo s cenou**. Dřív to byla jedna 13pt věta („Otevřeno do 23:00 · Pilsner
-Urquell 95 Kč“), takže údaj, kvůli kterému člověk kouká do telefonu na ulici, se ořezával první.
-
-- Tečka 6 × 6 pt, `Radius.pill`, barva `Colors.open` / `Colors.closed` / `Colors.mutedText`. Je to
-  jediná tečka v appce, která smí být ozdobného tvaru, protože nese skutečný stav.
-- Oba řádky sedí v jednom slotu s **pevnou výškou 38** — hodiny dojdou ze sítě chvíli po názvu a
-  ciferník se kvůli nim nesmí přeměřovat.
-- Když hledání dojede naprázdno, řekne se to („Otevírací doba neznámá“) — a tečka zůstává, protože
-  ten řádek je pořád o otevírací době. Vedle toho stojí dveře „Zmapuj“, takže z neznalosti rovnou
-  plyne úkol. Ticho drží jen po dobu, kdy dotaz běží — nikdo nečte „Načítám“.
-- **Stejná anatomie platí pro kartu na mapě** (`PlaceCard`): název na vlastním řádku přes celou
-  šířku, pod tím hlasitá otevírací doba s tečkou, pod tím tichý řádek (hodnocení, město, „byl jsi
-  tu“). Slot má pevných 38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
-- **Dveře stojí na tichém řádku, ne vedle názvu.** Vedle názvu braly „Restauraci U Parlamentu“
-  půlku šířky a lámaly ji na dva řádky; vycentrované proti celému bloku zase nesedí na žádný
-  řádek. Tichý řádek je nejkratší, takže na dveře má místo a obě půlky sdílí jednu osu.
-
-### 5.5 Řádky v kartě: rychlé akce a lišta dveří
-
-Karta drží pod velkým číslem nanejvýš dva řádky, a jsou to jediné povolené:
-
-| Řádek | Co v něm je | Jak vypadá |
-|---|---|---|
-| `CounterQuickActions` | „Jiné pivo“, „Zmapuj“ | outline chipy, `height: 44`, jantar na 6 % / okraj 18 %, `flex: 1` každý |
-| `DoorRail` | Výčep, Žebříčky, FotoPivař (v kartě Party) | tři stejné sloupce, jantarový medailonek 34 pt, label 13 Baloo bold, svislý hairline mezi nimi |
-| `LayerSwitch` (karta na mapě) | V okolí, Moje stopy, Parta teď | segmentovaná dráha `foam 4 %` / okraj 8 %, aktivní `foam 10 %`, výška 38 |
-
-Pravidla, aby z toho nebyla mřížka tlačítek:
-
-- **Oddělují se světlem, ne rámečkem.** Hairline nad řádkem (`foam 10 %`) a mezi sloupci
-  (`foam 10 %`, výška 26–28). Tři ohraničené dlaždice v ohraničené kartě je rámeček na rámečku (§14.10).
-- **Chip se zobrazí jen když jeho akce něco dělá jinak než CTA.** „Jiné pivo“ existuje pouze ve
-  chvíli, kdy tlačítko opakuje poslední pivo; jinak by to byly dvě dveře do jednoho sheetu (§14.4).
-  „Zmapuj“ existuje jen v hospodě.
-- **Lišta je navigace, ne akce.** Vede na povrch (Výčep, žebříček, soutěž), nic nepočítá a nic
-  nemaže. Proto neporušuje pravidlo jedné akce (§6.3) — to mluví o akcích, ne o dveřích.
-- **Jeden živý údaj, a jen když je zdarma.** Badge čte číslo z už uloženého snapshotu. Vymyšlené
-  číslo je horší než žádné číslo.
-- **Jedna obrazovka jedny dveře.** Lišta žila i v kartě počítadla (Parta / Pivaři / FotoPivař) a
-  vedla tam, kam vede tab bar a lišta na Partě. Tři dveře na totéž jsou šum: komunitní povrchy
-  vlastní tab Parta, Štamgast zůstal u vlastního pití (§0.4).
-- **Režim povrchu je ovládací prvek, ne popisek.** Vrstvy mapy byly tři řádky v `…` sheetu a karta
-  jen tiskla jméno té aktivní. Teď jsou to segmenty v patce karty a ze sheetu zmizely — jedny dveře
-  na jedno místo (§0.4).
+Nikdy nedávej velkému prvku pevnou velikost s nadějí, že se okolí přizpůsobí. Změř kontejner
+(`onLayout` + clamp + fallback pro první frame) a odvoď velikost obsahu z něj. Na iPhonu SE se
+prvek zmenší, na Pro Maxu naroste na strop, nikdy nepřeteče. Pro čísla platí totéž přes
+`adjustsFontSizeToFit` + `minimumFontScale` (§3.1).
 
 ---
 
 ## 6. Tlačítka
 
-### 6.1 Primární — jedno na obrazovku
+### 6.1 Primární — jedno na obrazovku, bez glow
 
 ```ts
-const CTA_HEIGHT = 84;
-const PRESS_SWALLOW_MS = 700;
-
 button: {
-  height: CTA_HEIGHT,
+  height: MockLayout.buttonHeight,        // 48; v sheetu sheetButtonHeight 56
   borderRadius: Radius.pill,
   backgroundColor: Colors.amber,
   alignItems: 'center',
   justifyContent: 'center',
-  paddingHorizontal: 28,
-  overflow: 'hidden',
+  paddingHorizontal: Spacing.lg,
 },
-// aplikuje se ve style array: [styles.button, amberGlowStrong(22), pressed && styles.pressed]
-topLight: {
-  position: 'absolute',
-  top: 0, left: '12%', right: '12%',
-  height: 1,
-  backgroundColor: withAlpha(Colors.foam, 0.55),
-},
-pressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
+pressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
 label: {
-  fontFamily: Fonts.display.extrabold,
-  fontSize: 20,
+  ...MockType.buttonLabel,               // 16 / 700, systémové písmo
   color: Colors.stout,
-  textAlign: 'center',
-  includeFontPadding: false,
-},
-subLabel: {
-  fontFamily: Fonts.ui.semibold,
-  fontSize: 13,
-  color: withAlpha(Colors.stout, 0.72),
-  marginTop: 2,
-  includeFontPadding: false,
 },
 ```
 
-- **Glow:** `amberGlowStrong(22)` z `@/theme/shadows`. Na obrazovce svítí **právě jeden** prvek.
-  `Colors.glow` je výhradně `shadowColor`, nikdy fill.
-- **`topLight`** — jeden pixel světla po horní hraně, aby tlačítko četlo jako nasvícený fyzický
-  povrch, ne jako plochý vzorník barvy. Musí mít `pointerEvents="none"`.
+- **Žádný glow, žádný `topLight`.** `amberGlow*` je jazyk 2.x — v žádném etalonním souboru se
+  nevyskytuje. Tlačítko je plná jantarová pilulka a to stačí.
+- Výšky: **48** na obrazovce, **56** v sheetu, **60** dělená primární kapsle večera („+1 pivo“ +
+  picker `52 × 60`, mezera 2, vnitřní radius švu 6 — `LivePartyMockScreen`).
 - **Label vždycky říká, co jeden tap udělá** („Ještě jedno“, „Co si dáš?“, „Zapiš první pivo“).
   Nikdy generické „Pokračovat“ nebo „OK“.
-- **Debounce 700 ms** uvnitř komponenty, přes `useRef` (žádný state — spolknutý tap nesmí nic
-  překreslit). Když se změní `label`, debounce se resetuje, protože nový label = nová akce:
+- **Tap, který zapisuje, má debounce** (`useRef`, žádný state — spolknutý tap nesmí nic
+  překreslit; při změně labelu se debounce resetuje, nový label = nová akce).
 
-```tsx
-const lastPressAtRef = useRef(0);
-useEffect(() => { lastPressAtRef.current = 0; }, [label]);
-const handlePress = useCallback(() => {
-  const now = Date.now();
-  if (now - lastPressAtRef.current < PRESS_SWALLOW_MS) return;
-  lastPressAtRef.current = now;
-  onPress();
-}, [onPress]);
-```
-
-Alternativa pro ne-hero obrazovky: `GlowButton` z `@/components/shared/GlowButton`
-(`variant="primary"`, `glow="soft"` = `amberGlow(18)`, default `height: 62`).
-
-### 6.2 Sekundární — outline, nikdy fill
+### 6.2 Sekundární — tichá pilulka, nikdy outline
 
 ```ts
 secondary: {
-  height: 48,
+  minHeight: 48,                          // menší varianta 44
   borderRadius: Radius.pill,
-  borderWidth: 1,
-  borderColor: withAlpha(Colors.amber, 0.18),
-  backgroundColor: withAlpha(Colors.amber, 0.06),
+  backgroundColor: Colors.stout3,         // žádný okraj
   alignItems: 'center',
   justifyContent: 'center',
-  paddingHorizontal: 24,
+  paddingHorizontal: Spacing.lg,
 },
-secondaryLabel: {
-  fontFamily: Fonts.ui.semibold,
-  fontSize: 15,
-  color: Colors.foamMuted,
-  includeFontPadding: false,
-},
-secondaryPressed: { opacity: 0.7 },
+secondaryLabel: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 ```
 
-V sheetech se sekundární tlačítko dělá jako `<GlowButton variant="secondary" glow="none" />`.
+Jantarový 6% outline (`CounterSecondary`, `GlowButton`) je jazyk 2.x. Další tvary z etalonu:
+**filtrační chip** (`height: MockLayout.pillHeight` 32, `stout2`, okraj `transparent` →
+`withAlpha(amber, 0.5)` aktivní, label 13–14/600 `mutedText` → `amber`), **kruhové sekundární**
+(48 × 48, sklo, fallback `stout3`), **plovoucí pilulka v chromu** (výška 40, `stout @ 0.92`,
+hairline `foam 0.14`), **textový odkaz** (14/800 `Colors.amber`).
+
+**Pressed slovník:** default `opacity: 0.65`; tělo plovoucího baru `0.85`; jantarová CTA
+`0.9 + scale 0.97`. Pro nový kód jsou tohle defaulty — nevymýšlej další hodnoty; drobné odchylky
+ve starším kódu (0.62, 0.7) se srovnávají při dalším zásahu.
 
 ### 6.3 Pravidlo jedné akce
 
-Na obrazovce je **jedna primární akce a jeden glow**. Sekundární tlačítko je nanejvýš jedno a je vždy
-outline. Cokoli dalšího jde o tap hlouběji do pojmenovaného sheetu. Když se ti na obrazovku tlačí
-třetí rovnocenná akce, je to signál, že tam patří overflow („…“ → sheet), ne třetí pilulka.
+Na obrazovce je **jedna primární akce** — jedna plná jantarová plocha v obsahu (§2.2). Sekundární
+tlačítko je nanejvýš jedno a je vždy tichá `stout3` pilulka. Cokoli dalšího jde o tap hlouběji do
+pojmenovaného sheetu. Když se ti na obrazovku tlačí třetí rovnocenná akce, je to signál, že tam
+patří overflow („…“ → sheet), ne třetí pilulka.
 
 ---
 
 ## 7. Bottom sheet — kanonický recept
 
-Přepsáno z `DrinkPickSheet.tsx`. Tohle je **jediný** správný způsob, jak v téhle aplikaci udělat
-spodní panel. Modal, ne knihovna.
+V appce existují **dva druhy spodních panelů** a nezaměňují se:
 
-### 7.1 Proč právě takhle
+1. **Tažený povrchový sheet** — `src/pubs/PlacesSheet.tsx`. Trvalý povrch nad mapou/kompasem se
+   třemi detenty: `DETENT_TOP = { peek: 1, half: 0.48, full: 0.08 }` (hodnota = podíl obrazovky
+   **nad** sheetem; `peek: 1` znamená sheet úplně pryč, ne jednořádkový pruh — lišta, jejímž jediným
+   obsahem je vlastní název, je chrome navíc). Edge-to-edge na každém detentu, radius **34** jen na
+   horních rozích, sklo `stout @ 0.82` s hairline okrajem `foam 0.12`, grabber `40 × 5` (`foam
+   0.26`). **Pan gesto je na madle, ne na celém sheetu**; tělo táhne jen pod `full`, na `full` jen
+   dolů a jen když je list nahoře. Throw: `projected = translateY + velocityY * 0.12` → nejbližší
+   detent, spring `{ damping: 22, stiffness: 190, mass: 0.7 }`.
+2. **Intent sheet** — modal s jedním záměrem (§8), přes `BottomSheetModal` wrapper. Mechanika
+   níže. Vizuálně: zem sheetu je **`Colors.stout`** — stejná zem jako obrazovka, ne `stout2`
+   („sheet je obrazovka, ne popup“) — radius **28** na horních rozích, `paddingHorizontal:
+   MockLayout.screenPad` (jedna šířka appky, ne soukromých 16), grabber `44 × 4` (`foam 0.22`).
+
+Zbytek téhle sekce je mechanika intent sheetu. Modal, ne knihovna.
+
+### 7.1 Co vlastní wrapper a co volající
+
+Mechaniku modalu vlastní `src/components/shared/BottomSheetModal.tsx` (API:
+`{ visible, onClose, children }`): `Modal` s `animationType="none"`, scrim `black 0.6` s prolnutím,
+kartu s příjezdem na springu, Android back gesture a dismiss target za kartou
+(`accessibilityElementsHidden`, aby VoiceOver nehlásil „Zavřít“ dvakrát). **Nestav si vlastní
+`Modal`.**
+
+Volající dodává jen kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
-| `transparent` + `statusBarTranslucent` + `presentationStyle="overFullScreen"` | Sheet musí kreslit přes status bar i přes tab bar. Bez `statusBarTranslucent` zůstane na Androidu nad backdropem pruh. |
-| `animationType="none"` + `BottomSheetModal` | Viz §7.2b. Ani `fade`, ani `slide`. |
-| Backdrop je **absolutní sourozenec** karty (`StyleSheet.absoluteFill`), ne její rodič | Kdyby backdrop kartu obaloval, karta by nesedla nadoraz na spodní hranu a backdrop by polykal její gesta. |
-| `cardWrap` má `marginBottom: -insets.bottom` | Vytáhne kartu pod home indicator, takže mezi kartou a spodní hranou displeje nezůstane proužek pozadí. |
-| Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se přitom nedostane pod home indicator. Ty dvě věci jdou vždycky spolu. |
-| Sloupec **pevná hlavička → `ScrollView` s `flex: 1` → pevná patka MIMO scroll** | Patka (akce, součet, zavírací tlačítko) nesmí odscrollovat ani se nechat ustřihnout `maxHeight`. |
-| `minHeight: '56%'`, `maxHeight: '92%'` | Sheet nikdy nevypadá jako proužek a nikdy nezakryje celou obrazovku. Receipt používá `minHeight: '44%'`. |
-| `grabber` (40 × 4) | Vizuální afordance „tohle je sheet“. |
-| Backdrop má `accessibilityElementsHidden` + `importantForAccessibility="no"` | Jinak VoiceOver ohlásí „Zavřít“ dvakrát — jednou backdrop, jednou skutečné tlačítko. |
-| Karta je `Pressable` s prázdným `onPress` | Spolkne tap, aby stisk řádku nepropadl na backdrop a sheet se nezavřel. |
+| `cardWrap` má `minHeight: '56%'` (default — po vizuálním ověření smí být vyšší), `maxHeight: '92%'` (strop) a `marginBottom: -insets.bottom` | Sheet nikdy nevypadá jako proužek, nikdy nezakryje celou obrazovku a sedí nadoraz na spodní hraně bez proužku pozadí. |
+| Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se nedostane pod home indicator. Jde vždycky spolu s `marginBottom` výše. |
+| Sloupec **pevná hlavička → `ScrollView` s `flex: 1` → pevná patka MIMO scroll** | Patka (akce, součet) nesmí odscrollovat ani se nechat ustřihnout `maxHeight`. |
+| Karta je obyčejný `View` | Dismiss target je sourozenec **za** kartou (ve wrapperu), takže karta nemusí nic polykat — a no-op `Pressable` by celý sheet seskupil do jednoho nepojmenovaného ovladače (§11). |
+| Grabber `44 × 4`, `foam 0.22` | Vizuální afordance „tohle je sheet“. (`PlacesSheet` má vlastní `40 × 5`, `foam 0.26`.) |
 
 ### 7.2 Kostra k překopírování
 
 ```tsx
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { cs } from '@/i18n/cs';
-import { XIcon } from '@/components/shared/IconGlyph';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 
 export function ExampleSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        {/* Dismiss target BEHIND the card, never its parent. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* Swallows presses so a row tap never falls through to the backdrop. */}
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        {/* Plain View: the dismiss target is a sibling BEHIND the card (wrapper),
+            so the card does not need to swallow presses — and a no-op Pressable
+            would group the whole sheet into one unnamed control (§11). */}
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+
+          {/* 1 — fixed header */}
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {/* cs.<screen>.sheetTitle */}
+            </Text>
+            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+          </View>
+
+          {/* 2 — the only scrolling part */}
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.grabber} />
+            {/* rows */}
+          </ScrollView>
 
-            {/* 1 — fixed header */}
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {/* cs.<screen>.sheetTitle */}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            {/* 2 — the only scrolling part */}
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* rows */}
-            </ScrollView>
-
-            {/* 3 — pinned footer, OUTSIDE the ScrollView */}
-            <View style={styles.actions}>{/* primary/secondary actions */}</View>
-          </Pressable>
+          {/* 3 — pinned footer, OUTSIDE the ScrollView */}
+          <View style={styles.actions}>{/* primary/secondary actions */}</View>
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   // Výškové meze patří SEM, ne na kartu — viz §7.5.
   cardWrap: {
     width: '100%',
@@ -839,20 +772,18 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.stout,          // stejná zem jako obrazovka (§7 úvod)
+    borderTopLeftRadius: Radius.card,       // 28
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad, // 20 — jedna šířka appky
     ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -864,19 +795,8 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,                     // 18 / 700 / −0.2, sentence case
     color: Colors.foam,
-  },
-  closeButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   // Bounded so a long list scrolls instead of pushing the pinned footer out.
   list: { flex: 1, marginTop: Spacing.sm },
@@ -937,28 +857,34 @@ plochou jako fallback (§15.2).
 
 ### 7.3 Řádky uvnitř sheetu
 
+Řádky v sheetu jsou stejné ploché řádky jako na obrazovce (§5.1) — hairline `foam 0.10` nahoře,
+`first` bez něj:
+
 ```ts
-row:        { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
-rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.border, 0.4) },
+row:        { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+              paddingVertical: Spacing.sm,
+              borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.1) },
+rowFirst:   { borderTopWidth: 0 },
 rowText:    { flex: 1 },
-rowName:    { fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
-rowMeta:    { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText, marginTop: 2 },
-rowPressed: { opacity: 0.6 },
+rowName:    { ...MockType.bodySemibold, color: Colors.foam },          // 16 / 600
+rowMeta:    { ...MockType.bodySmall, color: Colors.mutedText, marginTop: 2 },  // 14 / 500
+rowPressed: { opacity: 0.65 },
 ```
 
 Akční („udělej něco nového“) řádek má vlastní plochu a jantarový medailonek pod ikonou:
 
 ```ts
-actionRow:  { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14,
-              borderRadius: Radius.medium, backgroundColor: Colors.stout3, borderWidth: 1, borderColor: Colors.border },
-actionIcon: { width: 34, height: 34, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center',
-              backgroundColor: withAlpha(Colors.amber, 0.12) },
+actionRow:  { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12,
+              paddingHorizontal: Spacing.md, borderRadius: Radius.medium,
+              backgroundColor: Colors.stout3 },                        // bez okraje
+actionIcon: { width: 34, height: 34, borderRadius: Radius.pill, alignItems: 'center',
+              justifyContent: 'center', backgroundColor: withAlpha(Colors.amber, 0.12) },
 ```
 
-Caption sekce v sheetu: `Fonts.ui.bold`, `fontSize: 11`, `letterSpacing: 1.5`, `color: Colors.amber`,
-`marginTop: Spacing.md`, `marginBottom: Spacing.xs`.
+Nadpis sekce v sheetu je `MockType.titleS` v sentence case (§3.1). Verzálkový 11pt jantarový
+kicker je jazyk 2.x a je zakázaný.
 
-Řádek se dvěma řádky textu **a** 44pt ovládacím prvkem potřebuje `minHeight: 64` (viz `ReceiptSheet`),
+Řádek se dvěma řádky textu **a** 44pt ovládacím prvkem potřebuje `minHeight: 64`,
 jinak druhý řádek koliduje s řádkem pod sebou.
 
 ### 7.4 Sheet za sheetem
@@ -1063,15 +989,18 @@ nenese — a přesně na tom umřely dvě ilustrace, které tu dřív byly povin
 
 Pravidlo tedy **není** „aspoň jeden kreslený prvek na obrazovku“. Pravidlo je:
 
-1. **Kreslí se to, co se jinak přečíst nedá.** Směr (`CompassDial`), rozjezd levelu v rámci
-   stupně (`LevelRing`), noc na tácku ve sdíleném obrázku (`TallyCoaster`, `TallyMarks`),
-   stůl party (`PartyTable`), pódium (`PodiumMats`).
-2. **Když to jde říct číslem, řekne se to číslem.** Velké jantarové číslo je silnější než jakákoli
+1. **Nejdřív skutečná věc, teprve pak kresba.** 3.0 obrazovky nekreslí skoro nic — kreslí
+   **reálnou mapu** (`NightRoute`: `react-native-maps`, číslované piny, non-interaktivní, caption
+   přes fade, ne přes pruh), **nativní grafy** (`@expo/ui Chart`) a **velkou typografii**.
+   Vymyšlená klikatá čára prohrála se skutečnou mapou místa.
+2. **Kreslí se jen to, co se jinak přečíst nedá.** Směr (`CompassDial` v kompasové buňce),
+   odznaky. Obrázek TOHO, co se počítá, data nenese — krýgl vedle čísla piv říkal totéž podruhé
+   a hůř.
+3. **Když to jde říct číslem, řekne se to číslem.** Velké číslo v pěně je silnější než jakákoli
    kresba téhož (§14.5 platí i obráceně).
-3. **Osobnost nese i chrome.** Baloo, tácková karta se světelnou hranou, jantar na 10 %, hospodský
-   copy. Obrazovka bez kresby proto není „jen typografie na hnědém pozadí“.
-4. **Uvolněné místo patří funkci, ne dekoraci.** Když ilustrace zmizí, na její místo jde něco, co
-   něco dělá — v kartě počítadla je to `CounterQuickActions`, v kartě Party `DoorRail` (§5.5).
+4. **Osobnost nese chrome a slova.** Baloo číslice, hnědý gradient hlavičky, hospodská copy
+   („Jedeš z posledního načtení“, „Svět je zatím podezřele čerstvý“). Obrazovka bez kresby není
+   „jen typografie na hnědém pozadí“ — je to ten design.
 
 Když už kreslíš: **vektor, ne bitmapa** (`react-native-svg`), **barvy z tokenů**, nikdy hardcoded
 hex uvnitř SVG, **reaguje na data, ne na čas**, komponenta je `memo`, pevný `viewBox`, výška
@@ -1082,9 +1011,12 @@ kresba je pro čtečku skrytá (`accessibilityElementsHidden`).
 
 ## 10. Pohyb
 
-**Žádné smyčkové animace.** Ani bublinky, ani pulzující glow, ani dýchající ikony, ani shimmer.
-Autor je nesnáší a byly kvůli tomu už jednou odstraněny. Dekorativní pohyb na jádrových obrazovkách
-je zakázaný. (Jediná povolená výjimka je prstenec Party ikony při běžícím večeru, §20.6.)
+**Žádné smyčkové animace.** Ani bublinky, ani pulzující glow, ani dýchající ikony. Autor je
+nesnáší a byly kvůli tomu už jednou odstraněny. Dekorativní pohyb na jádrových obrazovkách je
+zakázaný. Povolený pohyb má přesně tři kategorie, všechny stavové, ne ambientní: **reakce na tap**
+(pop níže), **příchod nového datového záznamu** (nový řádek threadu, §20.3) a **stavové smyčky
+vázané na skutečný stav** — prstenec Party ikony při běžícím večeru (§20.6) a loading skeleton
+během reálného síťového čekání (§20.11), které skončí, jakmile stav skončí.
 
 Povolený je **jeden pop jako reakce na akci uživatele**:
 
@@ -1111,10 +1043,10 @@ Pravidla:
 - **Nikdy při snížení hodnoty.** Ubrání piva se neoslavuje.
 - **Vždy `useReducedMotion()`** — když je zapnuté, hodnota se přepne bez animace.
 - Trvání drž na `130 / 180 ms`. Nic pomalejšího; nic, co se opakuje.
-- Stavové změny (nudge slot, obsah karty) se přepínají **okamžitě, bez animace**. Proto má
-  `NudgeSlot` pevných 52 pt — obsah se mění, výška ne, takže tlačítko pod ním nikdy neposkočí.
-- Stisk se řeší stylem, ne animací: `pressed && { opacity: 0.6–0.9 }`, u primárního tlačítka navíc
-  `transform: [{ scale: 0.985 }]`.
+- Stavové změny (sloty s proměnlivým obsahem) se přepínají **okamžitě, bez animace** a mají
+  pevnou výšku — obsah se mění, výška ne, takže nic pod nimi neposkočí.
+- Stisk se řeší stylem, ne animací: `pressed && { opacity: 0.65–0.9 }` (§6.2), u jantarové CTA
+  navíc `transform: [{ scale: 0.97 }]`.
 
 ---
 
@@ -1141,7 +1073,8 @@ const VERTICAL_SLOP = (44 - CHIP_HEIGHT) / 2;   // = 3
 - **Ozdobné vrstvy vypni:** backdrop `accessibilityElementsHidden` + `importantForAccessibility="no"`,
   dekorativní `View` navíc `pointerEvents="none"`.
 - **Segmenty:** `accessibilityRole="tab"` + `accessibilityState={{ selected }}`.
-- **Každý `<Text>` má `maxFontSizeMultiplier`** (viz §3.3).
+- **Každý `<Text>` má `maxFontSizeMultiplier`, nebo — u číslic v pevných buňkách — explicitní
+  `allowFontScaling={false}`** (viz §3.3).
 - **Dlouhé názvy hospod:** `numberOfLines={1}` na `<Text>` **a** `flexShrink: 1` na něm nebo na jeho
   obalu (+ `minWidth: 0` u sloupce vedle ilustrace). Bez `flexShrink` text netruncuje — vytlačí
   sousedy z obrazovky.
@@ -1163,7 +1096,11 @@ const VERTICAL_SLOP = (44 - CHIP_HEIGHT) / 2;   // = 3
   ilustrace a text, ne emoji. (App Store „What's New“ emoji navíc rovnou odmítá.)
 - **Všechny texty žijí v `src/i18n/cs.ts`.** Řetězec zapsaný natvrdo v komponentě je chyba.
   Skloňování jde přes `src/i18n/plural.ts` (`beerCountLabel`, `beerNoun`, …), formátování přes
-  `formatVolume` / `formatPrice`.
+  `formatVolume` / `formatPrice`. Plánuje se angličtina — copy natvrdo v JSX je dluh, který ji
+  blokuje (mock obrazovky ho zatím mají, viz Část III).
+- **Podpisový slovník:** pivo se **čepuje**, nikdy netočí. Chybové stavy říkají „nedotáhlo se“ /
+  „nedotekly“ / „dotahuju“ — hospodsky, bez omluv. Prázdný stav smí vtipkovat („Svět je zatím
+  podezřele čerstvý“), ale neomlouvá se.
 - **Uživatelské texty ukaž autorovi ke schválení dřív, než něco commitneš nebo nasadíš.**
 
 ---
@@ -1178,18 +1115,20 @@ Projdi před každým commitem obrazovky. Všech dvanáct.
    clamp), ne naopak?
 3. **Dva `flex: 1`** — je na každé úrovni maximálně jeden dýchající prvek? Ostatní pevné nebo
    `flexShrink: 1`?
-4. **Tlačítko za tab barem** — má root `paddingBottom: Math.max(insets.bottom, Spacing.sm)` a je
-   CTA celé nad spodní hranou i na telefonu s home indicatorem?
+4. **Obsah za tab barem** — má scrollovatelná tab obrazovka `paddingBottom: insets.bottom +
+   TAB_CHROME` a obrazovka bez tab baru `Math.max(insets.bottom, Spacing.sm)` (§4)? Je CTA celé
+   nad spodní hranou i na telefonu s home indicatorem?
 5. **Sheet nesahající na spodní hranu** — má `cardWrap` `marginBottom: -insets.bottom` a karta
    `paddingBottom: insets.bottom + Spacing.lg`? Není mezi kartou a hranou displeje proužek?
 6. **Patka překrývající obsah** — je patka sheetu **mimo** `ScrollView` a má `ScrollView`
    `flex: 1` + `contentContainerStyle.paddingBottom`? Doskroluje poslední řádek?
-7. **Nadpis vs. notch** — je `paddingTop: insets.top + 8` (nebo 0 v `embedded` režimu, kdy inset
-   vlastní rodič)? Neleze nic pod status bar?
+7. **Nadpis vs. notch** — je `paddingTop: insets.top` (detail s vlastním headerem `insets.top +
+   52`, `embedded` režim 0, protože inset vlastní rodič)? Neleze nic pod status bar?
 8. **Dlouhý název hospody** — otestuj „Restaurace U Zlatého Tygra na Starém Městě“. Truncuje se
    (`numberOfLines` + `flexShrink: 1`), nebo vytlačí chevron z obrazovky?
 9. **Dynamic Type 1.3** — pusť s největším systémovým písmem. Má každý `<Text>`
-   `maxFontSizeMultiplier`? Vejde se pořád všechno?
+   `maxFontSizeMultiplier`, nebo explicitní `allowFontScaling={false}` (§3.3)? Vejde se pořád
+   všechno?
 10. **iPhone SE 375 × 667** — nejmenší podporovaná obrazovka. Zmenšila se ilustrace? Nezmizel nudge
     slot? Není CTA odříznuté?
 11. **Klávesnice vs. aktivní pole** — po focusu je pole vidět nad klávesnicí, i u posledního pole
@@ -1204,27 +1143,28 @@ Projdi před každým commitem obrazovky. Všech dvanáct.
 
 Konkrétní věci, které už jednou byly a byly zabity. Nedělej je znovu.
 
-1. **Prázdná plocha uprostřed = drátový model.** Velké číslo samo na holém pozadí vypadalo jako
-   nedodělaný wireframe. Číslo musí ležet **v kartě**, ideálně vedle ilustrace, s patkou pod sebou.
-   Když ti v půlce obrazovky zbývá dýra, není to „vzdušný design“, je to nedokončený layout.
-2. **Tři žluté plochy.** Jantarový segment nahoře + jantarová karta + jantarové tlačítko = tři bloky,
-   které soupeří. Segment je proto `withAlpha(Colors.foam, 0.04)` a aktivní stav
-   `withAlpha(Colors.foam, 0.10)`. **Jedna plná jantarová plocha na obrazovku.**
+1. **Ovladač před odpovědí.** Obrazovka, která se otevře na filtru, segmentu nebo pickeru místo na
+   odpovědi. Pořadí je vždycky **čísla → tvar čísel → ovladač, který obojí mění**
+   (`ProfileMockScreen`: totals → chart → periodRow). Na profil se člověk dívá, aby viděl, jak na
+   tom je, ne aby si vybral časové okno.
+2. **Tři žluté plochy v obsahu.** Jantarový segment + jantarový blok + jantarové tlačítko = tři
+   bloky, které soupeří. **Jedna plná jantarová plocha v obsahu obrazovky** (§2.2); trvalé kotvy
+   chromu (disk Party, `+1` v live baru) se počítají zvlášť.
 3. **Rozmazaný glow na pozadí.** Radiální jantarové halo za obsahem, „ambient light“, plošné
-   gradienty přes celou obrazovku. `Colors.glow` je výhradně `shadowColor` jednoho tlačítka.
+   gradienty přes celou obrazovku. `Colors.glow` je legacy 2.x — nové UI nemá glow vůbec (§6.1).
 4. **Tři cesty ke stejné věci.** Přidat pivo šlo z CTA, z pilulky pod ním i z overflow menu — a nikdo
    nevěděl, který tap co udělá. Každá akce má **právě jedno** místo. Když přidáváš vstupní bod,
    nejdřív ukaž, který existující rušíš.
 5. **Abstraktní ukazatel místo velkého čísla.** Progress ring, gauge, sparkline, „naplněnost večera
-   68 %“. Uživatel chce vidět, kolik piv vypil. Číslo, velké, jantarové, tabulární. Ilustrace ho
+   68 %“. Uživatel chce vidět, kolik piv vypil. Číslo, velké, pěnové, tabulární. Ilustrace ho
    doplňuje, nenahrazuje.
-6. **Řada soupeřících pilulek pod hlavním obsahem.** Foto, story, ping partě, zpětný zápis, sken —
-   pět outline chipů vedle sebe **volně na obrazovce**, každý jinak široký, mezi kartou a tlačítkem.
-   Tohle zůstává zabité. Povolený je jen strukturovaný řádek **uvnitř karty** podle §5.5: maximálně
-   dva chipy stejné šířky, nebo tři stejné sloupce oddělené hairlinem. Cokoliv dalšího patří za „…“
-   jako prostý pojmenovaný seznam.
-7. **Ozdobné smyčkové animace.** Bublinky ve skle, pulzování, shimmer skeleton, „dýchající“ ikona.
-   Viz §10.
+6. **Řada soupeřících akčních pilulek pod hlavním obsahem.** Foto, story, ping partě, zpětný
+   zápis, sken — pět outline chipů vedle sebe, každý jinak široký, mezi obsahem a tlačítkem.
+   Tohle zůstává zabité. **Filtry jsou něco jiného než akce:** vodorovný scroller filtračních
+   chipů nad seznamem (`PubListMockScreen`) je kanonický vzor — filtruje tentýž seznam, nespouští
+   pět různých věcí. Akce nad rámec primární patří za „…“ jako prostý pojmenovaný seznam.
+7. **Ozdobné smyčkové animace.** Bublinky ve skle, pulzování, „dýchající“ ikona, dekorativní nebo
+   falešný skeleton (bez skutečného načítání za sebou). Viz §10.
 8. **Skákající layout.** Podmíněně renderovaný pruh nad tlačítkem, který se objevuje a mizí, posouvá
    CTA pod palcem. Řeš pevnou výškou slotu (`NudgeSlot`, 52 pt), ne animací.
 9. **Dvě nabídky najednou.** Undo strip + rank chip + check-in nabídka naráz. Vždycky **jeden** nudge,
@@ -1263,7 +1203,7 @@ uživatel číst, je to špatně. Sklo smí prosvítat jen scrollující obsah, 
 
 ### 15.2 Fallback je povinný
 
-Liquid glass běží až na iOS 26+. Deployment target je 16.4 (`ios/Podfile:25`), takže **každé**
+Liquid glass běží až na iOS 26+, deployment target appky je nižší, takže **každé**
 použití skla má větev pro zařízení, která ho neumí:
 
 ```tsx
@@ -1277,8 +1217,9 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 )}
 ```
 
-`expo-glass-effect` je už v `node_modules` jako tranzitivní závislost Expo 56 — není to nová
-dependency a nepřidávej ji do `package.json` bez důvodu.
+`expo-glass-effect` přímo importuje šest produkčních souborů (`TabBar`, `GlassIconButton`, …),
+ale v `package.json` zatím chybí — funguje jako tranzitivní závislost Expo 56. Je to dluh: přímý
+import chce přímou dependency (Část III).
 
 Android sklo nemá vůbec. Tam platí fallback větev vždycky.
 
@@ -1297,9 +1238,10 @@ referenční appka sáhla po sytém akcentu (červená u Packety), sahá Na pivo
 
 ### 16.1 Co gradient smí
 
-- Podklad tab baru a headeru **pod** sklem, aby chrome nebyl plochý obdélník.
-- Vršek detailu hospody — přechod ze `stout` do `stout2` pod titulkem.
-- Uvnitř ilustrací, kde už dnes je (`TallyCoaster`, `PartyTable`).
+- Shader hlavičky obrazovky (`GradientBand` + `HEADER_GRADIENT` / `LIVE_GRADIENT`).
+- Podklad chromu **pod** sklem, aby nebyl plochý obdélník — povolený pattern; kanonický `TabBar`
+  ho zatím nemá, takže ho nezaváděj bez schváleného mocku.
+- Uvnitř ilustrací, kde už dnes je (`TallyCoaster`, `PartyTable` — 2.x obrazovky).
 
 ### 16.2 Co gradient nesmí
 
@@ -1316,17 +1258,18 @@ končí, je moc silný.
 
 ### 16.3 Tokeny
 
-Gradient se nepíše hexy na místě. Patří do `src/theme/colors.ts` vedle stávajících tokenů jako
-pojmenované dvojice stopů, ať jde změnit na jednom místě:
+Gradient se nepíše hexy na místě. Pojmenované stopy žijí v `src/mocks/mockTheme.ts`:
 
 ```ts
-export const Gradients = {
-  /** Chrome pod sklem: tab bar, header. */
-  chrome: [Colors.stout2, Colors.stout] as const,
-  /** Hlava detailu hospody. */
-  header: [Colors.stout3, Colors.stout2] as const,
-};
+export const HEADER_GRADIENT = ['#5A3418', '#2A1A0C', MockColors.bg] as const;
+export const LIVE_GRADIENT   = ['#0F4429', '#122A1B', MockColors.bg] as const; // běžící večer
 ```
+
+`GradientBand` (`BAND_HEIGHT = 320`, stopy na 0 / 0.45 / 1) je **statický chrome**: absolutně za
+obsahem, `pointerEvents="none"`, **nikdy neanimuje**. Když běží večer, hlavička přepne na zelenou
+variantu — to je stavová informace, ne dekorace. Pozor: je to **navržený pattern** — definovaný
+v kódu, ale zatím ho nekonzumuje žádná etalonní obrazovka; nasazuj ho jen podle schváleného mocku.
+Devět dvoustopých gradientů coverů her žije v `gameCatalog.ts` (Část III je má nahradit artwork).
 
 Rozpad 60 / 30 / 10 z §2.2 platí beze změny — gradient je pořád těch 60 % pozadí, jen ne jednolitých.
 
@@ -1360,8 +1303,9 @@ Ikona a label mají v `TabBar.tsx` **oddělené barvy**: uvnitř disku je glyf `
 by jantarová ikona zmizela), zatímco label pod ním zůstává jantarový jako u aktivního tabu.
 
 Ostatní čtyři drží původní pravidlo: aktivní je jantarová ikona i label, neaktivní `mutedText`,
-a **žádný glow nikde** — glow na obrazovce patří jednomu tlačítku (§6.1), a tab bar je na každé
-obrazovce. Bar nemá horní hairline; sklo se od obsahu odděluje samo (§15.1).
+a **žádný glow nikde** — glow v novém UI neexistuje vůbec (§6.1) a velká jantarová plocha patří
+obsahu obrazovky, ne baru, který je na každé z nich. Bar nemá horní hairline; sklo se od obsahu
+odděluje samo (§15.1).
 
 Party tab **nenaviguje** — pushuje `/party-live` jako fullscreen modal, takže se zavírá stejným
 gestem obráceně. Na té route se tab bar celý skrývá.
@@ -1373,17 +1317,19 @@ vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch
 
 ### 17.4 List → detail
 
-Detail je pushnutá route s nativním zpět, ne sheet. Sheet vlastní **jeden záměr** (§7, §8); detail
-hospody je místo, kam se dá vracet a odkud vedou další cesty, takže patří do stacku vedle
-`/profile/edit` a `/settings`.
+Default je pushnutá route s nativním zpět (detail výzvy, akce, cizí profil) — patří do stacku
+vedle `/profile/edit` a `/settings`. **Výjimka je detail hospody:** ten žije uvnitř taženého
+`PlacesSheet` (`PubDetailBody` v `PubListMockScreen`), protože jeho kontextem je mapa, která má
+zůstat vidět. Intent sheet (§7) detail nikdy nenese.
 
 ### 17.5 Kompas v seznamu hospod
 
 Kompas nezmizel a nestal se položkou menu. Je **první buňkou seznamu hospod** a nese u sebe
 hospodu, ke které právě navádí. Zůstává tím, co uživatel v tabu Hospody uvidí jako první.
 
-Zdroj pravdy o nejbližší hospodě je **jeden** — `useNearbyPub` (`src/counter/useNearbyPub.ts`).
-Nezakládej druhý.
+Zdroje pravdy o poloze a nejbližší hospodě jsou **dva a mají dané role**: `useCompass` pro
+discovery (seznam hospod, kompasová buňka), `useNearbyPub` (`src/counter/useNearbyPub.ts`) pro
+autopick hospody při zápisu. Třetí nezakládej.
 
 ---
 
@@ -1403,8 +1349,7 @@ nevystavuje. Buď je to systémový prvek, nebo je to náš prvek — obojí nej
 
 ### 18.2 Čím to stavíme
 
-Vším jede `@expo/ui` (SwiftUI host). Je to **tranzitivní závislost Expo 56**, už v `Podfile.lock`,
-takže žádná nová dependency.
+Vším jede `@expo/ui` (SwiftUI host) — **přímá závislost projektu** (`package.json`).
 
 | Prvek | Co použít |
 |---|---|
@@ -1639,26 +1584,62 @@ místě (Kocoviny), a stačí jedna.
 
 ---
 
+### 20.13 Kompozice sdílených bloků
+
+Idiomy z etalonu, které platí všude, kde se blok objeví:
+
+- **Jedna entita = jedna komponenta všude.** Statistiky večera kreslí `StatGrid`, žebříček
+  `Leaderboard`, tempo `TempoChart` — ať se blok objeví kdekoli (feed, hub party, recap, profil).
+  Dvě pořadí by znamenala, že ta samá čísla čtou jinak podle toho, kde je potkáš. Starší obrazovky
+  mají ještě vlastní varianty — nekopíruj je, sáhni po sdílené komponentě.
+- **Hodnota nad popiskem, nikdy naopak.** Velká těžká hodnota, malý ztlumený label pod ní, žádná
+  dělítka mezi sloupci — mezera v gridu JE oddělovač. Poslední buňka v řádku se zarovnává doprava,
+  per řádek. Rekord (`PR`) je fakt o čísle a sedí u popisku — číslo zůstává číslem.
+- **Graf nemá vlastní callout — přepisuje hlavičku.** Dotek na sloupci přesměruje velká čísla nad
+  grafem na ten bucket (scrub přes `PanResponder`, práh 2 px); puštění vrátí celé okno. Bez dotyku
+  svítí poslední sloupec — graf bez zvýraznění čte jako mrtvá historie. Graf nemá osy ani mřížku:
+  otázka profilového grafu je „stoupá to, nebo klesá“, ne „bylo to přesně sedmnáct“.
+- **Podium jen od tří lidí** — se dvěma je to ceremonie pro hod mincí. Výšky bloků `[64, 84, 56]`,
+  pořadí `[2, 1, 3]`, koruna = 2px jantarový okraj.
+- **Stale-data pruh je text, ne ikona.** Celá věta + jedna akce: „Jedeš z posledního načtení.
+  Novější večery se teď nedotáhly.“ / „Zkusit znovu“. `minHeight: 44`, radius 20, podklad
+  `foam 0.06` (chyba navíc okraj `amber 0.22`), text 12pt. Podpisové sloveso je „nedotáhlo se“.
+- **Podtržítkové taby ≠ segmentovaný přepínač.** Podtržení říká „stránky jedné obrazovky“
+  (`UnderlineTabs`: baseline `foam 0.09` přes celou šířku, aktivní kus `amber 0.85`), dráha
+  s thumbem říká „jedna otázka, jedna odpověď“. Nesmí splynout. `UnderlineTabs` si vlastní vzduch
+  (`marginTop: controlGap`, `marginBottom: Spacing.lg`) — nechat to na volajícím je způsob, jak si
+  titulek sáhne na vlastní taby.
+- **Live bar říká „běží to“ tikajícím časem, ne zelenou tečkou** (`LivePartyBar`: výška 58,
+  pilulka nad tab barem, hodiny `Fonts.numeral` 20 s tabular-nums, vlastní `+1` CTA 44 pt).
+
 ## 21. Hry — pravidla stavby
 
-### 21.1 Tři skořápky, ne devět obrazovek
+### 21.1 Skořápky, ne obrazovky
 
 Hra je **obsah plus skořápka**, nikdy vlastní obrazovka. Desátá hra má být řádek
 v `gameCatalog.ts` a seznam promptů, ne další složka.
 
+Skořápky (`GameShell`, `src/party/shells/`):
+
 | skořápka | co to je | hry |
 |---|---|---|
-| `score` | ťukni na jméno, dostane bod | Pub kvíz |
-| `prompt` | balíček kartiček, jedna po druhé | Nikdy jsem…, Kategorie, Pravidlo, Palec |
-| `draw` | náhoda i s napětím | Kostky, Flaška, Runda, King's Cup |
+| `quiz` | otázky s odpověďmi, body | Pub kvíz |
+| `turns` | tahy po kruhu | Kostky |
+| `prompt` | balíček kartiček, jedna po druhé | Kategorie, Nikdy jsem…, Palec, Pravidlo |
+| `draw` | tažení karty s napětím | King's Cup |
+| `pick` | náhodný výběr člověka | Runda, Flaška |
 
-Drží to i backend generický: každá skořápka píše ty samé dvě události, takže
-hraní nepotřebuje endpoint na hru.
+(`score` v typu existuje, ale žádná hra ho nepoužívá — nezaváděj ho bez rozhodnutí.)
 
-**Napětí je ta hra.** Losování nikdy jen nevypíše výsledek — kostky se kutálí,
-jména proběhnou a zpomalí, karta se otočí. Ta půlvteřina je důvod, proč se kvůli
-tomu tahá telefon. Výsledek se ale **vybere první a teprve pak se k němu
-animuje**, aby reduced motion nebyla druhá implementace, co se rozejde.
+Drží to i backend generický: hry píší do jednoho append-only endpointu se společnou obálkou
+(event kindy `start` / `score` / `answer` / `action` / `finish`), takže hraní nepotřebuje
+endpoint na hru.
+
+**Napětí je ta hra.** Losování nikdy jen nevypíše výsledek — jména proběhnou a zpomalí, karta se
+otočí. Ta půlvteřina je důvod, proč se kvůli tomu tahá telefon. V RN skořápkách (pick, draw,
+prompt) se výsledek **vybere první a teprve pak se k němu animuje**, aby reduced motion nebyla
+druhá implementace, co se rozejde. Výjimka jsou fyzické WebView hry (§21.4): tam je simulace
+sama náhodou a výsledek se čte z dopadu.
 
 Balíček se **zamíchá jednou a rozdává se**, nenáhodně se nelosuje pokaždé.
 Náhoda se opakuje, a opakování dvě karty po sobě je moment, kdy stůl usoudí, že
@@ -1687,7 +1668,7 @@ nahoru, ne dolů.
 
 Kdo platí, přebíjí kdo vyhrál — je to ta věta, o které stůl bude ještě mluvit.
 
-**Pravidla žijí mimo komponentu.** `diceDuel.ts` je čistá data a funkce
+**Pravidla žijí mimo komponentu.** `src/games/web/dice/rules.ts` je čistá data a funkce
 s testy; skořápka je jen kreslí. Hra se špatným koncem je horší než žádná hra a
 tohle se neověřuje klikáním v simulátoru.
 
@@ -1728,9 +1709,10 @@ Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
 1. **Do WebView jde jen plátno.** Texty, seznamy, počítadla a jména zůstávají
    v RN — to je UI aplikace, ne hra.
 2. **Most je úzký.** Sem „hoď“ a „obarvi se“, ven „padlo tohle“. Barva je
-   jediná věc, kterou plátno o hráčích ví — **žádná jména dovnitř**. U telefonu,
+   jediná věc, kterou plátno o hráčích ví — **žádná jména do herní logiky**. U telefonu,
    co koluje kolem stolu, se „tyhle jsou Honzovy“ přečte z barvy dřív, než by
-   kdo četl popisek.
+   kdo četl popisek. Výjimka z bodu 1: jméno namalované na rekvizitě (výseč
+   kola Rundy), které je součástí té rekvizity.
 3. **Text zůstává v RN, i když leží přes plátno.** Zvolání po dosednutí je
    vrstva nad WebView, ne text ve stránce — tím zůstane skutečným textem
    s Dynamic Type, VoiceOver a písmem aplikace, a přitom vypadá, že dopadlo na
@@ -1740,7 +1722,8 @@ Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
    hod nikdy není.
 5. **Žádná síť.** Hra se sestaví do jednoho HTML s vloženými knihovnami
    (`npm run build:games`) a přibalí se jako asset. V hospodě signál není.
-6. **Téma cestuje dovnitř** v query stringu, jinak plátno vypadá jako cizí web.
+6. **Téma cestuje dovnitř** v `init` zprávě po `ready` handshaku (`GameHost`), jinak plátno
+   vypadá jako cizí web. Query string používá jen browser harness (`npm run games:dev`).
 
 **Hra se ladí v prohlížeči, ne v simulátoru.** `npm run games:dev` ji sestaví a
 otevře jako obyčejnou stránku; když si všimne, že na druhé straně není most,
@@ -1773,10 +1756,11 @@ které si hra deklaruje — „roll“, „spin“, „draw“).
 **Ven:** `ready`, `state` (celý stav po každé změně), `event` (jednorázová
 novinka), `result` (skóre, vítěz, kdo platí), `error`.
 
-**Pravidla vlastní hra, ne platforma.** Hra si počítá kola, pořadí i konec a po
-každé změně pošle **snímek celého stavu**. Appka z něj kreslí všechen text —
-„Honza hází“, žebříček, výsledky kola. Logika je tak na jednom místě vedle věci,
-kterou řídí, a texty zůstávají skutečnými texty s Dynamic Type a VoiceOverem.
+**Pravidla vlastní sdílený modul pravidel, ne platforma.** Lokální hra si stav postupuje sama
+a po každé změně pošle **snímek celého stavu**. Ve sdílené hře je kanonický stav fold
+append-only událostí (`sharedGameActions`) a plátno ho dostává přes `sync` — skládá se, nehádá.
+Appka ze snímku kreslí všechen text — „Honza hází“, žebříček, výsledky kola — takže texty
+zůstávají skutečnými texty s Dynamic Type a VoiceOverem.
 
 Snímek, ne rozdíl: obrazovka, která se kreslí z celého stavu, se nemůže rozejít
 s hrou, když jí unikne jeden rámec.
@@ -1912,22 +1896,27 @@ zakládání akce, nebo se generuje z názvu a data?
 Šest odstínů pro iniciálová pozadí (§20.10) čeká na potvrzení nebo přepsání:
 `#7DD66B`, `#F0BE5C`, `#A8896A`, `#FBF3E0`, `#6FB3D9`, `#D98C6F`.
 
-## Vědomé odchylky mocků
+## Mocky jsou kánon (rozhodnuto 11. 8. 2026)
 
-Mocky v `src/mocks/`, `src/feed/`, `src/party/`, `src/pubs/`, `src/community/`,
-`src/profile/` a `src/search/` se v těchhle věcech **vědomě rozcházejí s tímhle
-dokumentem**. Jsou to návrhy k posouzení, ne přijatá pravidla. Dokud rozhodnutí
-nepadne, neaplikuj je na produkční obrazovky — a až padne, změň **dokument**, ne
-kód lokální výjimkou (§0).
+Mockový jazyk 3.0 (`src/mocks/`, `src/feed/`, `src/party/`, `src/pubs/`, `src/community/`,
+`src/profile/`, `src/search/`) je **finální vizuální kánon** a Část II je přepsaná podle něj:
+ploché seznamy a `SectionBreak` (§5), škála `MockType` bez verzálkových kickerů (§3.1), radiusy
+20–34 (§5.3), tlačítka bez glow s tichou `stout3` sekundární pilulkou (§6), dva druhy sheetů (§7).
+Dřívější rozhodnutí (1. 8. 2026): tmavší zem a systémové písmo.
 
-| Věc | Dokument říká | Mocky dělají |
-|---|---|---|
-| Radiusy | 12–24 | 20–34 |
-| Karty | Obsah žije v kartách (§5) | Posty na ploše, oddělené tmavým pásem |
-| Sekce | Oddělené mezerou | `SectionBreak` — 10 pt tmavý pás, nadpis **pod** ním |
+Zbývající dev-dluh mocků a kódu vůči dokumentu (opravuje se v kódu, ne v dokumentu):
 
-Už rozhodnuté (1. 8. 2026): tmavší zem (§2.1 přepsán, `MockColors` je alias)
-a systémové písmo (§3 přepsán, `fontFamily` z appky pryč).
+- **Copy inline v komponentách** — §12 platí, texty patří do `src/i18n/cs.ts`; 7 z 9 mock
+  obrazovek je má natvrdo. Přesouvá se při oživování obrazovek (plánuje se angličtina).
+- **Starší obrazovky (2.x)** pořád používají `CardSurface`, glow, outline sekundárky, vlastní
+  statistické bloky a 32pt close plošky. Migrují se po celku, ne po jednom; nový kód je nekopíruje.
+- **`includeFontPadding: false` a `lineHeight` chybí** na některých `Fonts.numeral` textech
+  (`StatGrid.value`, wordmark, výsledek hry).
+- **`expo-glass-effect`** je přímo importovaný, ale chybí v `package.json` (§15.2).
+- **Feed pás** přetéká o −14 místo −20 na screen padding (§5.1).
+- `HEADER_GRADIENT` / `LIVE_GRADIENT` / `GradientBand` jsou definované, ale žádná etalonní
+  obrazovka je zatím nepoužívá (§16.3).
+- Komentář „Eight games, three shells“ v `gameCatalog.ts` je zastaralý (šest typů, pět použitých).
 
 ## Otevřená produktová rozhodnutí
 
