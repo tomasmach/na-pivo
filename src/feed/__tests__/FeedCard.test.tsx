@@ -189,6 +189,7 @@ describe('FeedCard', () => {
     const publishedNight = night({
       title: 'Čtyři kousky a domů',
       pubNames: ['U Zlatého tygra'],
+      heroPhotos: [{ id: 'photo-1', imageUrl: 'https://cdn.example/night.jpg', caption: '' }],
       commentCount: 3,
     });
     let renderer: ReturnType<typeof TestRenderer.create>;
@@ -210,7 +211,7 @@ describe('FeedCard', () => {
     expect(heroStrip.props.onPress).toBeUndefined();
   });
 
-  it('shrinks a route-only hero to its two pub stops', () => {
+  it('does not repeat a route that is already summarized in the night header', () => {
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
       renderer = TestRenderer.create(
@@ -218,8 +219,7 @@ describe('FeedCard', () => {
       );
     });
 
-    const routeTile = renderer!.root.findByProps({ testID: 'night-route-tile' });
-    expect(StyleSheet.flatten(routeTile.props.style).height).toBe(104);
+    expect(renderer!.root.findAllByProps({ testID: 'night-route-tile' })).toHaveLength(0);
   });
 
   it('keeps the route aligned with photos in a mixed hero strip', () => {

@@ -214,9 +214,8 @@ function NightPeopleHeader({
 function NightHeroStrip({ night }: { night: PublishedNight }) {
   const hasRoute = night.pubNames.length > 0;
   const routeStops = night.pubNames.slice(0, 5);
-  const routeIsOnlyHero = hasRoute && night.heroPhotos.length === 0 && night.heroGames.length === 0;
-  const routeHeight = Math.min(164, 64 + routeStops.length * 20);
-  if (!hasRoute && night.heroPhotos.length === 0 && night.heroGames.length === 0) return null;
+  const hasMedia = night.heroPhotos.length > 0 || night.heroGames.length > 0;
+  if (!hasMedia) return null;
 
   return (
     <ScrollView
@@ -227,14 +226,7 @@ function NightHeroStrip({ night }: { night: PublishedNight }) {
       accessibilityLabel="Momentky večera"
     >
       {hasRoute ? (
-        <View
-          testID="night-route-tile"
-          style={[
-            styles.heroTile,
-            styles.routeTile,
-            routeIsOnlyHero && { height: routeHeight },
-          ]}
-        >
+        <View testID="night-route-tile" style={[styles.heroTile, styles.routeTile]}>
           <MapPinIcon size={24} color={Colors.amber} />
           <View style={styles.routeRail}>
             {routeStops.map((name, index) => (
