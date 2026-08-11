@@ -22,8 +22,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { accountXpProgress } from '@/data/accountXp';
 import { EMPTY_ACHIEVEMENTS } from '@/data/achievements';
+import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { fetchMyNights, type PublishedNight } from '@/data/nightsClient';
+import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { FeedCard } from '@/feed/FeedScreen';
 import { loadNightFeedCache, saveNightFeedCache } from '@/feed/feedCache';
 import { mergeNightPages } from '@/feed/feedModel';
@@ -46,7 +49,12 @@ import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { useMyStatsState } from '@/stats/useMyStats';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
-import { ChevronRightIcon, HistoryIcon } from '@/components/shared/IconGlyph';
+import {
+  ChevronRightIcon,
+  HistoryIcon,
+  PencilIcon,
+  UsersIcon,
+} from '@/components/shared/IconGlyph';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -61,26 +69,61 @@ const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
  * filter. Published nights stay under Aktivita; this door opens every local,
  * private and queued record without requiring an account or a network.
  */
-export function ProfileDiaryDoor({ onPress }: { onPress: () => void }) {
+function ProfileDoor({
+  icon,
+  label,
+  value,
+  accessibilityLabel,
+  onPress,
+  first,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value?: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+  first?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.diaryDoor, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.diaryDoor, first && styles.diaryDoorFirst, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.profileDiary}
+      accessibilityLabel={accessibilityLabel}
     >
-      <View style={styles.diaryDoorIcon}>
-        <HistoryIcon size={20} color={Colors.amber} />
+      <View style={styles.diaryDoorIcon}>{icon}</View>
+      <View style={styles.grow}>
+        <Text
+          style={styles.diaryDoorLabel}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {label}
+        </Text>
+        {value ? (
+          <Text
+            style={styles.diaryDoorValue}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {value}
+          </Text>
+        ) : null}
       </View>
-      <Text
-        style={styles.diaryDoorLabel}
-        numberOfLines={1}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {cs.profile.privateDiary}
-      </Text>
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
+  );
+}
+
+export function ProfileDiaryDoor({ onPress }: { onPress: () => void }) {
+  return (
+    <ProfileDoor
+      first
+      icon={<HistoryIcon size={20} color={Colors.amber} />}
+      label={cs.profile.privateDiary}
+      accessibilityLabel={cs.a11y.profileDiary}
+      onPress={onPress}
+    />
   );
 }
 
@@ -265,14 +308,48 @@ export default function ProfileMockScreen() {
     ? `@${profile.nickname}`
     : profile?.displayName?.trim() || 'Tvůj profil';
 
+  // One ladder, both counters. Signed out or with nothing earned yet there is no
+  // rung to show, so the line disappears rather than announcing a zero.
+  const xp = useMemo(
+    () => (signedIn ? accountXpProgress(profile?.mapper, profile?.pivar) : null),
+    [profile?.mapper, profile?.pivar, signedIn],
+  );
+
+  // The locally cached party snapshot: a count on the door without a request,
+  // so it survives a table with no signal.
+  const [partaCount, setPartaCount] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void loadFriendsDashboardSnapshot().then((snapshot) => {
+      if (alive && snapshot) setPartaCount(snapshot.dashboard.friends.length);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + TAB_CHROME }]}
       contentInsetAdjustmentBehavior="automatic"
     >
-      {/* Who you are: a face and a handle. Nothing else competes up here. */}
-      <View style={styles.identity}>
+      {/* Who you are: a face and a handle — and the way back to changing them.
+          The identity block IS the edit affordance; a separate "Upravit profil"
+          row would be a second thing pointing at the same place. */}
+      <Pressable
+        // Without an account there is nothing to edit and the editor cannot
+        // save, so the block goes inert rather than opening a dead end — the
+        // amber CTA below is the honest destination in that state.
+        disabled={!signedIn}
+        style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
+        accessibilityRole={signedIn ? 'button' : 'header'}
+        accessibilityLabel={signedIn ? cs.a11y.profileIdentity : handle}
+        onPress={() => {
+          trackUiInteraction('profile_edit_open');
+          router.push('/profile/edit' as Href);
+        }}
+      >
         {/* The real photo when there is one, the initial when there is not.
             A stock face is a lie that reads as a bug the moment somebody
             notices it is not them — and most people never set a photo. */}
@@ -286,16 +363,33 @@ export default function ProfileMockScreen() {
           <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {handle}
           </Text>
+          {xp ? (
+            <Text style={styles.level} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.profile.levelLine(xp.level, xp.title)}
+            </Text>
+          ) : null}
           <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
             {signedIn ? firstDrinkLabel(stats?.firstDrinkAt) : 'Zatím bez účtu'}
           </Text>
         </View>
-      </View>
+        {signedIn ? <PencilIcon size={18} color={Colors.mutedText} /> : null}
+      </Pressable>
 
       <ProfileDiaryDoor
         onPress={() => {
           trackUiInteraction('profile_diary_open');
           router.push('/profile/diary' as Href);
+        }}
+      />
+
+      <ProfileDoor
+        icon={<UsersIcon size={20} color={Colors.amber} />}
+        label={cs.profile.moreParta}
+        value={partaCount === null ? undefined : cs.profile.partaCount(partaCount)}
+        accessibilityLabel={cs.a11y.profileParta}
+        onPress={() => {
+          trackUiInteraction('profile_friends_manage_open');
+          router.push('/friends/parta/people' as Href);
         }}
       />
 
@@ -427,7 +521,31 @@ export default function ProfileMockScreen() {
               would make up — Štamgast, Noční sova, Poutník, Lahváčový filozof.
               Rendering the shipped grid too, so the mock cannot drift from what
               the profile actually shows. */}
-          <SectionBreak title="Odznaky" />
+          {/* The photos belong IN the list, not behind a button to a place. */}
+          <SectionBreak />
+          <PhotoDiarySection />
+
+          <SectionBreak />
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              Odznaky
+            </Text>
+            <Pressable
+              onPress={() => {
+                trackUiInteraction('profile_badges_open');
+                router.push('/profile/badges' as Href);
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [styles.sectionLink, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.profileBadges}
+            >
+              <Text style={styles.sectionLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.profile.badgesAll}
+              </Text>
+              <ChevronRightIcon size={16} color={Colors.amber} />
+            </Pressable>
+          </View>
           <AchievementGrid
             mapper={profile?.mapper}
             achievements={profile?.achievements ?? EMPTY_ACHIEVEMENTS}
@@ -451,14 +569,28 @@ const styles = StyleSheet.create({
   identity: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingTop: Spacing.sm },
   avatar: { width: 68, height: 68, borderRadius: 34 },
   handle: { fontSize: 24, fontWeight: '800', color: Colors.foam, letterSpacing: -0.4 },
+  level: { fontSize: 13, fontWeight: '700', color: Colors.amber, marginTop: 2 },
   since: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
+
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  sectionTitle: { ...MockType.titleS, flex: 1, color: Colors.foam },
+  sectionLink: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },
+  sectionLinkText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
 
   diaryDoor: {
     minHeight: MockLayout.rowHeight,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginTop: Spacing.lg,
+    // Doors are a pair, so they sit closer to each other than to the identity
+    // block above; only the first one takes the block-to-block gap.
+    marginTop: Spacing.sm,
     paddingHorizontal: Spacing.md,
     // A door, not a capsule: at 28 on a 68pt row the corners meet in the middle
     // and the entry read as a pill floating over the profile.
@@ -475,13 +607,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
+  diaryDoorFirst: { marginTop: Spacing.lg },
   diaryDoorLabel: {
-    flex: 1,
-    minWidth: 0,
     fontSize: 16,
     fontWeight: '700',
     color: Colors.foam,
   },
+  diaryDoorValue: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 2 },
 
   cta: {
     height: MockLayout.buttonHeight,

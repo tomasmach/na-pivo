@@ -35,6 +35,9 @@ jest.mock('@/feed/feedModel', () => ({
 }));
 jest.mock('@/friends/SkeletonBlock', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/mocks/BarChart', () => ({ BarChart: () => null }));
+// The photo strip drags in the camera/location native chain; the profile tests
+// are about the account boundary, not the album.
+jest.mock('@/photos/PhotoDiarySection', () => ({ PhotoDiarySection: () => null }));
 jest.mock('@/mocks/SectionBreak', () => ({ SectionBreak: () => null }));
 jest.mock('@/mocks/Segmented', () => ({ Segmented: () => null }));
 jest.mock('@/mocks/StatGrid', () => ({ StatGrid: () => null }));

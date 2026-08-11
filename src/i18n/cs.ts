@@ -2058,6 +2058,8 @@ export const cs = {
     lifetimeCaptionEmpty: 'ČISTEJ ŠTOS',
     /** Amber door in the card footer. */
     badgesLink: 'Odznaky',
+    /** Link beside the Odznaky heading, opens the full badge cabinet. */
+    badgesAll: 'Zobrazit vše',
     /** Footer facts. */
     levelLine: (level: number, title: string) => `Úroveň ${level} · ${title}`,
     levelToNext: (xp: number) => `ještě ${xp} XP do dalšího levelu`,
@@ -2980,6 +2982,7 @@ export const cs = {
     profileBadges: 'Otevřít odznaky',
     profileIdentity: 'Upravit profil',
     profileDiary: 'Otevřít soukromý pivní deník',
+    profileParta: 'Otevřít partu',
 
     // — Parta —
     partaMore: 'Co ještě? Nastavení, žebříčky a další',
