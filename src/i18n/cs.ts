@@ -1142,6 +1142,7 @@ export const cs = {
     title: 'Pivní fotky',
     empty: 'Zatím tu nic není. Vyfoť svoje pivo a začni si plnit album.',
     emptyTitle: 'Zvedni pivo, cvakni fotku',
+    emptyProfile: 'Zatím tu nemáš cvaknuté ani jedno pivo.',
     addPhoto: 'Přidat fotku',
     takePhoto: 'Vyfotit pivo',
     pickFromLibrary: 'Vybrat z galerie',

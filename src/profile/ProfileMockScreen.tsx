@@ -523,7 +523,7 @@ export default function ProfileMockScreen() {
               the profile actually shows. */}
           {/* The photos belong IN the list, not behind a button to a place. */}
           <SectionBreak />
-          <PhotoDiarySection />
+          <PhotoDiarySection variant="profile" />
 
           <SectionBreak />
           <View style={styles.sectionRow}>
