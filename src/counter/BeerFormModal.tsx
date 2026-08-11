@@ -64,6 +64,7 @@ const OUTSIDE_BEER_VOLUME_PRESETS = [330, VOLUME_DEFAULT];
 const SHOT_VOLUME_PRESETS = [20, 40, 50];
 // Pub wine pours: 1 dl / 1,5 dl / "dvojka" (the default order at the bar).
 const WINE_VOLUME_PRESETS = [100, 150, 200];
+const EDIT_SHEET_FALLBACK_HEIGHT = 590;
 
 // Serving choices offered outside a pub, lahváč first (the most common case);
 // draft last for the keg-at-the-cottage crowd. In a pub the row never shows.
@@ -262,6 +263,9 @@ function BeerFormBody({
   const [priceText, setPriceText] = useState(
     typeof beer?.priceCzk === 'number' ? formatPriceInputFromCzk(beer.priceCzk, priceCurrency) : '',
   );
+  const [formContentHeight, setFormContentHeight] = useState(0);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const [actionsHeight, setActionsHeight] = useState(0);
 
   // Volume: either a preset pill (300/400/500) or a free-typed custom ml ("Jiné").
   const initialPresets = menuMode
@@ -387,9 +391,23 @@ function BeerFormBody({
   const bottomPad = keyboardHeight > 0 ? Spacing.lg : insets.bottom + Spacing.lg;
   const maxHeight =
     windowHeight - insets.top - Math.max(keyboardHeight, 0) - Spacing.lg;
-  // Editing is the information-dense variant. Open it at the full available
-  // height so type, name, scan, price and volume are all visible together.
-  const sheetHeight = mode === 'edit' ? maxHeight : undefined;
+  const measuredEditHeight =
+    // Card top, grabber and its margin.
+    Spacing.sm + 4 + Spacing.md +
+    // Header, its bottom margin and the list's top margin.
+    headerHeight + Spacing.sm + Spacing.sm +
+    formContentHeight +
+    // Actions margin, actions themselves, safe area and two hairline borders.
+    Spacing.xs + actionsHeight + bottomPad + 2;
+  const hasMeasuredEditSheet =
+    formContentHeight > 0 && headerHeight > 0 && actionsHeight > 0;
+  const sheetHeight =
+    mode === 'edit'
+      ? Math.min(
+          maxHeight,
+          hasMeasuredEditSheet ? measuredEditHeight : EDIT_SHEET_FALLBACK_HEIGHT,
+        )
+      : undefined;
 
   return (
     <View style={styles.backdrop}>
@@ -402,7 +420,12 @@ function BeerFormBody({
       <View
         style={[
           styles.cardWrap,
-          { marginBottom: sheetBottomOffset, maxHeight, height: sheetHeight },
+          {
+            marginBottom: sheetBottomOffset,
+            maxHeight,
+            height: sheetHeight,
+            minHeight: mode === 'edit' ? undefined : '56%',
+          },
         ]}
       >
         <Pressable
@@ -410,7 +433,10 @@ function BeerFormBody({
           onPress={() => undefined}
         >
           <View style={styles.grabber} />
-          <View style={styles.header}>
+          <View
+            style={styles.header}
+            onLayout={(event) => setHeaderHeight(Math.ceil(event.nativeEvent.layout.height))}
+          >
             <Text
               style={styles.title}
               numberOfLines={2}
@@ -435,6 +461,7 @@ function BeerFormBody({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.cardContent}
             bounces={false}
+            onContentSizeChange={(_width, height) => setFormContentHeight(Math.ceil(height))}
           >
             {mode === 'add' || (mode === 'edit' && !lockNameInEdit) ? (
               <View style={styles.typeGroup}>
@@ -658,7 +685,10 @@ function BeerFormBody({
             ) : null}
           </KeyboardAwareScrollView>
 
-          <View style={styles.actions}>
+          <View
+            style={styles.actions}
+            onLayout={(event) => setActionsHeight(Math.ceil(event.nativeEvent.layout.height))}
+          >
             <View style={styles.submitWrap}>
               <GlowButton
                 label={submitLabel}
@@ -730,7 +760,6 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     width: '100%',
-    minHeight: '56%',
     maxHeight: '92%',
   },
   card: {
