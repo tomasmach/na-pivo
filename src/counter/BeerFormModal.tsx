@@ -353,6 +353,7 @@ function BeerFormBody({
         : cs.counter.confirmDrink(drinkType));
 
   const selectPreset = (value: number) => {
+    Keyboard.dismiss();
     setSelectedPreset(value);
     setCustomActive(false);
   };
@@ -686,8 +687,11 @@ function BeerFormBody({
           </KeyboardAwareScrollView>
 
           <View
-            style={styles.actions}
-            onLayout={(event) => setActionsHeight(Math.ceil(event.nativeEvent.layout.height))}
+            style={[styles.actions, keyboardHeight > 0 && styles.actionsHidden]}
+            onLayout={(event) => {
+              const height = Math.ceil(event.nativeEvent.layout.height);
+              if (height > 0) setActionsHeight(height);
+            }}
           >
             <View style={styles.submitWrap}>
               <GlowButton
@@ -1009,6 +1013,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  actionsHidden: {
+    display: 'none',
   },
   submitWrap: {
     position: 'relative',
