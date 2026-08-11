@@ -1147,6 +1147,8 @@ export const cs = {
     takePhoto: 'Vyfotit pivo',
     pickFromLibrary: 'Vybrat z galerie',
     contestLink: 'FotoPivař',
+    /** Link beside the profile heading, opens the whole album. */
+    viewAll: 'Zobrazit vše',
     photoCount: (n: number) =>
       n === 1 ? '1 fotka' : n >= 2 && n <= 4 ? `${n} fotky` : `${n} fotek`,
 
@@ -3061,6 +3063,7 @@ export const cs = {
     photoAddTile: 'Přidat fotku piva',
     photoTile: (label: string) => `Fotka piva${label ? `, ${label}` : ''}. Ťukni pro detail.`,
     photoContestLink: 'Otevřít soutěž FotoPivař',
+    photoAlbumLink: 'Otevřít album pivních fotek',
     leaderboardsLink: 'Otevřít žebříček pivařů',
     photoCaptionInput: 'Popisek fotky',
     photoPickPub: 'Označit hospodu',

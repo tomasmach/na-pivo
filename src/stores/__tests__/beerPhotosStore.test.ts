@@ -33,8 +33,25 @@ const ensureAccount = jest.fn(async () =>
       }
     : null,
 );
+/** Whether SecureStore already holds a session — no account means nothing to
+ *  reconcile, and asking ensureAccount() would silently provision one. */
+let durableSessionExists = true;
+const readDurableAccountSession = jest.fn(async () => ({
+  available: true,
+  session:
+    durableSessionExists && currentAccountId
+      ? {
+          deviceId: `device-${currentAccountId}`,
+          accountId: currentAccountId,
+          token: `token-${currentAccountId}`,
+          authenticated: true,
+        }
+      : null,
+}));
 jest.mock('@/data/account', () => ({
   ensureAccount: (...args: unknown[]) => ensureAccount(...(args as [])),
+  readDurableAccountSession: (...args: unknown[]) =>
+    readDurableAccountSession(...(args as [])),
 }));
 
 import {
@@ -385,6 +402,43 @@ describe('loadBeerPhotos', () => {
     fetchMyBeerPhotos.mockResolvedValueOnce(null);
     await loadBeerPhotos();
     expect(fetchMyBeerPhotos).toHaveBeenCalledTimes(1);
+  });
+
+  it('never provisions an account for a visitor who has none yet', async () => {
+    useBeerPhotosStore.getState().addPendingPhoto(pendingInput('local-only'));
+    durableSessionExists = false;
+    ensureAccount.mockClear();
+
+    await loadBeerPhotos();
+
+    expect(ensureAccount).not.toHaveBeenCalled();
+    expect(fetchMyBeerPhotos).not.toHaveBeenCalled();
+    // The local album is untouched; only the server round trip is skipped.
+    expect(useBeerPhotosStore.getState().photos.map((photo) => photo.clientId)).toEqual([
+      'local-only',
+    ]);
+    durableSessionExists = true;
+  });
+
+  it('reconciles once per account when the caller opts into `once`', async () => {
+    fetchMyBeerPhotos.mockResolvedValue([]);
+    await loadBeerPhotos(undefined, { once: true });
+    const afterFirst = fetchMyBeerPhotos.mock.calls.length;
+
+    await loadBeerPhotos(undefined, { once: true });
+    await loadBeerPhotos(undefined, { once: true });
+    expect(fetchMyBeerPhotos).toHaveBeenCalledTimes(afterFirst);
+
+    // A different account is different data, so the next open asks again.
+    const clearing = clearBeerPhotosAccountData();
+    currentAccountId = 'account-c';
+    await clearing;
+    await loadBeerPhotos(undefined, { once: true });
+    expect(fetchMyBeerPhotos).toHaveBeenCalledTimes(afterFirst + 1);
+    currentAccountId = 'account-a';
+    fetchMyBeerPhotos.mockReset();
+    fetchMyBeerPhotos.mockResolvedValue(null);
+    await loadBeerPhotos();
   });
 
   it('lets the newest overlapping load win for the same account', async () => {

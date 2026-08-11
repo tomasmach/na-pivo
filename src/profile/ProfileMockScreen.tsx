@@ -64,6 +64,9 @@ import { Radius, Spacing } from '@/theme/layout';
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
 
+/** Badges shown on the profile: two rows of three, the cabinet is a tap away. */
+const PROFILE_BADGE_TEASER = 6;
+
 /**
  * The private diary is a first-class profile surface, not another activity
  * filter. Published nights stay under Aktivita; this door opens every local,
@@ -363,7 +366,9 @@ export default function ProfileMockScreen() {
           <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {handle}
           </Text>
-          {xp ? (
+          {/* A fresh account sits on rung one with nothing earned; "Úroveň 1 ·
+              Zelenáč" is a line announcing a zero, so it waits for the first XP. */}
+          {xp && xp.xp > 0 ? (
             <Text style={styles.level} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
               {cs.profile.levelLine(xp.level, xp.title)}
             </Text>
@@ -389,7 +394,10 @@ export default function ProfileMockScreen() {
         accessibilityLabel={cs.a11y.profileParta}
         onPress={() => {
           trackUiInteraction('profile_friends_manage_open');
-          router.push('/friends/parta/people' as Href);
+          // The people inbox opens OUTSIDE the tabs: pushing the copy inside
+          // (tabs)/friends would flip the tab bar to Kocoviny while you are
+          // standing on Profil.
+          router.push('/profile/parta' as Href);
         }}
       />
 
@@ -528,7 +536,7 @@ export default function ProfileMockScreen() {
           <SectionBreak />
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Odznaky
+              {cs.profile.badgesLink}
             </Text>
             <Pressable
               onPress={() => {
@@ -546,7 +554,10 @@ export default function ProfileMockScreen() {
               <ChevronRightIcon size={16} color={Colors.amber} />
             </Pressable>
           </View>
+          {/* Two rows here, the rest behind "Zobrazit vše" — a link above the
+              complete cabinet would point at what you are already looking at. */}
           <AchievementGrid
+            limit={PROFILE_BADGE_TEASER}
             mapper={profile?.mapper}
             achievements={profile?.achievements ?? EMPTY_ACHIEVEMENTS}
           />
@@ -577,7 +588,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     marginTop: Spacing.lg,
-    marginBottom: Spacing.md,
+    // Heading → content is controlGap (DESIGN.md §4), not a hand-picked 14.
+    marginBottom: MockLayout.controlGap,
   },
   sectionTitle: { ...MockType.titleS, flex: 1, color: Colors.foam },
   sectionLink: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },

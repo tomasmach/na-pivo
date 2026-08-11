@@ -24,8 +24,9 @@ import {
   RefreshCwIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
-import { MockType } from '@/mocks/mockTheme';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
@@ -134,7 +135,7 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
   // Diary bootstrap: hydrate the persisted view, then reconcile with the server.
   useEffect(() => {
     const controller = new AbortController();
-    void loadBeerPhotos(controller.signal);
+    void loadBeerPhotos(controller.signal, { once: true });
     return () => controller.abort();
   }, []);
 
@@ -158,15 +159,21 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
           <Text style={styles.profileTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
             {cs.photoDiary.title}
           </Text>
+          {/* "Zobrazit vše" — the Odznaky idiom, so the same-looking link means
+              the same thing: more of what is above it. FotoPivař keeps its own
+              door inside the album, where the whole diary is on screen. */}
           <Pressable
-            onPress={() => router.push('/photo-contest' as Href)}
+            onPress={() => {
+              trackUiInteraction('profile_photos_open');
+              router.push('/profile/photos' as Href);
+            }}
             style={({ pressed }) => [styles.profileLink, pressed && styles.pressed]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.photoContestLink}
+            accessibilityLabel={cs.a11y.photoAlbumLink}
           >
             <Text style={styles.profileLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoDiary.contestLink}
+              {cs.photoDiary.viewAll}
             </Text>
             <ChevronRightIcon size={16} color={Colors.amber} />
           </Pressable>
@@ -315,7 +322,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     marginTop: Spacing.lg,
-    marginBottom: Spacing.md,
+    // Heading → content is controlGap (DESIGN.md §4).
+    marginBottom: MockLayout.controlGap,
   },
   profileTitle: { ...MockType.titleS, flex: 1, color: Colors.foam },
   profileLink: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },

@@ -35,7 +35,7 @@ import {
   type BeerPhoto,
   type BeerPhotoVisibility,
 } from '@/data/beerPhotosClient';
-import { ensureAccount } from '@/data/account';
+import { ensureAccount, readDurableAccountSession } from '@/data/account';
 import {
   isBeerPhotoDeletionTombstoned,
   loadBeerPhotoDeletionTombstones,
@@ -170,6 +170,13 @@ let latestLoadGeneration = 0;
 let accountClearsInProgress = 0;
 let lastClearedSession: { accountId: string; token: string } | null = null;
 let hydrationStarts = 0;
+/**
+ * The boundary generation whose diary has already been reconciled with the
+ * server. Opening Profil is not new information, so the second and every later
+ * mount rides the state the first one fetched; an account switch bumps the
+ * generation and the next open reconciles again.
+ */
+let reconciledGeneration: number | null = null;
 let resolveInitialHydration!: () => void;
 const initialHydration = new Promise<void>((resolve) => {
   resolveInitialHydration = resolve;
@@ -410,9 +417,16 @@ export function clearBeerPhotosAccountData(options?: {
  * photos are visible immediately — first call only), then reconcile with the
  * server list. Silent on failure — offline just keeps the local view. Never
  * throws.
+ *
+ * `once` skips the request when this account has already been reconciled, for
+ * callers that mount on every screen open rather than on a refresh gesture.
  */
-export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
+export async function loadBeerPhotos(
+  signal?: AbortSignal,
+  options: { once?: boolean } = {},
+): Promise<void> {
   const boundaryGeneration = accountBoundaryGeneration;
+  if (options.once && reconciledGeneration === boundaryGeneration) return;
   const loadGeneration = ++latestLoadGeneration;
 
   if (loadIsStale(boundaryGeneration, loadGeneration, signal)) return;
@@ -424,6 +438,12 @@ export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
     !tombstoneLoad.ok ||
     loadIsStale(boundaryGeneration, loadGeneration, signal)
   ) return;
+
+  // Nobody has an account yet: reconciling would provision one behind the back
+  // of someone who only opened Profil. The local album is already hydrated —
+  // the server has nothing to add until there is an identity to ask about.
+  const durable = await readDurableAccountSession();
+  if (!durable.session || loadIsStale(boundaryGeneration, loadGeneration, signal)) return;
 
   const session = await ensureAccount(signal);
   if (
@@ -447,5 +467,6 @@ export async function loadBeerPhotos(signal?: AbortSignal): Promise<void> {
     belongsToLastClearedSession(currentSession)
   ) return;
 
+  reconciledGeneration = boundaryGeneration;
   useBeerPhotosStore.getState().setServerPhotos(photos, session.accountId);
 }
