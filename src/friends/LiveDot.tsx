@@ -1,5 +1,5 @@
 /**
- * LiveDot — a small amber dot that breathes opacity 0.4 ↔ 1 to mark anything
+ * LiveDot — a small static amber dot marking anything
  * happening *tonight* (live friend activity, my own active broadcast, the
  * "TEĎ NA PIVU" header). Amber is the only accent and it appears only where
  * "now" is, so this dot is the smallest unit of that rule.
@@ -11,17 +11,9 @@
  * is hidden from assistive tech.
  */
 
-import React, { memo, useEffect } from 'react';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  cancelAnimation,
-  Easing,
-} from 'react-native-reanimated';
+import React, { memo } from 'react';
+import { View } from 'react-native';
 import { Colors } from '@/theme/colors';
-import { useReduceMotion } from '@/utils/useReduceMotion';
 
 interface LiveDotProps {
   /** Diameter of the dot in points. Defaults to 8. */
@@ -33,49 +25,11 @@ interface LiveDotProps {
   stale?: boolean;
 }
 
-const PULSE_DURATION = 1000;
 const STALE_OPACITY = 0.4;
 
 export const LiveDot = memo(function LiveDot({ size = 8, stale = false }: LiveDotProps) {
-  const reduceMotion = useReduceMotion();
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    if (stale) {
-      // Stale dashboard: freeze dim so a pulsing dot never implies fresh "live".
-      cancelAnimation(opacity);
-      opacity.value = STALE_OPACITY;
-      return;
-    }
-    if (reduceMotion) {
-      // Reduce motion: rest at full opacity, no loop.
-      opacity.value = 1;
-      return;
-    }
-
-    // Breathe 1 → 0.4 → 1 forever (reverse=true) until unmount.
-    opacity.value = withRepeat(
-      withTiming(0.4, {
-        duration: PULSE_DURATION,
-        easing: Easing.inOut(Easing.quad),
-      }),
-      -1,
-      true,
-    );
-
-    return () => {
-      cancelAnimation(opacity);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduceMotion, stale]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    'worklet';
-    return { opacity: opacity.value };
-  });
-
   return (
-    <Animated.View
+    <View
       importantForAccessibility="no"
       accessibilityElementsHidden
       pointerEvents="none"
@@ -85,8 +39,8 @@ export const LiveDot = memo(function LiveDot({ size = 8, stale = false }: LiveDo
           height: size,
           borderRadius: size / 2,
           backgroundColor: Colors.amber,
+          opacity: stale ? STALE_OPACITY : 1,
         },
-        animatedStyle,
       ]}
     />
   );

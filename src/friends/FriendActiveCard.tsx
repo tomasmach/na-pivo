@@ -23,7 +23,6 @@ import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import CheersPill from './CheersPill';
 import { focusPubFromActivity } from './focusPubHandoff';
@@ -200,13 +199,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
-    borderWidth: 1,
-    // A crisp amber edge so the live card lifts off the bare stout — but still
-    // deliberately cooler than MyActivityCard's 0.6, and with NO glow (the lone
-    // halo belongs to my own broadcast).
-    borderColor: withAlpha(Colors.amber, 0.42),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
     padding: Spacing.lg,
-    ...softDrop(),
   },
   header: {
     flexDirection: 'row',

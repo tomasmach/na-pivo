@@ -66,6 +66,8 @@ interface AddFriendToolsProps {
   onChanged: () => void;
   /** Show the @nickname search row (default true). */
   showSearch?: boolean;
+  /** Show the legacy code/share actions above search (default true). */
+  showInviteActions?: boolean;
 }
 
 export function AddFriendTools({
@@ -74,6 +76,7 @@ export function AddFriendTools({
   onOpenCode,
   onChanged,
   showSearch = true,
+  showInviteActions = true,
 }: AddFriendToolsProps) {
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
@@ -175,14 +178,11 @@ export function AddFriendTools({
             ? cs.friends.coldStartSetupTitle
             : cs.friends.coldStartAnonTitle}
         </Text>
-        <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {needsNickname ? cs.friends.coldStartSetupBody : cs.friends.coldStartAnonBody}
-        </Text>
         <GlowButton
           label={needsNickname ? cs.friends.coldStartSetupCta : cs.friends.coldStartAnonCta}
           onPress={openIdentity}
           variant="primary"
-          glow="soft"
+          glow="none"
         />
       </View>
     );
@@ -190,12 +190,12 @@ export function AddFriendTools({
 
   return (
     <>
-      <View style={styles.growthActions}>
+      {showInviteActions ? <View style={styles.growthActions}>
         <GlowButton
           label={cs.friends.myCodeCta}
           onPress={onOpenCode}
           variant="primary"
-          glow="soft"
+          glow="none"
           icon={<QrCodeIcon size={20} color={Colors.stout} />}
         />
         <GlowButton
@@ -206,7 +206,7 @@ export function AddFriendTools({
           height={52}
           icon={<LinkIcon size={18} color={Colors.foam} />}
         />
-      </View>
+      </View> : null}
 
       {showSearch ? (
         <View style={styles.searchGap}>
@@ -231,7 +231,7 @@ export function AddFriendTools({
               style={({ pressed }) => [styles.searchButton, pressed && styles.dim]}
             >
               {searching ? (
-                <ActivityIndicator color={Colors.stout} size="small" />
+                <ActivityIndicator color={Colors.foam} size="small" />
               ) : (
                 <Text
                   style={styles.searchButtonText}
@@ -258,9 +258,9 @@ export function AddFriendTools({
                       style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
                     >
                       {requestingKey === profile.id ? (
-                        <ActivityIndicator color={Colors.stout} size="small" />
-                      ) : (
-                        <PlusIcon size={18} color={Colors.stout} />
+                      <ActivityIndicator color={Colors.foam} size="small" />
+                    ) : (
+                        <PlusIcon size={18} color={Colors.foam} />
                       )}
                     </Pressable>
                   </View>
@@ -320,13 +320,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.foam,
   },
-  gateBody: {
-    fontWeight: '500',
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-    marginBottom: Spacing.xs,
-  },
 
   // — Search / add —
   searchRow: {
@@ -354,11 +347,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
+    backgroundColor: Colors.stout3,
   },
   searchButtonText: {
     fontWeight: '800',
-    color: Colors.stout,
+    color: Colors.foam,
     fontSize: 15,
   },
   searchResults: {
@@ -376,7 +369,7 @@ const styles = StyleSheet.create({
     borderRadius: HitArea.min / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.amber,
+    backgroundColor: Colors.stout3,
   },
   noResults: {
     marginTop: Spacing.md,

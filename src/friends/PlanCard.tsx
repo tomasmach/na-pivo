@@ -32,7 +32,6 @@ import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
 
 import CheersPill from './CheersPill';
 import { focusPubFromActivity } from './focusPubHandoff';
@@ -270,11 +269,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
-    borderWidth: 1,
-    // Between hairline and live (0.42): warmer than a row, cooler than "alive".
-    borderColor: withAlpha(Colors.amber, 0.28),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
     padding: Spacing.lg,
-    ...softDrop(),
   },
   header: {
     flexDirection: 'row',
@@ -285,8 +282,7 @@ const styles = StyleSheet.create({
   mineKicker: {
     flexShrink: 1,
     fontWeight: '800',
-    fontSize: 12,
-    letterSpacing: 1,
+    fontSize: 14,
     color: Colors.amber,
   },
   identity: {

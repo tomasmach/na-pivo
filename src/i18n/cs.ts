@@ -1320,6 +1320,18 @@ export const cs = {
 
   friends: {
     title: 'Parta',
+    hubTitle: 'Parta',
+    peopleTitle: 'Lidi v partě',
+    addPeopleTitle: 'Přidat do party',
+    requestsSummary: (n: number) => {
+      if (n === 0) return 'Žádné nové žádosti';
+      if (n === 1) return '1 žádost čeká';
+      if (n >= 2 && n <= 4) return `${n} žádosti čekají`;
+      return `${n} žádostí čeká`;
+    },
+    requestsEmpty: 'Nikdo nový teď nečeká.',
+    outgoingEmpty: 'Žádná pozvánka teď nečeká na potvrzení.',
+    plansEmpty: 'Na dnešek zatím nic není.',
     heroTitle: 'Kdo jde dneska na jedno?',
     heroBody:
       'Kámoše přidáš kódem nebo pozvánkou. Pak hned vidíš, kdo zrovna sedí na pivu.',
@@ -1388,7 +1400,7 @@ export const cs = {
 
     // — My active activity card ("Cinkl jsi partě") —
     // Present tense keeps it genderless (retired the masculine "Cinkl jsi").
-    myActiveTitle: 'SVÍTÍŠ PARTĚ',
+    myActiveTitle: 'Svítíš partě',
     nobodyYet: 'Čekáš na první kývnutí.',
     whoComing: 'Kdo dorazí?',
     // "Zabalit" = pub slang for calling it a night; one verb family across
@@ -1631,6 +1643,7 @@ export const cs = {
     // Infinitive like every other button in the app ("Přijmout", "Zapnout…").
     composeOpen: 'Cinknout partě',
     composeTitle: 'Cinknout partě',
+    planComposeTitle: 'Domluvit pivo',
     composeAudienceLabel: 'KOMU',
     recipientAll: 'Celá parta',
     recipientCustom: 'Vybrat',
@@ -1675,7 +1688,7 @@ export const cs = {
 
     // — Plans (§B3) —
     plansHeader: 'Plán na dnes',
-    planMineTitle: 'TVŮJ PLÁN',
+    planMineTitle: 'Tvůj plán',
     planAt: (t: string) => `Dnes v ${t}`,
     planCreated: 'Plán letí partě. Když poběží připomínky, ještě tě odpoledne cinknu.',
     planCancel: 'Zrušit plán',
@@ -2804,6 +2817,12 @@ export const cs = {
     settingsButton: 'Otevřít nastavení',
     // — Parta 3.0 —
     tabFriendsBadge: (n: number) => `Parta, ${n} nových`,
+    openParta: 'Otevřít Partu',
+    openPartaWithRequests: (n: number) => {
+      if (n === 1) return 'Otevřít Partu, čeká 1 žádost';
+      if (n >= 2 && n <= 4) return `Otevřít Partu, čekají ${n} žádosti`;
+      return `Otevřít Partu, čeká ${n} žádostí`;
+    },
     // Back chevron on the Profile → Správa party screen.
     manageBack: 'Zpět na profil',
     rsvpGroup: 'Jdeš?',

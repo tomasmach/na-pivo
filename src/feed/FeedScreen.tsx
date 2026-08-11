@@ -19,6 +19,7 @@ import {
   MenuIcon,
   MessageSquareIcon,
   SearchIcon,
+  UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
@@ -28,6 +29,7 @@ import {
   type NightsFeedScope,
   type PublishedNight,
 } from '@/data/nightsClient';
+import { fetchFriendsLive } from '@/data/friendsClient';
 import { CheersButton } from '@/feed/CheersButton';
 import {
   loadNightFeedCache,
@@ -54,6 +56,7 @@ import { cs } from '@/i18n/cs';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
 import { useAccountStore } from '@/stores/accountStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -376,6 +379,7 @@ export const FeedCard = memo(function FeedCard({
 function FeedScreenContent() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const pendingRequests = usePartaSignalStore((state) => state.pendingRequests);
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((state) => state.show);
 
@@ -412,6 +416,26 @@ function FeedScreenContent() {
     },
     [],
   );
+
+  // Keep the fixed Parta door honest after a cold launch. This cheap slice
+  // carries request/live counts without loading the full social dashboard.
+  useEffect(() => {
+    let alive = true;
+    void fetchFriendsLive().then((live) => {
+      if (!alive || !live) return;
+      usePartaSignalStore.getState().setSignal({
+        pendingRequests: live.incomingCount,
+        unread: live.unreadCount,
+        liveNow:
+          live.presence.length > 0 ||
+          live.activeFriends.length > 0 ||
+          live.myActiveActivity != null,
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const persist = useCallback(
     (nextNights: PublishedNight[], nextCursor: string | null) => {
@@ -709,7 +733,27 @@ function FeedScreenContent() {
         }
       />
 
-      <View style={[styles.searchFloat, { top: insets.top + Spacing.sm }]}>
+      <View style={[styles.headerActions, { top: insets.top + Spacing.sm }]}>
+        <View style={styles.partaButtonWrap}>
+          <GlassIconButton
+            size={40}
+            accessibilityLabel={
+              pendingRequests > 0
+                ? cs.a11y.openPartaWithRequests(pendingRequests)
+                : cs.a11y.openParta
+            }
+            onPress={() => router.push('/friends/parta' as Href)}
+          >
+            <UsersIcon size={19} color={Colors.foam} />
+          </GlassIconButton>
+          {pendingRequests > 0 ? (
+            <View style={styles.partaBadge} pointerEvents="none">
+              <Text style={styles.partaBadgeText} allowFontScaling={false}>
+                {pendingRequests > 9 ? '9+' : pendingRequests}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <GlassIconButton
           size={40}
           accessibilityLabel="Hledat"
@@ -748,7 +792,34 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingBottom: Spacing.sm,
   },
-  searchFloat: { position: 'absolute', right: MockLayout.screenPad, zIndex: 2 },
+  headerActions: {
+    position: 'absolute',
+    right: MockLayout.screenPad,
+    zIndex: 2,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  partaButtonWrap: { position: 'relative' },
+  partaBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -7,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: Colors.stout,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partaBadgeText: {
+    color: Colors.stout,
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '800',
+  },
   mark: { width: 28, height: 28, borderRadius: 7 },
   wordmark: { fontFamily: Fonts.numeral, fontSize: 19, color: Colors.foam },
 

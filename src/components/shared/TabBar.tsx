@@ -56,7 +56,6 @@ import {
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
-import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
@@ -325,22 +324,12 @@ export function TabBar({ state, navigation }: TabBarProps) {
   const activeRoute = state.routes[state.index]?.name;
   const hidden = !!activeRoute && FULLSCREEN_ROUTES.has(activeRoute);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
-  const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
-  const unread = usePartaSignalStore((s) => s.unread);
-  const liveNow = usePartaSignalStore((s) => s.liveNow);
   // Your OWN night, not a friend's — the ring means "you are in one".
   const nightRunning = useLivePartyStore((s) => s.live);
 
   // After every hook, never before — an early return above them would change
   // the hook order between renders (rules-of-hooks).
   if (hidden) return null;
-
-  const partaBadge: TabBadgeState | null =
-    pendingRequests > 0
-      ? { count: pendingRequests, dot: false, live: liveNow }
-      : unread > 0 || liveNow
-        ? { count: 0, dot: true, live: liveNow }
-        : null;
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
@@ -394,7 +383,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
             routeName={route.name}
             focused={focused}
             onPress={onPress}
-            badge={route.name === 'friends' ? partaBadge : null}
+            badge={null}
             running={route.name === 'beer' && nightRunning}
           />
         );

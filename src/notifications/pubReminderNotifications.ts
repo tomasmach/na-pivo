@@ -681,26 +681,21 @@ function isPubReminderResponse(response: ExpoNotifications.NotificationResponse 
 
 /** Deep-link payload a friend push carries so Parta can scroll to the row (§F3). */
 export interface FriendTapPayload {
+  kind: string | null;
   activityId: string | null;
   friendshipId: string | null;
 }
 
 function isFriendResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
   const kind = response?.notification.request.content.data?.kind;
-  return (
-    kind === 'friend_request' ||
-    kind === 'friend_accepted' ||
-    kind === 'friend_at_pub' ||
-    kind === 'friend_rsvp' ||
-    kind === 'friend_cheers' ||
-    kind === 'friend_plan'
-  );
+  return typeof kind === 'string' && kind.startsWith('friend_');
 }
 
 /** Extract the activity/friendship ids a friend push carries, when present. */
 function friendTapPayload(response: ExpoNotifications.NotificationResponse | null): FriendTapPayload {
   const data = response?.notification.request.content.data;
   return {
+    kind: typeof data?.kind === 'string' ? data.kind : null,
     activityId: typeof data?.activity_id === 'string' ? data.activity_id : null,
     friendshipId: typeof data?.friendship_id === 'string' ? data.friendship_id : null,
   };

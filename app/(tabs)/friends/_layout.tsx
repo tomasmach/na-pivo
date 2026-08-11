@@ -55,7 +55,7 @@ export default function FeedLayout() {
           animation: 'ios_from_right',
         }}
       />
+      <Stack.Screen name="parta" options={{ headerShown: false }} />
     </Stack>
   );
 }
-

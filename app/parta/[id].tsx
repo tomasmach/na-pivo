@@ -183,7 +183,7 @@ export default function FriendProfileScreen() {
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
-    else router.replace('/friends' as Href);
+    else router.replace('/friends/parta/people' as Href);
   }, [router]);
 
   const name = nameOf(detail?.profile);

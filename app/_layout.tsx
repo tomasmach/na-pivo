@@ -87,6 +87,7 @@ import {
   subscribePubReminderTap,
   type FriendTapPayload,
 } from '@/notifications/pubReminderNotifications';
+import { friendPushDestination } from '@/notifications/friendPushDestination';
 import {
   consumeInitialBeerCountReminderTap,
   initializeBeerCountReminderNotifications,
@@ -305,7 +306,7 @@ export default function RootLayout() {
     // A friend push tap forces a Parta refresh (and scroll to its payload row).
     const navigateToFriends = (payload?: FriendTapPayload) => {
       usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
-      router.push('/friends' as Href);
+      router.push(friendPushDestination(payload) as Href);
     };
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);

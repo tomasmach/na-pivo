@@ -81,8 +81,13 @@ export default function InviteClaimScreen() {
     };
   }, [code, myId]);
 
-  const goToParta = useCallback(() => {
-    router.replace('/friends' as Href);
+  const goAfterClaim = useCallback(() => {
+    router.replace('/friends/parta/people?focus=outgoing' as Href);
+  }, [router]);
+
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/friends/parta' as Href);
   }, [router]);
 
   const handleClaim = useCallback(() => {
@@ -92,7 +97,7 @@ export default function InviteClaimScreen() {
       if (!mountedRef.current) return;
       if (result.ok) {
         showToast(cs.friends.claimDone, { icon: <UsersIcon size={20} color={Colors.amber} /> });
-        goToParta();
+        goAfterClaim();
         return;
       }
       setClaiming(false);
@@ -101,7 +106,7 @@ export default function InviteClaimScreen() {
         result.code === 'invite_expired' ? cs.friends.claimExpired : result.detail || cs.friends.claimInvalid;
       showToast(message);
     });
-  }, [claiming, code, goToParta, showToast]);
+  }, [claiming, code, goAfterClaim, showToast]);
 
   const errorMessage =
     state === 'expired'
@@ -116,7 +121,7 @@ export default function InviteClaimScreen() {
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={goToParta}
+          onPress={goBack}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={cs.friends.claimBack}
@@ -140,7 +145,7 @@ export default function InviteClaimScreen() {
             <View style={styles.ctaWrap}>
               <GlowButton
                 label={cs.friends.claimBack}
-                onPress={goToParta}
+                onPress={goBack}
                 variant="secondary"
                 glow="none"
                 height={52}
