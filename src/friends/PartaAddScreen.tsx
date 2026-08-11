@@ -116,7 +116,12 @@ const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: MockLayout.screenPad, backgroundColor: Colors.stout },
   content: { paddingTop: Spacing.xl },
   codeTitle: { color: Colors.foam, fontSize: 20, fontWeight: '800', marginBottom: Spacing.lg },
-  qrWrap: { minHeight: QR_SIZE + Spacing.lg * 2, alignItems: 'center', justifyContent: 'center' },
+  qrWrap: {
+    minHeight: QR_SIZE + Spacing.lg * 2,
+    marginBottom: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   qrCard: { padding: Spacing.lg, borderRadius: Radius.card, backgroundColor: Colors.foam },
   sectionBreak: {
     height: 10,

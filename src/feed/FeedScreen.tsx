@@ -213,6 +213,9 @@ function NightPeopleHeader({
 
 function NightHeroStrip({ night }: { night: PublishedNight }) {
   const hasRoute = night.pubNames.length > 0;
+  const routeStops = night.pubNames.slice(0, 5);
+  const routeIsOnlyHero = hasRoute && night.heroPhotos.length === 0 && night.heroGames.length === 0;
+  const routeHeight = Math.min(164, 64 + routeStops.length * 20);
   if (!hasRoute && night.heroPhotos.length === 0 && night.heroGames.length === 0) return null;
 
   return (
@@ -224,10 +227,17 @@ function NightHeroStrip({ night }: { night: PublishedNight }) {
       accessibilityLabel="Momentky večera"
     >
       {hasRoute ? (
-        <View style={[styles.heroTile, styles.routeTile]}>
+        <View
+          testID="night-route-tile"
+          style={[
+            styles.heroTile,
+            styles.routeTile,
+            routeIsOnlyHero && { height: routeHeight },
+          ]}
+        >
           <MapPinIcon size={24} color={Colors.amber} />
           <View style={styles.routeRail}>
-            {night.pubNames.slice(0, 5).map((name, index) => (
+            {routeStops.map((name, index) => (
               <View key={`${name}:${index}`} style={styles.routeStop}>
                 <View style={styles.routeDot} />
                 <Text style={styles.routeName} numberOfLines={1}>

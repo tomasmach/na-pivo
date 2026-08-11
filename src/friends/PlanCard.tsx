@@ -210,55 +210,50 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
         />
       </View>
 
+      {mine && activity.reactions.cheers > 0 ? (
+        <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.friends.cheersCount(activity.reactions.cheers)}
+        </Text>
+      ) : null}
+
       <View style={styles.footer}>
+        <Pressable
+          onPress={showOnCompass}
+          accessibilityRole="button"
+          accessibilityLabel={cs.friends.showOnCompass}
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
+          style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
+        >
+          <CompassIcon size={16} color={Colors.mutedText} />
+          <Text
+            style={styles.compassLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.friends.showOnCompass}
+          </Text>
+        </Pressable>
         {mine ? (
-          <>
-            {activity.reactions.cheers > 0 ? (
-              <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.cheersCount(activity.reactions.cheers)}
-              </Text>
-            ) : (
-              <View />
-            )}
-            <Pressable
-              onPress={handleCancelPress}
-              hitSlop={PILL_HIT_SLOP}
-              accessibilityRole="button"
-              accessibilityLabel={cs.friends.planCancel}
-              style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
-            >
-              <XIcon size={15} color={Colors.foamMuted} />
-              <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.friends.planCancel}
-              </Text>
-            </Pressable>
-          </>
+          <Pressable
+            onPress={handleCancelPress}
+            hitSlop={PILL_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={cs.friends.planCancel}
+            style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
+          >
+            <XIcon size={15} color={Colors.foamMuted} />
+            <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.friends.planCancel}
+            </Text>
+          </Pressable>
         ) : (
-          <>
-            <Pressable
-              onPress={showOnCompass}
-              accessibilityRole="button"
-              accessibilityLabel={cs.friends.showOnCompass}
-              hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
-              style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
-            >
-              <CompassIcon size={16} color={Colors.mutedText} />
-              <Text
-                style={styles.compassLabel}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {cs.friends.showOnCompass}
-              </Text>
-            </Pressable>
-            <CheersPill
-              activityId={activity.id}
-              count={activity.reactions.cheers}
-              mine={activity.myReaction === 'cheers'}
-              ownerName={nameOf(account)}
-              onChanged={onResponded}
-            />
-          </>
+          <CheersPill
+            activityId={activity.id}
+            count={activity.reactions.cheers}
+            mine={activity.myReaction === 'cheers'}
+            ownerName={nameOf(account)}
+            onChanged={onResponded}
+          />
         )}
       </View>
     </View>
@@ -368,6 +363,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   cheersLine: {
+    marginTop: Spacing.sm,
     flexShrink: 1,
     fontWeight: '500',
     fontSize: 12,

@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 
 import type { PublishedNight } from '@/data/nightsClient';
 
@@ -207,5 +208,34 @@ describe('FeedCard', () => {
     const heroStrip = renderer!.root.findByProps({ accessibilityLabel: 'Momentky večera' });
     expect(heroStrip.props.horizontal).toBe(true);
     expect(heroStrip.props.onPress).toBeUndefined();
+  });
+
+  it('shrinks a route-only hero to its two pub stops', () => {
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <FeedCard night={night({ pubNames: ['U Zlatého tygra', 'Lokál Dlouhááá'] })} />,
+      );
+    });
+
+    const routeTile = renderer!.root.findByProps({ testID: 'night-route-tile' });
+    expect(StyleSheet.flatten(routeTile.props.style).height).toBe(104);
+  });
+
+  it('keeps the route aligned with photos in a mixed hero strip', () => {
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <FeedCard
+          night={night({
+            pubNames: ['U Zlatého tygra', 'Lokál Dlouhááá'],
+            heroPhotos: [{ id: 'photo-1', imageUrl: 'https://cdn.example/night.jpg', caption: '' }],
+          })}
+        />,
+      );
+    });
+
+    const routeTile = renderer!.root.findByProps({ testID: 'night-route-tile' });
+    expect(StyleSheet.flatten(routeTile.props.style).height).toBe(164);
   });
 });
