@@ -73,13 +73,46 @@ describe('feed card model', () => {
 
     expect(feedAuthorLabel(complete)).toBe('@honza');
     expect(feedNightTitle(complete)).toBe('U Zlatého tygra');
-    expect(feedNightRoute(complete)).toBe('U Zlatého tygra  →  Lokál');
+    expect(feedNightRoute(complete)).toEqual({
+      accessibilityLabel: 'U Zlatého tygra, Lokál',
+      city: null,
+      next: 'Lokál',
+      skipped: 0,
+      last: null,
+    });
     expect(feedOtherDrinks(complete)).toBe('1 víno · 3 panáky · 2 nealko');
     expect(feedFacts(complete)).toEqual([
       { label: 'Piva', value: '6' },
       { label: 'Večer', value: '4h 7m' },
-      { label: 'Hospody', value: '2' },
     ]);
+  });
+
+  it('keeps the next and last pub while collapsing the middle of longer routes', () => {
+    expect(feedNightRoute(night({ pubNames: ['A', 'B', 'C'] }))).toMatchObject({
+      next: 'B',
+      skipped: 0,
+      last: 'C',
+    });
+    expect(feedNightRoute(night({ pubNames: ['A', 'B', 'C', 'D'] }))).toMatchObject({
+      next: 'B',
+      skipped: 1,
+      last: 'D',
+    });
+    expect(feedNightRoute(night({ pubNames: ['A', 'B', 'C', 'D', 'E'] }))).toMatchObject({
+      next: 'B',
+      skipped: 2,
+      last: 'E',
+    });
+  });
+
+  it('collapses a long next stop instead of clipping the final pub name', () => {
+    expect(feedNightRoute(night({
+      pubNames: ['A', 'Hospoda s opravdu dlouhým názvem', 'C', 'Poslední zastávka'],
+    }))).toMatchObject({
+      next: null,
+      skipped: 2,
+      last: 'Poslední zastávka',
+    });
   });
 
   it('uses the real end time for a relative drinking-day label', () => {

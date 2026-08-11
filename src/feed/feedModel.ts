@@ -1,9 +1,19 @@
 import type { PublishedNight } from '@/data/nightsClient';
 import { shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
 
+const ROUTE_VISIBLE_NAME_BUDGET = 34;
+
 export interface FeedFact {
   label: string;
   value: string;
+}
+
+export interface FeedNightRoute {
+  accessibilityLabel: string;
+  city: string | null;
+  next: string | null;
+  skipped: number;
+  last: string | null;
 }
 
 /** Prefer a handle in social UI, then the display name, then a neutral fallback. */
@@ -17,10 +27,36 @@ export function feedNightTitle(night: PublishedNight): string {
   return night.pubNames[0]?.trim() || 'Pivní večer';
 }
 
-export function feedNightRoute(night: PublishedNight): string | null {
-  if (night.pubNames.length > 1) return night.pubNames.join('  →  ');
-  if (night.pubNames.length === 0 && night.city.trim()) return night.city.trim();
-  return null;
+export function feedNightRoute(night: PublishedNight): FeedNightRoute | null {
+  const pubs = night.pubNames.map((name) => name.trim()).filter(Boolean);
+  if (pubs.length === 0) {
+    const city = night.city.trim();
+    return city
+      ? { accessibilityLabel: city, city, next: null, skipped: 0, last: null }
+      : null;
+  }
+  if (pubs.length === 1) return null;
+
+  const next = pubs[1];
+  if (pubs.length === 2) {
+    return {
+      accessibilityLabel: pubs.join(', '),
+      city: null,
+      next,
+      skipped: 0,
+      last: null,
+    };
+  }
+
+  const last = pubs[pubs.length - 1];
+  const nextFits = next.length + last.length <= ROUTE_VISIBLE_NAME_BUDGET;
+  return {
+    accessibilityLabel: pubs.join(', '),
+    city: null,
+    next: nextFits ? next : null,
+    skipped: nextFits ? pubs.length - 3 : pubs.length - 2,
+    last,
+  };
 }
 
 export function feedDuration(minutes: number | null): string | null {
@@ -37,9 +73,6 @@ export function feedFacts(night: PublishedNight): FeedFact[] {
   const facts: FeedFact[] = [{ label: 'Piva', value: String(night.beerCount) }];
   const duration = feedDuration(night.durationMinutes);
   if (duration) facts.push({ label: 'Večer', value: duration });
-  if (night.pubNames.length > 0) {
-    facts.push({ label: 'Hospody', value: String(night.pubNames.length) });
-  }
   return facts;
 }
 

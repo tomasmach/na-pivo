@@ -42,6 +42,7 @@ import {
 import {
   feedAuthorLabel,
   feedFacts,
+  type FeedNightRoute,
   feedNightRoute,
   feedNightTitle,
   feedOtherDrinks,
@@ -272,6 +273,68 @@ function NightHeroStrip({ night }: { night: PublishedNight }) {
   );
 }
 
+function RouteLine({
+  route,
+  otherDrinks,
+}: {
+  route: FeedNightRoute;
+  otherDrinks: string | null;
+}) {
+  if (route.city) {
+    return (
+      <Text style={styles.description} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        {[route.city, otherDrinks].filter(Boolean).join(' · ')}
+      </Text>
+    );
+  }
+
+  return (
+    <View
+      testID="night-route-line"
+      style={styles.routeRow}
+      accessible
+      accessibilityLabel={[route.accessibilityLabel, otherDrinks].filter(Boolean).join(', ')}
+    >
+      <Text style={styles.routeSep} maxFontSizeMultiplier={FontScaleCap.body}>→ </Text>
+      {route.next ? (
+        <Text
+          style={[styles.route, styles.routeMid]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {route.next}
+        </Text>
+      ) : null}
+      {route.skipped > 0 ? (
+        <Text style={styles.routeSep} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {`${route.next ? '  →  ' : ''}+${route.skipped}`}
+        </Text>
+      ) : null}
+      {route.last ? (
+        <>
+          <Text style={styles.routeSep} maxFontSizeMultiplier={FontScaleCap.body}>  →  </Text>
+          <Text
+            style={[styles.route, styles.routeLast]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {route.last}
+          </Text>
+        </>
+      ) : null}
+      {otherDrinks ? (
+        <Text
+          style={styles.routeTail}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {` · ${otherDrinks}`}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 /** One truthful published-night card, reusable by feed and profile surfaces. */
 export const FeedCard = memo(function FeedCard({
   night,
@@ -286,6 +349,7 @@ export const FeedCard = memo(function FeedCard({
   const facts = feedFacts(night);
   const route = feedNightRoute(night);
   const otherDrinks = feedOtherDrinks(night);
+  const hasRoastBasis = Boolean(night.roastBasis);
 
   return (
     <View style={[styles.card, first && styles.cardFirst]}>
@@ -302,16 +366,23 @@ export const FeedCard = memo(function FeedCard({
         accessibilityRole={onOpenNight ? 'button' : undefined}
         accessibilityLabel={onOpenNight ? `Otevřít večer ${night.roastLine || night.title || feedNightTitle(night)}` : undefined}
       >
-        <Text style={styles.title} numberOfLines={3} maxFontSizeMultiplier={FontScaleCap.heading}>
+        <Text
+          style={styles.title}
+          numberOfLines={hasRoastBasis ? 2 : 3}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
           {night.roastLine || night.title || feedNightTitle(night)}
         </Text>
-        {night.roastBasis ? (
+        {hasRoastBasis ? (
           <Text style={styles.description} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {night.roastBasis}
           </Text>
-        ) : route || otherDrinks ? (
+        ) : null}
+        {route ? (
+          <RouteLine route={route} otherDrinks={otherDrinks} />
+        ) : !hasRoastBasis && otherDrinks ? (
           <Text style={styles.description} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {[route, otherDrinks].filter(Boolean).join(' · ')}
+            {otherDrinks}
           </Text>
         ) : null}
 
@@ -879,7 +950,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: withAlpha(Colors.amber, 0.86),
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
     marginTop: Spacing.xs,
+    minWidth: 0,
+  },
+  routeMid: { flexShrink: 3, minWidth: 0 },
+  routeLast: { flexShrink: 1, minWidth: 0 },
+  routeSep: {
+    flexShrink: 0,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+  },
+  routeTail: {
+    flexShrink: 4,
+    minWidth: 0,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
   },
   description: {
     fontSize: 13,

@@ -222,6 +222,29 @@ describe('FeedCard', () => {
     expect(renderer!.root.findAllByProps({ testID: 'night-route-tile' })).toHaveLength(0);
   });
 
+  it('keeps the next and final pub visible while collapsing a longer route', () => {
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <FeedCard night={night({
+          pubNames: [
+            'U Zlatého tygra',
+            'Lokál Dlouhááá',
+            'U Pinkasů',
+            'U Černého vola',
+            'U Sudu',
+          ],
+          durationMinutes: 285,
+        })} />,
+      );
+    });
+
+    const texts = flatTexts(renderer!);
+    expect(texts.filter((text) => text === 'U Zlatého tygra')).toHaveLength(1);
+    expect(texts).toEqual(expect.arrayContaining(['Lokál Dlouhááá', '  →  +2', 'U Sudu']));
+    expect(texts).not.toContain('Hospody');
+  });
+
   it('keeps the route aligned with photos in a mixed hero strip', () => {
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
