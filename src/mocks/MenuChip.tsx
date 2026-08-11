@@ -27,6 +27,7 @@ import React from 'react';
 import { ActionSheetIOS, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, HStack, Host, Image, Menu, Picker, Text as UIText } from '@expo/ui/swift-ui';
 import {
+  environment,
   font,
   foregroundStyle,
   glassEffect,
@@ -69,6 +70,7 @@ export function MenuChip({
         seedColor={Colors.amber}
       >
         <Menu
+          modifiers={[environment('colorScheme', 'dark')]}
           // The label is composed in SwiftUI, not left as a bare string: a
           // string renders as text with a leading SF symbol and no chip at all,
           // which next to the app's own pills read as a broken control. This is
@@ -176,6 +178,7 @@ export function RowMenu({
     return (
       <Host matchContents style={{ height: HitArea.min }} colorScheme="dark" seedColor={Colors.amber}>
         <Menu
+          modifiers={[environment('colorScheme', 'dark')]}
           label={
             <HStack modifiers={[padding({ horizontal: 8, vertical: 8 })]}>
               <Image systemName="ellipsis" size={17} color={Colors.mutedText} />

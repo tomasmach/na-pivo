@@ -32,7 +32,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
-import { MockColors } from '@/mocks/mockTheme';
+import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
@@ -387,6 +387,9 @@ function BeerFormBody({
   const bottomPad = keyboardHeight > 0 ? Spacing.lg : insets.bottom + Spacing.lg;
   const maxHeight =
     windowHeight - insets.top - Math.max(keyboardHeight, 0) - Spacing.lg;
+  // Editing is the information-dense variant. Open it at the full available
+  // height so type, name, scan, price and volume are all visible together.
+  const sheetHeight = mode === 'edit' ? maxHeight : undefined;
 
   return (
     <View style={styles.backdrop}>
@@ -396,7 +399,12 @@ function BeerFormBody({
         accessibilityElementsHidden
         importantForAccessibility="no"
       />
-      <View style={[styles.cardWrap, { marginBottom: sheetBottomOffset, maxHeight }]}>
+      <View
+        style={[
+          styles.cardWrap,
+          { marginBottom: sheetBottomOffset, maxHeight, height: sheetHeight },
+        ]}
+      >
         <Pressable
           style={[styles.card, { paddingBottom: bottomPad }]}
           onPress={() => undefined}
@@ -469,7 +477,7 @@ function BeerFormBody({
                 placeholder={cs.counter.drinkNamePlaceholder(drinkType)}
                 placeholderTextColor={MockColors.fieldHint}
                 maxLength={80}
-                autoFocus
+                autoFocus={mode !== 'edit'}
                 accessibilityLabel={cs.counter.drinkNamePlaceholder(drinkType)}
               />
             )}
@@ -570,7 +578,7 @@ function BeerFormBody({
                   currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'
                 }
                 maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
-                autoFocus={nameLocked}
+                autoFocus={nameLocked && mode !== 'edit'}
                 accessibilityLabel={placeholder}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               />
@@ -727,20 +735,20 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },

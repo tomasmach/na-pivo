@@ -85,7 +85,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: '2.0.0',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
-    userInterfaceStyle: 'automatic',
+    // DESIGN.md intentionally postpones light mode. Keep native surfaces such
+    // as keyboards and anchored menus on the same dark stout canvas as the app.
+    userInterfaceStyle: 'dark',
     assetBundlePatterns: ['**/*'],
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
