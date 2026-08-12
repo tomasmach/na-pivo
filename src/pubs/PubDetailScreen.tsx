@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_CHROME } from '@/components/shared/TabBar';
@@ -26,6 +26,7 @@ function mergeCurrentPub(pubs: Pub[], current: Pub | null): Pub[] {
 
 export default function PubDetailScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [snapshotReady, setSnapshotReady] = React.useState(false);
   const compass = useCompass(null, [], null, null, true, false);
@@ -85,6 +86,7 @@ export default function PubDetailScreen() {
           pub={presentation}
           position={compass.currentPosition}
           visits={visits}
+          onClose={() => router.back()}
         />
       </ScrollView>
     </View>

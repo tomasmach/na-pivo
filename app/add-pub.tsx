@@ -470,7 +470,7 @@ export default function AddPubScreen() {
             label={submitted ? cs.addPub.saving : isEditing ? cs.addPub.editSave : cs.addPub.save}
             onPress={handleSubmit}
             glow="none"
-            accessibilityLabel={cs.a11y.addPubSaveButton}
+            accessibilityLabel={isEditing ? cs.addPub.editSave : cs.a11y.addPubSaveButton}
           />
           {!canSubmit && <View style={styles.submitDisabledOverlay} />}
         </View>

@@ -66,6 +66,7 @@ import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
 import {
   presentPub,
+  filterReportedPubs,
   pubMatchesFilters,
   serverFiltersForPubList,
   sortPubs,
@@ -75,6 +76,7 @@ import {
 } from '@/pubs/pubPresentation';
 import { usePubAmenities } from '@/pubs/usePubAmenities';
 import { usePubVisits } from '@/pubs/usePubVisits';
+import { usePubStore } from '@/stores/pubStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -159,6 +161,7 @@ function FilterChips({
   return (
     <ScrollView
       horizontal
+      style={styles.chipsScroller}
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.chipsRow}
       keyboardShouldPersistTaps="handled"
@@ -346,6 +349,8 @@ export default function PubListMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { height } = useWindowDimensions();
+  const reportedPubIds = usePubStore((state) => state.reportedPubIds);
+  const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
   const [filters, setFilters] = React.useState<PubListFilters>({
     beers: [],
     openOnly: false,
@@ -446,11 +451,19 @@ export default function PubListMockScreen() {
     () => {
       const loaded = getAllLoadedPubs();
       if (!snapshotReady && loaded.length === 0) return [];
-      return hasServerFilters && compass.isLoading
+      const merged = hasServerFilters && compass.isLoading
         ? []
         : mergeCurrentPub(loaded, compass.pub);
+      return filterReportedPubs(merged, reportedPubIds, reportedCacheKeys);
     },
-    [compass.isLoading, compass.pub, hasServerFilters, snapshotReady],
+    [
+      compass.isLoading,
+      compass.pub,
+      hasServerFilters,
+      reportedCacheKeys,
+      reportedPubIds,
+      snapshotReady,
+    ],
   );
   const amenitiesByKey = usePubAmenities(rawPubs);
   const presentations = React.useMemo(

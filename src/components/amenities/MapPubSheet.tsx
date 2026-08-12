@@ -585,6 +585,13 @@ export function MapPubSheet({
         setRenameOpen(false);
         showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
       })
+      .catch(() => {
+        renameLocalPub(pubForCorrection.id, displayName);
+        usePubStore.getState().bumpCatalogRevision();
+        setRenamedName(displayName);
+        onRenamed?.(displayName);
+        showToast(cs.pubDetail.saveFailed);
+      })
       .finally(() => setRenameSubmitting(false));
   }, [info, renameSubmitting, renameDraft, displayName, showToast, onRenamed]);
 

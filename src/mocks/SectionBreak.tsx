@@ -14,8 +14,9 @@
  */
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -26,17 +27,34 @@ export const BAND_COLOR = '#0F0A05';
 
 export function SectionBreak({
   title,
+  onPress,
+  accessibilityLabel,
   /** Horizontal screen padding to bleed past. */
   inset = MockLayout.screenPad,
 }: {
   /** Rendered under the band, so the heading belongs to what follows it. */
   title?: string;
+  /** Optional edit/navigation affordance for the section that follows. */
+  onPress?: () => void;
+  accessibilityLabel?: string;
   inset?: number;
 }) {
   return (
     <>
       <View style={[styles.band, { marginHorizontal: -inset }]} />
-      {title ? (
+      {title && onPress ? (
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => [styles.titleRow, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel ?? title}
+        >
+          <Text style={[styles.title, styles.titleInRow]} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {title}
+          </Text>
+          <ChevronRightIcon size={20} color={Colors.mutedText} />
+        </Pressable>
+      ) : title ? (
         <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
           {title}
         </Text>
@@ -60,4 +78,14 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
     marginBottom: Spacing.md,
   },
+  titleRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  titleInRow: { flex: 1, marginTop: 0, marginBottom: 0 },
+  pressed: { opacity: 0.65 },
 });

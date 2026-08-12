@@ -704,9 +704,9 @@ Volající dodává jen kartu:
 
 | Rozhodnutí | Důvod |
 |---|---|
-| `cardWrap` má `minHeight: '56%'` (default — po vizuálním ověření smí být vyšší), `maxHeight: '92%'` (strop) a `marginBottom: -insets.bottom` | Sheet nikdy nevypadá jako proužek, nikdy nezakryje celou obrazovku a sedí nadoraz na spodní hraně bez proužku pozadí. |
+| `cardWrap` má `maxHeight: '92%'` (strop), **žádnou výchozí `minHeight`**, a `marginBottom: -insets.bottom` | Krátký sheet končí hned pod posledním řádkem, inputem nebo tlačítkem. Nevzniká prázdná „brada“, akce zůstávají u palce a dlouhý obsah přesto nezakryje celou obrazovku. |
 | Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se nedostane pod home indicator. Jde vždycky spolu s `marginBottom` výše. |
-| Sloupec **pevná hlavička → `ScrollView` s `flex: 1` → pevná patka MIMO scroll** | Patka (akce, součet) nesmí odscrollovat ani se nechat ustřihnout `maxHeight`. |
+| Sloupec **pevná hlavička → `ScrollView` s `flexGrow: 0`, `flexShrink: 1` → pevná patka MIMO scroll** | Krátký obsah určí výšku sheetu; dlouhý se u stropu zmenší a scrolluje. Patka (akce, součet) neodscrolluje ani se nenechá ustřihnout. |
 | Karta je obyčejný `View` | Dismiss target je sourozenec **za** kartou (ve wrapperu), takže karta nemusí nic polykat — a no-op `Pressable` by celý sheet seskupil do jednoho nepojmenovaného ovladače (§11). |
 | Grabber `44 × 4`, `foam 0.22` | Vizuální afordance „tohle je sheet“. (`PlacesSheet` má vlastní `40 × 5`, `foam 0.26`.) |
 
@@ -767,11 +767,10 @@ const styles = StyleSheet.create({
   // Výškové meze patří SEM, ne na kartu — viz §7.5.
   cardWrap: {
     width: '100%',
-    minHeight: '56%',
     maxHeight: '92%',
   },
   card: {
-    flex: 1,
+    flexShrink: 1,
     backgroundColor: Colors.stout,          // stejná zem jako obrazovka (§7 úvod)
     borderTopLeftRadius: Radius.card,       // 28
     borderTopRightRadius: Radius.card,
@@ -799,7 +798,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   // Bounded so a long list scrolls instead of pushing the pinned footer out.
-  list: { flex: 1, marginTop: Spacing.sm },
+  list: { flexGrow: 0, flexShrink: 1, marginTop: Spacing.sm },
   listContent: { paddingBottom: Spacing.sm },
   actions: {
     gap: 8,
@@ -914,12 +913,12 @@ Timer vždycky uklízej v `useEffect` cleanupu.
 > kanonickou variantu výše.** Kdykoli sheet obsahuje `ScrollView` nebo pevnou patku, je varianta
 > s rodičovským backdropem chyba.
 
-### 7.5 Výškové meze patří na `cardWrap`, ne na kartu
+### 7.5 Krátký sheet obepíná obsah, dlouhý má strop na `cardWrap`
 
 Tohle je nejzákeřnější chyba v celém receptu, protože **nikde nespadne a nic nenahlásí** — jen
 zmizí obsah.
 
-Procentní `minHeight` / `maxHeight` se v Yoze počítají vůči **výšce rodiče**. Když je napíšeš na
+Procentní `maxHeight` se v Yoze počítá vůči **výšce rodiče**. Když ho napíšeš na
 `card`, jejím rodičem je `cardWrap`, který má výšku `auto` — tedy neurčitou. Procento se nemá o co
 opřít a Yoga ho **potichu zahodí**. Karta pak roste podle obsahu klidně přes celou obrazovku,
 `ScrollView` uvnitř nikdy nedostane ohraničený box, takže **nescrolluje** — a všechno pod ohybem je
@@ -933,9 +932,15 @@ Správně:
 
 ```ts
 // backdrop má flex: 1 → má určitou výšku → procento se má o co opřít
-cardWrap: { width: '100%', minHeight: '56%', maxHeight: '92%' },
-card:     { flex: 1, /* vyplní, na co byl cardWrap oříznutý — a tím ohraničí scroll */ },
+cardWrap: { width: '100%', maxHeight: '92%' },
+card:     { flexShrink: 1 },
+list:     { flexGrow: 0, flexShrink: 1 },
 ```
+
+`minHeight` se na běžný intent sheet nedává. Dvouřádková nabídka má být vysoká jen jako hlavička a
+její dva řádky; formulář jen jako hlavička, pole a tlačítka. Výjimkou je obsah, který potřebuje
+vlastní pracovní plochu (graf, mapa, dlouhý editor). I tam se minimální výška přidává vědomě až po
+kontrole na malém telefonu, ne jako univerzální default.
 
 **Jak to ověřit, když nemáš prst.** V simulátoru ovládaném přes computer use scroll gesto většinou
 neprojde — myší tahy se na RN `ScrollView` nepřenesou, takže „nescrolluje to“ nic nedokazuje.
@@ -1941,4 +1946,3 @@ Zbývající dev-dluh mocků a kódu vůči dokumentu (opravuje se v kódu, ne v
 Cokoliv rastrového do `assets/`, `@2x` a `@3x`, nic většího než 3x. Rozhodnutí
 (barvy, pravidla, kde co je) rovnou do tohohle dokumentu — je závazný a rozpor
 se řeší jeho změnou.
-

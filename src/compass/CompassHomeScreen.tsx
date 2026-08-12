@@ -751,8 +751,13 @@ export default function CompassScreen() {
   }, [homePoint]);
 
   const handleReportReason = useCallback((reason: PubReportReason) => {
-    reportCurrentPub(reason).catch(() => undefined);
-  }, [reportCurrentPub]);
+    reportCurrentPub(reason)
+      .then((persisted) => {
+        if (persisted) setReportOpen(false);
+        else showToast(cs.pubDetail.saveFailed);
+      })
+      .catch(() => showToast(cs.pubDetail.saveFailed));
+  }, [reportCurrentPub, showToast]);
 
   const handleReportClose = useCallback(() => {
     setReportOpen(false);
@@ -781,6 +786,7 @@ export default function CompassScreen() {
         setRenameOpen(false);
         showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
       })
+      .catch(() => showToast(cs.pubDetail.saveFailed))
       .finally(() => setRenameSubmitting(false));
   }, [pub, renameCurrentPub, renameDraft, renameSubmitting, showToast]);
 

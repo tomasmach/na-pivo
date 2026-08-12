@@ -5,8 +5,10 @@ import { useRouter, type Href } from 'expo-router';
 import type { PubInfoContext } from '@/components/amenities/pubInfoContext';
 import { BadgeCheckIcon, ChevronRightIcon, ClockIcon } from '@/components/shared/IconGlyph';
 import { fetchActivePubEvents, isPubEventActive, type PubEvent } from '@/data/pubEventsClient';
+import { cs } from '@/i18n/cs';
+import { SectionBreak } from '@/mocks/SectionBreak';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
@@ -15,6 +17,7 @@ interface PubEventsSectionProps {
   pubKey: string;
   pubName: string;
   info?: PubInfoContext;
+  showSuggestion?: boolean;
 }
 
 function twoDigits(value: number): string {
@@ -40,7 +43,13 @@ function formatEventValidity(event: PubEvent, now = new Date()): string {
     : `${date(start)} ${time(start)} - ${date(end)} ${time(end)}`;
 }
 
-export function PubEventsSection({ visible, pubKey, pubName, info }: PubEventsSectionProps) {
+export function PubEventsSection({
+  visible,
+  pubKey,
+  pubName,
+  info,
+  showSuggestion = true,
+}: PubEventsSectionProps) {
   const router = useRouter();
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const [eventState, setEventState] = useState<{
@@ -85,7 +94,7 @@ export function PubEventsSection({ visible, pubKey, pubName, info }: PubEventsSe
     }, delay);
     return () => clearTimeout(timeout);
   }, [activeEvents, eventState.checkedAt, visible]);
-  if (!info) return null;
+  if (!info || (!showSuggestion && activeEvents.length === 0)) return null;
 
   const handleSuggest = () => {
     if (!isSignedIn) {
@@ -107,9 +116,13 @@ export function PubEventsSection({ visible, pubKey, pubName, info }: PubEventsSe
 
   return (
     <View>
-      <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-        Aktuální akce
-      </Text>
+      {showSuggestion ? (
+        <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.pubDetail.eventsTitle}
+        </Text>
+      ) : (
+        <SectionBreak title={cs.pubDetail.eventsTitle} />
+      )}
       {activeEvents.map((event) => (
         <View key={event.id} style={styles.eventRow} accessibilityLabel={`${event.title}. ${formatEventValidity(event)}`}>
           <ClockIcon size={24} color={Colors.amber} />
@@ -128,31 +141,35 @@ export function PubEventsSection({ visible, pubKey, pubName, info }: PubEventsSe
             <View style={styles.verifiedRow}>
               <BadgeCheckIcon size={14} color={Colors.success} />
               <Text style={styles.verified} maxFontSizeMultiplier={FontScaleCap.body}>
-                Ověřeno
+                {cs.pubDetail.eventVerified}
               </Text>
             </View>
           </View>
         </View>
       ))}
-      <Pressable
-        onPress={handleSuggest}
-        style={({ pressed }) => [styles.suggestRow, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={isSignedIn ? 'Navrhnout akci' : 'Přihlásit se a navrhnout akci'}
-      >
-        <View style={styles.suggestIcon}>
-          <ClockIcon size={19} color={Colors.amber} />
-        </View>
-        <View style={styles.eventCopy}>
-          <Text style={styles.suggestTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isSignedIn ? 'Navrhnout akci' : 'Přihlas se a navrhni akci'}
-          </Text>
-          <Text style={styles.details} maxFontSizeMultiplier={FontScaleCap.body}>
-            Po kontrole ji ukážeme ostatním.
-          </Text>
-        </View>
-        <ChevronRightIcon size={20} color={Colors.mutedText} />
-      </Pressable>
+      {showSuggestion ? (
+        <Pressable
+          onPress={handleSuggest}
+          style={({ pressed }) => [styles.suggestRow, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isSignedIn ? cs.pubDetail.eventSuggest : cs.pubDetail.eventSuggestSignedOut
+          }
+        >
+          <View style={styles.suggestIcon}>
+            <ClockIcon size={19} color={Colors.amber} />
+          </View>
+          <View style={styles.eventCopy}>
+            <Text style={styles.suggestTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+              {isSignedIn ? cs.pubDetail.eventSuggest : cs.pubDetail.eventSuggestSignedOut}
+            </Text>
+            <Text style={styles.details} maxFontSizeMultiplier={FontScaleCap.body}>
+              Po kontrole ji ukážeme ostatním.
+            </Text>
+          </View>
+          <ChevronRightIcon size={20} color={Colors.mutedText} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -173,7 +190,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     paddingVertical: Spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+    borderBottomColor: withAlpha(Colors.foam, 0.1),
   },
   eventCopy: { flex: 1 },
   eventTitle: {

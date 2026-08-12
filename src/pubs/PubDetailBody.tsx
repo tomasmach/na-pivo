@@ -3,9 +3,14 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useRouter, type Href } from 'expo-router';
 
 import { CloseButton } from '@/components/shared/CloseButton';
-import { BeerIcon, MapPinIcon, StarIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, MapPinIcon, PlusIcon, StarIcon } from '@/components/shared/IconGlyph';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
+import {
+  contributeParamsFromPubInfo,
+  pubInfoFromPub,
+} from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
+import { formatVolume, cs } from '@/i18n/cs';
 import {
   fetchPubNightsFeed,
   type PublishedNight,
@@ -22,12 +27,21 @@ import {
   type PubPresentation,
 } from '@/pubs/pubPresentation';
 import { usePubDetails } from '@/pubs/usePubDetails';
+import { PubAmenitySection } from '@/pubs/PubAmenitySection';
+import { PubDetailActions } from '@/pubs/PubDetailActions';
+import { buildOpeningHoursRows, resolveDetailBeers } from '@/pubs/pubDetailModel';
+import { PubEventsSection } from '@/pubEvents/PubEventsSection';
 import {
   selectConfirmedPartyJoinCode,
   selectPartyJoinCode,
   usePartyEveningStore,
 } from '@/stores/partyEveningStore';
 import { useAccountStore } from '@/stores/accountStore';
+import {
+  isBeerMenuTypeOverrideCurrent,
+  isHoursOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import { generateJoinCode } from '@/data/partyClient';
 import { flushPartyBeerWrites } from '@/party/logBeer';
 import { enqueuePartyPubTransition } from '@/party/partyPubVisits';
@@ -71,7 +85,23 @@ function PillAction({
   );
 }
 
-const TABS = ['Info', 'Aktivita'] as const;
+function EmptyEditRow({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.emptyEditRow, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <PlusIcon size={18} color={Colors.amber} />
+      <Text style={styles.emptyEditLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const TABS = cs.pubDetail.tabs;
 
 type ActivityState =
   | { status: 'loading'; nights: PublishedNight[]; nextCursor: null }
@@ -101,7 +131,15 @@ export function PubDetailBody({
   visits?: readonly WireVisit[];
   onClose?: () => void;
 }) {
+  // The amenity API identifies a place by the catalogue name it was opened
+  // with. A local rename changes the display name immediately, but must not
+  // silently create a second amenity identity for the same open detail.
+  const [amenityIdentityName] = React.useState(() => initialPub.pub.name);
   const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
+  const [renamed, setRenamed] = React.useState<{ id: string; name: string | null }>({
+    id: initialPub.pub.id,
+    name: null,
+  });
   const [activityNonce, setActivityNonce] = React.useState(0);
   const viewerAccountId = useAccountStore((state) => state.session?.accountId ?? null);
   const [activityResource, setActivityResource] = React.useState<{
@@ -118,9 +156,14 @@ export function PubDetailBody({
   const activityLoadingMore = activityLoadingMoreFor === viewerAccountId;
   const activityMoreError = activityMoreErrorFor === viewerAccountId;
   const detailedPub = usePubDetails(initialPub.pub);
+  const renamedName = renamed.id === initialPub.pub.id ? renamed.name : null;
+  const namedDetailedPub = React.useMemo(
+    () => (renamedName ? { ...detailedPub, name: renamedName } : detailedPub),
+    [detailedPub, renamedName],
+  );
   const pub = React.useMemo(
-    () => presentPub(detailedPub, position, visits),
-    [detailedPub, position, visits],
+    () => presentPub(namedDetailedPub, position, visits),
+    [namedDetailedPub, position, visits],
   );
   const router = useRouter();
   const startLocalParty = useLivePartyStore((state) => state.start);
@@ -165,16 +208,52 @@ export function PubDetailBody({
     };
   }, [activityNonce, initialPub.name, viewerAccountId]);
 
-  const primaryLabel = picking ? 'Vybrat tuhle hospodu' : 'Začít tu večer';
-  const houseBeer = pub.featuredTap?.name ?? 'Pivo';
+  const primaryLabel = picking ? cs.pubDetail.chooseHere : cs.pubDetail.startHere;
+  const houseBeer = pub.featuredTap?.name ?? cs.pubDetail.beerFallback;
   const pubKey = geohash8(pub.pub.lat, pub.pub.lng);
-  const taps = pub.pub.beers ?? [];
+  const communityOverride = useCommunityStore((state) => state.overrides[pubKey]);
+  const weeklyHours = isHoursOverrideCurrent(communityOverride, pub.pub.hoursUpdatedAt)
+    ? communityOverride?.hours ?? null
+    : pub.pub.communityHours ?? null;
+  const openingRows = React.useMemo(
+    () => buildOpeningHoursRows(weeklyHours, pub.pub.openingHours, cs.pubDetail.openingClosed),
+    [pub.pub.openingHours, weeklyHours],
+  );
+  const taps = React.useMemo(
+    () => resolveDetailBeers(pub.pub, communityOverride),
+    [communityOverride, pub.pub],
+  );
+  const menuRotates = isBeerMenuTypeOverrideCurrent(communityOverride, pub.pub.beersUpdatedAt)
+    ? communityOverride?.beerMenuRotates
+    : pub.pub.beerMenuRotates;
+  const pubInfo = React.useMemo(
+    () => ({
+      ...pubInfoFromPub(pub.pub),
+      name: pub.name,
+      prefillHours: weeklyHours,
+      prefillBeers: taps,
+      beerMenuRotates: menuRotates,
+    }),
+    [menuRotates, pub.name, pub.pub, taps, weeklyHours],
+  );
   const partyTaps = taps.flatMap((tap) => {
     const name = tap.name.trim();
     return name
       ? [{ name, priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null }]
       : [];
   });
+
+  const openContribution = (focus: 'hours' | 'beers') => {
+    router.push({
+      pathname: '/contribute',
+      params: contributeParamsFromPubInfo(pubInfo, focus, menuRotates),
+    } as unknown as Href);
+  };
+
+  const closeAfterReport = () => {
+    if (onClose) onClose();
+    else router.back();
+  };
 
   const startHere = () => {
     const partyArgs = [
@@ -281,7 +360,13 @@ export function PubDetailBody({
         <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
           {pub.name}
         </Text>
-        {onClose ? <CloseButton onPress={onClose} label="Zavřít detail" /> : null}
+        <PubDetailActions
+          pub={pub.pub}
+          displayName={pub.name}
+          onRenamed={(name) => setRenamed({ id: pub.pub.id, name })}
+          onReported={closeAfterReport}
+        />
+        {onClose ? <CloseButton onPress={onClose} label={cs.pubDetail.closeA11y} /> : null}
       </View>
 
       <View style={styles.metaRow}>
@@ -306,7 +391,7 @@ export function PubDetailBody({
 
       <View style={styles.actions}>
         <PillAction
-          label="Navigovat"
+          label={cs.pubDetail.navigate}
           onPress={() => {
             void openPubInMaps(pub.pub).catch(() => undefined);
           }}
@@ -325,33 +410,48 @@ export function PubDetailBody({
         inset={MockLayout.screenPad}
       />
 
-      {tab === 'Info' && pub.visitCount > 0 ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Co se tu dělo
-          </Text>
-          <StatGrid
-            columns={2}
-            compact
-            stats={[
-              { label: 'Návštěv', value: `${pub.visitCount}×` },
-              { label: 'Naposled', value: formatLastVisit(pub.lastVisitedAt) },
-            ]}
-          />
-        </View>
-      ) : null}
-
       {tab === 'Info' ? (
-        <View style={styles.tapSection}>
-          <SectionBreak title="Na čepu" />
+        <View>
+          <SectionBreak
+            title={cs.pubDetail.openingTitle}
+            onPress={openingRows.length > 0 ? () => openContribution('hours') : undefined}
+            accessibilityLabel={cs.pubDetail.openingEditA11y}
+          />
+          {openingRows.length > 0 ? (
+            openingRows.map((row, index) => (
+              <View key={`${row.days}:${row.hours}`} style={[styles.factRow, index > 0 && styles.rowDivider]}>
+                <Text style={styles.factLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {row.days}
+                </Text>
+                <Text style={styles.factValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {row.hours}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <EmptyEditRow label={cs.pubDetail.openingAdd} onPress={() => openContribution('hours')} />
+          )}
+
+          <SectionBreak
+            title={cs.pubDetail.tapsTitle}
+            onPress={taps.length > 0 || !!pub.pub.price ? () => openContribution('beers') : undefined}
+            accessibilityLabel={cs.pubDetail.tapsEditA11y}
+          />
           {taps.map((tap, index) => (
             <View
-              key={`${tap.name}:${tap.volumeMl ?? 'any'}`}
-              style={[styles.tapRow, index === 0 && styles.tapFirst]}
+              key={`${tap.name}:${tap.volumeMl ?? 'any'}:${index}`}
+              style={[styles.tapRow, index > 0 && styles.rowDivider]}
             >
-              <Text style={styles.tapName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {tap.name}
-              </Text>
+              <View style={styles.tapNameWrap}>
+                <Text style={styles.tapName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {tap.name}
+                </Text>
+                {typeof tap.volumeMl === 'number' ? (
+                  <Text style={styles.tapVolume} allowFontScaling={false}>
+                    {formatVolume(tap.volumeMl)}
+                  </Text>
+                ) : null}
+              </View>
               {typeof tap.priceCzk === 'number' ? (
                 <Text style={styles.tapPrice} allowFontScaling={false}>
                   {tap.priceCzk} Kč
@@ -360,18 +460,44 @@ export function PubDetailBody({
             </View>
           ))}
           {taps.length === 0 && pub.pub.price ? (
-            <View style={[styles.tapRow, styles.tapFirst]}>
-              <Text style={styles.tapName}>Pivo od</Text>
+            <View style={styles.tapRow}>
+              <Text style={styles.tapName}>{cs.pubDetail.beerFrom}</Text>
               <Text style={styles.tapPrice} allowFontScaling={false}>
                 {pub.pub.price.czk} Kč
               </Text>
             </View>
           ) : null}
           {taps.length === 0 && !pub.pub.price ? (
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-              Výčep tu zatím nikdo nezapsal.
-            </Text>
+            <EmptyEditRow label={cs.pubDetail.tapsAdd} onPress={() => openContribution('beers')} />
           ) : null}
+
+          <PubEventsSection
+            visible={tab === 'Info'}
+            pubKey={pubKey}
+            pubName={pub.name}
+            info={pubInfo}
+            showSuggestion={false}
+          />
+
+          {pub.visitCount > 0 ? (
+            <View>
+              <SectionBreak title={cs.pubDetail.visitsTitle} />
+              <StatGrid
+                columns={2}
+                compact
+                stats={[
+                  { label: cs.pubDetail.visits, value: `${pub.visitCount}×` },
+                  { label: cs.pubDetail.lastVisit, value: formatLastVisit(pub.lastVisitedAt) },
+                ]}
+              />
+            </View>
+          ) : null}
+
+          <PubAmenitySection
+            visible={tab === 'Info'}
+            pubKey={pubKey}
+            pubName={amenityIdentityName}
+          />
         </View>
       ) : null}
 
@@ -383,14 +509,14 @@ export function PubDetailBody({
           {activity.status === 'error' ? (
             <View style={styles.activityState}>
               <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-                Aktivitu teď nejde načíst.
+                {cs.pubDetail.activityLoadError}
               </Text>
               <Pressable
                 onPress={retryActivity}
                 style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
-                <Text style={styles.retryText}>Zkusit znovu</Text>
+                <Text style={styles.retryText}>{cs.pubDetail.activityRetry}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -421,7 +547,7 @@ export function PubDetailBody({
             : null}
           {activity.status === 'ready' && activity.nights.length === 0 ? (
             <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-              Zatím sem nikdo nic nezapsal. Buď první.
+              {cs.pubDetail.activityEmpty}
             </Text>
           ) : null}
           {activity.status === 'ready' && activity.nextCursor ? (
@@ -430,13 +556,15 @@ export function PubDetailBody({
               disabled={activityLoadingMore}
               style={({ pressed }) => [styles.loadMore, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Načíst další aktivitu hospody"
+              accessibilityLabel={cs.pubDetail.activityLoadMoreA11y}
             >
               {activityLoadingMore ? (
                 <ActivityIndicator color={Colors.amber} />
               ) : (
                 <Text style={styles.retryText}>
-                  {activityMoreError ? 'Zkusit další znovu' : 'Načíst další'}
+                  {activityMoreError
+                    ? cs.pubDetail.activityLoadMoreRetry
+                    : cs.pubDetail.activityLoadMore}
                 </Text>
               )}
             </Pressable>
@@ -505,19 +633,36 @@ const styles = StyleSheet.create({
   actionPrimary: { backgroundColor: Colors.amber },
   actionLabel: { fontSize: 15, fontWeight: '700', color: Colors.foam },
   actionLabelPrimary: { color: Colors.stout },
-  section: { marginTop: MockLayout.sectionGap, gap: Spacing.sm },
-  tapSection: { gap: Spacing.sm },
-  sectionTitle: { ...MockType.titleS, color: Colors.foam },
+  factRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  factLabel: { width: 46, ...MockType.body, fontWeight: '700', color: Colors.foamMuted },
+  factValue: { flex: 1, ...MockType.body, color: Colors.foam, textAlign: 'right' },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  emptyEditRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  emptyEditLabel: { fontSize: 15, fontWeight: '700', color: Colors.amber },
   tapRow: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  tapFirst: { borderTopWidth: 0 },
-  tapName: { flex: 1, ...MockType.body, color: Colors.foam },
+  tapNameWrap: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 7 },
+  tapName: { flexShrink: 1, ...MockType.body, color: Colors.foam },
+  tapVolume: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
   tapPrice: {
     fontSize: 15,
     fontWeight: '700',

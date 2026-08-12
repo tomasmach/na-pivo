@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   enqueuePubNameCorrection,
   flushPubNameCorrectionsQueue,
+  persistPubNameCorrection,
 } from '../pubNameCorrectionsQueue';
 import {
   submitPubNameCorrection,
@@ -56,7 +57,7 @@ describe('enqueuePubNameCorrection', () => {
   it('sends the correction and leaves the queue empty on success', async () => {
     await expect(enqueuePubNameCorrection(ENTRY_A)).resolves.toBe(true);
 
-    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_A);
+    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_A, expect.any(AbortSignal));
     expect(clearPubsSnapshot).toHaveBeenCalled();
     await expect(readQueue()).resolves.toEqual([]);
   });
@@ -90,6 +91,53 @@ describe('enqueuePubNameCorrection', () => {
     expect(queue.map((entry) => entry.client_id)).toEqual(['client-a', 'client-b']);
     expect(queue[0].suggested_name).toBe('Ještě novější');
   });
+
+  it('rejects when storage fails so callers cannot mistake data loss for an offline queue', async () => {
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(enqueuePubNameCorrection(ENTRY_A)).rejects.toThrow();
+    expect(submitPubNameCorrection).not.toHaveBeenCalled();
+  });
+});
+
+describe('persistPubNameCorrection', () => {
+  it('does not report a permanent server rejection as success', async () => {
+    (submitPubNameCorrection as jest.Mock).mockResolvedValue('permanent-error');
+
+    const queued = await persistPubNameCorrection(ENTRY_A);
+    expect(queued.persisted).toBe(true);
+    if (!queued.persisted) throw new Error('expected persisted correction');
+    await expect(queued.sync).resolves.toBe('rejected');
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
+  it('reports a storage error before attempting delivery', async () => {
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(persistPubNameCorrection(ENTRY_A)).resolves.toEqual({ persisted: false });
+    expect(submitPubNameCorrection).not.toHaveBeenCalled();
+  });
+
+  it('returns after storage and syncs the new correction before an old backlog', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([ENTRY_B]));
+    let resolveSend!: (result: 'ok') => void;
+    (submitPubNameCorrection as jest.Mock).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+
+    const queued = await persistPubNameCorrection(ENTRY_A);
+    expect(queued.persisted).toBe(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_A, expect.any(AbortSignal));
+
+    resolveSend('ok');
+    if (!queued.persisted) throw new Error('expected persisted correction');
+    await expect(queued.sync).resolves.toBe('synced');
+    await expect(readQueue()).resolves.toEqual([ENTRY_B]);
+  });
 });
 
 describe('flushPubNameCorrectionsQueue', () => {
@@ -102,8 +150,8 @@ describe('flushPubNameCorrectionsQueue', () => {
     (submitPubNameCorrection as jest.Mock).mockResolvedValue('ok');
     await flushPubNameCorrectionsQueue();
 
-    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_A);
-    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_B);
+    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_A, expect.any(AbortSignal));
+    expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_B, expect.any(AbortSignal));
     await expect(readQueue()).resolves.toEqual([]);
   });
 

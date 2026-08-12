@@ -20,7 +20,7 @@ import {
 } from '@/data/pubs';
 import type { HoursStatus, Pub, VenueKind } from '@/data/pubs';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
-import { enqueuePubReport } from '@/data/pubReportQueue';
+import { persistPubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
@@ -34,6 +34,7 @@ import { usePubStore } from '@/stores/pubStore';
 import {
   isBeerListOverrideCurrent,
   isBeerMenuTypeOverrideCurrent,
+  isHoursOverrideCurrent,
   useCommunityStore,
 } from '@/stores/communityStore';
 import { useFocusedPubStore, type FocusedPub } from '@/stores/focusedPubStore';
@@ -750,18 +751,15 @@ export function useCompass(
   // stability for memoized consumers and avoiding render churn.
   //
   // Merge precedence:
-  //   • Backend data whose source is "community" is the canonical, public truth
-  //     → it WINS over the local optimistic override (the override has been
-  //     accepted and round-tripped, so prefer the server copy).
-  //   • Otherwise (firmy / unknown / no backend hours) the user's local override
-  //     WINS, so their just-submitted edit shows immediately. For hours we
+  //   • The newest timestamp wins between the backend and local optimistic edit.
+  //     That keeps a fresh offline correction visible even if the pub already
+  //     had community hours, then lets the confirmed server copy replace it.
+  //   • For a local winner we
   //     compute isOpenNow / nextChange locally from the structured WeeklyHours so
   //     the OpenStatusChip stays correct before the backend round-trips.
   const hoursForCurrent = currentPubId ? hoursById.get(currentPubId) : undefined;
   const enrichedPub = useMemo<Pub | null>(() => {
     if (!currentPub) return null;
-
-    const backendIsCommunity = hoursForCurrent?.source === 'community';
 
     // — Hours —
     let openingHours = hoursForCurrent?.openingHours ?? currentPub.openingHours;
@@ -771,8 +769,12 @@ export function useCompass(
     let hoursSource = hoursForCurrent?.source ?? undefined;
     let communityHours = hoursForCurrent?.communityHours ?? undefined;
 
-    if (overrideForCurrent?.hours && !backendIsCommunity) {
-      // Local override wins over firmy/unknown — compute the live state locally.
+    const backendHoursUpdatedAt = hoursForCurrent?.hoursUpdatedAt ?? currentPub.hoursUpdatedAt;
+    if (
+      overrideForCurrent?.hours &&
+      isHoursOverrideCurrent(overrideForCurrent, backendHoursUpdatedAt)
+    ) {
+      // A fresh local override wins — compute the live state locally.
       const local = computeOpenState(overrideForCurrent.hours);
       communityHours = overrideForCurrent.hours;
       isOpenNow = local.isOpenNow;
@@ -1142,6 +1144,9 @@ export function useCompass(
     const pub = currentPub;
     if (!pub) return false;
 
+    const persisted = await persistPubReport(pub, reason);
+    if (!persisted) return false;
+
     // Hide locally by both signals: the Mapy.cz id (exact match) and the
     // geohash-8 cell (still matches when a later fetch re-ids the place).
     addReportedPub(pub.id, geohash8(pub.lat, pub.lng));
@@ -1149,9 +1154,7 @@ export function useCompass(
     setRevealedPub(null);
     setExcludeRevision((revision) => revision + 1);
 
-    // Persisted queue with retry — a failed send is re-attempted on the next
-    // launch/foreground instead of being dropped silently.
-    return enqueuePubReport(pub, reason);
+    return true;
   }, [addReportedPub, currentPub, setRevealedPub]);
 
   const renameCurrentPub = useCallback(async (suggestedName: string): Promise<boolean> => {
@@ -1167,7 +1170,15 @@ export function useCompass(
     void clearPubsSnapshot();
 
     const entry = buildPubNameCorrectionEntry(pub, trimmedName);
-    return enqueuePubNameCorrection(entry);
+    try {
+      return await enqueuePubNameCorrection(entry);
+    } catch (error) {
+      setCurrentPub(pub);
+      setRevealedPub(pub);
+      renameLocalPub(pub.id, pub.name);
+      bumpCatalogRevision();
+      throw error;
+    }
   }, [bumpCatalogRevision, currentPub, setRevealedPub]);
 
   const retrySearch = useCallback(() => {

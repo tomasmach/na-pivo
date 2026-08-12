@@ -46,6 +46,20 @@ export interface PubListFilters {
 
 export type PubSort = 'nearest' | 'rating' | 'random';
 
+export function filterReportedPubs(
+  pubs: readonly Pub[],
+  reportedPubIds: readonly string[],
+  reportedCacheKeys: readonly string[],
+): Pub[] {
+  const blockedIds = new Set(reportedPubIds);
+  const blockedKeys = new Set(reportedCacheKeys);
+  return pubs.filter(
+    (pub) =>
+      !blockedIds.has(pub.id) &&
+      !blockedKeys.has(geohash8(pub.lat, pub.lng)),
+  );
+}
+
 function localTimeFromIso(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const tIndex = iso.indexOf('T');

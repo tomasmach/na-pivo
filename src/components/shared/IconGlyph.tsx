@@ -83,6 +83,7 @@ import {
   Moon,
   QrCode,
   Menu,
+  Ellipsis,
   GlassWater,
   Wine,
   ListFilter,
@@ -304,5 +305,6 @@ export const MoonIcon = wrap(Moon, 'MoonIcon');
 export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 // Overflow menu glyph — three stacked lines, not a horizontal ellipsis.
 export const MenuIcon = wrap(Menu, 'MenuIcon');
+export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
 export const GlobeIcon = wrap(Globe, 'GlobeIcon');
 export const TriangleAlertIcon = wrap(TriangleAlert, 'TriangleAlertIcon');

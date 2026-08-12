@@ -3,6 +3,7 @@ import type { Pub } from '@/data/pubs';
 import type { WireVisit } from '@/data/visitsClient';
 import {
   beerFilterOptions,
+  filterReportedPubs,
   formatLastVisit,
   presentOpenStatus,
   presentPub,
@@ -40,6 +41,20 @@ function visit(target: Pub, overrides: Partial<WireVisit> = {}): WireVisit {
 }
 
 describe('pubPresentation', () => {
+  it('removes a reported place by id and by stable location key', () => {
+    const byId = pub({ id: 'reported-id' });
+    const byLocation = pub({ id: 'fresh-server-id', lat: 50.088, lng: 14.421 });
+    const visible = pub({ id: 'visible', lat: 50.09, lng: 14.43 });
+
+    expect(
+      filterReportedPubs(
+        [byId, byLocation, visible],
+        [byId.id],
+        [geohash8(byLocation.lat, byLocation.lng)],
+      ),
+    ).toEqual([visible]);
+  });
+
   it('presents real distance, address, rating, tap and its own price', () => {
     const model = presentPub(
       pub({
