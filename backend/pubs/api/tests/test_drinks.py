@@ -37,6 +37,7 @@ _NAME = "U Zlatého tygra"
 _LAT = 50.0876
 _LNG = 14.4214
 _KEY = geohash8(_LAT, _LNG)
+_DRANK_AT = dj_timezone.now().replace(microsecond=0)
 
 
 @pytest.fixture
@@ -73,7 +74,7 @@ def _payload(**overrides):
         "city": "Praha",
         "external_id": "mapy:50.08755,14.42141",
         "beer": {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
-        "drank_at": "2026-06-12T19:45:00+02:00",
+        "drank_at": _DRANK_AT.isoformat(),
     }
     data.update(overrides)
     return data
@@ -88,7 +89,7 @@ def _non_pub_payload(**overrides):
             "volume_ml": 500,
             "serving_type": "bottle",
         },
-        "drank_at": "2026-06-12T19:45:00+02:00",
+        "drank_at": _DRANK_AT.isoformat(),
     }
     data.update(overrides)
     return data
@@ -186,7 +187,7 @@ def test_get_returns_only_the_accounts_authoritative_drink_snapshot(client):
                     "volume_ml": 500,
                     "serving_type": "unknown",
                 },
-                "drank_at": "2026-06-12T17:45:00+00:00",
+                "drank_at": _DRANK_AT.isoformat(),
                 "is_suspect": False,
             }
         ]
@@ -296,7 +297,7 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
     assert drink.beer_name == "Pilsner Urquell"
     assert drink.price_czk == 62
     assert drink.volume_ml == 500
-    assert drink.drank_at.isoformat() == "2026-06-12T17:45:00+00:00"
+    assert drink.drank_at == _DRANK_AT
 
     # A community row was created holding just this beer; hours untouched.
     row = PubCommunityData.objects.get()
