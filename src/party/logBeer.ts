@@ -31,9 +31,13 @@ import {
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { decodeGeohash8 } from '@/data/geohash';
-import { syncVisit } from '@/data/visitsSync';
+import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { flushVisitsQueue } from '@/data/visitsQueue';
-import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import {
+  isPastEveningBackdate,
+  useTallyStore,
+  type TallySession,
+} from '@/stores/tallyStore';
 import { contextFromPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
 
 export interface PartyBeerPlace {
@@ -80,22 +84,30 @@ export function logPartyBeer({
 }): string {
   const id = generateUuidV4();
   const drankAt = at ?? new Date().toISOString();
+  // A backdate edits the private diary. It must never leak into the table that
+  // happens to be active now (the Counter follows the same invariant).
+  const activePartyCode = at ? null : partyCode;
 
-  useTallyStore.getState().addDrink(
-    {
-      pubKey: place.pubKey,
-      pubName: place.pubName,
-      pubCity: place.pubCity,
-      pubExternalId: place.pubExternalId,
-      visitClientId: place.visitClientId,
-      visitStartedAt: place.visitStartedAt,
-    },
-    { id, beerName, drinkType, priceCzk, volumeMl, servingType, at: drankAt },
-  );
+  const tallyPlace = {
+    pubKey: place.pubKey,
+    pubName: place.pubName,
+    pubCity: place.pubCity,
+    pubExternalId: place.pubExternalId,
+    visitClientId: place.visitClientId,
+    visitStartedAt: place.visitStartedAt,
+  };
+  const tallyDrink = { id, beerName, drinkType, priceCzk, volumeMl, servingType, at: drankAt };
+  let landedSession: TallySession | null;
+  if (at && isPastEveningBackdate(drankAt)) {
+    landedSession = useTallyStore.getState().addBackdatedDrink(tallyPlace, tallyDrink);
+  } else {
+    useTallyStore.getState().addDrink(tallyPlace, tallyDrink);
+    landedSession = useTallyStore.getState().current;
+  }
   // The private party record derives its stops from PubVisit, not from a drink's
   // display pub. Reuse the normal visit queue so moving pubs and offline nights
   // become real record stops without a second party-only write model.
-  syncVisit(useTallyStore.getState().current, drankAt, partyCode, {
+  syncVisit(landedSession, drankAt, activePartyCode, {
     deliver: !deferDelivery,
   });
 
@@ -117,7 +129,7 @@ export function logPartyBeer({
       drinkType,
       beer: { name: beerName, priceCzk, volumeMl, servingType },
       drankAt,
-      ...(partyCode ? { partyCode } : {}),
+      ...(activePartyCode ? { partyCode: activePartyCode } : {}),
     },
     id,
   );
@@ -150,10 +162,16 @@ function sessionContainingDrink(drinkId: string): TallySession | null {
 export function unlogPartyBeer(drinkId: string): void {
   const session = sessionContainingDrink(drinkId);
   if (!session) return;
+  const wasCurrent = useTallyStore.getState().current?.startedAt === session.startedAt;
   const removed = useTallyStore
     .getState()
     .removeDrinkFromSession(session.startedAt, drinkId);
   if (!removed) return;
+  if (!wasCurrent && removed.remainingDrinks === 0) {
+    // addBackdatedDrink can mint a one-drink historical visit. Undo must replace
+    // its queued upsert with a delete, otherwise it would sync as an empty night.
+    deleteVisitByClientId(removed.sessionClientId);
+  }
 
   void removeQueuedDrinkUpdate(drinkId);
   void removeQueuedDrink(drinkId).then((pulledFromQueue) => {

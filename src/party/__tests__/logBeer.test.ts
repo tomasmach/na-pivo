@@ -38,8 +38,10 @@ jest.mock('@/data/updateDrinksQueue', () => ({
 }));
 
 const syncVisit: jest.Mock = jest.fn();
+const deleteVisitByClientId: jest.Mock = jest.fn();
 jest.mock('@/data/visitsSync', () => ({
   syncVisit: (...args: unknown[]) => syncVisit(...(args as [])),
+  deleteVisitByClientId: (...args: unknown[]) => deleteVisitByClientId(...(args as [])),
 }));
 
 const flushVisitsQueue: jest.Mock = jest.fn(async () => undefined);
@@ -54,6 +56,14 @@ import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 const PLACE = { pubKey: 'u2fkbjgx', pubName: 'U Fleků', pubCity: 'Praha' };
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+function sameDrinkingDayBackdate(): string {
+  const now = new Date();
+  const dayStart = new Date(now);
+  dayStart.setHours(4, 0, 0, 0);
+  if (now < dayStart) dayStart.setDate(dayStart.getDate() - 1);
+  return new Date(dayStart.getTime() + (now.getTime() - dayStart.getTime()) / 2).toISOString();
+}
 
 function storedSession(clientId: string, startedAt: string, drinkIds: string[]): TallySession {
   return {
@@ -134,6 +144,98 @@ describe('logPartyBeer', () => {
       'STUL24',
       { deliver: true },
     );
+  });
+
+  it('keeps a selected time in the local diary and queued drank_at', async () => {
+    const at = sameDrinkingDayBackdate();
+    const id = logPartyBeer({
+      place: PLACE,
+      beerName: 'Plzeň',
+      partyCode: 'STUL24',
+      deferDelivery: true,
+      at,
+    });
+    await flush();
+
+    expect(useTallyStore.getState().current?.drinks.find((drink) => drink.id === id)?.at).toBe(at);
+    expect(enqueueDrink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_id: id,
+        drank_at: at,
+      }),
+      { deliver: false },
+    );
+    expect(enqueueDrink.mock.calls[0][0]).not.toHaveProperty('party_code');
+  });
+
+  it('keeps a past-day backdate out of the live tally while preserving its queue entry', async () => {
+    const nowId = logPartyBeer({ place: PLACE, beerName: 'Plzeň', partyCode: 'STUL24' });
+    const at = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+    const oldId = logPartyBeer({
+      place: PLACE,
+      beerName: 'Kozel',
+      partyCode: 'STUL24',
+      deferDelivery: true,
+      at,
+    });
+    await flush();
+
+    expect(useTallyStore.getState().current?.drinks.map((drink) => drink.id)).toEqual([nowId]);
+    expect(useTallyStore.getState().history.some((session) =>
+      session.drinks.some((drink) => drink.id === oldId && drink.at === at),
+    )).toBe(true);
+    expect(enqueueDrink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ client_id: oldId, drank_at: at }),
+      { deliver: false },
+    );
+  });
+
+  it('keeps edit and undo working for a queued backdated drink', async () => {
+    const at = sameDrinkingDayBackdate();
+    const id = logPartyBeer({
+      place: PLACE,
+      beerName: 'Plzeň',
+      partyCode: 'STUL24',
+      deferDelivery: true,
+      at,
+    });
+
+    updatePartyDrink(id, {
+      beerName: 'Plzeň 12',
+      drinkType: 'beer',
+      priceCzk: 65,
+      volumeMl: 500,
+      servingType: 'draft',
+    });
+    unlogPartyBeer(id);
+    await flush();
+
+    expect(updateQueuedDrink).toHaveBeenCalledWith(id, expect.objectContaining({
+      beer_name: 'Plzeň 12',
+      price_czk: 65,
+    }));
+    expect(removeQueuedDrink).toHaveBeenCalledWith(id);
+    expect(useTallyStore.getState().current?.drinks).toEqual([]);
+    expect(enqueueDelete).not.toHaveBeenCalled();
+  });
+
+  it('undoes the visit created for a one-drink past evening', async () => {
+    const at = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+    const id = logPartyBeer({
+      place: PLACE,
+      beerName: 'Kozel',
+      deferDelivery: true,
+      at,
+    });
+    const pastSession = useTallyStore.getState().history.find((session) =>
+      session.drinks.some((drink) => drink.id === id),
+    );
+
+    unlogPartyBeer(id);
+    await flush();
+
+    expect(deleteVisitByClientId).toHaveBeenCalledWith(pastSession?.clientId);
+    expect(useTallyStore.getState().history).toEqual([]);
   });
 
   it('durably queues the first table beer without delivering before table creation', async () => {
