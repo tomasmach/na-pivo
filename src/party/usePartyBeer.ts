@@ -42,6 +42,8 @@ export interface PartyBeerActions {
       priceCzk?: number;
       volumeMl?: number;
       servingType?: ServingType;
+      /** ISO-8601 timestamp selected by the backdate flow. */
+      at?: string;
     },
   ) => string;
   /** Take one back — a mis-tap, or a beer that never came. */
@@ -101,6 +103,7 @@ export function usePartyBeer(): PartyBeerActions {
           priceCzk?: number;
           volumeMl?: number;
           servingType?: ServingType;
+          at?: string;
         },
       ) => logPartyBeer({
         place: options?.visit
@@ -118,6 +121,7 @@ export function usePartyBeer(): PartyBeerActions {
         priceCzk: options?.priceCzk,
         volumeMl: options?.volumeMl,
         servingType: options?.servingType,
+        at: options?.at,
         partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
         deferDelivery: options?.deferDelivery ?? tableCreatePending,
       }),

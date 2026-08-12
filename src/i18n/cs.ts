@@ -2422,8 +2422,8 @@ export const cs = {
     scanDrinksTitle: 'Co si dáváš?',
     scanDrinksHint: 'Vyber nápoj a před zapsáním ho ještě můžeš upravit.',
     scanDrinksEmpty: 'Na fotce jsem žádný nápoj nepřečetl.',
-    // — Backdate (zapsat pivo zpětně) —
-    backdateLink: 'Zapsat pivo zpětně',
+    // — Backdate (zapsat nápoj zpětně) —
+    backdateLink: 'Zapsat nápoj zpětně',
     backdateTitle: 'Kdy jsi ho měl?',
     backdateHourAgo: 'Před hodinou',
     backdateTwoHoursAgo: 'Před dvěma hodinami',

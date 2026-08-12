@@ -34,7 +34,7 @@ import Animated, {
   useReducedMotion,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -57,6 +57,7 @@ import { PartyDrinkSheet, type PartyDrinkChoice } from '@/party/PartyDrinkSheet'
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
+import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
 import { ScanMenuSheet, type MenuScanSource } from '@/components/contribute/ScanMenuSheet';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { GameCover } from '@/party/GameCover';
@@ -215,6 +216,13 @@ function CircleButton({
 }
 
 export default function LivePartyMockScreen() {
+  const [isFocused, setIsFocused] = React.useState(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -400,6 +408,7 @@ export default function LivePartyMockScreen() {
   const [formDrinkType, setFormDrinkType] = React.useState<DrinkType>('beer');
   const [formDrink, setFormDrink] = React.useState<TallyDrink | null>(null);
   const [formNonce, setFormNonce] = React.useState(0);
+  const [backdateAt, setBackdateAt] = React.useState<string | null>(null);
   const [scanOpen, setScanOpen] = React.useState(false);
   const [scannedDrinks, setScannedDrinks] = React.useState<ScannedDrink[]>([]);
   const [checkInDrink, setCheckInDrink] = React.useState<TallyDrink | null>(null);
@@ -541,18 +550,50 @@ export default function LivePartyMockScreen() {
     setFormNonce((value) => value + 1);
     setFormOpen(true);
   };
-  const logDrink = (result: BeerFormResult) => {
+  const openBackdateForm = (at: string) => {
+    setBackdateAt(at);
+    openDrinkForm('add', 'beer');
+  };
+  const openBackdatePicker = () => {
+    const now = Date.now();
+    const CAP_MS = 48 * 60 * 60 * 1000;
+    const clamp = (ms: number) => new Date(Math.max(ms, now - CAP_MS)).toISOString();
+    const yesterdayEvening = new Date(now);
+    yesterdayEvening.setDate(yesterdayEvening.getDate() - 1);
+    yesterdayEvening.setHours(20, 0, 0, 0);
+
+    showAppDialog({
+      title: cs.counter.backdateTitle,
+      buttons: [
+        {
+          text: cs.counter.backdateHourAgo,
+          onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)),
+        },
+        {
+          text: cs.counter.backdateTwoHoursAgo,
+          onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)),
+        },
+        {
+          text: cs.counter.backdateYesterdayEvening,
+          onPress: () => openBackdateForm(clamp(yesterdayEvening.getTime())),
+        },
+        { text: cs.counter.cancel, style: 'cancel' },
+      ],
+    });
+  };
+  const logDrink = (result: BeerFormResult, atOverride?: string) => {
     if (!active) {
       beginNight(result);
       return;
     }
-    const at = new Date().toISOString();
+    const at = atOverride ?? new Date().toISOString();
     const id = beer.add(result.name, {
       deferDelivery: true,
       drinkType: result.drinkType,
       priceCzk: result.priceCzk,
       volumeMl: result.volumeMl,
       servingType: result.servingType,
+      at,
     });
     rememberUndo({
       id,
@@ -1264,6 +1305,7 @@ export default function LivePartyMockScreen() {
           setBeersOpen(false);
         }}
         onNew={(type) => openDrinkForm('add', type)}
+        onBackdate={active ? openBackdatePicker : undefined}
         onScan={() => { setBeersOpen(false); setScanOpen(true); }}
       />
 
@@ -1287,7 +1329,11 @@ export default function LivePartyMockScreen() {
         placeContext={contextFromPubKey(partyPlaceKey) ?? 'pub'}
         formKey={formNonce}
         titleOverride={formMode === 'edit' ? 'Upravit nápoj' : undefined}
-        onCancel={() => setFormOpen(false)}
+        onCancel={() => {
+          setFormOpen(false);
+          setFormDrink(null);
+          setBackdateAt(null);
+        }}
         onSubmit={(result) => {
           if (formMode === 'edit' && formDrink) beer.update(formDrink.id, {
             beerName: result.name,
@@ -1296,11 +1342,12 @@ export default function LivePartyMockScreen() {
             volumeMl: result.volumeMl,
             servingType: result.servingType,
           });
-          else logDrink(result);
+          else logDrink(result, backdateAt ?? undefined);
           setFormOpen(false);
           setFormDrink(null);
+          setBackdateAt(null);
         }}
-        onScanMenu={() => {
+        onScanMenu={backdateAt ? undefined : () => {
           setFormOpen(false);
           setTimeout(() => setScanOpen(true), 300);
         }}
@@ -1386,6 +1433,7 @@ export default function LivePartyMockScreen() {
           active && night.startedAt ? drinkingDayKey(new Date(night.startedAt)) : null
         }
       />
+      {isFocused ? <AppDialogHost /> : null}
     </View>
   );
 }

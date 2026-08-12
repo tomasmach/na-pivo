@@ -429,7 +429,7 @@ function BeerFormBody({
             marginBottom: sheetBottomOffset,
             maxHeight,
             height: sheetHeight,
-            minHeight: mode === 'edit' ? undefined : '56%',
+            minHeight: mode === 'add' ? '68%' : mode === 'edit' ? undefined : '56%',
           },
         ]}
       >

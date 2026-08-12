@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { CameraIcon, PlusIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, HistoryIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import type { DrinkType } from '@/drinks/drinkTypes';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -29,6 +29,7 @@ export function PartyDrinkSheet({
   onClose,
   onPick,
   onNew,
+  onBackdate,
   onScan,
 }: {
   visible: boolean;
@@ -36,6 +37,7 @@ export function PartyDrinkSheet({
   onClose: () => void;
   onPick: (choice: PartyDrinkChoice) => void;
   onNew: (type: DrinkType) => void;
+  onBackdate?: () => void;
   onScan: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -97,6 +99,19 @@ export function PartyDrinkSheet({
             <PlusIcon size={17} color={Colors.amber} />
             <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.body}>Nový nápoj</Text>
           </Pressable>
+          {onBackdate ? (
+            <Pressable
+              onPress={() => finish(onBackdate)}
+              style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.counter.backdateLink}
+            >
+              <HistoryIcon size={17} color={Colors.amber} />
+              <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.backdateLink}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={() => finish(onScan)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
             <CameraIcon size={17} color={Colors.amber} />
             <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.body}>Naskenovat lístek</Text>
