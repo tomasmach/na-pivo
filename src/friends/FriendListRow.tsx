@@ -64,15 +64,14 @@ export function FriendListRow({
           {meta}
         </Text>
       </View>
-      <Text
-        style={styles.count}
-        numberOfLines={1}
-        allowFontScaling={false}
-        adjustsFontSizeToFit
-        minimumFontScale={0.7}
-      >
-        {count}
-      </Text>
+      {/* A zero is the same thing the meta line already says, printed in the
+          loudest type on the row. A column of them reads as an empty scoreboard,
+          so the numeral only shows up once there is something to count. */}
+      {count > 0 ? (
+        <Text style={styles.count} numberOfLines={1} allowFontScaling={false}>
+          {count}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -114,11 +113,18 @@ const styles = StyleSheet.create({
   count: {
     fontFamily: Fonts.numeral,
     fontSize: 22,
+    // 1.24× — Baloo 2 ExtraBold overshoots its line box and iOS clips the tops
+    // of the digits without this (DESIGN.md §3.2).
     lineHeight: 27,
     letterSpacing: -0.4,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
+    // The name owns the flex; the numeral keeps its own lane so a long handle
+    // squeezes the handle, never the number.
+    flexShrink: 0,
+    textAlign: 'right',
+    minWidth: 26,
   },
 });
 
