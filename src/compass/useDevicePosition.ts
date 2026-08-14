@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
+import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 
 export interface DevicePosition {
@@ -18,14 +19,32 @@ export interface UseDevicePositionResult {
 }
 
 /** A recent OS-cached fix is accurate enough to choose an initial nearby pub.
- * The live BestForNavigation watcher keeps running and replaces it as soon as a
+ * The live high-accuracy watcher keeps running and replaces it as soon as a
  * fresh sample arrives. A tight age cap prevents a fix from a previous journey
  * from briefly pointing the compass at the wrong city. */
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 100;
 
+/** GPS jitter below these thresholds is invisible to every consumer (distance
+ * labels round to meters, retargeting has its own gate), but each published
+ * object re-runs the pub-list derivation pipeline. Dedup at the source. */
+const MIN_PUBLISH_MOVEMENT_M = 3;
+const MIN_PUBLISH_ACCURACY_DELTA_M = 5;
+
+const METERS_PER_DEGREE_LAT = 111_320;
+
+function approxDistanceMeters(a: DevicePosition, b: DevicePosition): number {
+  const dLat = (b.lat - a.lat) * METERS_PER_DEGREE_LAT;
+  const dLng =
+    (b.lng - a.lng) *
+    METERS_PER_DEGREE_LAT *
+    Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180));
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
 export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   const [position, setPosition] = useState<DevicePosition | null>(null);
+  const lastPublishedRef = useRef<DevicePosition | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const startingRef = useRef(false);
   const seedingRef = useRef(false);
@@ -43,12 +62,29 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       const { latitude, longitude, accuracy } = location.coords;
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
 
-      hasPositionRef.current = true;
-      setPosition({
+      const next: DevicePosition = {
         lat: latitude,
         lng: longitude,
         accuracyMeters: accuracy ?? 999,
-      });
+      };
+      // Walking telemetry consumes the RAW sample stream (pre-dedup) so the
+      // recorded distances keep the exact cadence and values they had when
+      // every sample was published to React state.
+      recordWalkingSample(next);
+      const last = lastPublishedRef.current;
+      if (
+        last &&
+        approxDistanceMeters(last, next) < MIN_PUBLISH_MOVEMENT_M &&
+        Math.abs(last.accuracyMeters - next.accuracyMeters) <
+          MIN_PUBLISH_ACCURACY_DELTA_M
+      ) {
+        hasPositionRef.current = true;
+        return;
+      }
+
+      hasPositionRef.current = true;
+      lastPublishedRef.current = next;
+      setPosition(next);
     },
     [],
   );
@@ -88,7 +124,10 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       void seedFromLastKnownPosition();
       const sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
+          // High (~10 m) is enough for "which pub am I at" and the compass
+          // needle; BestForNavigation kept the GPS chip at turn-by-turn duty
+          // cycle for a whole evening at the table.
+          accuracy: Location.Accuracy.High,
           distanceInterval: 0,
           timeInterval: 1000,
         },

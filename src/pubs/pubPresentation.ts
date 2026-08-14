@@ -107,13 +107,56 @@ function amenityIsYes(amenities: readonly WireAmenityAggregate[] | undefined, ke
   ) === true;
 }
 
-export function summarizePubVisits(pub: Pub, visits: readonly WireVisit[]): PubVisitSummary {
+/** Visits grouped by their match keys, so a list of hundreds of pubs doesn't
+ * re-scan the full visit history once per pub on every presentation pass. */
+export interface PubVisitIndex {
+  byCacheKey: ReadonlyMap<string, readonly WireVisit[]>;
+  byExternalId: ReadonlyMap<string, readonly WireVisit[]>;
+}
+
+export function buildPubVisitIndex(visits: readonly WireVisit[]): PubVisitIndex {
+  const byCacheKey = new Map<string, WireVisit[]>();
+  const byExternalId = new Map<string, WireVisit[]>();
+  for (const visit of visits) {
+    if (visit.cache_key != null) {
+      const list = byCacheKey.get(visit.cache_key);
+      if (list) list.push(visit);
+      else byCacheKey.set(visit.cache_key, [visit]);
+    }
+    if (visit.external_id != null) {
+      const list = byExternalId.get(visit.external_id);
+      if (list) list.push(visit);
+      else byExternalId.set(visit.external_id, [visit]);
+    }
+  }
+  return { byCacheKey, byExternalId };
+}
+
+function matchesForPub(pub: Pub, index: PubVisitIndex): readonly WireVisit[] {
   const cacheKey = geohash8(pub.lat, pub.lng);
-  const matches = visits.filter(
-    (visit) =>
-      visit.cache_key === cacheKey ||
-      (visit.external_id != null && visit.external_id === pub.id),
-  );
+  const byKey = index.byCacheKey.get(cacheKey);
+  const byId = index.byExternalId.get(pub.id);
+  if (byKey && byId) {
+    // A visit can carry both keys of the same pub; count it once.
+    const union = new Set<WireVisit>(byKey);
+    for (const visit of byId) union.add(visit);
+    return [...union];
+  }
+  return byKey ?? byId ?? [];
+}
+
+export function summarizePubVisits(
+  pub: Pub,
+  visits: readonly WireVisit[] | PubVisitIndex,
+): PubVisitSummary {
+  const cacheKey = geohash8(pub.lat, pub.lng);
+  const matches = Array.isArray(visits)
+    ? (visits as readonly WireVisit[]).filter(
+        (visit) =>
+          visit.cache_key === cacheKey ||
+          (visit.external_id != null && visit.external_id === pub.id),
+      )
+    : matchesForPub(pub, visits as PubVisitIndex);
   const lastVisitedAt = matches.reduce<string | null>((latest, visit) => {
     const candidate = visit.ended_at ?? visit.started_at;
     if (!candidate) return latest;
@@ -130,7 +173,7 @@ export function summarizePubVisits(pub: Pub, visits: readonly WireVisit[]): PubV
 export function presentPub(
   pub: Pub,
   position: PubPosition | null,
-  visits: readonly WireVisit[] = [],
+  visits: readonly WireVisit[] | PubVisitIndex = [],
   amenityOverride?: readonly WireAmenityAggregate[],
 ): PubPresentation {
   const distanceMeters = position ? haversineMeters(position, pub) : null;

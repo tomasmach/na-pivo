@@ -196,29 +196,36 @@ function CommunityMockScreenContent() {
       setEventsLoading(true);
       setEventsFailed(false);
       setEventsAuthRequired(false);
-      void Promise.all([
-        fetchChallenges({ signal: controller.signal, force: revision > 0 }),
-        coarseLocation().then((location) => fetchCommunityEvents(location, controller.signal)),
-      ]).then(([challengeRows, eventResult]) => {
+      const challengesRequest = fetchChallenges({
+        signal: controller.signal,
+        force: revision > 0,
+      }).then((challengeRows) => {
         if (!active) return;
         setChallenges(challengeRows ?? []);
         setChallengesFailed(challengeRows === null);
         setChallengesLoading(false);
-        if (eventResult.ok) {
-          const unique = new Map<string, CommunityEvent>();
-          for (const event of [
-            ...eventResult.dashboard.nearby,
-            ...eventResult.dashboard.hosted,
-            ...eventResult.dashboard.joined,
-          ]) unique.set(event.id, event);
-          setEvents([...unique.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
-        } else {
-          setEvents([]);
-        }
-        setEventsAuthRequired(!eventResult.ok && eventResult.code === 'auth');
-        setEventsFailed(!eventResult.ok && eventResult.code !== 'auth');
-        setEventsLoading(false);
-        setRefreshing(false);
+      });
+      const eventsRequest = coarseLocation()
+        .then((location) => fetchCommunityEvents(location, controller.signal))
+        .then((eventResult) => {
+          if (!active) return;
+          if (eventResult.ok) {
+            const unique = new Map<string, CommunityEvent>();
+            for (const event of [
+              ...eventResult.dashboard.nearby,
+              ...eventResult.dashboard.hosted,
+              ...eventResult.dashboard.joined,
+            ]) unique.set(event.id, event);
+            setEvents([...unique.values()].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
+          } else {
+            setEvents([]);
+          }
+          setEventsAuthRequired(!eventResult.ok && eventResult.code === 'auth');
+          setEventsFailed(!eventResult.ok && eventResult.code !== 'auth');
+          setEventsLoading(false);
+        });
+      void Promise.all([challengesRequest, eventsRequest]).then(() => {
+        if (active) setRefreshing(false);
       });
     }, 0);
     return () => {

@@ -44,7 +44,10 @@ function mergeRemote(
 export function usePubAmenities(
   pubs: readonly Pub[],
 ): ReadonlyMap<string, WireAmenityAggregate[]> {
-  const signature = [...new Set(pubs.map((pub) => geohash8(pub.lat, pub.lng)))].join(',');
+  const signature = useMemo(
+    () => [...new Set(pubs.map((pub) => geohash8(pub.lat, pub.lng)))].join(','),
+    [pubs],
+  );
   const [state, setState] = useState<AmenityDirectoryState>({
     signature: '',
     byKey: new Map(),

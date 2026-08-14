@@ -16,10 +16,20 @@ jest.mock('../pubAmenitiesQueue', () => ({
   getQueuedAmenityDeletes: () => getQueuedAmenityDeletes(),
 }));
 
+jest.mock('../account', () => ({
+  ensureAccount: jest.fn(async () => ({
+    deviceId: 'dev-1',
+    accountId: 'acc-1',
+    token: 'tok-1',
+    authenticated: false,
+  })),
+}));
+
 import {
   restorePubAmenities,
   installPubAmenitiesSync,
   runWithoutPubAmenitiesSync,
+  resetPubAmenitiesPullGateForTests,
 } from '../pubAmenitiesSync';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -39,6 +49,7 @@ function wire(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetPubAmenitiesPullGateForTests();
   getQueuedAmenityDeletes.mockResolvedValue(new Set<string>());
   usePubAmenitiesStore.setState({ votes: {} });
   useTallyStore.setState({ current: null, history: [] });

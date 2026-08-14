@@ -1148,9 +1148,12 @@ export default function BeerMapScreen({
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
               <Marker
-                key={`city:${city.key}`}
+                // visitCount in the key: with tracksViewChanges off the marker
+                // never re-rasterizes, so a changed count must remount it.
+                key={`city:${city.key}:${city.visitCount}`}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
+                tracksViewChanges={false}
                 onPress={() => {
                   const next: MapSelection = { kind: 'city', key: city.key, accountId };
                   rememberedSelection = next;

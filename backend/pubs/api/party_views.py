@@ -69,12 +69,17 @@ def _blocked(left: Account, right: Account) -> bool:
 
 
 def _blocked_account_ids(account: Account) -> set[int]:
+    cached = getattr(account, "_blocked_account_ids_cache", None)
+    if cached is not None:
+        return cached
     rows = FriendBlock.objects.filter(Q(blocker=account) | Q(blocked=account)).values_list(
         "blocker_id", "blocked_id"
     )
-    return {
+    blocked_ids = {
         blocked_id if blocker_id == account.id else blocker_id for blocker_id, blocked_id in rows
     }
+    account._blocked_account_ids_cache = blocked_ids
+    return blocked_ids
 
 
 def _can_access(evening: PartyEvening, account: Account) -> bool:

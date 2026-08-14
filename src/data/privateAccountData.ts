@@ -38,9 +38,9 @@ import {
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
-import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
+import { resetPubAmenitiesPullGate, runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
-import { runWithoutPubRatingsSync } from './pubRatingsSync';
+import { resetPubRatingsPullGate, runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
 import { clearVisitsSnapshot } from './visitsSnapshot';
 import { clearNightFeedCaches } from '@/feed/feedCache';
@@ -250,7 +250,9 @@ export function resetPrivateAccountMemory(): void {
     });
     useTallyStore.setState({ current: null, history: [] });
     usePubRatingsStore.setState({ ratings: {} });
+    resetPubRatingsPullGate();
     usePubAmenitiesStore.setState({ votes: {} });
+    resetPubAmenitiesPullGate();
     useCommunityStore.setState({ overrides: {} });
     usePartyGroupsStore.setState({ groups: [] });
     useVycepStore.setState({ published: {} });
@@ -342,11 +344,13 @@ export async function clearLocalPrivateAccountData(options?: {
   start('pub_ratings_state', () =>
     runWithoutPubRatingsSync(() => {
       usePubRatingsStore.setState({ ratings: {} });
+      resetPubRatingsPullGate();
     }),
   );
   start('pub_amenities_state', () =>
     runWithoutPubAmenitiesSync(() => {
       usePubAmenitiesStore.setState({ votes: {} });
+      resetPubAmenitiesPullGate();
     }),
   );
   start('community_state', () => useCommunityStore.setState({ overrides: {} }));

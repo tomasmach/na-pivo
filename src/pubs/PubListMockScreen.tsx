@@ -46,7 +46,6 @@ import {
   SearchIcon,
   StarIcon,
 } from '@/components/shared/IconGlyph';
-import { TAB_CHROME } from '@/components/shared/TabBar';
 import { GlassIconButton, GlassPill } from '@/components/shared/GlassIconButton';
 import {
   fallbackPopularBeerBrands,
@@ -59,11 +58,12 @@ import { useCompass } from '@/hooks/useCompass';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
-import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
+import { DETENT_TOP, PEEK_VISIBLE, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
 import {
+  buildPubVisitIndex,
   presentPub,
   filterReportedPubs,
   pubMatchesFilters,
@@ -247,18 +247,20 @@ function FilterChips({
   );
 }
 
-function PubRow({
+// Memoized: the list re-renders on every GPS-driven presentation pass, and
+// without this every mounted row rebuilds its whole subtree each time.
+const PubRow = React.memo(function PubRow({
   pub,
   first,
   onPress,
 }: {
   pub: PubPresentation;
   first?: boolean;
-  onPress: () => void;
+  onPress: (id: string) => void;
 }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(pub.id)}
       style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={`${pub.name}, detail`}
@@ -338,7 +340,7 @@ function PubRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 /** Row height of the search field plus its bottom padding. */
 const SEARCH_HEIGHT = 46 + 8;
@@ -389,6 +391,26 @@ export default function PubListMockScreen() {
   });
   const moveSheet = React.useCallback((to: Detent) => {
     setMoveTo((current) => ({ nonce: current.nonce + 1, to }));
+  }, []);
+  // Map onPanDrag fires on every drag frame. Re-requesting 'peek' on each one
+  // would bump the nonce — and re-render this whole screen — dozens of times
+  // per second, freezing the drag. Guard on the sheet's ACTUAL detent (via a
+  // ref, so this callback stays stable): the sheet's own tap/drag gestures
+  // settle detents without going through moveSheet, so the last requested
+  // move is not a reliable signal of where the sheet is.
+  const detentRef = React.useRef(detent);
+  // One extra latch for the frames between requesting 'peek' and the detent
+  // state committing — without it a fast drag still lands a few redundant
+  // nonce bumps. Reset whenever the sheet is back on screen.
+  const peekRequestedRef = React.useRef(false);
+  React.useEffect(() => {
+    detentRef.current = detent;
+    if (detent !== 'peek') peekRequestedRef.current = false;
+  }, [detent]);
+  const sheetAwayForPan = React.useCallback(() => {
+    if (detentRef.current === 'peek' || peekRequestedRef.current) return;
+    peekRequestedRef.current = true;
+    setMoveTo((current) => ({ nonce: current.nonce + 1, to: 'peek' }));
   }, []);
   const [listAtTop, setListAtTop] = React.useState(true);
   // Handed to the sheet so its drag can out-rank the list's own scrolling.
@@ -475,17 +497,18 @@ export default function PubListMockScreen() {
     ],
   );
   const amenitiesByKey = usePubAmenities(rawPubs);
+  const visitIndex = React.useMemo(() => buildPubVisitIndex(visits), [visits]);
   const presentations = React.useMemo(
     () =>
       rawPubs.map((pub) =>
         presentPub(
           pub,
           compass.currentPosition,
-          visits,
+          visitIndex,
           amenitiesByKey.get(geohash8(pub.lat, pub.lng)),
         ),
       ),
-    [amenitiesByKey, compass.currentPosition, rawPubs, visits],
+    [amenitiesByKey, compass.currentPosition, rawPubs, visitIndex],
   );
   const ordered = React.useMemo(
     () =>
@@ -526,6 +549,13 @@ export default function PubListMockScreen() {
     [moveSheet],
   );
 
+  const renderPubRow = React.useCallback(
+    ({ item: pub, index }: { item: PubPresentation; index: number }) => (
+      <PubRow pub={pub} first={index === 0} onPress={openPubDetail} />
+    ),
+    [openPubDetail],
+  );
+
   const pickSort = React.useCallback((next: Sort) => {
     setSort(next);
     if (next === 'Náhodně v okolí') setShuffleSeed((n) => n + 1);
@@ -537,7 +567,9 @@ export default function PubListMockScreen() {
   // At `peek` the sheet is off screen entirely, so the floating things stack up
   // from the tab bar. Anchored by their BOTTOM edge: computed down from the top
   // they drifted away from the bar on taller screens.
-  const carouselBottom = TAB_CHROME - 18;
+  // Above the sheet's peek sliver, so the floating cards never sit on top of
+  // the grabber strip that pulls the list back up.
+  const carouselBottom = PEEK_VISIBLE + Spacing.sm;
   const hasCarousel =
     detent === 'peek' && compass.currentPosition != null && ordered.length > 0;
   const controlsBottom =
@@ -552,7 +584,7 @@ export default function PubListMockScreen() {
           currentPosition={compass.currentPosition}
           recenterSignal={recenterSignal}
           onPressPub={openPubDetail}
-          onPan={() => moveSheet('peek')}
+          onPan={sheetAwayForPan}
           selectedId={effectiveSelected}
         />
       </View>
@@ -682,13 +714,7 @@ export default function PubListMockScreen() {
               ref={listRef as never}
               data={listPubs}
               keyExtractor={(pub) => pub.id}
-              renderItem={({ item: pub, index }) => (
-                <PubRow
-                  pub={pub}
-                  first={index === 0}
-                  onPress={() => openPubDetail(pub.id)}
-                />
-              )}
+              renderItem={renderPubRow}
               initialNumToRender={8}
               maxToRenderPerBatch={8}
               windowSize={7}

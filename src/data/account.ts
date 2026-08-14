@@ -644,6 +644,21 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
   // Cancelling one caller only stops that caller waiting for the shared result.
   if (signal?.aborted) return null;
 
+  // Fast path: the in-memory mirror of the secure record. Every write/delete of
+  // the credential goes through this module and updates it under the session
+  // lock, so when it is populated it IS the session — re-reading Keychain for
+  // each of the ~80 call sites only added a serialized SecureStore round trip
+  // per API call. The deviceId-anchor heal still runs on the cold path (first
+  // call per process and after any boundary), which is when it can be stale.
+  if (!ensureAccountInFlight && lastKnownAccount) {
+    return {
+      deviceId: lastKnownAccount.deviceId,
+      accountId: lastKnownAccount.accountId,
+      token: lastKnownAccount.token,
+      authenticated: lastKnownAccount.authenticated,
+    };
+  }
+
   if (!ensureAccountInFlight) {
     const operation = ensureAccountOnce();
     const tracked = operation.finally(() => {

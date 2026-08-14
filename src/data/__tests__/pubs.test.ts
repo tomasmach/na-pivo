@@ -13,6 +13,7 @@ import {
   removeLocalPub,
   renameLocalPub,
   upsertLocalPub,
+  upsertLocalPubs,
   type Pub,
 } from "../pubs";
 import { searchPubsNear } from "../mapyClient";
@@ -544,6 +545,23 @@ describe("upsertLocalPub", () => {
 
     expect(getPubById("mapy:old")).toBeNull();
     expect(getPubById("mapy:new")?.name).toBe("Nový název");
+  });
+
+  it("applies a batch of local pubs with the same replacement behavior", () => {
+    const first: Pub = { id: "manual:first", name: "První", lat: 50.0812, lng: 14.4182 };
+    const replacement: Pub = {
+      id: "manual:replacement",
+      name: "Náhrada",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    const second: Pub = { id: "manual:second", name: "Druhá", lat: 49.1951, lng: 16.6068 };
+
+    upsertLocalPubs([first, replacement, second]);
+
+    expect(getPubById(first.id)).toBeNull();
+    expect(getPubById(replacement.id)?.name).toBe("Náhrada");
+    expect(getPubById(second.id)?.name).toBe("Druhá");
   });
 
   it("keeps a locally added pub when a fresh backend fetch rebuilds the index", async () => {

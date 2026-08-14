@@ -125,12 +125,17 @@ def _blocked(left: Account, right: Account) -> bool:
 def _blocked_account_ids(account: Account) -> set[int]:
     """Return both directions of the account's block graph in one query."""
 
+    cached = getattr(account, "_blocked_account_ids_cache", None)
+    if cached is not None:
+        return cached
     rows = FriendBlock.objects.filter(Q(blocker=account) | Q(blocked=account)).values_list(
         "blocker_id", "blocked_id"
     )
-    return {
+    blocked_ids = {
         blocked_id if blocker_id == account.id else blocker_id for blocker_id, blocked_id in rows
     }
+    account._blocked_account_ids_cache = blocked_ids
+    return blocked_ids
 
 
 def _distance_km(lat_a: float, lng_a: float, lat_b: float, lng_b: float) -> float:

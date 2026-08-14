@@ -25,6 +25,7 @@
  * pubKey); when unknown we send "".
  */
 
+import { ensureAccount } from './account';
 import { decodeGeohash8 } from './geohash';
 import {
   enqueueRatingOp,
@@ -151,10 +152,38 @@ export function installPubRatingsSync(): () => void {
  *   - hydrateRatings does the actual last-write-wins; we run it under
  *     suppressSync so the merged-in entries are not echoed back as upserts.
  */
+/** The pull side is a repair pass — local edits push at write time through the
+ * installed subscriber. Re-pulling the whole collection on every foreground
+ * (every Control Center peek) only re-downloads an unchanged set, so skip it
+ * while a recent pull is fresh. The queue flush above the gate always runs. */
+const PULL_FRESH_MS = 5 * 60 * 1000;
+let lastPulledAt = 0;
+// The gate is per-account: an account switch (including the anonymous → claim
+// merge, which deliberately does NOT clear private stores) must pull for the
+// new owner immediately.
+let lastPulledAccountId: string | null = null;
+
+/** Account boundaries (logout, login, delete) clear the store — the next
+ * restore must pull immediately for the new owner, not wait out the gate. */
+export function resetPubRatingsPullGate(): void {
+  lastPulledAt = 0;
+  lastPulledAccountId = null;
+}
+
+export const resetPubRatingsPullGateForTests = resetPubRatingsPullGate;
+
 export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   // Apply queued tombstones before reading, when possible. If any delete remains
   // pending, skip that server row below so a cleared rating does not reappear.
   await flushPubRatingsQueue();
+  const accountId = (await ensureAccount(signal))?.accountId ?? null;
+  if (
+    accountId != null &&
+    accountId === lastPulledAccountId &&
+    Date.now() - lastPulledAt < PULL_FRESH_MS
+  ) {
+    return;
+  }
   const pendingDeleteKeys = await getQueuedRatingDeletePubKeys();
   const serverRatings = await fetchRatings(signal);
   if (serverRatings === null) {
@@ -196,4 +225,8 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   }
 
   await flushPubRatingsQueue();
+  // Stamp only after the whole pass succeeded, so a failed merge/push retries
+  // on the next foreground instead of waiting out the gate.
+  lastPulledAt = Date.now();
+  lastPulledAccountId = accountId;
 }

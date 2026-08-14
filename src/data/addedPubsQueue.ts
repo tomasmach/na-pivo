@@ -18,7 +18,13 @@ import {
   type AddedPubResponse,
   type SubmitAddedPubResult,
 } from './addedPubsClient';
-import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } from './pubs';
+import {
+  clearPubsSnapshot,
+  pubIdForCoords,
+  removeLocalPub,
+  upsertLocalPub,
+  upsertLocalPubs,
+} from './pubs';
 import { createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
@@ -333,6 +339,7 @@ export function syncOwnAddedPubs(): Promise<boolean> {
     const registry = await loadRegistry();
     const byClientId = new Map(registry.map((item) => [item.client_id, item]));
     const syncStartedAt = Date.now();
+    const pubsToUpsert: ReturnType<typeof pubFromSubmission>[] = [];
     for (const [index, result] of remote.entries()) {
       const previous = byClientId.get(result.clientId);
       // A GET may succeed while a geocoding-backed PATCH is temporarily down.
@@ -344,9 +351,16 @@ export function syncOwnAddedPubs(): Promise<boolean> {
         previous?.updatedAt ?? new Date(syncStartedAt - index).toISOString(),
       );
       byClientId.set(result.clientId, synced);
-      if (previous) applySubmittedResult(previous, synced);
-      else upsertLocalPub(pubFromSubmission(synced));
+      if (previous) {
+        const previousId = pubIdForCoords(previous.lat, previous.lng);
+        const nextPub = pubFromSubmission(synced);
+        if (nextPub.id !== previousId) removeLocalPub(previousId);
+        pubsToUpsert.push(nextPub);
+      } else {
+        pubsToUpsert.push(pubFromSubmission(synced));
+      }
     }
+    upsertLocalPubs(pubsToUpsert);
     await saveRegistry([...byClientId.values()]);
     return true;
   });
@@ -365,9 +379,11 @@ export function clearAddedPubsQueue(): Promise<void> {
 export function restoreQueuedAddedPubs(): Promise<number> {
   return registryTask(async () => {
     const registry = await loadRegistry();
-    for (const submission of registry) {
-      if (submission.syncState !== 'failed') upsertLocalPub(pubFromSubmission(submission));
-    }
+    upsertLocalPubs(
+      registry
+        .filter((submission) => submission.syncState !== 'failed')
+        .map(pubFromSubmission),
+    );
     return registry.filter((submission) => submission.syncState === 'pending').length;
   });
 }

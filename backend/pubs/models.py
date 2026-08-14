@@ -1701,6 +1701,7 @@ class PublishedNight(models.Model):
                 fields=["visibility", "-created_at"],
                 name="pubs_night_vis_created_idx",
             ),
+            models.Index(fields=["account", "-created_at"]),
         ]
 
     def __str__(self) -> str:
@@ -3719,6 +3720,7 @@ class PubVisit(models.Model):
         ordering = ["-started_at"]
         indexes = [
             models.Index(fields=["account", "started_at"]),
+            models.Index(fields=["account", "ended_at"]),
             models.Index(
                 fields=["account", "cache_key"],
                 name="pubs_visit_account_pub_idx",

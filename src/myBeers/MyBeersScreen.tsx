@@ -122,16 +122,16 @@ function CurrentEveningCard({
 
 // ─── Past evening row ──────────────────────────────────────────────────────────
 
-function PastEveningRow({
+const PastEveningRow = React.memo(function PastEveningRow({
   session,
   priceCurrency,
-  now,
-  onPress,
+  nowMinuteMs,
+  onOpen,
 }: {
   session: TallySession;
   priceCurrency: PriceCurrency;
-  now: Date;
-  onPress: () => void;
+  nowMinuteMs: number;
+  onOpen: (session: TallySession) => void;
 }) {
   const totalCzk = sessionTotalCzk(session);
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
@@ -139,14 +139,14 @@ function PastEveningRow({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onOpen(session)}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={cs.a11y.myBeersEvening(session.pubName, summary)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowDate} maxFontSizeMultiplier={FontScaleCap.body}>
-          {eveningDateLabel(session.startedAt, now)}
+          {eveningDateLabel(session.startedAt, new Date(nowMinuteMs))}
         </Text>
         <Text style={styles.rowPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {session.pubName}
@@ -159,7 +159,7 @@ function PastEveningRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 function shortDateTime(iso: string): string {
   const ms = Date.parse(iso);
@@ -207,14 +207,14 @@ function checkInAmountLabel(checkIn: BeerCheckIn, priceCurrency: PriceCurrency):
   return parts.join(' · ');
 }
 
-function HistoricalCheckInRow({
+const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
   checkIn,
   priceCurrency,
-  onPress,
+  onOpen,
 }: {
   checkIn: BeerCheckIn;
   priceCurrency: PriceCurrency;
-  onPress: () => void;
+  onOpen: (checkIn: BeerCheckIn) => void;
 }) {
   const meta = [
     checkInAmountLabel(checkIn, priceCurrency),
@@ -226,7 +226,7 @@ function HistoricalCheckInRow({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onOpen(checkIn)}
       style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
@@ -245,7 +245,7 @@ function HistoricalCheckInRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
   return (
@@ -322,6 +322,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
     return () => clearInterval(timer);
   }, []);
   const now = useMemo(() => new Date(nowMs), [nowMs]);
+  const nowMinuteMs = Math.floor(nowMs / 60_000) * 60_000;
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -369,6 +370,24 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const isEmpty = !currentEvening && pastEvenings.length === 0 && visibleDiaryEntries.length === 0;
 
   const openHistorical = useCallback(() => setHistoricalOpen(true), []);
+  const openEvening = useCallback(
+    (session: TallySession) => {
+      router.push({
+        pathname: '/evening',
+        params: { startedAt: session.startedAt },
+      });
+    },
+    [router],
+  );
+  const openHistoricalCheckIn = useCallback(
+    (checkIn: BeerCheckIn) => {
+      router.push({
+        pathname: '/beer-detail',
+        params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+      });
+    },
+    [router],
+  );
   const handleHistoricalSaved = useCallback(
     (entries: BeerCheckInInput[]) => {
       const optimistic = entries.map(optimisticCheckIn);
@@ -439,13 +458,8 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <PastEveningRow
                       session={session}
                       priceCurrency={priceCurrency}
-                      now={now}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/evening',
-                          params: { startedAt: session.startedAt },
-                        })
-                      }
+                      nowMinuteMs={nowMinuteMs}
+                      onOpen={openEvening}
                     />
                   </View>
                 ))}
@@ -467,12 +481,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <HistoricalCheckInRow
                       checkIn={checkIn}
                       priceCurrency={priceCurrency}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/beer-detail',
-                          params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
-                        })
-                      }
+                      onOpen={openHistoricalCheckIn}
                     />
                   </View>
                 ))}

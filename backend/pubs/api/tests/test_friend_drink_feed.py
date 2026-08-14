@@ -184,6 +184,26 @@ def test_presence_expires_after_configured_window(client, settings):
 
 
 @pytest.mark.django_db
+def test_presence_includes_recent_open_visit(client, settings):
+    settings.FRIEND_PRESENCE_WINDOW_MINUTES = 180
+    token_owner, owner = _register(client, "majitel")
+    _token_friend, friend = _register(client, "jarek")
+    _make_friends(owner, friend)
+    _visit(
+        friend,
+        started_at=timezone.now() - timedelta(hours=2, minutes=59),
+        ended_at=None,
+    )
+
+    response = client.get("/v1/friends/live", **_auth(token_owner))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["account"]["nickname"] for row in response.json()["presence"]] == [
+        "jarek"
+    ]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("field", "value"),
     [("ghost_mode", True), ("share_drinks_with_parta", False)],

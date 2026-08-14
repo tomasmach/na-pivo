@@ -1357,20 +1357,44 @@ class PublishedNightSerializer(serializers.ModelSerializer):
     def _viewer(self):
         return self.context.get("account")
 
-    @staticmethod
-    def _blocked_between(first_id: int, second_id: int) -> bool:
-        return FriendBlock.objects.filter(
-            Q(blocker_id=first_id, blocked_id=second_id)
-            | Q(blocker_id=second_id, blocked_id=first_id)
-        ).exists()
+    def _blocked_between(self, first_id: int, second_id: int) -> bool:
+        pair = tuple(sorted((first_id, second_id)))
+        viewer = self._viewer()
+        viewer_id = getattr(viewer, "pk", None)
+        if viewer_id in pair and "viewer_blocked_ids" in self.context:
+            other_id = pair[0] if pair[1] == viewer_id else pair[1]
+            return other_id in self.context["viewer_blocked_ids"]
+        memo = getattr(self, "_blocked_between_memo", None)
+        if memo is None:
+            memo = self._blocked_between_memo = {}
+        if pair not in memo:
+            memo[pair] = FriendBlock.objects.filter(
+                Q(blocker_id=first_id, blocked_id=second_id)
+                | Q(blocker_id=second_id, blocked_id=first_id)
+            ).exists()
+        return memo[pair]
 
-    @staticmethod
-    def _accepted_between(first_id: int, second_id: int) -> bool:
-        return Friendship.objects.filter(
-            Q(requester_id=first_id, recipient_id=second_id)
-            | Q(requester_id=second_id, recipient_id=first_id),
-            status=Friendship.Status.ACCEPTED,
-        ).exists()
+    def _accepted_between(self, first_id: int, second_id: int) -> bool:
+        pair = tuple(sorted((first_id, second_id)))
+        viewer = self._viewer()
+        viewer_id = getattr(viewer, "pk", None)
+        # NOTE: viewer_accepted_friend_ids comes from _accepted_friend_ids and
+        # therefore also requires the counterpart to be an ACTIVE account; the
+        # memoized query below does not. Every current call site pre-filters
+        # counterparts to ACTIVE, so the two paths agree — keep it that way.
+        if viewer_id in pair and "viewer_accepted_friend_ids" in self.context:
+            other_id = pair[0] if pair[1] == viewer_id else pair[1]
+            return other_id in self.context["viewer_accepted_friend_ids"]
+        memo = getattr(self, "_accepted_between_memo", None)
+        if memo is None:
+            memo = self._accepted_between_memo = {}
+        if pair not in memo:
+            memo[pair] = Friendship.objects.filter(
+                Q(requester_id=first_id, recipient_id=second_id)
+                | Q(requester_id=second_id, recipient_id=first_id),
+                status=Friendship.Status.ACCEPTED,
+            ).exists()
+        return memo[pair]
 
     def _may_see_social_snapshot(self, obj: PublishedNight) -> bool:
         viewer = self._viewer()

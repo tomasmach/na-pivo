@@ -26,6 +26,7 @@ import io
 import time
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.cache import cache
@@ -42,6 +43,7 @@ from rest_framework.throttling import ScopedRateThrottle
 import pubs.accounts as accounts
 import pubs.oauth as oauth
 from pubs.accounts import AccountError
+from pubs.api.profile_helpers import derive_account_profile_stats
 from pubs.models import Account, DrinkLog, PubRating, PubVisit
 
 # ---------------------------------------------------------------------------
@@ -961,6 +963,55 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
     assert body["pivar"]["xp"] == 0
     assert body["pivar"]["level"] == 1
     assert body["pivar"]["title"] == "Zelenáč"
+
+
+@pytest.mark.django_db
+def test_profile_stats_preserve_night_owl_and_beer_identity_fallbacks(client):
+    _token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    prague = ZoneInfo("Europe/Prague")
+
+    identities = [
+        ("product-a", "brand-a", "Beer A"),
+        ("product-a", "brand-b", "Beer B"),
+        ("", "brand-a", "Beer C"),
+        ("   ", "brand-a", "Beer D"),
+        ("", "", "  PILSNER  "),
+        ("", "   ", "   "),
+    ]
+    for index, (product_key, brand_key, beer_name) in enumerate(identities):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="identity-pub",
+            name="Testovací hospoda",
+            lat=50.0876,
+            lng=14.4214,
+            beer_name=beer_name,
+            beer_product_key=product_key,
+            beer_brand_key=brand_key,
+            drank_at=datetime(2026, 1, 15, 3 if index == 0 else 12, tzinfo=prague),
+        )
+
+    stats = derive_account_profile_stats(account)
+
+    assert stats["night_owl"] is True
+    assert stats["distinct_beer_identities"] == 3
+
+    _other_token, other_id = _bootstrap(client)
+    other = Account.objects.get(public_id=other_id)
+    DrinkLog.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        cache_key="four-am-pub",
+        name="Testovací hospoda",
+        lat=50.0876,
+        lng=14.4214,
+        beer_name="Pilsner Urquell",
+        drank_at=datetime(2026, 1, 15, 4, tzinfo=prague),
+    )
+
+    assert derive_account_profile_stats(other)["night_owl"] is False
 
 
 @pytest.mark.django_db

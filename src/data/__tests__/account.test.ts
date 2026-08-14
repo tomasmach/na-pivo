@@ -214,7 +214,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 
-  it('uses the last-known session when a later SecureStore read temporarily fails', async () => {
+  it('serves later calls from the in-memory session without re-reading SecureStore', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({
       deviceId: 'dev-1',
@@ -224,12 +224,15 @@ describe('ensureAccount — registration (no cache yet)', () => {
     });
     await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', authenticated: true });
 
-    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+    // Later Keychain flakiness cannot break an established session: the read
+    // happened once on the cold path and every later call is memory-only.
+    const readsAfterFirstCall = jest.mocked(SecureStore.getItemAsync).mock.calls.length;
     await expect(ensureAccount()).resolves.toMatchObject({
       accountId: 'acc-1',
       token: 'signed-token',
       authenticated: true,
     });
+    expect(jest.mocked(SecureStore.getItemAsync).mock.calls.length).toBe(readsAfterFirstCall);
   });
 
   it('throws when an authenticated session cannot be persisted securely', async () => {
@@ -423,9 +426,11 @@ describe('ensureAccount — registration (no cache yet)', () => {
       jest.advanceTimersByTime(30_001);
       await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-2' });
 
-      // Remove only the persisted blob so this test can prove the successful
-      // bootstrap reset the exponential failure counter itself.
-      await SecureStore.deleteItemAsync(ACCOUNT_KEY);
+      // Remove the cached account (keeping backoff state untouched) so this
+      // test can prove the successful bootstrap reset the exponential failure
+      // counter itself. Goes through the module so the in-memory session
+      // mirror is dropped too — production deletes always take this path.
+      await clearCachedAccount({ resetBootstrapBackoff: false });
       await expect(ensureAccount()).resolves.toBeNull();
       expect(fetchSpy).toHaveBeenCalledTimes(5);
 

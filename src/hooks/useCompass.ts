@@ -28,7 +28,6 @@ import { geohash8 } from '@/data/geohash';
 import { pubMatchesPriceFilter } from '@/data/pubSearchFilters';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 import { computeOpenState } from '@/data/communityHours';
-import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import {
@@ -210,9 +209,8 @@ export function useCompass(
   const positionLat = position?.lat;
   const positionLng = position?.lng;
 
-  useEffect(() => {
-    if (position) recordWalkingSample(position);
-  }, [position]);
+  // Walking telemetry is fed from the raw watcher stream inside
+  // useDevicePosition; published positions are deduped and would under-sample.
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());

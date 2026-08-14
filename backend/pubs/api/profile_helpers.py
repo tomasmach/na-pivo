@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, Min, Q, Sum
-from django.utils import timezone
+from django.db.models import Count, Min, Q, Sum, TextField, Value
+from django.db.models.functions import Coalesce, ExtractHour, Lower, NullIf, Trim
 
 from pubs.mapper import maper_progress
 from pubs.models import Account, DrinkLog, Friendship, PublishedNight
@@ -40,9 +40,16 @@ def derive_account_profile_stats(account: Account) -> dict:
             ),
         ),
     )
-    pub_keys = set(account.pub_visits.values_list("cache_key", flat=True))
+    # order_by() first: the models' default ordering would otherwise leak the
+    # ordering column into SELECT DISTINCT and defeat the dedup.
+    pub_keys = set(
+        account.pub_visits.order_by().values_list("cache_key", flat=True).distinct()
+    )
     pub_keys.update(
-        public_drinks.filter(cache_key__isnull=False).values_list("cache_key", flat=True)
+        public_drinks.filter(cache_key__isnull=False)
+        .order_by()
+        .values_list("cache_key", flat=True)
+        .distinct()
     )
     pub_keys.discard("")
     max_visit_row = (
@@ -53,24 +60,26 @@ def derive_account_profile_stats(account: Account) -> dict:
     )
 
     usage = getattr(account, "usage_stats", None)
-    beer_identities: set[str] = set()
-    night_owl = False
-    for drink in public_drinks.only(
-        "drank_at",
-        "beer_product_key",
-        "beer_brand_key",
-        "beer_name",
-    ):
-        local_hour = timezone.localtime(drink.drank_at, PRAGUE_TZ).hour
-        if 0 <= local_hour <= 3:
-            night_owl = True
-        identity = (
-            (drink.beer_product_key or "").strip()
-            or (drink.beer_brand_key or "").strip()
-            or (drink.beer_name or "").strip().lower()
+    night_owl = (
+        public_drinks.annotate(
+            local_hour=ExtractHour("drank_at", tzinfo=PRAGUE_TZ),
         )
-        if identity:
-            beer_identities.add(identity)
+        .filter(local_hour__lte=3)
+        .exists()
+    )
+    beer_identity = Coalesce(
+        NullIf(Trim("beer_product_key"), Value("")),
+        NullIf(Trim("beer_brand_key"), Value("")),
+        NullIf(Lower(Trim("beer_name")), Value("")),
+        output_field=TextField(),
+    )
+    distinct_beer_identities = (
+        public_drinks.annotate(identity=beer_identity)
+        .filter(identity__isnull=False)
+        .values("identity")
+        .distinct()
+        .count()
+    )
 
     accepted_friend_count = Friendship.objects.filter(
         Q(requester=account) | Q(recipient=account),
@@ -93,7 +102,7 @@ def derive_account_profile_stats(account: Account) -> dict:
         # FotoPivař stored counter (feeds the foto_pivar achievement only).
         "photo_contest_wins_count": int(getattr(usage, "photo_contest_wins_count", 0) or 0),
         "night_owl": night_owl,
-        "distinct_beer_identities": len(beer_identities),
+        "distinct_beer_identities": distinct_beer_identities,
         "accepted_friend_count": accepted_friend_count,
         "outside_drinks": int(drink_totals["outside_drinks"] or 0),
         "outdoors_drinks": int(drink_totals["outdoors_drinks"] or 0),

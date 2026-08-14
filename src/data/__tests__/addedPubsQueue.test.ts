@@ -9,7 +9,7 @@ import {
   syncOwnAddedPubs,
 } from '../addedPubsQueue';
 import { fetchOwnAddedPubs, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
-import { removeLocalPub, upsertLocalPub } from '../pubs';
+import { removeLocalPub, upsertLocalPub, upsertLocalPubs } from '../pubs';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -26,6 +26,7 @@ jest.mock('../pubs', () => ({
   pubIdForCoords: jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`),
   removeLocalPub: jest.fn(),
   upsertLocalPub: jest.fn(),
+  upsertLocalPubs: jest.fn(),
 }));
 
 const ENTRY = {
@@ -245,6 +246,11 @@ describe('added pub state registry', () => {
     expect(rows.map((row) => row.client_id)).toEqual(
       Array.from({ length: 30 }, (_, index) => `remote-${index}`),
     );
+    expect(upsertLocalPubs).toHaveBeenCalledTimes(1);
+    expect(upsertLocalPubs).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ name: 'Server 0' }),
+      expect.objectContaining({ name: 'Server 29' }),
+    ]));
   });
 
   it('uses insertion order to break equal history timestamps in favor of newer rows', async () => {

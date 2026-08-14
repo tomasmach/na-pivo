@@ -61,9 +61,10 @@ export function PubsMap({
     [currentPosition, pubs],
   );
   const visibleRegion = mapRegion ?? region;
-  const coordinateSignature = pubs
-    .map((pub) => `${pub.id}:${pub.pub.lat}:${pub.pub.lng}`)
-    .join('|');
+  const coordinateSignature = useMemo(
+    () => pubs.map((pub) => `${pub.id}:${pub.pub.lat}:${pub.pub.lng}`).join('|'),
+    [pubs],
+  );
 
   const clusters = useMemo(() => {
     if (!visibleRegion) return [];

@@ -47,6 +47,7 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     FloatField,
+    IntegerField,
     Min,
     OuterRef,
     Prefetch,
@@ -400,7 +401,13 @@ def _beer_identity_filters(beer_key: str, brewery_key: str) -> dict[str, str]:
     return filters
 
 
-def _beer_identity_query(beer_name: str, brewery_name: str, *, exact_brewery: bool = False) -> Q:
+def _beer_identity_query(
+    beer_name: str,
+    brewery_name: str,
+    *,
+    exact_brewery: bool = False,
+    match_cache: BeerCatalogMatchCache | None = None,
+) -> Q:
     """Canonical product identity plus the legacy text-hash fallback."""
 
     legacy_beer_key = _beer_identity_key(beer_name)
@@ -410,7 +417,7 @@ def _beer_identity_query(beer_name: str, brewery_name: str, *, exact_brewery: bo
         if exact_brewery
         else Q(**_beer_identity_filters(legacy_beer_key, legacy_brewery_key))
     )
-    match = match_beer_identity(beer_name, brewery_name)
+    match = match_beer_identity(beer_name, brewery_name, match_cache=match_cache)
     if match is None or match.product is None:
         return legacy
     canonical = Q(beer_key=match.product.key)
@@ -465,6 +472,9 @@ def _is_active_account(account: Account) -> bool:
 
 
 def _accepted_friend_ids(account: Account) -> list[int]:
+    cached = getattr(account, "_accepted_friend_ids_cache", None)
+    if cached is not None:
+        return cached
     rows = Friendship.objects.filter(status=Friendship.Status.ACCEPTED).filter(
         Q(requester=account) | Q(recipient=account)
     )
@@ -478,6 +488,7 @@ def _accepted_friend_ids(account: Account) -> list[int]:
         friend = row.recipient if row.requester_id == account.id else row.requester
         if _is_active_account(friend):
             friend_ids.append(friend.id)
+    account._accepted_friend_ids_cache = friend_ids
     return friend_ids
 
 
@@ -624,7 +635,12 @@ def _beer_checkin_queryset():
 
 
 def _published_night_context(request: Request) -> dict:
-    return {"request": request, "account": request.user}
+    return {
+        "request": request,
+        "account": request.user,
+        "viewer_blocked_ids": _blocked_account_ids(request.user),
+        "viewer_accepted_friend_ids": set(_accepted_friend_ids(request.user)),
+    }
 
 
 def _published_night_queryset(viewer: Account):
@@ -632,21 +648,33 @@ def _published_night_queryset(viewer: Account):
 
     viewer_round = NightRound.objects.filter(night_id=OuterRef("pk"), account=viewer)
     blocked_ids = _blocked_account_ids(viewer)
-    visible_comment_filter = Q(
-        comments__is_removed=False,
-        comments__account__status=Account.Status.ACTIVE,
+    round_counts = (
+        NightRound.objects.filter(night_id=OuterRef("pk"))
+        .values("night_id")
+        .annotate(total=Count("id"))
+        .values("total")
+    )
+    comment_counts = PublishedNightComment.objects.filter(
+        night_id=OuterRef("pk"),
+        is_removed=False,
+        account__status=Account.Status.ACTIVE,
     )
     if blocked_ids:
-        visible_comment_filter &= ~Q(comments__account_id__in=blocked_ids)
+        comment_counts = comment_counts.exclude(account_id__in=blocked_ids)
+    comment_counts = (
+        comment_counts.values("night_id")
+        .annotate(total=Count("id"))
+        .values("total")
+    )
     return PublishedNight.objects.select_related("account").annotate(
-        # Both reverse relations are joined here; DISTINCT prevents a night
-        # with two rounds and three comments from reporting six of each.
-        rounds_count=Count("rounds", distinct=True),
+        rounds_count=Coalesce(
+            Subquery(round_counts, output_field=IntegerField()),
+            Value(0),
+        ),
         viewer_has_round=Exists(viewer_round),
-        comments_count=Count(
-            "comments",
-            filter=visible_comment_filter,
-            distinct=True,
+        comments_count=Coalesce(
+            Subquery(comment_counts, output_field=IntegerField()),
+            Value(0),
         ),
     )
 
@@ -823,12 +851,16 @@ def _blocked_account_ids(account: Account) -> set[int]:
     Used to gate search / requests / respond / react / dashboard / fanout /
     invite-resolve so a block hides both parties from each other everywhere.
     """
+    cached = getattr(account, "_blocked_account_ids_cache", None)
+    if cached is not None:
+        return cached
     rows = FriendBlock.objects.filter(
         Q(blocker=account) | Q(blocked=account)
     ).values_list("blocker_id", "blocked_id")
     blocked: set[int] = set()
     for blocker_id, blocked_id in rows:
         blocked.add(blocked_id if blocker_id == account.id else blocker_id)
+    account._blocked_account_ids_cache = blocked
     return blocked
 
 
@@ -3558,6 +3590,7 @@ def _friend_presence_slice(
 
     visits = (
         PubVisit.objects.filter(account_id__in=account_ids)
+        .filter(Q(ended_at__gte=cutoff) | Q(started_at__gte=cutoff))
         .annotate(
             last_seen_at=Coalesce("ended_at", "started_at"),
             presence_activity_id=Subquery(active_activity.values("public_id")[:1]),
@@ -4301,7 +4334,7 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
 
 def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
     marker = period_start.isoformat() if period_start is not None else "all"
-    return f"v1:leaderboards:abuse-v2:{category}:{period}:{marker}"
+    return f"v1:leaderboards:abuse-v3:{category}:{period}:{marker}"
 
 
 def _leaderboard_account_queryset():
@@ -4519,6 +4552,14 @@ def _build_global_leaderboard_cache(
         "generated_at": generated_at.isoformat(),
         "period_start": period_start.isoformat() if period_start is not None else None,
         "rows": rows,
+        "ranking": [
+            (
+                row["account"].id,
+                int(row["score"]),
+                row["account"].created_at.isoformat(),
+            )
+            for row in ranked
+        ],
     }
 
 
@@ -4528,30 +4569,32 @@ def _leaderboard_me_payload(
     period_start_utc: datetime | None,
     rows: list[dict],
     blocked_ids: set[int],
+    ranking: list[tuple[int, int, str]],
 ) -> dict:
     me = request.user
     red_beer_day = category == "beers" and _leaderboard_has_red_beer_day(
         me.id,
         period_start_utc,
     )
-    score = _leaderboard_account_score(
-        me,
-        category,
-        period_start_utc,
-        red_beer_day=red_beer_day,
-    )
+    # The viewer's own score stays live — a beer logged a second ago must show
+    # up immediately, exactly as before the snapshot cache. Only the O(N)
+    # "who is ahead" walk reads the cached ranking (staleness matches the rows).
+    if red_beer_day:
+        score = 0
+    else:
+        score = _leaderboard_account_score(me, category, period_start_utc)
     rank = None
     if score > 0:
-        score_by_account = _leaderboard_score_map(category, period_start_utc, blocked_ids)
-        accounts = _leaderboard_account_queryset().filter(id__in=score_by_account.keys())
         ahead = 0
-        for account in accounts.only("id", "created_at"):
-            account_score = score_by_account.get(account.id, 0)
+        for account_id, account_score, created_at_iso in ranking:
+            if account_id == me.id or account_id in blocked_ids:
+                continue
+            account_created_at = datetime.fromisoformat(created_at_iso)
             if account_score > score or (
                 account_score == score
                 and (
-                    account.created_at < me.created_at
-                    or (account.created_at == me.created_at and account.id < me.id)
+                    account_created_at < me.created_at
+                    or (account_created_at == me.created_at and account_id < me.id)
                 )
             ):
                 ahead += 1
@@ -4624,6 +4667,7 @@ class LeaderboardsView(APIView):
             period_start_utc,
             entries,
             blocked_ids,
+            cached["ranking"],
         )
         for row in entries:
             row.pop("account_pk", None)
@@ -5708,9 +5752,11 @@ class BeerCheckInView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        match_cache = BeerCatalogMatchCache()
         catalog_match = match_beer_identity(
             data["beer_name"],
             data.get("brewery_name") or "",
+            match_cache=match_cache,
         )
         product = catalog_match.product if catalog_match is not None else None
         brand = catalog_match.brand if product is not None else None
@@ -6360,9 +6406,16 @@ class BeerMemoryView(APIView):
         brewery_name = (request.query_params.get("brewery_name") or "").strip()
         rows = []
         if beer_name:
+            match_cache = BeerCatalogMatchCache()
             rows = list(
                 BeerCheckIn.objects.filter(account=request.user)
-                .filter(_beer_identity_query(beer_name, brewery_name))
+                .filter(
+                    _beer_identity_query(
+                        beer_name,
+                        brewery_name,
+                        match_cache=match_cache,
+                    )
+                )
                 .only("checked_in_at", "pub_name", "rating", "tags")
                 .order_by("checked_in_at", "id")
             )
@@ -6402,7 +6455,13 @@ class BeerDetailView(APIView):
                 {"detail": "beer_name is required.", "code": "missing_beer_name"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        identity = _beer_identity_query(beer_name, brewery_name, exact_brewery=True)
+        match_cache = BeerCatalogMatchCache()
+        identity = _beer_identity_query(
+            beer_name,
+            brewery_name,
+            exact_brewery=True,
+            match_cache=match_cache,
+        )
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
         mine = BeerCheckIn.objects.filter(account=request.user).filter(identity)

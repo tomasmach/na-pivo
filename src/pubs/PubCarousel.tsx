@@ -1,11 +1,12 @@
 import React, { useCallback, useRef } from 'react';
 import {
+  FlatList,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
+  type ListRenderItemInfo,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -108,26 +109,43 @@ export function PubCarousel({
     [interval, onSelect, pubs],
   );
 
+  const renderCard = useCallback(
+    ({ item: pub, index }: ListRenderItemInfo<PubPresentation>) => (
+      <PubCard
+        pub={pub}
+        position={position}
+        width={cardWidth}
+        nearest={index === 0}
+        onPress={() => onOpen?.(pub.id)}
+      />
+    ),
+    [cardWidth, onOpen, position],
+  );
+
+  // Virtualized: the carousel mounts the moment the sheet drops to `peek`,
+  // and eagerly building a glass card (plus its reanimated compass dial) for
+  // every loaded pub froze the map drag for seconds. Fixed card metrics make
+  // getItemLayout exact, so snapping behaves like the old ScrollView.
   return (
-    <ScrollView
+    <FlatList
       horizontal
+      data={pubs as PubPresentation[]}
+      keyExtractor={(pub) => pub.id}
+      renderItem={renderCard}
       showsHorizontalScrollIndicator={false}
       snapToInterval={interval}
       decelerationRate="fast"
       contentContainerStyle={styles.row}
       onMomentumScrollEnd={handleScroll}
-    >
-      {pubs.map((pub, index) => (
-        <PubCard
-          key={pub.id}
-          pub={pub}
-          position={position}
-          width={cardWidth}
-          nearest={index === 0}
-          onPress={() => onOpen?.(pub.id)}
-        />
-      ))}
-    </ScrollView>
+      initialNumToRender={3}
+      maxToRenderPerBatch={4}
+      windowSize={5}
+      getItemLayout={(_, index) => ({
+        length: interval,
+        offset: MockLayout.screenPad + interval * index,
+        index,
+      })}
+    />
   );
 }
 

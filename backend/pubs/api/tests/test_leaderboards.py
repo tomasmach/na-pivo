@@ -365,6 +365,46 @@ def test_blocks_filter_warm_cache_without_reranking(client):
 
 
 @pytest.mark.django_db
+def test_blocked_accounts_ahead_are_removed_from_cached_me_rank(client):
+    token, me = _register(client, "janek")
+    _token_blocked, blocked = _register(client, "blocked")
+    _drink(me)
+    _drink(blocked)
+    _drink(blocked)
+
+    first = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+    assert first.json()["me"]["rank"] == 2
+
+    FriendBlock.objects.create(blocker=me, blocked=blocked)
+    second = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+
+    assert second.status_code == status.HTTP_200_OK
+    assert second.json()["me"]["rank"] == 1
+
+
+@pytest.mark.django_db
+def test_warm_leaderboard_cache_reuses_full_ranking(client, monkeypatch):
+    token, me = _register(client, "janek")
+    _token_other, other = _register(client, "anna")
+    _drink(me)
+    _drink(other)
+    _drink(other)
+
+    first = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+
+    def fail_score_rebuild(*args, **kwargs):
+        raise AssertionError("warm cache rebuilt the global score map")
+
+    monkeypatch.setattr("pubs.api.views._leaderboard_score_map", fail_score_rebuild)
+    second = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+
+    assert second.status_code == status.HTTP_200_OK
+    assert second.json() == first.json()
+
+
+@pytest.mark.django_db
 def test_leaderboard_rejects_invalid_params(client):
     token, _me = _register(client, "janek")
 

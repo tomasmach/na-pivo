@@ -136,20 +136,25 @@ export function PubFilterSheet({
     if (!searching) return;
     const controller = new AbortController();
     const requestedQuery = normalizedQuery;
-    suggestBeerBrands(query, controller.signal, 8)
-      .then((items) => {
-        if (!controller.signal.aborted) {
-          setSuggestions(items);
-          setSuggestionsQuery(requestedQuery);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setSuggestions([]);
-          setSuggestionsQuery(requestedQuery);
-        }
-      });
-    return () => controller.abort();
+    const timeout = setTimeout(() => {
+      suggestBeerBrands(query, controller.signal, 8)
+        .then((items) => {
+          if (!controller.signal.aborted) {
+            setSuggestions(items);
+            setSuggestionsQuery(requestedQuery);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSuggestions([]);
+            setSuggestionsQuery(requestedQuery);
+          }
+        });
+    }, 220);
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
   }, [normalizedQuery, query, searching]);
 
   const groupedAmenities = useMemo(

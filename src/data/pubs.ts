@@ -363,19 +363,27 @@ export function _init(syntheticPubs: Pub[]): void {
   replaceBasePubs(syntheticPubs);
 }
 
-/** Insert or replace a pub in the in-memory index. The geohash-8 replacement
+/** Insert or replace pubs in the in-memory index. The geohash-8 replacement
  * keeps one visible entry per physical place, matching the backend cache key. */
-export function upsertLocalPub(pub: Pub): void {
-  const cacheKey = geohash8(pub.lat, pub.lng);
+export function upsertLocalPubs(pubs: Pub[]): void {
+  if (pubs.length === 0) return;
   const nextOverrides = new Map<string, Pub>();
-  for (const [id, existing] of _localPubOverrides.entries()) {
-    if (id === pub.id) continue;
-    if (geohash8(existing.lat, existing.lng) === cacheKey) continue;
-    nextOverrides.set(id, existing);
+  for (const [id, existing] of _localPubOverrides.entries()) nextOverrides.set(id, existing);
+  for (const pub of pubs) {
+    const cacheKey = geohash8(pub.lat, pub.lng);
+    for (const [id, existing] of nextOverrides.entries()) {
+      if (id === pub.id || geohash8(existing.lat, existing.lng) === cacheKey) {
+        nextOverrides.delete(id);
+      }
+    }
+    nextOverrides.set(pub.id, pub);
   }
-  nextOverrides.set(pub.id, pub);
   _localPubOverrides = nextOverrides;
   rebuildCurrentIndex();
+}
+
+export function upsertLocalPub(pub: Pub): void {
+  upsertLocalPubs([pub]);
 }
 
 export function removeLocalPub(pubId: string): void {

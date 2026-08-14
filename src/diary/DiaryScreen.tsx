@@ -177,30 +177,30 @@ function nightNoun(session: TallySession): { count: number; noun: string } {
 
 // ─── One older night ──────────────────────────────────────────────────────────
 
-function NightRow({
+const NightRow = React.memo(function NightRow({
   session,
   priceCurrency,
-  now,
+  nowMinuteMs,
   isFirst,
-  onPress,
+  onOpen,
 }: {
   session: TallySession;
   priceCurrency: PriceCurrency;
-  now: Date;
+  nowMinuteMs: number;
   isFirst: boolean;
-  onPress: () => void;
+  onOpen: (session: TallySession) => void;
 }) {
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
   const totalCzk = sessionTotalCzk(session);
   const meta = cs.diary.nightMeta([
-    eveningDateLabel(session.startedAt, now),
+    eveningDateLabel(session.startedAt, new Date(nowMinuteMs)),
     sessionDrinkSummary(session),
     totalCzk > 0 ? formatPrice(totalCzk, priceCurrency) : '',
   ]);
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onOpen(session)}
       style={({ pressed }) => [styles.row, !isFirst && styles.rowDivider, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={cs.a11y.diaryNight(session.pubName, meta)}
@@ -217,7 +217,7 @@ function NightRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 /**
  * The discreet end of a row: a lock when the entry is yours alone, a clock while
@@ -325,19 +325,19 @@ function emptyCheckInState(owner: string): DiaryCheckInState {
   };
 }
 
-function HistoricalCheckInRow({
+const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
   checkIn,
   priceCurrency,
   isFirst,
   isQueued,
-  onPress,
+  onOpen,
 }: {
   checkIn: BeerCheckIn;
   priceCurrency: PriceCurrency;
   isFirst: boolean;
   /** Still in the offline queue: written down here, not yet on the server. */
   isQueued: boolean;
-  onPress: () => void;
+  onOpen: (checkIn: BeerCheckIn) => void;
 }) {
   const meta = historicalMeta(checkIn, priceCurrency);
   const isPrivate = checkIn.visibility === 'private';
@@ -350,7 +350,7 @@ function HistoricalCheckInRow({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onOpen(checkIn)}
       style={({ pressed }) => [
         styles.row,
         !isFirst && styles.rowDivider,
@@ -371,7 +371,7 @@ function HistoricalCheckInRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -405,6 +405,7 @@ export default function DiaryScreen({
     return () => clearInterval(timer);
   }, []);
   const now = useMemo(() => new Date(nowMs), [nowMs]);
+  const nowMinuteMs = Math.floor(nowMs / 60_000) * 60_000;
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -692,6 +693,20 @@ export default function DiaryScreen({
     [router],
   );
 
+  const openHistoricalCheckIn = useCallback(
+    (checkIn: BeerCheckIn) => {
+      trackUiInteraction('diary_beer_open');
+      router.push({
+        pathname: '/beer-detail',
+        params: {
+          beer: checkIn.beerName,
+          brewery: checkIn.breweryName,
+        },
+      });
+    },
+    [router],
+  );
+
   const handleHistoricalSaved = useCallback(
     (entries: BeerCheckInInput[]) => {
       setCheckInState((current) => {
@@ -783,12 +798,14 @@ export default function DiaryScreen({
                 <SectionBreak title={cs.diary.olderHeader} inset={MockLayout.screenPad} />
                 {olderNights.map((session, index) => (
                   <NightRow
-                    key={session.startedAt}
+                    // pubKey in the key: two seeded/backdated evenings can share
+                    // a startedAt, and duplicate keys drop rows from the list.
+                    key={`${session.pubKey}|${session.startedAt}|${index}`}
                     session={session}
                     priceCurrency={priceCurrency}
-                    now={now}
+                    nowMinuteMs={nowMinuteMs}
                     isFirst={index === 0}
-                    onPress={() => openEvening(session)}
+                    onOpen={openEvening}
                   />
                 ))}
               </>
@@ -804,16 +821,7 @@ export default function DiaryScreen({
                     priceCurrency={priceCurrency}
                     isFirst={index === 0}
                     isQueued={queuedIds.has(checkIn.clientId || checkIn.id)}
-                    onPress={() => {
-                      trackUiInteraction('diary_beer_open');
-                      router.push({
-                        pathname: '/beer-detail',
-                        params: {
-                          beer: checkIn.beerName,
-                          brewery: checkIn.breweryName,
-                        },
-                      });
-                    }}
+                    onOpen={openHistoricalCheckIn}
                   />
                 ))}
               </>

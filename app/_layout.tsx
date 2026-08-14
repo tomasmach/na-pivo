@@ -504,9 +504,10 @@ export default function RootLayout() {
         void flushFriendsQueue();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
-        void flushNightsQueue();
-        void flushPartyGamesQueue();
-        void flushPartyGameStartsQueue();
+        // Nights + party-games queues are flushed in the resumeSession chain
+        // above, after the evening-actions queue — the ordering that launch
+        // uses. Flushing them here too ran every one of them twice per
+        // foreground.
         void useAccountStore.getState().refreshDiarySnapshot();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).

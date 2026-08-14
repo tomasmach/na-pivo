@@ -429,119 +429,149 @@ export default function LivePartyMockScreen() {
   const meId = nightMe(night)?.id;
   const games = night.games;
   const photoCount = night.photos.length;
-  const routeStops = uniqueNightStops(night).flatMap((stop) => {
-    if (stop.lat !== undefined && stop.lng !== undefined) {
-      return [{ name: stop.pubName, lat: stop.lat, lng: stop.lng }];
-    }
-    if (stop.cacheKey && /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(stop.cacheKey)) {
-      return [{ name: stop.pubName, ...decodeGeohash8(stop.cacheKey) }];
-    }
-    return [];
-  });
-  const people = night.people.slice(1).filter((person) => person.active !== false);
-  const myDrinks = night.drinks.filter((drink) => drink.by === meId);
-
-  const mine = beersOf(night, meId);
-  const table = nightTally(night).beers;
-  const byType = nightByBeer({ ...night, drinks: myDrinks }).map((row) => ({
-    beer: row.beer,
-    count: row.count,
-  }));
+  // Memoized on the night record: this screen re-renders on every store tick
+  // and once a minute from the clock, and these derivations walk the whole
+  // night (stops, people, drinks) — they only change when the night does.
+  const { routeStops, people, myDrinks, mine, table, byType } = React.useMemo(() => {
+    const drinks = night.drinks.filter((drink) => drink.by === meId);
+    return {
+      routeStops: uniqueNightStops(night).flatMap((stop) => {
+        if (stop.lat !== undefined && stop.lng !== undefined) {
+          return [{ name: stop.pubName, lat: stop.lat, lng: stop.lng }];
+        }
+        if (stop.cacheKey && /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(stop.cacheKey)) {
+          return [{ name: stop.pubName, ...decodeGeohash8(stop.cacheKey) }];
+        }
+        return [];
+      }),
+      people: night.people.slice(1).filter((person) => person.active !== false),
+      myDrinks: drinks,
+      mine: beersOf(night, meId),
+      table: nightTally(night).beers,
+      byType: nightByBeer({ ...night, drinks }).map((row) => ({
+        beer: row.beer,
+        count: row.count,
+      })),
+    };
+  }, [night, meId]);
   const detectedPub = nearby.selected && pubKey === geohash8(nearby.selected.lat, nearby.selected.lng)
     ? nearby.selected
     : null;
   const detectedCandidate = detectedPub
     ? nearby.candidates.find((candidate) => candidate.pubKey === pubKey)
     : null;
-  const detectedTaps = (detectedPub?.beers ?? []).map((tap) => ({
-    name: tap.name,
-    priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null,
-  }));
-  const taps = partyTapOptions(
-    pubTaps,
-    detectedTaps,
-    [{ name: houseBeer, priceCzk: null }],
-    byType.map((row) => ({ name: row.beer, priceCzk: null })),
+  const detectedTaps = React.useMemo(
+    () =>
+      (detectedPub?.beers ?? []).map((tap) => ({
+        name: tap.name,
+        priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null,
+      })),
+    [detectedPub],
   );
-  const myDrinkIds = new Set(myDrinks.map((drink) => drink.id));
-  const tallySessions = [tallyCurrent, ...tallyHistory]
-    .filter((session): session is NonNullable<typeof session> => session !== null);
-  const privateDrinks = tallySessions
-    .flatMap((session) => session.drinks)
-    .filter((drink) => myDrinkIds.has(drink.id));
-  const privateDrinksAtPlace = tallySessions
-    .filter((session) => session.pubKey === partyPlaceKey)
-    .flatMap((session) => session.drinks)
-    .filter((drink) => myDrinkIds.has(drink.id));
-  const drinkPlaceById = new Map(tallySessions.flatMap((session) =>
-    session.drinks.map((drink) => [drink.id, session.pubKey] as const),
-  ));
-  const privateById = new Map(privateDrinks.map((drink) => [drink.id, drink]));
-  const latestDrink = [...privateDrinksAtPlace].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null;
-  const groupedDrinks = new Map<string, PartyDrinkChoice>();
-  for (const drink of privateDrinksAtPlace) {
-    const key = drinkIdentity(drink);
-    const current = groupedDrinks.get(key);
-    groupedDrinks.set(key, {
-      key,
-      name: drink.beerName,
-      drinkType: drinkTypeOf(drink),
-      priceCzk: drink.priceCzk,
-      volumeMl: drink.volumeMl,
-      count: (current?.count ?? 0) + 1,
-      meta: [
-        drink.volumeMl ? formatVolume(drink.volumeMl) : null,
-        drink.priceCzk ? formatPrice(drink.priceCzk, priceCurrency) : null,
-      ].filter(Boolean).join(' · ') || null,
-    });
-  }
-  for (const tap of taps) {
-    const candidate: PartyDrinkChoice = {
-      key: `beer|${tap.name}|500|${tap.priceCzk ?? ''}`,
-      name: tap.name,
-      drinkType: 'beer',
-      priceCzk: tap.priceCzk ?? undefined,
-      volumeMl: 500,
-      count: 0,
-      meta: [formatVolume(500), tap.priceCzk ? formatPrice(tap.priceCzk, priceCurrency) : null]
-        .filter(Boolean).join(' · '),
-    };
-    if (![...groupedDrinks.values()].some((row) => row.name === tap.name && row.drinkType === 'beer')) {
-      groupedDrinks.set(candidate.key, candidate);
+  const taps = React.useMemo(
+    () =>
+      partyTapOptions(
+        pubTaps,
+        detectedTaps,
+        [{ name: houseBeer, priceCzk: null }],
+        byType.map((row) => ({ name: row.beer, priceCzk: null })),
+      ),
+    [byType, detectedTaps, houseBeer, pubTaps],
+  );
+  const { privateDrinks, privateDrinksAtPlace, drinkPlaceById, privateById, latestDrink } =
+    React.useMemo(() => {
+      const myDrinkIds = new Set(myDrinks.map((drink) => drink.id));
+      const tallySessions = [tallyCurrent, ...tallyHistory]
+        .filter((session): session is NonNullable<typeof session> => session !== null);
+      const drinks = tallySessions
+        .flatMap((session) => session.drinks)
+        .filter((drink) => myDrinkIds.has(drink.id));
+      const drinksAtPlace = tallySessions
+        .filter((session) => session.pubKey === partyPlaceKey)
+        .flatMap((session) => session.drinks)
+        .filter((drink) => myDrinkIds.has(drink.id));
+      return {
+        privateDrinks: drinks,
+        privateDrinksAtPlace: drinksAtPlace,
+        drinkPlaceById: new Map(tallySessions.flatMap((session) =>
+          session.drinks.map((drink) => [drink.id, session.pubKey] as const),
+        )),
+        privateById: new Map(drinks.map((drink) => [drink.id, drink])),
+        latestDrink:
+          [...drinksAtPlace].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null,
+      };
+    }, [myDrinks, partyPlaceKey, tallyCurrent, tallyHistory]);
+  const drinkChoices = React.useMemo(() => {
+    const groupedDrinks = new Map<string, PartyDrinkChoice>();
+    for (const drink of privateDrinksAtPlace) {
+      const key = drinkIdentity(drink);
+      const current = groupedDrinks.get(key);
+      groupedDrinks.set(key, {
+        key,
+        name: drink.beerName,
+        drinkType: drinkTypeOf(drink),
+        priceCzk: drink.priceCzk,
+        volumeMl: drink.volumeMl,
+        count: (current?.count ?? 0) + 1,
+        meta: [
+          drink.volumeMl ? formatVolume(drink.volumeMl) : null,
+          drink.priceCzk ? formatPrice(drink.priceCzk, priceCurrency) : null,
+        ].filter(Boolean).join(' · ') || null,
+      });
     }
-  }
-  const drinkChoices = [...groupedDrinks.values()];
-  const totalCzk = privateDrinks.reduce((sum, drink) => sum + (drink.priceCzk ?? 0), 0);
-  const hasCompletePrice = privateDrinks.length > 0 &&
-    privateDrinks.every((drink) => typeof drink.priceCzk === 'number');
-  const receiptGrouped = new Map<string, PartyDrinkChoice>();
-  for (const drink of privateDrinks) {
-    const key = drinkIdentity(drink);
-    const current = receiptGrouped.get(key);
-    receiptGrouped.set(key, {
-      key,
-      name: drink.beerName,
-      drinkType: drinkTypeOf(drink),
-      priceCzk: drink.priceCzk,
-      volumeMl: drink.volumeMl,
-      count: (current?.count ?? 0) + 1,
-      meta: null,
-    });
-  }
-  const receiptRows = [...receiptGrouped.values()]
-    .map<ReceiptItem>((choice) => ({
-      key: choice.key,
-      name: choice.name,
-      meta: choice.volumeMl ? formatVolume(choice.volumeMl) : null,
-      count: choice.count,
-      totalLabel: choice.priceCzk
-        ? formatPrice(choice.priceCzk * choice.count, priceCurrency)
-        : null,
-    }));
-  const receiptBeerRows = receiptRows.filter((row) =>
-    privateDrinks.some((drink) => drinkIdentity(drink) === row.key && drinkTypeOf(drink) === 'beer'),
-  );
-  const receiptOtherRows = receiptRows.filter((row) => !receiptBeerRows.includes(row));
+    for (const tap of taps) {
+      const candidate: PartyDrinkChoice = {
+        key: `beer|${tap.name}|500|${tap.priceCzk ?? ''}`,
+        name: tap.name,
+        drinkType: 'beer',
+        priceCzk: tap.priceCzk ?? undefined,
+        volumeMl: 500,
+        count: 0,
+        meta: [formatVolume(500), tap.priceCzk ? formatPrice(tap.priceCzk, priceCurrency) : null]
+          .filter(Boolean).join(' · '),
+      };
+      if (![...groupedDrinks.values()].some((row) => row.name === tap.name && row.drinkType === 'beer')) {
+        groupedDrinks.set(candidate.key, candidate);
+      }
+    }
+    return [...groupedDrinks.values()];
+  }, [priceCurrency, privateDrinksAtPlace, taps]);
+  const { totalCzk, hasCompletePrice, receiptBeerRows, receiptOtherRows } = React.useMemo(() => {
+    const receiptGrouped = new Map<string, PartyDrinkChoice>();
+    for (const drink of privateDrinks) {
+      const key = drinkIdentity(drink);
+      const current = receiptGrouped.get(key);
+      receiptGrouped.set(key, {
+        key,
+        name: drink.beerName,
+        drinkType: drinkTypeOf(drink),
+        priceCzk: drink.priceCzk,
+        volumeMl: drink.volumeMl,
+        count: (current?.count ?? 0) + 1,
+        meta: null,
+      });
+    }
+    const receiptRows = [...receiptGrouped.values()]
+      .map<ReceiptItem>((choice) => ({
+        key: choice.key,
+        name: choice.name,
+        meta: choice.volumeMl ? formatVolume(choice.volumeMl) : null,
+        count: choice.count,
+        totalLabel: choice.priceCzk
+          ? formatPrice(choice.priceCzk * choice.count, priceCurrency)
+          : null,
+      }));
+    const beerRows = receiptRows.filter((row) =>
+      privateDrinks.some((drink) => drinkIdentity(drink) === row.key && drinkTypeOf(drink) === 'beer'),
+    );
+    return {
+      totalCzk: privateDrinks.reduce((sum, drink) => sum + (drink.priceCzk ?? 0), 0),
+      hasCompletePrice: privateDrinks.length > 0 &&
+        privateDrinks.every((drink) => typeof drink.priceCzk === 'number'),
+      receiptBeerRows: beerRows,
+      receiptOtherRows: receiptRows.filter((row) => !beerRows.includes(row)),
+    };
+  }, [priceCurrency, privateDrinks]);
   const openDrinkForm = (mode: 'add' | 'edit', type: DrinkType, drink: TallyDrink | null = null) => {
     setBeersOpen(false);
     setFormMode(mode);
@@ -705,12 +735,15 @@ export default function LivePartyMockScreen() {
   }, [night]);
 
   // The pulse rules work in minutes from the start; the stamps are epoch.
-  const beerTimes =
-    effectiveStartedAt === null
-      ? []
-      : myDrinks
-          .filter((drink) => drink.drinkType === 'beer')
-          .map((drink) => minutesBetween(effectiveStartedAt, new Date(drink.at).getTime()));
+  const beerTimes = React.useMemo(
+    () =>
+      effectiveStartedAt === null
+        ? []
+        : myDrinks
+            .filter((drink) => drink.drinkType === 'beer')
+            .map((drink) => minutesBetween(effectiveStartedAt, new Date(drink.at).getTime())),
+    [effectiveStartedAt, myDrinks],
+  );
   const stats = active
     ? hubStats({ beerTimes, now: minutes, mine, table, others: people.length })
     : [];

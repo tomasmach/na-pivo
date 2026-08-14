@@ -23,7 +23,6 @@ import { checkLocationPermission, ensureLocationPermission, openSystemSettings }
 import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
-import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useTallyStore } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
 
@@ -124,9 +123,8 @@ export function useNearbyPub(): UseNearbyPubResult {
 
   const { position } = useDevicePosition(focused && permissionState === 'granted');
 
-  useEffect(() => {
-    if (position) recordWalkingSample(position);
-  }, [position]);
+  // Walking telemetry is fed from the raw watcher stream inside
+  // useDevicePosition; published positions are deduped and would under-sample.
 
   const positionLat = position?.lat;
   const positionLng = position?.lng;
