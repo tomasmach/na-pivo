@@ -55,4 +55,31 @@ describe('BarChart scrubbing', () => {
 
     expect(onScrub.mock.calls).toEqual([[2], [null]]);
   });
+
+  it('leaves a vertical swipe to the scrolling page', () => {
+    render(
+      React.createElement(BarChart, {
+        points: [
+          { label: 'I', value: 1 },
+          { label: 'II', value: 2 },
+        ],
+      }),
+    );
+
+    const create = PanResponder.create as jest.Mock;
+    const handlers = create.mock.calls.at(-1)?.[0] as {
+      onMoveShouldSetPanResponderCapture: (
+        event: unknown,
+        gesture: { dx: number; dy: number },
+      ) => boolean;
+    };
+    const capture = (dx: number, dy: number) =>
+      handlers.onMoveShouldSetPanResponderCapture({}, { dx, dy });
+
+    expect(capture(0, 40)).toBe(false);
+    expect(capture(9, 40)).toBe(false);
+    expect(capture(3, 0)).toBe(false);
+    expect(capture(40, 9)).toBe(true);
+    expect(capture(-40, 9)).toBe(true);
+  });
 });

@@ -58,8 +58,11 @@ export function BarChart({
         // A still finger remains the individual bar's Pressable. Once it moves,
         // the plot takes the responder and walks through buckets by x position.
         onStartShouldSetPanResponder: () => false,
+        // Only a decisively horizontal drag: the chart lives inside a scrolling
+        // page, and capturing any movement made the chart a dead zone for
+        // scrolling — a vertical swipe scrubbed bars instead of moving the page.
         onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-          Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2,
+          Math.abs(gesture.dx) > 6 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
         onPanResponderGrant: (event) => {
           scrub(barIndexAt(event.nativeEvent.locationX, plotWidth, points.length));
         },
