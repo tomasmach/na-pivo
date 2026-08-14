@@ -1330,7 +1330,10 @@ def test_request_via_invite_code_bypasses_public_gate(client, monkeypatch):
     friendship = Friendship.objects.get()
     assert friendship.requester_id == account_a.id
     assert friendship.recipient_id == account_b.id
-    assert friendship.status == Friendship.Status.PENDING
+    # Handing out the code is the consent, so redeeming it is a friendship, not
+    # a request the inviter would have to approve afterwards.
+    assert friendship.status == Friendship.Status.ACCEPTED
+    assert friendship.responded_at is not None
 
 
 @pytest.mark.django_db

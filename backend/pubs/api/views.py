@@ -4850,11 +4850,30 @@ class FriendRequestView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
+                # Minting an invite code IS the consent, so redeeming one is not
+                # a request anybody has to approve: the inviter already said yes
+                # by handing the code over. Leaving it PENDING would park the
+                # scanner in a waiting room the app no longer has a door to.
+                initial_status = (
+                    Friendship.Status.ACCEPTED if via_invite else Friendship.Status.PENDING
+                )
                 friendship, created = Friendship.objects.select_for_update().get_or_create(
                     requester=request.user,
                     recipient=target,
-                    defaults={"status": Friendship.Status.PENDING},
+                    defaults={
+                        "status": initial_status,
+                        "responded_at": now if via_invite else None,
+                    },
                 )
+                if (
+                    not created
+                    and via_invite
+                    and friendship.status == Friendship.Status.PENDING
+                ):
+                    friendship.status = Friendship.Status.ACCEPTED
+                    friendship.responded_at = now
+                    friendship.save(update_fields=["status", "responded_at", "updated_at"])
+                    created = True
                 if not created and friendship.status == Friendship.Status.DECLINED:
                     # Anti-harassment: a declined request may NOT silently re-open
                     # (and re-notify the decliner) during the cooldown window. We
@@ -4869,11 +4888,14 @@ class FriendRequestView(APIView):
                         ).data
                         payload["cooldown_until"] = (responded_at + cooldown).isoformat()
                         return Response(payload, status=status.HTTP_200_OK)
-                    friendship.status = Friendship.Status.PENDING
-                    friendship.responded_at = None
+                    friendship.status = initial_status
+                    friendship.responded_at = now if via_invite else None
                     friendship.save(update_fields=["status", "responded_at", "updated_at"])
                     created = True
-                if friendship.status == Friendship.Status.ACCEPTED:
+                # An already-accepted row is a no-op; a freshly created one is not,
+                # even though an invite redemption arrives accepted — it still owes
+                # the inviter a notification below.
+                if not created and friendship.status == Friendship.Status.ACCEPTED:
                     return Response(
                         FriendshipSerializer(friendship, context=_friend_profile_context(request)).data,
                         status=status.HTTP_200_OK,
@@ -4883,12 +4905,23 @@ class FriendRequestView(APIView):
             return _internal_error()
 
         if created:
-            title = "Nový kámoš na pivo?"
-            body = f"{_friend_display_name(request.user)} si tě chce přidat mezi kamarády."
+            # An invite redemption is already a done deal, so it announces itself
+            # as one — telling the inviter someone "wants" to be added would ask
+            # them for a decision they have nowhere left to make.
+            if via_invite:
+                title = "Máš nového parťáka"
+                body = f"{_friend_display_name(request.user)} je v partě přes tvůj kód."
+                kind = FriendNotification.Kind.FRIEND_ACCEPTED
+                push_kind = "friend_accepted"
+            else:
+                title = "Nový kámoš na pivo?"
+                body = f"{_friend_display_name(request.user)} si tě chce přidat mezi kamarády."
+                kind = FriendNotification.Kind.FRIEND_REQUEST
+                push_kind = "friend_request"
             _create_friend_notification(
                 recipient=target,
                 actor=request.user,
-                kind=FriendNotification.Kind.FRIEND_REQUEST,
+                kind=kind,
                 title=title,
                 body=body,
                 friendship=friendship,
@@ -4897,7 +4930,7 @@ class FriendRequestView(APIView):
                 [target.id],
                 title,
                 body,
-                {"kind": "friend_request", "friendship_id": str(friendship.public_id)},
+                {"kind": push_kind, "friendship_id": str(friendship.public_id)},
             )
 
         return Response(
