@@ -38,6 +38,16 @@ const MIN_SPAN = 0.006;
 /** How tall the bottom fade is. */
 const FADE = 78;
 
+/**
+ * `showsPointsOfInterests` is an Apple Maps prop and this map is Google, so
+ * every church, museum and Hard Rock Cafe was shouting over the night's own
+ * pins. On Google the same request is a style rule.
+ */
+const MAP_STYLE = [
+  { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+];
+
 export interface RouteStop {
   name: string;
   lat: number;
@@ -67,6 +77,7 @@ export function NightRoute({
   photos = 0,
   height = HEIGHT,
   caption = true,
+  fallbackCenter,
 }: {
   stops: RouteStop[];
   live?: boolean;
@@ -76,8 +87,24 @@ export function NightRoute({
   /** The route printed over the fade. Off where the screen already names the
    *  place — in the party hub the header says it two rows below. */
   caption?: boolean;
+  /** Where to look when there are no stops yet — the party hub's idle state
+   *  frames the neighbourhood the evening is about to happen in instead of
+   *  rendering nothing and leaving a black band. No marker: there is no stop
+   *  to number, just a place. */
+  fallbackCenter?: { lat: number; lng: number };
 }) {
-  const region = useMemo(() => (stops.length > 0 ? regionFor(stops) : null), [stops]);
+  const region = useMemo(() => {
+    if (stops.length > 0) return regionFor(stops);
+    if (fallbackCenter) {
+      return {
+        latitude: fallbackCenter.lat,
+        longitude: fallbackCenter.lng,
+        latitudeDelta: MIN_SPAN,
+        longitudeDelta: MIN_SPAN,
+      };
+    }
+    return null;
+  }, [fallbackCenter, stops]);
   const tint = live ? MockColors.live : MockColors.accent;
 
   if (!region) return null;
@@ -95,6 +122,7 @@ export function NightRoute({
         rotateEnabled={false}
         pitchEnabled={false}
         showsPointsOfInterests={false}
+        customMapStyle={MAP_STYLE}
         showsCompass={false}
         showsMyLocationButton={false}
         toolbarEnabled={false}
