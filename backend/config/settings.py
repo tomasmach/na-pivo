@@ -307,6 +307,7 @@ PUSH_DEVICES_THROTTLE_RATE: str = os.environ.get("PUSH_DEVICES_THROTTLE_RATE", "
 # activity can fan out notifications, so writes stay bounded while dashboard
 # reads (the friends_dashboard scope below) get their own, larger budget.
 FRIENDS_THROTTLE_RATE: str = os.environ.get("FRIENDS_THROTTLE_RATE", "120/min")
+FOLLOWS_THROTTLE_RATE: str = os.environ.get("FOLLOWS_THROTTLE_RATE", "120/min")
 NIGHT_COMMENTS_THROTTLE_RATE: str = os.environ.get(
     "NIGHT_COMMENTS_THROTTLE_RATE", "30/hour"
 )
@@ -528,6 +529,7 @@ REST_FRAMEWORK = {
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,
+        "follows": FOLLOWS_THROTTLE_RATE,
         "night_comments": NIGHT_COMMENTS_THROTTLE_RATE,
         "stats": STATS_THROTTLE_RATE,
         "challenges": CHALLENGES_THROTTLE_RATE,

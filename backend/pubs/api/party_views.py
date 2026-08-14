@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 import uuid
 
@@ -30,6 +31,7 @@ from pubs.models import (
     BeerPhoto,
     DrinkLog,
     FriendBlock,
+    Friendship,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
@@ -50,6 +52,8 @@ PARTY_RECORD_MAX_GAME_EVENTS = 2_000
 PARTY_RECORD_MAX_TIMELINE_EVENTS = 2_000
 # A recap picker is deliberately a small recent-history surface, not an export.
 PARTY_HISTORY_MAX_EVENINGS = 20
+
+logger = logging.getLogger(__name__)
 
 
 def _profile(account: Account) -> dict:
@@ -82,6 +86,58 @@ def _blocked_account_ids(account: Account) -> set[int]:
     return blocked_ids
 
 
+def _accept_evening_friendships(evening: PartyEvening, account: Account, now) -> None:
+    """Accept the joiner's relationship with every other active table member."""
+
+    other_accounts = [
+        membership.account
+        for membership in evening.memberships.filter(
+            active=True,
+            account__status=Account.Status.ACTIVE,
+        )
+        .exclude(account=account)
+        .select_related("account")
+    ]
+    for other in other_accounts:
+        if _blocked(account, other):
+            continue
+        existing = list(
+            Friendship.objects.select_for_update()
+            .filter(
+                Q(requester=account, recipient=other)
+                | Q(requester=other, recipient=account)
+            )
+            .order_by("pk")
+        )
+        if any(row.status == Friendship.Status.ACCEPTED for row in existing):
+            continue
+        if any(row.status == Friendship.Status.DECLINED for row in existing):
+            continue
+        pending = next(
+            (row for row in existing if row.status == Friendship.Status.PENDING),
+            None,
+        )
+        if pending is not None:
+            pending.status = Friendship.Status.ACCEPTED
+            pending.requested_at = now
+            pending.responded_at = now
+            pending.save(
+                update_fields=[
+                    "status",
+                    "requested_at",
+                    "responded_at",
+                    "updated_at",
+                ]
+            )
+            continue
+        Friendship.objects.create(
+            requester=account,
+            recipient=other,
+            status=Friendship.Status.ACCEPTED,
+            responded_at=now,
+        )
+
+
 def _can_access(evening: PartyEvening, account: Account) -> bool:
     if (
         account.status != Account.Status.ACTIVE
@@ -92,8 +148,8 @@ def _can_access(evening: PartyEvening, account: Account) -> bool:
         return False
     if _blocked(account, evening.host):
         return False
-    # A join code grants access to this table only. It never creates a durable
-    # friendship, and friendship is not a prerequisite after explicit opt-in.
+    # A join code grants access to this table. Friendship is still not a
+    # prerequisite because joining the table is the consent that creates it.
     return evening.memberships.filter(account=account, active=True).exists()
 
 
@@ -441,14 +497,47 @@ class PartyEveningJoinView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         with transaction.atomic():
-            account = Account.objects.select_for_update().get(pk=request.user.pk)
+            evening = (
+                PartyEvening.objects.select_for_update()
+                .select_related("host")
+                .get(pk=evening.pk)
+            )
+            active_account_ids = list(
+                evening.memberships.filter(active=True).values_list(
+                    "account_id", flat=True
+                )
+            )
+            locked_accounts = {
+                row.pk: row
+                for row in Account.objects.select_for_update()
+                .filter(pk__in=sorted({request.user.pk, *active_account_ids}))
+                .order_by("pk")
+            }
+            account = locked_accounts[request.user.pk]
+            if account != evening.host and _blocked(account, evening.host):
+                return Response(
+                    {
+                        "detail": "Party evening is unavailable.",
+                        "code": "party_blocked",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             if _has_other_active_membership(account, evening):
                 return _active_membership_conflict()
+            now = timezone.now()
             PartyEveningMember.objects.update_or_create(
                 evening=evening,
                 account=account,
-                defaults={"active": True, "left_at": None, "joined_at": timezone.now()},
+                defaults={"active": True, "left_at": None, "joined_at": now},
             )
+            try:
+                with transaction.atomic():
+                    _accept_evening_friendships(evening, account, now)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "party evening friendship sync failed",
+                    extra={"event": "party_evening_friendship_sync_failed"},
+                )
         return Response(_serialize_evening(evening, request.user))
 
     def delete(self, request: Request, code: str) -> Response:

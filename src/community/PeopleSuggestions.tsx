@@ -5,10 +5,11 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { CheckIcon, UserPlusIcon } from '@/components/shared/IconGlyph';
 import {
   fetchFriendSuggestions,
-  sendFriendRequest,
+  followAccount,
   type FriendSuggestion,
 } from '@/data/friendsClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
+import { cs } from '@/i18n/cs';
 import { Avatar } from '@/profile/Avatar';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -53,10 +54,11 @@ export function PeopleSuggestions() {
     return () => controller.abort();
   }, []);
 
+  /** A suggestion is a stranger, and a stranger gets followed, not invited. */
   const add = (person: FriendSuggestion) => {
     if (busy.has(person.id) || sent.has(person.id)) return;
     setBusy((current) => new Set(current).add(person.id));
-    void sendFriendRequest({ accountId: person.id }).then((result) => {
+    void followAccount(person.id).then((result) => {
       setBusy((current) => {
         const next = new Set(current);
         next.delete(person.id);
@@ -64,7 +66,7 @@ export function PeopleSuggestions() {
       });
       if (result.ok) {
         setSent((current) => new Set(current).add(person.id));
-        showToast('Žádost je na cestě.');
+        showToast(cs.friends.followed);
       } else {
         showToast(result.detail);
       }
@@ -98,7 +100,9 @@ export function PeopleSuggestions() {
             ]}
             accessibilityRole="button"
             accessibilityState={{ disabled: busy.has(person.id) || added }}
-            accessibilityLabel={added ? `Žádost odeslána ${personLabel}` : `Přidat ${personLabel}`}
+            accessibilityLabel={
+              added ? `${cs.friends.followingHeader}: ${personLabel}` : `${cs.friends.follow}: ${personLabel}`
+            }
           >
             <Avatar
               uri={person.avatarUrl}

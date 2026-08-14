@@ -2,7 +2,7 @@ import React from 'react';
 
 import {
   fetchFriendSuggestions,
-  sendFriendRequest,
+  followAccount,
 } from '@/data/friendsClient';
 
 import { PeopleSuggestions } from '../PeopleSuggestions';
@@ -16,7 +16,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
 });
 jest.mock('@/data/friendsClient', () => ({
   fetchFriendSuggestions: jest.fn(),
-  sendFriendRequest: jest.fn(),
+  followAccount: jest.fn(),
 }));
 jest.mock('@/friends/SkeletonBlock', () => ({
   __esModule: true,
@@ -38,7 +38,7 @@ const { act } = TestRenderer;
 const fetchSuggestionsMock = fetchFriendSuggestions as jest.MockedFunction<
   typeof fetchFriendSuggestions
 >;
-const sendRequestMock = sendFriendRequest as jest.MockedFunction<typeof sendFriendRequest>;
+const followMock = followAccount as jest.MockedFunction<typeof followAccount>;
 
 async function flushEffects(): Promise<void> {
   await Promise.resolve();
@@ -47,11 +47,11 @@ async function flushEffects(): Promise<void> {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  sendRequestMock.mockResolvedValue({ ok: true });
+  followMock.mockResolvedValue({ ok: true });
 });
 
 describe('PeopleSuggestions', () => {
-  it('shows the real recommendation reason and sends the selected account id', async () => {
+  it('shows the real recommendation reason and follows the selected account', async () => {
     fetchSuggestionsMock.mockResolvedValue([
       {
         id: 'friend-1',
@@ -72,11 +72,11 @@ describe('PeopleSuggestions', () => {
     expect(JSON.stringify(renderer!.toJSON())).toContain('Máte 2 společné hospody');
 
     await act(async () => {
-      renderer!.root.findByProps({ accessibilityLabel: 'Přidat @honza' }).props.onPress();
+      renderer!.root.findByProps({ accessibilityLabel: 'Sledovat: @honza' }).props.onPress();
       await flushEffects();
     });
 
-    expect(sendRequestMock).toHaveBeenCalledWith({ accountId: 'friend-1' });
+    expect(followMock).toHaveBeenCalledWith('friend-1');
   });
 
   it('disappears when the backend has no explainable recommendation', async () => {

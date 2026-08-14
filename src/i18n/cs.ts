@@ -1369,8 +1369,32 @@ export const cs = {
   friends: {
     title: 'Parta',
     hubTitle: 'Parta',
-    peopleTitle: 'Lidi v partě',
+    peopleTitle: 'Parta',
     addPeopleTitle: 'Přidat do party',
+    // — "S kým chodíš na pivo" (nahradilo sekce žádostí a odeslaných pozvánek) —
+    togetherHeader: 'S kým chodíš na pivo',
+    togetherEmpty: 'Zatím nikdo. Objeví se tu každý, s kým si sedneš k jednomu stolu.',
+    lastSeenTogether: (when: string) => `naposled ${when}`,
+    // Backend counts shared pub+day pairs, so this is evenings, never beers.
+    sharedEvenings: (n: number) =>
+      n === 0
+        ? 'zatím žádný společný večer'
+        : n === 1
+          ? '1 společný večer'
+          : n >= 2 && n <= 4
+            ? `${n} společné večery`
+            : `${n} společných večerů`,
+    notTogetherYet: 'ještě jste spolu neseděli',
+    addPersonCta: 'Přidat člověka',
+    // — jednosměrné sledování —
+    followingHeader: 'Sleduješ',
+    followingLastDrink: (beer: string) => `dal si ${beer}`,
+    followingQuiet: 'zatím nic nového',
+    follow: 'Sledovat',
+    unfollow: 'Nesledovat',
+    followed: 'Sleduješ, co pije.',
+    unfollowed: 'Sledování je pryč.',
+    followError: 'Sledování se nepovedlo. Zkus to znovu.',
     requestsSummary: (n: number) => {
       if (n === 0) return 'Žádné nové žádosti';
       if (n === 1) return '1 žádost čeká';

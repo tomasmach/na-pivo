@@ -25,15 +25,10 @@ import { useRouter, type Href } from 'expo-router';
 
 import {
   fetchFriendInviteCode,
+  followAccount,
   searchFriends,
-  sendFriendRequest,
   type FriendProfile,
 } from '@/data/friendsClient';
-import {
-  enqueueFriendOp,
-  isRetriableFriendError,
-  type FriendQueueItem,
-} from '@/data/friendsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -117,41 +112,35 @@ export function AddFriendTools({
     }
   }, [query, showToast]);
 
-  const requestFriend = useCallback(
-    async (profile?: FriendProfile) => {
-      const nickname = query.trim().replace(/^@/, '');
-      if (!profile && nickname.length < 2) return;
-      const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
+  /**
+   * Search now ends in a follow, not an invite. Sending a stranger a request
+   * and waiting for them to confirm was the ceremony this rebuild removed —
+   * being in someone's party is something you earn by sitting down with them,
+   * and the QR/link above is how you get them to the table. Following is the
+   * light thing you can do from a search result, so that is what the row does.
+   */
+  const followProfile = useCallback(
+    async (profile: FriendProfile) => {
       if (requestingKey) return;
-      trackUiInteraction('friend_request_send', 'submit');
-      setRequestingKey(requestKey);
-      const queuedRequest: FriendQueueItem =
-        profile
-          ? { op: 'request', key: `account:${profile.id}`, accountId: profile.id }
-          : { op: 'request', key: `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`, nickname };
-      const result = profile
-        ? await sendFriendRequest({ accountId: profile.id })
-        : await sendFriendRequest({ nickname });
+      trackUiInteraction('friend_follow', 'submit');
+      setRequestingKey(profile.id);
+      const result = await followAccount(profile.id);
       if (!mountedRef.current) return;
       setRequestingKey(null);
-      if (result.ok || isRetriableFriendError(result)) {
-        trackUiInteraction('friend_request_send', 'success');
-        if (!result.ok) {
-          await enqueueFriendOp(queuedRequest);
-          if (!mountedRef.current) return;
-        }
-        showToast(cs.friends.requestSent, {
+      if (result.ok) {
+        trackUiInteraction('friend_follow', 'success');
+        showToast(cs.friends.followed, {
           icon: <UserPlusIcon size={20} color={Colors.amber} />,
         });
         setQuery('');
         setResults([]);
         onChanged();
       } else {
-        trackUiInteraction('friend_request_send', 'failure');
+        trackUiInteraction('friend_follow', 'failure');
         showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
       }
     },
-    [onChanged, query, requestingKey, showToast],
+    [onChanged, requestingKey, showToast],
   );
 
   const openIdentity = useCallback(() => {
@@ -250,11 +239,11 @@ export function AddFriendTools({
                   <View style={styles.searchResultRow}>
                     <FriendMini profile={profile} />
                     <Pressable
-                      onPress={() => void requestFriend(profile)}
+                      onPress={() => void followProfile(profile)}
                       disabled={requestingKey != null}
                       hitSlop={ROUND_HIT_SLOP}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.friends.addByNickname}
+                      accessibilityLabel={`${cs.friends.follow}: ${profile.nickname ?? profile.displayName}`}
                       style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
                     >
                       {requestingKey === profile.id ? (
@@ -270,29 +259,9 @@ export function AddFriendTools({
           ) : null}
 
           {query.trim().length >= 2 && results.length === 0 && !searching ? (
-            <>
-              <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.noResults}
-              </Text>
-              <HairlineRow
-                first
-                onPress={requestingKey == null ? () => void requestFriend() : undefined}
-              >
-                <View style={styles.nicknameInvite}>
-                  {requestingKey?.startsWith('nickname:') ? (
-                    <ActivityIndicator color={Colors.amber} size="small" />
-                  ) : (
-                    <UserPlusIcon size={18} color={Colors.amber} />
-                  )}
-                  <Text
-                    style={styles.nicknameInviteText}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {cs.friends.addByNickname}
-                  </Text>
-                </View>
-              </HairlineRow>
-            </>
+            <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.noResults}
+            </Text>
           ) : null}
         </View>
       ) : null}

@@ -1029,6 +1029,46 @@ class Friendship(models.Model):
         return f"Friendship({self.requester_id}->{self.recipient_id} {self.status})"
 
 
+class Follow(models.Model):
+    """A one-way subscription to another account's public beer activity."""
+
+    follower = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="following_set",
+    )
+    target = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="follower_set",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Follow"
+        verbose_name_plural = "Follows"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["follower", "target"],
+                name="unique_follow_pair",
+            ),
+            models.CheckConstraint(
+                condition=~Q(follower=models.F("target")),
+                name="follow_no_self",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["follower", "-created_at"],
+                name="pubs_follow_follower_time_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Follow({self.follower_id} -> {self.target_id})"
+
+
 class FriendPubActivity(models.Model):
     """An explicit, short-lived "I'm at this pub" activity shared to friends.
 

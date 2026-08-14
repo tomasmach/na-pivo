@@ -51,6 +51,7 @@ from pubs.models import (
     BeerPhotoFileDeletion,
     DrinkLog,
     EmailCredential,
+    Follow,
     OneTimeToken,
     PartyEvening,
     PartyEveningDrink,
@@ -1006,6 +1007,22 @@ def test_merge_requires_atomic_transaction():
         accounts._merge_anonymous_account(source, target)
 
     assert Account.objects.filter(pk=source.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_preserves_public_outgoing_follows_and_drops_private_incoming_follows():
+    source = Account.objects.create(device_id="merge-follow-source")
+    target = Account.objects.create(device_id="merge-follow-target", is_public=False)
+    public = Account.objects.create(device_id="merge-follow-public", is_public=True)
+    follower = Account.objects.create(device_id="merge-follow-follower", is_public=True)
+    Follow.objects.create(follower=source, target=public)
+    Follow.objects.create(follower=follower, target=source)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert Follow.objects.filter(follower=target, target=public).exists()
+    assert not Follow.objects.filter(follower=follower, target=target).exists()
 
 
 @pytest.mark.django_db(transaction=True)

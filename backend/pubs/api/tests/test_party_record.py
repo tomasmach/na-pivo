@@ -189,7 +189,7 @@ def test_record_derives_full_private_night_and_deletes_disappear(client, tmp_med
     joined = client.post(f"/v1/party-evenings/{code}/join", **_auth(guest_token))
     assert joined.status_code == status.HTTP_200_OK, joined.content
     host.hosted_party_evenings.get(join_code=code).memberships.update(joined_at=base)
-    assert Friendship.objects.count() == 0
+    assert Friendship.objects.filter(status=Friendship.Status.ACCEPTED).count() == 1
 
     visit_id = uuid.uuid4()
     visit = client.post(

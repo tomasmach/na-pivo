@@ -30,6 +30,16 @@ export interface FriendSuggestion extends FriendProfile {
   suggestionReason: FriendSuggestionReason;
 }
 
+/**
+ * Someone I follow. One-way, so this shape deliberately carries no presence,
+ * geohash or live state — only what they publish. Older backends don't send
+ * the list at all, which reads as "I follow nobody" rather than as an error.
+ */
+export interface FollowedProfile extends FriendProfile {
+  /** Last beer they logged publicly, or null when they've been quiet. */
+  lastDrink: string | null;
+}
+
 export interface Friendship {
   id: string;
   status: 'pending' | 'accepted' | 'declined';
@@ -174,8 +184,16 @@ export interface MyPresence extends FriendPresence {
 export interface FriendsDashboard {
   friends: FriendProfile[];
   friendStats: Record<string, FriendStats>;
+  /**
+   * Still parsed because versions in the store depend on them; nothing in the
+   * app creates one any more (a friendship comes from sharing a table).
+   */
   incomingRequests: Friendship[];
   outgoingRequests: Friendship[];
+  /** People I follow one-way. Empty on older backends. */
+  following: FollowedProfile[];
+  /** How many people follow me. 0 on older backends. */
+  followersCount: number;
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
   /** Friends' plans for today (kind=plan). Empty on older backends. */
@@ -284,6 +302,8 @@ export interface FriendProfileDetail {
   achievements: AccountAchievements | null;
   /** Aggregates over nights this viewer may already see; absent on older backends. */
   publishedTimeline: RemoteStatsTimeline | null;
+  /** Whether I follow them one-way. False on older backends. */
+  isFollowing: boolean;
 }
 
 /** The failure half of {@link FriendActionResult}. */
@@ -405,6 +425,10 @@ interface RawFriendStats {
   rituals?: { key?: string; title?: string }[];
 }
 
+interface RawFollowedProfile extends RawFriendProfile {
+  last_drink?: string | null;
+}
+
 interface RawFriendProfileStats {
   shared_pub_count?: number;
   nights_together?: number;
@@ -443,6 +467,7 @@ interface RawFriendProfileDetail {
   public_stats?: RawPublicProfileStats | null;
   achievements?: RawAchievementsBlock | null;
   published_timeline?: unknown;
+  is_following?: boolean;
 }
 
 interface RawFriendInvite {
@@ -469,6 +494,13 @@ function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
     displayName: raw?.display_name ?? '',
     avatarUrl: raw?.avatar_url ?? null,
     isPublic: raw?.is_public !== false,
+  };
+}
+
+function parseFollowed(raw: RawFollowedProfile | undefined | null): FollowedProfile {
+  return {
+    ...parseProfile(raw),
+    lastDrink: typeof raw?.last_drink === 'string' && raw.last_drink.length > 0 ? raw.last_drink : null,
   };
 }
 
@@ -711,6 +743,7 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     publicStats: parsePublicStats(raw.public_stats),
     achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
     publishedTimeline: parseStatsTimeline(raw.published_timeline),
+    isFollowing: raw.is_following === true,
   };
 }
 
@@ -801,6 +834,10 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     outgoingRequests: Array.isArray(res.data.outgoing_requests)
       ? (res.data.outgoing_requests as RawFriendship[]).map(parseFriendship)
       : [],
+    following: Array.isArray(res.data.following)
+      ? (res.data.following as RawFollowedProfile[]).map(parseFollowed)
+      : [],
+    followersCount: typeof res.data.followers_count === 'number' ? res.data.followers_count : 0,
     activeFriends: Array.isArray(res.data.active_friends)
       ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
       : [],
@@ -1049,6 +1086,23 @@ export async function respondFriendRequest(
 
 export async function removeFriend(accountId: string): Promise<FriendActionResult> {
   const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/**
+ * Follow someone one-way. Idempotent on the server, so a double tap while the
+ * first request is still in flight is not an error the UI has to explain.
+ */
+export async function followAccount(accountId: string): Promise<FriendActionResult> {
+  const res = await requestJson('/v1/follows', {
+    method: 'POST',
+    body: { account_id: accountId },
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+export async function unfollowAccount(accountId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/follows/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
   return res.ok ? { ok: true } : res.result;
 }
 

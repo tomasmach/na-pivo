@@ -136,6 +136,7 @@ from pubs.models import (
     ContentReport,
     DrinkLog,
     FeedbackReport,
+    Follow,
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
@@ -3771,6 +3772,46 @@ class FriendsView(APIView):
 
         friend_accounts = [_other(row) for row in accepted]
         friend_ids = [account.id for account in friend_accounts]
+        latest_followed_beer = (
+            DrinkLog.objects.filter(
+                account_id=OuterRef("target_id"),
+                drink_type=DrinkLog.DrinkType.BEER,
+                is_suspect=False,
+            )
+            .filter(
+                Exists(
+                    PublishedNight.objects.filter(
+                        account_id=OuterRef("account_id"),
+                        visibility=PublishedNight.Visibility.PUBLIC,
+                        is_removed=False,
+                        started_at__lte=OuterRef("drank_at"),
+                        ended_at__gte=OuterRef("drank_at"),
+                    )
+                )
+            )
+            .order_by("-drank_at", "-id")
+            .values("beer_name")[:1]
+        )
+        following_rows = list(
+            Follow.objects.filter(
+                follower=request.user,
+                target__status=Account.Status.ACTIVE,
+                target__is_public=True,
+            )
+            .exclude(target_id__in=blocked_ids)
+            .select_related("target")
+            .annotate(last_drink=Subquery(latest_followed_beer))
+            .order_by("-created_at", "-id")
+        )
+        following_profiles = FriendProfileSerializer(
+            [row.target for row in following_rows],
+            many=True,
+            context=context,
+        ).data
+        following = [
+            {**profile, "last_drink": row.last_drink or None}
+            for row, profile in zip(following_rows, following_profiles, strict=True)
+        ]
         shared_stats, shared_dates = _shared_pub_stats(request.user, friend_ids)
         slices = _friend_activity_slices(request, friend_ids, now, activity_context)
         presence_slice = _friend_presence_slice(request, friend_ids, now)
@@ -3812,6 +3853,15 @@ class FriendsView(APIView):
                 },
                 "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
                 "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
+                "following": following,
+                "followers_count": (
+                    Follow.objects.filter(
+                        target=request.user,
+                        follower__status=Account.Status.ACTIVE,
+                    ).count()
+                    if request.user.is_public
+                    else 0
+                ),
                 "active_friends": slices["active_friends"],
                 "my_active_activity": slices["my_active_activity"],
                 "plans": slices["plans"],
@@ -5133,6 +5183,13 @@ class FriendDetailView(APIView):
             {
                 "profile": FriendProfileSerializer(friend, context=context).data,
                 "is_friend": is_friend,
+                "is_following": bool(
+                    friend.is_public
+                    and Follow.objects.filter(
+                        follower=request.user,
+                        target=friend,
+                    ).exists()
+                ),
                 "friendship_id": str(friendship.public_id) if is_friend else None,
                 "friendship_status": friendship_status,
                 "incoming_request_id": incoming_request_id,
@@ -7213,6 +7270,12 @@ class FriendBlockView(APIView):
 
         try:
             with transaction.atomic():
+                list(
+                    Account.objects.select_for_update()
+                    .filter(pk__in=sorted((request.user.pk, target.pk)))
+                    .order_by("pk")
+                    .values_list("pk", flat=True)
+                )
                 FriendBlock.objects.get_or_create(blocker=request.user, blocked=target)
                 # A block severs the friendship both ways, so the target drops out
                 # of every list immediately — but DECLINED rows are preserved so a
@@ -7223,6 +7286,10 @@ class FriendBlockView(APIView):
                     Q(requester=request.user, recipient=target)
                     | Q(requester=target, recipient=request.user)
                 ).exclude(status=Friendship.Status.DECLINED).delete()
+                Follow.objects.filter(
+                    Q(follower=request.user, target=target)
+                    | Q(follower=target, target=request.user)
+                ).delete()
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: block failed: %s", exc, exc_info=True)
             return _internal_error()
@@ -7253,6 +7320,96 @@ class FriendBlockView(APIView):
         if target is not None:
             FriendBlock.objects.filter(blocker=request.user, blocked=target).delete()
         return Response({"unblocked": True}, status=status.HTTP_200_OK)
+
+
+class FollowView(APIView):
+    """POST /v1/follows."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "follows"
+
+    @staticmethod
+    def _error(code: str, detail: str, response_status: int) -> Response:
+        return Response(
+            {"ok": False, "code": code, "detail": detail},
+            status=response_status,
+        )
+
+    def post(self, request: Request) -> Response:
+        raw_account_id = request.data.get("account_id")
+        try:
+            account_id = uuid.UUID(str(raw_account_id))
+        except (TypeError, ValueError, AttributeError):
+            return self._error(
+                "invalid_account_id",
+                "Vyber účet, který chceš sledovat.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        target = Account.objects.filter(
+            public_id=account_id,
+            status=Account.Status.ACTIVE,
+        ).first()
+        if target is None:
+            return self._error(
+                "profile_not_found",
+                "Profil se nepodařilo najít.",
+                status.HTTP_404_NOT_FOUND,
+            )
+        if target.pk == request.user.pk:
+            return self._error(
+                "self_follow",
+                "Sám sebe sledovat nemusíš.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            list(
+                Account.objects.select_for_update()
+                .filter(pk__in=sorted((request.user.pk, target.pk)))
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
+            target.refresh_from_db(fields=["is_public", "status"])
+            if target.status != Account.Status.ACTIVE:
+                return self._error(
+                    "profile_not_found",
+                    "Profil se nepodařilo najít.",
+                    status.HTTP_404_NOT_FOUND,
+                )
+            if FriendBlock.objects.filter(
+                Q(blocker=request.user, blocked=target)
+                | Q(blocker=target, blocked=request.user)
+            ).exists():
+                return self._error(
+                    "blocked",
+                    "Tenhle profil sledovat nejde.",
+                    status.HTTP_403_FORBIDDEN,
+                )
+            if not target.is_public:
+                return self._error(
+                    "private_profile",
+                    "Soukromý profil sledovat nejde.",
+                    status.HTTP_403_FORBIDDEN,
+                )
+            Follow.objects.get_or_create(follower=request.user, target=target)
+        return Response({"ok": True}, status=status.HTTP_201_CREATED)
+
+
+class FollowDetailView(APIView):
+    """DELETE /v1/follows/<account_id>."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "follows"
+
+    def delete(self, request: Request, account_id) -> Response:
+        target = Account.objects.filter(public_id=account_id).first()
+        if target is not None:
+            Follow.objects.filter(follower=request.user, target=target).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class FriendInviteView(APIView):

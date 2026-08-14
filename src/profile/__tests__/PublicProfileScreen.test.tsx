@@ -143,6 +143,7 @@ const detail: FriendProfileDetail = {
   publicStats: null,
   achievements: null,
   publishedTimeline: null,
+  isFollowing: false,
 };
 
 const privateNight: PublishedNight = {

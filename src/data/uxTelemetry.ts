@@ -124,6 +124,7 @@ export const UI_INTERACTION_TARGETS = [
   'community_report',
   'friend_invite_share',
   'friend_request_send',
+  'friend_follow',
   'parta_activity_share',
   'parta_reaction_add',
   'photo_contest_enter',

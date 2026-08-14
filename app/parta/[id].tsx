@@ -31,9 +31,10 @@ import { fetchFriendBeerPhotos, type BeerPhoto } from '@/data/beerPhotosClient';
 import {
   blockFriend,
   fetchFriendProfile,
+  followAccount,
   removeFriend,
   respondFriendRequest,
-  sendFriendRequest,
+  unfollowAccount,
   type FriendProfile,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
@@ -280,22 +281,25 @@ export default function FriendProfileScreen() {
     });
   }, [confirmBlock, confirmRemove, confirmReport, isFriend]);
 
-  // — Party CTA on a public (non-friend) profile — reached from Žebříčky.
+  // — CTA on a public (non-friend) profile — reached from Žebříčky.
+  // A stranger can be followed, not recruited: being in someone's party comes
+  // from sitting at their table, so there is no request to send from here.
   const [requestBusy, setRequestBusy] = useState(false);
-  const sendRequest = useCallback(() => {
-    if (requestBusy) return;
+  const toggleFollow = useCallback(() => {
+    if (requestBusy || !detail) return;
+    const next = !detail.isFollowing;
     setRequestBusy(true);
-    void sendFriendRequest({ accountId }).then((res) => {
+    void (next ? followAccount(accountId) : unfollowAccount(accountId)).then((res) => {
       if (!mountedRef.current) return;
       setRequestBusy(false);
       if (res.ok) {
-        showToast(cs.friends.requestSentToast);
-        setDetail((prev) => (prev ? { ...prev, friendshipStatus: 'outgoing_pending' } : prev));
+        showToast(next ? cs.friends.followed : cs.friends.unfollowed);
+        setDetail((prev) => (prev ? { ...prev, isFollowing: next } : prev));
       } else {
         showToast(res.detail);
       }
     });
-  }, [accountId, requestBusy, showToast]);
+  }, [accountId, detail, requestBusy, showToast]);
 
   const acceptRequest = useCallback(() => {
     const requestId = detail?.incomingRequestId;
@@ -408,30 +412,33 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
-          {/* Party CTA — a public stranger found via Žebříčky can be recruited. */}
+          {/* Follow — the one thing a stranger's profile offers. An incoming
+              request can still land here from a version in the store, and this
+              is the only place left to answer it. */}
           {detail && !isFriend ? (
-            detail.friendshipStatus === 'outgoing_pending' ? (
-              <Text style={styles.pendingStrip} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.requestPendingStrip}
-              </Text>
-            ) : (
-              <View style={styles.compassWrap}>
-                <GlowButton
-                  label={
-                    detail.friendshipStatus === 'incoming_pending'
-                      ? cs.friends.acceptRequest
-                      : cs.friends.addToParty
-                  }
-                  onPress={
-                    detail.friendshipStatus === 'incoming_pending' ? acceptRequest : sendRequest
-                  }
-                  variant="primary"
-                  glow="soft"
-                  loading={requestBusy}
-                  icon={<UserPlusIcon size={20} color={Colors.stout} />}
-                />
-              </View>
-            )
+            <View style={styles.compassWrap}>
+              <GlowButton
+                label={
+                  detail.friendshipStatus === 'incoming_pending'
+                    ? cs.friends.acceptRequest
+                    : detail.isFollowing
+                      ? cs.friends.unfollow
+                      : cs.friends.follow
+                }
+                onPress={
+                  detail.friendshipStatus === 'incoming_pending' ? acceptRequest : toggleFollow
+                }
+                variant={detail.isFollowing ? 'secondary' : 'primary'}
+                glow="none"
+                loading={requestBusy}
+                icon={
+                  <UserPlusIcon
+                    size={20}
+                    color={detail.isFollowing ? Colors.foam : Colors.stout}
+                  />
+                }
+              />
+            </View>
           ) : null}
 
           {/* Stat tiles — shared history for a friend, public diary numbers for

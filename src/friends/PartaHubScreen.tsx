@@ -133,15 +133,6 @@ export default function PartaHubScreen() {
             style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
           >
             <UsersIcon size={21} color={Colors.foam} />
-            {(dashboard?.incomingRequests.length ?? 0) > 0 ? (
-              <View style={styles.headerBadge} pointerEvents="none">
-                <Text style={styles.headerBadgeText} allowFontScaling={false}>
-                  {(dashboard?.incomingRequests.length ?? 0) > 9
-                    ? '9+'
-                    : dashboard?.incomingRequests.length}
-                </Text>
-              </View>
-            ) : null}
           </Pressable>
         }
       />
@@ -156,19 +147,6 @@ export default function PartaHubScreen() {
           showsVerticalScrollIndicator={false}
         >
           {stale ? <OfflineBanner onRetry={refresh} /> : null}
-
-          <Pressable
-            onPress={() => openPeople('requests')}
-            accessibilityRole="button"
-            accessibilityLabel={cs.friends.requestsSummary(dashboard?.incomingRequests.length ?? 0)}
-            style={({ pressed }) => [styles.requestsRow, pressed && styles.pressed]}
-          >
-            <UserPlusIcon size={20} color={Colors.amber} />
-            <Text style={styles.requestsText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.requestsSummary(dashboard?.incomingRequests.length ?? 0)}
-            </Text>
-            <ChevronRightIcon size={18} color={Colors.mutedText} />
-          </Pressable>
 
           <Pressable
             onPress={primaryAction}

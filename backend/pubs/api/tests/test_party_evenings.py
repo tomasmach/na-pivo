@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import pytest
 from django.db import connection
+from django.db.models import Q
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
@@ -269,7 +270,7 @@ def test_opt_out_hides_preexisting_legacy_and_diary_drinks_from_other_members(cl
 
 
 @pytest.mark.django_db
-def test_valid_code_is_explicit_membership_without_auto_friendship(client):
+def test_valid_code_creates_membership_and_friendship(client):
     host_token, host = _register(client, "host")
     stranger_token, stranger = _register(client, "cizi")
     assert _create(client, host_token).status_code == status.HTTP_201_CREATED
@@ -277,12 +278,11 @@ def test_valid_code_is_explicit_membership_without_auto_friendship(client):
     joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(stranger_token))
     assert joined.status_code == status.HTTP_200_OK
     assert [member["nickname"] for member in joined.json()["members"]] == ["host", "cizi"]
-    assert (
-        Friendship.objects.filter(
-            requester__in=(host, stranger), recipient__in=(host, stranger)
-        ).count()
-        == 0
+    friendship = Friendship.objects.get(
+        requester__in=(host, stranger), recipient__in=(host, stranger)
     )
+    assert friendship.status == Friendship.Status.ACCEPTED
+    assert friendship.responded_at is not None
 
     foreign_end = client.post("/v1/party-evenings/PRAH24/end", **_auth(stranger_token))
     assert foreign_end.status_code == status.HTTP_404_NOT_FOUND
@@ -293,6 +293,95 @@ def test_valid_code_is_explicit_membership_without_auto_friendship(client):
     assert ended.json()["active"] is False
     assert ended.json()["ended_at"] is not None
     assert client.get("/v1/party-evenings", **_auth(host_token)).json()["evening"] is None
+
+
+@pytest.mark.django_db
+def test_join_connects_three_people_once(client):
+    host_token, host = _register(client, "host")
+    first_token, first = _register(client, "prvni")
+    second_token, second = _register(client, "druhy")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    pending = Friendship.objects.create(
+        requester=host,
+        recipient=first,
+        status=Friendship.Status.PENDING,
+    )
+    old_requested_at = timezone.now() - timedelta(days=1)
+    Friendship.objects.filter(pk=pending.pk).update(requested_at=old_requested_at)
+
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(first_token)).status_code == 200
+    pending.refresh_from_db()
+    assert pending.status == Friendship.Status.ACCEPTED
+    assert pending.requested_at > old_requested_at
+    assert pending.responded_at is not None
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(second_token)).status_code == 200
+
+    rows = Friendship.objects.filter(status=Friendship.Status.ACCEPTED)
+    assert rows.count() == 3
+    pairs = {
+        frozenset((row.requester_id, row.recipient_id))
+        for row in rows
+    }
+    assert pairs == {
+        frozenset((host.id, first.id)),
+        frozenset((host.id, second.id)),
+        frozenset((first.id, second.id)),
+    }
+    assert all(row.responded_at is not None for row in rows)
+
+    replayed = client.post("/v1/party-evenings/PRAH24/join", **_auth(second_token))
+    assert replayed.status_code == status.HTTP_200_OK
+    assert Friendship.objects.filter(status=Friendship.Status.ACCEPTED).count() == 3
+
+
+@pytest.mark.django_db
+def test_join_preserves_declines_and_skips_blocked_members(client):
+    host_token, host = _register(client, "host")
+    declined_token, declined_peer = _register(client, "odmitnuty")
+    blocked_token, blocked_peer = _register(client, "blokovany")
+    joiner_token, joiner = _register(client, "novy")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(declined_token)).status_code == 200
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(blocked_token)).status_code == 200
+
+    declined = Friendship.objects.create(
+        requester=joiner,
+        recipient=declined_peer,
+        status=Friendship.Status.DECLINED,
+        responded_at=timezone.now(),
+    )
+    FriendBlock.objects.create(blocker=blocked_peer, blocked=joiner)
+
+    joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(joiner_token))
+
+    assert joined.status_code == status.HTTP_200_OK
+    declined.refresh_from_db()
+    assert declined.status == Friendship.Status.DECLINED
+    assert not Friendship.objects.filter(
+        Q(requester=joiner, recipient=blocked_peer)
+        | Q(requester=blocked_peer, recipient=joiner)
+    ).exists()
+    assert Friendship.objects.filter(
+        Q(requester=joiner, recipient=host)
+        | Q(requester=host, recipient=joiner),
+        status=Friendship.Status.ACCEPTED,
+    ).count() == 1
+
+
+@pytest.mark.django_db
+def test_friendship_sync_failure_does_not_fail_join(client, monkeypatch):
+    host_token, _host = _register(client, "host")
+    member_token, member = _register(client, "kamos")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+
+    def fail_sync(*_args, **_kwargs):
+        raise RuntimeError("friendship sync failed")
+
+    monkeypatch.setattr(party_views, "_accept_evening_friendships", fail_sync)
+    joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token))
+
+    assert joined.status_code == status.HTTP_200_OK
+    assert PartyEveningMember.objects.filter(account=member, active=True).exists()
 
 
 @pytest.mark.django_db

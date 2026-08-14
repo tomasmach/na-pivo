@@ -17,6 +17,7 @@ from pubs.models import (
     Account,
     AccountUsageStats,
     DrinkLog,
+    Follow,
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
@@ -180,6 +181,155 @@ def test_friend_request_accept_and_remove(client):
     assert remove.status_code == status.HTTP_200_OK
     assert remove.json() == {"removed": True}
     assert Friendship.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_friends_dashboard_keeps_released_request_keys(client):
+    token, _account = _register(client, "janek")
+
+    response = client.get("/v1/friends", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "incoming_requests" in response.json()
+    assert "outgoing_requests" in response.json()
+
+
+@pytest.mark.django_db
+def test_follow_create_dashboard_detail_and_delete_are_idempotent(client):
+    follower_token, follower = _register(client, "janek")
+    target_token, target = _register(client, "petr")
+    public_drink_at = timezone.now() - timedelta(hours=2)
+    _drink(target, drank_at=public_drink_at)
+    PublishedNight.objects.create(
+        account=target,
+        client_id=str(uuid.uuid4()),
+        drinking_day=timezone.localdate(public_drink_at),
+        started_at=public_drink_at - timedelta(minutes=30),
+        ended_at=public_drink_at + timedelta(minutes=30),
+        beer_count=1,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=[_PUB_NAME],
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=timezone.now(),
+    )
+    private_drink = _drink(target, drank_at=timezone.now() - timedelta(minutes=1))
+    private_drink.beer_name = "Tajné pivo"
+    private_drink.save(update_fields=["beer_name"])
+
+    first = client.post(
+        "/v1/follows",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **_auth(follower_token),
+    )
+    second = client.post(
+        "/v1/follows",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **_auth(follower_token),
+    )
+
+    assert first.status_code == status.HTTP_201_CREATED
+    assert second.status_code == status.HTTP_201_CREATED
+    assert first.json() == second.json() == {"ok": True}
+    assert Follow.objects.filter(follower=follower, target=target).count() == 1
+
+    dashboard = client.get("/v1/friends", **_auth(follower_token))
+    assert dashboard.status_code == status.HTTP_200_OK
+    followed = dashboard.json()["following"]
+    assert followed == [
+        {
+            "id": str(target.public_id),
+            "nickname": "petr",
+            "display_name": "Petr",
+            "avatar_url": None,
+            "is_public": True,
+            "last_drink": "Plzeň",
+        }
+    ]
+    assert set(followed[0]) == {
+        "id",
+        "nickname",
+        "display_name",
+        "avatar_url",
+        "is_public",
+        "last_drink",
+    }
+    assert client.get("/v1/friends", **_auth(target_token)).json()["followers_count"] == 1
+    assert (
+        client.get(f"/v1/friends/{target.public_id}", **_auth(follower_token)).json()[
+            "is_following"
+        ]
+        is True
+    )
+
+    removed = client.delete(f"/v1/follows/{target.public_id}", **_auth(follower_token))
+    replayed = client.delete(f"/v1/follows/{target.public_id}", **_auth(follower_token))
+    assert removed.status_code == status.HTTP_204_NO_CONTENT
+    assert replayed.status_code == status.HTTP_204_NO_CONTENT
+    assert not Follow.objects.exists()
+    assert (
+        client.get(f"/v1/friends/{target.public_id}", **_auth(follower_token)).json()[
+            "is_following"
+        ]
+        is False
+    )
+
+    assert client.delete("/v1/follows", **_auth(follower_token)).status_code == 405
+    assert (
+        client.post(
+            f"/v1/follows/{target.public_id}",
+            data={"account_id": str(target.public_id)},
+            format="json",
+            **_auth(follower_token),
+        ).status_code
+        == 405
+    )
+
+
+@pytest.mark.django_db
+def test_follow_rejects_private_and_blocked_profiles_and_block_removes_existing(client):
+    token, follower = _register(client, "janek")
+    _private_token, private = _register(client, "tajny", is_public=False)
+    _public_token, public = _register(client, "petr")
+
+    private_response = client.post(
+        "/v1/follows",
+        data={"account_id": str(private.public_id)},
+        format="json",
+        **_auth(token),
+    )
+    assert private_response.status_code == status.HTTP_403_FORBIDDEN
+    assert private_response.json() == {
+        "ok": False,
+        "code": "private_profile",
+        "detail": "Soukromý profil sledovat nejde.",
+    }
+
+    Follow.objects.create(follower=follower, target=public)
+    blocked = client.post(
+        "/v1/friends/blocks",
+        data={"account_id": str(public.public_id)},
+        format="json",
+        **_auth(token),
+    )
+    assert blocked.status_code == status.HTTP_200_OK
+    assert not Follow.objects.exists()
+
+    blocked_response = client.post(
+        "/v1/follows",
+        data={"account_id": str(public.public_id)},
+        format="json",
+        **_auth(token),
+    )
+    assert blocked_response.status_code == status.HTTP_403_FORBIDDEN
+    assert blocked_response.json() == {
+        "ok": False,
+        "code": "blocked",
+        "detail": "Tenhle profil sledovat nejde.",
+    }
 
 
 @pytest.mark.django_db

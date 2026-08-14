@@ -84,6 +84,7 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     FeedbackReport,
+    Follow,
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
@@ -1459,6 +1460,33 @@ def _merge_friendships(source: Account, target: Account) -> None:
             row.save(update_fields=[account_field])
 
 
+def _merge_follows(source: Account, target: Account) -> None:
+    Follow.objects.filter(
+        Q(follower=source, target=target) | Q(follower=target, target=source)
+    ).delete()
+    for account_field, other_field in (
+        ("follower", "target"),
+        ("target", "follower"),
+    ):
+        for row in Follow.objects.filter(**{f"{account_field}_id": source.pk}).order_by("pk"):
+            other_id = getattr(row, f"{other_field}_id")
+            if Follow.objects.filter(
+                **{
+                    f"{account_field}_id": target.pk,
+                    f"{other_field}_id": other_id,
+                }
+            ).exists():
+                row.delete()
+                continue
+            setattr(row, account_field, target)
+            row.save(update_fields=[account_field])
+
+    Follow.objects.filter(Q(follower=target) | Q(target=target)).exclude(
+        target__status=Account.Status.ACTIVE,
+        target__is_public=True,
+    ).delete()
+
+
 def _merge_friend_blocks(source: Account, target: Account) -> None:
     FriendBlock.objects.filter(
         Q(blocker=source, blocked=target) | Q(blocker=target, blocked=source)
@@ -1479,6 +1507,17 @@ def _merge_friend_blocks(source: Account, target: Account) -> None:
                 continue
             setattr(row, account_field, target)
             row.save(update_fields=[account_field])
+
+    blocked_ids = {
+        blocked_id if blocker_id == target.pk else blocker_id
+        for blocker_id, blocked_id in FriendBlock.objects.filter(
+            Q(blocker=target) | Q(blocked=target)
+        ).values_list("blocker_id", "blocked_id")
+    }
+    Follow.objects.filter(
+        Q(follower=target, target_id__in=blocked_ids)
+        | Q(target=target, follower_id__in=blocked_ids)
+    ).delete()
 
 
 _COMMUNITY_MEMBERSHIP_STATUS_RANK = {
@@ -1670,6 +1709,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     # Duplicate offline identities retain the claimed account's parent row, but
     # every child with an independent identity is moved or deduplicated first.
     _merge_friendships(source, target)
+    _merge_follows(source, target)
     _merge_friend_blocks(source, target)
     _merge_friend_activities(source, target)
     _merge_party_evenings(source, target)

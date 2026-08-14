@@ -569,6 +569,7 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "community_request_decline",
     "community_cancel_event",
     "community_report",
+    "friend_follow",
     "friend_invite_share",
     "friend_request_send",
     "parta_activity_share",

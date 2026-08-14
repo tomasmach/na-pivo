@@ -17,12 +17,12 @@ import { EMPTY_ACHIEVEMENTS } from '@/data/achievements';
 import { reportProfileContent } from '@/data/auth';
 import {
   blockFriend,
-  cancelFriendRequest,
   fetchFriendProfile,
+  followAccount,
   removeFriend,
   respondFriendRequest,
-  sendFriendRequest,
   unblockFriend,
+  unfollowAccount,
   type FriendActionResult,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
@@ -55,17 +55,22 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
 
-function relationshipLabel(detail: FriendProfileDetail): string {
+/**
+ * The relationship button no longer offers "Přidat" to a stranger: a friendship
+ * now comes from sharing a table, not from a request. What a stranger's profile
+ * offers instead is the one-way follow. Incoming requests still resolve here —
+ * versions in the store can still send one, and a person who has one waiting
+ * would otherwise have nowhere to answer it.
+ */
+function relationshipLabel(detail: FriendProfileDetail, isFollowing: boolean): string {
   if (detail.blocked) return cs.friends.unblockAction;
   switch (detail.friendshipStatus) {
     case 'accepted':
       return 'Parťák';
-    case 'outgoing_pending':
-      return 'Žádost odeslána';
     case 'incoming_pending':
       return 'Přijmout';
     default:
-      return 'Přidat';
+      return isFollowing ? cs.friends.unfollow : cs.friends.follow;
   }
 }
 
@@ -85,6 +90,15 @@ export default function PublicProfileScreen() {
   const [period, setPeriod] = useState<ProfilePeriod>('Měsíc');
   const [scrubbed, setScrubbed] = useState<number | null>(null);
   const [relationshipBusyFor, setRelationshipBusyFor] = useState<string | null>(null);
+  /**
+   * Follow is a toggle the server confirms with an empty body, so the button
+   * keeps its own answer rather than re-fetching the whole profile to learn a
+   * single boolean. Tagged with both the viewer and the profile it belongs to,
+   * so neither an account swap nor a push to another profile can inherit it.
+   */
+  const [followingFor, setFollowingFor] = useState<
+    { viewer: string; profile: string; value: boolean } | null
+  >(null);
   const [safetyBusyFor, setSafetyBusyFor] = useState<string | null>(null);
   const [composeOpenFor, setComposeOpenFor] = useState<string | null>(null);
   const [storedNights, setNights] = useState<PublishedNight[] | null>(null);
@@ -114,6 +128,12 @@ export default function PublicProfileScreen() {
     viewerAccountId !== null && composeOpenFor === viewerAccountId;
   const relationshipBusy =
     viewerAccountId !== null && relationshipBusyFor === viewerAccountId;
+  const following =
+    followingFor !== null &&
+    followingFor.viewer === viewerAccountId &&
+    followingFor.profile === accountId
+      ? followingFor.value
+      : detail?.isFollowing === true;
   const safetyBusy = viewerAccountId !== null && safetyBusyFor === viewerAccountId;
   const moreLoading = viewerAccountId !== null && moreLoadingFor === viewerAccountId;
 
@@ -242,14 +262,17 @@ export default function PublicProfileScreen() {
     const requestedViewer = viewerAccountId;
     setRelationshipBusyFor(requestedViewer);
     let result: FriendActionResult;
+    let nextFollowing: boolean | null = null;
     if (detail.friendshipStatus === 'accepted') {
       result = await removeFriend(detail.profile.id);
-    } else if (detail.friendshipStatus === 'outgoing_pending') {
-      result = await cancelFriendRequest(detail.profile.id);
     } else if (detail.friendshipStatus === 'incoming_pending' && detail.incomingRequestId) {
       result = await respondFriendRequest(detail.incomingRequestId, 'accept');
+    } else if (following) {
+      result = await unfollowAccount(detail.profile.id);
+      nextFollowing = false;
     } else {
-      result = await sendFriendRequest({ accountId: detail.profile.id });
+      result = await followAccount(detail.profile.id);
+      nextFollowing = true;
     }
     if (!viewerIsCurrent(requestedViewer)) return;
     setRelationshipBusyFor(null);
@@ -257,8 +280,13 @@ export default function PublicProfileScreen() {
       showToast(result.detail);
       return;
     }
+    if (nextFollowing !== null) {
+      setFollowingFor({ viewer: requestedViewer, profile: detail.profile.id, value: nextFollowing });
+      showToast(nextFollowing ? cs.friends.followed : cs.friends.unfollowed);
+      return;
+    }
     await refreshRelationship();
-  }, [detail, refreshRelationship, relationshipBusy, showToast, unblockProfile, viewerAccountId, viewerIsCurrent]);
+  }, [detail, following, refreshRelationship, relationshipBusy, showToast, unblockProfile, viewerAccountId, viewerIsCurrent]);
 
   const relationshipPress = () => {
     if (detail?.blocked) {
@@ -442,7 +470,8 @@ export default function PublicProfileScreen() {
     );
   }
 
-  const relationshipOn = !detail.blocked && detail.friendshipStatus !== 'none';
+  const relationshipOn =
+    !detail.blocked && (detail.friendshipStatus === 'accepted' || following);
   const relationshipDisabled = relationshipBusy || safetyBusy;
 
   return (
@@ -504,7 +533,7 @@ export default function PublicProfileScreen() {
             ]}
             accessibilityRole="button"
             accessibilityState={{ disabled: relationshipDisabled, selected: relationshipOn }}
-            accessibilityLabel={relationshipLabel(detail)}
+            accessibilityLabel={relationshipLabel(detail, following)}
           >
             {relationshipOn ? (
               <CheckIcon size={17} color={Colors.amber} />
@@ -512,7 +541,7 @@ export default function PublicProfileScreen() {
               <PlusIcon size={17} color={Colors.stout} />
             )}
             <Text style={[styles.actionText, relationshipOn && styles.actionTextOn]} maxFontSizeMultiplier={FontScaleCap.body}>
-              {relationshipDisabled ? 'Chvilku…' : relationshipLabel(detail)}
+              {relationshipDisabled ? 'Chvilku…' : relationshipLabel(detail, following)}
             </Text>
           </Pressable>
 
