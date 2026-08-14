@@ -558,10 +558,11 @@ rowFirst: { borderTopWidth: 0 },
   plnou plochou čte jako podtržítko, ne jako oddělovač. Stejný vzor drží `PubListMockScreen`,
   `CommunityMockScreen` i `FeedScreen`.
 - Výšky: `MockLayout.rowHeight` (68) pro dvouřádkový řádek s ovládacím prvkem, 64 pro thread,
-  56 pro žebříček a recap. Thumb 56 v seznamu hospod, jinak `MockLayout.thumb` (48).
-- Hierarchie v řádku hospody (`PubListMockScreen`): **název + hodnocení + srdce → adresa se
-  vzdáleností → otevírací doba barvou (`Colors.open` / `Colors.closed`, bez tečky) → pivo.**
-  Údaj, kvůli kterému člověk kouká do telefonu na ulici, se nikdy neořezává první.
+  56 pro žebříček a recap. Vzdálenostní dlaždice 56 v seznamu hospod, jinak
+  `MockLayout.thumb` (48).
+- Hierarchie v řádku hospody (`PubListMockScreen`): **vzdálenost v 56bodové dlaždici → název +
+  hodnocení + srdce → adresa → otevírací doba barvou (`Colors.open` / `Colors.closed`, bez
+  tečky) → pivo.** Vzdálenost se nikdy neořezává první; bez dostupné polohy ji nahradí ikona.
 - Post ve feedu není karta, je to **pás**: `borderTopWidth: 10`, `borderTopColor: '#0F0A05'` —
   stejná myšlenka jako `SectionBreak` (tmavý pás místo dělítka), zapečená do řádku. Feed dnes
   přetéká jen o `-Spacing.md` (−14) místo plných −20; sjednocení na screen padding je dluh

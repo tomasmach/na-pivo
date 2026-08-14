@@ -38,11 +38,11 @@ import { useRouter, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
 import {
-  BeerIcon,
   ChevronDownIcon,
   LocateFixedIcon,
   ChevronRightIcon,
   HeartIcon,
+  MapPinnedIcon,
   SearchIcon,
   StarIcon,
 } from '@/components/shared/IconGlyph';
@@ -61,7 +61,6 @@ import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
-import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
 import {
@@ -82,7 +81,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-/** A map needs more than Packeta's 48pt photo well to show a street. */
+/** The distance stays readable without making the list row taller. */
 const THUMB = 56;
 
 /** Height of the swipeable card that stands in for the list at `peek`. */
@@ -264,15 +263,27 @@ function PubRow({
       accessibilityRole="button"
       accessibilityLabel={`${pub.name}, detail`}
     >
-      {/* The well is a map of where the pub actually is — frozen to a bitmap
-          after first paint, so the list scrolls images and not map engines
-          (see PubThumbMap). The beer sits in the corner badge: it labels the
-          row, it is not the picture. */}
-      <View style={styles.thumb}>
-        <PubThumbMap lat={pub.pub.lat} lng={pub.pub.lng} size={THUMB} />
-        <View style={styles.thumbBadge}>
-          <BeerIcon size={11} color={Colors.stout} />
-        </View>
+      {/* The distance tile replaces the old map preview in the same 56pt well.
+          It keeps the primary scanning fact visible without mounting a native
+          map for every row. The full map remains available above the list. */}
+      <View
+        style={styles.distanceTile}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      >
+        {pub.distanceLabel ? (
+          <Text
+            style={styles.distanceTileText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            allowFontScaling={false}
+          >
+            {pub.distanceLabel}
+          </Text>
+        ) : (
+          <MapPinnedIcon size={20} color={Colors.mutedText} />
+        )}
       </View>
 
       <View style={styles.rowBody}>
@@ -298,10 +309,8 @@ function PubRow({
           ) : null}
         </View>
 
-        {/* Distance belongs with the address — both answer "where is it", and
-            splitting them made the row read as two separate facts. */}
         <Text style={styles.address} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {[pub.address, pub.distanceLabel].filter(Boolean).join(' · ')}
+          {pub.address}
         </Text>
 
         {/* No "Nejbližší" tag down here: the nearest pub is the tinted compass
@@ -933,17 +942,20 @@ const styles = StyleSheet.create({
   /** The first row follows the tinted compass panel — a hairline right under a
    *  filled block reads as an underline on it, not as a list separator. */
   rowFirst: { borderTopWidth: 0 },
-  thumb: { width: THUMB, height: THUMB },
-  thumbBadge: {
-    position: 'absolute',
-    right: -3,
-    bottom: -3,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  distanceTile: {
+    width: THUMB,
+    height: THUMB,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: MockLayout.thumbRadius,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.amber,
+    backgroundColor: Colors.stout3,
+  },
+  distanceTileText: {
+    ...MockType.bodySmall,
+    fontWeight: '700',
+    color: Colors.foam,
+    textAlign: 'center',
   },
   rowBody: { flex: 1, gap: 1 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
