@@ -77,6 +77,7 @@ import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
 import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
 import { formatDistanceCs } from '@/compass/distance';
+import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
@@ -230,7 +231,6 @@ export default function LivePartyMockScreen() {
   const startedAt = useLivePartyStore((s) => s.startedAt);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const pubTaps = useLivePartyStore((s) => s.pubTaps);
-  const beginPickingPub = useLivePartyStore((s) => s.beginPickingPub);
   const pubName = useLivePartyStore((s) => s.pubName);
   const pubKey = useLivePartyStore((s) => s.pubKey);
   const startParty = useLivePartyStore((s) => s.start);
@@ -454,6 +454,25 @@ export default function LivePartyMockScreen() {
       })),
     };
   }, [night, meId]);
+  // What the map band draws before (and between) real stops. An idle hub used
+  // to render nothing here — NightRoute returns null without stops, so the top
+  // 460pt of the screen was a black hole. The evening always has a WHERE even
+  // before it starts: the chosen or detected pub, or — outside a pub — the
+  // neighbourhood you are standing in, framed without a marker.
+  const idleStop = React.useMemo(
+    () =>
+      /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(partyPlaceKey)
+        ? { name: pubName, ...decodeGeohash8(partyPlaceKey) }
+        : null,
+    [partyPlaceKey, pubName],
+  );
+  const mapStops = React.useMemo(
+    () => (routeStops.length > 0 ? routeStops : idleStop ? [idleStop] : []),
+    [idleStop, routeStops],
+  );
+  const { position: idlePosition } = useDevicePosition(
+    mapStops.length === 0 && nearby.permissionState === 'granted',
+  );
   const detectedPub = nearby.selected && pubKey === geohash8(nearby.selected.lat, nearby.selected.lng)
     ? nearby.selected
     : null;
@@ -753,7 +772,13 @@ export default function LivePartyMockScreen() {
       {/* The map shrinks to a band once the night is running: at that point it
           is orientation, not the subject. */}
       <View style={styles.map}>
-        <NightRoute stops={routeStops} live={active} height={mapHeight} caption={false} />
+        <NightRoute
+          stops={mapStops}
+          live={active}
+          height={mapHeight}
+          caption={false}
+          fallbackCenter={idlePosition ?? undefined}
+        />
       </View>
 
       {/* Absolute: it is chrome floating ON the map. In the column it was also
@@ -836,10 +861,9 @@ export default function LivePartyMockScreen() {
               // would be a worse copy of it — but reaching it by dropping the
               // night and jumping to another tab made choosing a pub feel like
               // abandoning the evening. Same screen, presented as a modal.
-              onPress={() => {
-                beginPickingPub();
-                router.push('/pick-pub' as Href);
-              }}
+              // The pickingPub flag is owned by the modal's own lifecycle, so
+              // it cannot stay stuck when the route pops without picking.
+              onPress={() => router.push('/pick-pub' as Href)}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={`${displayPubName}. Změnit hospodu.`}

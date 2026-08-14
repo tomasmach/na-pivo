@@ -82,6 +82,13 @@ export const cs = {
     emptyList: 'V tomhle filtru zatím nic není.',
   },
 
+  // — Hospody jako výběr místa večera (modal `/pick-pub` nad Pít) —
+  pubPicker: {
+    closeA11y: 'Zavřít výběr hospody',
+    outsideTitle: 'Mimo hospodu',
+    outsideFact: 'Doma, venku, na chatě…',
+  },
+
   pubDetail: {
     tabs: ['Info', 'Aktivita'] as const,
     closeA11y: 'Zavřít detail hospody',

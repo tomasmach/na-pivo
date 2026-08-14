@@ -45,6 +45,7 @@ import {
   MapPinnedIcon,
   SearchIcon,
   StarIcon,
+  TreePineIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassIconButton, GlassPill } from '@/components/shared/GlassIconButton';
 import { TAB_CHROME } from '@/components/shared/TabBar';
@@ -56,6 +57,8 @@ import {
 import { geohash8 } from '@/data/geohash';
 import { getAllLoadedPubs, hydratePubsSnapshot, type Pub } from '@/data/pubs';
 import { useCompass } from '@/hooks/useCompass';
+import { cs } from '@/i18n/cs';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
@@ -362,7 +365,13 @@ function mergeCurrentPub(pubs: Pub[], current: Pub | null): Pub[] {
   return next;
 }
 
-export default function PubListMockScreen() {
+/**
+ * `picker` is the `/pick-pub` presentation: the same screen raised as a modal
+ * over the running night to answer "where is it happening". It adds the two
+ * things a modal cannot live without and a tab never needs — a way out that
+ * picks nothing, and the one place that is not a pub.
+ */
+export default function PubListMockScreen({ picker = false }: { picker?: boolean } = {}) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { height } = useWindowDimensions();
@@ -464,6 +473,34 @@ export default function PubListMockScreen() {
   // deals a new order instead of returning the same "random" one.
   const [shuffleSeed, setShuffleSeed] = React.useState(0);
 
+  const beginPickingPub = useLivePartyStore((state) => state.beginPickingPub);
+  const endPickingPub = useLivePartyStore((state) => state.endPickingPub);
+  const setPartyPub = useLivePartyStore((state) => state.setPub);
+
+  // The picking flag is owned by THIS instance's lifecycle, not by the hub's
+  // push. Set on mount and cleared on unmount, it cannot stay stuck after any
+  // exit — the close button, a picked pub, or Android's hardware back, which
+  // pops the modal without asking anyone. A stuck flag would make every pub
+  // detail on the Hospody tab say "Vybrat tuhle hospodu" forever.
+  React.useEffect(() => {
+    if (!picker) return undefined;
+    beginPickingPub();
+    return () => endPickingPub();
+  }, [beginPickingPub, endPickingPub, picker]);
+
+  const closePicker = React.useCallback(() => {
+    endPickingPub();
+    router.back();
+  }, [endPickingPub, router]);
+
+  // The night does not need a pub. A keyless evening is already filed as
+  // "mimo hospodu" (`ctx:other`) by the hub, so choosing it here is the same
+  // store move a pub detail makes — minus the pub.
+  const pickOutside = React.useCallback(() => {
+    setPartyPub('Mimo hospodu', 'Pivo', null, []);
+    closePicker();
+  }, [closePicker, setPartyPub]);
+
   React.useEffect(() => {
     let active = true;
     void hydratePubsSnapshot().finally(() => {
@@ -557,10 +594,13 @@ export default function PubListMockScreen() {
   );
 
   const renderPubRow = React.useCallback(
+    // In picker mode the "Mimo hospodu" row sits between the compass panel and
+    // the list, so the first pub row follows a plain row and keeps its
+    // hairline.
     ({ item: pub, index }: { item: PubPresentation; index: number }) => (
-      <PubRow pub={pub} first={index === 0} onPress={openPubDetail} />
+      <PubRow pub={pub} first={index === 0 && !picker} onPress={openPubDetail} />
     ),
-    [openPubDetail],
+    [openPubDetail, picker],
   );
 
   const pickSort = React.useCallback((next: Sort) => {
@@ -645,6 +685,22 @@ export default function PubListMockScreen() {
             Seznam hospod
           </Text>
         </GlassPill>
+        </View>
+      ) : null}
+
+      {/* The way out that picks nothing. A fullscreen modal has no tab bar and
+          no swipe-down, so without this the only exit was choosing a pub. Same
+          glass and corner as the hub's own minimize button, chevron down
+          because the sheet slid up. */}
+      {picker ? (
+        <View style={[styles.pickerClose, { top: insets.top + Spacing.sm }]}>
+          <GlassIconButton
+            size={44}
+            accessibilityLabel={cs.pubPicker.closeA11y}
+            onPress={closePicker}
+          >
+            <ChevronDownIcon size={20} color={Colors.foam} />
+          </GlassIconButton>
         </View>
       ) : null}
 
@@ -777,6 +833,44 @@ export default function PubListMockScreen() {
                       // cell that would not take you to it.
                       onPress={() => openPubDetail(head.id)}
                     />
+                  ) : null}
+
+                  {/* The one place that is not a pub. First row under the
+                      compass, shaped like every other row, because "doma na
+                      zahradě" answers the same question the pubs do. Picks
+                      immediately — there is no detail to read about home. */}
+                  {picker ? (
+                    <Pressable
+                      onPress={pickOutside}
+                      style={({ pressed }) => [
+                        styles.row,
+                        styles.rowFirst,
+                        pressed && styles.pressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.pubPicker.outsideTitle}
+                    >
+                      <View style={styles.distanceTile}>
+                        <TreePineIcon size={20} color={Colors.mutedText} />
+                      </View>
+                      <View style={styles.rowBody}>
+                        <Text
+                          style={styles.pubName}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {cs.pubPicker.outsideTitle}
+                        </Text>
+                        <Text
+                          style={styles.address}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {cs.pubPicker.outsideFact}
+                        </Text>
+                      </View>
+                      <ChevronRightIcon size={18} color={Colors.mutedText} />
+                    </Pressable>
                   ) : null}
                 </>
               }
@@ -1049,6 +1143,7 @@ const styles = StyleSheet.create({
 
   carousel: { position: 'absolute', left: 0, right: 0 },
   locate: { position: 'absolute', right: MockLayout.screenPad },
+  pickerClose: { position: 'absolute', left: MockLayout.screenPad },
   places: { position: 'absolute', left: MockLayout.screenPad },
   placesLabel: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 });
