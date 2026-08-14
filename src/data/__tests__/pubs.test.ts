@@ -3,14 +3,17 @@ import {
   _init,
   _reset,
   clearPubsSnapshot,
+  fetchPubsPageNear,
   fetchPubsNear,
   findNearestPub,
   findNearbyPubs,
   findRandomPubInRadius,
   getPubById,
+  getAllLoadedPubs,
   isLoaded,
   pubIdForCoords,
   removeLocalPub,
+  readPubsSnapshot,
   renameLocalPub,
   upsertLocalPub,
   upsertLocalPubs,
@@ -270,6 +273,24 @@ describe("fetchPubsNear", () => {
   });
 });
 
+describe("fetchPubsPageNear", () => {
+  it("returns a blocked-filtered viewport without replacing the compass catalogue", async () => {
+    const viewportPub = { id: "viewport", name: "Viewport pub", lat: 49.2, lng: 16.61 };
+    const blockedPub = { id: "blocked", name: "Blocked pub", lat: 49.201, lng: 16.611 };
+    (searchPubsNear as jest.Mock).mockResolvedValue([viewportPub, blockedPub]);
+    (fetchBlockedPubReports as jest.Mock).mockResolvedValue([
+      { cacheKey: geohash8(blockedPub.lat, blockedPub.lng), externalId: null, reason: "not_pub" },
+    ]);
+
+    const before = getAllLoadedPubs();
+    const page = await fetchPubsPageNear(49.2, 16.61, undefined, { radiusKm: 5 });
+
+    expect(page.pubs).toEqual([viewportPub]);
+    expect(page.coveredKm).toBe(5);
+    expect(getAllLoadedPubs()).toEqual(before);
+  });
+});
+
 describe("fetchPubsNear — persistent snapshot cache", () => {
   const PRAGUE = { lat: 50.08, lng: 14.42 };
   const SNAPSHOT_PUBS: Pub[] = [
@@ -309,6 +330,35 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
 
     expect(searchPubsNear).not.toHaveBeenCalled();
     expect(getPubById("mapy:cached-1")?.name).toBe("U Cache");
+  });
+
+  it("reads an offline fallback without hydrating the live compass catalogue", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    await expect(readPubsSnapshot()).resolves.toEqual(SNAPSHOT_PUBS);
+    expect(isLoaded()).toBe(false);
+    expect(getAllLoadedPubs()).toEqual([]);
+  });
+
+  it("keeps local offline pubs in the read-only snapshot fallback", async () => {
+    const localPub = { id: "local:1", name: "Moje hospoda", lat: 50.082, lng: 14.422 };
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+    upsertLocalPub(localPub);
+
+    await expect(readPubsSnapshot()).resolves.toEqual([...SNAPSHOT_PUBS, localPub]);
+    expect(getAllLoadedPubs()).toEqual([localPub]);
   });
 
   it("keeps the primary offline snapshot when opt-in discovery cannot refresh", async () => {

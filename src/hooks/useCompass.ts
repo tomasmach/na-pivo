@@ -147,6 +147,8 @@ export interface UseCompassResult {
   isLoading: boolean;
   searchFailed: boolean;
   currentPosition: { lat: number; lng: number; accuracyMeters: number } | null;
+  /** Changes whenever a nearby-pubs request replaces the shared catalogue. */
+  pubDataRevision: number;
   /** A friend's coarse pub the needle is pointing at ("Ukaž na kompasu", §F2). */
   focusedPub: FocusedPub | null;
   /** Drop the friend focus and return to the normal nearest/surprise target. */
@@ -1231,6 +1233,7 @@ export function useCompass(
     isLoading,
     searchFailed,
     currentPosition: position,
+    pubDataRevision,
     focusedPub,
     clearFocusedPub,
   };

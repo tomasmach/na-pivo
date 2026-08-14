@@ -190,6 +190,17 @@ interface FetchPubsNearOptions {
   includeOtherPlaces?: boolean;
 }
 
+export interface FetchPubsPageOptions {
+  radiusKm?: number;
+  beerBrandKeys?: readonly string[];
+  amenityKeys?: readonly string[];
+}
+
+export interface PubsPage {
+  pubs: Pub[];
+  coveredKm: number;
+}
+
 /** Re-fetch nearby pubs when the user has moved more than this distance from
  *  the previous fetch center (km). */
 const REFETCH_THRESHOLD_KM = 2;
@@ -217,6 +228,21 @@ interface PubsSnapshot {
    *  truncated the result. Absent in snapshots written by older builds. */
   coveredKm?: number;
   savedAt: number;
+}
+
+function filterBlockedPubs(
+  pubs: Pub[],
+  blockedReports: Awaited<ReturnType<typeof fetchBlockedPubReports>>,
+): Pub[] {
+  const blockedExternalIds = new Set(
+    blockedReports.flatMap((report) => (report.externalId ? [report.externalId] : [])),
+  );
+  const blockedCacheKeys = new Set(blockedReports.map((report) => report.cacheKey));
+  return pubs.filter(
+    (pub) =>
+      !blockedExternalIds.has(pub.id) &&
+      !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
+  );
 }
 
 function isSnapshotPub(value: unknown): value is Pub {
@@ -498,6 +524,40 @@ function cacheCovers(
     : gateCovers(cached.lat, cached.lng, cached.radiusKm, lat, lng, radiusKm);
 }
 
+/** Fetch one map viewport without touching the compass catalogue or its cache
+ *  centre. Browsing a distant area must not make the compass point there. */
+export async function fetchPubsPageNear(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+  options: FetchPubsPageOptions = {},
+): Promise<PubsPage> {
+  const radiusKm = Number.isFinite(options.radiusKm)
+    ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
+    : DEFAULT_FETCH_RADIUS_KM;
+  const beerBrandKeys = Array.from(
+    new Set((options.beerBrandKeys ?? []).map((key) => key.trim()).filter(Boolean)),
+  ).sort();
+  const amenityKeys = Array.from(new Set(options.amenityKeys ?? [])).sort();
+  const [pubs, blockedReports] = await Promise.all([
+    searchPubsNear(lat, lng, radiusKm, signal, {
+      ...(beerBrandKeys.length > 0 ? { beerBrandKeys } : {}),
+      amenityKeys,
+    }),
+    fetchBlockedPubReports(lat, lng, radiusKm, signal),
+  ]);
+  if (signal?.aborted) return { pubs: [], coveredKm: 0 };
+  let coveredKm = radiusKm;
+  if (pubs.length >= RESULT_CAP_HINT) {
+    let farthestKm = 0;
+    for (const pub of pubs) {
+      farthestKm = Math.max(farthestKm, haversineKm(lat, lng, pub.lat, pub.lng));
+    }
+    coveredKm = Math.min(radiusKm, farthestKm);
+  }
+  return { pubs: filterBlockedPubs(pubs, blockedReports), coveredKm };
+}
+
 /**
  * Fetch pubs near (lat, lng) through the local-directory backend and rebuild the
  * spatial index.
@@ -631,15 +691,7 @@ export async function fetchPubsNear(
       //  - external_id: the exact Mapy.cz item id that was reported, or
       //  - cache_key: the geohash-8 cell of the report, which still catches the
       //    same physical place when Mapy.cz returns a different id for it.
-      const blockedExternalIds = new Set(
-        blockedReports.flatMap((report) => (report.externalId ? [report.externalId] : [])),
-      );
-      const blockedCacheKeys = new Set(blockedReports.map((report) => report.cacheKey));
-      const filtered = pubs.filter(
-        (pub) =>
-          !blockedExternalIds.has(pub.id) &&
-          !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
-      );
+      const filtered = filterBlockedPubs(pubs, blockedReports);
       // A result at the backend cap does not cover the full requested radius:
       // in dense areas the data honestly ends at the farthest returned pub.
       // Record that distance so the coverage gate refetches once the user pans
@@ -746,6 +798,14 @@ export async function hydratePubsSnapshot(): Promise<boolean> {
   _lastFetchBeerFilterKey = "";
   _lastFetchIncludeOtherPlaces = false;
   return true;
+}
+
+/** Read the validated, fresh snapshot without mutating the live compass index. */
+export async function readPubsSnapshot(): Promise<Pub[]> {
+  const snapshot = await loadSnapshot();
+  const pubs = new Map((snapshot?.pubs ?? []).map((pub) => [pub.id, pub]));
+  for (const pub of _localPubOverrides.values()) pubs.set(pub.id, pub);
+  return [...pubs.values()].filter((pub) => pub.venueKind !== 'not_pub');
 }
 
 /** A defensive copy of every pub currently held by the spatial index. */

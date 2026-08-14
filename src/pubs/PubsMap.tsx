@@ -1,30 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, {
+  Marker,
+  PROVIDER_GOOGLE,
+  type MapViewProps,
+  type Region,
+} from 'react-native-maps';
 
-import { clusterCoordinates } from '@/map/mapModel';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
+import { buildPubsMapClusters, pubsMapGrid } from '@/pubs/pubsMapModel';
 import { Colors, withAlpha } from '@/theme/colors';
-
-/** How close two pubs have to be before they collapse into one bubble, and the
- *  zoom at which that finer grid kicks in (about a district across the screen). */
-const CLUSTER_COLUMNS = 9;
-const CLUSTER_ROWS = 14;
-const CLUSTER_FINE_DELTA = 0.06;
 
 /**
  * Named pins per screen, and how far apart two names have to be — as a share of
- * the visible region, so the gap holds at every zoom. The label is 104pt wide
- * and 30pt tall on a ~400 × 870pt screen; these are those numbers plus room to
- * breathe.
+ * the visible region, so the gap holds at every zoom. These are half sizes in
+ * points plus breathing room; they are converted using the map's visible area.
  */
-const LABEL_MAX = 16;
-const LABEL_HALF_WIDTH = 0.14;
-const LABEL_HALF_HEIGHT = 0.022;
-const BUBBLE_HALF_WIDTH = 0.045;
-const BUBBLE_HALF_HEIGHT = 0.02;
+const LABEL_HALF_WIDTH_PX = 56;
+const LABEL_HALF_HEIGHT_PX = 19;
+const BUBBLE_HALF_WIDTH_PX = 18;
+const BUBBLE_HALF_HEIGHT_PX = 17;
 /** Roughly a city across the screen. Wider than this and the names are noise. */
-const LABEL_MAX_DELTA = 0.09;
+const LABEL_MAX_DELTA = 0.035;
 
 /** Dot, gap, one line of text — the anchor keeps the dot on the coordinate. */
 const PIN_SIZE = 14;
@@ -35,11 +32,76 @@ const PIN_ANCHOR = {
   y: PIN_SIZE / 2 / (PIN_SIZE + PIN_LABEL_GAP + PIN_LABEL_LINE),
 };
 
-type ClusterPoint = {
-  lat: number;
-  lng: number;
+const CENTER_ANCHOR = { x: 0.5, y: 0.5 } as const;
+
+type StablePubMarkerProps = {
   pub: PubPresentation;
+  labelled: boolean;
+  closed: boolean;
+  onPress?: (id: string) => void;
 };
+
+class StablePubMarker extends React.PureComponent<
+  StablePubMarkerProps,
+  { tracksViewChanges: boolean }
+> {
+  state = { tracksViewChanges: true };
+  private stopTrackingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  componentDidMount() {
+    this.stopTrackingSoon();
+  }
+
+  componentDidUpdate(previous: StablePubMarkerProps) {
+    const visualChanged =
+      previous.labelled !== this.props.labelled ||
+      previous.closed !== this.props.closed ||
+      previous.pub.name !== this.props.pub.name;
+    if (!visualChanged) return;
+    if (this.state.tracksViewChanges) this.stopTrackingSoon();
+    else this.setState({ tracksViewChanges: true }, this.stopTrackingSoon);
+  }
+
+  componentWillUnmount() {
+    if (this.stopTrackingTimer) clearTimeout(this.stopTrackingTimer);
+  }
+
+  private stopTrackingSoon = () => {
+    if (this.stopTrackingTimer) clearTimeout(this.stopTrackingTimer);
+    this.stopTrackingTimer = setTimeout(() => {
+      this.stopTrackingTimer = null;
+      this.setState({ tracksViewChanges: false });
+    }, 160);
+  };
+
+  render() {
+    const { pub, labelled, closed, onPress } = this.props;
+    return (
+      <Marker
+        coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
+        onPress={() => onPress?.(pub.id)}
+        tracksViewChanges={this.state.tracksViewChanges}
+        accessibilityLabel={pub.name}
+        anchor={labelled ? PIN_ANCHOR : CENTER_ANCHOR}
+      >
+        {labelled ? (
+          <View style={styles.namedPin}>
+            <View style={[styles.pin, closed && styles.pinClosed]} />
+            <Text
+              style={[styles.pinLabel, closed && styles.pinLabelClosed]}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
+              {pub.name}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.pin, closed && styles.pinClosed]} />
+        )}
+      </Marker>
+    );
+  }
+}
 
 function initialRegionFor(
   pubs: readonly PubPresentation[],
@@ -76,6 +138,7 @@ export function PubsMap({
   onPan,
   selectedId,
   bottomInset = 0,
+  onRegionChangeComplete,
 }: {
   pubs: readonly PubPresentation[];
   currentPosition: PubPosition | null;
@@ -92,46 +155,40 @@ export function PubsMap({
    * strip you can actually see.
    */
   bottomInset?: number;
+  onRegionChangeComplete?: (region: Region) => void;
 }) {
   const mapRef = useRef<MapView>(null);
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const region = useMemo(
     () => initialRegionFor(pubs, currentPosition),
     [currentPosition, pubs],
   );
-  const visibleRegion = mapRegion ?? region;
+  const [renderedRecenterSignal, setRenderedRecenterSignal] = useState(recenterSignal);
+  const recenterTarget =
+    recenterSignal !== renderedRecenterSignal && currentPosition
+      ? {
+          latitude: currentPosition.lat,
+          longitude: currentPosition.lng,
+          latitudeDelta: 0.012,
+          longitudeDelta: 0.012,
+        }
+      : null;
+  if (recenterTarget) {
+    setRenderedRecenterSignal(recenterSignal);
+    setMapRegion(recenterTarget);
+  }
+  // Render markers for the destination before the native camera animation
+  // starts, so returning from a distant browse never exposes a blank frame.
+  const visibleRegion = recenterTarget ?? mapRegion ?? region;
   const coordinateSignature = useMemo(
-    () => pubs.map((pub) => `${pub.id}:${pub.pub.lat}:${pub.pub.lng}`).join('|'),
+    () => pubs
+      .map((pub) => `${pub.id}:${pub.pub.lat}:${pub.pub.lng}`)
+      .sort()
+      .join('|'),
     [pubs],
   );
 
-  const clusters = useMemo(() => {
-    if (!visibleRegion) return [];
-    const latMargin = visibleRegion.latitudeDelta * 0.65;
-    const lngMargin = visibleRegion.longitudeDelta * 0.65;
-    const points: ClusterPoint[] = pubs
-      .filter((pub) => pub.id !== selectedId)
-      .map((pub) => ({ lat: pub.pub.lat, lng: pub.pub.lng, pub }))
-      .filter(
-        (point) =>
-          Math.abs(point.lat - visibleRegion.latitude) <= latMargin &&
-          Math.abs(point.lng - visibleRegion.longitude) <= lngMargin,
-      );
-    // Finer than the default grid once you are close: at street level a bubble
-    // reading "2" is worse than two dots, because a dot can carry a name and a
-    // bubble cannot. Zoomed out to a whole region the same grid turns into a
-    // field of bubbles, so the coarse one stays there.
-    const close = visibleRegion.latitudeDelta <= CLUSTER_FINE_DELTA;
-    return close
-      ? clusterCoordinates(points, visibleRegion, CLUSTER_COLUMNS, CLUSTER_ROWS)
-      : clusterCoordinates(points, visibleRegion);
-  }, [pubs, selectedId, visibleRegion]);
-
-  const selectedPub = selectedId ? pubs.find((pub) => pub.id === selectedId) ?? null : null;
-
-  // Capped: past two thirds of the screen there is no strip left to centre in,
-  // and a padding taller than the map makes Google Maps place things off view.
   const mapPadding = useMemo(
     () => ({
       top: 0,
@@ -141,6 +198,18 @@ export function PubsMap({
     }),
     [bottomInset, screenHeight],
   );
+  const visibleMapHeight = Math.max(screenHeight - mapPadding.bottom, 1);
+  const grid = useMemo(
+    () => pubsMapGrid(screenWidth, visibleMapHeight),
+    [screenWidth, visibleMapHeight],
+  );
+
+  const clusters = useMemo(() => {
+    if (!visibleRegion) return [];
+    return buildPubsMapClusters(pubs, visibleRegion, selectedId, grid);
+  }, [grid, pubs, selectedId, visibleRegion]);
+
+  const selectedPub = selectedId ? pubs.find((pub) => pub.id === selectedId) ?? null : null;
 
   /**
    * Which pins say their name out loud.
@@ -163,12 +232,12 @@ export function PubsMap({
     // across and a name is 104pt, so treating them alike either let names touch
     // or blanked out a dense city block for one bubble.
     const label = {
-      lat: visibleRegion.latitudeDelta * LABEL_HALF_HEIGHT,
-      lng: visibleRegion.longitudeDelta * LABEL_HALF_WIDTH,
+      lat: visibleRegion.latitudeDelta * (LABEL_HALF_HEIGHT_PX / visibleMapHeight),
+      lng: visibleRegion.longitudeDelta * (LABEL_HALF_WIDTH_PX / Math.max(screenWidth, 1)),
     };
     const bubble = {
-      lat: visibleRegion.latitudeDelta * BUBBLE_HALF_HEIGHT,
-      lng: visibleRegion.longitudeDelta * BUBBLE_HALF_WIDTH,
+      lat: visibleRegion.latitudeDelta * (BUBBLE_HALF_HEIGHT_PX / visibleMapHeight),
+      lng: visibleRegion.longitudeDelta * (BUBBLE_HALF_WIDTH_PX / Math.max(screenWidth, 1)),
     };
     const claimed: { lat: number; lng: number; halfLat: number; halfLng: number }[] = [];
     const free = (lat: number, lng: number) =>
@@ -198,7 +267,7 @@ export function PubsMap({
       }
     }
     for (const cluster of clusters) {
-      if (ids.size >= LABEL_MAX) break;
+      if (ids.size >= grid.maxLabels) break;
       if (cluster.items.length > 1) continue;
       const pub = cluster.items[0].pub;
       if (!free(pub.pub.lat, pub.pub.lng)) continue;
@@ -211,28 +280,42 @@ export function PubsMap({
       ids.add(pub.id);
     }
     return ids;
-  }, [clusters, selectedPub, visibleRegion]);
+  }, [clusters, grid.maxLabels, screenWidth, selectedPub, visibleMapHeight, visibleRegion]);
 
   const openCluster = useCallback(
     (latitude: number, longitude: number) => {
       if (!visibleRegion) return;
-      mapRef.current?.animateToRegion(
-        {
-          latitude,
-          longitude,
-          latitudeDelta: Math.max(visibleRegion.latitudeDelta / 2.5, 0.0015),
-          longitudeDelta: Math.max(visibleRegion.longitudeDelta / 2.5, 0.0015),
-        },
-        320,
-      );
+      const target = {
+        latitude,
+        longitude,
+        latitudeDelta: Math.max(visibleRegion.latitudeDelta / 2.5, 0.0015),
+        longitudeDelta: Math.max(visibleRegion.longitudeDelta / 2.5, 0.0015),
+      };
+      onPan?.();
+      setMapRegion(target);
+      mapRef.current?.animateToRegion(target, 320);
     },
-    [visibleRegion],
+    [onPan, visibleRegion],
   );
 
-  const seenRecenter = useRef(recenterSignal);
+  const startedWithPosition = useRef(currentPosition != null);
+  const animatedRecenterSignal = useRef(recenterSignal);
   useEffect(() => {
-    if (recenterSignal === seenRecenter.current) return;
-    seenRecenter.current = recenterSignal;
+    if (!currentPosition || startedWithPosition.current) return;
+    startedWithPosition.current = true;
+    const target = {
+      latitude: currentPosition.lat,
+      longitude: currentPosition.lng,
+      latitudeDelta: 0.025,
+      longitudeDelta: 0.025,
+    };
+    setMapRegion(target);
+    mapRef.current?.animateToRegion(target, 320);
+  }, [currentPosition]);
+
+  useEffect(() => {
+    if (recenterSignal === animatedRecenterSignal.current) return;
+    animatedRecenterSignal.current = recenterSignal;
     if (!currentPosition) return;
     mapRef.current?.animateToRegion(
       {
@@ -275,7 +358,16 @@ export function PubsMap({
       { center: { latitude: selected.pub.lat, longitude: selected.pub.lng } },
       { duration: 300 },
     );
-  });
+  }, [pubs, selectedId]);
+
+  const settleRegion = useCallback<NonNullable<MapViewProps['onRegionChangeComplete']>>(
+    (next, details) => {
+      setMapRegion(next);
+      if (details?.isGesture) onPan?.();
+      onRegionChangeComplete?.(next);
+    },
+    [onPan, onRegionChangeComplete],
+  );
 
   if (!region) return <View style={[StyleSheet.absoluteFill, styles.emptyMap]} />;
 
@@ -295,7 +387,7 @@ export function PubsMap({
       loadingIndicatorColor={Colors.amber}
       onPanDrag={onPan}
       mapPadding={mapPadding}
-      onRegionChangeComplete={setMapRegion}
+      onRegionChangeComplete={settleRegion}
     >
       {clusters.map((cluster) => {
         if (cluster.items.length > 1) {
@@ -305,6 +397,7 @@ export function PubsMap({
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
               tracksViewChanges={false}
+              anchor={CENTER_ANCHOR}
               accessibilityLabel={`${cluster.items.length} hospod. Přiblížit`}
             >
               <View style={styles.clusterPin}>
@@ -316,32 +409,14 @@ export function PubsMap({
           );
         }
         const pub = cluster.items[0].pub;
-        const closed = pub.openState === 'closed';
-        const labelled = labelledIds.has(pub.id);
         return (
-          <Marker
-            key={`${pub.id}:${labelled ? 'named' : 'compact'}`}
-            coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
-            onPress={() => onPressPub?.(pub.id)}
-            tracksViewChanges={false}
-            accessibilityLabel={pub.name}
-            {...(labelled ? { anchor: PIN_ANCHOR } : null)}
-          >
-            {labelled ? (
-              <View style={styles.namedPin}>
-                <View style={[styles.pin, closed && styles.pinClosed]} />
-                <Text
-                  style={[styles.pinLabel, closed && styles.pinLabelClosed]}
-                  numberOfLines={1}
-                  allowFontScaling={false}
-                >
-                  {pub.name}
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.pin, closed && styles.pinClosed]} />
-            )}
-          </Marker>
+          <StablePubMarker
+            key={pub.id}
+            pub={pub}
+            labelled={labelledIds.has(pub.id)}
+            closed={pub.openState === 'closed'}
+            onPress={onPressPub}
+          />
         );
       })}
 
@@ -353,6 +428,7 @@ export function PubsMap({
           tracksViewChanges={false}
           accessibilityLabel={selectedPub.name}
           zIndex={10}
+          anchor={CENTER_ANCHOR}
         >
           <View style={styles.pinSelected}>
             <Text style={styles.pinTextSelected} numberOfLines={1} allowFontScaling={false}>

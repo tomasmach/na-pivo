@@ -8,6 +8,7 @@ import {
   buildVisitedCities,
   buildVisitedPubs,
   clusterCoordinates,
+  mapViewportCacheCovers,
   pubOpeningVerdict,
 } from '../mapModel';
 
@@ -273,5 +274,19 @@ describe('pivní mapový model', () => {
         .sort((a, b) => a.id.localeCompare(b.id));
 
     expect(membership(afterPan)).toEqual(membership(beforePan));
+  });
+
+  it('viewport cache přeskočí request jen dokud pokrývá celý nový výřez', () => {
+    const cache = { centerLat: 50.0876, centerLng: 14.4214, coveredKm: 3 };
+    const nearby = {
+      latitude: 50.088,
+      longitude: 14.423,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    };
+    const outside = { ...nearby, longitude: 14.47 };
+
+    expect(mapViewportCacheCovers(cache, nearby)).toBe(true);
+    expect(mapViewportCacheCovers(cache, outside)).toBe(false);
   });
 });

@@ -36,6 +36,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import type { Region } from 'react-native-maps';
 
 import {
   ChevronDownIcon,
@@ -55,7 +56,12 @@ import {
   type BeerBrandFilterOption,
 } from '@/data/beerSuggestionsClient';
 import { geohash8 } from '@/data/geohash';
-import { getAllLoadedPubs, hydratePubsSnapshot, type Pub } from '@/data/pubs';
+import {
+  fetchPubsPageNear,
+  getAllLoadedPubs,
+  readPubsSnapshot,
+  type Pub,
+} from '@/data/pubs';
 import { useCompass } from '@/hooks/useCompass';
 import { cs } from '@/i18n/cs';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
@@ -66,6 +72,11 @@ import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
+import {
+  mapViewportCacheCovers,
+  mapViewportRadiusKm,
+  mergeMapPubs,
+} from '@/map/mapModel';
 import {
   buildPubVisitIndex,
   presentPub,
@@ -95,6 +106,7 @@ const THUMB = 56;
  * gap, which is what made the list button float away from the card.
  */
 const CAROUSEL_H = 96;
+const VIEWPORT_DEBOUNCE_MS = 650;
 
 /**
  * How the list is ordered. "Nejbližší" is the default because standing
@@ -383,7 +395,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     tankOnly: false,
     gardenOnly: false,
   });
-  const serverFilters = serverFiltersForPubList(filters);
+  const serverFilters = React.useMemo(() => serverFiltersForPubList(filters), [filters]);
   const compass = useCompass(
     serverFilters.beerBrandKeys,
     serverFilters.amenityKeys,
@@ -396,7 +408,8 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   const [beerOptions, setBeerOptions] = React.useState<BeerBrandFilterOption[]>(() =>
     fallbackPopularBeerBrands(),
   );
-  const [snapshotReady, setSnapshotReady] = React.useState(false);
+  const [fallbackSnapshotPubs, setFallbackSnapshotPubs] = React.useState<Pub[] | null>(null);
+  const [fallbackSnapshotReady, setFallbackSnapshotReady] = React.useState(false);
   const [detent, setDetent] = React.useState<Detent>('half');
   // One move signal with its destination, bumped by whoever wants the sheet
   // somewhere. See `PlacesSheet` for why it is not three booleans.
@@ -472,6 +485,18 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   // Bumped on every pick of "Náhodně v okolí", so picking it again genuinely
   // deals a new order instead of returning the same "random" one.
   const [shuffleSeed, setShuffleSeed] = React.useState(0);
+  const browsingMapRef = React.useRef(false);
+  const [browsingMap, setBrowsingMap] = React.useState(false);
+  const [browseRegion, setBrowseRegion] = React.useState<Region | null>(null);
+  const [viewportCatalog, setViewportCatalog] = React.useState<{
+    filtersKey: string;
+    pubs: Pub[];
+    centerLat: number;
+    centerLng: number;
+    coveredKm: number;
+  } | null>(null);
+  const viewportRequestSerial = React.useRef(0);
+  const lastViewportAttemptRef = React.useRef('');
 
   const beginPickingPub = useLivePartyStore((state) => state.beginPickingPub);
   const endPickingPub = useLivePartyStore((state) => state.endPickingPub);
@@ -501,15 +526,29 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     closePicker();
   }, [closePicker, setPartyPub]);
 
+  // Keep the last city outside the compass' live index. It appears immediately
+  // when location is denied, or after a short grace period when GPS cannot get
+  // a fix, and disappears as soon as a real position exists.
   React.useEffect(() => {
+    if (compass.permissionState === 'undetermined' || compass.currentPosition) return undefined;
     let active = true;
-    void hydratePubsSnapshot().finally(() => {
-      if (active) setSnapshotReady(true);
-    });
+    const load = () => {
+      void readPubsSnapshot()
+        .then((pubs) => {
+          if (active) setFallbackSnapshotPubs(pubs);
+        })
+        .finally(() => {
+          if (active) setFallbackSnapshotReady(true);
+        });
+    };
+    const timer =
+      compass.permissionState === 'denied' ? null : setTimeout(load, 1_200);
+    if (timer === null) load();
     return () => {
       active = false;
+      if (timer !== null) clearTimeout(timer);
     };
-  }, []);
+  }, [compass.currentPosition, compass.permissionState]);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -520,24 +559,110 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   }, []);
 
   const hasServerFilters = filters.beers.length > 0 || filters.tankOnly || filters.gardenOnly;
+  const catalogueRevision = compass.pubDataRevision;
+  const snapshotReady = compass.currentPosition != null || fallbackSnapshotReady;
+  const viewportFiltersKey = React.useMemo(
+    () =>
+      JSON.stringify([
+        [...serverFilters.beerBrandKeys].sort(),
+        [...serverFilters.amenityKeys].sort(),
+      ]),
+    [serverFilters.amenityKeys, serverFilters.beerBrandKeys],
+  );
+
+  React.useEffect(() => {
+    if (!browseRegion) return undefined;
+    const radiusKm = mapViewportRadiusKm(browseRegion);
+    if (radiusKm >= 80) return undefined;
+    if (
+      viewportCatalog?.filtersKey === viewportFiltersKey &&
+      mapViewportCacheCovers(viewportCatalog, browseRegion)
+    ) {
+      return undefined;
+    }
+    const attemptKey = [
+      viewportFiltersKey,
+      browseRegion.latitude.toFixed(5),
+      browseRegion.longitude.toFixed(5),
+      browseRegion.latitudeDelta.toFixed(5),
+      browseRegion.longitudeDelta.toFixed(5),
+    ].join(':');
+    if (lastViewportAttemptRef.current === attemptKey) return undefined;
+    lastViewportAttemptRef.current = attemptKey;
+    const serial = ++viewportRequestSerial.current;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void fetchPubsPageNear(browseRegion.latitude, browseRegion.longitude, controller.signal, {
+        radiusKm,
+        beerBrandKeys: serverFilters.beerBrandKeys,
+        amenityKeys: serverFilters.amenityKeys,
+      })
+        .then((page) => {
+          if (serial !== viewportRequestSerial.current || controller.signal.aborted) return;
+          setViewportCatalog((current) => ({
+            filtersKey: viewportFiltersKey,
+            pubs: mergeMapPubs(
+              current?.filtersKey === viewportFiltersKey ? current.pubs : [],
+              page.pubs,
+            ),
+            centerLat: browseRegion.latitude,
+            centerLng: browseRegion.longitude,
+            coveredKm: page.coveredKm,
+          }));
+        })
+        .catch(() => undefined);
+    }, VIEWPORT_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      viewportRequestSerial.current += 1;
+    };
+  }, [
+    browseRegion,
+    serverFilters.amenityKeys,
+    serverFilters.beerBrandKeys,
+    viewportCatalog,
+    viewportFiltersKey,
+  ]);
+
   // Keep the previous catalogue out of sight while a hard server filter is in
   // flight. It has not been acknowledged for the new selection yet.
   const rawPubs = React.useMemo(
     () => {
-      const loaded = getAllLoadedPubs();
-      if (!snapshotReady && loaded.length === 0) return [];
-      const merged = hasServerFilters && compass.isLoading
+      // The catalogue is a validated module-level spatial index. Its revision
+      // is the render signal; reading it here keeps the memo tied to that state.
+      void catalogueRevision;
+      const viewportPubs =
+        browsingMap && viewportCatalog?.filtersKey === viewportFiltersKey
+          ? viewportCatalog.pubs
+          : null;
+      const fallbackPubs =
+        compass.currentPosition == null && fallbackSnapshotReady
+          ? (fallbackSnapshotPubs ?? [])
+          : null;
+      const loaded = viewportPubs ?? fallbackPubs ?? getAllLoadedPubs();
+      const viewportFilterPending =
+        browsingMap && viewportCatalog?.filtersKey !== viewportFiltersKey;
+      const merged = viewportFilterPending || (hasServerFilters && compass.isLoading && !browsingMap)
         ? []
-        : mergeCurrentPub(loaded, compass.pub);
+        : browsingMap
+          ? loaded
+          : mergeCurrentPub(loaded, compass.pub);
       return filterReportedPubs(merged, reportedPubIds, reportedCacheKeys);
     },
     [
       compass.isLoading,
       compass.pub,
+      compass.currentPosition,
+      catalogueRevision,
+      browsingMap,
+      fallbackSnapshotPubs,
+      fallbackSnapshotReady,
       hasServerFilters,
       reportedCacheKeys,
       reportedPubIds,
-      snapshotReady,
+      viewportCatalog,
+      viewportFiltersKey,
     ],
   );
   const amenitiesByKey = usePubAmenities(rawPubs);
@@ -571,7 +696,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   const effectiveSelected =
     selectedPub && ordered.some((pub) => pub.id === selectedPub)
       ? selectedPub
-      : ordered[0]?.id ?? null;
+      : null;
   const openPub = openPubId
     ? (presentations.find((pub) => pub.id === openPubId) ?? null)
     : null;
@@ -626,6 +751,39 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   // the sheet at rest, the pub card and the controls at `peek`.
   const mapBottomInset =
     detent === 'peek' ? controlsBottom + HitArea.min : Math.round(height - sheetTop);
+  const browseMap = React.useCallback(() => {
+    sheetAwayForPan();
+    if (!browsingMapRef.current) lastViewportAttemptRef.current = '';
+    browsingMapRef.current = true;
+    setBrowsingMap(true);
+    setSelectedPub(null);
+    setViewportCatalog((current) =>
+      current?.filtersKey === viewportFiltersKey
+        ? current
+        : {
+            filtersKey: viewportFiltersKey,
+            pubs:
+              compass.currentPosition == null && fallbackSnapshotPubs
+                ? fallbackSnapshotPubs
+                : getAllLoadedPubs(),
+            centerLat: compass.currentPosition?.lat ?? 0,
+            centerLng: compass.currentPosition?.lng ?? 0,
+            coveredKm: 0,
+          },
+    );
+  }, [compass.currentPosition, fallbackSnapshotPubs, sheetAwayForPan, viewportFiltersKey]);
+  const settleMapRegion = React.useCallback((next: Region) => {
+    if (browsingMapRef.current) setBrowseRegion(next);
+  }, []);
+  const locateOnMap = React.useCallback(() => {
+    browsingMapRef.current = false;
+    setBrowsingMap(false);
+    setBrowseRegion(null);
+    setViewportCatalog(null);
+    lastViewportAttemptRef.current = '';
+    setSelectedPub(null);
+    setRecenterSignal((value) => value + 1);
+  }, []);
 
   return (
     <View style={styles.screen}>
@@ -636,9 +794,10 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
           currentPosition={compass.currentPosition}
           recenterSignal={recenterSignal}
           onPressPub={openPubDetail}
-          onPan={sheetAwayForPan}
+          onPan={browseMap}
           selectedId={effectiveSelected}
           bottomInset={mapBottomInset}
+          onRegionChangeComplete={settleMapRegion}
         />
       </View>
 
@@ -716,7 +875,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
             compass.currentPosition ? 'Vycentrovat na mě' : 'Povolit polohu'
           }
           onPress={() => {
-            if (compass.currentPosition) setRecenterSignal((n) => n + 1);
+            if (compass.currentPosition) locateOnMap();
             else void compass.requestPermission();
           }}
         >
