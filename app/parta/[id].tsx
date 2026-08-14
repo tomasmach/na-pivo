@@ -18,6 +18,7 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import {
+  CheckIcon,
   ChevronLeftIcon,
   CompassIcon,
   BeerIcon,
@@ -432,10 +433,13 @@ export default function FriendProfileScreen() {
                 glow="none"
                 loading={requestBusy}
                 icon={
-                  <UserPlusIcon
-                    size={20}
-                    color={detail.isFollowing ? Colors.foam : Colors.stout}
-                  />
+                  // A plus next to "Nesledovat" says the opposite of what the
+                  // button does; once I follow them, the icon is the state.
+                  detail.isFollowing ? (
+                    <CheckIcon size={20} color={Colors.foam} />
+                  ) : (
+                    <UserPlusIcon size={20} color={Colors.stout} />
+                  )
                 }
               />
             </View>
