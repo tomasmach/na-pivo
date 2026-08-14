@@ -420,10 +420,18 @@ export function PubDetailBody({
           {openingRows.length > 0 ? (
             openingRows.map((row, index) => (
               <View key={`${row.days}:${row.hours}`} style={[styles.factRow, index > 0 && styles.rowDivider]}>
-                <Text style={styles.factLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.factLabel}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {row.days}
                 </Text>
-                <Text style={styles.factValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.factValue}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {row.hours}
                 </Text>
               </View>
@@ -640,7 +648,13 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     paddingVertical: Spacing.sm,
   },
-  factLabel: { width: 46, ...MockType.body, fontWeight: '700', color: Colors.foamMuted },
+  factLabel: {
+    minWidth: 46,
+    flexShrink: 0,
+    ...MockType.body,
+    fontWeight: '700',
+    color: Colors.foamMuted,
+  },
   factValue: { flex: 1, ...MockType.body, color: Colors.foam, textAlign: 'right' },
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
