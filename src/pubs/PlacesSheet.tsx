@@ -3,7 +3,7 @@
  *
  * Three detents, because two is not enough and four is fiddling:
  *
- *   peek      the map is the screen, the sheet is a hint of what is nearby
+ *   peek      the map is the whole screen, the sheet is parked off it
  *   half      the default — map on top, the nearest few pubs under it
  *   full      the list is the screen, the map a strip you can still see
  *
@@ -28,7 +28,6 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
 
 /**
@@ -40,18 +39,6 @@ import { Colors, withAlpha } from '@/theme/colors';
  * filter row. The map is the screen at that point; the sheet is a handle.
  */
 export const DETENT_TOP = { peek: 1, half: 0.48, full: 0.08 } as const;
-
-/**
- * At `peek` the sheet keeps a visible sliver above the tab bar.
- *
- * It briefly disappeared entirely at peek, with a floating list button as the
- * only way back — and with the map under your finger that read as "the list is
- * gone", not "the list is parked". The grabber strip stays on screen instead:
- * you can see there is something to pull, and both a drag and a tap on it
- * bring the sheet back. The part of the sheet behind the tab bar is covered by
- * it; only the grabber strip shows.
- */
-export const PEEK_VISIBLE = TAB_CHROME + 10;
 const DETENTS = DETENT_TOP;
 export type Detent = keyof typeof DETENTS;
 
@@ -109,7 +96,7 @@ export function PlacesSheet({
   // plain numbers captured from the closure are fine, a function is not.
   const tops = useMemo(
     () => ({
-      peek: Math.round(height - PEEK_VISIBLE),
+      peek: Math.round(height * DETENTS.peek),
       half: Math.round(height * DETENTS.half),
       full: Math.round(height * DETENTS.full),
     }),
@@ -193,18 +180,6 @@ export function PlacesSheet({
 
   const bodyGesture = scrollRef ? bodyPan.blocksExternalGesture(scrollRef) : bodyPan;
 
-  // At `peek` the grabber sliver is the whole affordance, and after the third
-  // beer a tap is easier to land than a drag. Anywhere else a tap on the
-  // grabber means nothing, so the guard keeps it inert.
-  const tapOpen = Gesture.Tap().onEnd(() => {
-    'worklet';
-    if (translateY.value >= tops.peek - 1) {
-      translateY.value = withSpring(tops.half, SPRING);
-      runOnJS(settle)('half');
-    }
-  });
-  const handleGesture = Gesture.Exclusive(pan, tapOpen);
-
   // ONE effect owns every programmatic move. Two effects each writing the same
   // shared value is what `react-hooks/immutability` objects to, and it is right:
   // whichever ran last would win a race nobody declared.
@@ -237,7 +212,7 @@ export function PlacesSheet({
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.solid]} pointerEvents="none" />
       )}
-      <GestureDetector gesture={handleGesture}>
+      <GestureDetector gesture={pan}>
         {/* The drag target. Tall enough to grab without aiming. */}
         <View style={styles.handleArea}>
           <View style={styles.grabber} />

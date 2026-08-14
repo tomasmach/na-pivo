@@ -47,6 +47,7 @@ import {
   StarIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassIconButton, GlassPill } from '@/components/shared/GlassIconButton';
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import {
   fallbackPopularBeerBrands,
   fetchPopularBeerBrands,
@@ -58,7 +59,7 @@ import { useCompass } from '@/hooks/useCompass';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
-import { DETENT_TOP, PEEK_VISIBLE, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
+import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
@@ -84,8 +85,13 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 /** The distance stays readable without making the list row taller. */
 const THUMB = 56;
 
-/** Height of the swipeable card that stands in for the list at `peek`. */
-const CAROUSEL_H = 140;
+/**
+ * First guess at the height of the card that stands in for the list at `peek`,
+ * replaced by the measured one on layout. It was a fixed 140 — some 45pt taller
+ * than the card actually is — and everything stacked above it inherited that
+ * gap, which is what made the list button float away from the card.
+ */
+const CAROUSEL_H = 96;
 
 /**
  * How the list is ordered. "Nejbližší" is the default because standing
@@ -449,6 +455,7 @@ export default function PubListMockScreen() {
   const [selectedPub, setSelectedPub] = React.useState<string | null>(null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
+  const [carouselHeight, setCarouselHeight] = React.useState(CAROUSEL_H);
   // The detail opens INSIDE the sheet rather than as a push: the map behind is
   // the context for the place you just tapped, and pushing a screen throws that
   // away to show you a second map of the same pin.
@@ -567,13 +574,18 @@ export default function PubListMockScreen() {
   // At `peek` the sheet is off screen entirely, so the floating things stack up
   // from the tab bar. Anchored by their BOTTOM edge: computed down from the top
   // they drifted away from the bar on taller screens.
-  // Above the sheet's peek sliver, so the floating cards never sit on top of
-  // the grabber strip that pulls the list back up.
-  const carouselBottom = PEEK_VISIBLE + Spacing.sm;
+  const carouselBottom = TAB_CHROME + Spacing.sm;
   const hasCarousel =
     detent === 'peek' && compass.currentPosition != null && ordered.length > 0;
+  // Measured, not assumed: the card's height depends on the text inside it, and
+  // a constant that guesses high leaves a hole between the card and the
+  // controls sitting on top of it.
   const controlsBottom =
-    carouselBottom + (hasCarousel ? CAROUSEL_H : HitArea.min) - Spacing.sm;
+    carouselBottom + (hasCarousel ? carouselHeight + Spacing.sm : 0);
+  // What the map is centring INTO: the strip above whatever covers its bottom —
+  // the sheet at rest, the pub card and the controls at `peek`.
+  const mapBottomInset =
+    detent === 'peek' ? controlsBottom + HitArea.min : Math.round(height - sheetTop);
 
   return (
     <View style={styles.screen}>
@@ -586,6 +598,7 @@ export default function PubListMockScreen() {
           onPressPub={openPubDetail}
           onPan={sheetAwayForPan}
           selectedId={effectiveSelected}
+          bottomInset={mapBottomInset}
         />
       </View>
 
@@ -593,7 +606,13 @@ export default function PubListMockScreen() {
           At the other detents the list is on screen, so this would be the same
           pubs twice. */}
       {hasCarousel && compass.currentPosition ? (
-        <View style={[styles.carousel, { bottom: carouselBottom }]}>
+        <View
+          style={[styles.carousel, { bottom: carouselBottom }]}
+          onLayout={(event) => {
+            const next = Math.round(event.nativeEvent.layout.height);
+            setCarouselHeight((current) => (current === next ? current : next));
+          }}
+        >
           <PubCarousel
             pubs={ordered}
             position={compass.currentPosition}
