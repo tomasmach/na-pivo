@@ -76,6 +76,8 @@ interface ComposeSheetProps {
   onClose: () => void;
   /** A hub action has one intent; the legacy combined picker remains the default. */
   intent?: 'live' | 'plan' | 'choose';
+  /** Locks the audience to exactly these IDs and hides the KOMU picker. */
+  fixedRecipientIds?: string[];
 }
 
 interface PubOption {
@@ -197,7 +199,7 @@ function FriendRecipientRow({
   );
 }
 
-function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose' }: ComposeSheetProps): React.ReactElement {
+function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedRecipientIds }: ComposeSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // Modals host their own window, so KeyboardAvoidingView is unreliable here —
@@ -274,17 +276,31 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose' }: Comp
   }, [tallyCurrent, tallyHistory]);
 
   const options = placeTab === 0 ? nearbyOptions : recentOptions;
+  const fixedIds = useMemo(
+    () => (fixedRecipientIds ?? []).filter((id) => typeof id === 'string' && id.trim() !== ''),
+    [fixedRecipientIds],
+  );
+  const audienceIsFixed = fixedRecipientIds !== undefined;
   const friendIds = useMemo(() => new Set(friends.map((friend) => friend.id)), [friends]);
   const selectedRecipientIdsValid = useMemo(
     () => selectedRecipientIds.filter((id) => friendIds.has(id)),
     [friendIds, selectedRecipientIds],
   );
-  const selectedCount = audienceMode === 'all' ? friends.length : selectedRecipientIdsValid.length;
-  const targetRecipientIds = audienceMode === 'custom' ? selectedRecipientIdsValid : undefined;
+  const selectedCount = audienceIsFixed
+    ? fixedIds.length
+    : audienceMode === 'all'
+      ? friends.length
+      : selectedRecipientIdsValid.length;
+  const targetRecipientIds = audienceIsFixed
+    ? fixedIds
+    : audienceMode === 'custom'
+      ? selectedRecipientIdsValid
+      : undefined;
 
   useEffect(() => {
+    if (audienceIsFixed) return;
     pruneMemberIds(friends.map((friend) => friend.id));
-  }, [friends, pruneMemberIds]);
+  }, [friends, audienceIsFixed, pruneMemberIds]);
 
   // Effective selection: an explicit pick, else the first option in the current
   // tab (so the CTA lights up without a tap, and the default follows the tab).
@@ -358,7 +374,8 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose' }: Comp
   // A plan needs a strictly-future hour today (minutes clamped to :00). Kept pure
   // (no render-time clock call) — the actual ISO is built in the submit handler.
   const isValidPlanTime = hour > nowHour;
-  const hasRecipients = audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
+  const hasRecipients =
+    audienceIsFixed ? fixedIds.length > 0 : audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
   const canSubmit = !!selectionPub && (!isPlan || isValidPlanTime) && hasRecipients && !submitting;
 
   const handleSubmit = useCallback(() => {
@@ -456,82 +473,86 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose' }: Comp
 
           <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>
             {/* KOMU */}
-            <SectionHeader label={cs.friends.composeAudienceLabel} />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.recipientChips}
-            >
-              <RecipientChip
-                label={cs.friends.recipientAll}
-                selected={audienceMode === 'all'}
-                onPress={selectAllRecipients}
-                icon={<UsersIcon size={16} color={audienceMode === 'all' ? Colors.stout : Colors.amber} />}
-              />
-              {groups.map((group) => (
-                <RecipientChip
-                  key={group.id}
-                  label={group.name}
-                  selected={audienceMode === 'custom' && activeGroupId === group.id}
-                  onPress={() => selectGroup(group.id)}
-                />
-              ))}
-              <RecipientChip
-                label={cs.friends.recipientCustom}
-                selected={audienceMode === 'custom' && activeGroupId == null}
-                onPress={startCustomSelection}
-                icon={<PlusIcon size={16} color={audienceMode === 'custom' && activeGroupId == null ? Colors.stout : Colors.amber} />}
-              />
-            </ScrollView>
-            <Text style={styles.recipientSummary} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-              {audienceMode === 'all'
-                ? cs.friends.recipientAllSummary(selectedCount)
-                : cs.friends.recipientCustomSummary(selectedCount)}
-            </Text>
-            {audienceMode === 'custom' ? (
-              <View style={styles.recipientPanel}>
-                {friends.length === 0 ? (
-                  <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.recipientNoFriends}
-                  </Text>
-                ) : (
-                  friends.map((friend) => (
-                    <FriendRecipientRow
-                      key={friend.id}
-                      friend={friend}
-                      selected={selectedRecipientIdsValid.includes(friend.id)}
-                      onToggle={() => toggleRecipient(friend.id)}
-                    />
-                  ))
-                )}
-                <View style={styles.groupSaveRow}>
-                  <TextInput
-                    value={groupName}
-                    onChangeText={setGroupName}
-                    placeholder={cs.friends.recipientGroupPlaceholder}
-                    placeholderTextColor={MockColors.fieldHint}
-                    style={styles.groupNameInput}
-                    maxLength={28}
-                    maxFontSizeMultiplier={FontScaleCap.body}
+            {!audienceIsFixed ? (
+              <>
+                <SectionHeader label={cs.friends.composeAudienceLabel} />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.recipientChips}
+                >
+                  <RecipientChip
+                    label={cs.friends.recipientAll}
+                    selected={audienceMode === 'all'}
+                    onPress={selectAllRecipients}
+                    icon={<UsersIcon size={16} color={audienceMode === 'all' ? Colors.stout : Colors.amber} />}
                   />
-                  <Pressable
-                    onPress={saveCurrentGroup}
-                    disabled={selectedRecipientIdsValid.length === 0}
-                    style={({ pressed }) => [
-                      styles.groupSaveButton,
-                      selectedRecipientIdsValid.length === 0 && styles.groupSaveButtonDisabled,
-                      pressed && selectedRecipientIdsValid.length > 0 && styles.dim,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: selectedRecipientIdsValid.length === 0 }}
-                    accessibilityLabel={cs.friends.recipientGroupSave}
-                  >
-                    <Text style={styles.groupSaveText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.recipientGroupSave}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
+                  {groups.map((group) => (
+                    <RecipientChip
+                      key={group.id}
+                      label={group.name}
+                      selected={audienceMode === 'custom' && activeGroupId === group.id}
+                      onPress={() => selectGroup(group.id)}
+                    />
+                  ))}
+                  <RecipientChip
+                    label={cs.friends.recipientCustom}
+                    selected={audienceMode === 'custom' && activeGroupId == null}
+                    onPress={startCustomSelection}
+                    icon={<PlusIcon size={16} color={audienceMode === 'custom' && activeGroupId == null ? Colors.stout : Colors.amber} />}
+                  />
+                </ScrollView>
+                <Text style={styles.recipientSummary} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {audienceMode === 'all'
+                    ? cs.friends.recipientAllSummary(selectedCount)
+                    : cs.friends.recipientCustomSummary(selectedCount)}
+                </Text>
+                {audienceMode === 'custom' ? (
+                  <View style={styles.recipientPanel}>
+                    {friends.length === 0 ? (
+                      <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {cs.friends.recipientNoFriends}
+                      </Text>
+                    ) : (
+                      friends.map((friend) => (
+                        <FriendRecipientRow
+                          key={friend.id}
+                          friend={friend}
+                          selected={selectedRecipientIdsValid.includes(friend.id)}
+                          onToggle={() => toggleRecipient(friend.id)}
+                        />
+                      ))
+                    )}
+                    <View style={styles.groupSaveRow}>
+                      <TextInput
+                        value={groupName}
+                        onChangeText={setGroupName}
+                        placeholder={cs.friends.recipientGroupPlaceholder}
+                        placeholderTextColor={MockColors.fieldHint}
+                        style={styles.groupNameInput}
+                        maxLength={28}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      />
+                      <Pressable
+                        onPress={saveCurrentGroup}
+                        disabled={selectedRecipientIdsValid.length === 0}
+                        style={({ pressed }) => [
+                          styles.groupSaveButton,
+                          selectedRecipientIdsValid.length === 0 && styles.groupSaveButtonDisabled,
+                          pressed && selectedRecipientIdsValid.length > 0 && styles.dim,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: selectedRecipientIdsValid.length === 0 }}
+                        accessibilityLabel={cs.friends.recipientGroupSave}
+                      >
+                        <Text style={styles.groupSaveText} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {cs.friends.recipientGroupSave}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </>
             ) : null}
 
             {/* KDE */}

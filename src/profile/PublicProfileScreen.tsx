@@ -660,6 +660,7 @@ export default function PublicProfileScreen() {
       {composeOpen ? (
         <ComposeSheet
           friends={[detail.profile]}
+          fixedRecipientIds={[detail.profile.id]}
           onSubmitted={() => undefined}
           onClose={() => setComposeOpenFor(null)}
         />

@@ -147,3 +147,65 @@ describe('QuizShell', () => {
     );
   });
 });
+
+describe('QuizShell spectator mode', () => {
+  function renderSpectator(
+    answers: QuizAnswer[],
+    over: Partial<{ index: number; me: string }> = {},
+  ) {
+    const onAnswer = jest.fn();
+    const onNext = jest.fn();
+    const onReveal = jest.fn();
+    const onFinished = jest.fn();
+    render(
+      <QuizShell
+        entrants={TABLE}
+        answers={answers}
+        me={over.me ?? 'Ty'}
+        index={over.index ?? 0}
+        tintOf={() => '#E8A33D'}
+        forceRevealed={false}
+        onAnswer={onAnswer}
+        onReveal={onReveal}
+        onNext={onNext}
+        onFinished={onFinished}
+        onDone={jest.fn()}
+        spectator
+      />,
+    );
+    return { onAnswer, onNext, onReveal, onFinished };
+  }
+
+  it('sees the canonical question but cannot answer it', () => {
+    const { onAnswer } = renderSpectator([]);
+
+    expect(screen.getByText(QUESTION.text)).toBeTruthy();
+    fireEvent.press(screen.getByText(WRONG));
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  it('cannot force the reveal while the table waits', () => {
+    const { onReveal } = renderSpectator([answer('Ty', QUESTION.answer)]);
+
+    const reveal = screen.queryByLabelText('Ukázat odpověď bez čekání');
+    expect(reveal).toBeNull();
+    if (reveal) fireEvent.press(reveal);
+    expect(onReveal).not.toHaveBeenCalled();
+  });
+
+  it('sees the canonical reveal but cannot advance', () => {
+    const { onNext } = renderSpectator([answer('Ty', 0), answer('Honza', 1)]);
+
+    expect(screen.getByLabelText(`${RIGHT} — správně`)).toBeTruthy();
+    expect(screen.queryByText('Další otázka')).toBeNull();
+    expect(screen.queryByText('Výsledky')).toBeNull();
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-report a finished quiz but keeps the result visible', () => {
+    const { onFinished } = renderSpectator([], { index: QUIZ_QUESTIONS.length });
+
+    expect(onFinished).not.toHaveBeenCalled();
+    expect(screen.getByText('Dohráno')).toBeTruthy();
+  });
+});

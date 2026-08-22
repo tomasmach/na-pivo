@@ -13,8 +13,8 @@
  * and the two would drift.
  */
 
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -23,22 +23,23 @@ import Animated, {
   useSharedValue,
   withSequence,
   withTiming,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
-import { kingsDeck, KINGS_CARDS, KINGS_DECK } from '@/party/gameContent';
-import { MockColors, MockLayout } from '@/mocks/mockTheme';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { kingsDeck, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
+import { MockColors, MockLayout } from "@/mocks/mockTheme";
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap, Fonts } from "@/theme/fonts";
+import { Radius, Spacing } from "@/theme/layout";
 
 /** Kostky has its own turn-based table now, so nothing draws dice here. */
-export type DrawKind = 'person' | 'card';
+export type DrawKind = "person" | "card";
 
 /** Long enough to be a moment, short enough that nobody puts the phone down. */
 const ROLL_MS = 900;
 
 /** Module scope so `react-hooks/purity` can see these are taps, not render. */
-const pick = <T,>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)];
+const pick = <T,>(items: readonly T[]): T =>
+  items[Math.floor(Math.random() * items.length)];
 
 export interface DrawPlayer {
   id: string;
@@ -64,6 +65,7 @@ export function DrawShell({
   drawnCardIds,
   onDeckFinished,
   seed = 1,
+  spectator = false,
 }: {
   kind: DrawKind;
   players: DrawPlayer[];
@@ -76,6 +78,8 @@ export function DrawShell({
   drawnCardIds?: readonly string[];
   onDeckFinished?: (result: DrawResult) => void;
   seed?: number;
+  /** Read-only view: the last card stays up, but nobody draws from here. */
+  spectator?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   const [localResult, setLocalResult] = React.useState<DrawResult | null>(null);
@@ -86,7 +90,9 @@ export function DrawShell({
   const shown = result === undefined ? localResult : result;
   const effectiveCardIds = drawnCardIds ?? localCardIds;
   const deckFinished =
-    kind === 'card' && effectiveCardIds.filter((cardId) => cardId.endsWith('-K') || cardId === 'K').length >= 4;
+    kind === "card" &&
+    effectiveCardIds.filter((cardId) => cardId.endsWith("-K") || cardId === "K")
+      .length >= 4;
   const shownPlayer = players.find((player) => player.id === shown?.personId);
   const shownCard =
     KINGS_DECK.find((card) => card.id === shown?.cardId) ??
@@ -105,12 +111,13 @@ export function DrawShell({
   const settle = useSharedValue(1);
 
   const draw = () => {
-    if (rolling || deckFinished || interactionLocked.current) return;
+    if (spectator || rolling || deckFinished || interactionLocked.current)
+      return;
     interactionLocked.current = true;
     // Chosen first, animated to second. The animation is decoration over an
     // answer that already exists, which is what keeps reduced motion honest.
     const next: DrawResult = { nonce: String(Date.now()) };
-    if (kind === 'person') next.personId = pick(players)?.id;
+    if (kind === "person") next.personId = pick(players)?.id;
     else {
       const drawn = new Set(effectiveCardIds);
       const available = kingsDeck(seed).filter((card) => !drawn.has(card.id));
@@ -128,9 +135,9 @@ export function DrawShell({
       }
       onDraw?.(next);
       const finishesDeck =
-        next.cardId?.endsWith('-K') &&
-        effectiveCardIds.filter((cardId) => cardId.endsWith('-K')).length === 3;
-      if (finishesDeck && onDeckFinished) {
+        next.cardId?.endsWith("-K") &&
+        effectiveCardIds.filter((cardId) => cardId.endsWith("-K")).length === 3;
+      if (finishesDeck && onDeckFinished && !spectator) {
         // Persist first, show the fourth king second, leave the screen last.
         // Without this beat GameResult replaces the card in the same render and
         // the moment the whole game builds toward is never actually visible.
@@ -179,7 +186,7 @@ export function DrawShell({
       ) : null}
 
       <View style={styles.stage}>
-        {kind === 'person' ? (
+        {kind === "person" ? (
           <Animated.View style={settleStyle}>
             {rolling ? (
               // Names racing past. Not a spinner: you can see it is choosing
@@ -192,13 +199,13 @@ export function DrawShell({
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {shownPlayer?.name ?? '…'}
+                {shownPlayer?.name ?? "…"}
               </Text>
             )}
           </Animated.View>
         ) : null}
 
-        {kind === 'card' ? (
+        {kind === "card" ? (
           <Animated.View style={[styles.card, settleStyle]}>
             {rolling || !shownCard ? (
               <Text style={styles.cardBack} allowFontScaling={false}>
@@ -207,12 +214,18 @@ export function DrawShell({
             ) : (
               <Animated.View key={shown?.nonce} entering={FadeIn.duration(200)}>
                 <Text style={styles.cardRank} allowFontScaling={false}>
-                  {'card' in shownCard ? shownCard.card : shownCard.rank}
+                  {"card" in shownCard ? shownCard.card : shownCard.rank}
                 </Text>
-                <Text style={styles.cardTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                <Text
+                  style={styles.cardTitle}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
                   {shownCard.title}
                 </Text>
-                <Text style={styles.cardRule} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.cardRule}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {shownCard.rule}
                 </Text>
               </Animated.View>
@@ -223,14 +236,23 @@ export function DrawShell({
 
       <Pressable
         onPress={draw}
-        disabled={rolling || deckFinished}
-        style={({ pressed }) => [styles.action, (pressed || rolling) && styles.actionPressed]}
+        disabled={spectator || rolling || deckFinished}
+        style={({ pressed }) => [
+          styles.action,
+          (pressed || rolling) && styles.actionPressed,
+          spectator && styles.actionMuted,
+        ]}
         accessibilityRole="button"
-        accessibilityLabel={deckFinished ? 'Dohráno' : shown ? `${action} znovu` : action}
-        accessibilityState={{ disabled: rolling || deckFinished }}
+        accessibilityLabel={
+          deckFinished ? "Dohráno" : shown ? `${action} znovu` : action
+        }
+        accessibilityState={{ disabled: spectator || rolling || deckFinished }}
       >
-        <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {rolling ? '…' : deckFinished ? 'Dohráno' : shown ? 'Znovu' : action}
+        <Text
+          style={styles.actionText}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {rolling ? "…" : deckFinished ? "Dohráno" : shown ? "Znovu" : action}
         </Text>
       </Pressable>
     </View>
@@ -247,8 +269,12 @@ function RollingNames({ players }: { players: DrawPlayer[] }) {
   }, []);
 
   return (
-    <Text style={[styles.person, styles.personRolling]} numberOfLines={1} allowFontScaling={false}>
-      {players[index % players.length]?.name ?? '…'}
+    <Text
+      style={[styles.person, styles.personRolling]}
+      numberOfLines={1}
+      allowFontScaling={false}
+    >
+      {players[index % players.length]?.name ?? "…"}
     </Text>
   );
 }
@@ -256,24 +282,24 @@ function RollingNames({ players }: { players: DrawPlayer[] }) {
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: MockLayout.screenPad,
   },
   intro: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     color: withAlpha(Colors.foam, 0.5),
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: Spacing.xl,
   },
-  stage: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
+  stage: { minHeight: 220, alignItems: "center", justifyContent: "center" },
 
   person: {
     fontSize: 40,
     lineHeight: 48,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: -0.6,
   },
   personRolling: { color: withAlpha(Colors.foam, 0.45) },
@@ -283,7 +309,7 @@ const styles = StyleSheet.create({
     minHeight: 200,
     padding: Spacing.lg,
     borderRadius: 24,
-    justifyContent: 'center',
+    justifyContent: "center",
     backgroundColor: MockColors.surfaceHigh,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.12),
@@ -292,19 +318,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.numeral,
     fontSize: 64,
     color: withAlpha(Colors.foam, 0.2),
-    textAlign: 'center',
+    textAlign: "center",
   },
   cardRank: { fontFamily: Fonts.numeral, fontSize: 34, color: Colors.amber },
   cardTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
     marginTop: 2,
   },
   cardRule: {
     fontSize: 15,
     lineHeight: 21,
-    fontWeight: '500',
+    fontWeight: "500",
     color: withAlpha(Colors.foam, 0.72),
     marginTop: Spacing.sm,
   },
@@ -312,11 +338,12 @@ const styles = StyleSheet.create({
   action: {
     height: 60,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: Spacing.xl,
     backgroundColor: Colors.amber,
   },
   actionPressed: { opacity: 0.85 },
-  actionText: { fontSize: 17, fontWeight: '800', color: Colors.stout },
+  actionMuted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
+  actionText: { fontSize: 17, fontWeight: "800", color: Colors.stout },
 });

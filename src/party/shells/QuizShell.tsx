@@ -26,25 +26,29 @@
  * local state today and from `partyGamesStream` tomorrow without a rewrite.
  */
 
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useReducedMotion,
+} from "react-native-reanimated";
 
-import { CheckIcon } from '@/components/shared/IconGlyph';
-import { PersonAvatar } from '@/components/shared/PersonAvatar';
-import { GameResult } from '@/games/GameResult';
-import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
+import { CheckIcon } from "@/components/shared/IconGlyph";
+import { PersonAvatar } from "@/components/shared/PersonAvatar";
+import { GameResult } from "@/games/GameResult";
+import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
 import {
   hasAnswered,
   quizState,
   quizWinner,
   type QuizAnswer,
   type QuizEntrant,
-} from '@/party/quiz/rules';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+} from "@/party/quiz/rules";
+import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap, Fonts } from "@/theme/fonts";
+import { Radius, Spacing } from "@/theme/layout";
 
 export function QuizShell({
   entrants,
@@ -53,6 +57,7 @@ export function QuizShell({
   index,
   tintOf,
   forceRevealed = false,
+  spectator = false,
   onAnswer,
   onReveal,
   onNext,
@@ -68,6 +73,8 @@ export function QuizShell({
   tintOf: (name: string) => string;
   /** Somebody gave up waiting for a phone that is not coming back. */
   forceRevealed?: boolean;
+  /** Watch-only phone: sees the shared question, never answers or advances. */
+  spectator?: boolean;
   onAnswer: (option: number) => void;
   onReveal: () => void;
   onNext: () => void;
@@ -84,28 +91,37 @@ export function QuizShell({
   React.useEffect(() => {
     answerLocked.current = null;
   }, [question?.id]);
-  const locked = question ? hasAnswered(answers, entrants, me, question.id) : false;
+  const locked = question
+    ? hasAnswered(answers, entrants, me, question.id)
+    : false;
   // Everybody has committed, so nobody can be helped by hearing it out loud.
   const revealed = state.complete || forceRevealed;
   const playingHere = entrants.some((entrant) => entrant.id === me);
-  const canAnswer = playingHere && !locked && !revealed;
+  const canAnswer = playingHere && !locked && !revealed && !spectator;
   const visibleStandings = revealed ? state.standings : state.previousStandings;
   const mine = question
-    ? answers.find((answer) => answer.entrantId === me && answer.questionId === question.id)
+    ? answers.find(
+        (answer) =>
+          answer.entrantId === me && answer.questionId === question.id,
+      )
     : undefined;
 
   const reported = React.useRef(false);
   React.useEffect(() => {
-    if (!state.finished || reported.current) return;
+    if (!state.finished || reported.current || spectator) return;
     reported.current = true;
     onFinished({
       winner: quizWinner(state.standings)
-        ? (state.standings.find((row) => row.teamId === quizWinner(state.standings))?.teamName ??
-          null)
+        ? (state.standings.find(
+            (row) => row.teamId === quizWinner(state.standings),
+          )?.teamName ?? null)
         : null,
-      standings: state.standings.map((row) => ({ name: row.teamName, score: row.score })),
+      standings: state.standings.map((row) => ({
+        name: row.teamName,
+        score: row.score,
+      })),
     });
-  }, [state.finished, state.standings, onFinished]);
+  }, [state.finished, state.standings, onFinished, spectator]);
 
   if (state.finished) {
     return (
@@ -115,10 +131,14 @@ export function QuizShell({
           tint: tintOf(entrant.teamName),
         }))}
         outcome={{
-          scores: state.standings.map((row) => ({ playerId: row.teamName, score: row.score })),
+          scores: state.standings.map((row) => ({
+            playerId: row.teamName,
+            score: row.score,
+          })),
           winnerId:
-            state.standings.find((row) => row.teamId === quizWinner(state.standings))?.teamName ??
-            null,
+            state.standings.find(
+              (row) => row.teamId === quizWinner(state.standings),
+            )?.teamName ?? null,
         }}
         onDone={onDone}
       />
@@ -179,7 +199,10 @@ export function QuizShell({
               }
             >
               <Text
-                style={[styles.optionText, (right || picked) && styles.optionTextOn]}
+                style={[
+                  styles.optionText,
+                  (right || picked) && styles.optionTextOn,
+                ]}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
                 {option}
@@ -197,37 +220,51 @@ export function QuizShell({
           entering={reduceMotion ? undefined : FadeInDown.duration(200)}
           style={styles.waiting}
         >
-          <Text style={styles.waitingTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={styles.waitingTitle}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {/* Nominative, so it reads right however the table is named —
                 "čeká se na Honza" is the kind of Czech an app writes and a
                 person never does. */}
-            Zamknuto. Chybí {waiting.join(', ')}
+            Zamknuto. Chybí {waiting.join(", ")}
           </Text>
           {/* Somebody is at the bar, or their phone died. A quiz that can only
               be unblocked by a person who left is a quiz that ends there. */}
-          <Pressable
-            onPress={onReveal}
-            style={({ pressed }) => [styles.reveal, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Ukázat odpověď bez čekání"
-            hitSlop={8}
-          >
-            <Text style={styles.revealText} maxFontSizeMultiplier={FontScaleCap.body}>
-              Nečekat
-            </Text>
-          </Pressable>
+          {!spectator ? (
+            <Pressable
+              onPress={onReveal}
+              style={({ pressed }) => [
+                styles.reveal,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Ukázat odpověď bez čekání"
+              hitSlop={8}
+            >
+              <Text
+                style={styles.revealText}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                Nečekat
+              </Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       ) : null}
 
-      {revealed ? (
+      {revealed && !spectator ? (
         <Pressable
           onPress={onNext}
           style={({ pressed }) => [styles.action, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Další otázka"
         >
-          <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {index + 1 >= QUIZ_QUESTIONS.length ? 'Výsledky' : 'Další otázka'}
+          <Text
+            style={styles.actionText}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {index + 1 >= QUIZ_QUESTIONS.length ? "Výsledky" : "Další otázka"}
           </Text>
         </Pressable>
       ) : null}
@@ -238,7 +275,11 @@ export function QuizShell({
         <View style={styles.board}>
           {visibleStandings.map((row) => (
             <View key={row.teamId} style={styles.boardRow}>
-              <PersonAvatar name={row.teamName} tint={tintOf(row.teamName)} size={22} />
+              <PersonAvatar
+                name={row.teamName}
+                tint={tintOf(row.teamName)}
+                size={22}
+              />
               <Text
                 style={styles.boardName}
                 numberOfLines={1}
@@ -264,11 +305,11 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   pressed: { opacity: 0.8 },
-  kicker: { fontSize: 13, fontWeight: '700', color: Colors.mutedText },
+  kicker: { fontSize: 13, fontWeight: "700", color: Colors.mutedText },
   question: {
     fontSize: 26,
     lineHeight: 34,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
     letterSpacing: -0.4,
     marginTop: Spacing.sm,
@@ -276,8 +317,8 @@ const styles = StyleSheet.create({
 
   options: { marginTop: Spacing.xl, gap: Spacing.sm },
   option: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.sm,
     minHeight: 60,
     paddingHorizontal: Spacing.md,
@@ -288,36 +329,41 @@ const styles = StyleSheet.create({
   optionPicked: { backgroundColor: withAlpha(Colors.amber, 0.18) },
   optionRight: { backgroundColor: Colors.amber },
   optionWrong: { backgroundColor: withAlpha(Colors.foam, 0.06) },
-  optionText: { flex: 1, fontSize: 17, fontWeight: '600', color: Colors.foam },
-  optionTextOn: { color: Colors.stout, fontWeight: '700' },
+  optionText: { flex: 1, fontSize: 17, fontWeight: "600", color: Colors.foam },
+  optionTextOn: { color: Colors.stout, fontWeight: "700" },
 
-  waiting: { marginTop: Spacing.lg, alignItems: 'center', gap: Spacing.sm },
+  waiting: { marginTop: Spacing.lg, alignItems: "center", gap: Spacing.sm },
   reveal: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
-  revealText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
+  revealText: { fontSize: 14, fontWeight: "700", color: Colors.amber },
   waitingTitle: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.mutedText,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
   action: {
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: Spacing.xl,
     backgroundColor: Colors.amber,
   },
   actionText: { ...MockType.buttonLabel, color: Colors.stout },
 
   board: { marginTop: Spacing.xxl, gap: Spacing.sm },
-  boardRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  boardName: { flex: 1, fontSize: 15, fontWeight: '600', color: withAlpha(Colors.foam, 0.75) },
+  boardRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  boardName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: withAlpha(Colors.foam, 0.75),
+  },
   boardScore: {
     fontFamily: Fonts.numeral,
     fontSize: 17,
     color: Colors.foam,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
   },
 });

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pressable, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
@@ -30,11 +31,12 @@ jest.mock('@/games/GameHost', () => ({
 }));
 jest.mock('@/games/GameResult', () => ({ GameResult: () => null }));
 
-const { recordRoll, startDice } = jest.requireActual('@/games/web/dice/rules') as typeof import('@/games/web/dice/rules');
+const { recordRoll, settleRound, startDice, TARGET_WINS } = jest.requireActual('@/games/web/dice/rules') as typeof import('@/games/web/dice/rules');
 const { DrawShell } = jest.requireActual('@/party/shells/DrawShell') as typeof import('@/party/shells/DrawShell');
 const { DiceDuelShell } = jest.requireActual('@/party/shells/DiceDuelShell') as typeof import('@/party/shells/DiceDuelShell');
 const { PickShell } = jest.requireActual('@/party/shells/PickShell') as typeof import('@/party/shells/PickShell');
 const { PromptShell } = jest.requireActual('@/party/shells/PromptShell') as typeof import('@/party/shells/PromptShell');
+const { promptDeck } = jest.requireActual('@/party/shells/PromptShell') as typeof import('@/party/shells/PromptShell');
 const { KINGS_DECK } = jest.requireActual('@/party/gameContent') as typeof import('@/party/gameContent');
 
 const PLAYERS = [
@@ -203,4 +205,133 @@ it('emits dice results from the game and renders a cold-restarted fold', () => {
   );
   fireEvent.press(screen.getByLabelText('Další kolo'));
   expect(onNextRound).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a dice spectator from rolling or advancing a live game', () => {
+  const onRoll = jest.fn();
+  const onNextRound = jest.fn();
+  const start = startDice(PLAYERS);
+  const view = render(
+    <DiceDuelShell
+      players={PLAYERS}
+      state={start}
+      spectator
+      onRoll={onRoll}
+      onNextRound={onNextRound}
+      onFinished={jest.fn()}
+      onDone={jest.fn()}
+    />,
+  );
+
+  const roll = screen.queryByLabelText('Hodit za Ty');
+  if (roll) fireEvent.press(roll);
+  expect(onRoll).not.toHaveBeenCalled();
+
+  const midway = recordRoll(recordRoll(start, 'me', [6, 5]), 'honza', [2, 1]);
+  view.rerender(
+    <DiceDuelShell
+      players={PLAYERS}
+      state={midway}
+      spectator
+      onRoll={onRoll}
+      onNextRound={onNextRound}
+      onFinished={jest.fn()}
+      onDone={jest.fn()}
+    />,
+  );
+  const next = screen.queryByLabelText('Další kolo');
+  if (next) fireEvent.press(next);
+  expect(onNextRound).not.toHaveBeenCalled();
+});
+
+it('does not announce an already-finished dice duel to a spectator', () => {
+  const onFinished = jest.fn();
+  let over = startDice(PLAYERS);
+  for (let round = 0; round < TARGET_WINS; round += 1) {
+    over = recordRoll(over, 'me', [6, 5]);
+    over = recordRoll(over, 'honza', [2, 1]);
+    over = settleRound(over);
+  }
+
+  render(
+    <DiceDuelShell
+      players={PLAYERS}
+      state={over}
+      spectator
+      onRoll={jest.fn()}
+      onNextRound={jest.fn()}
+      onFinished={onFinished}
+      onDone={jest.fn()}
+    />,
+  );
+  expect(onFinished).not.toHaveBeenCalled();
+});
+
+it('keeps a pick spectator from spinning or publishing a pick', () => {
+  const onPicked = jest.fn();
+  const onFinished = jest.fn();
+  render(
+    <PickShell
+      game="bottle"
+      players={PLAYERS}
+      action="Roztoč"
+      verdict={(name) => `${name} je na řadě`}
+      pickedId={null}
+      onPicked={onPicked}
+      onFinished={onFinished}
+      spectator
+    />,
+  );
+
+  const spin = screen.queryByLabelText(/Roztoč/);
+  if (spin) fireEvent.press(spin);
+  expect(onPicked).not.toHaveBeenCalled();
+  expect(onFinished).not.toHaveBeenCalled();
+});
+
+it('keeps a draw spectator from drawing or finishing the deck', () => {
+  const onDraw = jest.fn();
+  const onDeckFinished = jest.fn();
+  render(
+    <DrawShell
+      kind="card"
+      players={PLAYERS}
+      action="Táhni kartu"
+      result={null}
+      drawnCardIds={[]}
+      onDraw={onDraw}
+      onDeckFinished={onDeckFinished}
+      spectator
+    />,
+  );
+
+  const draw = screen.queryByLabelText(/Táhni kartu/);
+  if (draw) {
+    fireEvent.press(draw);
+    fireEvent.press(draw);
+  }
+  expect(onDraw).not.toHaveBeenCalled();
+  expect(onDeckFinished).not.toHaveBeenCalled();
+});
+
+it('shows a prompt spectator plain text without hint or advance', () => {
+  const onNext = jest.fn();
+  const prompts = ['První', 'Druhá', 'Třetí'];
+  const expectedFirst = promptDeck(prompts, 17, 0)[0];
+  const { UNSAFE_queryAllByType } = render(
+    <PromptShell prompts={prompts} seed={17} step={0} onNext={onNext} spectator />,
+  );
+
+  expect(UNSAFE_queryAllByType(Pressable)).toHaveLength(0);
+  expect(screen.getByText(expectedFirst)).toBeTruthy();
+  expect(screen.queryByText('Ťukni kamkoliv')).toBeNull();
+
+  const card = screen.getByLabelText(expectedFirst);
+  expect(card.props.accessibilityRole).toBe('text');
+
+  const count = StyleSheet.flatten(screen.getByText('1/3').props.style);
+  expect(count.marginLeft).toBe('auto');
+
+  fireEvent.press(screen.getByText(expectedFirst));
+  expect(onNext).not.toHaveBeenCalled();
 });

@@ -290,6 +290,7 @@ from .serializers import (
     PushDeviceResponseSerializer,
     ReleaseNoteSerializer,
     RestorePurchasesRequestSerializer,
+    UGCConsentRequestSerializer,
     UserAddedPubRenameRequestSerializer,
     UserAddedPubRequestSerializer,
     UserAddedPubSerializer,
@@ -298,6 +299,7 @@ from .serializers import (
     normalize_beer_checkin_tags,
 )
 from .stats import compute_my_stats, drinking_day, drinking_day_bounds
+from .ugc_consent import ugc_consent_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -3885,7 +3887,15 @@ class FriendsView(APIView):
         ]
 
         friend_accounts = [_other(row) for row in accepted]
-        friend_ids = [account.id for account in friend_accounts]
+        page_friend_ids = [account.id for account in friend_accounts]
+        if pagination_requested:
+            all_friend_ids = [
+                friend_id
+                for friend_id in _accepted_friend_ids(request.user)
+                if friend_id not in blocked_ids
+            ]
+        else:
+            all_friend_ids = page_friend_ids
         latest_followed_beer = (
             DrinkLog.objects.filter(
                 account_id=OuterRef("target_id"),
@@ -3917,6 +3927,7 @@ class FriendsView(APIView):
             .annotate(last_drink=Subquery(latest_followed_beer))
             .order_by("-created_at", "-id")
         )
+        following_count = following_queryset.count() if pagination_requested else None
         if pagination_requested:
             following_queryset = following_queryset.filter(id__gt=following_cursor).order_by("id")
             following_page = list(following_queryset[: page_limit + 1])
@@ -3934,9 +3945,9 @@ class FriendsView(APIView):
             {**profile, "last_drink": row.last_drink or None}
             for row, profile in zip(following_rows, following_profiles, strict=True)
         ]
-        shared_stats, shared_dates = _shared_pub_stats(request.user, friend_ids)
-        slices = _friend_activity_slices(request, friend_ids, now, activity_context)
-        presence_slice = _friend_presence_slice(request, friend_ids, now)
+        shared_stats, shared_dates = _shared_pub_stats(request.user, page_friend_ids)
+        slices = _friend_activity_slices(request, all_friend_ids, now, activity_context)
+        presence_slice = _friend_presence_slice(request, all_friend_ids, now)
 
         notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
@@ -4009,6 +4020,10 @@ class FriendsView(APIView):
                         following_rows[-1].id if following_have_more and following_rows else None
                     ),
                     "truncated": friendships_have_more or following_have_more,
+                    "friends_count": len(all_friend_ids),
+                    "following_count": following_count,
+                    "friends_truncated": friendships_have_more,
+                    "following_truncated": following_have_more,
                 }
             )
         return Response(response_body, status=status.HTTP_200_OK)
@@ -9456,6 +9471,9 @@ def _load_export_account(account: Account) -> Account:
                 PhotoContestEntry.objects.filter(account=OuterRef("pk"))
             ),
             has_photo_contest_votes=Exists(PhotoContestVote.objects.filter(voter=OuterRef("pk"))),
+            has_community_data=Exists(PubCommunityData.objects.filter(account=OuterRef("pk"))),
+            has_pub_beer_brands=Exists(PubBeerBrand.objects.filter(account=OuterRef("pk"))),
+            has_pub_beer_products=Exists(PubBeerProduct.objects.filter(account=OuterRef("pk"))),
         )
         .prefetch_related(
             "identities",
@@ -9648,6 +9666,9 @@ def _load_export_account(account: Account) -> Account:
                 ),
             ),
         ),
+        ("community_data", "has_community_data", None),
+        ("pub_beer_brands", "has_pub_beer_brands", None),
+        ("pub_beer_products", "has_pub_beer_products", None),
     ]
     for relation_name, flag_name, custom_prefetch in conditional_prefetches:
         if getattr(loaded_account, flag_name):
@@ -9787,6 +9808,8 @@ def _export_account_data(account: Account) -> dict:
             "status": account.status,
             "created_at": _iso(account.created_at),
             "last_seen_at": _iso(account.last_seen_at),
+            "ugc_terms_version": account.ugc_terms_version,
+            "ugc_terms_accepted_at": _iso(account.ugc_terms_accepted_at),
         },
         "settings": {
             "hide_pub_names": account.hide_pub_names,
@@ -10354,6 +10377,68 @@ def _export_account_data(account: Account) -> dict:
                 }
                 for row in account.community_xp_ledger.all()
             ],
+            "community_data": [
+                {
+                    "cache_key": row.cache_key,
+                    "name": row.name,
+                    "lat": row.lat,
+                    "lng": row.lng,
+                    "city": row.city,
+                    "external_id": row.external_id,
+                    "hours_json": row.hours_json,
+                    "opening_hours_raw": row.opening_hours_raw,
+                    "beers": row.beers,
+                    "historical_beers": row.historical_beers,
+                    "beer_menu_rotates": row.beer_menu_rotates,
+                    "hours_updated_at": _iso(row.hours_updated_at),
+                    "beers_updated_at": _iso(row.beers_updated_at),
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.community_data.all()
+            ],
+            "pub_beer_brands": [
+                {
+                    "cache_key": row.cache_key,
+                    "name": row.name,
+                    "lat": row.lat,
+                    "lng": row.lng,
+                    "city": row.city,
+                    "external_id": row.external_id,
+                    "brand_key": row.brand_key,
+                    "brand_name": row.brand_name,
+                    "last_price_czk": row.last_price_czk,
+                    "last_volume_ml": row.last_volume_ml,
+                    "source": row.source,
+                    "active": row.active,
+                    "last_seen_at": _iso(row.last_seen_at),
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.pub_beer_brands.all()
+            ],
+            "pub_beer_products": [
+                {
+                    "cache_key": row.cache_key,
+                    "name": row.name,
+                    "lat": row.lat,
+                    "lng": row.lng,
+                    "city": row.city,
+                    "external_id": row.external_id,
+                    "brand_key": row.brand_key,
+                    "brand_name": row.brand_name,
+                    "product_key": row.product_key,
+                    "product_name": row.product_name,
+                    "last_price_czk": row.last_price_czk,
+                    "last_volume_ml": row.last_volume_ml,
+                    "source": row.source,
+                    "active": row.active,
+                    "last_seen_at": _iso(row.last_seen_at),
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.pub_beer_products.all()
+            ],
         },
         "photo_contests": {
             "entries": [
@@ -10817,6 +10902,52 @@ class AccountMeView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AccountUGCConsentView(APIView):
+    """
+    PUT /v1/account/me/ugc-consent
+
+    Record the account's acceptance of the current UGC policy version.
+    Token-authenticated; idempotent — a repeat acceptance of the current
+    version never moves the stored timestamp. A stale ``version`` answers
+    409 so the client re-fetches the terms before retrying.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account"
+
+    def put(self, request: Request) -> Response:
+        serializer = UGCConsentRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        current_version = settings.UGC_POLICY_VERSION
+        if serializer.validated_data["version"] != current_version:
+            return Response(
+                {
+                    "code": "ugc_policy_update_required",
+                    "detail": "Pravidla pro sdílený obsah se změnila. Potvrď je znovu.",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        with transaction.atomic():
+            account = Account.objects.select_for_update().get(pk=request.user.pk)
+            if (
+                account.ugc_terms_version != current_version
+                or account.ugc_terms_accepted_at is None
+            ):
+                account.ugc_terms_version = current_version
+                account.ugc_terms_accepted_at = dj_timezone.now()
+                account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
+
+        return Response(
+            {"ugc_consent": ugc_consent_snapshot(account)},
+            status=status.HTTP_200_OK,
+        )
 
 
 def _account_deletion_operation_id(

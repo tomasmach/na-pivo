@@ -87,8 +87,6 @@ def test_hard_delete_nulls_shared_ownership_fields():
     evening.refresh_from_db()
     game.refresh_from_db()
     game_event.refresh_from_db()
-    event.refresh_from_db()
-    team.refresh_from_db()
 
     assert evening.host_id == other_id
     assert game.started_by_id is None
@@ -96,19 +94,17 @@ def test_hard_delete_nulls_shared_ownership_fields():
     assert game_event.subject_id is None
     assert game_event.kind == PartyGameEvent.Kind.SCORE
     assert game_event.payload == {"question": 3, "choice": "B"}
-    assert event.host_id is None
-    assert event.status == CommunityEvent.Status.CANCELLED
-    assert event.cancelled_at is not None
-    assert team.created_by_id is None
 
     assert PartyEvening.objects.filter(id=evening_id).exists()
     assert PartyGame.objects.filter(id=game_id).exists()
     assert PartyGameEvent.objects.filter(id=game_event_id).exists()
-    assert CommunityEvent.objects.filter(id=event_id).exists()
-    assert CommunityEventTeam.objects.filter(id=team_id).exists()
     assert Account.objects.filter(id=other_id).exists()
     assert PartyEveningMember.objects.filter(
         evening_id=evening_id, account_id=other_id
     ).exists()
-    assert CommunityEventMembership.objects.filter(id=membership.id).exists()
-    assert CommunityEventTeamMembership.objects.filter(id=team_membership.id).exists()
+    assert not CommunityEvent.objects.filter(id=event_id).exists()
+    assert not CommunityEventTeam.objects.filter(id=team_id).exists()
+    assert not CommunityEventMembership.objects.filter(id=membership.id).exists()
+    assert not CommunityEventTeamMembership.objects.filter(
+        id=team_membership.id
+    ).exists()

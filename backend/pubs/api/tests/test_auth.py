@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -51,6 +52,7 @@ from pubs.models import (
     BeerPhotoFileDeletion,
     DrinkLog,
     EmailCredential,
+    FeedbackReport,
     Follow,
     OneTimeToken,
     PartyEvening,
@@ -999,6 +1001,58 @@ def test_login_merge_failure_rolls_back_source_token_and_can_retry(
     )
     assert retry.status_code == status.HTTP_200_OK, retry.content
     assert not Account.objects.filter(pk=anon.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_copies_ugc_proof_from_anonymous_source_to_unproven_target():
+    target = Account.objects.create(device_id="merge-ugc-target")
+    EmailCredential.objects.create(
+        account=target,
+        email=f"merge-ugc-{uuid.uuid4().hex}@x.cz",
+        password=make_password("Tr0ub4dor&3"),
+    )
+    source_timestamp = timezone.now() - timedelta(days=1)
+    source = Account.objects.create(
+        device_id="merge-ugc-source",
+        ugc_terms_version=settings.UGC_POLICY_VERSION,
+        ugc_terms_accepted_at=source_timestamp,
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert not Account.objects.filter(pk=source.pk).exists()
+    target.refresh_from_db()
+    assert target.ugc_terms_version == settings.UGC_POLICY_VERSION
+    assert target.ugc_terms_accepted_at == source_timestamp
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_keeps_existing_target_ugc_proof_over_source_proof():
+    target_timestamp = timezone.now() - timedelta(days=2)
+    target = Account.objects.create(
+        device_id="merge-ugc-keep-target",
+        ugc_terms_version=settings.UGC_POLICY_VERSION,
+        ugc_terms_accepted_at=target_timestamp,
+    )
+    EmailCredential.objects.create(
+        account=target,
+        email=f"merge-ugc-keep-{uuid.uuid4().hex}@x.cz",
+        password=make_password("Tr0ub4dor&3"),
+    )
+    source = Account.objects.create(
+        device_id="merge-ugc-keep-source",
+        ugc_terms_version=settings.UGC_POLICY_VERSION,
+        ugc_terms_accepted_at=timezone.now() - timedelta(days=1),
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert not Account.objects.filter(pk=source.pk).exists()
+    target.refresh_from_db()
+    assert target.ugc_terms_version == settings.UGC_POLICY_VERSION
+    assert target.ugc_terms_accepted_at == target_timestamp
 
 
 @pytest.mark.django_db(transaction=True)
@@ -2826,14 +2880,27 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
         client_id=uuid.uuid4(),
         image=SimpleUploadedFile("beer.webp", b"photo-retry"),
     )
+    feedback = FeedbackReport.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.OTHER,
+        message="Support audit remains",
+        contact_type=FeedbackReport.ContactType.EMAIL,
+        contact="delete-me@example.com",
+        attachment=SimpleUploadedFile("feedback.webp", b"feedback-retry"),
+        attachment_url="https://media.na-pivo.cz/feedback/feedback.webp",
+    )
     avatar_path = Path(account.avatar.path)
     photo_path = Path(photo.image.path)
+    feedback_path = Path(feedback.attachment.path)
+    feedback_pk = feedback.pk
     account_pk = account.pk
     storages = {
         id(storage): storage
         for storage in (
             Account._meta.get_field("avatar").storage,
             BeerPhoto._meta.get_field("image").storage,
+            FeedbackReport._meta.get_field("attachment").storage,
         )
     }
     original_deletes = {
@@ -2854,15 +2921,32 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
     assert not Account.objects.filter(pk=account_pk).exists()
     assert avatar_path.exists()
     assert photo_path.exists()
+    assert feedback_path.exists()
     pending = list(BeerPhotoFileDeletion.objects.order_by("file_kind"))
-    assert len(pending) == 2
+    assert len(pending) == 3
     assert {item.file_kind for item in pending} == {
         BeerPhotoFileDeletion.FileKind.AVATAR,
         BeerPhotoFileDeletion.FileKind.BEER_PHOTO,
+        BeerPhotoFileDeletion.FileKind.FEEDBACK_ATTACHMENT,
     }
     assert all(item.account_id is None for item in pending)
     assert all(item.last_attempted_at is not None for item in pending)
+    feedback_deletion = next(
+        item
+        for item in pending
+        if item.file_kind == BeerPhotoFileDeletion.FileKind.FEEDBACK_ATTACHMENT
+    )
+    assert feedback_deletion.client_id is None
+    assert feedback_deletion.photo_public_id is None
     assert any(message["tag"] == "deleted" for message in sent_emails)
+
+    feedback_after = FeedbackReport.objects.get(pk=feedback_pk)
+    assert feedback_after.account_id is None
+    assert feedback_after.message == "Support audit remains"
+    assert feedback_after.attachment.name == ""
+    assert feedback_after.attachment_url == ""
+    assert feedback_after.contact == ""
+    assert feedback_after.contact_type == ""
 
     for storage_id, storage in storages.items():
         monkeypatch.setattr(storage, "delete", original_deletes[storage_id])
@@ -2870,6 +2954,7 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
 
     assert not avatar_path.exists()
     assert not photo_path.exists()
+    assert not feedback_path.exists()
     assert not BeerPhotoFileDeletion.objects.exists()
 
 

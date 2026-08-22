@@ -33,7 +33,7 @@ it('renders an anonymous player and a canonical finished result without another 
     <RoundDrumShell
       players={PLAYERS}
       pickedId="anonymous-1"
-      readOnly
+      spectator
       onDone={onDone}
     />,
   );
@@ -41,4 +41,18 @@ it('renders an anonymous player and a canonical finished result without another 
   expect(screen.getByLabelText('Platí Hráč 1')).toBeTruthy();
   fireEvent.press(screen.getByLabelText('Zpátky k večeru'));
   expect(onDone).toHaveBeenCalledTimes(1);
+});
+
+it('does not let a spectator spin or publish a pick', () => {
+  jest.spyOn(Math, 'random').mockReturnValue(0);
+  const onPicked = jest.fn();
+  render(
+    <RoundDrumShell players={PLAYERS} pickedId={null} spectator onPicked={onPicked} />,
+  );
+
+  const action = screen.getByLabelText('Roztoč');
+  expect(action.props.accessibilityState.disabled).toBe(true);
+  fireEvent.press(action);
+
+  expect(onPicked).not.toHaveBeenCalled();
 });

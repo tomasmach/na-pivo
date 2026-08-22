@@ -24,14 +24,22 @@
  * rules, two hosts, never two implementations.
  */
 
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useReducedMotion,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PersonAvatar } from '@/components/shared/PersonAvatar';
-import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
-import { GameResult } from '@/games/GameResult';
+import { PersonAvatar } from "@/components/shared/PersonAvatar";
+import {
+  GAME_HOST_AVAILABLE,
+  GameHost,
+  type GameHostHandle,
+} from "@/games/GameHost";
+import { GameResult } from "@/games/GameResult";
 import {
   isOver,
   recordRoll,
@@ -45,11 +53,11 @@ import {
   TARGET_WINS,
   type DicePlayer,
   type DiceState,
-} from '@/games/web/dice/rules';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+} from "@/games/web/dice/rules";
+import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap, Fonts } from "@/theme/fonts";
+import { Radius, Spacing } from "@/theme/layout";
 
 /**
  * The fallback roll, for reduced motion only.
@@ -83,6 +91,7 @@ export function DiceDuelShell({
   state: sharedState,
   onRoll,
   onNextRound,
+  spectator = false,
 }: {
   players: (DicePlayer & { name: string })[];
   /** Fired once, when the bill has an owner. */
@@ -97,10 +106,14 @@ export function DiceDuelShell({
   state?: DiceState;
   onRoll?: (result: { playerId: string; dice: [number, number] }) => void;
   onNextRound?: () => void;
+  /** Watch-only view of a shared game: canonical state stays visible, taps do not. */
+  spectator?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
-  const [localState, setLocalState] = React.useState<DiceState>(() => startDice(players));
+  const [localState, setLocalState] = React.useState<DiceState>(() =>
+    startDice(players),
+  );
   const state = sharedState ?? localState;
   const controlled = sharedState !== undefined;
   const [rolling, setRolling] = React.useState(false);
@@ -115,23 +128,24 @@ export function DiceDuelShell({
   }, [state.round.length, state.roundNumber]);
 
   React.useEffect(() => {
-    if (over && !reported.current) {
-      reported.current = true;
-      const payer = players.find((player) => player.id === state.payingId);
-      // `isOver` and the dice rules guarantee one remaining payer. Keep the
-      // guard here so malformed restored state cannot publish an empty finish.
-      if (payer) {
-        onFinished({
-          payingId: payer.id,
-          paying: payer.name,
-          standings: standings(state).map((row) => ({
-            ...row,
-            name: players.find((player) => player.id === row.playerId)?.name ?? 'Hráč',
-          })),
-        });
-      }
+    if (!over || reported.current || spectator) return;
+    reported.current = true;
+    const payer = players.find((player) => player.id === state.payingId);
+    // `isOver` and the dice rules guarantee one remaining payer. Keep the
+    // guard here so malformed restored state cannot publish an empty finish.
+    if (payer) {
+      onFinished({
+        payingId: payer.id,
+        paying: payer.name,
+        standings: standings(state).map((row) => ({
+          ...row,
+          name:
+            players.find((player) => player.id === row.playerId)?.name ??
+            "Hráč",
+        })),
+      });
     }
-  }, [over, state, onFinished, players]);
+  }, [over, state, onFinished, players, spectator]);
 
   const canvas = React.useRef<GameHostHandle>(null);
   const [cheer, setCheer] = React.useState<string | null>(null);
@@ -140,11 +154,11 @@ export function DiceDuelShell({
   const localOnly = reduceMotion || !GAME_HOST_AVAILABLE;
 
   React.useEffect(() => {
-    if (controlled) canvas.current?.command('sync', state);
+    if (controlled) canvas.current?.command("sync", state);
   }, [controlled, state]);
 
   const roll = () => {
-    if (rolling || interactionLocked.current || !turn) return;
+    if (spectator || rolling || interactionLocked.current || !turn) return;
     interactionLocked.current = true;
     if (localOnly) {
       const dice = throwDice();
@@ -157,10 +171,11 @@ export function DiceDuelShell({
       return;
     }
     setRolling(true);
-    canvas.current?.command('roll');
+    canvas.current?.command("roll");
   };
 
   const nextRound = () => {
+    if (spectator) return;
     if (controlled) {
       onNextRound?.();
       return;
@@ -169,7 +184,7 @@ export function DiceDuelShell({
       setLocalState((current) => settleRound(current));
       return;
     }
-    canvas.current?.command('next');
+    canvas.current?.command("next");
   };
 
   // A beat of noise for what just landed. The state itself arrives separately.
@@ -177,15 +192,21 @@ export function DiceDuelShell({
     const sum = (payload.dice[0] ?? 1) + (payload.dice[1] ?? 1);
     setRolling(false);
     interactionLocked.current = false;
-    const player = players.find((candidate) => candidate.id === payload.playerId);
-    setCheer(callFor(player?.name ?? 'Hráč', sum));
+    const player = players.find(
+      (candidate) => candidate.id === payload.playerId,
+    );
+    setCheer(callFor(player?.name ?? "Hráč", sum));
     if (controlled && payload.dice.length === 2) {
       const left = payload.dice[0];
       const right = payload.dice[1];
       if (
         player &&
-        Number.isInteger(left) && left >= 1 && left <= 6 &&
-        Number.isInteger(right) && right >= 1 && right <= 6
+        Number.isInteger(left) &&
+        left >= 1 &&
+        left <= 6 &&
+        Number.isInteger(right) &&
+        right >= 1 &&
+        right <= 6
       ) {
         onRoll?.({ playerId: player.id, dice: [left, right] });
       }
@@ -197,9 +218,8 @@ export function DiceDuelShell({
   const playerOf = (playerId: string | null) =>
     players.find((player) => player.id === playerId) ?? null;
   const tintOf = (playerId: string) => playerOf(playerId)?.tint ?? Colors.amber;
-  const nameOf = (playerId: string | null) => playerOf(playerId)?.name ?? 'Hráč';
-
-
+  const nameOf = (playerId: string | null) =>
+    playerOf(playerId)?.name ?? "Hráč";
 
   if (over) {
     // The shared ending — the same screen every game lands on, chosen from the
@@ -208,7 +228,10 @@ export function DiceDuelShell({
       <GameResult
         players={players}
         outcome={{
-          scores: standings(state).map((row) => ({ playerId: row.playerId, score: row.score })),
+          scores: standings(state).map((row) => ({
+            playerId: row.playerId,
+            score: row.score,
+          })),
           winnerId: null,
           payingId: state.payingId,
         }}
@@ -229,19 +252,28 @@ export function DiceDuelShell({
     const loser = roundLoser(state);
     return (
       <ScrollView
-        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 88 }]}
+        contentContainerStyle={[
+          styles.body,
+          { paddingBottom: insets.bottom + 88 },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
           {state.roundNumber}. kolo
         </Text>
-        <Text style={styles.verdict} maxFontSizeMultiplier={FontScaleCap.heading}>
+        <Text
+          style={styles.verdict}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
           {winners.length > 1
-            ? `${winners.map(nameOf).join(' a ')} berou kolo`
+            ? `${winners.map(nameOf).join(" a ")} berou kolo`
             : `${nameOf(winners[0] ?? null)} bere kolo`}
         </Text>
         {loser && !winners.includes(loser) ? (
-          <Text style={styles.verdictSub} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={styles.verdictSub}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             Nejmíň hodil {nameOf(loser)}.
           </Text>
         ) : null}
@@ -252,7 +284,10 @@ export function DiceDuelShell({
             .map((entry) => (
               <View
                 key={entry.playerId}
-                style={[styles.rollRow, winners.includes(entry.playerId) && styles.rollRowWin]}
+                style={[
+                  styles.rollRow,
+                  winners.includes(entry.playerId) && styles.rollRowWin,
+                ]}
               >
                 <PersonAvatar
                   name={nameOf(entry.playerId)}
@@ -274,11 +309,20 @@ export function DiceDuelShell({
 
         <Pressable
           onPress={nextRound}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+          disabled={spectator}
+          style={({ pressed }) => [
+            styles.action,
+            pressed && !spectator && styles.pressed,
+            spectator && styles.muted,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Další kolo"
+          accessibilityState={{ disabled: spectator }}
         >
-          <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
+          <Text
+            style={styles.actionText}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
             Další kolo
           </Text>
         </Pressable>
@@ -288,7 +332,10 @@ export function DiceDuelShell({
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 88 }]}
+      contentContainerStyle={[
+        styles.body,
+        { paddingBottom: insets.bottom + 88 },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -296,9 +343,13 @@ export function DiceDuelShell({
       </Text>
 
       <View style={styles.turn}>
-        <PersonAvatar name={nameOf(turn)} tint={tintOf(turn ?? '')} size={64} />
-        <Text style={styles.turnName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {playerOf(turn)?.name === 'Ty' ? 'Házíš ty' : `${nameOf(turn)} hází`}
+        <PersonAvatar name={nameOf(turn)} tint={tintOf(turn ?? "")} size={64} />
+        <Text
+          style={styles.turnName}
+          numberOfLines={2}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {playerOf(turn)?.name === "Ty" ? "Házíš ty" : `${nameOf(turn)} hází`}
         </Text>
       </View>
 
@@ -311,7 +362,10 @@ export function DiceDuelShell({
           <GameHost
             ref={canvas}
             game="dice"
-            players={players.map((player) => ({ id: player.id, colour: player.tint }))}
+            players={players.map((player) => ({
+              id: player.id,
+              colour: player.tint,
+            }))}
             // GameHost keeps these latest props across its own retry. Supplying
             // local state too means a restarted WebView resumes the current
             // round instead of silently opening a fresh game.
@@ -321,7 +375,8 @@ export function DiceDuelShell({
               if (!controlled) setLocalState(next as DiceState);
             }}
             onEvent={(name, payload) => {
-              if (name === 'settled') settled(payload as { dice: number[]; playerId: string });
+              if (spectator || name !== "settled") return;
+              settled(payload as { dice: number[]; playerId: string });
             }}
             onError={() => {
               interactionLocked.current = false;
@@ -345,7 +400,10 @@ export function DiceDuelShell({
             style={styles.cheer}
             pointerEvents="none"
           >
-            <Text style={styles.cheerText} maxFontSizeMultiplier={FontScaleCap.heading}>
+            <Text
+              style={styles.cheerText}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
               {cheer}
             </Text>
           </Animated.View>
@@ -357,13 +415,21 @@ export function DiceDuelShell({
           whole point is what just landed. */}
       <Pressable
         onPress={roll}
-        disabled={rolling}
-        style={({ pressed }) => [styles.roll, (pressed || rolling) && styles.pressed]}
+        disabled={rolling || spectator}
+        style={({ pressed }) => [
+          styles.roll,
+          (pressed || rolling) && !spectator && styles.pressed,
+          spectator && styles.muted,
+        ]}
         accessibilityRole="button"
         accessibilityLabel={`Hodit za ${nameOf(turn)}`}
+        accessibilityState={{ disabled: Boolean(rolling || spectator) }}
       >
-        <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {rolling ? '…' : 'Hoď'}
+        <Text
+          style={styles.actionText}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {rolling ? "…" : "Hoď"}
         </Text>
       </Pressable>
 
@@ -389,7 +455,11 @@ function Ladder({
         const safe = state.safe.includes(player.id);
         return (
           <View key={player.id} style={styles.ladderRow}>
-            <PersonAvatar name={nameOf(player.id)} tint={tintOf(player.id)} size={22} />
+            <PersonAvatar
+              name={nameOf(player.id)}
+              tint={tintOf(player.id)}
+              size={22}
+            />
             <Text
               style={[styles.ladderName, safe && styles.ladderSafe]}
               numberOfLines={1}
@@ -399,7 +469,10 @@ function Ladder({
             </Text>
             <View style={styles.pips}>
               {Array.from({ length: TARGET_WINS }).map((_, index) => (
-                <View key={index} style={[styles.pip, index < wins && styles.pipOn]} />
+                <View
+                  key={index}
+                  style={[styles.pip, index < wins && styles.pipOn]}
+                />
               ))}
             </View>
           </View>
@@ -409,70 +482,74 @@ function Ladder({
   );
 }
 
-
-
 const styles = StyleSheet.create({
   body: {
     flexGrow: 1,
     paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.lg,
-    alignItems: 'center',
+    alignItems: "center",
   },
   pressed: { opacity: 0.8 },
-  kicker: { fontSize: 13, fontWeight: '700', color: Colors.mutedText },
+  kicker: { fontSize: 13, fontWeight: "700", color: Colors.mutedText },
   fallbackDice: { fontFamily: Fonts.numeral, fontSize: 56, color: Colors.foam },
   cheer: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: Spacing.md,
-    alignItems: 'center',
+    alignItems: "center",
   },
   cheerText: {
     fontSize: 26,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
     letterSpacing: -0.4,
     textShadowColor: MockColors.bg,
     textShadowRadius: 12,
   },
 
-  turn: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },
+  turn: { alignItems: "center", gap: Spacing.sm, marginTop: Spacing.xl },
   turnName: {
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
     letterSpacing: -0.6,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
-  dice: { alignSelf: 'stretch', height: 260, marginTop: Spacing.md },
+  dice: { alignSelf: "stretch", height: 260, marginTop: Spacing.md },
   roll: {
     height: 54,
     paddingHorizontal: 44,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: Spacing.xl,
     backgroundColor: Colors.amber,
   },
+  muted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
 
   action: {
-    alignSelf: 'stretch',
+    alignSelf: "stretch",
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: Spacing.xl,
     backgroundColor: Colors.amber,
   },
   actionText: { ...MockType.buttonLabel, color: Colors.stout },
 
-  ladder: { alignSelf: 'stretch', marginTop: Spacing.xl, gap: Spacing.sm },
-  ladderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  ladderName: { flex: 1, fontSize: 15, fontWeight: '600', color: withAlpha(Colors.foam, 0.75) },
+  ladder: { alignSelf: "stretch", marginTop: Spacing.xl, gap: Spacing.sm },
+  ladderRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  ladderName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: withAlpha(Colors.foam, 0.75),
+  },
   ladderSafe: { color: Colors.amber },
-  pips: { flexDirection: 'row', gap: 5 },
+  pips: { flexDirection: "row", gap: 5 },
   pip: {
     width: 9,
     height: 9,
@@ -484,23 +561,23 @@ const styles = StyleSheet.create({
   verdict: {
     fontSize: 30,
     lineHeight: 38,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: Spacing.md,
     letterSpacing: -0.5,
   },
   verdictSub: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.mutedText,
     marginTop: Spacing.xs,
   },
 
-  rolls: { alignSelf: 'stretch', marginTop: Spacing.xl, gap: Spacing.xs },
+  rolls: { alignSelf: "stretch", marginTop: Spacing.xl, gap: Spacing.xs },
   rollRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.sm,
     height: 52,
     paddingHorizontal: Spacing.md,
@@ -508,22 +585,27 @@ const styles = StyleSheet.create({
     backgroundColor: MockColors.surfaceHigh,
   },
   rollRowWin: { backgroundColor: withAlpha(Colors.amber, 0.16) },
-  rollName: { flex: 1, fontSize: 16, fontWeight: '700', color: Colors.foam },
-  rollDice: { fontSize: 14, fontWeight: '600', color: Colors.mutedText },
+  rollName: { flex: 1, fontSize: 16, fontWeight: "700", color: Colors.foam },
+  rollDice: { fontSize: 14, fontWeight: "600", color: Colors.mutedText },
   rollTotal: {
     minWidth: 34,
-    textAlign: 'right',
+    textAlign: "right",
     fontFamily: Fonts.numeral,
     fontSize: 20,
     color: Colors.foam,
   },
 
-  payer: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xxl },
-  payerName: { fontSize: 32, fontWeight: '800', color: Colors.amber, letterSpacing: -0.5 },
+  payer: { alignItems: "center", gap: Spacing.sm, marginTop: Spacing.xxl },
+  payerName: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: Colors.amber,
+    letterSpacing: -0.5,
+  },
   payerSub: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.mutedText,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });

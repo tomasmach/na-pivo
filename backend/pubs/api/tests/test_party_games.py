@@ -617,7 +617,7 @@ def test_game_actions_are_append_only_correlated_and_visible_after_reconnect(cli
 
 
 @pytest.mark.django_db
-def test_member_outside_frozen_roster_cannot_append_game_action(client):
+def test_member_outside_frozen_roster_cannot_append_any_game_event(client):
     host_token, host, _guest_token, guest, code = _table(client)
     observer_token, _observer = _register(client, "observer")
     assert (
@@ -643,14 +643,35 @@ def test_member_outside_frozen_roster_cannot_append_game_action(client):
         [
             {
                 "client_id": str(uuid.uuid4()),
+                "kind": "score",
+                "subject_id": str(host.public_id),
+                "delta": 1,
+            },
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "answer",
+                "payload": {"questionId": "q-plzen", "option": 1},
+            },
+            {
+                "client_id": str(uuid.uuid4()),
                 "kind": "action",
-                "payload": {"type": "pick", "playerId": str(host.public_id)},
-            }
+                "payload": {"type": "prompt_next"},
+            },
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "finish",
+                "payload": {"result": {"winner": str(host.public_id)}},
+            },
         ],
     )
 
     assert rejected.status_code == status.HTTP_200_OK
     assert rejected.json()["accepted"] == []
+    stored = PartyGame.objects.get(public_id=game["id"])
+    assert stored.ended_at is None
+    assert not PartyGameEvent.objects.filter(game=stored).exclude(kind="start").exists()
+    readable = client.get(f"/v1/party-evenings/{code}/games", **_auth(observer_token))
+    assert readable.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db

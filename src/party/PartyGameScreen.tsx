@@ -27,22 +27,25 @@
  * and that is the one scoreboard this product must never print.
  */
 
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import React from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
-import { generateUuidV4 } from '@/data/account';
-import { partyGameSeedForTable, type PartyGameEventInput } from '@/data/partyGamesClient';
-import { loadPendingPartyGameRuntime } from '@/data/partyGameStartsQueue';
-import { loadQueuedPartyGameEvents } from '@/data/partyGamesQueue';
-import { findGame, type GameDraw } from '@/party/gameCatalog';
-import { GameResult } from '@/games/GameResult';
-import { cs } from '@/i18n/cs';
-import { GAME_PROMPTS, KINGS_CARDS, KINGS_DECK } from '@/party/gameContent';
-import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
-import type { QuizAnswer, QuizEntrant } from '@/party/quiz/rules';
+import { ChevronLeftIcon } from "@/components/shared/IconGlyph";
+import { generateUuidV4 } from "@/data/account";
+import {
+  partyGameSeedForTable,
+  type PartyGameEventInput,
+} from "@/data/partyGamesClient";
+import { loadPendingPartyGameRuntime } from "@/data/partyGameStartsQueue";
+import { loadQueuedPartyGameEvents } from "@/data/partyGamesQueue";
+import { findGame, type GameDraw } from "@/party/gameCatalog";
+import { GameResult } from "@/games/GameResult";
+import { cs } from "@/i18n/cs";
+import { GAME_PROMPTS, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
+import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
+import type { QuizAnswer, QuizEntrant } from "@/party/quiz/rules";
 import {
   foldDiceActions,
   foldSharedGameActions,
@@ -55,25 +58,32 @@ import {
   quizProgress,
   pickRevision,
   type SharedGameActionPayload,
-} from '@/party/sharedGameActions';
-import { DiceDuelShell } from '@/party/shells/DiceDuelShell';
-import { DrawShell } from '@/party/shells/DrawShell';
-import { GameLobby, type LobbyPlayer } from '@/party/shells/GameLobby';
-import { InviteSheet } from '@/party/InviteSheet';
-import { PickShell } from '@/party/shells/PickShell';
-import { PromptShell } from '@/party/shells/PromptShell';
-import { QuizShell } from '@/party/shells/QuizShell';
-import { RoundDrumShell } from '@/party/shells/RoundDrumShell';
-import { fallbackPlayerName, tintFor } from '@/party/nightBuilder';
-import { nightMe, nightStandings } from '@/party/nightRecord';
-import { useNightRecord } from '@/party/useNightRecord';
-import { eventsOfGame, useFollowPartyGames, usePartyGamesStore } from '@/stores/partyGamesStore';
-import { selectConfirmedPartyJoinCode, usePartyEveningStore } from '@/stores/partyEveningStore';
-import { useLivePartyStore } from '@/mocks/livePartyStore';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+} from "@/party/sharedGameActions";
+import { DiceDuelShell } from "@/party/shells/DiceDuelShell";
+import { DrawShell } from "@/party/shells/DrawShell";
+import { GameLobby, type LobbyPlayer } from "@/party/shells/GameLobby";
+import { InviteSheet } from "@/party/InviteSheet";
+import { PickShell } from "@/party/shells/PickShell";
+import { PromptShell } from "@/party/shells/PromptShell";
+import { QuizShell } from "@/party/shells/QuizShell";
+import { RoundDrumShell } from "@/party/shells/RoundDrumShell";
+import { fallbackPlayerName, tintFor } from "@/party/nightBuilder";
+import { nightMe, nightStandings } from "@/party/nightRecord";
+import { useNightRecord } from "@/party/useNightRecord";
+import {
+  eventsOfGame,
+  useFollowPartyGames,
+  usePartyGamesStore,
+} from "@/stores/partyGamesStore";
+import {
+  selectConfirmedPartyJoinCode,
+  usePartyEveningStore,
+} from "@/stores/partyEveningStore";
+import { useLivePartyStore } from "@/mocks/livePartyStore";
+import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap } from "@/theme/fonts";
+import { HitArea, Radius, Spacing } from "@/theme/layout";
 
 /**
  * When an answer landed — only ever used to order answers within one team.
@@ -87,8 +97,8 @@ function stamp(): number {
 
 /** The verb IS the game — "roztoč" and "hoď" are different promises. */
 const DRAW_ACTION: Record<GameDraw, string> = {
-  person: 'Roztoč',
-  card: 'Táhni kartu',
+  person: "Roztoč",
+  card: "Táhni kartu",
 };
 const KINGS_CARD_IDS = new Set([
   ...KINGS_CARDS.map((card) => card.card),
@@ -101,7 +111,10 @@ function playerName(value: string | null | undefined, id: string): string {
 
 /** First player by sorted id — the same phone-independent pick on every device. */
 function deterministicFirstPlayer(roster: LobbyPlayer[]): LobbyPlayer | null {
-  return [...roster].sort((left, right) => left.id.localeCompare(right.id))[0] ?? null;
+  return (
+    [...roster].sort((left, right) => left.id.localeCompare(right.id))[0] ??
+    null
+  );
 }
 
 export default function PartyGameScreen() {
@@ -113,10 +126,11 @@ export default function PartyGameScreen() {
   const games = useLivePartyStore((s) => s.games);
 
   const def = key ? findGame(key) : undefined;
-  const name = def?.name ?? games.find((entry) => entry.key === key)?.name ?? 'Hra';
+  const name =
+    def?.name ?? games.find((entry) => entry.key === key)?.name ?? "Hra";
   // Points games crown someone; sip games do not. See `gameCatalog`.
-  const onPoints = def?.scoring !== 'drinks';
-  const shell = def?.shell ?? 'score';
+  const onPoints = def?.scoring !== "drinks";
+  const shell = def?.shell ?? "score";
   const prompts = key ? (GAME_PROMPTS[key] ?? []) : [];
   // Varies the deal per game without calling `Math.random()` in render, which
   // is impure and the lint rule is right to stop.
@@ -144,9 +158,13 @@ export default function PartyGameScreen() {
   const sharedCode = usePartyGamesStore((s) => s.code);
   const eveningLink = usePartyEveningStore((s) => s.evening?.joinUrl ?? null);
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const sharingFailure = usePartyGamesStore((s) => (key ? s.sharingFailures[key] : undefined));
+  const sharingFailure = usePartyGamesStore((s) =>
+    key ? s.sharingFailures[key] : undefined,
+  );
   const sharedGame =
-    key && sharedCode ? (sharedGames.find((game) => game.catalogKey === key) ?? null) : null;
+    key && sharedCode
+      ? (sharedGames.find((game) => game.catalogKey === key) ?? null)
+      : null;
   const table = React.useMemo(
     () =>
       nightStandings(night)
@@ -158,13 +176,16 @@ export default function PartyGameScreen() {
         })),
     [night],
   );
-  const [selectedRoster, setSelectedRoster] = React.useState<LobbyPlayer[] | null>(null);
-  const gameScope = `${sharedCode ?? 'local'}:${key ?? ''}`;
+  const [selectedRoster, setSelectedRoster] = React.useState<
+    LobbyPlayer[] | null
+  >(null);
+  const gameScope = `${sharedCode ?? "local"}:${key ?? ""}`;
   const [quizStartRetry, setQuizStartRetry] = React.useState<{
     scope: string;
     roster: LobbyPlayer[];
   } | null>(null);
-  const retryQuizRoster = quizStartRetry?.scope === gameScope ? quizStartRetry.roster : null;
+  const retryQuizRoster =
+    quizStartRetry?.scope === gameScope ? quizStartRetry.roster : null;
   const [localGame, setLocalGame] = React.useState<{
     scope: string;
     id: string;
@@ -174,13 +195,26 @@ export default function PartyGameScreen() {
     return sharedGame.roster.map((person) => ({
       id: person.id,
       name: playerName(person.nickname || person.displayName, person.id),
-      tint: table.find((candidate) => candidate.id === person.id)?.tint ?? tintFor(person.id),
+      tint:
+        table.find((candidate) => candidate.id === person.id)?.tint ??
+        tintFor(person.id),
     }));
   }, [sharedGame, table]);
   const legacyGameAlreadyPlayed = Boolean(
     sharedGame &&
-      sharedGame.roster.length === 0 &&
-      gameEvents.some((event) => event.gameId === sharedGame.id && event.kind !== 'start'),
+    sharedGame.roster.length === 0 &&
+    gameEvents.some(
+      (event) => event.gameId === sharedGame.id && event.kind !== "start",
+    ),
+  );
+  // A frozen roster that does not hold this phone means the table is playing
+  // without me. Unknown current player (cold start), local pass-the-phone and
+  // the legacy empty-roster cover all stay interactive.
+  const spectator = Boolean(
+    sharedGame &&
+    sharedGame.roster.length > 0 &&
+    currentPlayerId &&
+    !sharedGame.roster.some((person) => person.id === currentPlayerId),
   );
   React.useEffect(() => {
     if (!sharedGame || !serverRoster || selectedRoster) return undefined;
@@ -194,14 +228,17 @@ export default function PartyGameScreen() {
   // A released backend could already have accepted gameplay without a frozen
   // roster; a real non-start event is the compatibility proof for that case.
   const roster = sharedGame
-    ? (selectedRoster ?? serverRoster ?? (legacyGameAlreadyPlayed ? table : null))
+    ? (selectedRoster ??
+      serverRoster ??
+      (legacyGameAlreadyPlayed ? table : null))
     : selectedRoster;
   const localGameId = localGame?.scope === gameScope ? localGame.id : null;
   // The server id wins as soon as the queued start lands. Until then every
   // answer and finish uses the durable local correlation stored with the start.
   const gameId = sharedGame?.id ?? localGameId;
   const seed =
-    sharedGame?.seed ?? (sharedCode && key ? partyGameSeedForTable(sharedCode, key) : localSeed);
+    sharedGame?.seed ??
+    (sharedCode && key ? partyGameSeedForTable(sharedCode, key) : localSeed);
 
   const beginGame = React.useCallback(
     async (selected: LobbyPlayer[]) => {
@@ -213,7 +250,7 @@ export default function PartyGameScreen() {
       // Without a shared durable game, a local fallback would wait forever for
       // answers the other players have no way to submit.
       if (!sharedCode) {
-        if (key === 'quiz') {
+        if (key === "quiz") {
           setQuizStartRetry({ scope: gameScope, roster: selected });
           return;
         }
@@ -226,11 +263,11 @@ export default function PartyGameScreen() {
       const handle = await startSharedGame({
         catalogKey: key,
         name,
-        scoring: def?.scoring === 'drinks' ? 'drinks' : 'points',
+        scoring: def?.scoring === "drinks" ? "drinks" : "points",
         rosterIds: selected.map((person) => person.id),
       });
       if (!handle) {
-        if (key === 'quiz') {
+        if (key === "quiz") {
           setQuizStartRetry({ scope: gameScope, roster: selected });
           return;
         }
@@ -240,13 +277,16 @@ export default function PartyGameScreen() {
       }
       setQuizStartRetry(null);
       setLocalGame({ scope: gameScope, id: handle.gameId });
-      const candidates = new Map([...table, ...selected].map((person) => [person.id, person]));
+      const candidates = new Map(
+        [...table, ...selected].map((person) => [person.id, person]),
+      );
       const persisted = handle.rosterIds.flatMap((id) => {
         const person = candidates.get(id);
         return person ? [person] : [];
       });
       setSelectedRoster(
-        handle.rosterIds.length > 0 && persisted.length === handle.rosterIds.length
+        handle.rosterIds.length > 0 &&
+          persisted.length === handle.rosterIds.length
           ? persisted
           : selected,
       );
@@ -263,7 +303,9 @@ export default function PartyGameScreen() {
       createdAt: string;
     }[]
   >([]);
-  const [localActionEvents, setLocalActionEvents] = React.useState<PartyGameEventInput[]>([]);
+  const [localActionEvents, setLocalActionEvents] = React.useState<
+    PartyGameEventInput[]
+  >([]);
 
   /**
    * Pub kvíz — the one game that is genuinely played on several phones.
@@ -305,7 +347,8 @@ export default function PartyGameScreen() {
       if (pendingRuntime) {
         ids.add(pendingRuntime.localGameId);
         setLocalGame((current) =>
-          current?.scope === gameScope && current.id === pendingRuntime.localGameId
+          current?.scope === gameScope &&
+          current.id === pendingRuntime.localGameId
             ? current
             : { scope: gameScope, id: pendingRuntime.localGameId },
         );
@@ -319,8 +362,8 @@ export default function PartyGameScreen() {
           restoredRoster.length === pendingRuntime.rosterIds.length
         ) {
           setSelectedRoster((current) =>
-            current?.map((person) => person.id).join('\u0000') ===
-            restoredRoster.map((person) => person.id).join('\u0000')
+            current?.map((person) => person.id).join("\u0000") ===
+            restoredRoster.map((person) => person.id).join("\u0000")
               ? current
               : restoredRoster,
           );
@@ -332,11 +375,14 @@ export default function PartyGameScreen() {
       const me = currentPlayerId;
       if (me) {
         const restoredAnswers = queued.flatMap(({ event, queuedAt }) => {
-          if (event.kind !== 'answer') return [];
+          if (event.kind !== "answer") return [];
           const questionId = event.payload?.questionId;
           const option = event.payload?.option;
-          if (typeof questionId !== 'string' || typeof option !== 'number') return [];
-          const parsedAt = event.createdAt ? Date.parse(event.createdAt) : queuedAt;
+          if (typeof questionId !== "string" || typeof option !== "number")
+            return [];
+          const parsedAt = event.createdAt
+            ? Date.parse(event.createdAt)
+            : queuedAt;
           return [
             {
               entrantId: me,
@@ -349,7 +395,9 @@ export default function PartyGameScreen() {
         if (restoredAnswers.length > 0)
           setMyAnswers((current) => {
             const seen = new Set(
-              current.map((answer) => `${answer.entrantId}\u0000${answer.questionId}`),
+              current.map(
+                (answer) => `${answer.entrantId}\u0000${answer.questionId}`,
+              ),
             );
             const additions = restoredAnswers.filter((answer) => {
               const identity = `${answer.entrantId}\u0000${answer.questionId}`;
@@ -362,9 +410,9 @@ export default function PartyGameScreen() {
       }
       const restoredScores = queued.flatMap(({ event, queuedAt }) => {
         if (
-          event.kind !== 'score' ||
-          typeof event.subjectId !== 'string' ||
-          typeof event.delta !== 'number'
+          event.kind !== "score" ||
+          typeof event.subjectId !== "string" ||
+          typeof event.delta !== "number"
         )
           return [];
         return [
@@ -388,7 +436,9 @@ export default function PartyGameScreen() {
         });
       const restoredActions = queued
         .map(({ event }) => event)
-        .filter((event): event is PartyGameEventInput => event.kind === 'action');
+        .filter(
+          (event): event is PartyGameEventInput => event.kind === "action",
+        );
       if (restoredActions.length > 0)
         setLocalActionEvents((current) => {
           const seen = new Set(current.map((event) => event.clientId));
@@ -403,9 +453,21 @@ export default function PartyGameScreen() {
     return () => {
       cancelled = true;
     };
-  }, [currentPlayerId, gameId, gameScope, key, sharedCode, sharedGame?.id, table]);
+  }, [
+    currentPlayerId,
+    gameId,
+    gameScope,
+    key,
+    sharedCode,
+    sharedGame?.id,
+    table,
+  ]);
   const sharedActions = React.useMemo(
-    () => foldSharedGameActions(eventsOfGame(gameEvents, gameId), localActionEvents),
+    () =>
+      foldSharedGameActions(
+        eventsOfGame(gameEvents, gameId),
+        localActionEvents,
+      ),
     [gameEvents, gameId, localActionEvents],
   );
   const rosterIds = React.useMemo(
@@ -414,18 +476,22 @@ export default function PartyGameScreen() {
   );
   const appendAction = React.useCallback(
     (payload: SharedGameActionPayload) => {
-      if (!gameId) return;
+      if (spectator || !gameId) return;
       const clientId = generateUuidV4();
       const event: PartyGameEventInput = {
         clientId,
-        kind: 'action',
+        kind: "action",
         payload,
         createdAt: new Date(stamp()).toISOString(),
       };
       setLocalActionEvents((current) => [...current, event]);
-      void sendGameEvent(gameId, { kind: 'action', payload, createdAt: event.createdAt }, clientId);
+      void sendGameEvent(
+        gameId,
+        { kind: "action", payload, createdAt: event.createdAt },
+        clientId,
+      );
     },
-    [gameId, sendGameEvent],
+    [gameId, sendGameEvent, spectator],
   );
   const sharedPromptStep = promptStep(sharedActions);
   const sharedCardDraws = cardDraws(sharedActions, KINGS_CARD_IDS);
@@ -433,7 +499,7 @@ export default function PartyGameScreen() {
   const fourthKingDraw = (() => {
     let kings = 0;
     for (const draw of sharedCardDrawActions) {
-      if (draw.value === 'K' || draw.value.endsWith('-K')) kings += 1;
+      if (draw.value === "K" || draw.value.endsWith("-K")) kings += 1;
       if (kings === 4) return draw;
     }
     return null;
@@ -443,8 +509,11 @@ export default function PartyGameScreen() {
   // Resetting state during render (React's "adjusting state when a prop
   // changes" pattern): if the scope changed without a draw, store it with an
   // empty hand so returning to the old scope starts fresh.
-  const [localKings, setLocalKings] = React.useState<{ scope: string; cards: string[] }>({
-    scope: '',
+  const [localKings, setLocalKings] = React.useState<{
+    scope: string;
+    cards: string[];
+  }>({
+    scope: "",
     cards: [],
   });
   if (localKings.scope !== gameScope) {
@@ -452,32 +521,36 @@ export default function PartyGameScreen() {
   }
   const localKingsCards = localKings.cards;
   const localKingsDeckFinished =
-    key === 'kings' &&
-    localKingsCards.filter((card) => card === 'K' || card.endsWith('-K')).length >= 4;
-  const sharedDrawKind = def?.draw ?? 'person';
+    key === "kings" &&
+    localKingsCards.filter((card) => card === "K" || card.endsWith("-K"))
+      .length >= 4;
+  const sharedDrawKind = def?.draw ?? "person";
   const sharedDraw = latestDraw(
     sharedActions,
     sharedDrawKind,
-    sharedDrawKind === 'person' ? rosterIds : KINGS_CARD_IDS,
+    sharedDrawKind === "person" ? rosterIds : KINGS_CARD_IDS,
   );
   const sharedPick = latestPick(sharedActions, rosterIds);
   const sharedPickRevision = pickRevision(sharedActions, rosterIds);
   const sharedDiceState = React.useMemo(
-    () => (roster && gameId ? foldDiceActions(roster, sharedActions) : undefined),
+    () =>
+      roster && gameId ? foldDiceActions(roster, sharedActions) : undefined,
     [gameId, roster, sharedActions],
   );
   const remoteFinish = canonicalGameFinish(eventsOfGame(gameEvents, gameId));
-  const [localFinish, setLocalFinish] = React.useState<typeof remoteFinish>(null);
+  const [localFinish, setLocalFinish] =
+    React.useState<typeof remoteFinish>(null);
   const canonicalFinish = remoteFinish ?? localFinish;
   const finishLocked = React.useRef(false);
   const remoteAnswers = React.useMemo<QuizAnswer[]>(
     () =>
       eventsOfGame(gameEvents, gameId)
-        .filter((event) => event.kind === 'answer')
+        .filter((event) => event.kind === "answer")
         .flatMap((event) => {
           const questionId = event.payload.questionId;
           const option = event.payload.option;
-          if (typeof questionId !== 'string' || typeof option !== 'number') return [];
+          if (typeof questionId !== "string" || typeof option !== "number")
+            return [];
           return [
             {
               entrantId: event.account.id,
@@ -490,7 +563,10 @@ export default function PartyGameScreen() {
         }),
     [gameEvents, gameId],
   );
-  const answers = React.useMemo(() => [...myAnswers, ...remoteAnswers], [myAnswers, remoteAnswers]);
+  const answers = React.useMemo(
+    () => [...myAnswers, ...remoteAnswers],
+    [myAnswers, remoteAnswers],
+  );
   const sharedQuizProgress = quizProgress(sharedActions);
   const [localQuestion, setLocalQuestion] = React.useState(0);
   const [localRevealed, setLocalRevealed] = React.useState<number[]>([]);
@@ -501,27 +577,38 @@ export default function PartyGameScreen() {
   const localAnswerLocks = React.useRef(new Set<string>());
 
   const answer = (option: number) => {
+    if (spectator) return;
     const current = QUIZ_QUESTIONS[question];
     const me = nightMe(night)?.id;
-    if (forceRevealed || !current || !me || !entrants.some((entrant) => entrant.id === me)) return;
+    if (
+      forceRevealed ||
+      !current ||
+      !me ||
+      !entrants.some((entrant) => entrant.id === me)
+    )
+      return;
     const identity = `${me}\u0000${current.id}`;
     if (
       localAnswerLocks.current.has(identity) ||
-      answers.some((entry) => entry.entrantId === me && entry.questionId === current.id)
+      answers.some(
+        (entry) => entry.entrantId === me && entry.questionId === current.id,
+      )
     )
       return;
     localAnswerLocks.current.add(identity);
     const at = stamp();
     setMyAnswers((list) =>
       // A team's answer is its first one, so a second tap is not an edit.
-      list.some((entry) => entry.entrantId === me && entry.questionId === current.id)
+      list.some(
+        (entry) => entry.entrantId === me && entry.questionId === current.id,
+      )
         ? list
         : [...list, { entrantId: me, questionId: current.id, option, at }],
     );
     // …and to the table. Queued, so a pub with no signal costs nothing.
     if (gameId) {
       void sendGameEvent(gameId, {
-        kind: 'answer',
+        kind: "answer",
         payload: { questionId: current.id, option },
         createdAt: new Date(at).toISOString(),
       });
@@ -531,7 +618,8 @@ export default function PartyGameScreen() {
   const scoreSignature = (subjectId: string, delta: number, at: string) =>
     `${subjectId}\u0000${delta}\u0000${Date.parse(at)}`;
   const serverScoreEvents = gameEvents.filter(
-    (event) => event.gameId === gameId && event.kind === 'score' && event.subject,
+    (event) =>
+      event.gameId === gameId && event.kind === "score" && event.subject,
   );
   const pendingLocalScores = React.useMemo(() => {
     const me = nightMe(night)?.id;
@@ -539,10 +627,17 @@ export default function PartyGameScreen() {
     for (const event of serverScoreEvents) {
       if (!event.subject || event.account.id !== me) continue;
       const signature = scoreSignature(event.subject.id, event.delta, event.at);
-      acknowledgements.set(signature, (acknowledgements.get(signature) ?? 0) + 1);
+      acknowledgements.set(
+        signature,
+        (acknowledgements.get(signature) ?? 0) + 1,
+      );
     }
     return localScoreEvents.filter((event) => {
-      const signature = scoreSignature(event.subjectId, event.delta, event.createdAt);
+      const signature = scoreSignature(
+        event.subjectId,
+        event.delta,
+        event.createdAt,
+      );
       const remaining = acknowledgements.get(signature) ?? 0;
       if (remaining === 0) return true;
       acknowledgements.set(signature, remaining - 1);
@@ -561,6 +656,7 @@ export default function PartyGameScreen() {
     return scores;
   }, [pendingLocalScores, serverScoreEvents]);
   const bump = (player: LobbyPlayer) => {
+    if (spectator) return;
     const createdAt = new Date(stamp()).toISOString();
     localScoreSequence.current += 1;
     setLocalScoreEvents((current) => [
@@ -574,7 +670,7 @@ export default function PartyGameScreen() {
     ]);
     if (gameId) {
       void sendGameEvent(gameId, {
-        kind: 'score',
+        kind: "score",
         subjectId: player.id,
         delta: 1,
         createdAt,
@@ -600,40 +696,43 @@ export default function PartyGameScreen() {
    * game's outcome is the game's to state, and two devices re-deriving it from
    * partial events is how a table ends up arguing about who paid.
    */
-  const report = React.useCallback((result: {
-    winner: string | null;
-    scores: { name: string; score: number }[];
-    paying?: string | null;
-    winnerId?: string | null;
-    payingId?: string | null;
-  }) => {
-    if (canonicalFinish || finishLocked.current) return;
-    finishLocked.current = true;
-    const payload = {
-      winner: result.winner,
-      scores: result.scores,
-      ...(result.paying !== undefined ? { paying: result.paying } : {}),
-      ...(result.winnerId !== undefined ? { winnerId: result.winnerId } : {}),
-      ...(result.payingId !== undefined ? { payingId: result.payingId } : {}),
-    };
-    setLocalFinish({
-      winnerId: result.winnerId ?? null,
-      payingId: result.payingId ?? null,
-      winner: result.winner,
-      paying: result.paying ?? null,
-      scores: result.scores,
-    });
-    if (gameId) {
-      void sendGameEvent(gameId, {
-        kind: 'finish',
-        payload,
+  const report = React.useCallback(
+    (result: {
+      winner: string | null;
+      scores: { name: string; score: number }[];
+      paying?: string | null;
+      winnerId?: string | null;
+      payingId?: string | null;
+    }) => {
+      if (spectator || canonicalFinish || finishLocked.current) return;
+      finishLocked.current = true;
+      const payload = {
+        winner: result.winner,
+        scores: result.scores,
+        ...(result.paying !== undefined ? { paying: result.paying } : {}),
+        ...(result.winnerId !== undefined ? { winnerId: result.winnerId } : {}),
+        ...(result.payingId !== undefined ? { payingId: result.payingId } : {}),
+      };
+      setLocalFinish({
+        winnerId: result.winnerId ?? null,
+        payingId: result.payingId ?? null,
+        winner: result.winner,
+        paying: result.paying ?? null,
+        scores: result.scores,
       });
-    }
-    if (key) finishGame(key, { game: name, ...result });
-  }, [canonicalFinish, finishGame, gameId, key, name, sendGameEvent]);
+      if (gameId) {
+        void sendGameEvent(gameId, {
+          kind: "finish",
+          payload,
+        });
+      }
+      if (key) finishGame(key, { game: name, ...result });
+    },
+    [canonicalFinish, finishGame, gameId, key, name, sendGameEvent, spectator],
+  );
 
   React.useEffect(() => {
-    if (key !== 'kings' || canonicalFinish || !fourthKingDraw) return undefined;
+    if (key !== "kings" || canonicalFinish || !fourthKingDraw) return undefined;
     // The payer is whoever the canonical draw names. When an old client drew
     // without an author, every phone falls back to the SAME roster member —
     // first by sorted id — instead of to whoever happens to hold this phone.
@@ -697,48 +796,85 @@ export default function PartyGameScreen() {
           <ChevronLeftIcon size={20} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.topTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text
+          style={styles.topTitle}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
           {name}
         </Text>
 
         {/* Ending is up here, as far from everything you tap during a game as
             the screen allows — and it is text, not a full-width amber bar
             competing with the button you actually press. */}
-        {roster && !canonicalFinish && key !== 'round' && !fourthKingDraw && !localKingsDeckFinished ? (
-          <Pressable
-            onPress={finish}
-            style={({ pressed }) => [styles.end, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Ukončit hru"
-            hitSlop={8}
-          >
-            <Text style={styles.endText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Konec
-            </Text>
-          </Pressable>
-        ) : null}
+        {/* The right slot keeps its width even when Konec is hidden (finished
+            game, spectator, fourth king) so the title never shifts. */}
+        <View style={styles.endSlot}>
+          {roster &&
+          !canonicalFinish &&
+          !spectator &&
+          key !== "round" &&
+          !fourthKingDraw &&
+          !localKingsDeckFinished ? (
+            <Pressable
+              onPress={finish}
+              style={({ pressed }) => [styles.end, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Ukončit hru"
+              hitSlop={8}
+            >
+              <Text
+                style={styles.endText}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
+                Konec
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
-      {sharingFailure && roster ? (
-        <Text style={styles.sharingFailure} maxFontSizeMultiplier={FontScaleCap.body}>
+      {spectator ? (
+        <Text
+          style={styles.spectatorNote}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {cs.gameHost.spectator}
+        </Text>
+      ) : null}
+
+      {sharingFailure && roster && !spectator ? (
+        <Text
+          style={styles.sharingFailure}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
           Hra běží jen na tomhle telefonu. {sharingFailure}
         </Text>
       ) : null}
 
       {roster === null && !canonicalFinish && retryQuizRoster ? (
         <View style={styles.startFailure} accessibilityLiveRegion="polite">
-          <Text style={styles.startFailureText} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={styles.startFailureText}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {sharingFailure ?? cs.gameHost.loadFailed}
           </Text>
           <Pressable
             onPress={() => {
               void beginGame(retryQuizRoster);
             }}
-            style={({ pressed }) => [styles.startRetry, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.startRetry,
+              pressed && styles.pressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel={cs.gameHost.retry}
           >
-            <Text style={styles.startRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+            <Text
+              style={styles.startRetryText}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
               {cs.gameHost.retry}
             </Text>
           </Pressable>
@@ -773,18 +909,21 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && !canonicalFinish && shell === 'turns' ? (
+      {roster && !canonicalFinish && shell === "turns" ? (
         <DiceDuelShell
+          spectator={spectator}
           players={roster}
           state={sharedDiceState}
           onRoll={
             gameId
               ? ({ playerId, dice }) => {
-                  appendAction({ type: 'dice_roll', playerId, dice });
+                  appendAction({ type: "dice_roll", playerId, dice });
                 }
               : undefined
           }
-          onNextRound={gameId ? () => appendAction({ type: 'dice_next' }) : undefined}
+          onNextRound={
+            gameId ? () => appendAction({ type: "dice_next" }) : undefined
+          }
           // Dice already reported their canonical result before GameResult is
           // shown. This button only leaves; reporting again would overwrite the
           // payer and standings with the generic empty score.
@@ -803,8 +942,9 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && key === 'round' && !canonicalFinish ? (
+      {roster && key === "round" && !canonicalFinish ? (
         <RoundDrumShell
+          spectator={spectator}
           players={roster}
           pickedId={null}
           bottomInset={insets.bottom}
@@ -825,13 +965,18 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && !canonicalFinish && shell === 'pick' && key !== 'round' ? (
+      {roster && !canonicalFinish && shell === "pick" && key !== "round" ? (
         <PickShell
+          spectator={spectator}
           game="bottle"
           players={roster}
           action="Roztoč"
           verdict={(name) =>
-            key === 'bottle' ? `${name} je na řadě` : name === 'Ty' ? 'Platíš ty' : `Platí ${name}`
+            key === "bottle"
+              ? `${name} je na řadě`
+              : name === "Ty"
+                ? "Platíš ty"
+                : `Platí ${name}`
           }
           // Only the round game ends on the first spin; the bottle keeps going
           // until the table has had enough.
@@ -844,7 +989,7 @@ export default function PartyGameScreen() {
             gameId
               ? (playerId) =>
                   appendAction({
-                    type: 'pick',
+                    type: "pick",
                     playerId,
                     fromRevision: sharedPickRevision,
                   })
@@ -853,21 +998,25 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && !canonicalFinish && shell === 'quiz' ? (
+      {roster && !canonicalFinish && shell === "quiz" ? (
         <QuizShell
+          spectator={spectator}
           entrants={entrants}
           answers={answers}
-          me={nightMe(night)?.id ?? 'me'}
+          me={nightMe(night)?.id ?? "me"}
           index={question}
-          tintOf={(name) => roster.find((person) => person.name === name)?.tint ?? Colors.amber}
+          tintOf={(name) =>
+            roster.find((person) => person.name === name)?.tint ?? Colors.amber
+          }
           forceRevealed={forceRevealed}
           onAnswer={(option) => answer(option)}
           onReveal={() => {
-            if (gameId) appendAction({ type: 'quiz_reveal', question });
+            if (gameId) appendAction({ type: "quiz_reveal", question });
             else setLocalRevealed((current) => [...current, question]);
           }}
           onNext={() => {
-            if (gameId) appendAction({ type: 'quiz_next', fromQuestion: question });
+            if (gameId)
+              appendAction({ type: "quiz_next", fromQuestion: question });
             else setLocalQuestion((current) => current + 1);
           }}
           onFinished={(result) => {
@@ -878,8 +1027,9 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && !canonicalFinish && shell === 'prompt' ? (
+      {roster && !canonicalFinish && shell === "prompt" ? (
         <PromptShell
+          spectator={spectator}
           prompts={prompts}
           intro={def?.intro}
           seed={seed}
@@ -888,7 +1038,7 @@ export default function PartyGameScreen() {
             gameId
               ? () =>
                   appendAction({
-                    type: 'prompt_next',
+                    type: "prompt_next",
                     fromStep: sharedPromptStep,
                   })
               : undefined
@@ -896,18 +1046,19 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && !canonicalFinish && shell === 'draw' ? (
+      {roster && !canonicalFinish && shell === "draw" ? (
         <DrawShell
-          kind={def?.draw ?? 'person'}
+          spectator={spectator}
+          kind={def?.draw ?? "person"}
           players={roster}
           intro={def?.intro}
-          action={DRAW_ACTION[def?.draw ?? 'person']}
+          action={DRAW_ACTION[def?.draw ?? "person"]}
           seed={seed}
           result={
             gameId && sharedDraw
               ? {
                   nonce: sharedDraw.clientId,
-                  ...(sharedDraw.drawKind === 'person'
+                  ...(sharedDraw.drawKind === "person"
                     ? { personId: sharedDraw.value }
                     : { cardId: sharedDraw.value }),
                 }
@@ -915,18 +1066,26 @@ export default function PartyGameScreen() {
                 ? null
                 : undefined
           }
-          drawnCardIds={gameId && (def?.draw ?? 'person') === 'card' ? sharedCardDraws : undefined}
+          drawnCardIds={
+            gameId && (def?.draw ?? "person") === "card"
+              ? sharedCardDraws
+              : undefined
+          }
           onDraw={
             gameId
               ? (result) => {
-                  const drawKind = def?.draw ?? 'person';
-                  const value = drawKind === 'person' ? result.personId : result.cardId;
+                  const drawKind = def?.draw ?? "person";
+                  const value =
+                    drawKind === "person" ? result.personId : result.cardId;
                   if (value)
                     appendAction({
-                      type: 'draw',
+                      type: "draw",
                       drawKind,
                       value,
-                      fromCount: drawKind === 'card' ? sharedCardDraws.length : undefined,
+                      fromCount:
+                        drawKind === "card"
+                          ? sharedCardDraws.length
+                          : undefined,
                       drawnById: currentPlayerId,
                     });
                 }
@@ -934,19 +1093,23 @@ export default function PartyGameScreen() {
                   // Local Kings only: mirror the drawn cards so the header can
                   // pull "Konec" the moment the fourth king lands, before
                   // DrawShell's own delayed payer report.
-                  if (key === 'kings' && result.cardId)
+                  if (key === "kings" && result.cardId)
                     setLocalKings((current) =>
                       current.scope === gameScope
-                        ? { ...current, cards: [...current.cards, result.cardId!] }
+                        ? {
+                            ...current,
+                            cards: [...current.cards, result.cardId!],
+                          }
                         : { scope: gameScope, cards: [result.cardId!] },
                     );
                 }
           }
           onDeckFinished={
-            key === 'kings' && !gameId
+            key === "kings" && !gameId
               ? () => {
                   const payer =
-                    roster.find((player) => player.id === currentPlayerId) ?? roster[0];
+                    roster.find((player) => player.id === currentPlayerId) ??
+                    roster[0];
                   if (!payer) return;
                   report({
                     winner: null,
@@ -961,33 +1124,43 @@ export default function PartyGameScreen() {
         />
       ) : null}
 
-      {roster && !canonicalFinish && shell === 'score' ? (
+      {roster && !canonicalFinish && shell === "score" ? (
         <ScrollView
-          contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[
+            styles.body,
+            { paddingBottom: insets.bottom + 120 },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {/* The rules, on the screen. Nobody remembers how King's Cup goes and
             looking it up mid-round is how a game dies. */}
           {def ? (
-            <Text style={styles.rules} maxFontSizeMultiplier={FontScaleCap.body}>
+            <Text
+              style={styles.rules}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
               {def.how}
             </Text>
           ) : null}
           <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-            {onPoints ? 'Ťukni na toho, kdo bodoval.' : 'Ťukni na toho, kdo dostal bod.'}
+            {onPoints
+              ? "Ťukni na toho, kdo bodoval."
+              : "Ťukni na toho, kdo dostal bod."}
           </Text>
 
           {ranked.map((row, index) => (
             <Pressable
               key={row.id}
               onPress={() => bump(row)}
+              disabled={spectator}
               style={({ pressed }) => [
                 styles.player,
                 onPoints && index === 0 && played && styles.playerLeader,
-                pressed && styles.pressed,
+                pressed && !spectator && styles.pressed,
               ]}
               accessibilityRole="button"
               accessibilityLabel={`Bod pro ${row.name}. Aktuálně ${row.score}`}
+              accessibilityState={{ disabled: spectator }}
             >
               <Text
                 style={styles.playerName}
@@ -1023,8 +1196,8 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
 
   top: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.sm,
     paddingHorizontal: MockLayout.screenPad,
     paddingBottom: Spacing.sm,
@@ -1035,15 +1208,15 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: withAlpha(Colors.foam, 0.08),
     marginLeft: -6,
   },
   topTitle: {
     flex: 1,
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: "700",
     color: Colors.foam,
     letterSpacing: -0.2,
   },
@@ -1051,45 +1224,58 @@ const styles = StyleSheet.create({
     minWidth: 44,
     height: 44,
     paddingLeft: 12,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: "flex-end",
+    justifyContent: "center",
   },
-  endText: { fontSize: 15, fontWeight: '700', color: Colors.mutedText },
+  endSlot: {
+    width: 44,
+    height: 44,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  endText: { fontSize: 15, fontWeight: "700", color: Colors.mutedText },
+  spectatorNote: {
+    paddingHorizontal: MockLayout.screenPad,
+    paddingVertical: Spacing.sm,
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.mutedText,
+  },
   sharingFailure: {
     paddingHorizontal: MockLayout.screenPad,
     paddingVertical: Spacing.sm,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.amber,
     backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   startFailure: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.md,
     paddingHorizontal: MockLayout.screenPad,
   },
   startFailureText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.mutedText,
-    textAlign: 'center',
+    textAlign: "center",
   },
   startRetry: {
     minHeight: 44,
     paddingHorizontal: Spacing.lg,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.amber,
   },
-  startRetryText: { fontSize: 15, fontWeight: '800', color: Colors.stout },
+  startRetryText: { fontSize: 15, fontWeight: "800", color: Colors.stout },
   counter: {
-    position: 'absolute',
+    position: "absolute",
     right: MockLayout.screenPad,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
     height: 48,
     paddingHorizontal: Spacing.md,
@@ -1099,9 +1285,9 @@ const styles = StyleSheet.create({
   counterPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
   counterText: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.stout,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
   },
 
   body: {
@@ -1111,32 +1297,32 @@ const styles = StyleSheet.create({
   },
   rules: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.foam,
     lineHeight: 21,
   },
   hint: {
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     color: Colors.mutedText,
     marginBottom: Spacing.sm,
   },
 
   player: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     minHeight: HitArea.min + 22,
     paddingHorizontal: Spacing.lg,
     borderRadius: 22,
     backgroundColor: MockColors.surfaceHigh,
   },
   playerLeader: { backgroundColor: withAlpha(Colors.amber, 0.16) },
-  playerName: { flex: 1, fontSize: 20, fontWeight: '700', color: Colors.foam },
+  playerName: { flex: 1, fontSize: 20, fontWeight: "700", color: Colors.foam },
   playerScore: {
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
   },
 
   foot: {
@@ -1148,8 +1334,8 @@ const styles = StyleSheet.create({
   finish: {
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.amber,
   },
   finishText: { ...MockType.buttonLabel, color: Colors.stout },

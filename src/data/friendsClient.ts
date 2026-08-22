@@ -213,6 +213,18 @@ export interface FriendsDashboard {
   leaderboard: LeaderboardEntry[];
   notifications: FriendNotification[];
   unreadCount: number;
+  /** Pagination metadata from the dashboard endpoint; absent on older backends. */
+  relationshipPage?: FriendsRelationshipPage;
+}
+
+/** Pagination slice of the friends dashboard payload (additive, older backends omit it). */
+export interface FriendsRelationshipPage {
+  friendsCount: number;
+  followingCount: number;
+  nextCursor: number | null;
+  followingNextCursor: number | null;
+  friendsTruncated: boolean;
+  followingTruncated: boolean;
 }
 
 /**
@@ -814,62 +826,251 @@ async function requestJson(
   }
 }
 
+function parseNonnegativeInt(value: unknown): number | null {
+  if (
+    typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && Number.isInteger(value)
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function parseRelationshipPage(
+  data: Record<string, unknown>,
+  friends: FriendProfile[],
+  following: FollowedProfile[],
+): FriendsRelationshipPage {
+  const nextCursor = parseNonnegativeInt(data.next_cursor);
+  const followingNextCursor = parseNonnegativeInt(data.following_next_cursor);
+  return {
+    friendsCount: parseNonnegativeInt(data.friends_count) ?? friends.length,
+    followingCount: parseNonnegativeInt(data.following_count) ?? following.length,
+    nextCursor,
+    followingNextCursor,
+    friendsTruncated: typeof data.friends_truncated === 'boolean'
+      ? data.friends_truncated
+      : nextCursor !== null,
+    followingTruncated: typeof data.following_truncated === 'boolean'
+      ? data.following_truncated
+      : followingNextCursor !== null,
+  };
+}
+
+function parseFriendsDashboard(data: Record<string, unknown>): FriendsDashboard {
+  const friends: FriendProfile[] = Array.isArray(data.friends)
+    ? (data.friends as RawFriendProfile[]).map(parseProfile)
+    : [];
+  const following: FollowedProfile[] = Array.isArray(data.following)
+    ? (data.following as RawFollowedProfile[]).map(parseFollowed)
+    : [];
+  const rawStats = (data.friend_stats ?? {}) as Record<string, RawFriendStats>;
+  const friendStats: Record<string, FriendStats> = {};
+  for (const [id, stats] of Object.entries(rawStats)) {
+    friendStats[id] = parseStats(stats);
+  }
+  return {
+    friends,
+    friendStats,
+    incomingRequests: Array.isArray(data.incoming_requests)
+      ? (data.incoming_requests as RawFriendship[]).map(parseFriendship)
+      : [],
+    outgoingRequests: Array.isArray(data.outgoing_requests)
+      ? (data.outgoing_requests as RawFriendship[]).map(parseFriendship)
+      : [],
+    following,
+    followersCount: typeof data.followers_count === 'number' ? data.followers_count : 0,
+    activeFriends: Array.isArray(data.active_friends)
+      ? (data.active_friends as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myActiveActivity: data.my_active_activity
+      ? parseActivity(data.my_active_activity as RawFriendActivity)
+      : null,
+    plans: Array.isArray(data.plans)
+      ? (data.plans as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myPlan: data.my_plan ? parseActivity(data.my_plan as RawFriendActivity) : null,
+    presence: parsePresenceList(data.presence),
+    myPresence: parseMyPresence(data.my_presence),
+    blockedIds: Array.isArray(data.blocked_ids)
+      ? (data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
+      : [],
+    settings: parseSocialSettings(data.settings as RawFriendSocialSettings | undefined),
+    streak: parseStreak(data.streak as RawFriendStreak | undefined),
+    leaderboard: Array.isArray(data.leaderboard)
+      ? (data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
+      : [],
+    notifications: Array.isArray(data.notifications)
+      ? (data.notifications as RawFriendNotification[]).map(parseNotification)
+      : [],
+    unreadCount: typeof data.unread_count === 'number' ? data.unread_count : 0,
+    relationshipPage: parseRelationshipPage(data, friends, following),
+  };
+}
+
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
   // Capture the account-boundary generation BEFORE the request begins (and thus
   // before requestJson captures this account's bearer). If a logout/delete clears
   // the snapshot while this fetch is in flight, the write below is dropped instead
   // of re-persisting the previous account's graph under the next account.
   const generation = snapshotGeneration();
-  const res = await requestJson('/v1/friends', { signal });
+  const res = await requestJson('/v1/friends?limit=100', { signal });
   if (!res.ok) return null;
-  const rawStats = (res.data.friend_stats ?? {}) as Record<string, RawFriendStats>;
-  const friendStats: Record<string, FriendStats> = {};
-  for (const [id, stats] of Object.entries(rawStats)) {
-    friendStats[id] = parseStats(stats);
-  }
-  const dashboard: FriendsDashboard = {
-    friends: Array.isArray(res.data.friends)
-      ? (res.data.friends as RawFriendProfile[]).map(parseProfile)
-      : [],
-    friendStats,
-    incomingRequests: Array.isArray(res.data.incoming_requests)
-      ? (res.data.incoming_requests as RawFriendship[]).map(parseFriendship)
-      : [],
-    outgoingRequests: Array.isArray(res.data.outgoing_requests)
-      ? (res.data.outgoing_requests as RawFriendship[]).map(parseFriendship)
-      : [],
-    following: Array.isArray(res.data.following)
-      ? (res.data.following as RawFollowedProfile[]).map(parseFollowed)
-      : [],
-    followersCount: typeof res.data.followers_count === 'number' ? res.data.followers_count : 0,
-    activeFriends: Array.isArray(res.data.active_friends)
-      ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
-      : [],
-    myActiveActivity: res.data.my_active_activity
-      ? parseActivity(res.data.my_active_activity as RawFriendActivity)
-      : null,
-    plans: Array.isArray(res.data.plans)
-      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
-      : [],
-    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
-    presence: parsePresenceList(res.data.presence),
-    myPresence: parseMyPresence(res.data.my_presence),
-    blockedIds: Array.isArray(res.data.blocked_ids)
-      ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
-      : [],
-    settings: parseSocialSettings(res.data.settings as RawFriendSocialSettings | undefined),
-    streak: parseStreak(res.data.streak as RawFriendStreak | undefined),
-    leaderboard: Array.isArray(res.data.leaderboard)
-      ? (res.data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
-      : [],
-    notifications: Array.isArray(res.data.notifications)
-      ? (res.data.notifications as RawFriendNotification[]).map(parseNotification)
-      : [],
-    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
-  };
+  const dashboard = parseFriendsDashboard(res.data);
   // Persist the freshly-loaded graph so an offline cold start can hydrate it
   // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
   // generation guard drops the write if an account boundary was crossed mid-fetch.
+  void saveFriendsDashboardSnapshot(dashboard, generation);
+  return dashboard;
+}
+
+/** Append page-only rows after current ones; a repeated id takes the page row. */
+function mergeRowsById<T extends { id: string }>(currentRows: T[], pageRows: T[]): T[] {
+  const pageById = new Map(pageRows.map((row) => [row.id, row]));
+  const known = new Set(currentRows.map((row) => row.id));
+  const merged = currentRows.map((row) => pageById.get(row.id) ?? row);
+  for (const row of pageRows) {
+    if (!known.has(row.id)) {
+      known.add(row.id);
+      merged.push(row);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Fold one paginated slice into the loaded dashboard. Branches the CURRENT
+ * metadata marks complete stay untouched (a backend that resent page 1 must not
+ * shrink them); only still-truncated branches grow. Live surfaces (presence,
+ * activities, settings…) are carried over by reference — pages carry none.
+ */
+export function mergeFriendsDashboardPage(
+  current: FriendsDashboard,
+  page: FriendsDashboard,
+): FriendsDashboard {
+  const currentMeta = current.relationshipPage;
+  const pageMeta = page.relationshipPage;
+  const friendsAdvances = currentMeta?.friendsTruncated ?? false;
+  const followingAdvances = currentMeta?.followingTruncated ?? false;
+  const meta: FriendsRelationshipPage | undefined =
+    !currentMeta || !pageMeta
+      ? pageMeta ?? currentMeta
+      : {
+          friendsCount: friendsAdvances ? pageMeta.friendsCount : currentMeta.friendsCount,
+          followingCount: followingAdvances ? pageMeta.followingCount : currentMeta.followingCount,
+          nextCursor: friendsAdvances ? pageMeta.nextCursor : currentMeta.nextCursor,
+          followingNextCursor: followingAdvances
+            ? pageMeta.followingNextCursor
+            : currentMeta.followingNextCursor,
+          friendsTruncated: friendsAdvances ? pageMeta.friendsTruncated : currentMeta.friendsTruncated,
+          followingTruncated: followingAdvances
+            ? pageMeta.followingTruncated
+            : currentMeta.followingTruncated,
+        };
+  return {
+    friends: friendsAdvances ? mergeRowsById(current.friends, page.friends) : current.friends,
+    following: followingAdvances
+      ? mergeRowsById(current.following, page.following)
+      : current.following,
+    friendStats: friendsAdvances ? { ...current.friendStats, ...page.friendStats } : current.friendStats,
+    incomingRequests: friendsAdvances
+      ? mergeRowsById(current.incomingRequests, page.incomingRequests)
+      : current.incomingRequests,
+    outgoingRequests: friendsAdvances
+      ? mergeRowsById(current.outgoingRequests, page.outgoingRequests)
+      : current.outgoingRequests,
+    followersCount: current.followersCount,
+    activeFriends: current.activeFriends,
+    myActiveActivity: current.myActiveActivity,
+    plans: current.plans,
+    myPlan: current.myPlan,
+    presence: current.presence,
+    myPresence: current.myPresence,
+    blockedIds: current.blockedIds,
+    settings: current.settings,
+    streak: current.streak,
+    leaderboard: current.leaderboard,
+    notifications: current.notifications,
+    unreadCount: current.unreadCount,
+    relationshipPage: meta,
+  };
+}
+
+/**
+ * Load the next page of a truncated relationship graph. Returns `current` as-is
+ * when nothing is truncated, and null when a needed cursor is missing, the
+ * request fails, or the account boundary moved mid-flight (so two accounts can
+ * never merge their graphs).
+ */
+export async function fetchNextFriendsDashboardPage(
+  current: FriendsDashboard,
+  signal?: AbortSignal,
+): Promise<FriendsDashboard | null> {
+  const meta = current.relationshipPage;
+  // Older backends never paginate; nothing to advance.
+  if (!meta) return current;
+  const friendsTruncated = meta.friendsTruncated;
+  const followingTruncated = meta.followingTruncated;
+  if (!friendsTruncated && !followingTruncated) return current;
+  let path = '/v1/friends?limit=100';
+  if (friendsTruncated) {
+    if (meta.nextCursor === null) return null;
+    path += `&cursor=${meta.nextCursor}`;
+  }
+  if (followingTruncated) {
+    if (meta.followingNextCursor === null) return null;
+    path += `&following_cursor=${meta.followingNextCursor}`;
+  }
+  const generation = snapshotGeneration();
+  const res = await requestJson(path, { signal });
+  if (!res.ok) return null;
+  if (snapshotGeneration() !== generation) return null;
+  const merged = mergeFriendsDashboardPage(current, parseFriendsDashboard(res.data));
+  void saveFriendsDashboardSnapshot(merged, generation);
+  return merged;
+}
+
+/**
+ * Load the whole relationship graph by walking every truncation flag to
+ * completion. Aborts with null on any failure, missing cursor, stalled progress
+ * or account-boundary move; there is no page cap — the server's own cursors end
+ * the walk.
+ */
+export async function fetchAllFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
+  const generation = snapshotGeneration();
+  let dashboard = await fetchFriendsDashboard(signal);
+  if (!dashboard || snapshotGeneration() !== generation) return null;
+  // Cursor-pair signatures already requested within THIS walk; a repeat means
+  // the server is cycling us (e.g. 100→200→100), so stop before another request.
+  const visitedSignatures = new Set<string>();
+  for (;;) {
+    const previousMeta = dashboard.relationshipPage;
+    if (!previousMeta?.friendsTruncated && !previousMeta?.followingTruncated) break;
+    const signature =
+      `${previousMeta.friendsTruncated ? previousMeta.nextCursor : 'done'}`
+      + `|${previousMeta.followingTruncated ? previousMeta.followingNextCursor : 'done'}`;
+    if (visitedSignatures.has(signature)) return null;
+    visitedSignatures.add(signature);
+    const friendsWasActive = previousMeta.friendsTruncated;
+    const followingWasActive = previousMeta.followingTruncated;
+    const previousSize = dashboard.friends.length + dashboard.following.length;
+    const next = await fetchNextFriendsDashboardPage(dashboard, signal);
+    if (!next || snapshotGeneration() !== generation) return null;
+    // Pages can carry only pending/blocked rows, so loaded friend/following
+    // counts may legitimately stall while the walk still advances.
+    const nextMeta = next.relationshipPage;
+    const cursorChanged =
+      (friendsWasActive && nextMeta?.nextCursor !== previousMeta.nextCursor) ||
+      (followingWasActive && nextMeta?.followingNextCursor !== previousMeta.followingNextCursor);
+    const grew = next.friends.length + next.following.length > previousSize;
+    const completed =
+      (friendsWasActive && !(nextMeta?.friendsTruncated ?? false)) ||
+      (followingWasActive && !(nextMeta?.followingTruncated ?? false));
+    if (!cursorChanged && !grew && !completed) return null;
+    dashboard = next;
+  }
   void saveFriendsDashboardSnapshot(dashboard, generation);
   return dashboard;
 }

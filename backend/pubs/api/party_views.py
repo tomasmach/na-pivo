@@ -1429,8 +1429,13 @@ class PartyGameEventView(APIView):
         }
         requester_is_entrant = str(request.user.public_id) in roster_ids
         requester_is_bound_entrant = str(request.user.public_id) in frozen_roster_ids
+        # A bound roster is the whole player list. An active table observer who
+        # was never dealt in gets to watch, not to write — no event kind.
+        outside_frozen_roster = bool(frozen_roster_ids) and not requester_is_bound_entrant
         candidate_items = []
         for item in serializer.validated_data["events"]:
+            if outside_frozen_roster:
+                continue
             subject = members.get(str(item.get("subject_id"))) if item.get("subject_id") else None
             if item["kind"] == "score" and subject is None:
                 # Scoring somebody outside the frozen lobby is not an error

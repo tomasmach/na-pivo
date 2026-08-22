@@ -1,18 +1,18 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import type { PickPlayer } from '@/party/shells/PickShell';
+import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap } from "@/theme/fonts";
+import { Radius, Spacing } from "@/theme/layout";
+import type { PickPlayer } from "@/party/shells/PickShell";
 
 const SPIN_MS = 2200;
 const SLOT_HEIGHT = 78;
 
 const pickOne = (players: readonly PickPlayer[]): string =>
-  players[Math.floor(Math.random() * players.length)]?.id ?? '';
+  players[Math.floor(Math.random() * players.length)]?.id ?? "";
 
 function displayName(player: PickPlayer | undefined, index: number): string {
   const name = player?.name.trim();
@@ -23,19 +23,22 @@ export function RoundDrumShell({
   players,
   pickedId,
   onPicked,
-  readOnly = false,
+  spectator = false,
   onDone,
   bottomInset = 0,
 }: {
   players: PickPlayer[];
   pickedId: string | null;
   onPicked?: (playerId: string) => void;
-  readOnly?: boolean;
+  /** Watch-only view: a canonical pick keeps its way back, nobody spins from here. */
+  spectator?: boolean;
   onDone?: () => void;
   bottomInset?: number;
 }) {
   const reduceMotion = useReducedMotion();
-  const [localPickedId, setLocalPickedId] = React.useState<string | null>(pickedId);
+  const [localPickedId, setLocalPickedId] = React.useState<string | null>(
+    pickedId,
+  );
   const [cursor, setCursor] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
   const locked = React.useRef(false);
@@ -51,7 +54,9 @@ export function RoundDrumShell({
     0,
     players.findIndex((player) => player.id === effectiveId),
   );
-  const centerIndex = spinning ? cursor % Math.max(1, players.length) : selectedIndex;
+  const centerIndex = spinning
+    ? cursor % Math.max(1, players.length)
+    : selectedIndex;
   const slots = Array.from({ length: 5 }, (_, slot) => {
     const offset = slot - 2;
     const count = Math.max(1, players.length);
@@ -62,6 +67,7 @@ export function RoundDrumShell({
   const selectedName = displayName(selected, selectedIndex);
 
   const publish = (playerId: string) => {
+    if (spectator) return;
     setLocalPickedId(playerId);
     setSpinning(false);
     onPicked?.(playerId);
@@ -75,8 +81,10 @@ export function RoundDrumShell({
   };
 
   const spin = () => {
-    if (readOnly) {
-      onDone?.();
+    if (spectator) {
+      // Navigation is not gameplay: with a canonical pick the spectator keeps
+      // its way back to the evening, without one there is nothing to leave for.
+      if (effectiveId) onDone?.();
       return;
     }
     if (locked.current || players.length === 0) return;
@@ -113,7 +121,9 @@ export function RoundDrumShell({
           accessibilityRole="text"
           accessibilityLiveRegion="polite"
           accessibilityLabel={
-            effectiveId && !spinning ? `Platí ${selectedName}` : 'Buben se jmény hráčů'
+            effectiveId && !spinning
+              ? `Platí ${selectedName}`
+              : "Buben se jmény hráčů"
           }
         >
           {slots.map(({ player, index, offset }, slot) => {
@@ -141,38 +151,48 @@ export function RoundDrumShell({
               </View>
             );
           })}
-          {!effectiveId || spinning ? <View pointerEvents="none" style={styles.gate} /> : null}
+          {!effectiveId || spinning ? (
+            <View pointerEvents="none" style={styles.gate} />
+          ) : null}
         </View>
         <Text style={styles.note} maxFontSizeMultiplier={FontScaleCap.body}>
-          {effectiveId && !spinning ? 'Platí. Runda pro stůl.' : ' '}
+          {effectiveId && !spinning ? "Platí. Runda pro stůl." : " "}
         </Text>
       </View>
 
       <View style={styles.dock}>
         <Pressable
           onPress={spin}
-          disabled={spinning}
+          disabled={spinning || Boolean(spectator && !effectiveId)}
           style={({ pressed }) => [
             styles.action,
             effectiveId && styles.actionQuiet,
+            spectator && !effectiveId && styles.actionMuted,
             (pressed || spinning) && styles.pressed,
           ]}
           accessibilityRole="button"
           accessibilityLabel={
-            readOnly ? 'Zpátky k večeru' : effectiveId ? 'Roztoč znovu' : 'Roztoč'
+            spectator && effectiveId
+              ? "Zpátky k večeru"
+              : effectiveId
+                ? "Roztoč znovu"
+                : "Roztoč"
           }
+          accessibilityState={{
+            disabled: spinning || Boolean(spectator && !effectiveId),
+          }}
         >
           <Text
             style={[styles.actionText, effectiveId && styles.actionTextQuiet]}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
             {spinning
-              ? '…'
-              : readOnly
-                ? 'Zpátky k večeru'
+              ? "…"
+              : spectator && effectiveId
+                ? "Zpátky k večeru"
                 : effectiveId
-                  ? 'Roztoč znovu'
-                  : 'Roztoč'}
+                  ? "Roztoč znovu"
+                  : "Roztoč"}
           </Text>
         </Pressable>
       </View>
@@ -182,18 +202,18 @@ export function RoundDrumShell({
 
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: MockLayout.screenPad },
-  drumWrap: { flex: 1, justifyContent: 'center' },
-  drum: { height: 392, overflow: 'hidden' },
+  drumWrap: { flex: 1, justifyContent: "center" },
+  drum: { height: 392, overflow: "hidden" },
   slot: {
     height: SLOT_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: 16,
   },
   slotOn: { backgroundColor: Colors.amber },
   slotText: {
     fontSize: 27,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -0.5,
     color: Colors.foam,
   },
@@ -203,10 +223,10 @@ const styles = StyleSheet.create({
     color: Colors.stout,
     opacity: 1,
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   gate: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     top: 157,
@@ -217,9 +237,9 @@ const styles = StyleSheet.create({
   },
   note: {
     height: 44,
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: "500",
     color: Colors.mutedText,
   },
   dock: { paddingTop: 14 },
@@ -227,11 +247,12 @@ const styles = StyleSheet.create({
     flex: 1,
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.amber,
   },
   actionQuiet: { backgroundColor: MockColors.surfaceHigh },
+  actionMuted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
   actionText: { ...MockType.buttonLabel, color: Colors.stout },
   actionTextQuiet: { color: Colors.foam },
   pressed: { opacity: 0.72 },

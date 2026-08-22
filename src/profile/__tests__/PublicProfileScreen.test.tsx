@@ -84,7 +84,13 @@ jest.mock('@/feed/useNightActions', () => ({ useNightActions: () => jest.fn() })
 jest.mock('@/feed/useNightReaction', () => ({
   useNightReaction: () => ({ reactingIds: new Set(), toggleReaction: jest.fn() }),
 }));
-jest.mock('@/friends/ComposeSheet', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/friends/ComposeSheet', () => ({
+  __esModule: true,
+  default: (props: Record<string, unknown>) => {
+    const ReactModule = jest.requireActual('react');
+    return ReactModule.createElement('ComposeSheet', props);
+  },
+}));
 jest.mock('@/friends/SkeletonBlock', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/mocks/BarChart', () => ({ BarChart: () => null }));
 jest.mock('@/mocks/SectionBreak', () => ({ SectionBreak: () => null }));
@@ -299,4 +305,18 @@ it('blocks behind confirmation and keeps an explicit unblock path', async () => 
   });
   expect(mockFetchFriendProfile).toHaveBeenCalledTimes(2);
   expect(mockShowToast).toHaveBeenCalledWith('Odblokováno.');
+});
+
+it('opens ComposeSheet with the friend as fixed recipient', async () => {
+  const renderer = await renderScreen();
+
+  act(() => {
+    renderer.root
+      .findByProps({ accessibilityLabel: 'Pozvat @honza na pivo' })
+      .props.onPress();
+  });
+
+  const compose = renderer.root.findByType('ComposeSheet');
+  expect(compose.props.fixedRecipientIds).toEqual(['friend-1']);
+  expect(compose.props.friends).toEqual([detail.profile]);
 });

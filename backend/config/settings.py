@@ -274,6 +274,12 @@ ACCOUNT_EXPORT_JOB_RETENTION_DAYS: int = int(
 ACCOUNT_EXPORT_JOB_MAX_ATTEMPTS: int = int(
     os.environ.get("ACCOUNT_EXPORT_JOB_MAX_ATTEMPTS", "8")
 )
+ACCOUNT_OPERATION_PROOF_RETENTION_DAYS: int = int(
+    os.environ.get("ACCOUNT_OPERATION_PROOF_RETENTION_DAYS", "400")
+)
+# ContentReport / FeedbackReport rows (and feedback attachments on disk) older
+# than this many days are pruned by prune_operational_data.
+UGC_REPORT_RETENTION_DAYS: int = int(os.environ.get("UGC_REPORT_RETENTION_DAYS", "400"))
 API_RATE_LIMIT_RETENTION_DAYS: int = int(
     os.environ.get("API_RATE_LIMIT_RETENTION_DAYS", "2")
 )
@@ -647,6 +653,11 @@ _auth_token_ttl_days = os.environ.get("AUTH_TOKEN_TTL_DAYS", "").strip()
 AUTH_TOKEN_TTL_DAYS: int | None = int(_auth_token_ttl_days) if _auth_token_ttl_days else None
 # Soft-delete grace window before a pending-deletion account is hard-purged.
 ACCOUNT_DELETION_GRACE_DAYS: int = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "14"))
+# Version of the community-content (UGC) terms. Intentionally code-versioned,
+# not env-configurable: it changes only with a release that changes the rules.
+# Accounts store the version they accepted (ugc_terms_version / accepted_at) so
+# the server can prove which rules a user agreed to.
+UGC_POLICY_VERSION = "2026-08-22"
 
 # --- Deep links / web fallback (used in transactional emails) ---
 # Custom URL scheme of the mobile app (app.config.ts `scheme`). Password reset

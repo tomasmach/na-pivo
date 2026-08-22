@@ -148,22 +148,11 @@ def test_hard_delete_expired_account_resolves_shared_lifecycles():
     assert ended_evening.active is False
     assert ended_evening.ended_at == now - timedelta(days=5)
 
-    for event in (future_event, started_event):
-        event.refresh_from_db()
-        assert event.status == CommunityEvent.Status.CANCELLED
-        assert event.cancelled_at is not None
-        assert event.cancelled_at > deleted_at
-
-    cancelled_event.refresh_from_db()
-    assert cancelled_event.status == CommunityEvent.Status.CANCELLED
-    assert cancelled_event.cancelled_at == now - timedelta(days=10)
-
     for event in (future_event, started_event, cancelled_event):
-        assert CommunityEvent.objects.filter(pk=event.pk).exists()
-    membership.refresh_from_db()
-    assert membership.account_id == other.id
-    assert membership.status == CommunityEventMembership.Status.APPROVED
-    team.refresh_from_db()
-    assert team.created_by_id is None
-    team_membership.refresh_from_db()
-    assert team_membership.account_id == other.id
+        assert not CommunityEvent.objects.filter(pk=event.pk).exists()
+
+    assert not CommunityEventMembership.objects.filter(id=membership.id).exists()
+    assert not CommunityEventTeam.objects.filter(id=team.id).exists()
+    assert not CommunityEventTeamMembership.objects.filter(
+        id=team_membership.id
+    ).exists()

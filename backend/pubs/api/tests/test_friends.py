@@ -231,6 +231,10 @@ def test_friends_dashboard_paginates_relationships_and_follows(client):
     assert first.json()["next_cursor"] == friendships[1].id
     assert first.json()["following_next_cursor"] == follows[1].id
     assert first.json()["truncated"] is True
+    assert first.json()["friends_count"] == 3
+    assert first.json()["following_count"] == 3
+    assert first.json()["friends_truncated"] is True
+    assert first.json()["following_truncated"] is True
 
     second = client.get(
         "/v1/friends",
@@ -250,6 +254,61 @@ def test_friends_dashboard_paginates_relationships_and_follows(client):
     assert second.json()["next_cursor"] is None
     assert second.json()["following_next_cursor"] is None
     assert second.json()["truncated"] is False
+    assert second.json()["friends_count"] == 3
+    assert second.json()["following_count"] == 3
+    assert second.json()["friends_truncated"] is False
+    assert second.json()["following_truncated"] is False
+
+
+@pytest.mark.django_db
+def test_paginated_dashboard_keeps_live_and_presence_for_friend_outside_page(client):
+    token, owner = _register(client, "viewer")
+    _first_token, first_friend = _register(client, "firstfriend")
+    _second_token, second_friend = _register(client, "livefriend")
+    _make_friends(owner, first_friend)
+    _make_friends(owner, second_friend)
+    _make_live_row(second_friend)
+    visit = _visit(second_friend)
+    recent = timezone.now() - timedelta(minutes=10)
+    visit.started_at = recent
+    visit.client_updated_at = recent
+    visit.save(update_fields=["started_at", "client_updated_at"])
+
+    response = client.get("/v1/friends?limit=1", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["nickname"] for row in response.json()["friends"]] == ["firstfriend"]
+    assert [row["account"]["nickname"] for row in response.json()["active_friends"]] == ["livefriend"]
+    assert [row["account"]["nickname"] for row in response.json()["presence"]] == ["livefriend"]
+    assert response.json()["friends_count"] == 2
+
+
+@pytest.mark.django_db
+def test_paginated_dashboard_counts_only_visible_active_relationships(client):
+    token, owner = _register(client, "janek")
+    _active_token, activefriend = _register(client, "aktivni")
+    _blocked_token, blockedfriend = _register(client, "bloknuty")
+    _deleting_token, deletingfriend = _register(client, "mazanej")
+    for other in (activefriend, blockedfriend, deletingfriend):
+        Friendship.objects.create(
+            requester=owner,
+            recipient=other,
+            status=Friendship.Status.ACCEPTED,
+        )
+        Follow.objects.create(follower=owner, target=other)
+    deletingfriend.status = Account.Status.PENDING_DELETION
+    deletingfriend.save(update_fields=["status"])
+    FriendBlock.objects.create(blocker=owner, blocked=blockedfriend)
+
+    response = client.get("/v1/friends?limit=100", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["nickname"] for row in response.json()["friends"]] == ["aktivni"]
+    assert [row["nickname"] for row in response.json()["following"]] == ["aktivni"]
+    assert response.json()["friends_count"] == 1
+    assert response.json()["following_count"] == 1
+    assert response.json()["friends_truncated"] is False
+    assert response.json()["following_truncated"] is False
 
 
 @pytest.mark.django_db
@@ -281,6 +340,15 @@ def test_friends_dashboard_legacy_snapshot_ignores_new_page_limit_setting(
         "legacy2",
     }
     assert "truncated" not in response.json()
+    for page_key in (
+        "friends_count",
+        "following_count",
+        "friends_truncated",
+        "following_truncated",
+        "next_cursor",
+        "following_next_cursor",
+    ):
+        assert page_key not in response.json()
 
 
 @pytest.mark.django_db

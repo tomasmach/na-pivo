@@ -94,6 +94,7 @@ from .profile_helpers import (
     derive_account_achievements,
     derive_account_profile_stats,
 )
+from .ugc_consent import ugc_consent_snapshot
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -425,6 +426,12 @@ class AccountDeletionOperationSerializer(serializers.Serializer):
         if value.version != 4 or value.variant != uuid.RFC_4122:
             raise serializers.ValidationError("operation_id must be an RFC-4122 UUIDv4.")
         return value
+
+
+class UGCConsentRequestSerializer(serializers.Serializer):
+    """Request body for PUT /v1/account/me/ugc-consent."""
+
+    version = serializers.CharField(max_length=32)
 
 
 # ---------------------------------------------------------------------------
@@ -2898,6 +2905,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     achievements = serializers.SerializerMethodField()
     mapper = serializers.SerializerMethodField()
     pivar = serializers.SerializerMethodField()
+    ugc_consent = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
@@ -2921,6 +2929,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "achievements",
             "mapper",
             "pivar",
+            "ugc_consent",
             "usage",
             "created_at",
             "last_seen_at",
@@ -3090,6 +3099,9 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "levels": pivar_levels(),
             "xp_rules": pivar_xp_rules(),
         }
+
+    def get_ugc_consent(self, obj: Account) -> dict:
+        return ugc_consent_snapshot(obj)
 
 
 class AccountUpdateSerializer(serializers.ModelSerializer):

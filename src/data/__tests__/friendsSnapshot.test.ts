@@ -129,3 +129,20 @@ it('persists a write made under the post-clear generation (guard is not permanen
   const snap = await loadFriendsDashboardSnapshot();
   expect(snap?.dashboard.friends[0].id).toBe('bob');
 });
+
+it('round-trips relationship pagination metadata for offline continuation', async () => {
+  const relationshipPage = {
+    friendsCount: 250,
+    followingCount: 120,
+    nextCursor: 100,
+    followingNextCursor: 90,
+    friendsTruncated: true,
+    followingTruncated: true,
+  };
+  const d = dashboard({ friends: [{ id: 'f1', nickname: 'f1', displayName: 'f1', avatarUrl: null, isPublic: true }], relationshipPage });
+
+  await saveFriendsDashboardSnapshot(d, snapshotGeneration());
+  const snap = await loadFriendsDashboardSnapshot();
+
+  expect(snap?.dashboard.relationshipPage).toEqual(relationshipPage);
+});

@@ -17,7 +17,7 @@ import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
 
 import { connect, type GameSession } from '@/games/web/sdk';
-import bottleTextureUrl from './bottle-top-down.png';
+import bottleTextureUrl from './bottle-top-down.webp';
 
 /** Where the seats sit. The table is a circle and the bottle is at its centre. */
 const SEAT_RADIUS = 3.4;

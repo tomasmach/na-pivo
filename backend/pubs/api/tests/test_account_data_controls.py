@@ -21,8 +21,10 @@ from pubs.models import (
     AccountUsageStats,
     AmenityXpLedger,
     AuthIdentity,
+    BeerBrand,
     BeerCheckIn,
     BeerPhoto,
+    BeerProduct,
     CommunityEvent,
     CommunityEventMembership,
     CommunityEventTeam,
@@ -41,6 +43,9 @@ from pubs.models import (
     PhotoContestEntry,
     PhotoContestVote,
     PubAmenityVoteTombstone,
+    PubBeerBrand,
+    PubBeerProduct,
+    PubCommunityData,
     PubCommunityXpLedger,
     PubEvent,
     PublishedNight,
@@ -452,6 +457,288 @@ def test_account_export_includes_all_account_owned_history_without_auth_secrets(
 
 
 @pytest.mark.django_db
+def test_account_export_includes_only_owned_current_pub_catalog_contributions(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-catalog")
+    now = timezone.now().replace(microsecond=0)
+
+    brand = BeerBrand.objects.create(
+        key="export-brand",
+        name="Exportní značka",
+        aliases=["export"],
+        rank=10,
+    )
+    product = BeerProduct.objects.create(
+        key="export-brand-lezak",
+        brand=brand,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        name="Exportní ležák 10°",
+        rank=11,
+    )
+
+    own_community = PubCommunityData.objects.create(
+        cache_key="ownck001",
+        name="OWNER-COMMUNITY-PUB",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        external_id="owner-external-1",
+        hours_json={
+            "mo": [["11:00", "23:00"]],
+            "tu": [],
+            "we": [["11:00", "23:00"]],
+            "th": [],
+            "fr": [["11:00", "01:00"]],
+            "sa": [["12:00", "01:00"]],
+            "su": [],
+        },
+        opening_hours_raw="Mo,We 11:00-23:00; Fr 11:00-01:00; Sa 12:00-01:00",
+        beers=[
+            {"name": "OWNER-TAP-BEER", "price_czk": 65, "volume_ml": 500},
+        ],
+        historical_beers=[
+            {"name": "OWNER-RETIRED-BEER", "price_czk": 55, "volume_ml": 500},
+        ],
+        beer_menu_rotates=True,
+        account=account,
+        hours_updated_at=now - timezone.timedelta(hours=2),
+        beers_updated_at=now - timezone.timedelta(hours=1),
+        created_at=now - timezone.timedelta(days=1),
+        updated_at=now - timezone.timedelta(hours=1),
+    )
+    PubCommunityData.objects.create(
+        cache_key="othck001",
+        name="OTHER-COMMUNITY-PUB",
+        lat=49.20,
+        lng=16.60,
+        city="Brno",
+        external_id="other-external-1",
+        account=other,
+    )
+
+    own_brand_row = PubBeerBrand.objects.create(
+        cache_key="ownck002",
+        name="OWNER-BRAND-PUB",
+        lat=50.09,
+        lng=14.42,
+        city="Praha",
+        external_id="owner-external-2",
+        brand=brand,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        last_price_czk=62,
+        last_volume_ml=500,
+        source=PubBeerBrand.Source.COMMUNITY,
+        active=True,
+        account=account,
+        last_seen_at=now - timezone.timedelta(hours=3),
+        created_at=now - timezone.timedelta(days=2),
+        updated_at=now - timezone.timedelta(hours=3),
+    )
+    PubBeerBrand.objects.create(
+        cache_key="othck002",
+        name="OTHER-BRAND-PUB",
+        lat=49.21,
+        lng=16.61,
+        city="Brno",
+        external_id="other-external-2",
+        brand=brand,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        source=PubBeerBrand.Source.DRINK,
+        account=other,
+    )
+
+    own_product_row = PubBeerProduct.objects.create(
+        cache_key="ownck003",
+        name="OWNER-PRODUCT-PUB",
+        lat=50.10,
+        lng=14.40,
+        city="Praha",
+        external_id="owner-external-3",
+        brand=brand,
+        product=product,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        product_key="export-brand-lezak",
+        product_name="Exportní ležák 10°",
+        last_price_czk=68,
+        last_volume_ml=500,
+        source=PubBeerProduct.Source.COMMUNITY,
+        active=True,
+        account=account,
+        last_seen_at=now - timezone.timedelta(hours=4),
+        created_at=now - timezone.timedelta(days=3),
+        updated_at=now - timezone.timedelta(hours=4),
+    )
+    PubBeerProduct.objects.create(
+        cache_key="othck003",
+        name="OTHER-PRODUCT-PUB",
+        lat=49.22,
+        lng=16.62,
+        city="Brno",
+        external_id="other-external-3",
+        brand=brand,
+        product=product,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        product_key="export-brand-lezak",
+        product_name="Exportní ležák 10°",
+        source=PubBeerProduct.Source.DRINK,
+        account=other,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+
+    community_rows = body["mapping_history"]["community_data"]
+    assert len(community_rows) == 1
+    exported_community = community_rows[0]
+    assert set(exported_community.keys()) == {
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "hours_json",
+        "opening_hours_raw",
+        "beers",
+        "historical_beers",
+        "beer_menu_rotates",
+        "hours_updated_at",
+        "beers_updated_at",
+        "created_at",
+        "updated_at",
+    }
+    assert exported_community["cache_key"] == "ownck001"
+    assert exported_community["name"] == "OWNER-COMMUNITY-PUB"
+    assert exported_community["lat"] == 50.08
+    assert exported_community["lng"] == 14.45
+    assert exported_community["city"] == "Praha"
+    assert exported_community["external_id"] == "owner-external-1"
+    assert exported_community["hours_json"] == own_community.hours_json
+    assert (
+        exported_community["opening_hours_raw"]
+        == "Mo,We 11:00-23:00; Fr 11:00-01:00; Sa 12:00-01:00"
+    )
+    assert exported_community["beers"] == [
+        {"name": "OWNER-TAP-BEER", "price_czk": 65, "volume_ml": 500},
+    ]
+    assert exported_community["historical_beers"] == [
+        {"name": "OWNER-RETIRED-BEER", "price_czk": 55, "volume_ml": 500},
+    ]
+    assert exported_community["beer_menu_rotates"] is True
+    assert exported_community["hours_updated_at"] == (
+        now - timezone.timedelta(hours=2)
+    ).isoformat()
+    assert exported_community["beers_updated_at"] == (
+        now - timezone.timedelta(hours=1)
+    ).isoformat()
+    assert exported_community["created_at"] == own_community.created_at.isoformat()
+    assert exported_community["updated_at"] == own_community.updated_at.isoformat()
+
+    brand_rows = body["mapping_history"]["pub_beer_brands"]
+    assert len(brand_rows) == 1
+    exported_brand = brand_rows[0]
+    assert set(exported_brand.keys()) == {
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "brand_key",
+        "brand_name",
+        "last_price_czk",
+        "last_volume_ml",
+        "source",
+        "active",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    }
+    assert exported_brand["cache_key"] == "ownck002"
+    assert exported_brand["name"] == "OWNER-BRAND-PUB"
+    assert exported_brand["lat"] == 50.09
+    assert exported_brand["lng"] == 14.42
+    assert exported_brand["city"] == "Praha"
+    assert exported_brand["external_id"] == "owner-external-2"
+    assert exported_brand["brand_key"] == "export-brand"
+    assert exported_brand["brand_name"] == "Exportní značka"
+    assert exported_brand["last_price_czk"] == 62
+    assert exported_brand["last_volume_ml"] == 500
+    assert exported_brand["source"] == "community"
+    assert exported_brand["active"] is True
+    assert exported_brand["last_seen_at"] == (
+        now - timezone.timedelta(hours=3)
+    ).isoformat()
+    assert exported_brand["created_at"] == own_brand_row.created_at.isoformat()
+    assert exported_brand["updated_at"] == own_brand_row.updated_at.isoformat()
+
+    product_rows = body["mapping_history"]["pub_beer_products"]
+    assert len(product_rows) == 1
+    exported_product = product_rows[0]
+    assert set(exported_product.keys()) == {
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "brand_key",
+        "brand_name",
+        "product_key",
+        "product_name",
+        "last_price_czk",
+        "last_volume_ml",
+        "source",
+        "active",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    }
+    assert exported_product["cache_key"] == "ownck003"
+    assert exported_product["name"] == "OWNER-PRODUCT-PUB"
+    assert exported_product["lat"] == 50.10
+    assert exported_product["lng"] == 14.40
+    assert exported_product["city"] == "Praha"
+    assert exported_product["external_id"] == "owner-external-3"
+    assert exported_product["brand_key"] == "export-brand"
+    assert exported_product["brand_name"] == "Exportní značka"
+    assert exported_product["product_key"] == "export-brand-lezak"
+    assert exported_product["product_name"] == "Exportní ležák 10°"
+    assert exported_product["last_price_czk"] == 68
+    assert exported_product["last_volume_ml"] == 500
+    assert exported_product["source"] == "community"
+    assert exported_product["active"] is True
+    assert exported_product["last_seen_at"] == (
+        now - timezone.timedelta(hours=4)
+    ).isoformat()
+    assert exported_product["created_at"] == own_product_row.created_at.isoformat()
+    assert exported_product["updated_at"] == own_product_row.updated_at.isoformat()
+
+    for section in (community_rows, brand_rows, product_rows):
+        for row in section:
+            row_keys = set(row.keys())
+            assert not row_keys & {"account_id", "account", "id", "pk"}
+            if row is exported_community:
+                continue
+            assert not row_keys & {"brand_id", "product_id"}
+
+    assert "OTHER-COMMUNITY-PUB" not in str(body)
+    assert "OTHER-BRAND-PUB" not in str(body)
+    assert "OTHER-PRODUCT-PUB" not in str(body)
+    assert "othck001" not in str(body)
+    assert "othck002" not in str(body)
+    assert "othck003" not in str(body)
+
+
+@pytest.mark.django_db
 def test_account_export_includes_owned_night_story_and_only_owned_comments(client):
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
@@ -808,6 +1095,9 @@ def test_account_export_reuses_loaded_auth_relations(client):
     assert body["account"]["email"] == "export@example.com"
     assert body["account"]["email_verified"] is True
     assert set(body["account"]["providers"]) == {"email", "google", "apple"}
+    assert body["mapping_history"]["community_data"] == []
+    assert body["mapping_history"]["pub_beer_brands"] == []
+    assert body["mapping_history"]["pub_beer_products"] == []
     assert sorted(body["account"]["identities"], key=lambda i: i["provider"]) == [
         {
             "provider": "apple",

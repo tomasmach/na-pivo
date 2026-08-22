@@ -58,6 +58,7 @@ from pubs import emailer, oauth
 from pubs.beer_photo_deletions import (
     enqueue_account_avatar_file_deletion,
     enqueue_beer_photo_file_deletion,
+    enqueue_feedback_attachment_file_deletion,
     schedule_beer_photo_file_deletions,
 )
 from pubs.models import (
@@ -1986,6 +1987,18 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     # is safer than authenticating successfully while CASCADE silently erases a
     # newly introduced diary/community tree.
     _assert_no_cascade_rows_for_source(source)
+    source_proof_valid = (
+        source.ugc_terms_version == settings.UGC_POLICY_VERSION
+        and source.ugc_terms_accepted_at is not None
+    )
+    target_proof_valid = (
+        target.ugc_terms_version == settings.UGC_POLICY_VERSION
+        and target.ugc_terms_accepted_at is not None
+    )
+    if source_proof_valid and not target_proof_valid:
+        target.ugc_terms_version = source.ugc_terms_version
+        target.ugc_terms_accepted_at = source.ugc_terms_accepted_at
+        target.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
     source.delete()
     logger.info(
         "anonymous account merge completed",
@@ -2590,7 +2603,7 @@ def _scrub_account_uuid_from_json_arrays(account: Account) -> None:
 
 
 def _resolve_shared_lifecycles_before_delete(account: Account) -> None:
-    """Hand active evenings to a survivor; cancel hosted community events."""
+    """Hand active evenings to a survivor; delete hosted community events."""
 
     now = timezone.now()
     for evening in PartyEvening.objects.select_for_update().filter(
@@ -2614,13 +2627,8 @@ def _resolve_shared_lifecycles_before_delete(account: Account) -> None:
             evening.active = False
             evening.ended_at = now
             evening.save(update_fields=["active", "ended_at", "updated_at"])
-    CommunityEvent.objects.filter(
-        host=account, status=CommunityEvent.Status.ACTIVE
-    ).update(
-        status=CommunityEvent.Status.CANCELLED,
-        cancelled_at=now,
-        updated_at=now,
-    )
+    CommunityEventTeam.objects.filter(created_by=account).update(name="Parta")
+    CommunityEvent.objects.filter(host=account).delete()
 
 
 def _hard_delete_locked(account: Account) -> None:
@@ -2636,6 +2644,18 @@ def _hard_delete_locked(account: Account) -> None:
         cleanup_id = enqueue_beer_photo_file_deletion(photo, account=account)
         if cleanup_id is not None:
             cleanup_ids.append(cleanup_id)
+    # Enqueue each feedback attachment before its field is cleared so the
+    # storage name survives de-identification; the report row itself is kept.
+    for report in FeedbackReport.objects.filter(account=account).exclude(attachment=""):
+        cleanup_id = enqueue_feedback_attachment_file_deletion(report)
+        if cleanup_id is not None:
+            cleanup_ids.append(cleanup_id)
+    FeedbackReport.objects.filter(account=account).update(
+        attachment="",
+        attachment_url="",
+        contact="",
+        contact_type="",
+    )
 
     affected_amenities = set(
         PubAmenityVote.objects.filter(account=account).values_list(
@@ -2647,6 +2667,7 @@ def _hard_delete_locked(account: Account) -> None:
     _resolve_shared_lifecycles_before_delete(account)
     _scrub_account_uuid_from_json_arrays(account)
 
+    ContentReport.objects.filter(target_account=account).update(target_snapshot={})
     account.delete()
     for cache_key, pub_identity_key, amenity_key in affected_amenities:
         _recount_amenity_aggregate(cache_key, pub_identity_key, amenity_key)

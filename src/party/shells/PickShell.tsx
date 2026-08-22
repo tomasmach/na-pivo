@@ -10,18 +10,22 @@
  * game ends. Adding "Kdo jde pro další" later is a catalogue row, not a file.
  */
 
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PersonAvatar } from '@/components/shared/PersonAvatar';
-import { GAME_HOST_AVAILABLE, GameHost, type GameHostHandle } from '@/games/GameHost';
-import { GameResult, type GameOutcome } from '@/games/GameResult';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { PersonAvatar } from "@/components/shared/PersonAvatar";
+import {
+  GAME_HOST_AVAILABLE,
+  GameHost,
+  type GameHostHandle,
+} from "@/games/GameHost";
+import { GameResult, type GameOutcome } from "@/games/GameResult";
+import { MockLayout, MockType } from "@/mocks/mockTheme";
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap } from "@/theme/fonts";
+import { Radius, Spacing } from "@/theme/layout";
 
 export interface PickPlayer {
   id: string;
@@ -31,7 +35,7 @@ export interface PickPlayer {
 
 /** Module scope so `react-hooks/purity` can see this is a tap, not render. */
 const pickOne = (players: PickPlayer[]): string =>
-  players[Math.floor(Math.random() * players.length)]?.id ?? '';
+  players[Math.floor(Math.random() * players.length)]?.id ?? "";
 
 export function PickShell({
   game,
@@ -41,10 +45,11 @@ export function PickShell({
   verdict,
   onFinished,
   onDone,
-   pickedId,
-   pickRevision = 0,
-   onPicked,
- }: {
+  pickedId,
+  pickRevision = 0,
+  onPicked,
+  spectator = false,
+}: {
   /** Which page to host: `bottle`, `wheel`. */
   game: string;
   players: PickPlayer[];
@@ -57,9 +62,11 @@ export function PickShell({
   /** Latest folded shared pick. Omit for local-only state. */
   pickedId?: string | null;
   /** Increments for every canonical pick, including the same person twice. */
-   pickRevision?: number;
-   onPicked?: (playerId: string) => void;
- }) {
+  pickRevision?: number;
+  onPicked?: (playerId: string) => void;
+  /** Read-only view: the last verdict stays up, but nobody spins from here. */
+  spectator?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const host = React.useRef<GameHostHandle>(null);
@@ -75,14 +82,20 @@ export function PickShell({
   // A previous verdict is not the answer to a new spin. Hide it while the
   // object moves, then key the result by revision so the same person picked
   // twice still re-enters and is announced again.
-  const effectivePickedId = spinning ? null : controlled ? pickedId : localPickedId;
+  const effectivePickedId = spinning
+    ? null
+    : controlled
+      ? pickedId
+      : localPickedId;
   const effectiveRevision = controlled ? pickRevision : localPickRevision;
-  const pickedPlayer = players.find((player) => player.id === effectivePickedId) ?? null;
+  const pickedPlayer =
+    players.find((player) => player.id === effectivePickedId) ?? null;
   React.useEffect(() => {
     interactionLocked.current = false;
   }, [effectivePickedId, effectiveRevision]);
 
   const recordPick = (playerId: string) => {
+    if (spectator) return;
     if (!controlled) {
       setLocalPickedId(playerId);
       setLocalPickRevision((current) => current + 1);
@@ -91,7 +104,7 @@ export function PickShell({
   };
 
   const spin = () => {
-    if (spinning || interactionLocked.current) return;
+    if (spectator || spinning || interactionLocked.current) return;
     interactionLocked.current = true;
     if (!canvas) {
       // No object to watch, so no spin to wait for. Same answer, no theatre.
@@ -99,21 +112,29 @@ export function PickShell({
       const player = players.find((candidate) => candidate.id === playerId);
       recordPick(playerId);
       if (player) onFinished?.(player.name, player.id);
-      if (onDone && player) setOutcome({ scores: [], winnerId: null, payingId: player.name });
+      if (onDone && player)
+        setOutcome({ scores: [], winnerId: null, payingId: player.name });
       return;
     }
     setSpinning(true);
     if (!controlled) setLocalPickedId(null);
-    host.current?.command('spin');
+    host.current?.command("spin");
   };
 
   // A game that ended hands over to the platform's ending, the same one the
   // dice land on.
-  const foldedOutcome = controlled && pickedPlayer && onDone
-    ? { scores: [], winnerId: null, payingId: pickedPlayer.name }
-    : null;
+  const foldedOutcome =
+    controlled && pickedPlayer && onDone
+      ? { scores: [], winnerId: null, payingId: pickedPlayer.name }
+      : null;
   if ((outcome || foldedOutcome) && onDone) {
-    return <GameResult players={players} outcome={outcome ?? foldedOutcome!} onDone={onDone} />;
+    return (
+      <GameResult
+        players={players}
+        outcome={outcome ?? foldedOutcome!}
+        onDone={onDone}
+      />
+    );
   }
 
   return (
@@ -131,9 +152,13 @@ export function PickShell({
               label: player.name,
             }))}
             onEvent={(name, payload) => {
-              if (name !== 'picked') return;
-              const playerId = (payload as { playerId?: unknown } | undefined)?.playerId;
-              if (typeof playerId !== 'string' || !players.some((player) => player.id === playerId)) {
+              if (spectator || name !== "picked") return;
+              const playerId = (payload as { playerId?: unknown } | undefined)
+                ?.playerId;
+              if (
+                typeof playerId !== "string" ||
+                !players.some((player) => player.id === playerId)
+              ) {
                 interactionLocked.current = false;
                 setSpinning(false);
                 return;
@@ -143,8 +168,11 @@ export function PickShell({
               recordPick(playerId);
             }}
             onResult={(result) => {
+              if (spectator) return;
               interactionLocked.current = false;
-              const payer = players.find((player) => player.id === result.payingId);
+              const payer = players.find(
+                (player) => player.id === result.payingId,
+              );
               const named = {
                 ...result,
                 payingId: payer?.name ?? null,
@@ -170,8 +198,15 @@ export function PickShell({
             accessibilityLiveRegion="polite"
             accessibilityLabel={verdict(pickedPlayer.name)}
           >
-            <PersonAvatar name={pickedPlayer.name} tint={pickedPlayer.tint} size={44} />
-            <Text style={styles.verdictText} maxFontSizeMultiplier={FontScaleCap.heading}>
+            <PersonAvatar
+              name={pickedPlayer.name}
+              tint={pickedPlayer.tint}
+              size={44}
+            />
+            <Text
+              style={styles.verdictText}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
               {verdict(pickedPlayer.name)}
             </Text>
           </Animated.View>
@@ -181,13 +216,21 @@ export function PickShell({
       <View style={styles.dock}>
         <Pressable
           onPress={spin}
-          disabled={spinning}
-          style={({ pressed }) => [styles.action, pressed || spinning ? styles.pressed : null]}
+          disabled={spectator || spinning}
+          style={({ pressed }) => [
+            styles.action,
+            pressed || spinning ? styles.pressed : null,
+            spectator ? styles.muted : null,
+          ]}
           accessibilityRole="button"
           accessibilityLabel={pickedPlayer ? `${action} znovu` : action}
+          accessibilityState={{ disabled: spectator || spinning }}
         >
-          <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {spinning ? '…' : pickedPlayer ? 'Znovu' : action}
+          <Text
+            style={styles.actionText}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {spinning ? "…" : pickedPlayer ? "Znovu" : action}
           </Text>
         </Pressable>
       </View>
@@ -198,33 +241,34 @@ export function PickShell({
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: MockLayout.screenPad },
   pressed: { opacity: 0.8 },
-  stage: { flex: 1, justifyContent: 'flex-end' },
+  muted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
+  stage: { flex: 1, justifyContent: "flex-end" },
   verdict: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: Spacing.xl,
-    alignItems: 'center',
+    alignItems: "center",
     gap: Spacing.sm,
   },
   verdictText: {
     fontSize: 30,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: -0.5,
     textShadowColor: withAlpha(Colors.black, 0.9),
     textShadowRadius: 14,
   },
   action: {
-    alignSelf: 'center',
+    alignSelf: "center",
     height: 54,
     paddingHorizontal: 44,
     borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: Colors.amber,
   },
   actionText: { ...MockType.buttonLabel, color: Colors.stout },
-  dock: { flexDirection: 'row', gap: 10 },
+  dock: { flexDirection: "row", gap: 10 },
 });

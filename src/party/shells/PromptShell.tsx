@@ -15,15 +15,19 @@
  * a table decides the app is broken. When it runs out it reshuffles and says so.
  */
 
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useReducedMotion } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useReducedMotion,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { MockLayout } from '@/mocks/mockTheme';
-import { Spacing } from '@/theme/layout';
+import { Colors, withAlpha } from "@/theme/colors";
+import { FontScaleCap, Fonts } from "@/theme/fonts";
+import { MockLayout } from "@/mocks/mockTheme";
+import { Spacing } from "@/theme/layout";
 
 /**
  * A deterministic shuffle, seeded by the deck itself.
@@ -65,6 +69,7 @@ export function PromptShell({
   seed,
   step,
   onNext,
+  spectator = false,
 }: {
   prompts: readonly string[];
   intro?: string;
@@ -73,6 +78,8 @@ export function PromptShell({
   /** Shared append-only position. Omit for a local-only game. */
   step?: number;
   onNext?: () => void;
+  /** Read-only view: the card shows, but nobody advances the deck from here. */
+  spectator?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
@@ -82,9 +89,11 @@ export function PromptShell({
   React.useEffect(() => {
     if (pendingStep.current !== currentStep) pendingStep.current = null;
   }, [currentStep]);
-  const cycle = prompts.length > 0 ? Math.floor(currentStep / prompts.length) : 0;
+  const cycle =
+    prompts.length > 0 ? Math.floor(currentStep / prompts.length) : 0;
   const deck = React.useMemo(() => {
-    const previous = cycle > 0 ? promptDeck(prompts, seed, cycle - 1).at(-1) : undefined;
+    const previous =
+      cycle > 0 ? promptDeck(prompts, seed, cycle - 1).at(-1) : undefined;
     return promptDeck(prompts, seed, cycle, previous);
   }, [cycle, prompts, seed]);
   const index = deck.length > 0 ? currentStep % deck.length : 0;
@@ -92,19 +101,14 @@ export function PromptShell({
   const single = prompts.length <= 1;
 
   const next = () => {
-    if (single || pendingStep.current === currentStep) return;
+    if (spectator || single || pendingStep.current === currentStep) return;
     pendingStep.current = currentStep;
     if (onNext) onNext();
     else setLocalStep((current) => current + 1);
   };
 
-  return (
-    <Pressable
-      onPress={next}
-      style={styles.wrap}
-      accessibilityRole={single ? 'text' : 'button'}
-      accessibilityLabel={single ? deck[index] : `${deck[index] ?? ''} Ťukni pro další.`}
-    >
+  const card = (
+    <>
       {intro ? (
         <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
           {intro}
@@ -120,21 +124,51 @@ export function PromptShell({
         exiting={reduceMotion ? undefined : FadeOut.duration(140)}
         style={styles.card}
       >
-        <Text style={styles.prompt} maxFontSizeMultiplier={FontScaleCap.heading}>
+        <Text
+          style={styles.prompt}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
           {deck[index]}
         </Text>
       </Animated.View>
 
       {single ? null : (
         <View style={[styles.foot, { bottom: insets.bottom + 88 }]}>
-          <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-            Ťukni kamkoliv
-          </Text>
+          {spectator ? null : (
+            <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
+              Ťukni kamkoliv
+            </Text>
+          )}
           <Text style={styles.count} allowFontScaling={false}>
             {index + 1}/{deck.length}
           </Text>
         </View>
       )}
+    </>
+  );
+
+  if (spectator) {
+    return (
+      <View
+        style={styles.wrap}
+        accessibilityRole="text"
+        accessibilityLabel={deck[index]}
+      >
+        {card}
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      onPress={next}
+      style={styles.wrap}
+      accessibilityRole={single ? "text" : "button"}
+      accessibilityLabel={
+        single ? deck[index] : `${deck[index] ?? ""} Ťukni pro další.`
+      }
+    >
+      {card}
     </Pressable>
   );
 }
@@ -142,38 +176,43 @@ export function PromptShell({
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: MockLayout.screenPad,
   },
   intro: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     color: withAlpha(Colors.foam, 0.5),
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: Spacing.xl,
   },
-  card: { justifyContent: 'center' },
+  card: { justifyContent: "center" },
   prompt: {
     fontSize: 30,
     lineHeight: 40,
-    fontWeight: '800',
+    fontWeight: "800",
     color: Colors.foam,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: -0.4,
   },
   foot: {
-    position: 'absolute',
+    position: "absolute",
     left: MockLayout.screenPad,
     right: MockLayout.screenPad,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  hint: { fontSize: 14, fontWeight: '600', color: withAlpha(Colors.foam, 0.35) },
+  hint: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: withAlpha(Colors.foam, 0.35),
+  },
   count: {
+    marginLeft: "auto",
     fontFamily: Fonts.numeral,
     fontSize: 15,
     color: withAlpha(Colors.foam, 0.35),
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
   },
 });

@@ -66,6 +66,7 @@ from .views import (
     AccountDeletionStatusView,
     AccountExportView,
     AccountMeView,
+    AccountUGCConsentView,
     AccountView,
     BeerBrandSuggestView,
     BeerCheckInFeedView,
@@ -448,6 +449,11 @@ urlpatterns = [
         name="account-deletion-status",
     ),
     path("account/me", AccountMeView.as_view(), name="account-me"),
+    path(
+        "account/me/ugc-consent",
+        AccountUGCConsentView.as_view(),
+        name="account-ugc-consent",
+    ),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
     path(
         "account/me/purchases/restore",

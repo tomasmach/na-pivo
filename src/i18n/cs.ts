@@ -2436,6 +2436,7 @@ export const cs = {
     stopped: 'Hra se zastavila.',
     timeout: 'Hra se nespustila včas.',
     retry: 'Zkusit znovu',
+    spectator: 'Tuhle hru jen sleduješ.',
   },
 
   counter: {

@@ -700,6 +700,21 @@ class Account(models.Model):
         help_text="Whether the user opted in to product/marketing e-mails.",
     )
 
+    # ---------- UGC consent proof ----------
+    ugc_terms_version = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Version of the community-content terms this account accepted; "
+        "empty means no acceptance recorded.",
+    )
+    ugc_terms_accepted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the account accepted the community-content terms version "
+        "recorded in ugc_terms_version; null means never accepted.",
+    )
+
     # ---------- social / "parta" preferences ----------
     # Ghost mode hides the user's own broadcast: a ghost still keeps their own
     # FriendPubActivity row, but it is never fanned out (no notification, no push)
@@ -922,6 +937,9 @@ class AccountDeletionOperation(models.Model):
         verbose_name = "Account deletion operation"
         verbose_name_plural = "Account deletion operations"
         ordering = ["-completed_at"]
+        indexes = [
+            models.Index(fields=["completed_at"], name="accdelop_completed_idx"),
+        ]
 
     def __str__(self) -> str:
         # operation_id is a bearer-like recovery capability; never surface it in
@@ -947,6 +965,9 @@ class AccountMergeOperation(models.Model):
         verbose_name = "Account merge operation"
         verbose_name_plural = "Account merge operations"
         ordering = ["-completed_at"]
+        indexes = [
+            models.Index(fields=["completed_at"], name="accmergeop_completed_idx"),
+        ]
 
     def __str__(self) -> str:
         # operation_id is a bearer-like idempotency capability.
@@ -2099,6 +2120,7 @@ class BeerPhotoFileDeletion(models.Model):
     class FileKind(models.TextChoices):
         BEER_PHOTO = "beer_photo", "Beer photo"
         AVATAR = "avatar", "Avatar"
+        FEEDBACK_ATTACHMENT = "feedback", "Feedback attachment"
 
     account = models.ForeignKey(
         Account,
@@ -2110,7 +2132,10 @@ class BeerPhotoFileDeletion(models.Model):
     client_id = models.UUIDField(
         null=True,
         blank=True,
-        help_text="Client identity of the deleted beer photo; null for avatars.",
+        help_text=(
+            "Client identity of the deleted beer photo; null for avatars "
+            "and feedback attachments."
+        ),
     )
     photo_public_id = models.UUIDField(
         null=True,
@@ -2792,6 +2817,9 @@ class FeedbackReport(models.Model):
         verbose_name = "Feedback Report"
         verbose_name_plural = "Feedback Reports"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"], name="feedbackrep_created_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["account", "client_id"],
@@ -2865,6 +2893,7 @@ class ContentReport(models.Model):
         verbose_name_plural = "Content Reports"
         ordering = ["-created_at"]
         indexes = [
+            models.Index(fields=["created_at"], name="contentrep_created_idx"),
             models.Index(fields=["target_account", "status", "created_at"]),
             models.Index(fields=["reporter", "created_at"]),
         ]

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 from io import StringIO
 
 import pytest
+from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -14,7 +17,16 @@ from pubs.account_export_jobs import (
     retry_account_export,
 )
 from pubs.api.views import deliver_account_export_job, process_account_export_jobs
-from pubs.models import Account, AccountExportJob, ApiRateLimitBucket, EmailCredential
+from pubs.models import (
+    Account,
+    AccountDeletionOperation,
+    AccountExportJob,
+    AccountMergeOperation,
+    ApiRateLimitBucket,
+    ContentReport,
+    EmailCredential,
+    FeedbackReport,
+)
 
 
 @pytest.mark.django_db
@@ -197,3 +209,158 @@ def test_operational_prune_is_bounded_and_removes_failed_exports(settings) -> No
         == 2
     )
     assert AccountExportJob.objects.filter(pk=pending.pk).exists()
+
+
+@pytest.mark.django_db
+def test_operational_prune_keeps_400_day_account_proofs_and_removes_401_day_proofs(
+    settings, monkeypatch
+) -> None:
+    now = timezone.now()
+    monkeypatch.setattr("pubs.management.commands.prune_operational_data.timezone.now", lambda: now)
+    settings.ACCOUNT_OPERATION_PROOF_RETENTION_DAYS = 400
+
+    kept_deletion = AccountDeletionOperation.objects.create(
+        operation_id=uuid.uuid4(),
+        account_fingerprint="a" * 64,
+    )
+    removed_deletion = AccountDeletionOperation.objects.create(
+        operation_id=uuid.uuid4(),
+        account_fingerprint="b" * 64,
+    )
+    kept_merge = AccountMergeOperation.objects.create(
+        operation_id=uuid.uuid4(),
+        source_account_fingerprint="c" * 64,
+        target_account_fingerprint="d" * 64,
+    )
+    removed_merge = AccountMergeOperation.objects.create(
+        operation_id=uuid.uuid4(),
+        source_account_fingerprint="e" * 64,
+        target_account_fingerprint="f" * 64,
+    )
+
+    AccountDeletionOperation.objects.filter(pk=kept_deletion.pk).update(
+        completed_at=now - timedelta(days=400)
+    )
+    AccountDeletionOperation.objects.filter(pk=removed_deletion.pk).update(
+        completed_at=now - timedelta(days=401)
+    )
+    AccountMergeOperation.objects.filter(pk=kept_merge.pk).update(
+        completed_at=now - timedelta(days=400)
+    )
+    AccountMergeOperation.objects.filter(pk=removed_merge.pk).update(
+        completed_at=now - timedelta(days=401)
+    )
+
+    call_command("prune_operational_data", batch_size=100, stdout=StringIO())
+
+    assert AccountDeletionOperation.objects.filter(pk=kept_deletion.pk).exists()
+    assert not AccountDeletionOperation.objects.filter(pk=removed_deletion.pk).exists()
+    assert AccountMergeOperation.objects.filter(pk=kept_merge.pk).exists()
+    assert not AccountMergeOperation.objects.filter(pk=removed_merge.pk).exists()
+
+
+@pytest.mark.django_db
+def test_operational_prune_removes_401_day_ugc_reports_and_feedback_attachment(
+    settings, monkeypatch, tmp_path
+) -> None:
+    now = timezone.now()
+    settings.UGC_REPORT_RETENTION_DAYS = 400
+    settings.MEDIA_ROOT = str(tmp_path)
+    monkeypatch.setattr("pubs.management.commands.prune_operational_data.timezone.now", lambda: now)
+
+    reporter = Account.objects.create(device_id="ugc-prune-reporter")
+    target = Account.objects.create(device_id="ugc-prune-target")
+
+    kept_report = ContentReport.objects.create(
+        reporter=reporter,
+        target_account=target,
+        reason=ContentReport.Reason.SPAM,
+    )
+    kept_feedback = FeedbackReport.objects.create(
+        account=reporter,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.BUG,
+        message="kept",
+    )
+    removed_report = ContentReport.objects.create(
+        reporter=reporter,
+        target_account=target,
+        reason=ContentReport.Reason.SPAM,
+    )
+    attachment_file = SimpleUploadedFile("old_attachment.png", b"fake-image-bytes")
+    removed_feedback = FeedbackReport.objects.create(
+        account=reporter,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.OTHER,
+        message="removed",
+        contact="removed@example.com",
+        attachment=attachment_file,
+        attachment_url="https://example.com/media/old_attachment.png",
+    )
+
+    ContentReport.objects.filter(pk=kept_report.pk).update(created_at=now - timedelta(days=400))
+    FeedbackReport.objects.filter(pk=kept_feedback.pk).update(
+        created_at=now - timedelta(days=400)
+    )
+    ContentReport.objects.filter(pk=removed_report.pk).update(
+        created_at=now - timedelta(days=401)
+    )
+    FeedbackReport.objects.filter(pk=removed_feedback.pk).update(
+        created_at=now - timedelta(days=401)
+    )
+
+    old_attachment_name = removed_feedback.attachment.name
+    assert default_storage.exists(old_attachment_name)
+
+    try:
+        call_command("prune_operational_data", batch_size=100, stdout=StringIO())
+
+        assert ContentReport.objects.filter(pk=kept_report.pk).exists()
+        assert FeedbackReport.objects.filter(pk=kept_feedback.pk).exists()
+        assert not ContentReport.objects.filter(pk=removed_report.pk).exists()
+        assert not FeedbackReport.objects.filter(pk=removed_feedback.pk).exists()
+        assert not default_storage.exists(old_attachment_name)
+    finally:
+        if default_storage.exists(old_attachment_name):
+            default_storage.delete(old_attachment_name)
+
+
+@pytest.mark.django_db
+def test_operational_prune_keeps_feedback_row_when_attachment_delete_fails(
+    settings, monkeypatch, tmp_path
+) -> None:
+    now = timezone.now()
+    settings.UGC_REPORT_RETENTION_DAYS = 400
+    settings.MEDIA_ROOT = str(tmp_path)
+    monkeypatch.setattr("pubs.management.commands.prune_operational_data.timezone.now", lambda: now)
+
+    account = Account.objects.create(device_id="ugc-prune-failing-delete")
+    attachment_file = SimpleUploadedFile("stuck_attachment.png", b"fake-image-bytes")
+    report = FeedbackReport.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.BUG,
+        message="attachment delete fails",
+        contact="stuck@example.com",
+        attachment=attachment_file,
+        attachment_url="https://example.com/media/stuck_attachment.png",
+    )
+    FeedbackReport.objects.filter(pk=report.pk).update(created_at=now - timedelta(days=401))
+
+    stuck_attachment_name = report.attachment.name
+    assert default_storage.exists(stuck_attachment_name)
+
+    def failing_delete(self, name):  # noqa: ANN001, ARG001
+        raise OSError("simulated storage outage")
+
+    monkeypatch.setattr(type(default_storage._wrapped), "delete", failing_delete)
+
+    try:
+        call_command("prune_operational_data", batch_size=100, stdout=StringIO())
+
+        assert FeedbackReport.objects.filter(pk=report.pk).exists()
+        assert default_storage.exists(stuck_attachment_name)
+    finally:
+        monkeypatch.undo()
+        if default_storage.exists(stuck_attachment_name):
+            default_storage.delete(stuck_attachment_name)

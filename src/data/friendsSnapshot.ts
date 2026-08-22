@@ -22,6 +22,7 @@ import type {
   FriendPubActivity,
   Friendship,
   FriendsDashboard,
+  FriendsRelationshipPage,
   LeaderboardEntry,
   MyPresence,
 } from './friendsClient';
@@ -74,6 +75,25 @@ function nullableCount(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.floor(value)
     : null;
+}
+
+function nonnegativeIntegerCursor(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function relationshipPage(value: unknown): FriendsRelationshipPage | undefined {
+  const row = record(value);
+  if (!row) return undefined;
+  const nextCursor = nonnegativeIntegerCursor(row.nextCursor);
+  const followingNextCursor = nonnegativeIntegerCursor(row.followingNextCursor);
+  return {
+    friendsCount: count(row.friendsCount),
+    followingCount: count(row.followingCount),
+    nextCursor,
+    followingNextCursor,
+    friendsTruncated: row.friendsTruncated === true && nextCursor !== null,
+    followingTruncated: row.followingTruncated === true && followingNextCursor !== null,
+  };
 }
 
 function hour(value: unknown, fallback: number): number {
@@ -311,6 +331,7 @@ function sanitizeDashboard(value: unknown): FriendsDashboard | null {
         })
       : [],
     unreadCount: count(row.unreadCount),
+    relationshipPage: relationshipPage(row.relationshipPage),
   };
 }
 
