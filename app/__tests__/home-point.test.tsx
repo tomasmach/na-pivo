@@ -10,7 +10,7 @@ import HomePointScreen from '../home-point';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 const mockBack = jest.fn();
@@ -56,7 +56,7 @@ jest.mock('expo-location', () => ({
   getCurrentPositionAsync: jest.fn(),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 describe('HomePointScreen', () => {

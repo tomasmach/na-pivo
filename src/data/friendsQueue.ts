@@ -36,12 +36,12 @@ import {
   type FriendActionResult,
 } from './friendsClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 import type { QueueSyncResult } from './apiFetch';
 import type { Pub } from './pubs';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
-/** Hard cap — only bites with a very long offline backlog, where dropping the
- *  oldest beats unbounded growth. */
+/** Historical queue limit retained as migration context; durable mutations are never dropped. */
 const MAX_QUEUE_LENGTH = 500;
 
 /** Pub subset broadcast to the party (chosen target, not raw device GPS). */
@@ -254,7 +254,7 @@ export async function enqueueFriendOp(item: FriendQueueItem): Promise<void> {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
   });
   await flushFriendsQueue();
 }
@@ -269,7 +269,7 @@ export function clearFriendsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

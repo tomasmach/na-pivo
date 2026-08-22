@@ -29,7 +29,11 @@ from rest_framework.test import APIClient
 
 from pubs import menu_scan
 from pubs.enrichment import openrouter as openrouter_mod
-from pubs.enrichment.openrouter import OpenRouterVisionSource
+from pubs.enrichment.openrouter import (
+    OpenRouterDailyCapExceededError,
+    OpenRouterVisionSource,
+)
+from pubs.models import ExternalApiDailyUsage
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -81,6 +85,18 @@ def _register(client: APIClient) -> str:
 
 def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+@pytest.mark.django_db
+def test_production_openrouter_source_uses_shared_database_daily_budget(settings):
+    settings.OPENROUTER_DAILY_CAP = 1
+    with menu_scan._build_vision_source() as source:
+        source._check_cap()
+        with pytest.raises(OpenRouterDailyCapExceededError):
+            source._check_cap()
+
+    usage = ExternalApiDailyUsage.objects.get(provider="openrouter", operation="chat")
+    assert usage.request_count == 1
 
 
 # ---------------------------------------------------------------------------

@@ -10,16 +10,11 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GlowButton } from '@/components/shared/GlowButton';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { cs } from '@/i18n/cs';
 import { NicknameField } from '@/profile/NicknameField';
 import {
@@ -29,14 +24,14 @@ import {
 } from '@/profile/nicknameNudge';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
 import { selectNeedsNickname, useAccountStore } from '@/stores/accountStore';
-import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 
 export function NicknameNudgeModal() {
   const insets = useSafeAreaInsets();
@@ -86,37 +81,11 @@ export function NicknameNudgeModal() {
   const wantVisible =
     eligible && needsNickname && releaseNote === null && !firstLaunchSession;
 
-  const mutexHolder = useLaunchModalMutex((s) => s.holder);
-  useEffect(() => {
-    const mutex = useLaunchModalMutex.getState();
-    if (wantVisible) mutex.claim('nickname-nudge');
-    else mutex.release('nickname-nudge');
-  }, [wantVisible, mutexHolder]);
-  useEffect(() => () => useLaunchModalMutex.getState().release('nickname-nudge'), []);
-  const visible = wantVisible && mutexHolder === 'nickname-nudge';
-
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = withSpring(1, { damping: 16, stiffness: 145, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: 140 });
-    }
-  }, [progress, visible]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [
-      { scale: 0.94 + progress.value * 0.06 },
-      { translateY: (1 - progress.value) * 18 },
-    ],
-  }));
-
   const dismiss = useCallback(() => {
+    if (busy) return;
     void markNicknameNudgeSeen(version);
     setEligible(false);
-  }, [version]);
+  }, [busy, version]);
 
   const handleSave = useCallback(async () => {
     if (busy || !ready) return;
@@ -137,30 +106,28 @@ export function NicknameNudgeModal() {
   }, [busy, ready, nickname, updateProfile, version, showToast]);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={dismiss}
+    <BottomSheetModal
+      visible={wantVisible}
+      onClose={dismiss}
+      keyboardLift
+      presentationId="nickname-nudge"
     >
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]}>
-          <Animated.View style={[styles.sheet, softDrop(), cardAnim]}>
-            <View style={styles.eyebrowPill}>
-              <Text style={styles.at} maxFontSizeMultiplier={FontScaleCap.body}>
-                @
-              </Text>
-              <Text style={styles.eyebrow}>{cs.nicknameNudge.eyebrow}</Text>
-            </View>
-
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+          <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               {cs.nicknameNudge.title}
             </Text>
-            <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.nicknameNudge.body}
-            </Text>
+            <CloseButton onPress={dismiss} label={cs.nicknameNudge.skip} disabled={busy} />
+          </View>
 
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <NicknameField
               value={nickname}
               onChangeText={(value) => {
@@ -175,110 +142,101 @@ export function NicknameNudgeModal() {
                 {error}
               </Text>
             )}
+          </ScrollView>
 
-            <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
-              <GlowButton
-                label={busy ? cs.nicknameNudge.ctaBusy : cs.nicknameNudge.cta}
-                onPress={() => void handleSave()}
-                glow="none"
-                height={56}
-                disabled={!ready || busy}
-                accessibilityLabel={cs.nicknameNudge.cta}
-              />
-              <Pressable
-                onPress={dismiss}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.nicknameNudge.skip}
-              >
-                <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.nicknameNudge.skip}
-                </Text>
-              </Pressable>
-            </View>
-          </Animated.View>
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => void handleSave()}
+              disabled={!ready || busy}
+              accessibilityRole="button"
+              accessibilityLabel={cs.nicknameNudge.cta}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                (!ready || busy) && styles.primaryDisabled,
+                pressed && styles.primaryPressed,
+              ]}
+            >
+              <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
+                {busy ? cs.nicknameNudge.ctaBusy : cs.nicknameNudge.cta}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      </View>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
+  cardWrap: {
+    width: '100%',
+    maxHeight: '92%',
   },
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.82),
+  card: {
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
+    paddingTop: Spacing.sm,
+    paddingHorizontal: MockLayout.screenPad,
+    ...softDrop(),
   },
-  sheet: {
-    marginHorizontal: Spacing.md,
+  grabber: {
+    width: 44,
+    height: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
+    alignSelf: 'center',
     marginBottom: Spacing.md,
-    padding: Spacing.xl,
-    gap: Spacing.md,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.26),
-    backgroundColor: Colors.stout2,
   },
-  eyebrowPill: {
-    alignSelf: 'flex-start',
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.34),
-  },
-  at: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 14,
-    color: Colors.amberLight,
-  },
-  eyebrow: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 11,
-    letterSpacing: 1.1,
-    color: Colors.amberLight,
+    marginBottom: Spacing.sm,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 28,
-    lineHeight: 33,
+    flexShrink: 1,
+    ...MockType.titleS,
     color: Colors.foam,
   },
-  body: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.foamMuted,
+  content: {
+    flexGrow: 0,
+    flexShrink: 1,
+    marginTop: Spacing.sm,
+  },
+  contentContainer: {
+    paddingBottom: Spacing.sm,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.amberLight,
+    marginTop: Spacing.sm,
+    ...MockType.bodySmall,
+    color: Colors.amber,
   },
   actions: {
-    gap: Spacing.sm,
+    paddingTop: Spacing.md,
+    marginTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  secondaryButton: {
-    minHeight: 44,
+  primaryButton: {
+    height: 56,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.lg,
   },
-  secondaryPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.98 }],
+  primaryDisabled: {
+    opacity: 0.45,
   },
-  secondaryText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foamMuted,
+  primaryPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.97 }],
+  },
+  primaryText: {
+    ...MockType.buttonLabel,
+    color: Colors.stout,
   },
 });

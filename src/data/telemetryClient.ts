@@ -96,6 +96,15 @@ const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const UUID_RE =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 const LONG_TOKEN_RE = /\b[A-Za-z0-9._~+/=-]{32,}\b/g;
+// GPS coordinates: labeled lat/lng values ("lat=50.08", "longitude: 14.42")
+// and bare high-precision pairs ("50.0875,14.4208"). Three decimals already
+// resolve to ~100 m, so anything finer than that must not leave the device.
+// Quoted JSON keys ("lat":50.08) keep their field name; only the value is
+// redacted so error reports stay readable. Bare labels (lat=50.08) are
+// redacted whole.
+const LABELED_COORD_RE =
+  /(["']?)\b(latitude|longitude|lat|lng|lon)\b(["']?)\s*([:=])\s*(-?\d{1,3}(?:\.\d+)?)/gi;
+const COORD_PAIR_RE = /-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g;
 
 let sessionToken: string | null = null;
 let installed = false;
@@ -118,6 +127,10 @@ function sanitizeText(value: unknown, maxLen: number): string {
   const text = String(value ?? '').trim();
   if (!text) return '';
   return text
+    .replace(LABELED_COORD_RE, (_match, open, key, close, sep) =>
+      open && close ? `${open}${key}${close}${sep}[redacted-coords]` : '[redacted-coords]',
+    )
+    .replace(COORD_PAIR_RE, '[redacted-coords]')
     .replace(BEARER_RE, 'Bearer [redacted]')
     .replace(EMAIL_RE, '[redacted-email]')
     .replace(UUID_RE, '[redacted-uuid]')

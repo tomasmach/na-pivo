@@ -25,15 +25,10 @@ import { useRouter, type Href } from 'expo-router';
 
 import {
   fetchFriendInviteCode,
+  followAccount,
   searchFriends,
-  sendFriendRequest,
   type FriendProfile,
 } from '@/data/friendsClient';
-import {
-  enqueueFriendOp,
-  isRetriableFriendError,
-  type FriendQueueItem,
-} from '@/data/friendsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -46,8 +41,9 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useToastStore } from '@/stores/toastStore';
 
@@ -65,6 +61,13 @@ interface AddFriendToolsProps {
   onChanged: () => void;
   /** Show the @nickname search row (default true). */
   showSearch?: boolean;
+  /** Show the legacy code/share actions above search (default true). */
+  showInviteActions?: boolean;
+  /** Parent-owned draft survives the native Modal host being torn down. */
+  queryValue?: string;
+  resultsValue?: FriendProfile[];
+  onQueryChange?: (query: string) => void;
+  onResultsChange?: (results: FriendProfile[]) => void;
 }
 
 export function AddFriendTools({
@@ -73,14 +76,23 @@ export function AddFriendTools({
   onOpenCode,
   onChanged,
   showSearch = true,
+  showInviteActions = true,
+  queryValue,
+  resultsValue,
+  onQueryChange,
+  onResultsChange,
 }: AddFriendToolsProps) {
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
 
-  const [query, setQuery] = useState('');
+  const [ownQuery, setOwnQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<FriendProfile[]>([]);
+  const [ownResults, setOwnResults] = useState<FriendProfile[]>([]);
   const [requestingKey, setRequestingKey] = useState<string | null>(null);
+  const query = queryValue ?? ownQuery;
+  const results = resultsValue ?? ownResults;
+  const setQuery = onQueryChange ?? setOwnQuery;
+  const setResults = onResultsChange ?? setOwnResults;
 
   const mountedRef = useRef(true);
   useEffect(
@@ -111,43 +123,37 @@ export function AddFriendTools({
         icon: <UsersIcon size={20} color={Colors.amber} />,
       });
     }
-  }, [query, showToast]);
+  }, [query, setResults, showToast]);
 
-  const requestFriend = useCallback(
-    async (profile?: FriendProfile) => {
-      const nickname = query.trim().replace(/^@/, '');
-      if (!profile && nickname.length < 2) return;
-      const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
+  /**
+   * Search now ends in a follow, not an invite. Sending a stranger a request
+   * and waiting for them to confirm was the ceremony this rebuild removed —
+   * being in someone's party is something you earn by sitting down with them,
+   * and the QR/link above is how you get them to the table. Following is the
+   * light thing you can do from a search result, so that is what the row does.
+   */
+  const followProfile = useCallback(
+    async (profile: FriendProfile) => {
       if (requestingKey) return;
-      trackUiInteraction('friend_request_send', 'submit');
-      setRequestingKey(requestKey);
-      const queuedRequest: FriendQueueItem =
-        profile
-          ? { op: 'request', key: `account:${profile.id}`, accountId: profile.id }
-          : { op: 'request', key: `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`, nickname };
-      const result = profile
-        ? await sendFriendRequest({ accountId: profile.id })
-        : await sendFriendRequest({ nickname });
+      trackUiInteraction('friend_follow', 'submit');
+      setRequestingKey(profile.id);
+      const result = await followAccount(profile.id);
       if (!mountedRef.current) return;
       setRequestingKey(null);
-      if (result.ok || isRetriableFriendError(result)) {
-        trackUiInteraction('friend_request_send', 'success');
-        if (!result.ok) {
-          await enqueueFriendOp(queuedRequest);
-          if (!mountedRef.current) return;
-        }
-        showToast(cs.friends.requestSent, {
+      if (result.ok) {
+        trackUiInteraction('friend_follow', 'success');
+        showToast(cs.friends.followed, {
           icon: <UserPlusIcon size={20} color={Colors.amber} />,
         });
         setQuery('');
         setResults([]);
         onChanged();
       } else {
-        trackUiInteraction('friend_request_send', 'failure');
+        trackUiInteraction('friend_follow', 'failure');
         showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
       }
     },
-    [onChanged, query, requestingKey, showToast],
+    [onChanged, requestingKey, setQuery, setResults, showToast],
   );
 
   const openIdentity = useCallback(() => {
@@ -174,14 +180,11 @@ export function AddFriendTools({
             ? cs.friends.coldStartSetupTitle
             : cs.friends.coldStartAnonTitle}
         </Text>
-        <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {needsNickname ? cs.friends.coldStartSetupBody : cs.friends.coldStartAnonBody}
-        </Text>
         <GlowButton
           label={needsNickname ? cs.friends.coldStartSetupCta : cs.friends.coldStartAnonCta}
           onPress={openIdentity}
           variant="primary"
-          glow="soft"
+          glow="none"
         />
       </View>
     );
@@ -189,12 +192,12 @@ export function AddFriendTools({
 
   return (
     <>
-      <View style={styles.growthActions}>
+      {showInviteActions ? <View style={styles.growthActions}>
         <GlowButton
           label={cs.friends.myCodeCta}
           onPress={onOpenCode}
           variant="primary"
-          glow="soft"
+          glow="none"
           icon={<QrCodeIcon size={20} color={Colors.stout} />}
         />
         <GlowButton
@@ -205,7 +208,7 @@ export function AddFriendTools({
           height={52}
           icon={<LinkIcon size={18} color={Colors.foam} />}
         />
-      </View>
+      </View> : null}
 
       {showSearch ? (
         <View style={styles.searchGap}>
@@ -215,7 +218,7 @@ export function AddFriendTools({
               value={query}
               onChangeText={setQuery}
               placeholder={cs.friends.searchPlaceholder}
-              placeholderTextColor={Colors.mutedText}
+              placeholderTextColor={MockColors.fieldHint}
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.searchInput}
@@ -230,7 +233,7 @@ export function AddFriendTools({
               style={({ pressed }) => [styles.searchButton, pressed && styles.dim]}
             >
               {searching ? (
-                <ActivityIndicator color={Colors.stout} size="small" />
+                <ActivityIndicator color={Colors.foam} size="small" />
               ) : (
                 <Text
                   style={styles.searchButtonText}
@@ -249,17 +252,17 @@ export function AddFriendTools({
                   <View style={styles.searchResultRow}>
                     <FriendMini profile={profile} />
                     <Pressable
-                      onPress={() => void requestFriend(profile)}
+                      onPress={() => void followProfile(profile)}
                       disabled={requestingKey != null}
                       hitSlop={ROUND_HIT_SLOP}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.friends.addByNickname}
+                      accessibilityLabel={`${cs.friends.follow}: ${profile.nickname ?? profile.displayName}`}
                       style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
                     >
                       {requestingKey === profile.id ? (
-                        <ActivityIndicator color={Colors.stout} size="small" />
-                      ) : (
-                        <PlusIcon size={18} color={Colors.stout} />
+                      <ActivityIndicator color={Colors.foam} size="small" />
+                    ) : (
+                        <PlusIcon size={18} color={Colors.foam} />
                       )}
                     </Pressable>
                   </View>
@@ -269,29 +272,9 @@ export function AddFriendTools({
           ) : null}
 
           {query.trim().length >= 2 && results.length === 0 && !searching ? (
-            <>
-              <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.noResults}
-              </Text>
-              <HairlineRow
-                first
-                onPress={requestingKey == null ? () => void requestFriend() : undefined}
-              >
-                <View style={styles.nicknameInvite}>
-                  {requestingKey?.startsWith('nickname:') ? (
-                    <ActivityIndicator color={Colors.amber} size="small" />
-                  ) : (
-                    <UserPlusIcon size={18} color={Colors.amber} />
-                  )}
-                  <Text
-                    style={styles.nicknameInviteText}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {cs.friends.addByNickname}
-                  </Text>
-                </View>
-              </HairlineRow>
-            </>
+            <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.noResults}
+            </Text>
           ) : null}
         </View>
       ) : null}
@@ -315,16 +298,9 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   gateTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
-  },
-  gateBody: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-    marginBottom: Spacing.xs,
   },
 
   // — Search / add —
@@ -342,7 +318,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foam,
     fontSize: 16,
     paddingVertical: 12,
@@ -353,11 +329,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
+    backgroundColor: Colors.stout3,
   },
   searchButtonText: {
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.stout,
+    fontWeight: '800',
+    color: Colors.foam,
     fontSize: 15,
   },
   searchResults: {
@@ -375,11 +351,11 @@ const styles = StyleSheet.create({
     borderRadius: HitArea.min / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.amber,
+    backgroundColor: Colors.stout3,
   },
   noResults: {
     marginTop: Spacing.md,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -392,7 +368,7 @@ const styles = StyleSheet.create({
   },
   nicknameInviteText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.amber,
     fontSize: 14,
   },

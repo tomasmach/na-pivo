@@ -149,7 +149,10 @@ def test_twenty_first_beer_is_daily_cap_but_twentieth_is_not(client):
 def test_daily_beer_limit_uses_the_0400_drinking_day(client, settings):
     settings.DRINK_DAILY_FLAG_CAP = 3
     token, account = _register(client)
-    late_evening = _yesterday_noon().replace(hour=23)
+    # Keep the 04:00 boundary in the past even when this suite runs shortly
+    # after midnight. Otherwise the API correctly clamps the final 04:00 row
+    # from the future to "now", putting it back into the previous drinking day.
+    late_evening = (_yesterday_noon() - timedelta(days=1)).replace(hour=23)
     _drink(account, late_evening)
     _drink(account, late_evening + timedelta(hours=3))
     before_id = uuid.uuid4()

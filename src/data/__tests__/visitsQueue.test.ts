@@ -1,7 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  clearVisitsQueue,
+  enqueueVisitOp,
+  flushVisitsQueue,
+  type VisitQueueItem,
+} from '../visitsQueue';
+import type { SubmitVisitResult, VisitEntry } from '../visitsClient';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 jest.mock('expo-secure-store', () => ({
@@ -16,14 +24,6 @@ jest.mock('../visitsClient', () => ({
   submitVisit: (...args: unknown[]) => submitVisit(...(args as [])),
   deleteVisit: (...args: unknown[]) => deleteVisit(...(args as [])),
 }));
-
-import {
-  clearVisitsQueue,
-  enqueueVisitOp,
-  flushVisitsQueue,
-  type VisitQueueItem,
-} from '../visitsQueue';
-import type { SubmitVisitResult, VisitEntry } from '../visitsClient';
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
 
@@ -57,7 +57,10 @@ async function waitForExpectation(assertion: () => void | Promise<void>): Promis
       return;
     } catch (error) {
       lastError = error;
-      await Promise.resolve();
+      // Queue delivery now acquires the process-wide private-account lease
+      // before entering the queue-local lock. Yield the event loop instead of
+      // relying on a fixed number of promise turns inside that implementation.
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
   throw lastError;
@@ -71,6 +74,15 @@ beforeEach(async () => {
 });
 
 describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
+  it('reports storage failure and does not attempt delivery', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(enqueueVisitOp(upsert('not-durable'))).resolves.toBe('storage-error');
+
+    expect(submitVisit).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('replaces a pending upsert for the same client_id (e.g. a bumped ended_at)', async () => {
     submitVisit.mockResolvedValue('retry');
     await enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T19:10:00.000Z' }));
@@ -101,7 +113,7 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
   });
 
   it('clears the queue once delivery succeeds', async () => {
-    await enqueueVisitOp(upsert('v1'));
+    await expect(enqueueVisitOp(upsert('v1'))).resolves.toBe('delivered');
     expect(submitVisit).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([]);
   });
@@ -140,6 +152,19 @@ describe('flushVisitsQueue', () => {
   it('survives corrupted storage contents', async () => {
     await AsyncStorage.setItem(STORAGE_KEY, '{not json');
     await expect(flushVisitsQueue()).resolves.toBeUndefined();
+  });
+
+  it('drops malformed persisted operations while delivering healthy siblings', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      upsert('healthy'),
+      upsert('bad-date', { started_at: 'not-a-date' }),
+      { ...upsert('mismatch'), clientId: 'other-id' },
+    ]));
+
+    await flushVisitsQueue();
+
+    expect(submitVisit).toHaveBeenCalledTimes(1);
+    expect(submitVisit).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'healthy' }));
   });
 
   it('persists a newer enqueue while an older delivery is still in flight', async () => {

@@ -129,6 +129,35 @@ def test_no_version_returns_all_published_notes(client):
 
 
 @pytest.mark.django_db
+def test_collection_supports_bounded_additive_pagination(client):
+    for index in range(3):
+        _make_note(f"8.0.{index}")
+
+    first = client.get("/v1/release-notes", {"limit": 2})
+    second = client.get(
+        "/v1/release-notes",
+        {"limit": 2, "cursor": first.json()["next_cursor"]},
+    )
+
+    assert len(first.json()["notes"]) == 2
+    assert first.json()["truncated"] is True
+    assert len(second.json()["notes"]) == 1
+    assert second.json()["truncated"] is False
+
+
+@pytest.mark.django_db
+def test_legacy_collection_remains_complete_without_pagination(client):
+    for index in range(101):
+        _make_note(f"7.0.{index}")
+
+    response = client.get("/v1/release-notes")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["notes"]) == 101
+    assert "truncated" not in response.json()
+
+
+@pytest.mark.django_db
 def test_blank_version_param_returns_full_list(client):
     """A blank/whitespace version is treated as "no version" → the collection."""
     _make_note("9.2.0")

@@ -8,14 +8,21 @@ import {
   fetchAccountPreferences,
   getCachedAuthenticationState,
   getOrCreateDeviceId,
+  revertToAnonymous,
   setSession,
   setAnonymousSessionEvictionListener,
   updateAccountPreferences,
 } from '../account';
+import {
+  beginPrivateAccountTransition,
+  PRIVATE_ACCOUNT_MERGE_STORAGE_KEY,
+  preflightPrivateAccountMerge,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 // In-memory expo-secure-store mock. The account blob (which holds the bearer
@@ -88,6 +95,7 @@ beforeEach(async () => {
   // Clear the in-memory AsyncStorage + SecureStore mocks so persisted
   // ids/accounts don't bleed across tests.
   (AsyncStorage as any).__INTERNAL_MOCK_STORAGE__ = {};
+  resetPrivateAccountBoundaryForTests();
   secureStoreMock.__setStore({});
   setAnonymousSessionEvictionListener(null);
   await clearCachedAccount();
@@ -177,6 +185,23 @@ describe('ensureAccount — dormant feature', () => {
 });
 
 describe('ensureAccount — registration (no cache yet)', () => {
+  it('does not mint unrelated C while an anonymous merge is unresolved', async () => {
+    setBackend('https://api.example.test');
+    await AsyncStorage.setItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      fromAccountId: 'account-a',
+      toAccountId: null,
+      preparedAt: Date.now(),
+    }));
+    resetPrivateAccountBoundaryForTests();
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(ensureAccount()).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('does not mint an anonymous account when SecureStore is temporarily unavailable', async () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn();
@@ -189,7 +214,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 
-  it('uses the last-known session when a later SecureStore read temporarily fails', async () => {
+  it('serves later calls from the in-memory session without re-reading SecureStore', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({
       deviceId: 'dev-1',
@@ -199,12 +224,15 @@ describe('ensureAccount — registration (no cache yet)', () => {
     });
     await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', authenticated: true });
 
-    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+    // Later Keychain flakiness cannot break an established session: the read
+    // happened once on the cold path and every later call is memory-only.
+    const readsAfterFirstCall = jest.mocked(SecureStore.getItemAsync).mock.calls.length;
     await expect(ensureAccount()).resolves.toMatchObject({
       accountId: 'acc-1',
       token: 'signed-token',
       authenticated: true,
     });
+    expect(jest.mocked(SecureStore.getItemAsync).mock.calls.length).toBe(readsAfterFirstCall);
   });
 
   it('throws when an authenticated session cannot be persisted securely', async () => {
@@ -398,9 +426,11 @@ describe('ensureAccount — registration (no cache yet)', () => {
       jest.advanceTimersByTime(30_001);
       await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-2' });
 
-      // Remove only the persisted blob so this test can prove the successful
-      // bootstrap reset the exponential failure counter itself.
-      await SecureStore.deleteItemAsync(ACCOUNT_KEY);
+      // Remove the cached account (keeping backoff state untouched) so this
+      // test can prove the successful bootstrap reset the exponential failure
+      // counter itself. Goes through the module so the in-memory session
+      // mirror is dropped too — production deletes always take this path.
+      await clearCachedAccount({ resetBootstrapBackoff: false });
       await expect(ensureAccount()).resolves.toBeNull();
       expect(fetchSpy).toHaveBeenCalledTimes(5);
 
@@ -622,7 +652,168 @@ describe('clearCachedAccount', () => {
   });
 });
 
+describe('revertToAnonymous', () => {
+  it('keeps A bearer and private data while its anonymous merge is unresolved', async () => {
+    const oldSession = {
+      deviceId: 'dev-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    await seedAccount(oldSession);
+    await AsyncStorage.setItem('private-a', 'still-owned-by-a');
+    await AsyncStorage.setItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      fromAccountId: oldSession.accountId,
+      toAccountId: null,
+      preparedAt: Date.now(),
+    }));
+    resetPrivateAccountBoundaryForTests();
+    const clearPrivateData = jest.fn(async () => {
+      await AsyncStorage.removeItem('private-a');
+    });
+
+    await expect(revertToAnonymous(undefined, clearPrivateData)).rejects.toThrow(
+      'Anonymous account merge is unresolved',
+    );
+
+    expect(clearPrivateData).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('private-a')).toBe('still-owned-by-a');
+    expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).not.toBeNull();
+    await expect(ensureAccount()).resolves.toMatchObject(oldSession);
+  });
+
+  it('clears A data before credential removal, keeps A on failure, and succeeds on retry', async () => {
+    const oldSession = {
+      deviceId: 'dev-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: true,
+    };
+    await AsyncStorage.setItem(DEVICE_ID_KEY, oldSession.deviceId);
+    await seedAccount(oldSession);
+    await AsyncStorage.setItem('private-a', 'kept-until-boundary');
+    const clearPrivateData = jest.fn(async () => {
+      // The outgoing credential must still be durable while private data is
+      // invalidated. A process kill anywhere in this callback therefore boots
+      // back into A, never a replacement account over stale A storage.
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached).toMatchObject(oldSession);
+      await AsyncStorage.removeItem('private-a');
+    });
+    jest
+      .mocked(SecureStore.deleteItemAsync)
+      .mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(
+      revertToAnonymous(undefined, clearPrivateData),
+    ).rejects.toThrow('Secure session removal failed');
+    expect(clearPrivateData).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getItem('private-a')).toBeNull();
+    await expect(ensureAccount()).resolves.toMatchObject(oldSession);
+
+    setBackend('https://api.example.com');
+    global.fetch = mockFetchOk({ id: 'anonymous-b', token: 'token-b' }) as unknown as typeof fetch;
+
+    await expect(revertToAnonymous(undefined, clearPrivateData)).resolves.toMatchObject({
+      accountId: 'anonymous-b',
+      token: 'token-b',
+      authenticated: false,
+    });
+    expect(clearPrivateData).toHaveBeenCalledTimes(2);
+    expect(await AsyncStorage.getItem('private-a')).toBeNull();
+    await expect(ensureAccount()).resolves.toMatchObject({
+      accountId: 'anonymous-b',
+      token: 'token-b',
+      authenticated: false,
+    });
+  });
+});
+
 describe('clearCachedAnonymousAccount', () => {
+  it('loses the eviction race to a credential boundary before deleting A', async () => {
+    const oldSession = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    await seedAccount(oldSession);
+
+    let releaseSecureRead!: (value: string) => void;
+    let markSecureReadStarted!: () => void;
+    const pausedSecureRead = new Promise<string>((resolve) => {
+      releaseSecureRead = resolve;
+    });
+    const secureReadStarted = new Promise<void>((resolve) => {
+      markSecureReadStarted = resolve;
+    });
+    jest.mocked(SecureStore.getItemAsync).mockImplementationOnce(async () => {
+      markSecureReadStarted();
+      return pausedSecureRead;
+    });
+
+    const eviction = clearCachedAnonymousAccount(oldSession, {
+      source: 'test_race',
+      endpoint: '/v1/test',
+    });
+    await secureReadStarted;
+
+    const transition = beginPrivateAccountTransition('test-auth', oldSession.accountId);
+    expect(transition).not.toBeNull();
+    const drained = transition!.drain();
+    releaseSecureRead(JSON.stringify(oldSession));
+
+    await expect(eviction).resolves.toBe(false);
+    await drained;
+    await expect(
+      preflightPrivateAccountMerge(
+        transition!,
+        oldSession.accountId,
+        async () => true,
+        () => '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      ),
+    ).resolves.toMatchObject({
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+    });
+
+    expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).not.toBeNull();
+    expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).not.toBeNull();
+    transition!.release();
+  });
+
+  it('keeps A credential after a 401 while its merge operation is unresolved', async () => {
+    const oldSession = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    await seedAccount(oldSession);
+    await AsyncStorage.setItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      fromAccountId: 'account-a',
+      toAccountId: null,
+      preparedAt: Date.now(),
+    }));
+    resetPrivateAccountBoundaryForTests();
+    const listener = jest.fn();
+    setAnonymousSessionEvictionListener(listener);
+
+    await expect(clearCachedAnonymousAccount(oldSession, {
+      source: 'test',
+      endpoint: '/v1/test',
+    })).resolves.toBe(false);
+    await expect(ensureAccount()).resolves.toMatchObject(oldSession);
+    expect(listener).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith(
+      'anonymous_session_eviction',
+      expect.objectContaining({ reason: 'anonymous_401_merge_unresolved' }),
+    );
+  });
+
   const requestContext = {
     source: 'account_preferences_fetch',
     endpoint: '/v1/account/me',
@@ -759,6 +950,23 @@ describe('account preferences', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-1');
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
     expect(JSON.parse(init.body as string)).toEqual({ hide_pub_names: false });
+  });
+
+  it('refuses to PATCH queued preferences under a different account', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({ id: 'acc-1', device_id: 'dev-1' });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(
+      updateAccountPreferences(
+        { marketingEmailsEnabled: false },
+        undefined,
+        'another-account',
+      ),
+    ).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('PATCHes expanded preferences using the backend field names', async () => {

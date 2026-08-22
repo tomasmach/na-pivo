@@ -9,11 +9,13 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type AccessibilityActionEvent,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -38,11 +40,22 @@ import {
   ShieldIcon,
   StarIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@/components/shared/IconGlyph';
+import {
+  PubReminderBackgroundLocationDisclosure,
+  pubReminderNeedsBackgroundDisclosure,
+} from '@/components/shared/PubReminderOnboardingModal';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
-import { updateAccountPreferences } from '@/data/account';
+import { enqueueAccountPreferences } from '@/data/accountPreferencesQueue';
+import {
+  DEFAULT_FRIEND_SOCIAL_SETTINGS,
+  fetchFriendSettings,
+  type FriendSocialSettings,
+} from '@/data/friendsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import FriendSettingsSheet from '@/friends/FriendSettingsSheet';
 import { cs } from '@/i18n/cs';
 import {
   disableBeerCountReminderNotifications,
@@ -54,18 +67,15 @@ import {
   disablePubReminderNotifications,
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
-import {
-  selectIsSignedIn,
-  selectNickname,
-  useAccountStore,
-} from '@/stores/accountStore';
+import { useAccountStore } from '@/stores/accountStore';
+import { useToastStore } from '@/stores/toastStore';
 import {
   BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { getAppVersionLabel } from '@/utils/appVersion';
@@ -316,6 +326,9 @@ function BeerCountReminderRow({
   onToggle: () => void;
   onIntervalChange: (minutes: BeerCountReminderIntervalMinutes) => void;
 }) {
+  const { fontScale } = useWindowDimensions();
+  const useLargeTypeLayout = fontScale > 1.5;
+
   return (
     <View style={[styles.beerCountReminder, styles.rowDivider]}>
       <PreferenceRow
@@ -327,14 +340,24 @@ function BeerCountReminderRow({
         edgeToEdge={false}
       />
       {enabled ? (
-        <View style={styles.reminderIntervalRow}>
+        <View
+          style={[
+            styles.reminderIntervalRow,
+            useLargeTypeLayout && styles.reminderIntervalRowLargeType,
+          ]}
+        >
           <Text
             style={styles.reminderIntervalLabel}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {cs.settings.beerCountReminder.intervalLabel}
           </Text>
-          <View style={styles.reminderIntervalOptions}>
+          <View
+            style={[
+              styles.reminderIntervalOptions,
+              useLargeTypeLayout && styles.reminderIntervalOptionsLargeType,
+            ]}
+          >
             {BEER_COUNT_REMINDER_INTERVAL_OPTIONS.map((minutes) => {
               const selected = intervalMinutes === minutes;
               return (
@@ -343,6 +366,7 @@ function BeerCountReminderRow({
                   onPress={() => onIntervalChange(minutes)}
                   style={[
                     styles.reminderIntervalOption,
+                    useLargeTypeLayout && styles.reminderIntervalOptionLargeType,
                     selected && styles.reminderIntervalOptionSelected,
                   ]}
                   hitSlop={{ top: 8, bottom: 8 }}
@@ -356,6 +380,8 @@ function BeerCountReminderRow({
                       selected && styles.reminderIntervalOptionTextSelected,
                     ]}
                     numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
                     {cs.settings.beerCountReminder.intervalShort(minutes)}
@@ -418,13 +444,78 @@ export default function SettingsScreen() {
     (state) => state.setBeerCountReminderIntervalMinutes,
   );
 
-  const isSignedIn = useAccountStore(selectIsSignedIn);
-  const nickname = useAccountStore(selectNickname);
-  const profile = useAccountStore((state) => state.profile);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const hasAccount = accountId !== null;
+  const showToast = useToastStore((state) => state.show);
 
   const [moreOpen, setMoreOpen] = useState(false);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
+  const [pubReminderDisclosureOpen, setPubReminderDisclosureOpen] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
+  const [privacyOpenFor, setPrivacyOpenFor] = useState<string | null>(null);
+  const [privacyLoadingFor, setPrivacyLoadingFor] = useState<string | null>(null);
+  const [friendSettingsResource, setFriendSettingsResource] = useState<{
+    accountId: string;
+    settings: FriendSocialSettings;
+  } | null>(null);
+  const privacyControllerRef = React.useRef<AbortController | null>(null);
+
+  const privacySettings =
+    friendSettingsResource?.accountId === accountId
+      ? friendSettingsResource.settings
+      : DEFAULT_FRIEND_SOCIAL_SETTINGS;
+  const privacyReady = friendSettingsResource?.accountId === accountId;
+  const privacyBusy = accountId !== null && privacyLoadingFor === accountId;
+
+  // Rendering is account-keyed below, so A's switches disappear in the same
+  // render that selects B. Cleanup then cancels A's in-flight GET.
+  useEffect(
+    () => () => {
+      privacyControllerRef.current?.abort();
+      privacyControllerRef.current = null;
+    },
+    [accountId],
+  );
+
+  const openPrivacySettings = useCallback(async () => {
+    if (!accountId || privacyBusy) return;
+    trackUiInteraction('settings_privacy_open');
+    if (privacyReady) {
+      setPrivacyOpenFor(accountId);
+      return;
+    }
+
+    const requestedAccountId = accountId;
+    const controller = new AbortController();
+    privacyControllerRef.current?.abort();
+    privacyControllerRef.current = controller;
+    setPrivacyLoadingFor(requestedAccountId);
+    const settings = await fetchFriendSettings(controller.signal);
+    const viewerStillMatches =
+      useAccountStore.getState().session?.accountId === requestedAccountId;
+    if (!controller.signal.aborted && viewerStillMatches) {
+      if (settings) {
+        setFriendSettingsResource({ accountId: requestedAccountId, settings });
+        setPrivacyOpenFor(requestedAccountId);
+      } else {
+        showToast(cs.friends.settingsError);
+      }
+    }
+    if (privacyControllerRef.current === controller) {
+      privacyControllerRef.current = null;
+      setPrivacyLoadingFor((current) =>
+        current === requestedAccountId ? null : current,
+      );
+    }
+  }, [accountId, privacyBusy, privacyReady, showToast]);
+
+  const savePrivacySettings = useCallback(
+    (settings: FriendSocialSettings) => {
+      if (!accountId) return;
+      setFriendSettingsResource({ accountId, settings });
+    },
+    [accountId],
+  );
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const readout = distanceReadout(maxDistanceKm);
@@ -436,24 +527,24 @@ export default function SettingsScreen() {
       const next = SLIDER_POSITIONS[index] ?? null;
       trackUiInteraction('settings_distance_change', 'select');
       setMaxDistanceKm(next);
-      void updateAccountPreferences({ maxDistanceKm: next });
+      void enqueueAccountPreferences({ maxDistanceKm: next }, accountId);
     },
-    [setMaxDistanceKm],
+    [accountId, setMaxDistanceKm],
   );
 
   const toggleHaptic = useCallback(() => {
     const next = !hapticEnabled;
     trackUiInteraction('settings_haptics', next ? 'toggle_on' : 'toggle_off');
     setHapticEnabled(next);
-    void updateAccountPreferences({ hapticEnabled: next });
-  }, [hapticEnabled, setHapticEnabled]);
+    void enqueueAccountPreferences({ hapticEnabled: next }, accountId);
+  }, [accountId, hapticEnabled, setHapticEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
     trackUiInteraction('settings_sound', next ? 'toggle_on' : 'toggle_off');
     setSoundEnabled(next);
-    void updateAccountPreferences({ soundEnabled: next });
-  }, [setSoundEnabled, soundEnabled]);
+    void enqueueAccountPreferences({ soundEnabled: next }, accountId);
+  }, [accountId, setSoundEnabled, soundEnabled]);
 
   const toggleWaterNudge = useCallback(() => {
     const next = !waterNudgeEnabled;
@@ -465,8 +556,8 @@ export default function SettingsScreen() {
     const next = !hideClosedPubs;
     trackUiInteraction('settings_hide_closed', next ? 'toggle_on' : 'toggle_off');
     setHideClosedPubs(next);
-    void updateAccountPreferences({ hideClosedPubs: next });
-  }, [hideClosedPubs, setHideClosedPubs]);
+    void enqueueAccountPreferences({ hideClosedPubs: next }, accountId);
+  }, [accountId, hideClosedPubs, setHideClosedPubs]);
 
   const togglePreferRated = useCallback(() => {
     const next = !preferRatedPubs;
@@ -478,15 +569,15 @@ export default function SettingsScreen() {
     const next = !hidePubNames;
     trackUiInteraction('settings_hide_names', next ? 'toggle_on' : 'toggle_off');
     setHidePubNames(next);
-    void updateAccountPreferences({ hidePubNames: next });
-  }, [hidePubNames, setHidePubNames]);
+    void enqueueAccountPreferences({ hidePubNames: next }, accountId);
+  }, [accountId, hidePubNames, setHidePubNames]);
 
   const toggleMarketingEmails = useCallback(() => {
     const next = !marketingEmailsEnabled;
     trackUiInteraction('settings_marketing_emails', next ? 'toggle_on' : 'toggle_off');
     setMarketingEmailsEnabled(next);
-    void updateAccountPreferences({ marketingEmailsEnabled: next });
-  }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
+    void enqueueAccountPreferences({ marketingEmailsEnabled: next }, accountId);
+  }, [accountId, marketingEmailsEnabled, setMarketingEmailsEnabled]);
 
   const togglePubReminders = useCallback(async () => {
     if (pubReminderBusy) return;
@@ -502,6 +593,12 @@ export default function SettingsScreen() {
         return;
       }
 
+      // Store policy: the toggle can never prompt for background location
+      // directly — the prominent disclosure always comes first.
+      if (await pubReminderNeedsBackgroundDisclosure()) {
+        setPubReminderDisclosureOpen(true);
+        return;
+      }
       const result = await enablePubReminderNotifications();
       if (result.ok) {
         setPubReminderEnabled(true);
@@ -514,6 +611,23 @@ export default function SettingsScreen() {
       setPubReminderBusy(false);
     }
   }, [pubReminderBusy, pubReminderEnabled, setPubReminderEnabled]);
+
+  const allowPubReminderDisclosure = useCallback(async () => {
+    setPubReminderDisclosureOpen(false);
+    if (pubReminderBusy) return;
+    setPubReminderBusy(true);
+    try {
+      const result = await enablePubReminderNotifications();
+      if (result.ok) {
+        setPubReminderEnabled(true);
+        return;
+      }
+      setPubReminderEnabled(false);
+      showPubReminderEnableFailure(result.reason);
+    } finally {
+      setPubReminderBusy(false);
+    }
+  }, [pubReminderBusy, setPubReminderEnabled]);
 
   const toggleBeerCountReminder = useCallback(async () => {
     if (beerCountReminderBusy) return;
@@ -625,12 +739,8 @@ export default function SettingsScreen() {
     ],
   );
 
-  const displayName = profile?.displayName?.trim() || '';
-  const email = profile?.email?.trim() || '';
-  const accountSubLabel = isSignedIn
-    ? nickname
-      ? `@${nickname}${profile?.emailVerified ? ` · ${cs.settings.accountCard.verifiedInline}` : ''}`
-      : email || displayName || cs.profile.manageAccount
+  const accountSubLabel = hasAccount
+    ? cs.settings.accountCard.manageDataSubtitle
     : cs.settings.accountCard.ctaSignedOutSubtitle;
 
   return (
@@ -652,6 +762,8 @@ export default function SettingsScreen() {
         <Text
           style={styles.headerTitle}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {cs.settings.title}
@@ -675,7 +787,90 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel>{cs.settings.compassSection}</SectionLabel>
+        {/* Privacy first, because this app publishes evenings, pubs and a
+            drinking history, and until now there was no door to any of that
+            from the place people look for it. The switches themselves already
+            exist on the Parta screen — this is a door, not a second copy. */}
+        <SectionLabel>{cs.settings.privacySection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <Pressable
+            onPress={() => void openPrivacySettings()}
+            disabled={!accountId || privacyBusy}
+            style={({ pressed }) => [styles.privacyRow, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.settings.privacyDoor.title}
+            accessibilityState={{ disabled: !accountId || privacyBusy, busy: privacyBusy }}
+          >
+            <View style={styles.privacyText}>
+              <Text style={styles.privacyTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.settings.privacyDoor.title}
+              </Text>
+              <Text style={styles.privacySub} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.settings.privacyDoor.subtitle}
+              </Text>
+            </View>
+            {privacyBusy ? (
+              <ActivityIndicator color={Colors.amber} />
+            ) : (
+              <ChevronRightIcon size={18} color={Colors.mutedText} />
+            )}
+          </Pressable>
+        </View>
+
+        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <PreferenceRow
+            title={cs.settings.pubReminders.title}
+            subtitle={cs.settings.pubReminders.subtitle}
+            value={pubReminderEnabled}
+            onToggle={() => void togglePubReminders()}
+            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <BeerCountReminderRow
+            enabled={beerCountReminderEnabled}
+            intervalMinutes={beerCountReminderIntervalMinutes}
+            onToggle={() => void toggleBeerCountReminder()}
+            onIntervalChange={changeBeerCountReminderInterval}
+          />
+          <PreferenceRow
+            title={cs.settings.haptics.title}
+            subtitle={cs.settings.haptics.subtitle}
+            value={hapticEnabled}
+            onToggle={toggleHaptic}
+            toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.sound.title}
+            subtitle={cs.settings.sound.subtitle}
+            value={soundEnabled}
+            onToggle={toggleSound}
+            toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.waterNudge.title}
+            subtitle={cs.settings.waterNudge.subtitle}
+            value={waterNudgeEnabled}
+            onToggle={toggleWaterNudge}
+            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.marketingEmails.title}
+            subtitle={cs.settings.marketingEmails.subtitle}
+            value={marketingEmailsEnabled}
+            onToggle={toggleMarketingEmails}
+            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+        </View>
+
+        {/* Search settings last. They are the compass MVP's screen, and two of
+            these three toggles are the same filters the Hospody screen already
+            has on it — kept here only because deleting a stored preference
+            silently changes what shipped users see. */}
+        <SectionLabel spaced>{cs.settings.compassSection}</SectionLabel>
         <View style={styles.distanceCard}>
           <Text
             style={[
@@ -730,54 +925,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <PreferenceRow
-            title={cs.settings.pubReminders.title}
-            subtitle={cs.settings.pubReminders.subtitle}
-            value={pubReminderEnabled}
-            onToggle={() => void togglePubReminders()}
-            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-          />
-          <BeerCountReminderRow
-            enabled={beerCountReminderEnabled}
-            intervalMinutes={beerCountReminderIntervalMinutes}
-            onToggle={() => void toggleBeerCountReminder()}
-            onIntervalChange={changeBeerCountReminderInterval}
-          />
-          <PreferenceRow
-            title={cs.settings.haptics.title}
-            subtitle={cs.settings.haptics.subtitle}
-            value={hapticEnabled}
-            onToggle={toggleHaptic}
-            toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={cs.settings.sound.title}
-            subtitle={cs.settings.sound.subtitle}
-            value={soundEnabled}
-            onToggle={toggleSound}
-            toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={cs.settings.waterNudge.title}
-            subtitle={cs.settings.waterNudge.subtitle}
-            value={waterNudgeEnabled}
-            onToggle={toggleWaterNudge}
-            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={cs.settings.marketingEmails.title}
-            subtitle={cs.settings.marketingEmails.subtitle}
-            value={marketingEmailsEnabled}
-            onToggle={toggleMarketingEmails}
-            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            divider
-          />
-        </View>
 
         <View style={styles.footer}>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -794,17 +941,17 @@ export default function SettingsScreen() {
 
       <CounterCta
         label={
-          isSignedIn
-            ? cs.settings.accountCard.ctaSignedIn
+          hasAccount
+            ? cs.settings.accountCard.ctaManageData
             : cs.settings.accountCard.signedOutTitle
         }
         subLabel={accountSubLabel}
         onPress={() => {
           trackUiInteraction('settings_account_open');
-          router.push((isSignedIn ? '/account' : '/auth') as Href);
+          router.push((hasAccount ? '/account' : '/auth') as Href);
         }}
         accessibilityLabel={
-          isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp
+          hasAccount ? cs.a11y.accountManageData : cs.a11y.profileSignUp
         }
       />
 
@@ -813,6 +960,24 @@ export default function SettingsScreen() {
         title={cs.settings.more.title}
         rows={moreRows}
         onClose={() => setMoreOpen(false)}
+      />
+
+      <FriendSettingsSheet
+        key={accountId ?? 'no-account'}
+        visible={
+          accountId !== null &&
+          privacyReady &&
+          privacyOpenFor === accountId
+        }
+        onClose={() => setPrivacyOpenFor(null)}
+        settings={privacySettings}
+        onSaved={savePrivacySettings}
+      />
+
+      <PubReminderBackgroundLocationDisclosure
+        visible={pubReminderDisclosureOpen}
+        onAllow={() => void allowPubReminderDisclosure()}
+        onDeny={() => setPubReminderDisclosureOpen(false)}
       />
     </View>
   );
@@ -844,7 +1009,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
     includeFontPadding: false,
@@ -861,7 +1026,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 12 },
   sectionLabel: {
     marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -879,7 +1044,7 @@ const styles = StyleSheet.create({
   },
   distanceNumber: {
     alignSelf: 'stretch',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -887,7 +1052,7 @@ const styles = StyleSheet.create({
   },
   distanceUnit: {
     marginTop: -8,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.mutedText,
@@ -934,7 +1099,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   rangeLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -973,14 +1138,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   preferenceTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   preferenceSubtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1016,8 +1181,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  reminderIntervalRowLargeType: { alignItems: 'flex-start' },
   reminderIntervalLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1027,6 +1193,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 4,
+  },
+  reminderIntervalOptionsLargeType: {
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
   },
   reminderIntervalOption: {
     minWidth: 45,
@@ -1039,12 +1209,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  reminderIntervalOptionLargeType: {
+    width: '48%',
+    minWidth: 0,
+  },
   reminderIntervalOptionSelected: {
     backgroundColor: withAlpha(Colors.foam, 0.1),
     borderColor: withAlpha(Colors.foam, 0.18),
   },
   reminderIntervalOptionText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1056,15 +1230,25 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   footerPromise: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
     textAlign: 'center',
     includeFontPadding: false,
   },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 68,
+    paddingHorizontal: 16,
+  },
+  privacyText: { flex: 1 },
+  privacyTitle: { fontSize: 16, fontWeight: '600', color: Colors.foam },
+  privacySub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
   footerTagline: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,

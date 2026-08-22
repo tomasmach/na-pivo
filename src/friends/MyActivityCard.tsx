@@ -45,9 +45,8 @@ import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { amberGlow, softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 import { GoingRoster } from './GoingRoster';
@@ -284,19 +283,14 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
 
 const styles = StyleSheet.create({
   glowLayer: {
-    borderRadius: Radius.cardLarge,
-    backgroundColor: Colors.stout2,
-    // The lone halo on the whole screen — spread it wide enough to actually read
-    // as warmth bleeding off my live table, not a tight 8pt shadow nobody sees.
-    ...amberGlow(22),
+    borderRadius: Radius.card,
   },
   card: {
     backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.6),
+    borderRadius: Radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
     padding: Spacing.lg,
-    ...softDrop(),
   },
   kicker: {
     flexDirection: 'row',
@@ -320,9 +314,8 @@ const styles = StyleSheet.create({
   },
   kickerLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 12,
-    letterSpacing: 1,
+    fontWeight: '800',
+    fontSize: 14,
     color: Colors.amber,
   },
   expiry: {
@@ -331,13 +324,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   expiryText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
     marginTop: Spacing.md,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     lineHeight: 26,
     color: Colors.foam,
@@ -350,7 +343,7 @@ const styles = StyleSheet.create({
   },
   cityText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -360,7 +353,7 @@ const styles = StyleSheet.create({
   },
   cheersLine: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -385,7 +378,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   endLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },

@@ -10,7 +10,7 @@ import {
 } from '@/components/shared/BrandIcon';
 import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const creatorLinks = [
@@ -94,21 +94,21 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   followEyebrow: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 1.3,
     color: Colors.amber,
     includeFontPadding: false,
   },
   followTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
   },
   followBody: {
     marginBottom: 4,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   },
   linkLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.foam,
     includeFontPadding: false,

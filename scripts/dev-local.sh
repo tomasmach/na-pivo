@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local dev runner: applies backend migrations, starts the Django backend,
+# Local dev runner: applies backend migrations, starts the Django ASGI backend,
 # then builds and launches the app in the iOS simulator. On exit (Ctrl+C)
 # it stops the backend it started and shuts down the simulator.
 set -euo pipefail
@@ -38,11 +38,21 @@ cleanup() {
   if [ "$STARTED_BACKEND" = 1 ] && [ -n "$BACKEND_PID" ]; then
     pkill -P "$BACKEND_PID" 2>/dev/null || true
     kill "$BACKEND_PID" 2>/dev/null || true
-    # runserver's autoreload child can outlive its parent; free the port
+    # The ASGI reloader child can outlive its parent; free the port as a final
+    # guard so the next `npm run dev` never reuses a stale backend.
     lsof -ti "tcp:$BACKEND_PORT" | xargs kill 2>/dev/null || true
   fi
-  xcrun simctl shutdown booted 2>/dev/null || true
-  osascript -e 'quit app "Simulator"' 2>/dev/null || true
+  # The simulator is only torn down when this runner OWNS the session. Set
+  # NAPIVO_KEEP_SIM=1 when something else supervises the process — an agent's
+  # background shell, a detached terminal, tmux — because there the runner exits
+  # for reasons that have nothing to do with you being finished, and taking the
+  # simulator down with it looks exactly like the app crashing.
+  if [ "${NAPIVO_KEEP_SIM:-0}" != "1" ]; then
+    xcrun simctl shutdown booted 2>/dev/null || true
+    osascript -e 'quit app "Simulator"' 2>/dev/null || true
+  else
+    echo "==> Simulátor nechávám běžet (NAPIVO_KEEP_SIM=1)"
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -53,7 +63,16 @@ if lsof -ti "tcp:$BACKEND_PORT" >/dev/null 2>&1; then
   echo "==> Backend already running on port $BACKEND_PORT, reusing it (won't be stopped on exit)"
 else
   echo "==> Starting backend on 0.0.0.0:$BACKEND_PORT"
-  (cd "$BACKEND_DIR" && exec uv run python manage.py runserver "0.0.0.0:$BACKEND_PORT") &
+  # The shared party-game endpoint is an async SSE stream. Django's WSGI
+  # `runserver` adapts its async iterator synchronously, which both hides the
+  # production behaviour and can fail while a stream is being disconnected.
+  # Run the same ASGI application and Uvicorn event loop used in production.
+  (cd "$BACKEND_DIR" && exec uv run --extra prod uvicorn config.asgi:application \
+    --host 0.0.0.0 \
+    --port "$BACKEND_PORT" \
+    --reload \
+    --reload-dir "$BACKEND_DIR" \
+    --timeout-graceful-shutdown 3) &
   BACKEND_PID=$!
   STARTED_BACKEND=1
   BACKEND_READY=0

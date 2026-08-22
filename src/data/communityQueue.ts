@@ -18,14 +18,15 @@
  */
 
 import { submitPubCommunity, type CommunityEntry, type CommunityResponse } from './communityClient';
+import { isAllowedBeerVolume, isWeeklyHours, MAX_MENU_BEERS } from './communityHours';
 import { geohash8 } from './geohash';
-import { createQueueStorage, createQueueLock } from './createQueue';
+import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
+import {
+  isPrivateAccountMutationScopeCurrent,
+  runPrivateAccountMutation,
+} from './privateAccountBoundary';
 
 const STORAGE_KEY = 'na-pivo-community-queue';
-/** Hard cap — a queue this long means the backend has been unreachable for a
- *  very long time; dropping the oldest entries beats unbounded growth. */
-const MAX_QUEUE_LENGTH = 30;
-
 /** The stable dedup key for an entry: the geohash-8 cell of its coordinates. */
 function entryCell(entry: CommunityEntry): string {
   return geohash8(entry.lat, entry.lng);
@@ -35,13 +36,32 @@ function isCommunityEntry(entry: unknown): entry is CommunityEntry {
   const e = entry as CommunityEntry;
   return (
     !!e &&
-    typeof e.client_id === 'string' &&
-    typeof e.name === 'string' &&
-    typeof e.lat === 'number' &&
-    typeof e.lng === 'number' &&
+    typeof e.client_id === 'string' && !!e.client_id &&
+    typeof e.name === 'string' && !!e.name.trim() &&
+    typeof e.lat === 'number' && Number.isFinite(e.lat) && e.lat >= -90 && e.lat <= 90 &&
+    typeof e.lng === 'number' && Number.isFinite(e.lng) && e.lng >= -180 && e.lng <= 180 &&
+    (e.city === undefined || typeof e.city === 'string') &&
     (e.external_id === null || typeof e.external_id === 'string') &&
     // At least one of hours/beers must be present for a valid contribution.
-    (e.hours !== undefined || e.beers !== undefined)
+    (e.hours !== undefined || e.beers !== undefined) &&
+    (e.hours === undefined || isWeeklyHours(e.hours)) &&
+    (e.beers === undefined || (
+      Array.isArray(e.beers) &&
+      e.beers.length <= MAX_MENU_BEERS &&
+      e.beers.every((beer) =>
+        !!beer &&
+        typeof beer.name === 'string' &&
+        !!beer.name.trim() &&
+        (beer.price_czk === undefined || (
+          typeof beer.price_czk === 'number' &&
+          Number.isFinite(beer.price_czk) &&
+          beer.price_czk >= 1 &&
+          beer.price_czk <= 1000
+        )) &&
+        (beer.volume_ml === undefined || isAllowedBeerVolume(beer.volume_ml)),
+      )
+    )) &&
+    (e.beer_menu_rotates === undefined || typeof e.beer_menu_rotates === 'boolean')
   );
 }
 
@@ -52,25 +72,32 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<CommunityEntry>(
 
 /** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
  *  read-modify-write the same AsyncStorage snapshot and lose entries. */
-const enqueueTask = createQueueLock();
+const runMutation = createQueueLock();
 
 /** Attempts to send every queued entry, keeping only the ones that failed.
  *  Returns the delivered responses keyed by client_id so a caller can read the
  *  backend envelope (the Mapér XP snapshot) for the entry it just enqueued. */
-async function flushLocked(): Promise<Map<string, CommunityResponse>> {
-  const delivered = new Map<string, CommunityResponse>();
-  const queue = await loadQueue();
-  if (queue.length === 0) return delivered;
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  const queue = await runMutation(loadQueue);
+  if (queue.length === 0) return;
 
-  const remaining: CommunityEntry[] = [];
+  const delivered = new Map<string, string>();
   for (const entry of queue) {
-    const result = await submitPubCommunity(entry);
-    if (result) delivered.set(entry.client_id, result);
-    else remaining.push(entry);
+    if (signal.aborted) break;
+    const result = await submitPubCommunity(entry, signal);
+    if (result) delivered.set(entryCell(entry), entry.client_id);
   }
-  await saveQueue(remaining);
-  return delivered;
+  if (delivered.size === 0) return;
+
+  await runMutation(async () => {
+    const current = await loadQueue();
+    await saveQueue(current.filter((entry) =>
+      delivered.get(entryCell(entry)) !== entry.client_id,
+    ));
+  });
 }
+
+const communityDelivery = createCoalescingFlush(flushUnlocked);
 
 /**
  * Persists the contribution and immediately tries to sync the whole queue.
@@ -81,17 +108,33 @@ async function flushLocked(): Promise<Map<string, CommunityResponse>> {
  * A newer edit of the same pub (same geohash-8 cell) replaces any older queued
  * submission for that pub — the older one is stale.
  */
-export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityResponse | null> {
-  return enqueueTask(async () => {
-    const queue = await loadQueue();
-    const cell = entryCell(entry);
-    const deduped = queue.filter((queued) => entryCell(queued) !== cell);
-    deduped.push(entry);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+export async function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityResponse | null> {
+  try {
+    return await runPrivateAccountMutation(async (scope) => {
+      const persisted = await runMutation(async () => {
+        const queue = await loadQueue();
+        const cell = entryCell(entry);
+        const deduped = queue.filter((queued) => entryCell(queued) !== cell);
+        deduped.push(entry);
+        return saveQueue(deduped);
+      });
+      if (!persisted || !isPrivateAccountMutationScopeCurrent(scope)) return null;
 
-    const delivered = await flushLocked();
-    return delivered.get(entry.client_id) ?? null;
-  });
+      const delivered = await submitPubCommunity(entry, scope.signal);
+      if (!delivered || !isPrivateAccountMutationScopeCurrent(scope)) return null;
+      await runMutation(async () => {
+        const current = await loadQueue();
+        await saveQueue(current.filter((queued) =>
+          entryCell(queued) !== entryCell(entry) || queued.client_id !== entry.client_id,
+        ));
+      });
+      return isPrivateAccountMutationScopeCurrent(scope) ? delivered : null;
+    });
+  } catch {
+    // A credential transition owns the queue now; the durable row is either
+    // cleared with the old account or retried after the boundary reopens.
+    return null;
+  }
 }
 
 /**
@@ -99,13 +142,12 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityRes
  * foreground — both fire-and-forget. Never throws.
  */
 export function flushCommunityQueue(): Promise<void> {
-  return enqueueTask(async () => {
-    await flushLocked();
-  });
+  return communityDelivery.flush();
 }
 
 export function clearCommunityQueue(): Promise<void> {
-  return enqueueTask(async () => {
+  communityDelivery.abortInFlight();
+  return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }

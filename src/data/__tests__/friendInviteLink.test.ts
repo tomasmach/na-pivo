@@ -1,8 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  claimInviteCode,
+  consumeAndClaimPendingInviteCode,
+  consumePendingInviteCode,
+  parseInviteCodeFromUrl,
+  peekPendingInviteCode,
+  stashPendingInviteCode,
+} from '../friendInviteLink';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const sendFriendRequest = jest.fn(
@@ -25,15 +34,6 @@ const requestRefresh = jest.fn();
 jest.mock('@/stores/partaSignalStore', () => ({
   usePartaSignalStore: { getState: () => ({ requestRefresh }) },
 }));
-
-import {
-  claimInviteCode,
-  consumeAndClaimPendingInviteCode,
-  consumePendingInviteCode,
-  parseInviteCodeFromUrl,
-  peekPendingInviteCode,
-  stashPendingInviteCode,
-} from '../friendInviteLink';
 
 beforeEach(async () => {
   jest.clearAllMocks();
@@ -59,6 +59,17 @@ describe('parseInviteCodeFromUrl', () => {
     expect(parseInviteCodeFromUrl('')).toBeNull();
     expect(parseInviteCodeFromUrl(null)).toBeNull();
     expect(parseInviteCodeFromUrl(undefined)).toBeNull();
+  });
+
+  it('does not steal a shared-table or unrelated link that also has a code', () => {
+    expect(parseInviteCodeFromUrl('napivo://party-live?code=EFJ66G')).toBeNull();
+    expect(parseInviteCodeFromUrl('https://example.com/p/Ab3xK9_pQ2sT')).toBeNull();
+    expect(parseInviteCodeFromUrl('https://na-pivo.cz/privacy?code=Ab3xK9_pQ2sT')).toBeNull();
+  });
+
+  it('returns null instead of throwing on malformed percent encoding', () => {
+    expect(() => parseInviteCodeFromUrl('napivo://parta/pozvanka?code=50%')).not.toThrow();
+    expect(parseInviteCodeFromUrl('napivo://parta/pozvanka?code=50%')).toBeNull();
   });
 });
 

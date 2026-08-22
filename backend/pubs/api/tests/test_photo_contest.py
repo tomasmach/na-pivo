@@ -392,6 +392,112 @@ def test_contest_get_query_count_is_bounded(client, django_assert_max_num_querie
     assert len(resp.json()["entries"]) == 5
 
 
+@pytest.mark.django_db
+def test_explicit_contest_pagination_is_stable_and_non_overlapping(client):
+    for i in range(5):
+        token, _account = _register(client, f"strankovani{i}")
+        assert _enter(client, token, _upload_photo(client, token)).status_code == 201
+    viewer_token, _viewer = _register(client, "listujici")
+
+    first = client.get("/v1/photo-contest?limit=2", **_auth(viewer_token))
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    body_one = first.json()
+    assert len(body_one["entries"]) == 2
+    assert body_one["truncated"] is True
+    assert isinstance(body_one["next_cursor"], str)
+    assert body_one["next_cursor"]
+    # Pagination is additive: the legacy wire shape stays intact.
+    assert {
+        "contest",
+        "entries",
+        "my_entry_id",
+        "my_entry_photo_id",
+        "my_vote_entry_id",
+        "last_results",
+    } <= set(body_one.keys())
+    ids_one = [e["id"] for e in body_one["entries"]]
+    assert len(set(ids_one)) == 2
+
+    second = client.get(
+        f"/v1/photo-contest?limit=2&cursor={body_one['next_cursor']}",
+        **_auth(viewer_token),
+    )
+
+    assert second.status_code == status.HTTP_200_OK, second.content
+    body_two = second.json()
+    assert len(body_two["entries"]) == 2
+    assert body_two["truncated"] is True
+    assert body_two["next_cursor"]
+    assert {"truncated", "next_cursor"} <= set(body_two.keys())
+    ids_two = [e["id"] for e in body_two["entries"]]
+    assert not set(ids_one) & set(ids_two)
+    assert len(set(ids_one) | set(ids_two)) == 4
+
+
+@pytest.mark.django_db
+def test_legacy_contest_request_keeps_complete_snapshot(client):
+    entry_ids = []
+    for i in range(3):
+        token, _account = _register(client, f"stary{i}")
+        resp = _enter(client, token, _upload_photo(client, token))
+        assert resp.status_code == status.HTTP_201_CREATED
+        entry_ids.append(resp.json()["entry"]["id"])
+    viewer_token, viewer = _register(client, "divak")
+    photo_id = _upload_photo(client, viewer_token)
+    my_entry_id = _enter(client, viewer_token, photo_id).json()["entry"]["id"]
+    vote_target = entry_ids[0]
+    assert _vote(client, viewer_token, vote_target).status_code == status.HTTP_200_OK
+
+    resp = client.get("/v1/photo-contest", **_auth(viewer_token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    # No query params: every entry comes back in one shot.
+    assert [e["id"] for e in body["entries"]] == list(reversed(entry_ids + [my_entry_id]))
+    # Legacy root fields keep working alongside the new additive pagination keys.
+    assert body["contest"]["status"] == "open"
+    assert body["my_entry_id"] == my_entry_id
+    assert body["my_vote_entry_id"] == vote_target
+    assert body["last_results"] is None
+
+
+@pytest.mark.django_db
+def test_paginated_contest_surfaces_own_entry_and_visible_count(client):
+    owner_token, _owner = _register(client, "majitel")
+    photo_owner = _upload_photo(client, owner_token)
+    own_entry_id = _enter(client, owner_token, photo_owner).json()["entry"]["id"]
+    for i in range(3):
+        token, _account = _register(client, f"cizi{i}")
+        resp = _enter(client, token, _upload_photo(client, token))
+        assert resp.status_code == status.HTTP_201_CREATED
+    voter_token, _voter = _register(client, "hlasujici")
+    assert _vote(client, voter_token, own_entry_id).status_code == status.HTTP_200_OK
+
+    resp = client.get("/v1/photo-contest?limit=2", **_auth(owner_token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert len(body["entries"]) == 2
+    # The owner's (oldest) entry is not on page one.
+    assert own_entry_id not in [e["id"] for e in body["entries"]]
+    # Visible count reflects the whole round, not the page.
+    assert body["visible_entry_count"] == 4
+    assert body["my_entry"]["id"] == own_entry_id
+    assert body["my_entry"]["votes"] == 1
+    assert body["my_entry"]["is_mine"] is True
+    assert body["my_entry"]["photo_id"] == photo_owner
+
+
+@pytest.mark.django_db
+def test_contest_pagination_rejects_invalid_params(client):
+    token, _account = _register(client, "janek")
+    for query in ("limit=0", "limit=101", "cursor=not-a-number"):
+        resp = client.get(f"/v1/photo-contest?{query}", **_auth(token))
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+        assert resp.json()["code"] == "invalid_params"
+
+
 # ---------------------------------------------------------------------------
 # Closing (advance_photo_contests)
 # ---------------------------------------------------------------------------

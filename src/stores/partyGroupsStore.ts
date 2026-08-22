@@ -1,8 +1,13 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import {
+  guardPrivateAccountStateCreator,
+  isPrivateAccountMutationFrozen,
+} from '@/data/privateAccountBoundary';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { generateUuidV4 } from '@/data/account';
+import { persistedArray, persistedObject } from '@/stores/persistedSchemas';
 
 export interface PartyGroup {
   id: string;
@@ -26,12 +31,27 @@ function uniqueIds(ids: string[]): string[] {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
+export function sanitizePartyGroups(value: unknown): PartyGroup[] {
+  return persistedArray<unknown>(value).filter((entry): entry is PartyGroup => {
+    if (!entry || typeof entry !== 'object') return false;
+    const group = entry as Partial<PartyGroup>;
+    return (
+      typeof group.id === 'string' &&
+      typeof group.name === 'string' &&
+      Array.isArray(group.memberIds) &&
+      group.memberIds.every((id) => typeof id === 'string') &&
+      typeof group.updatedAt === 'string'
+    );
+  });
+}
+
 export const usePartyGroupsStore = create<PartyGroupsState>()(
   persist(
-    (set, get) => ({
+    guardPrivateAccountStateCreator((set, get) => ({
       groups: [],
 
       upsertGroup: (rawName, rawMemberIds, id) => {
+        if (isPrivateAccountMutationFrozen()) return null;
         const name = cleanName(rawName);
         const memberIds = uniqueIds(rawMemberIds);
         if (!name || memberIds.length === 0) return null;
@@ -71,13 +91,17 @@ export const usePartyGroupsStore = create<PartyGroupsState>()(
             .filter((group) => group.memberIds.length > 0),
         }));
       },
-    }),
+    })),
     {
       name: 'na-pivo-party-groups',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         groups: state.groups,
       }),
+      merge: (persisted, current) => {
+        const state = persistedObject(persisted);
+        return { ...current, groups: sanitizePartyGroups(state.groups) };
+      },
     },
   ),
 );

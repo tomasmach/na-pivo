@@ -1,5 +1,14 @@
+import {
+  restorePubAmenities,
+  installPubAmenitiesSync,
+  runWithoutPubAmenitiesSync,
+  resetPubAmenitiesPullGateForTests,
+} from '../pubAmenitiesSync';
+import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
+import { useTallyStore } from '@/stores/tallyStore';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const fetchMyAmenityVotes = jest.fn();
@@ -16,13 +25,14 @@ jest.mock('../pubAmenitiesQueue', () => ({
   getQueuedAmenityDeletes: () => getQueuedAmenityDeletes(),
 }));
 
-import {
-  restorePubAmenities,
-  installPubAmenitiesSync,
-  runWithoutPubAmenitiesSync,
-} from '../pubAmenitiesSync';
-import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
-import { useTallyStore } from '@/stores/tallyStore';
+jest.mock('../account', () => ({
+  ensureAccount: jest.fn(async () => ({
+    deviceId: 'dev-1',
+    accountId: 'acc-1',
+    token: 'tok-1',
+    authenticated: false,
+  })),
+}));
 
 const PUB = 'aaaaaaaa';
 const OTHER = 'bbbbbbbb';
@@ -39,6 +49,7 @@ function wire(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetPubAmenitiesPullGateForTests();
   getQueuedAmenityDeletes.mockResolvedValue(new Set<string>());
   usePubAmenitiesStore.setState({ votes: {} });
   useTallyStore.setState({ current: null, history: [] });
@@ -142,6 +153,18 @@ describe('restorePubAmenities — pull + merge (LWW)', () => {
 });
 
 describe('installPubAmenitiesSync — push subscribe-diff (per amenity)', () => {
+  it('does not surface a rejected background enqueue to the UI', async () => {
+    enqueueAmenityOp.mockRejectedValueOnce(new Error('credential transition'));
+    const unsub = installPubAmenitiesSync();
+
+    usePubAmenitiesStore.getState().setVote(PUB, 'game_darts', 'yes');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(enqueueAmenityOp).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
   it('enqueues an upsert when a vote is added locally', () => {
     const unsub = installPubAmenitiesSync();
     usePubAmenitiesStore.getState().setVote(PUB, 'game_darts', 'yes');

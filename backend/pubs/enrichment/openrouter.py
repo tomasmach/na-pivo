@@ -25,6 +25,7 @@ import base64
 import json
 import logging
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import requests
@@ -212,11 +213,13 @@ class OpenRouterVisionSource:
         session: requests.Session | None = None,
         timeout: int = _DEFAULT_TIMEOUT,
         daily_cap: int = _DEFAULT_DAILY_CAP,
+        request_budget: Callable[[int], bool] | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout
         self._daily_cap = daily_cap
+        self._request_budget = request_budget or _global_counter.increment_and_check
 
         if session is not None:
             self._session = session
@@ -234,7 +237,7 @@ class OpenRouterVisionSource:
     # ------------------------------------------------------------------
 
     def _check_cap(self) -> None:
-        if not _global_counter.increment_and_check(self._daily_cap):
+        if not self._request_budget(self._daily_cap):
             raise OpenRouterDailyCapExceededError(
                 f"openrouter: daily request cap of {self._daily_cap} exceeded — "
                 "not making further requests today."

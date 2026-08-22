@@ -29,7 +29,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
@@ -108,14 +108,32 @@ interface SocialButtonProps {
   onPress: () => void;
   accessibilityLabel: string;
   disabled?: boolean;
+  /**
+   * White, the way Apple's own button looks.
+   *
+   * Sign in with Apple has two sanctioned styles, black and white, and on a
+   * stout-brown screen the black one is a dark button on a dark background —
+   * the one control here that people recognise by SHAPE goes invisible. White
+   * is both compliant and the only thing on the screen that reads as "the
+   * system is doing this, not the app".
+   */
+  light?: boolean;
 }
 
-function SocialButton({ label, icon, onPress, accessibilityLabel, disabled }: SocialButtonProps) {
+function SocialButton({
+  label,
+  icon,
+  onPress,
+  accessibilityLabel,
+  disabled,
+  light,
+}: SocialButtonProps) {
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       style={({ pressed }) => [
         styles.socialButton,
+        light && styles.socialButtonLight,
         pressed && styles.pressed,
         disabled && styles.disabled,
       ]}
@@ -124,7 +142,10 @@ function SocialButton({ label, icon, onPress, accessibilityLabel, disabled }: So
       accessibilityState={{ disabled: !!disabled }}
     >
       {icon}
-      <Text style={styles.socialButtonLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+      <Text
+        style={[styles.socialButtonLabel, light && styles.socialButtonLabelLight]}
+        maxFontSizeMultiplier={FontScaleCap.heading}
+      >
         {label}
       </Text>
     </Pressable>
@@ -146,7 +167,9 @@ export default function AuthScreen() {
   const updateProfile = useAccountStore((s) => s.updateProfile);
   const sessionRecoveryRequired = useAccountStore((s) => s.status === 'reauth-required');
 
-  const [mode, setMode] = useState<Mode>('login');
+  // Registration is the default: this screen exists to get somebody an
+  // account. Signing in is the rarer errand and lives in a link at the foot.
+  const [mode, setMode] = useState<Mode>('register');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -343,33 +366,6 @@ export default function AuthScreen() {
             {cs.account.intro}
           </Text>
 
-          {/* ── Mode toggle ── */}
-          <View style={styles.segmented}>
-            {(['login', 'register'] as const).map((value) => {
-              const selected = value === mode;
-              const label = value === 'login' ? cs.account.tabLogin : cs.account.tabRegister;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => switchMode(value)}
-                  style={[styles.segment, selected && styles.segmentSelected]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={
-                    value === 'login' ? cs.a11y.authTabLogin : cs.a11y.authTabRegister
-                  }
-                >
-                  <Text
-                    style={[styles.segmentLabel, selected && styles.segmentLabelSelected]}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
           {/* ── Fields ── */}
           {mode === 'register' && (
             <View style={styles.fieldGroup}>
@@ -497,8 +493,9 @@ export default function AuthScreen() {
           {/* ── Social ── */}
           {appleSupported && (
             <SocialButton
+              light
               label={cs.account.continueWithApple}
-              icon={<AppleIcon size={20} color={Colors.foam} />}
+              icon={<AppleIcon size={20} color={Colors.black} />}
               onPress={() => handleSocial('apple')}
               accessibilityLabel={cs.a11y.authSignInApple}
               disabled={busy != null}
@@ -541,6 +538,26 @@ export default function AuthScreen() {
             </Text>
             {cs.account.termsNoteSuffix}
           </Text>
+
+          {/* The other errand, as a link. Registering and signing in are not two
+              equal choices to weigh at the top of the screen: almost everybody
+              here is new, and the segmented control made the returning user's
+              rarer job cost the newcomer a decision. */}
+          <Pressable
+            onPress={() => switchMode(mode === 'register' ? 'login' : 'register')}
+            style={({ pressed }) => [styles.switchRow, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={
+              mode === 'register' ? cs.a11y.authTabLogin : cs.a11y.authTabRegister
+            }
+          >
+            <Text style={styles.switchText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {mode === 'register' ? cs.account.haveAccount : cs.account.noAccount}{' '}
+              <Text style={styles.switchLink}>
+                {mode === 'register' ? cs.account.tabLogin : cs.account.tabRegister}
+              </Text>
+            </Text>
+          </Pressable>
       </KeyboardAwareScrollView>
     </View>
   );
@@ -556,7 +573,7 @@ const styles = StyleSheet.create({
   },
   legalNote: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -571,7 +588,7 @@ const styles = StyleSheet.create({
   },
   googleHelp: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -598,7 +615,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -614,7 +631,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   intro: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -641,7 +658,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   segmentLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -654,7 +671,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   label: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
     textTransform: 'uppercase',
@@ -667,19 +684,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 16,
     color: Colors.foam,
   },
   nicknameHint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
     marginLeft: 2,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
@@ -704,7 +721,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   forgotText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
   },
@@ -717,7 +734,7 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
   },
   resetPrompt: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -736,7 +753,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
   },
   dividerText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -753,11 +770,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  switchRow: {
+    marginTop: Spacing.lg,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchText: { fontWeight: '500', fontSize: 15, color: Colors.foamMuted },
+  switchLink: { fontWeight: '700', color: Colors.amber },
+  socialButtonLight: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.white,
+  },
   socialButtonLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },
+  socialButtonLabelLight: { color: Colors.black },
   pressed: {
     opacity: 0.7,
   },

@@ -194,6 +194,8 @@ interface BackendPubsNearResponse {
     match?: string;
     amenities?: string[];
     beer_brand?: string | null;
+    beer_brands?: string[];
+    beer_match?: string;
     include_other_places?: boolean;
   };
 }
@@ -217,6 +219,7 @@ async function backendSuggest(
   lng: number,
   kmRadius: number,
   beerBrandKey?: string,
+  beerBrandKeys: readonly string[] = [],
   amenityKeys: readonly string[] = [],
   includeOtherPlaces = false,
   signal?: AbortSignal,
@@ -228,7 +231,11 @@ async function backendSuggest(
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));
-  if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
+  if (beerBrandKeys.length > 0) {
+    url.searchParams.set('beer_brands', beerBrandKeys.join(','));
+  } else if (beerBrandKey) {
+    url.searchParams.set('beer_brand', beerBrandKey);
+  }
   if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
   if (includeOtherPlaces) url.searchParams.set('include_other_places', 'true');
 
@@ -247,7 +254,37 @@ async function backendSuggest(
       return null;
     }
     const data = (await resp.json()) as BackendPubsNearResponse;
-    if (amenityKeys.length > 0) {
+    if (beerBrandKeys.length > 0) {
+      const applied = data.applied_filters;
+      const acknowledgedBeerBrands = Array.isArray(applied?.beer_brands)
+        ? [...applied.beer_brands].sort()
+        : [];
+      const requestedBeerBrands = [...beerBrandKeys].sort();
+      const acknowledgedAmenities = Array.isArray(applied?.amenities)
+        ? [...applied.amenities].sort()
+        : [];
+      const requestedAmenities = [...amenityKeys].sort();
+      const acknowledged =
+        applied?.version === 3 &&
+        applied.match === 'all' &&
+        applied.beer_match === 'any' &&
+        acknowledgedBeerBrands.length === requestedBeerBrands.length &&
+        acknowledgedBeerBrands.every((key, index) => key === requestedBeerBrands[index]) &&
+        acknowledgedAmenities.length === requestedAmenities.length &&
+        acknowledgedAmenities.every((key, index) => key === requestedAmenities[index]) &&
+        (applied.include_other_places ?? false) === includeOtherPlaces;
+      if (!acknowledged) {
+        // Multi-select is additive. During a rolling deploy an older server may
+        // ignore `beer_brands` and return an unfiltered 200; never present that
+        // catalogue as if it satisfied the user's ANY-of brand choice.
+        console.warn('[pubs] backend did not acknowledge multi-brand filters');
+        trackApiFailure('pubs_near_backend', {
+          endpoint: '/v1/pubs/near',
+          reason: 'filter_contract_mismatch',
+        });
+        return null;
+      }
+    } else if (amenityKeys.length > 0) {
       const applied = data.applied_filters;
       const acknowledgedAmenities = Array.isArray(applied?.amenities)
         ? [...applied.amenities].sort()
@@ -733,15 +770,20 @@ export async function searchPubsNear(
   signal?: AbortSignal,
   options: {
     beerBrandKey?: string;
+    beerBrandKeys?: readonly string[];
     amenityKeys?: readonly string[];
     includeOtherPlaces?: boolean;
   } = {},
 ): Promise<Pub[]> {
+  const beerBrandKeys = Array.from(
+    new Set((options.beerBrandKeys ?? []).map((key) => key.trim()).filter(Boolean)),
+  ).sort();
   const backendItems = await backendSuggest(
     lat,
     lng,
     kmRadius,
     options.beerBrandKey,
+    beerBrandKeys,
     options.amenityKeys,
     options.includeOtherPlaces,
     signal,

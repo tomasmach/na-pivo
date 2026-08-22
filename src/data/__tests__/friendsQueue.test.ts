@@ -1,8 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  clearFriendsQueue,
+  enqueueFriendOp,
+  flushFriendsQueue,
+  isRetriableFriendError,
+  type FriendQueueItem,
+} from '../friendsQueue';
+import type { Pub } from '../pubs';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const respondToActivity = jest.fn(async () => ({ ok: true }));
@@ -24,15 +33,6 @@ jest.mock('../friendsClient', () => ({
   endFriendPubActivity: (...a: unknown[]) => endFriendPubActivity(...(a as [])),
   sendFriendRequest: (...a: unknown[]) => sendFriendRequest(...(a as [])),
 }));
-
-import {
-  clearFriendsQueue,
-  enqueueFriendOp,
-  flushFriendsQueue,
-  isRetriableFriendError,
-  type FriendQueueItem,
-} from '../friendsQueue';
-import type { Pub } from '../pubs';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
 

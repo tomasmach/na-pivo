@@ -13,13 +13,11 @@
  *      somebody is out; it is how they ask you to come. Those rows keep the
  *      loud card with the RSVP, the rest are quiet one-liners.
  *   2. **Čerstvě cvaknuto** — tonight's photos, unchanged.
- *   3. **Žebříček party** — who out-drank and out-sat whom over the trailing
- *      30 days, switchable between beers and visits.
- *   4. **Co se pilo** — one chronological row per evening, automatic. Ratings
+ *   3. **Co se pilo** — one chronological row per evening, automatic. Ratings
  *      are folded into the evening they belong to rather than running as a
  *      second, parallel feed. (Not called "Výčep": that name belongs to the
  *      screen behind the rail door, where a night is hung up on purpose.)
- *   5. **Co spolu podniknout** — the two other evening formats, at the tail.
+ *   4. **Co spolu podniknout** — the two other evening formats, at the tail.
  *
  * Two things left the surface entirely. The friend list is no longer
  * interleaved with the feed — it was the single most confusing thing on the
@@ -44,7 +42,6 @@ import {
 import {
   ActivityIndicator,
   AppState,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -55,10 +52,12 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
   CheckIcon,
@@ -89,9 +88,9 @@ import {
   markFriendNotificationsRead,
   respondFriendRequest,
   type FriendPubActivity,
+  type FriendProfile,
   type FriendsDashboard,
   type Friendship,
-  type LeaderboardEntry,
 } from '@/data/friendsClient';
 import {
   enqueueFriendOp,
@@ -99,16 +98,13 @@ import {
 } from '@/data/friendsQueue';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import {
-  fetchLeaderboard,
-  type Leaderboard,
-} from '@/data/leaderboardsClient';
 import { fetchPartaFeed, type PartaFeedSitting } from '@/data/partaFeedClient';
 import {
   fetchPhotoContestTeaser,
   type PhotoContestSnapshot,
 } from '@/data/photoContestClient';
 import { cs } from '@/i18n/cs';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
 import {
   selectIsSignedIn,
@@ -117,11 +113,11 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
-import { usePartaSignalStore } from '@/stores/partaSignalStore';
+import { hasLiveFriendSignal, usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
@@ -137,9 +133,7 @@ import { FriendMini, friendDisplayName } from './FriendMini';
 import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
-import { LeaderboardRow } from './LeaderboardRow';
 import MyActivityCard from './MyActivityCard';
-import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
@@ -154,8 +148,6 @@ const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 /** How many evenings the screen holds before "Načíst starší" earns its place. */
 const FEED_PAGE = 20;
-/** Leaderboard rows shown before the "+N dalších" cut (my row is always pinned). */
-const LEADERBOARD_CAP = 8;
 
 function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
@@ -219,6 +211,7 @@ function SheetScaffold({
       contentContainerStyle={styles.sheetListContent}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      keyboardAvoidedExternally
     >
       {children}
     </KeyboardAwareScrollView>
@@ -233,45 +226,20 @@ function SheetScaffold({
   );
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.sheetBackdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.sheetGrabber} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {title}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.sheetClose, pressed && styles.dim]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-            {content}
-          </Pressable>
+    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift={keyboardAware}>
+      <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.sheetGrabber} />
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {title}
+            </Text>
+            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+          </View>
+          {content}
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -282,6 +250,10 @@ function AddFriendSheet({
   onOpenCode,
   onChanged,
   onClose,
+  query,
+  results,
+  onQueryChange,
+  onResultsChange,
 }: {
   visible: boolean;
   hasIdentity: boolean;
@@ -289,6 +261,10 @@ function AddFriendSheet({
   onOpenCode: () => void;
   onChanged: () => void;
   onClose: () => void;
+  query: string;
+  results: FriendProfile[];
+  onQueryChange: (query: string) => void;
+  onResultsChange: (results: FriendProfile[]) => void;
 }) {
   return (
     <SheetScaffold
@@ -303,6 +279,10 @@ function AddFriendSheet({
         onOpenCode={onOpenCode}
         onChanged={onChanged}
         showSearch
+        queryValue={query}
+        resultsValue={results}
+        onQueryChange={onQueryChange}
+        onResultsChange={onResultsChange}
       />
     </SheetScaffold>
   );
@@ -391,7 +371,10 @@ export default function FriendsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+  // Opened straight from Nastavení: the privacy switches live here, but nobody
+  // looks for "kdo mě vidí" on the Parta screen. `?settings=1` is the door.
+  const settingsParam = useLocalSearchParams<{ settings?: string }>().settings;
+  const [settingsVisible, setSettingsVisible] = useState(settingsParam === '1');
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
@@ -399,11 +382,9 @@ export default function FriendsScreen() {
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
-  const [weeklyBoard, setWeeklyBoard] = useState<Leaderboard | null>(null);
-  // 0 = piva, 1 = návštěvy. Falls back to visits on a backend without beers_30d.
-  const [boardMetric, setBoardMetric] = useState<0 | 1>(0);
-  const [showAllBoard, setShowAllBoard] = useState(false);
   const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
+  const [addFriendQuery, setAddFriendQuery] = useState('');
+  const [addFriendResults, setAddFriendResults] = useState<FriendProfile[]>([]);
   const [respondingRequestActions, setRespondingRequestActions] = useState<
     Record<string, 'accept' | 'decline'>
   >({});
@@ -490,10 +471,7 @@ export default function FriendsScreen() {
             usePartaSignalStore.getState().setSignal({
               pendingRequests: next.incomingRequests.length,
               unread: willMarkRead ? 0 : next.unreadCount,
-              liveNow:
-                next.presence.length > 0 ||
-                next.activeFriends.length > 0 ||
-                next.myActiveActivity != null,
+              liveNow: hasLiveFriendSignal(next),
             });
           } else {
             setLoadError(true);
@@ -571,10 +549,7 @@ export default function FriendsScreen() {
     usePartaSignalStore.getState().setSignal({
       pendingRequests: slice.incomingCount,
       unread: slice.unreadCount,
-      liveNow:
-        slice.presence.length > 0 ||
-        slice.activeFriends.length > 0 ||
-        slice.myActiveActivity != null,
+      liveNow: hasLiveFriendSignal(slice),
     });
   }, []);
 
@@ -615,9 +590,6 @@ export default function FriendsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void fetchLeaderboard('beers', 'week').then((board) => {
-        if (mountedRef.current && board) setWeeklyBoard(board);
-      });
       void fetchPhotoContestTeaser().then((snapshot) => {
         if (!snapshot) return;
         if (mountedRef.current) setContestSnapshot(snapshot);
@@ -835,7 +807,7 @@ export default function FriendsScreen() {
 
   // Žebříčky, FotoPivař and Výčep are three whole features that used to be
   // invisible behind the "…" glyph. They belong on the card, in the same rail
-  // idiom the counter uses (docs/design-system.md §5.5).
+  // idiom the counter uses (DESIGN.md §5.5).
   const railTiles = useMemo<DoorRailTile[]>(
     () => [
       {
@@ -984,54 +956,10 @@ export default function FriendsScreen() {
     return cs.friends.emptyActive;
   }, [d?.myActiveActivity, freshestPlan, freshestSitting, sharedTable, sittingCount]);
 
-  // — Žebříček party — beers or visits over the trailing 30 days. The server
-  // sorts by visits; the beer order is this screen's own cut of the same rows.
-  // An older backend omits beers_30d → the toggle hides and visits stand alone.
-  const partyBoard = useMemo(() => d?.leaderboard ?? [], [d?.leaderboard]);
-  const boardHasBeers =
-    partyBoard.length > 0 && partyBoard.every((entry) => entry.beers30d != null);
-  const activeBoardMetric: 0 | 1 = boardHasBeers ? boardMetric : 1;
-  const rankedBoard = useMemo(() => {
-    if (activeBoardMetric === 1) return partyBoard;
-    return [...partyBoard].sort(
-      (a, b) =>
-        (b.beers30d ?? 0) - (a.beers30d ?? 0) ||
-        b.visits30d - a.visits30d ||
-        b.sharedCount - a.sharedCount,
-    );
-  }, [activeBoardMetric, partyBoard]);
-  // Top rows + a tappable "+N dalších" expand, but ALWAYS pin my row while
-  // collapsed (expanding shows everyone, me included).
-  const visibleBoard = showAllBoard ? rankedBoard : rankedBoard.slice(0, LEADERBOARD_CAP);
-  const hiddenBoardCount = rankedBoard.length - visibleBoard.length;
-  const myBoardIndex = rankedBoard.findIndex((entry) => entry.isMe);
-  const myBoardPinned = !showAllBoard && hiddenBoardCount > 0 && myBoardIndex >= LEADERBOARD_CAP;
-  const boardValue = useCallback(
-    (entry: LeaderboardEntry) =>
-      activeBoardMetric === 0 ? (entry.beers30d ?? 0) : entry.visits30d,
-    [activeBoardMetric],
-  );
-  const boardCaption = useCallback(
-    (value: number) =>
-      activeBoardMetric === 0
-        ? cs.friends.leaderboardBeers(value)
-        : cs.friends.leaderboardVisits(value),
-    [activeBoardMetric],
-  );
-
-  const rankLine = useMemo(() => {
-    if (d?.settings.ghostMode) return cs.friends.hiddenRank;
-    const rank = weeklyBoard?.me.rank;
-    if (rank == null) return null;
-    return `${cs.leaderboards.teaserTitleBefore}${cs.leaderboards.teaserTitleRank(rank)}${cs.leaderboards.teaserTitleAfter}`;
-  }, [d?.settings.ghostMode, weeklyBoard?.me.rank]);
-
   const lastResults = contestSnapshot?.lastResults ?? null;
   const contestResultsUnseen =
     lastResults != null && lastResults.contest.id !== lastSeenResultsId;
   const pushAudience = friendCount > 0 || (d?.incomingRequests.length ?? 0) > 0;
-  const streakAtRisk =
-    (d?.streak.currentWeeks ?? 0) > 0 && d?.streak.thisWeekLit === false;
 
   const nudge = useMemo<Nudge | null>(() => {
     const request = d?.incomingRequests[0];
@@ -1083,10 +1011,6 @@ export default function FriendsScreen() {
         onDismiss: () => markContestResultsSeen(lastResults.contest.id),
       };
     }
-    // A streak at risk is deliberately NOT a nudge: its only action is the
-    // footer's own button, so a chip above it was a second button that said the
-    // same thing and stole 64pt from the stream. It lives in the card's footer
-    // fact instead, next to the streak it is about.
     return null;
   }, [
     contestResultsUnseen,
@@ -1283,13 +1207,8 @@ export default function FriendsScreen() {
                   : cs.friends.tableCaptionQuiet
               }
               headline={headline}
-              factStrong={
-                (d?.streak.currentWeeks ?? 0) > 0
-                  ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
-                  : cs.friends.noStreak
-              }
-              // The risk outranks the rank: it expires this week, the rank does not.
-              factMuted={streakAtRisk ? cs.friends.streakRiskFact : rankLine}
+              factStrong={null}
+              factMuted={null}
               // The door is the screen's action, not a second way into the
               // roster — the card itself already opens that when anyone is
               // sitting, and the numeral plus the table say how many.
@@ -1366,81 +1285,7 @@ export default function FriendsScreen() {
           {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
           <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
 
-          {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
-          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.leaderboardHeader}
-          </Text>
-
-          {rankedBoard.length > 1 ? (
-            <>
-              {boardHasBeers ? (
-                <View style={styles.boardSwitch}>
-                  <SegmentedControl
-                    options={[cs.friends.leaderboardMetricBeers, cs.friends.leaderboardMetricVisits]}
-                    value={activeBoardMetric}
-                    onChange={setBoardMetric}
-                    accessibilityLabel={cs.a11y.partyLeaderboardMetric}
-                  />
-                </View>
-              ) : null}
-
-              <View style={styles.card}>
-                {visibleBoard.map((entry, index) => (
-                  <LeaderboardRow
-                    key={entry.account.id || `rank-${index}`}
-                    entry={entry}
-                    rank={index + 1}
-                    value={boardValue(entry)}
-                    caption={boardCaption(boardValue(entry))}
-                    divided={index > 0}
-                    onPress={
-                      entry.isMe || !entry.account.id
-                        ? undefined
-                        : () => openFriendProfile(entry.account.id)
-                    }
-                  />
-                ))}
-                {myBoardPinned && myBoardIndex >= 0 ? (
-                  <>
-                    <Text
-                      style={styles.boardDots}
-                      allowFontScaling={false}
-                      accessibilityElementsHidden
-                      importantForAccessibility="no"
-                    >
-                      …
-                    </Text>
-                    <LeaderboardRow
-                      key="me-pinned"
-                      entry={rankedBoard[myBoardIndex]}
-                      rank={myBoardIndex + 1}
-                      value={boardValue(rankedBoard[myBoardIndex])}
-                      caption={boardCaption(boardValue(rankedBoard[myBoardIndex]))}
-                    />
-                  </>
-                ) : null}
-              </View>
-
-              {!showAllBoard && hiddenBoardCount > 0 ? (
-                <Pressable
-                  onPress={() => setShowAllBoard(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.friends.leaderboardMore(hiddenBoardCount)}
-                  style={({ pressed }) => [styles.moreFeedButton, pressed && styles.dim]}
-                >
-                  <Text style={styles.moreFeedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.leaderboardMore(hiddenBoardCount)}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </>
-          ) : loading && !d ? null : (
-            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.leaderboardEmpty}
-            </Text>
-          )}
-
-          {/* 4. Co se pilo — automatic, chronological, one row per evening. */}
+          {/* 3. Co se pilo — automatic, chronological, one row per evening. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.friends.sittingsHeader}
           </Text>
@@ -1485,7 +1330,7 @@ export default function FriendsScreen() {
             </Text>
           )}
 
-          {/* 5. Co spolu podniknout. */}
+          {/* 4. Co spolu podniknout. */}
           <PartaPlans />
         </ScrollView>
         <ScrollFade height={16} />
@@ -1534,6 +1379,10 @@ export default function FriendsScreen() {
         onOpenCode={openCodeFromAdd}
         onChanged={reload}
         onClose={() => setAddFriendVisible(false)}
+        query={addFriendQuery}
+        results={addFriendResults}
+        onQueryChange={setAddFriendQuery}
+        onResultsChange={setAddFriendResults}
       />
 
       <RosterSheet
@@ -1568,7 +1417,7 @@ const styles = StyleSheet.create({
   },
   partyChipLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1606,7 +1455,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginTop: 24,
     marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1619,7 +1468,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   blockEmpty: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -1627,18 +1476,6 @@ const styles = StyleSheet.create({
   },
   photoStreamItem: {
     marginTop: 24,
-  },
-  // The metric switch sits between the section label and the card, closer to
-  // the card it filters (8 under, the label's own 8 above).
-  boardSwitch: {
-    marginBottom: 8,
-  },
-  // The gap row standing in for the ranks hidden between the cut and my row.
-  boardDots: {
-    textAlign: 'center',
-    color: Colors.mutedText,
-    fontSize: 13,
-    includeFontPadding: false,
   },
   card: {
     overflow: 'hidden',
@@ -1659,7 +1496,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.18),
   },
   moreFeedLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1692,11 +1529,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.08),
   },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   sheetCardWrap: {
     width: '100%',
     // Let the card measure its content until this cap. A percentage minHeight
@@ -1705,20 +1537,18 @@ const styles = StyleSheet.create({
   },
   sheetCard: {
     flexShrink: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   sheetGrabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -1731,20 +1561,9 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
     includeFontPadding: false,
-  },
-  sheetClose: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sheetList: {
     // Shrink only after the card reaches its cap, then scroll inside it.
@@ -1758,7 +1577,7 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     paddingVertical: 24,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1771,7 +1590,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rosterPub: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,

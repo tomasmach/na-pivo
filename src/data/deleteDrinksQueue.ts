@@ -21,10 +21,10 @@
 
 import { deleteDrink } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
-/** Hard cap — matches drinksQueue; an unbounded backlog means the backend has
- *  been unreachable for a very long time, so dropping the oldest beats growth. */
+/** Historical queue limit retained as migration context; durable deletes are never dropped. */
 const MAX_QUEUE_LENGTH = 200;
 
 function isClientId(value: unknown): value is string {
@@ -78,7 +78,7 @@ export async function enqueueDelete(clientId: string): Promise<void> {
     const queue = await loadQueue();
     if (!queue.includes(clientId)) {
       queue.push(clientId);
-      await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
+      await saveQueue(preserveDurableQueue(queue, MAX_QUEUE_LENGTH));
     }
   });
   await flushDeleteDrinksQueue();
@@ -94,7 +94,7 @@ export function clearDeleteDrinksQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

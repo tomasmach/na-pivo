@@ -25,6 +25,9 @@ dependencies = [
 [project.optional-dependencies]
 prod = [
     "gunicorn>=26.0.0",
+    # ASGI worker for gunicorn — required by the party game stream, see
+    # docker-entrypoint.sh.
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [dependency-groups]
@@ -32,6 +35,10 @@ dev = [
     "pip-audit>=2.10.1",
     "pytest>=9.1.1",
     "pytest-django>=4.12.0",
+    # Async tests. Only here to PROVE the party game stream delivers, before we
+    # move production onto ASGI workers for it — an untested stream is exactly
+    # the thing that would take the API down quietly.
+    "pytest-asyncio>=1.0.0",
     "ruff>=0.16.1",
 ]
 
@@ -40,6 +47,8 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 python_files = ["tests.py", "test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Only the stream tests are async; everything else stays a plain sync test.
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100

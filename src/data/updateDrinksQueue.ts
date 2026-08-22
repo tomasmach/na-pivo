@@ -6,20 +6,25 @@
  * user can fix the same typo twice while offline without building a backlog.
  */
 
-import { updateDrinkName } from './drinksClient';
+import { updateDrink, updateDrinkName, type DrinkUpdate } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 
 const STORAGE_KEY = 'na-pivo-update-drinks-queue';
 const MAX_QUEUE_LENGTH = 200;
 
 export interface DrinkUpdateEntry {
   client_id: string;
-  beer_name: string;
+  beer_name?: string;
+  drink_type?: DrinkUpdate['drink_type'];
+  price_czk?: DrinkUpdate['price_czk'];
+  volume_ml?: DrinkUpdate['volume_ml'];
+  serving_type?: DrinkUpdate['serving_type'];
 }
 
 function isDrinkUpdateEntry(entry: unknown): entry is DrinkUpdateEntry {
   const e = entry as DrinkUpdateEntry;
-  return !!e && typeof e.client_id === 'string' && typeof e.beer_name === 'string' && e.beer_name.length > 0;
+  return !!e && typeof e.client_id === 'string' && Object.keys(e).some((key) => key !== 'client_id');
 }
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<DrinkUpdateEntry>(
@@ -50,7 +55,10 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // right account.)
     if (signal.aborted) break;
     attempted.set(entry.client_id, signature(entry));
-    const result = await updateDrinkName(entry.client_id, entry.beer_name);
+    const { client_id, ...update } = entry;
+    const result = Object.keys(update).length === 1 && typeof update.beer_name === 'string'
+      ? await updateDrinkName(client_id, update.beer_name)
+      : await updateDrink(client_id, update);
     if (result !== 'retry') settled.add(entry.client_id);
   }
 
@@ -70,7 +78,7 @@ export async function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void>
     const queue = await loadQueue();
     const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
     deduped.push(entry);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
   });
   await flushUpdateDrinksQueue();
 }
@@ -94,7 +102,7 @@ export function clearUpdateDrinksQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

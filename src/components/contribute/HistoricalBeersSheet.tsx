@@ -1,15 +1,18 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PlusIcon, XIcon } from '@/components/shared/IconGlyph';
+import { PlusIcon } from '@/components/shared/IconGlyph';
+import { CloseButton } from '@/components/shared/CloseButton';
 import type { CommunityBeer } from '@/data/communityClient';
 import { normalizeBeerName } from '@/data/communityHours';
 import { cs, formatVolume } from '@/i18n/cs';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 interface HistoricalBeersSheetProps {
@@ -32,44 +35,15 @@ export function HistoricalBeersSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
+    <BottomSheetModal visible={visible} onClose={onClose}>
         <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
+          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
             <View style={styles.grabber} />
             <View style={styles.header}>
-              <View style={styles.headerCopy}>
-                <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.contribute.historicalBeersHeader}
-                </Text>
-                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.contribute.historicalBeersHint}
-                </Text>
-              </View>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.contribute.closeSheet}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.contribute.historicalBeersHeader}
+              </Text>
+              <CloseButton onPress={onClose} label={cs.contribute.closeSheet} />
             </View>
 
             <ScrollView
@@ -126,79 +100,49 @@ export function HistoricalBeersSheet({
                 );
               })}
             </ScrollView>
-          </Pressable>
+          </View>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
-    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    flex: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
     marginBottom: Spacing.sm,
   },
-  headerCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
   title: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    flexShrink: 1,
+    ...MockType.titleS,
     color: Colors.foam,
-    includeFontPadding: false,
-  },
-  subtitle: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  closeButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   list: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -220,14 +164,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   rowMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

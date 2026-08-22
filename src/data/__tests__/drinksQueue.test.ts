@@ -7,13 +7,15 @@ import {
   flushDrinksQueue,
   getDrinksQueueBoundaryGeneration,
   releaseHistoricalDrinkBatch,
+  resolveQueuedDrinkPartyAssociation,
   removeQueuedDrink,
+  updateQueuedDrink,
   updateQueuedDrinkBeerName,
 } from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 // drinksClient → account → expo-secure-store; mock so requireActual loads.
@@ -52,7 +54,10 @@ async function readQueue(): Promise<DrinkEntry[]> {
 
 async function flushMicrotasks(times = 5): Promise<void> {
   for (let i = 0; i < times; i++) {
-    await Promise.resolve();
+    // Queue delivery acquires the process-wide private-account lease before
+    // entering its local lock, so let the whole event loop progress instead of
+    // assuming a fixed number of promise continuations reaches submitDrink.
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -65,21 +70,61 @@ beforeEach(async () => {
 
 describe('enqueueDrink', () => {
   it('sends the drink and leaves the queue empty on success', async () => {
-    await expect(enqueueDrink(entry())).resolves.toBe(true);
+    await expect(enqueueDrink(entry())).resolves.toBe('delivered');
     expect(submitDrink).toHaveBeenCalledTimes(1);
     await expect(readQueue()).resolves.toEqual([]);
   });
 
   it('keeps a drink queued when the send must retry (network/5xx/429)', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
-    await expect(enqueueDrink(entry())).resolves.toBe(false);
+    await expect(enqueueDrink(entry())).resolves.toBe('queued');
     expect(await readQueue()).toHaveLength(1);
+  });
+
+  it('delivers a pub drink without a recorded price instead of dropping it on load', async () => {
+    const priceless = entry({
+      client_id: 'no-price',
+      beer: { name: 'Pivo z tabule', volume_ml: 500 },
+    });
+
+    await expect(enqueueDrink(priceless)).resolves.toBe('delivered');
+
+    expect(submitDrink).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 'no-price', beer: { name: 'Pivo z tabule', volume_ml: 500 } }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('does not report delivery when AsyncStorage rejected the enqueue write', async () => {
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(enqueueDrink(entry({ client_id: 'not-persisted' }))).resolves.toBe('storage-error');
+
+    expect(submitDrink).not.toHaveBeenCalled();
+  });
+
+  it('keeps a restored Party code through offline persistence and later sync', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrink(entry({ client_id: 'cold-party-beer', party_code: 'PIVOXY' }));
+
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({ client_id: 'cold-party-beer', party_code: 'PIVOXY' }),
+    ]);
+
+    (submitDrink as jest.Mock).mockResolvedValue('ok');
+    await flushDrinksQueue();
+
+    expect(submitDrink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ client_id: 'cold-party-beer', party_code: 'PIVOXY' }),
+      expect.any(AbortSignal),
+    );
+    expect(await readQueue()).toEqual([]);
   });
 
   it('drops a permanently-rejected drink (4xx) from the queue', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('permanent-error');
     // It left the queue (true), but is NOT retried later.
-    await expect(enqueueDrink(entry())).resolves.toBe(true);
+    await expect(enqueueDrink(entry())).resolves.toBe('delivered');
     expect(await readQueue()).toHaveLength(0);
   });
 
@@ -92,16 +137,15 @@ describe('enqueueDrink', () => {
     expect(queue.map((e) => e.client_id).sort()).toEqual(['a', 'b']);
   });
 
-  it('caps the stored queue at 200 items', async () => {
+  it('keeps older offline drinks when the former queue cap is exceeded', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     for (let i = 0; i < 205; i++) {
       await enqueueDrink(entry({ client_id: `id-${i}` }));
     }
     const queue = await readQueue();
-    expect(queue).toHaveLength(200);
-    // Oldest dropped, newest kept.
+    expect(queue).toHaveLength(205);
     expect(queue[queue.length - 1].client_id).toBe('id-204');
-    expect(queue.some((e) => e.client_id === 'id-0')).toBe(false);
+    expect(queue.some((e) => e.client_id === 'id-0')).toBe(true);
   });
 });
 
@@ -109,13 +153,22 @@ describe('ensureDrinkQueued', () => {
   it('persists one replayable client id only once without delivering it', async () => {
     const repeated = entry({ client_id: 'lock-screen-add' });
 
-    await ensureDrinkQueued(repeated);
-    await ensureDrinkQueued(repeated);
+    await expect(ensureDrinkQueued(repeated)).resolves.toBe('queued');
+    await expect(ensureDrinkQueued(repeated)).resolves.toBe('queued');
 
     expect((await readQueue()).map((queued) => queued.client_id)).toEqual([
       'lock-screen-add',
     ]);
     expect(submitDrink).not.toHaveBeenCalled();
+  });
+
+  it('reports a storage failure so a native action is never acknowledged as durable', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      ensureDrinkQueued(entry({ client_id: 'not-durable' })),
+    ).resolves.toBe('storage-error');
+    expect(await readQueue()).toEqual([]);
   });
 });
 
@@ -226,8 +279,8 @@ describe('flushDrinksQueue', () => {
 
     resolveFirst('ok');
     // The trailing flush re-snapshots the queue and delivers 'b', so enqueueDrink
-    // reports it left the queue (true) without waiting for a new app launch.
-    await expect(enqueueing).resolves.toBe(true);
+    // reports it left the queue without waiting for a new app launch.
+    await expect(enqueueing).resolves.toBe('delivered');
     await flushing;
 
     expect(submitDrink).toHaveBeenCalledWith(
@@ -277,6 +330,22 @@ describe('flushDrinksQueue', () => {
   });
 });
 
+describe('resolveQueuedDrinkPartyAssociation', () => {
+  it('removes an unconfirmed reserved table code before delivering the drink', async () => {
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([entry({ client_id: 'staged', party_code: 'PIVOXY' })]),
+    );
+
+    await resolveQueuedDrinkPartyAssociation('pivoxy', null);
+
+    expect(submitDrink).toHaveBeenCalledWith(
+      expect.not.objectContaining({ party_code: expect.anything() }),
+      expect.any(AbortSignal),
+    );
+  });
+});
+
 describe('ensureHistoricalDrinkBatchQueued', () => {
   it('fills only free capacity without evicting an existing offline drink', async () => {
     const existing = Array.from({ length: 199 }, (_, index) =>
@@ -305,7 +374,7 @@ describe('ensureHistoricalDrinkBatchQueued', () => {
     releaseHistoricalDrinkBatch(result.acceptedClientIds);
   });
 
-  it('does not evict an accepted seed ID if a normal count lands before its flush check', async () => {
+  it('does not evict any accepted drink if a normal count lands before its flush check', async () => {
     const existing = Array.from({ length: 199 }, (_, index) =>
       entry({ client_id: `existing-${index}` }),
     );
@@ -319,10 +388,10 @@ describe('ensureHistoricalDrinkBatchQueued', () => {
     await enqueueDrink(entry({ client_id: 'new-count' }), { deliver: false });
 
     const ids = (await readQueue()).map((queued) => queued.client_id);
-    expect(ids).toHaveLength(200);
+    expect(ids).toHaveLength(201);
     expect(ids).toContain('history-protected');
     expect(ids).toContain('new-count');
-    expect(ids).not.toContain('existing-0');
+    expect(ids).toContain('existing-0');
     releaseHistoricalDrinkBatch(result.acceptedClientIds);
   });
 
@@ -436,6 +505,27 @@ describe('updateQueuedDrinkBeerName', () => {
   });
 });
 
+describe('updateQueuedDrink', () => {
+  it('clears optional values from a queued create', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrink(entry({
+      client_id: 'a',
+      beer: { name: 'Plzeň', price_czk: 62, volume_ml: 500, serving_type: 'draft' },
+    }));
+
+    await expect(updateQueuedDrink('a', {
+      price_czk: null,
+      volume_ml: null,
+      serving_type: 'unknown',
+    })).resolves.toBe('queued');
+
+    expect((await readQueue())[0].beer).toEqual({
+      name: 'Plzeň',
+      serving_type: 'unknown',
+    });
+  });
+});
+
 describe('queue validator (persistence round-trip)', () => {
   it('keeps outside (publess) entries and still drops malformed ones on load', async () => {
     const outside: DrinkEntry = {
@@ -469,5 +559,25 @@ describe('queue validator (persistence round-trip)', () => {
     await flushDrinksQueue();
 
     expect(submitDrink).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed timestamps, coordinates and outside pub identity', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      entry({ client_id: 'healthy' }),
+      entry({ client_id: 'bad-date', drank_at: 'not-a-date' }),
+      entry({ client_id: 'bad-coordinates', lat: 999 }),
+      {
+        client_id: 'outside-leak',
+        place_context: 'private',
+        external_id: 'pub-id',
+        beer: { name: 'Kozel' },
+      },
+    ]));
+
+    await flushDrinksQueue();
+
+    expect((submitDrink as jest.Mock).mock.calls.map((call) => call[0].client_id)).toEqual([
+      'healthy',
+    ]);
   });
 });

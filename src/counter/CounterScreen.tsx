@@ -6,7 +6,7 @@
  *   2. the coaster: čárky for tonight's beers + one meta line + the "Účet" door,
  *   3. one nudge slot — never two nudges at once, fixed height so nothing jumps,
  *   4. ONE amber button in the thumb arc whose label always states exactly what
- *      a tap will do ("Co si dáš?" / "Ještě jedno" / "Zapiš první pivo" / …).
+ *      a tap will do ("Co si dáš?" / "Zapsat stejné pivo" / "Zapiš první pivo" / …).
  *
  * Everything else is a named sheet one tap deep: "Co si dáš?" only adds,
  * "Tvůj účet" only removes and closes, "Co ještě?" holds the rest. That split is
@@ -26,9 +26,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
+import {
+  menuScanPermissionDeniedCopy,
+  showMenuScanPermissionBlocked,
+} from '@/contribute/menuScanPermission';
 import {
   beerCountLabel,
   beerNoun,
@@ -46,10 +50,17 @@ import {
   GlassWaterIcon,
   WineIcon,
   CircleDotIcon,
+  BellRingIcon,
+  CheckIcon,
+  ClipboardListIcon,
+  HistoryIcon,
+  Share2Icon,
 } from '@/components/shared/IconGlyph';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 
 import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
+import { isPrivateAccountMutationFrozen } from '@/data/privateAccountBoundary';
 import {
   mergeBeerIntoMenu,
   isSameBeerIdentity,
@@ -60,7 +71,12 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
-import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
+import {
+  enqueueDrink,
+  flushDrinksQueue,
+  isDrinkQueued,
+  removeQueuedDrink,
+} from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { shareFriendPubActivity } from '@/data/friendsClient';
@@ -110,7 +126,6 @@ import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
-import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PlaceChip, type PlaceChipKind } from '@/counter/PlaceChip';
 import { CoasterCard } from '@/counter/CoasterCard';
 import { CounterQuickActions } from '@/counter/CounterQuickActions';
@@ -118,7 +133,7 @@ import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
-import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
+import { selectConfirmedPartyJoinCode, usePartyEveningStore } from '@/stores/partyEveningStore';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 // ─── Timings ──────────────────────────────────────────────────────────────────
@@ -150,7 +165,10 @@ export function minutesSinceDrink(at: string, nowMs: number = Date.now()): numbe
   return Math.max(0, Math.floor((nowMs - atMs) / 60000));
 }
 
-export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: number = Date.now()): boolean {
+export function shouldWarnRapidDrink(
+  lastDrinkAt: string | undefined,
+  nowMs: number = Date.now(),
+): boolean {
   if (!lastDrinkAt) return false;
   const atMs = Date.parse(lastDrinkAt);
   if (!Number.isFinite(atMs)) return false;
@@ -290,8 +308,7 @@ function PermissionGate({
 /** Where the counter counts: a real pub, or one of the "Mimo hospodu" contexts
  *  (home / outdoors / elsewhere) with no pub identity at all. */
 export type CounterPlace =
-  | { kind: 'pub'; pub: Pub }
-  | { kind: 'outside'; context: OutsidePlaceContext };
+  { kind: 'pub'; pub: Pub } | { kind: 'outside'; context: OutsidePlaceContext };
 
 const OUTSIDE_CHIP_KIND: Record<OutsidePlaceContext, PlaceChipKind> = {
   private: 'private',
@@ -339,6 +356,9 @@ function Tacek({
 
   const pub = place?.kind === 'pub' ? place.pub : null;
   const outsideContext = place?.kind === 'outside' ? place.context : null;
+  // The shared table, if this phone is at one. Only ever a tag on the drink —
+  // the counter works exactly the same without it.
+  const partyCode = usePartyEveningStore(selectConfirmedPartyJoinCode);
   const placeLabel = place
     ? pub
       ? pub.name
@@ -355,7 +375,9 @@ function Tacek({
   /** The tally identity of this place — null until a place is resolved. */
   const cell = useMemo(() => {
     if (!place) return null;
-    return place.kind === 'pub' ? geohash8(place.pub.lat, place.pub.lng) : contextPubKey(place.context);
+    return place.kind === 'pub'
+      ? geohash8(place.pub.lat, place.pub.lng)
+      : contextPubKey(place.context);
   }, [place]);
 
   const setOverride = useCommunityStore((s) => s.setOverride);
@@ -394,9 +416,16 @@ function Tacek({
   // — Nudge slot occupants —
   /** A tap that tripped the rapid guard, waiting for an explicit yes. Nothing
    *  has been written; a timeout is a no. */
-  const [pendingRapid, setPendingRapid] = useState<{ beer: CountableBeer; minutes: number | null } | null>(null);
+  const [pendingRapid, setPendingRapid] = useState<{
+    beer: CountableBeer;
+    minutes: number | null;
+  } | null>(null);
   /** The drink counted within the last UNDO_WINDOW_MS, undoable from the strip. */
-  const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean } | null>(null);
+  const [lastCounted, setLastCounted] = useState<{
+    id: string;
+    ordinal: number;
+    isBeer: boolean;
+  } | null>(null);
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
   /** Session clientId whose "Dopito?" nudge was already shown and answered. */
   const [dopitoNudgedFor, setDopitoNudgedFor] = useState<string | null>(null);
@@ -506,15 +535,19 @@ function Tacek({
   const count = isThisSession ? sessionCount(current) : 0;
   const totalCzk = isThisSession ? sessionTotalCzk(current) : 0;
   const sessionDrinks = useMemo(
-    () => (isThisSession ? current?.drinks ?? [] : []),
+    () => (isThisSession ? (current?.drinks ?? []) : []),
     [isThisSession, current],
   );
   const latestBeer = useMemo(
-    () => [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) === 'beer'),
+    () =>
+      [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) === 'beer'),
     [sessionDrinks],
   );
   const latestAlcohol = useMemo(
-    () => [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) !== 'soft_drink'),
+    () =>
+      [...sessionDrinks]
+        .reverse()
+        .find((drink) => normalizeDrinkType(drink.drinkType) !== 'soft_drink'),
     [sessionDrinks],
   );
   const latestDrinkAt = latestAlcohol?.at;
@@ -532,7 +565,7 @@ function Tacek({
     return () => clearInterval(timer);
   }, [latestDrinkAt]);
 
-  /** The beer "Ještě jedno" repeats — the same pour, same serving, same price. */
+  /** The repeat action logs the same pour, same serving, same price. */
   const repeatBeer = useMemo<CountableBeer | null>(() => {
     if (!latestBeer) return null;
     return {
@@ -555,16 +588,10 @@ function Tacek({
   // replaces the persisted override after sync or another mapper correction.
   const currentBackendMenu = backendMenu?.pubId === pub?.id ? backendMenu : null;
   const backendBeersUpdatedAt = currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt;
-  const currentBeerListOverride = isBeerListOverrideCurrent(
-    override,
-    backendBeersUpdatedAt,
-  )
+  const currentBeerListOverride = isBeerListOverrideCurrent(override, backendBeersUpdatedAt)
     ? override
     : undefined;
-  const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(
-    override,
-    backendBeersUpdatedAt,
-  )
+  const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(override, backendBeersUpdatedAt)
     ? override
     : undefined;
 
@@ -588,21 +615,21 @@ function Tacek({
   }, [currentBackendMenu, currentBeerListOverride, pub]);
 
   const beerMenuRotates = pub
-    ? currentMenuTypeOverride?.beerMenuRotates ??
+    ? (currentMenuTypeOverride?.beerMenuRotates ??
       currentBackendMenu?.beerMenuRotates ??
       pub.beerMenuRotates ??
-      false
+      false)
     : false;
 
   /** Every beer identity from the menu, flattened, small → large per name. */
-  const menuBeers = useMemo(
-    () => groupMenuBeers(menu).flatMap((group) => group.beers),
-    [menu],
-  );
+  const menuBeers = useMemo(() => groupMenuBeers(menu).flatMap((group) => group.beers), [menu]);
 
   /** Tonight's drinks folded to one row per identity, latest first. */
   const tonightBeers = useMemo(() => {
-    const seen = new Map<string, { beer: CommunityBeer & { servingType?: ServingType }; count: number }>();
+    const seen = new Map<
+      string,
+      { beer: CommunityBeer & { servingType?: ServingType }; count: number }
+    >();
     for (const drink of sessionDrinks) {
       const key = drinkKey(drink);
       const entry = seen.get(key);
@@ -655,7 +682,10 @@ function Tacek({
     [priceMeta, tonightBeers],
   );
 
-  const tonightKeys = useMemo(() => new Set(tonightBeers.map((entry) => entry.key)), [tonightBeers]);
+  const tonightKeys = useMemo(
+    () => new Set(tonightBeers.map((entry) => entry.key)),
+    [tonightBeers],
+  );
 
   const menuRows = useMemo<DrinkPickRow[]>(
     () =>
@@ -724,6 +754,7 @@ function Tacek({
 
   const countBeer = useCallback(
     (beer: CountableBeer, atOverride?: string) => {
+      if (isPrivateAccountMutationFrozen()) return;
       if (!place || !cell) return;
       const id = generateUuidV4();
       const at = atOverride ?? new Date().toISOString();
@@ -733,8 +764,17 @@ function Tacek({
 
       const label = pub ? pub.name : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext);
       const tallyPlace = pub
-        ? { pubKey: cell, pubName: pub.name, pubCity: pub.city, pubExternalId: pub.id }
-        : { pubKey: cell, pubName: label, placeContext: outsideContext as OutsidePlaceContext };
+        ? {
+            pubKey: cell,
+            pubName: pub.name,
+            pubCity: pub.city,
+            pubExternalId: pub.id,
+          }
+        : {
+            pubKey: cell,
+            pubName: label,
+            placeContext: outsideContext as OutsidePlaceContext,
+          };
       const tallyBeer = {
         id,
         beerName: beer.name,
@@ -748,6 +788,9 @@ function Tacek({
       // A backdate to an earlier drinking day is a past evening: file it into
       // history so it never becomes/clobbers the live session.
       const backdateToPast = !!atOverride && isPastEveningBackdate(at);
+      // A backdated drink is an edit to the diary, not something happening at
+      // the table right now. Never leak it into the currently active party.
+      const activePartyCode = atOverride ? null : partyCode;
 
       let landedSession: TallySession | null;
       if (backdateToPast) {
@@ -761,7 +804,7 @@ function Tacek({
         void refreshBeerCountReminderAfterBeer(landedSession.clientId);
       }
       // An outside evening is NOT a pub visit — skip the visit record there.
-      if (pub) syncVisit(landedSession);
+      if (pub) syncVisit(landedSession, undefined, activePartyCode);
       if (!atOverride && startsSession) {
         void trackClientEvent({ event: 'counter_session_started' });
       }
@@ -778,7 +821,9 @@ function Tacek({
       // Merge into the local community menu so the price shows instantly across
       // the app. Pub only — an outside beer must never enter community data.
       if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
-        setOverride(cell, { beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }) });
+        setOverride(cell, {
+          beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }),
+        });
       }
       // The check-in prompt is now-semantic and pub-bound — skip it for a
       // backdated or outside log.
@@ -787,7 +832,13 @@ function Tacek({
       const entry = buildDrinkEntry(
         {
           ...(pub
-            ? { externalId: pub.id || null, name: pub.name, lat: pub.lat, lng: pub.lng, city: pub.city }
+            ? {
+                externalId: pub.id || null,
+                name: pub.name,
+                lat: pub.lat,
+                lng: pub.lng,
+                city: pub.city,
+              }
             : { placeContext: outsideContext as OutsidePlaceContext }),
           drinkType,
           beer: {
@@ -797,20 +848,27 @@ function Tacek({
             servingType: beer.servingType,
           },
           drankAt: at,
+          // A beer drunk during a shared evening is tagged with it — one write,
+          // two readers. The server ignores the code when the evening ended, so
+          // a queue that flushes tomorrow morning cannot fail on it.
+          ...(activePartyCode ? { partyCode: activePartyCode } : {}),
         },
         id,
       );
       // Persist now (crash-safe) but hold the send for the undo window so the
       // queued payload stays retractable; deliver + mark synced when it ends.
-      void enqueueDrink(entry, { deliver: false });
+      const enqueueResult = enqueueDrink(entry, { deliver: false })
+        .catch(() => 'storage-error' as const);
       const timer = setTimeout(() => {
         sendTimers.current.delete(id);
         setLastCounted((prev) => (prev?.id === id ? null : prev));
-        void flushDrinksQueue()
-          .then(() => isDrinkQueued(id))
-          .then((stillQueued) => {
-            if (!stillQueued) markDrinkSynced(id);
-          });
+        void enqueueResult.then(async (result) => {
+          // A failed AsyncStorage write means there is no durable retry payload.
+          // Never turn that local row into a fake "sent" beer.
+          if (result === 'storage-error') return;
+          await flushDrinksQueue();
+          if (!(await isDrinkQueued(id))) markDrinkSynced(id);
+        });
       }, UNDO_WINDOW_MS);
       sendTimers.current.set(id, timer);
 
@@ -818,7 +876,11 @@ function Tacek({
       // drink is not "the beer you just had", so it gets no strip.
       if (!atOverride) {
         const liveCountAfter = sessionCount(useTallyStore.getState().current);
-        setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer' });
+        setLastCounted({
+          id,
+          ordinal: liveCountAfter,
+          isBeer: drinkType === 'beer',
+        });
       }
 
       if (hapticEnabled) fireSuccessHaptic();
@@ -859,6 +921,7 @@ function Tacek({
       markDrinkSynced,
       menu,
       outsideContext,
+      partyCode,
       place,
       pub,
       setOverride,
@@ -897,7 +960,10 @@ function Tacek({
         return;
       }
       if (rapidTimer.current) clearTimeout(rapidTimer.current);
-      setPendingRapid({ beer, minutes: latestDrinkAt ? minutesSinceDrink(latestDrinkAt) : null });
+      setPendingRapid({
+        beer,
+        minutes: latestDrinkAt ? minutesSinceDrink(latestDrinkAt) : null,
+      });
       rapidTimer.current = setTimeout(() => {
         rapidTimer.current = null;
         setPendingRapid(null);
@@ -933,7 +999,7 @@ function Tacek({
       if (pub) {
         const nextSession = useTallyStore.getState().current;
         if (nextSession && nextSession.drinks.length > 0) {
-          syncVisit(nextSession, visitUpdatedAt);
+          syncVisit(nextSession, visitUpdatedAt, partyCode);
         } else if (currentVisitClientId) {
           deleteVisitByClientId(currentVisitClientId);
         }
@@ -953,7 +1019,7 @@ function Tacek({
 
       if (hapticEnabled) fireLightImpactHaptic();
     },
-    [current, hapticEnabled, pub, removeDrink],
+    [current, hapticEnabled, partyCode, pub, removeDrink],
   );
 
   /** Receipt minus: drop the most recent drink of that identity. */
@@ -1060,7 +1126,10 @@ function Tacek({
       };
       if (result.servingType) setLastServingType(result.servingType);
       if (result.drinkType === 'beer' && typeof result.priceCzk === 'number' && pub) {
-        void trackClientEvent({ event: 'beer_price_added', context: { mode: mode ?? 'unknown' } });
+        void trackClientEvent({
+          event: 'beer_price_added',
+          context: { mode: mode ?? 'unknown' },
+        });
       }
       if (mode === 'edit') {
         // Community-menu edit is a pub concept; outside rows are session-derived.
@@ -1099,7 +1168,11 @@ function Tacek({
         return;
       }
       if (typeof beer.priceCzk === 'number') {
-        requestCountBeer({ ...beer, priceCzk: beer.priceCzk, drinkType: 'beer' });
+        requestCountBeer({
+          ...beer,
+          priceCzk: beer.priceCzk,
+          drinkType: 'beer',
+        });
         return;
       }
       // Unpriced menu beer: ask the price first — that answer is what fills the
@@ -1178,14 +1251,20 @@ function Tacek({
       const { pickAndPrepareMenuPhoto } = await import('@/data/menuPhotoPicker');
       const picked = await pickAndPrepareMenuPhoto(source);
       if (picked.status === 'cancelled') return;
-      if (picked.status === 'denied' || picked.status === 'denied-permanent') {
-        toast(cs.contribute.scanMenu.permissionDenied, {
+      if (picked.status === 'denied') {
+        toast(menuScanPermissionDeniedCopy(source), {
           icon: <CameraIcon size={18} color={Colors.amber} />,
         });
         return;
       }
+      if (picked.status === 'denied-permanent') {
+        showMenuScanPermissionBlocked(source);
+        return;
+      }
       if (picked.status === 'error') {
-        toast(cs.contribute.scanMenu.errorToast, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
+        toast(cs.contribute.scanMenu.errorToast, {
+          icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+        });
         return;
       }
       const result = await scanMenuPhoto(picked.uri);
@@ -1217,9 +1296,9 @@ function Tacek({
   const handleSelectScannedDrink = useCallback(
     (drink: ScannedDrink) => {
       setScannedDrinks([]);
-      openForm('add', drink, drink.drinkType);
+      runAfterSheetClose(() => openForm('add', drink, drink.drinkType));
     },
-    [openForm],
+    [openForm, runAfterSheetClose],
   );
 
   // ── Backdating ──────────────────────────────────────────────────────────────
@@ -1243,7 +1322,10 @@ function Tacek({
     showAppDialog({
       title: cs.counter.backdateTitle,
       buttons: [
-        { text: cs.counter.backdateHourAgo, onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)) },
+        {
+          text: cs.counter.backdateHourAgo,
+          onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)),
+        },
         {
           text: cs.counter.backdateTwoHoursAgo,
           onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)),
@@ -1266,7 +1348,11 @@ function Tacek({
       title: cs.counter.doneTitle,
       message: cs.counter.doneBody,
       buttons: [
-        { text: cs.counter.cancel, style: 'cancel', onPress: () => setDopitoNudgedFor(clientId) },
+        {
+          text: cs.counter.cancel,
+          style: 'cancel',
+          onPress: () => setDopitoNudgedFor(clientId),
+        },
         {
           text: cs.counter.doneConfirm,
           onPress: () => {
@@ -1275,7 +1361,10 @@ function Tacek({
             setDopitoNudgedFor(clientId);
             setLastCounted(null);
             setCheckInBeerName(null);
-            void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
+            void trackClientEvent({
+              event: 'counter_session_closed',
+              context: { reason: 'manual' },
+            });
             if (hapticEnabled) fireLightImpactHaptic();
           },
         },
@@ -1306,13 +1395,26 @@ function Tacek({
       showToast(cs.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '' } });
+      await enqueueFriendOp({
+        op: 'activity',
+        clientId: shareClientId,
+        payload: { pub, message: '' },
+      });
       setBroadcastCell(cell);
       showToast(cs.friends.composeQueued);
     } else {
       showToast(result.detail || cs.friends.shareError);
     }
-  }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
+  }, [
+    broadcasted,
+    cell,
+    current,
+    hapticEnabled,
+    isThisSession,
+    pub,
+    sharingWithFriends,
+    showToast,
+  ]);
 
   // ── The one button ──────────────────────────────────────────────────────────
 
@@ -1422,7 +1524,11 @@ function Tacek({
       };
     }
     if (dopitoVisible) {
-      return { kind: 'dopito', label: cs.counter.dopitoNudge, onPress: handleDone };
+      return {
+        kind: 'dopito',
+        label: cs.counter.dopitoNudge,
+        onPress: handleDone,
+      };
     }
     if (checkInBeerName && pub) {
       return {
@@ -1433,14 +1539,10 @@ function Tacek({
         onDismiss: () => setCheckInBeerName(null),
       };
     }
-    if (count > 0) {
-      return { kind: 'rank', node: <WeeklyRankChip sessionBeerCount={count} /> };
-    }
     return null;
   }, [
     checkInBeerName,
     confirmRapid,
-    count,
     dopitoVisible,
     handleDone,
     lastCounted,
@@ -1449,6 +1551,58 @@ function Tacek({
     removeDrinkById,
   ]);
 
+  const moreRows: MoreRow[] = [
+    ...(count > 0
+      ? [
+          {
+            key: 'done',
+            label: cs.counter.doneDrinking,
+            icon: CheckIcon,
+            onPress: () => runAfterSheetClose(handleDone),
+            accessibilityLabel: cs.a11y.counterDone,
+          },
+        ]
+      : []),
+    ...(liveNight
+      ? [
+          {
+            key: 'sticker',
+            label: cs.counter.moreStory,
+            icon: Share2Icon,
+            onPress: () => runAfterSheetClose(() => setStickerOpen(true)),
+          },
+        ]
+      : []),
+    ...(pub
+      ? [
+          {
+            key: 'ping',
+            label: broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort,
+            icon: broadcasted ? CheckIcon : BellRingIcon,
+            onPress: () => runAfterSheetClose(() => void handleShareWithFriends()),
+            disabled: broadcasted,
+          },
+        ]
+      : []),
+    {
+      key: 'backdate',
+      label: cs.counter.backdateLink,
+      icon: HistoryIcon,
+      onPress: () => runAfterSheetClose(handleBackdatePress),
+    },
+    ...(pub
+      ? [
+          {
+            key: 'scan',
+            label: scanningDrinks ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks,
+            icon: ClipboardListIcon,
+            onPress: () => runAfterSheetClose(() => setScanSourceVisible(true)),
+            disabled: scanningDrinks,
+          },
+        ]
+      : []),
+  ];
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -1456,7 +1610,10 @@ function Tacek({
       style={[
         styles.root,
         styles.surface,
-        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        {
+          paddingTop: topInset,
+          paddingBottom: Math.max(insets.bottom, Spacing.sm),
+        },
       ]}
     >
       <View style={styles.header}>
@@ -1547,16 +1704,11 @@ function Tacek({
         onClose={() => setReceiptOpen(false)}
       />
 
-      <CounterMoreSheet
+      <MoreSheet
         visible={moreVisible}
+        title={cs.counter.moreTitle}
+        rows={moreRows}
         onClose={closeMore}
-        onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
-        onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
-        onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
-        broadcasted={broadcasted}
-        onBackdate={() => runAfterSheetClose(handleBackdatePress)}
-        onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
-        scanning={scanningDrinks}
       />
 
       <BeerFormModal
@@ -1610,7 +1762,7 @@ function Tacek({
           onRenamed={onPubRenamed}
         />
       ) : null}
-      {pub && cell && checkInBeerName && checkInSheetOpen ? (
+      {pub && cell && checkInBeerName ? (
         <BeerCheckInSheet
           visible={checkInSheetOpen}
           key={checkInBeerName}
@@ -1618,8 +1770,14 @@ function Tacek({
           pub={pub}
           pubKey={cell}
           visitClientId={isThisSession ? current?.clientId : null}
-          onClose={() => setCheckInSheetOpen(false)}
-          onSubmitted={() => setCheckInBeerName(null)}
+          onClose={() => {
+            setCheckInSheetOpen(false);
+            runAfterSheetClose(() => setCheckInBeerName(null));
+          }}
+          onSubmitted={() => {
+            setCheckInSheetOpen(false);
+            runAfterSheetClose(() => setCheckInBeerName(null));
+          }}
         />
       ) : null}
     </View>
@@ -1790,14 +1948,14 @@ const styles = StyleSheet.create({
   },
   gateIcon: { marginBottom: 4 },
   gateTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 26,
     color: Colors.foam,
     textAlign: 'center',
     lineHeight: 32,
   },
   gateBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1813,7 +1971,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   gateLinkText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
   },

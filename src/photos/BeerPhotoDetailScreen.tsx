@@ -31,7 +31,6 @@ import {
   TrophyIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
-import { deleteBeerPhoto } from '@/data/beerPhotosClient';
 import {
   deleteBeerPhotoLocalFile,
   enqueueBeerPhoto,
@@ -42,7 +41,7 @@ import { cs } from '@/i18n/cs';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** "9. července 2026" — the long Czech date for the meta row. */
@@ -100,8 +99,12 @@ export default function BeerPhotoDetailScreen() {
   const photo = useBeerPhotosStore((s) =>
     s.photos.find((p) => p.clientId === key || p.id === key),
   );
+  const uri = photo ? photo.imageUrl ?? photo.localUri : undefined;
 
   const [busy, setBusy] = useState(false);
+  const [failedImageUri, setFailedImageUri] = useState<string | null>(null);
+  const [imageReloadKey, setImageReloadKey] = useState(0);
+  const imageLoadFailed = !!uri && failedImageUri === uri;
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -112,20 +115,16 @@ export default function BeerPhotoDetailScreen() {
     if (!photo || busy) return;
     setBusy(true);
     try {
-      if (photo.syncState === 'synced' && photo.id) {
-        const res = await deleteBeerPhoto(photo.id);
-        if (!res.ok) {
-          showToast(cs.photoDiary.deleteError);
-          return;
-        }
-        removePhoto(photo.id);
-      } else {
-        // Never uploaded (or permanently rejected): cancel the queued op and
-        // clean up the durable local JPEG — nothing lives server-side.
-        await removeQueuedBeerPhoto(photo.clientId);
-        deleteBeerPhotoLocalFile(photo.clientId);
-        removePhoto(photo.clientId);
+      // Synced, pending, and failed photos share one durable client-id delete.
+      // This also suppresses a stale GET captured before DELETE and cancels a
+      // multipart upload that may otherwise commit after its native abort.
+      const deletionQueued = await removeQueuedBeerPhoto(photo.clientId);
+      if (!deletionQueued) {
+        showToast(cs.photoDiary.deleteError);
+        return;
       }
+      deleteBeerPhotoLocalFile(photo.clientId);
+      removePhoto(photo.clientId);
       showToast(cs.photoDiary.deletedToast);
       goBack();
     } finally {
@@ -144,21 +143,30 @@ export default function BeerPhotoDetailScreen() {
     });
   }, [doDelete]);
 
-  const retryUpload = useCallback(() => {
+  const retryUpload = useCallback(async () => {
     if (!photo?.localUri) return;
-    void enqueueBeerPhoto({
+    const queued = await enqueueBeerPhoto({
       clientId: photo.clientId,
       localUri: photo.localUri,
       caption: photo.caption,
       pubCacheKey: photo.pubCacheKey || undefined,
       pubName: photo.pubName || undefined,
       pubCity: photo.pubCity || undefined,
+      partyCode: photo.partyCode,
+      partyDrinkingDay: photo.partyDrinkingDay,
       visibility: photo.visibility,
       takenAt: photo.takenAt,
     });
-    showToast(cs.photoDiary.retryQueuedToast, {
-      icon: <RefreshCwIcon size={18} color={Colors.amber} />,
-    });
+    showToast(
+      queued.persisted ? cs.photoDiary.retryQueuedToast : cs.photoDiary.errorSave,
+      {
+        icon: queued.persisted ? (
+          <RefreshCwIcon size={18} color={Colors.amber} />
+        ) : (
+          <InfoIcon size={18} color={Colors.foamMuted} />
+        ),
+      },
+    );
   }, [photo, showToast]);
 
   const enterContest = useCallback(async () => {
@@ -198,8 +206,6 @@ export default function BeerPhotoDetailScreen() {
       ],
     });
   }, [enterContest]);
-
-  const uri = photo ? photo.imageUrl ?? photo.localUri : undefined;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
@@ -245,12 +251,36 @@ export default function BeerPhotoDetailScreen() {
         >
           <View style={styles.photoCard}>
             {uri ? (
-              <Image
-                source={{ uri }}
-                style={styles.photo}
-                resizeMode="cover"
-                accessibilityIgnoresInvertColors
-              />
+              <View style={styles.photo}>
+                <Image
+                  key={`${photo.clientId}:${imageReloadKey}`}
+                  source={{ uri }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  accessibilityIgnoresInvertColors
+                  onError={() => setFailedImageUri(uri)}
+                />
+                {imageLoadFailed ? (
+                  <View style={styles.photoLoadError} accessibilityLiveRegion="polite">
+                    <Text style={styles.photoLoadErrorText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.photoDiary.viewerLoadError}
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        setFailedImageUri(null);
+                        setImageReloadKey((value) => value + 1);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.a11y.photoViewerRetry}
+                      style={({ pressed }) => [styles.photoLoadRetry, pressed && styles.dim]}
+                    >
+                      <Text style={styles.photoLoadRetryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                        {cs.photoDiary.viewerRetry}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
             ) : (
               <View style={styles.photo} />
             )}
@@ -388,7 +418,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
@@ -403,7 +433,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   missingText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -424,6 +454,38 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 5,
     backgroundColor: Colors.stout3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoLoadError: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.stout3,
+  },
+  photoLoadErrorText: {
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.foamMuted,
+  },
+  photoLoadRetry: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+  },
+  photoLoadRetryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.foam,
   },
 
   syncRow: {
@@ -433,7 +495,7 @@ const styles = StyleSheet.create({
   },
   syncText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -450,13 +512,13 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   retryPillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },
 
   caption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -477,7 +539,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -497,12 +559,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   contestNoteTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foam,
   },
   contestNoteLink: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },
@@ -511,7 +573,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   contestHint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,

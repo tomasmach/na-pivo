@@ -25,6 +25,7 @@ from django.db import models
 from django.utils import timezone
 
 from pubs.enrichment import FirmyHoursSource, RawHours, classify_venue, geohash8
+from pubs.external_api_budget import reserve_external_api_request
 from pubs.models import EnrichTask, PubHours
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,12 @@ class Command(BaseCommand):
             proxy_url=proxy_url,
             min_interval=min_interval,
             daily_cap=daily_cap,
+            request_budget=lambda cap: reserve_external_api_request(
+                provider="firmy",
+                operation="http",
+                cap=cap,
+                reset_timezone="UTC",
+            ),
         )
 
         try:

@@ -21,11 +21,16 @@ cache around every test (same pattern as test_account.py). Individual tests keep
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -36,15 +41,33 @@ import pubs.oauth as oauth
 from pubs.accounts import _delete_or_move_account_rows
 from pubs.models import (
     Account,
+    AccountMergeOperation,
     AuthIdentity,
     AuthToken,
+    BeerCheckIn,
+    BeerCheckInReaction,
+    BeerPhoto,
+    BeerPhotoDeletionTombstone,
+    BeerPhotoFileDeletion,
     DrinkLog,
     EmailCredential,
+    Follow,
     OneTimeToken,
+    PartyEvening,
+    PartyEveningDrink,
+    PartyEveningMember,
+    PartyGame,
+    PartyGameEvent,
+    PhotoContest,
+    PhotoContestEntry,
+    PhotoContestVote,
     PubAmenity,
     PubAmenityVote,
+    PublishedNight,
+    PublishedNightComment,
     PubVisit,
     PushDevice,
+    account_merge_fingerprint,
 )
 
 # ---------------------------------------------------------------------------
@@ -169,6 +192,10 @@ def _register_and_token(client, email: str, password: str = "Tr0ub4dor&3") -> tu
     return client, resp.json()["token"]
 
 
+def _merge_body(operation_id: uuid.UUID, **values) -> dict:
+    return {**values, "merge_operation_id": str(operation_id)}
+
+
 def _verify_code(sent_emails, tag: str) -> str:
     """Pull the raw one-time token out of the most recent captured email."""
     for record in reversed(sent_emails):
@@ -209,6 +236,34 @@ def _seed_amenity_vote(account: Account) -> PubAmenity:
         yes_count=1,
         distinct_voter_count=1,
         first_mapper=account,
+    )
+
+
+def _published_night(
+    account: Account,
+    *,
+    client_id: str,
+    drinking_day,
+    participant_ids: list[str] | None = None,
+    photo_ids: list[str] | None = None,
+    game_ids: list[str] | None = None,
+) -> PublishedNight:
+    now = timezone.now()
+    return PublishedNight.objects.create(
+        account=account,
+        client_id=client_id,
+        drinking_day=drinking_day,
+        started_at=now,
+        ended_at=now,
+        beer_count=2,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        participant_ids=participant_ids or [],
+        photo_ids=photo_ids or [],
+        game_ids=game_ids or [],
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=now,
     )
 
 
@@ -390,6 +445,501 @@ def test_login_with_anonymous_bearer_merges_progress_into_existing_account(
 
 
 @pytest.mark.django_db
+def test_login_merge_preserves_three_zero_owner_rows_and_party_tree(client, sent_emails):
+    _register(client, "merge-owner-data@x.cz", "Tr0ub4dor&3")
+    target = EmailCredential.objects.get(email="merge-owner-data@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+
+    checkin = BeerCheckIn.objects.create(
+        account=source,
+        client_id=uuid.uuid4(),
+        beer_name="Plzeň",
+        beer_key="plzen",
+    )
+    evening = PartyEvening.objects.create(
+        host=source,
+        client_id=uuid.uuid4(),
+        join_code="MERGE301",
+        pub_name="U Tří růží",
+    )
+    membership = PartyEveningMember.objects.create(
+        evening=evening,
+        account=source,
+    )
+    shared_drink = PartyEveningDrink.objects.create(
+        evening=evening,
+        account=source,
+        client_id=uuid.uuid4(),
+        beer_name="Ležák",
+    )
+    game = PartyGame.objects.create(
+        evening=evening,
+        started_by=source,
+        client_id=uuid.uuid4(),
+        catalog_key="dice-duel",
+        name="Kostky",
+        roster_account_ids=[str(source.public_id)],
+    )
+    game_event = PartyGameEvent.objects.create(
+        game=game,
+        account=source,
+        subject=source,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        delta=1,
+    )
+    photo = BeerPhoto.objects.create(
+        account=source,
+        party_evening=evening,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{source.public_id}/merge-owner.webp",
+    )
+    night = _published_night(
+        target,
+        client_id="target-night-for-comment",
+        drinking_day=timezone.localdate(),
+    )
+    comment = PublishedNightComment.objects.create(
+        account=source,
+        night=night,
+        client_id=uuid.uuid4(),
+        body="Tohle si pamatuju.",
+    )
+
+    response = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-owner-data@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert not Account.objects.filter(pk=source.pk).exists()
+    for row in (checkin, membership, shared_drink, photo, comment):
+        row.refresh_from_db()
+        assert row.account_id == target.pk
+    evening.refresh_from_db()
+    game.refresh_from_db()
+    game_event.refresh_from_db()
+    assert evening.host_id == target.pk
+    assert game.evening_id == evening.pk
+    assert game.started_by_id == target.pk
+    assert game.roster_account_ids == [str(target.public_id)]
+    assert game_event.account_id == target.pk
+    assert game_event.subject_id == target.pk
+    assert photo.party_evening_id == evening.pk
+
+
+@pytest.mark.django_db
+def test_login_merge_deduplicates_three_zero_parents_without_losing_children(client, sent_emails):
+    _register(client, "merge-conflicts@x.cz", "Tr0ub4dor&3")
+    target = EmailCredential.objects.get(email="merge-conflicts@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+    reactor_a = Account.objects.create(device_id="merge-reactor-a")
+    reactor_b = Account.objects.create(device_id="merge-reactor-b")
+
+    checkin_client_id = uuid.uuid4()
+    target_checkin = BeerCheckIn.objects.create(
+        account=target,
+        client_id=checkin_client_id,
+        beer_name="Cílové pivo",
+        beer_key="cilove-pivo",
+    )
+    source_checkin = BeerCheckIn.objects.create(
+        account=source,
+        client_id=checkin_client_id,
+        beer_name="Duplicitní pivo",
+        beer_key="duplicitni-pivo",
+    )
+    BeerCheckInReaction.objects.create(checkin=target_checkin, account=reactor_a)
+    BeerCheckInReaction.objects.create(checkin=source_checkin, account=reactor_a)
+    BeerCheckInReaction.objects.create(checkin=source_checkin, account=reactor_b)
+
+    evening_client_id = uuid.uuid4()
+    target_evening = PartyEvening.objects.create(
+        host=target,
+        client_id=evening_client_id,
+        join_code="TARGET30",
+        pub_name="Cílová hospoda",
+    )
+    source_evening = PartyEvening.objects.create(
+        host=source,
+        client_id=evening_client_id,
+        join_code="SOURCE30",
+        pub_name="Duplicitní hospoda",
+    )
+    target_membership = PartyEveningMember.objects.create(
+        evening=target_evening,
+        account=target,
+        active=False,
+        left_at=timezone.now(),
+    )
+    PartyEveningMember.objects.create(evening=source_evening, account=source)
+    source_drink = PartyEveningDrink.objects.create(
+        evening=source_evening,
+        account=source,
+        client_id=uuid.uuid4(),
+        beer_name="Zdrojový ležák",
+    )
+
+    game_client_id = uuid.uuid4()
+    target_game = PartyGame.objects.create(
+        evening=target_evening,
+        started_by=target,
+        client_id=game_client_id,
+        catalog_key="dice-duel",
+        name="Kostky",
+        roster_account_ids=[str(target.public_id)],
+        ended_at=timezone.now(),
+    )
+    source_game = PartyGame.objects.create(
+        evening=source_evening,
+        started_by=source,
+        client_id=game_client_id,
+        catalog_key="dice-duel",
+        name="Kostky retry",
+        roster_account_ids=[str(source.public_id), str(target.public_id)],
+        ended_at=timezone.now(),
+    )
+    target_event = PartyGameEvent.objects.create(
+        game=target_game,
+        account=target,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        delta=1,
+    )
+    source_event = PartyGameEvent.objects.create(
+        game=source_game,
+        account=source,
+        subject=source,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        delta=2,
+    )
+
+    # Two phones may have started the same catalogue game with different
+    # client UUIDs before the anonymous evening is claimed. The genuinely
+    # first row (here the source row) is canonical, including its frozen lobby.
+    first_started_at = timezone.now() - timedelta(hours=1)
+    first_catalog_game = PartyGame.objects.create(
+        evening=source_evening,
+        started_by=source,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="První kvíz",
+        roster_account_ids=[str(source.public_id), str(reactor_a.public_id)],
+        started_at=first_started_at,
+    )
+    later_catalog_game = PartyGame.objects.create(
+        evening=target_evening,
+        started_by=target,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Pozdější kvíz",
+        roster_account_ids=[str(target.public_id), str(reactor_b.public_id)],
+        started_at=first_started_at + timedelta(minutes=5),
+    )
+    duplicate_event_client_id = uuid.uuid4()
+    canonical_quiz_event = PartyGameEvent.objects.create(
+        game=first_catalog_game,
+        account=source,
+        client_id=duplicate_event_client_id,
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"questionId": "q1", "option": 0},
+    )
+    PartyGameEvent.objects.create(
+        game=later_catalog_game,
+        account=target,
+        client_id=duplicate_event_client_id,
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"questionId": "q1", "option": 1},
+    )
+    moved_quiz_event = PartyGameEvent.objects.create(
+        game=later_catalog_game,
+        account=target,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        subject=target,
+        delta=1,
+    )
+
+    photo_client_id = uuid.uuid4()
+    target_photo = BeerPhoto.objects.create(
+        account=target,
+        client_id=photo_client_id,
+        image=f"beer-photos/{target.public_id}/target.webp",
+    )
+    source_photo = BeerPhoto.objects.create(
+        account=source,
+        party_evening=source_evening,
+        client_id=photo_client_id,
+        image=f"beer-photos/{source.public_id}/source.webp",
+        caption="Fotka od stolu",
+    )
+    now = timezone.now()
+    contest = PhotoContest.objects.create(
+        period_start=now - timedelta(days=1),
+        period_end=now + timedelta(days=1),
+    )
+    target_entry = PhotoContestEntry.objects.create(
+        contest=contest,
+        photo=target_photo,
+        account=target,
+    )
+    source_entry = PhotoContestEntry.objects.create(
+        contest=contest,
+        photo=source_photo,
+        account=source,
+    )
+    source_entry_vote = PhotoContestVote.objects.create(
+        contest=contest,
+        entry=source_entry,
+        voter=reactor_b,
+    )
+
+    drinking_day = timezone.localdate()
+    target_night = _published_night(
+        target,
+        client_id="target-night",
+        drinking_day=drinking_day,
+        participant_ids=[str(target.public_id)],
+        photo_ids=[str(target_photo.public_id)],
+        game_ids=[str(target_game.public_id)],
+    )
+    source_night = _published_night(
+        source,
+        client_id="source-night",
+        drinking_day=drinking_day,
+        participant_ids=[str(source.public_id)],
+        photo_ids=[str(source_photo.public_id)],
+        game_ids=[str(source_game.public_id)],
+    )
+    source_comment = PublishedNightComment.objects.create(
+        account=source,
+        night=source_night,
+        client_id=uuid.uuid4(),
+        body="Komentář z anonymního účtu",
+    )
+    foreign_comment = PublishedNightComment.objects.create(
+        account=reactor_b,
+        night=source_night,
+        client_id=uuid.uuid4(),
+        body="Komentář kamaráda",
+    )
+    foreign_game_story = _published_night(
+        reactor_b,
+        client_id="foreign-game-story",
+        drinking_day=drinking_day - timedelta(days=1),
+        game_ids=[str(later_catalog_game.public_id)],
+    )
+
+    response = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-conflicts@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert not Account.objects.filter(pk=source.pk).exists()
+    assert BeerCheckIn.objects.filter(account=target, client_id=checkin_client_id).count() == 1
+    assert set(target_checkin.reactions.values_list("account_id", flat=True)) == {
+        reactor_a.pk,
+        reactor_b.pk,
+    }
+    assert PartyEvening.objects.filter(host=target, client_id=evening_client_id).count() == 1
+    target_membership.refresh_from_db()
+    source_drink.refresh_from_db()
+    assert target_membership.active is True
+    assert target_membership.left_at is None
+    assert source_drink.account_id == target.pk
+    assert source_drink.evening_id == target_evening.pk
+    assert PartyGame.objects.filter(evening=target_evening, client_id=game_client_id).count() == 1
+    target_game.refresh_from_db()
+    assert target_game.roster_account_ids == [str(target.public_id)]
+    assert set(target_game.events.values_list("pk", flat=True)) == {
+        target_event.pk,
+        source_event.pk,
+    }
+    source_event.refresh_from_db()
+    assert source_event.account_id == target.pk
+    assert source_event.subject_id == target.pk
+    assert PartyGame.objects.filter(evening=target_evening, catalog_key="quiz").count() == 1
+    first_catalog_game.refresh_from_db()
+    assert first_catalog_game.evening_id == target_evening.pk
+    assert first_catalog_game.ended_at is None
+    assert first_catalog_game.roster_account_ids == [
+        str(target.public_id),
+        str(reactor_a.public_id),
+    ]
+    assert set(first_catalog_game.events.values_list("pk", flat=True)) == {
+        canonical_quiz_event.pk,
+        moved_quiz_event.pk,
+    }
+    moved_quiz_event.refresh_from_db()
+    assert moved_quiz_event.game_id == first_catalog_game.pk
+    foreign_game_story.refresh_from_db()
+    assert foreign_game_story.game_ids == [str(first_catalog_game.public_id)]
+    assert BeerPhoto.objects.filter(account=target, client_id=photo_client_id).count() == 1
+    target_photo.refresh_from_db()
+    assert target_photo.party_evening_id == target_evening.pk
+    assert target_photo.caption == "Fotka od stolu"
+    assert not PhotoContestEntry.objects.filter(pk=source_entry.pk).exists()
+    source_entry_vote.refresh_from_db()
+    assert source_entry_vote.entry_id == target_entry.pk
+    target_night.refresh_from_db()
+    assert "source-night" in target_night.client_aliases
+    assert target_night.participant_ids == [str(target.public_id)]
+    assert target_night.photo_ids == [str(target_photo.public_id)]
+    assert target_night.game_ids == [str(target_game.public_id)]
+    source_comment.refresh_from_db()
+    foreign_comment.refresh_from_db()
+    assert source_comment.account_id == target.pk
+    assert source_comment.night_id == target_night.pk
+    assert foreign_comment.night_id == target_night.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_photo_merge_rollback_keeps_file_and_database_row(
+    tmp_media,
+    monkeypatch,
+):
+    target = Account.objects.create(device_id="photo-rollback-target")
+    source = Account.objects.create(device_id="photo-rollback-source")
+    client_id = uuid.uuid4()
+    BeerPhotoDeletionTombstone.objects.create(account=target, client_id=client_id)
+    photo = BeerPhoto.objects.create(
+        account=source,
+        client_id=client_id,
+        image=SimpleUploadedFile("rollback.webp", b"rollback-image"),
+    )
+    stored = photo.image.path
+
+    def fail_after_photo_merge(_source):
+        raise RuntimeError("force merge rollback")
+
+    monkeypatch.setattr(accounts, "_assert_no_cascade_rows_for_source", fail_after_photo_merge)
+
+    with pytest.raises(RuntimeError, match="force merge rollback"):
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
+
+    photo.refresh_from_db()
+    assert photo.account_id == source.pk
+    assert Path(stored).exists()
+    assert Account.objects.filter(pk=source.pk).exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_photo_merge_locks_accounts_and_cleans_duplicate_file_after_commit(
+    tmp_media,
+    monkeypatch,
+):
+    target = Account.objects.create(device_id="photo-cleanup-target")
+    source = Account.objects.create(device_id="photo-cleanup-source")
+    client_id = uuid.uuid4()
+    target_photo = BeerPhoto.objects.create(
+        account=target,
+        client_id=client_id,
+        image=SimpleUploadedFile("target.webp", b"target-image"),
+    )
+    source_photo = BeerPhoto.objects.create(
+        account=source,
+        client_id=client_id,
+        image=SimpleUploadedFile("source.webp", b"source-image"),
+    )
+    target_path = target_photo.image.path
+    source_path = source_photo.image.path
+    original_select_for_update = Account.objects.select_for_update
+    lock_calls = []
+
+    def select_for_update_spy(*args, **kwargs):
+        lock_calls.append((args, kwargs))
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(Account.objects, "select_for_update", select_for_update_spy)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert lock_calls == [((), {})]
+    assert not Account.objects.filter(pk=source.pk).exists()
+    assert BeerPhoto.objects.filter(account=target, client_id=client_id).count() == 1
+    assert Path(target_path).exists()
+    assert not Path(source_path).exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db
+def test_login_merge_does_not_broaden_private_duplicate_story_data(client, sent_emails):
+    _register(client, "merge-privacy@x.cz", "Tr0ub4dor&3")
+    target = EmailCredential.objects.get(email="merge-privacy@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+
+    photo_client_id = uuid.uuid4()
+    target_photo = BeerPhoto.objects.create(
+        account=target,
+        client_id=photo_client_id,
+        image=f"beer-photos/{target.public_id}/visible.webp",
+        visibility=BeerPhoto.Visibility.FRIENDS,
+    )
+    BeerPhoto.objects.create(
+        account=source,
+        client_id=photo_client_id,
+        image=f"beer-photos/{source.public_id}/private.webp",
+        visibility=BeerPhoto.Visibility.PRIVATE,
+        caption="Soukromý popisek",
+        pub_name="Soukromá hospoda",
+    )
+    drinking_day = timezone.localdate()
+    target_night = _published_night(
+        target,
+        client_id="public-target-night",
+        drinking_day=drinking_day,
+    )
+    source_night = _published_night(
+        source,
+        client_id="friends-source-night",
+        drinking_day=drinking_day,
+        participant_ids=[str(source.public_id)],
+        photo_ids=[str(uuid.uuid4())],
+        game_ids=[str(uuid.uuid4())],
+    )
+    source_night.visibility = PublishedNight.Visibility.FRIENDS
+    source_night.save(update_fields=["visibility"])
+    private_photo_night = _published_night(
+        source,
+        client_id="private-photo-source-night",
+        drinking_day=drinking_day - timedelta(days=1),
+        photo_ids=[str(BeerPhoto.objects.get(account=source).public_id)],
+    )
+    private_photo_night.visibility = PublishedNight.Visibility.FRIENDS
+    private_photo_night.save(update_fields=["visibility"])
+
+    response = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-privacy@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    target_photo.refresh_from_db()
+    target_night.refresh_from_db()
+    private_photo_night.refresh_from_db()
+    assert target_photo.caption == ""
+    assert target_photo.pub_name == ""
+    assert target_night.participant_ids == []
+    assert target_night.photo_ids == []
+    assert target_night.game_ids == []
+    assert private_photo_night.photo_ids != [str(target_photo.public_id)]
+
+
+@pytest.mark.django_db
 def test_login_merge_recounts_existing_amenity_aggregate(client, sent_emails):
     _register(client, "merge-amenity@x.cz", "Tr0ub4dor&3")
     target = EmailCredential.objects.get(email="merge-amenity@x.cz").account
@@ -460,6 +1010,49 @@ def test_merge_requires_atomic_transaction():
         accounts._merge_anonymous_account(source, target)
 
     assert Account.objects.filter(pk=source.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_preserves_public_outgoing_follows_and_drops_private_incoming_follows():
+    source = Account.objects.create(device_id="merge-follow-source")
+    target = Account.objects.create(device_id="merge-follow-target", is_public=False)
+    public = Account.objects.create(device_id="merge-follow-public", is_public=True)
+    follower = Account.objects.create(device_id="merge-follow-follower", is_public=True)
+    Follow.objects.create(follower=source, target=public)
+    Follow.objects.create(follower=follower, target=source)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert Follow.objects.filter(follower=target, target=public).exists()
+    assert not Follow.objects.filter(follower=follower, target=target).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_participants_are_locked_in_primary_key_order(monkeypatch):
+    first = Account.objects.create(device_id="merge-lock-first")
+    second = Account.objects.create(device_id="merge-lock-second")
+    order_by_calls: list[tuple[str, ...]] = []
+    queryset_type = type(Account.objects.all())
+    original_order_by = queryset_type.order_by
+
+    def order_by_spy(queryset, *fields):
+        if queryset.model is Account and queryset.query.select_for_update:
+            order_by_calls.append(fields)
+        return original_order_by(queryset, *fields)
+
+    monkeypatch.setattr(queryset_type, "order_by", order_by_spy)
+
+    with transaction.atomic():
+        locked_source, locked_target = accounts._lock_merge_participants(
+            second,
+            first,
+        )
+
+    assert order_by_calls == [("pk",)]
+    assert locked_source is not None
+    assert locked_source.pk == second.pk
+    assert locked_target.pk == first.pk
 
 
 @pytest.mark.django_db
@@ -541,6 +1134,327 @@ def test_login_unknown_email_returns_401_same_code_no_enumeration(client):
 
 
 @pytest.mark.django_db
+def test_register_merge_operation_replays_same_claim_and_rejects_other_target(
+    client,
+    sent_emails,
+):
+    anon_token, anon_id = _bootstrap_anon(client)
+    operation_id = uuid.uuid4()
+    body = _merge_body(
+        operation_id,
+        email="operation-register@x.cz",
+        password="Tr0ub4dor&3",
+    )
+
+    first = client.post(
+        "/v1/auth/register",
+        data=body,
+        format="json",
+        **_auth(anon_token),
+    )
+    replay = client.post(
+        "/v1/auth/register",
+        data=body,
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert first.status_code == status.HTTP_201_CREATED, first.content
+    assert replay.status_code == status.HTTP_201_CREATED, replay.content
+    assert first.json()["id"] == anon_id
+    assert replay.json()["id"] == anon_id
+    assert AccountMergeOperation.objects.filter(operation_id=operation_id).count() == 1
+    assert EmailCredential.objects.filter(email="operation-register@x.cz").count() == 1
+
+    _register(client, "operation-other@x.cz")
+    other = EmailCredential.objects.get(email="operation-other@x.cz").account
+    tokens_before = AuthToken.objects.filter(account=other).count()
+    conflict = client.post(
+        "/v1/auth/login",
+        data=_merge_body(
+            operation_id,
+            email="operation-other@x.cz",
+            password="Tr0ub4dor&3",
+        ),
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert conflict.status_code == status.HTTP_409_CONFLICT, conflict.content
+    assert conflict.json()["code"] == "merge_operation_target_mismatch"
+    assert AuthToken.objects.filter(account=other).count() == tokens_before
+
+
+@pytest.mark.django_db
+def test_login_merge_operation_survives_lost_response_and_blocks_target_substitution(
+    client,
+    sent_emails,
+):
+    _register(client, "operation-target@x.cz")
+    target = EmailCredential.objects.get(email="operation-target@x.cz").account
+    _register(client, "operation-wrong-target@x.cz")
+    wrong_target = EmailCredential.objects.get(email="operation-wrong-target@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    operation_id = uuid.uuid4()
+    body = _merge_body(
+        operation_id,
+        email="operation-target@x.cz",
+        password="Tr0ub4dor&3",
+    )
+
+    first = client.post(
+        "/v1/auth/login",
+        data=body,
+        format="json",
+        **_auth(anon_token),
+    )
+    second_operation_id = uuid.uuid4()
+    target_tokens_after_first = AuthToken.objects.filter(account=target).count()
+    competing_retry = client.post(
+        "/v1/auth/login",
+        data=_merge_body(
+            second_operation_id,
+            email="operation-target@x.cz",
+            password="Tr0ub4dor&3",
+        ),
+        format="json",
+        **_auth(anon_token),
+    )
+    # Simulate a lost first response: the device retries with its now-revoked A
+    # bearer. The operation row is enough to prove the already-committed target.
+    replay = client.post(
+        "/v1/auth/login",
+        data=body,
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    assert competing_retry.status_code == status.HTTP_409_CONFLICT, competing_retry.content
+    assert competing_retry.json()["code"] == "merge_operation_source_missing"
+    assert not AccountMergeOperation.objects.filter(
+        operation_id=second_operation_id
+    ).exists()
+    assert AuthToken.objects.filter(account=target).count() == target_tokens_after_first + 1
+    assert replay.status_code == status.HTTP_200_OK, replay.content
+    assert first.json()["id"] == str(target.public_id)
+    assert replay.json()["id"] == str(target.public_id)
+    assert not Account.objects.filter(public_id=anon_id).exists()
+    assert AccountMergeOperation.objects.filter(operation_id=operation_id).count() == 1
+
+    tokens_before = AuthToken.objects.filter(account=wrong_target).count()
+    conflict = client.post(
+        "/v1/auth/login",
+        data=_merge_body(
+            operation_id,
+            email="operation-wrong-target@x.cz",
+            password="Tr0ub4dor&3",
+        ),
+        format="json",
+        **_auth(anon_token),
+    )
+    assert conflict.status_code == status.HTTP_409_CONFLICT, conflict.content
+    assert conflict.json()["code"] == "merge_operation_target_mismatch"
+    assert AuthToken.objects.filter(account=wrong_target).count() == tokens_before
+
+
+@pytest.mark.django_db
+def test_new_merge_operation_requires_live_anonymous_source(client, sent_emails):
+    _register(client, "operation-source-required@x.cz")
+
+    response = client.post(
+        "/v1/auth/login",
+        data=_merge_body(
+            uuid.uuid4(),
+            email="operation-source-required@x.cz",
+            password="Tr0ub4dor&3",
+        ),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT, response.content
+    assert response.json()["code"] == "merge_operation_source_missing"
+    assert not AccountMergeOperation.objects.exists()
+
+
+@pytest.mark.django_db
+def test_new_merge_operation_rejects_claimed_source_without_rekey_receipt(
+    client,
+    sent_emails,
+):
+    claimed = _register(client, "operation-claimed-source@x.cz")
+    claimed_token = claimed.json()["token"]
+    claimed_account = EmailCredential.objects.get(
+        email="operation-claimed-source@x.cz"
+    ).account
+    _register(client, "operation-claimed-target@x.cz")
+    target = EmailCredential.objects.get(email="operation-claimed-target@x.cz").account
+    target_tokens_before = AuthToken.objects.filter(account=target).count()
+    operation_id = uuid.uuid4()
+
+    response = client.post(
+        "/v1/auth/login",
+        data=_merge_body(
+            operation_id,
+            email="operation-claimed-target@x.cz",
+            password="Tr0ub4dor&3",
+        ),
+        format="json",
+        **_auth(claimed_token),
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT, response.content
+    assert response.json()["code"] == "merge_operation_source_claimed"
+    assert Account.objects.filter(pk=claimed_account.pk).exists()
+    assert not AccountMergeOperation.objects.filter(operation_id=operation_id).exists()
+    assert AuthToken.objects.filter(account=target).count() == target_tokens_before
+
+
+@pytest.mark.django_db
+def test_new_merge_operation_rejects_source_that_became_inactive(sent_emails):
+    target = Account.objects.create(device_id="operation-inactive-target")
+    EmailCredential.objects.create(
+        account=target,
+        email="operation-inactive-target@x.cz",
+        password=make_password("Tr0ub4dor&3"),
+    )
+    source = Account.objects.create(device_id="operation-inactive-source")
+    stale_source = Account.objects.get(pk=source.pk)
+    Account.objects.filter(pk=source.pk).update(
+        status=Account.Status.PENDING_DELETION,
+        deleted_at=timezone.now(),
+    )
+    operation_id = uuid.uuid4()
+    target_tokens_before = AuthToken.objects.filter(account=target).count()
+
+    with pytest.raises(accounts.AccountError) as raised:
+        accounts.login_email(
+            email="operation-inactive-target@x.cz",
+            password="Tr0ub4dor&3",
+            current_account=stale_source,
+            merge_operation_id=operation_id,
+        )
+
+    assert raised.value.code == "merge_operation_source_inactive"
+    assert not AccountMergeOperation.objects.filter(operation_id=operation_id).exists()
+    assert AuthToken.objects.filter(account=target).count() == target_tokens_before
+
+
+@pytest.mark.django_db
+def test_social_operation_target_mismatch_does_not_reactivate_email_match():
+    source = Account.objects.create(device_id="social-operation-source")
+    bound_target = Account.objects.create(device_id="social-operation-bound-target")
+    email_match = Account.objects.create(
+        device_id="social-operation-email-match",
+        status=Account.Status.PENDING_DELETION,
+        deleted_at=timezone.now(),
+    )
+    AuthIdentity.objects.create(
+        account=email_match,
+        provider=AuthIdentity.Provider.GOOGLE,
+        subject="SOCIAL-OPERATION-GOOGLE",
+        email="social-operation-match@x.cz",
+    )
+    operation_id = uuid.uuid4()
+    AccountMergeOperation.objects.create(
+        operation_id=operation_id,
+        source_account_fingerprint=account_merge_fingerprint(source.public_id),
+        target_account_fingerprint=account_merge_fingerprint(bound_target.public_id),
+    )
+
+    with pytest.raises(accounts.AccountError) as raised:
+        accounts.resolve_social(
+            source,
+            provider=AuthIdentity.Provider.APPLE,
+            claims={
+                "sub": "SOCIAL-OPERATION-APPLE",
+                "email": "social-operation-match@x.cz",
+                "email_verified": True,
+            },
+            apple_refresh_token="refresh-token",
+            merge_operation_id=operation_id,
+        )
+
+    assert raised.value.code == "merge_operation_target_mismatch"
+    email_match.refresh_from_db()
+    assert email_match.status == Account.Status.PENDING_DELETION
+    assert email_match.deleted_at is not None
+    assert not AuthIdentity.objects.filter(
+        provider=AuthIdentity.Provider.APPLE,
+        subject="SOCIAL-OPERATION-APPLE",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_merge_failure_rolls_back_new_operation_receipt_and_token(
+    client,
+    sent_emails,
+    monkeypatch,
+):
+    _register(client, "operation-rollback-target@x.cz")
+    target = EmailCredential.objects.get(email="operation-rollback-target@x.cz").account
+    source_token, source_id = _bootstrap_anon(client)
+    operation_id = uuid.uuid4()
+    target_tokens_before = AuthToken.objects.filter(account=target).count()
+    sentinel = f"operation={operation_id} email=private@example.cz bearer=secret"
+    logged: list[tuple[tuple, dict]] = []
+
+    def fail_merge(_source, _target):
+        raise RuntimeError(sentinel)
+
+    def capture_error(*args, **kwargs):
+        logged.append((args, kwargs))
+
+    monkeypatch.setattr(accounts, "_merge_anonymous_account", fail_merge)
+    monkeypatch.setattr("pubs.api.auth_views.logger.error", capture_error)
+    response = client.post(
+        "/v1/auth/login",
+        data=_merge_body(
+            operation_id,
+            email="operation-rollback-target@x.cz",
+            password="Tr0ub4dor&3",
+        ),
+        format="json",
+        **_auth(source_token),
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert Account.objects.filter(public_id=source_id).exists()
+    assert not AccountMergeOperation.objects.filter(operation_id=operation_id).exists()
+    assert AuthToken.objects.filter(account=target).count() == target_tokens_before
+    assert logged
+    assert sentinel not in repr(logged)
+    assert all("exc_info" not in kwargs for _args, kwargs in logged)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("endpoint", "body"),
+    [
+        (
+            "/v1/auth/register",
+            {"email": "uuid-version@x.cz", "password": "Tr0ub4dor&3"},
+        ),
+        (
+            "/v1/auth/login",
+            {"email": "uuid-version@x.cz", "password": "Tr0ub4dor&3"},
+        ),
+        ("/v1/auth/google", {"id_token": "unused"}),
+        ("/v1/auth/apple", {"identity_token": "unused"}),
+    ],
+)
+def test_merge_capable_auth_rejects_non_v4_operation_id(client, endpoint, body):
+    response = client.post(
+        endpoint,
+        data={**body, "merge_operation_id": str(uuid.uuid1())},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert "merge_operation_id" in response.json()
+
+
+@pytest.mark.django_db
 def test_login_reactivates_pending_deletion_account(client, fake_oauth, sent_emails):
     _, token = _register_and_token(client, "reactivate@x.cz", "Tr0ub4dor&3")
     account = EmailCredential.objects.get(email="reactivate@x.cz").account
@@ -598,6 +1512,79 @@ def test_google_new_identity_with_anon_bearer_claims_it(client, fake_oauth):
     assert body["created"] is False  # claimed, not created
     assert body["id"] == anon_id
     assert Account.objects.count() == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("endpoint", "first_body", "conflict_body", "conflict_provider", "conflict_subject"),
+    [
+        (
+            "/v1/auth/google",
+            {"id_token": "google:G-OPERATION:operation-google@x.cz"},
+            {"id_token": "google:G-OPERATION-WRONG:wrong-google@x.cz"},
+            "google",
+            "G-OPERATION-WRONG",
+        ),
+        (
+            "/v1/auth/apple",
+            {
+                "identity_token": "apple:A-OPERATION:operation-apple@x.cz",
+                "authorization_code": "apple-auth-code",
+            },
+            {
+                "identity_token": "apple:A-OPERATION-WRONG:wrong-apple@x.cz",
+                "authorization_code": "apple-auth-code",
+            },
+            "apple",
+            "A-OPERATION-WRONG",
+        ),
+    ],
+)
+def test_social_merge_operation_replays_and_rejects_different_identity(
+    client,
+    fake_oauth,
+    endpoint,
+    first_body,
+    conflict_body,
+    conflict_provider,
+    conflict_subject,
+):
+    anon_token, anon_id = _bootstrap_anon(client)
+    operation_id = uuid.uuid4()
+
+    first = client.post(
+        endpoint,
+        data=_merge_body(operation_id, **first_body),
+        format="json",
+        **_auth(anon_token),
+    )
+    replay = client.post(
+        endpoint,
+        data=_merge_body(operation_id, **first_body),
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    assert replay.status_code == status.HTTP_200_OK, replay.content
+    assert first.json()["id"] == anon_id
+    assert replay.json()["id"] == anon_id
+    account_count = Account.objects.count()
+
+    conflict = client.post(
+        endpoint,
+        data=_merge_body(operation_id, **conflict_body),
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert conflict.status_code == status.HTTP_409_CONFLICT, conflict.content
+    assert conflict.json()["code"] == "merge_operation_target_mismatch"
+    assert Account.objects.count() == account_count
+    assert not AuthIdentity.objects.filter(
+        provider=conflict_provider,
+        subject=conflict_subject,
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -1152,6 +2139,37 @@ def test_logout_all_revokes_every_token(client, sent_emails):
     assert client.get("/v1/account/me", **_auth(token2)).status_code == status.HTTP_401_UNAUTHORIZED
 
 
+@pytest.mark.django_db
+def test_logout_all_cannot_recover_claimed_account_from_public_device_id(
+    client,
+    sent_emails,
+):
+    device_token, account_id = _bootstrap_anon(client)
+    account = Account.objects.get(public_id=account_id)
+    session = _register(
+        client,
+        "logout-device-recovery@x.cz",
+        token=device_token,
+    ).json()["token"]
+
+    logged_out = client.post(
+        "/v1/auth/logout",
+        data={"all": True},
+        format="json",
+        **_auth(session),
+    )
+    recovered = client.post(
+        "/v1/account",
+        data={"device_id": account.device_id},
+        format="json",
+    )
+
+    assert logged_out.status_code == status.HTTP_200_OK
+    assert recovered.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "token" not in recovered.json()
+    assert not AuthToken.objects.filter(account=account).exists()
+
+
 # ===========================================================================
 # 10. Password reset (request + consume)
 # ===========================================================================
@@ -1189,6 +2207,7 @@ def test_request_password_reset_known_email_sends_web_link_and_creates_token(cli
     ).count() == 1
 
 
+@pytest.mark.django_db
 def test_reset_password_landing_page_opens_app(client):
     resp = client.get("/v1/auth/reset?token=abc")
 
@@ -1198,6 +2217,7 @@ def test_reset_password_landing_page_opens_app(client):
     assert "Nastavit nové heslo v appce" in html
 
 
+@pytest.mark.django_db
 def test_reset_password_landing_page_rejects_missing_token(client):
     resp = client.get("/v1/auth/reset")
 
@@ -1210,6 +2230,7 @@ def test_reset_password_landing_page_rejects_missing_token(client):
     ) in html
 
 
+@pytest.mark.django_db
 def test_reset_password_landing_page_url_encodes_token(client):
     resp = client.get("/v1/auth/reset", data={"token": "abc&next=value"})
 
@@ -1257,6 +2278,95 @@ def test_reset_password_consumes_token_sets_new_and_revokes_old_sessions(client,
         "/v1/auth/login", data={"email": "rp@x.cz", "password": "Tr0ub4dor&3"}, format="json"
     )
     assert bad.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_weak_password_does_not_consume_reset_link(client, sent_emails):
+    _register_and_token(client, "reset-retry@x.cz", "Tr0ub4dor&3")
+    sent_emails.clear()
+    client.post(
+        "/v1/auth/request-password-reset",
+        data={"email": "reset-retry@x.cz"},
+        format="json",
+    )
+    raw = _verify_code(sent_emails, "reset")
+    reset_token = OneTimeToken.objects.get(
+        token_hash=accounts.hash_account_token(raw),
+        purpose=OneTimeToken.Purpose.RESET_PASSWORD,
+    )
+
+    weak = client.post(
+        "/v1/auth/reset-password",
+        data={"token": raw, "password": "12345678"},
+        format="json",
+    )
+    reset_token.refresh_from_db()
+
+    assert weak.status_code == status.HTTP_400_BAD_REQUEST
+    assert weak.json()["code"] == "weak_password"
+    assert reset_token.used_at is None
+
+    strong = client.post(
+        "/v1/auth/reset-password",
+        data={"token": raw, "password": "FreshP@ssw0rd!"},
+        format="json",
+    )
+    reset_token.refresh_from_db()
+
+    assert strong.status_code == status.HTTP_200_OK, strong.content
+    assert strong.json()["token"]
+    assert reset_token.used_at is not None
+
+
+@pytest.mark.django_db
+def test_reset_password_rolls_back_every_change_when_session_issue_fails(
+    client,
+    sent_emails,
+    monkeypatch,
+):
+    _, old_session = _register_and_token(
+        client,
+        "reset-rollback@x.cz",
+        "Tr0ub4dor&3",
+    )
+    account = EmailCredential.objects.get(email="reset-rollback@x.cz").account
+    credential = account.email_credential
+    old_password_hash = credential.password
+    old_verified = credential.email_verified
+    old_epoch = account.deletion_epoch
+    old_token_ids = set(account.auth_tokens.values_list("pk", flat=True))
+    sent_emails.clear()
+    client.post(
+        "/v1/auth/request-password-reset",
+        data={"email": "reset-rollback@x.cz"},
+        format="json",
+    )
+    raw = _verify_code(sent_emails, "reset")
+    reset_token = OneTimeToken.objects.get(
+        token_hash=accounts.hash_account_token(raw),
+        purpose=OneTimeToken.Purpose.RESET_PASSWORD,
+    )
+
+    def fail_issue_token(*_args, **_kwargs):
+        raise RuntimeError("forced fresh-session failure")
+
+    monkeypatch.setattr(accounts, "issue_token", fail_issue_token)
+    failed = client.post(
+        "/v1/auth/reset-password",
+        data={"token": raw, "password": "FreshP@ssw0rd!"},
+        format="json",
+    )
+
+    account.refresh_from_db()
+    credential.refresh_from_db()
+    reset_token.refresh_from_db()
+    assert failed.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert reset_token.used_at is None
+    assert credential.password == old_password_hash
+    assert credential.email_verified is old_verified
+    assert account.deletion_epoch == old_epoch
+    assert set(account.auth_tokens.values_list("pk", flat=True)) == old_token_ids
+    assert client.get("/v1/account/me", **_auth(old_session)).status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
@@ -1366,6 +2476,55 @@ def test_verify_email_token_cannot_be_replayed(client, sent_emails):
 
 
 @pytest.mark.django_db
+def test_stale_device_token_cannot_launder_new_deletion_epoch(
+    client,
+    sent_emails,
+):
+    stale_device_token, account_id = _bootstrap_anon(client)
+    account = Account.objects.get(public_id=account_id)
+    stale_epoch = AuthToken.objects.get(
+        account=account,
+        token_hash=accounts.hash_account_token(stale_device_token),
+    ).deletion_epoch
+
+    claimed = _register(
+        client,
+        "epoch-laundering@x.cz",
+        token=stale_device_token,
+    )
+    assert claimed.status_code == status.HTTP_201_CREATED, claimed.content
+    account.refresh_from_db()
+    assert account.deletion_epoch > stale_epoch
+
+    rotated = client.post(
+        "/v1/account",
+        data={"device_id": account.device_id},
+        format="json",
+        **_auth(stale_device_token),
+    )
+
+    assert rotated.status_code == status.HTTP_409_CONFLICT
+    assert rotated.json()["code"] == "stale_account_session"
+    assert "token" not in rotated.json()
+    assert not AuthToken.objects.filter(
+        account=account,
+        kind=AuthToken.Kind.DEVICE,
+        deletion_epoch=account.deletion_epoch,
+    ).exists()
+
+    deletion = client.delete(
+        "/v1/account/me",
+        data={"operation_id": str(uuid.uuid4())},
+        format="json",
+        **_auth(stale_device_token),
+    )
+    assert deletion.status_code == status.HTTP_409_CONFLICT
+    assert deletion.json()["code"] == "deletion_epoch_cancelled"
+    account.refresh_from_db()
+    assert account.status == Account.Status.ACTIVE
+
+
+@pytest.mark.django_db
 def test_delete_account_soft_deletes_and_revokes_token(client, fake_oauth, sent_emails):
     _, token = _register_and_token(client, "del@x.cz", "Tr0ub4dor&3")
     account = EmailCredential.objects.get(email="del@x.cz").account
@@ -1451,7 +2610,7 @@ def test_delete_account_with_apple_identity_revokes_apple_token(client, fake_oau
     assert "rt_test" in fake_oauth["revoked"]
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_purge_command_hard_deletes_after_grace(client, fake_oauth, sent_emails):
     _, token = _register_and_token(client, "purge@x.cz", "Tr0ub4dor&3")
     account = EmailCredential.objects.get(email="purge@x.cz").account
@@ -1468,9 +2627,10 @@ def test_purge_command_hard_deletes_after_grace(client, fake_oauth, sent_emails)
         Account.objects.get(pk=account_pk)
     # CASCADE wiped the credential too.
     assert not EmailCredential.objects.filter(email="purge@x.cz").exists()
+    assert any(message["tag"] == "deleted" for message in sent_emails)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_purge_command_deletes_avatar_file_after_grace(
     client, fake_oauth, sent_emails, tmp_media
 ):
@@ -1490,11 +2650,12 @@ def test_purge_command_deletes_avatar_file_after_grace(
     call_command("purge_deleted_accounts", "--grace-days", "0")
 
     assert not avatar_path.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
     with pytest.raises(Account.DoesNotExist):
         Account.objects.get(pk=account_pk)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_purge_keeps_apple_account_when_revocation_fails(
     client, fake_oauth, sent_emails, monkeypatch
 ):
@@ -1523,3 +2684,212 @@ def test_purge_keeps_apple_account_when_revocation_fails(
     assert Account.objects.filter(pk=account_pk).exists()
     identity.refresh_from_db()
     assert identity.apple_refresh_token == "rt_test"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purge_rechecks_stale_candidate_after_concurrent_reauthentication(
+    client,
+    fake_oauth,
+    sent_emails,
+    monkeypatch,
+):
+    email = "purge-race@x.cz"
+    password = "Tr0ub4dor&3"
+    _, token = _register_and_token(client, email, password)
+    account = EmailCredential.objects.get(email=email).account
+    drink = DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U zámku",
+        lat=50.0,
+        lng=14.0,
+        beer_name="Ležák",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+    assert client.delete("/v1/account/me", **_auth(token)).status_code == status.HTTP_204_NO_CONTENT
+    account.refresh_from_db()
+    stale_epoch = account.deletion_epoch
+    sent_emails.clear()
+
+    real_purge = accounts.hard_delete_expired_account
+    fresh_token: list[str] = []
+    interleavings = 0
+
+    def reauthenticate_before_locked_recheck(
+        account_id: int,
+        *,
+        cutoff,
+        expected_deletion_epoch: int,
+    ) -> bool:
+        nonlocal interleavings
+        interleavings += 1
+        assert account_id == account.pk
+        assert expected_deletion_epoch == stale_epoch
+        login = client.post(
+            "/v1/auth/login",
+            data={"email": email, "password": password},
+            format="json",
+        )
+        assert login.status_code == status.HTTP_200_OK, login.content
+        fresh_token.append(login.json()["token"])
+        return real_purge(
+            account_id,
+            cutoff=cutoff,
+            expected_deletion_epoch=expected_deletion_epoch,
+        )
+
+    monkeypatch.setattr(
+        accounts,
+        "hard_delete_expired_account",
+        reauthenticate_before_locked_recheck,
+    )
+
+    # Deterministic race ordering: command snapshots pending A, credential login
+    # commits ACTIVE + epoch+1, then the purge helper locks and rechecks A.
+    call_command("purge_deleted_accounts", "--grace-days", "0")
+
+    assert interleavings == 1
+    account.refresh_from_db()
+    assert account.status == Account.Status.ACTIVE
+    assert account.deletion_epoch > stale_epoch
+    assert DrinkLog.objects.filter(pk=drink.pk, account=account).exists()
+    assert client.get("/v1/account/me", **_auth(fresh_token[0])).status_code == status.HTTP_200_OK
+    assert not any(message["tag"] == "deleted" for message in sent_emails)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_hard_delete_rollback_keeps_database_files_and_confirmation_unsent(
+    client,
+    fake_oauth,
+    sent_emails,
+    tmp_media,
+    monkeypatch,
+):
+    email = "purge-rollback@x.cz"
+    _, token = _register_and_token(client, email, "Tr0ub4dor&3")
+    account = EmailCredential.objects.get(email=email).account
+    account.avatar = SimpleUploadedFile("avatar.webp", b"avatar-before-rollback")
+    account.save(update_fields=["avatar"])
+    photo = BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=SimpleUploadedFile("beer.webp", b"photo-before-rollback"),
+    )
+    avatar_path = Path(account.avatar.path)
+    photo_path = Path(photo.image.path)
+    account_pk = account.pk
+
+    assert client.delete("/v1/account/me", **_auth(token)).status_code == status.HTTP_204_NO_CONTENT
+    account.refresh_from_db()
+    sent_emails.clear()
+
+    def fail_database_delete(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        raise RuntimeError("forced database delete failure")
+
+    monkeypatch.setattr(Account, "delete", fail_database_delete)
+
+    with pytest.raises(RuntimeError, match="forced database delete failure"):
+        accounts.hard_delete_expired_account(
+            account_pk,
+            cutoff=timezone.now(),
+            expected_deletion_epoch=account.deletion_epoch,
+        )
+
+    account.refresh_from_db()
+    photo.refresh_from_db()
+    assert account.status == Account.Status.PENDING_DELETION
+    assert EmailCredential.objects.filter(account=account, email=email).exists()
+    assert BeerPhoto.objects.filter(pk=photo.pk, account=account).exists()
+    assert avatar_path.exists()
+    assert photo_path.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+    assert not any(message["tag"] == "deleted" for message in sent_emails)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
+    client,
+    fake_oauth,
+    sent_emails,
+    tmp_media,
+    monkeypatch,
+):
+    email = "purge-media-retry@x.cz"
+    _, token = _register_and_token(client, email, "Tr0ub4dor&3")
+    account = EmailCredential.objects.get(email=email).account
+    account.avatar = SimpleUploadedFile("avatar.webp", b"avatar-retry")
+    account.save(update_fields=["avatar"])
+    photo = BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=SimpleUploadedFile("beer.webp", b"photo-retry"),
+    )
+    avatar_path = Path(account.avatar.path)
+    photo_path = Path(photo.image.path)
+    account_pk = account.pk
+    storages = {
+        id(storage): storage
+        for storage in (
+            Account._meta.get_field("avatar").storage,
+            BeerPhoto._meta.get_field("image").storage,
+        )
+    }
+    original_deletes = {
+        storage_id: storage.delete for storage_id, storage in storages.items()
+    }
+
+    assert client.delete("/v1/account/me", **_auth(token)).status_code == status.HTTP_204_NO_CONTENT
+    sent_emails.clear()
+    for storage in storages.values():
+        monkeypatch.setattr(
+            storage,
+            "delete",
+            lambda _name: (_ for _ in ()).throw(OSError("media unavailable")),
+        )
+
+    call_command("purge_deleted_accounts", "--grace-days", "0")
+
+    assert not Account.objects.filter(pk=account_pk).exists()
+    assert avatar_path.exists()
+    assert photo_path.exists()
+    pending = list(BeerPhotoFileDeletion.objects.order_by("file_kind"))
+    assert len(pending) == 2
+    assert {item.file_kind for item in pending} == {
+        BeerPhotoFileDeletion.FileKind.AVATAR,
+        BeerPhotoFileDeletion.FileKind.BEER_PHOTO,
+    }
+    assert all(item.account_id is None for item in pending)
+    assert all(item.last_attempted_at is not None for item in pending)
+    assert any(message["tag"] == "deleted" for message in sent_emails)
+
+    for storage_id, storage in storages.items():
+        monkeypatch.setattr(storage, "delete", original_deletes[storage_id])
+    call_command("retry_beer_photo_deletions")
+
+    assert not avatar_path.exists()
+    assert not photo_path.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deletion_scheduled_email_waits_for_outer_commit(
+    client,
+    sent_emails,
+):
+    email = "delete-email-rollback@x.cz"
+    _, _token = _register_and_token(client, email, "Tr0ub4dor&3")
+    account = EmailCredential.objects.get(email=email).account
+    sent_emails.clear()
+
+    with pytest.raises(RuntimeError, match="late transaction failure"):
+        with transaction.atomic():
+            accounts.schedule_deletion(account)
+            raise RuntimeError("late transaction failure")
+
+    account.refresh_from_db()
+    assert account.status == Account.Status.ACTIVE
+    assert account.deleted_at is None
+    assert account.auth_tokens.exists()
+    assert not any(message["tag"] == "deletion_scheduled" for message in sent_emails)

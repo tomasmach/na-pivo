@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+import json
 import uuid
 
 import pytest
 from django.core.cache import cache
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
@@ -14,19 +16,38 @@ from rest_framework.test import APIClient
 from pubs import emailer
 from pubs.models import (
     Account,
+    AccountMappedPub,
+    AccountPubCompletion,
+    AccountUsageStats,
+    AmenityXpLedger,
     AuthIdentity,
     BeerCheckIn,
+    BeerPhoto,
     CommunityEvent,
     CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
     ContentReport,
     DrinkLog,
     EmailCredential,
+    Follow,
     Friendship,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
+    PartyGame,
+    PartyGameEvent,
+    PhotoContest,
+    PhotoContestEntry,
+    PhotoContestVote,
+    PubAmenityVoteTombstone,
+    PubCommunityXpLedger,
     PubEvent,
+    PublishedNight,
+    PublishedNightComment,
+    PubNameCorrection,
     PushDevice,
+    UserAddedPub,
 )
 
 
@@ -36,7 +57,8 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _clear_throttle_cache():
+def _clear_throttle_cache(settings):
+    settings.ACCOUNT_EXPORT_ASYNC = False
     cache.clear()
     yield
     cache.clear()
@@ -120,9 +142,9 @@ def test_verification_email_renders_app_link(monkeypatch):
     assert sent is True
     assert captured["to"] == "person@example.com"
     assert captured["subject"] == "Ověř si e-mail – Na Pivo"
-    assert 'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured[
-        "html"
-    ]
+    assert (
+        'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured["html"]
+    )
     assert "Ověřit e-mail" in captured["html"]
     assert "Kód pro ruční zadání" not in captured["html"]
     assert "https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token" in (
@@ -209,6 +231,7 @@ def test_restore_purchases_stores_pending_subscription_identifiers(client):
 
 
 @pytest.mark.django_db
+@override_settings(PUBLIC_API_ORIGIN="https://api.example.test")
 def test_account_export_includes_diary_data_and_excludes_secrets(client):
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
@@ -246,13 +269,30 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
         enabled=True,
         app_version="1.2.0",
     )
+    account.avatar = "avatars/export.webp"
+    account.ghost_mode = True
+    account.share_drinks_with_parta = False
+    account.quiet_hours_enabled = False
+    account.quiet_hours_start = 22
+    account.quiet_hours_end = 7
+    account.excluded_from_leaderboards = True
+    account.save()
 
     resp = client.get("/v1/account/export", **_auth(token))
 
     assert resp.status_code == status.HTTP_200_OK, resp.content
     assert resp["Content-Disposition"] == 'attachment; filename="na-pivo-export.json"'
+    assert resp["Cache-Control"] == "no-store"
+    assert resp["Pragma"] == "no-cache"
     body = resp.json()
     assert body["account"]["id"] == account_id
+    assert body["account"]["avatar_url"] == "https://api.example.test/media/avatars/export.webp"
+    assert body["settings"]["ghost_mode"] is True
+    assert body["settings"]["share_drinks_with_parta"] is False
+    assert body["settings"]["quiet_hours_enabled"] is False
+    assert body["settings"]["quiet_hours_start"] == 22
+    assert body["settings"]["quiet_hours_end"] == 7
+    assert body["settings"]["excluded_from_leaderboards"] is True
     assert body["drinks"][0]["beer_name"] == "Ležák"
     assert body["drinks"][0]["drink_type"] == "beer"
     assert body["drinks"][0]["place_context"] == "pub"
@@ -278,6 +318,224 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert "password" not in serialized
     assert token not in serialized
     assert "ExponentPushToken[exportDevice]" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_includes_all_account_owned_history_without_auth_secrets(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-export")
+    now = timezone.now().replace(microsecond=0)
+
+    AccountUsageStats.objects.create(
+        account=account,
+        mapper_xp=135,
+        pivar_xp=72,
+        mapped_pubs_count=3,
+        first_mapper_count=2,
+        amenity_votes_count=5,
+        completed_pubs_count=1,
+        photo_contest_wins_count=1,
+    )
+    Follow.objects.create(follower=account, target=other)
+    Follow.objects.create(follower=other, target=account)
+    added_pub = UserAddedPub.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Přidaného exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        address="Exportní 1",
+    )
+    correction = PubNameCorrection.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        original_name="U Starého",
+        suggested_name="U Správného",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        address="Exportní 1",
+    )
+    tombstone = PubAmenityVoteTombstone.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+        amenity_key="wifi",
+        name="U Přidaného exportu",
+        client_updated_at=now,
+    )
+    AmenityXpLedger.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+        amenity_key="wifi",
+    )
+    AccountMappedPub.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+    )
+    AccountPubCompletion.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+    )
+    PubCommunityXpLedger.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        kind=PubCommunityXpLedger.Kind.HOURS,
+    )
+    photo = BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/contest.webp",
+        taken_at=now,
+    )
+    contest = PhotoContest.objects.create(
+        period_start=now,
+        period_end=now + timezone.timedelta(days=14),
+        status=PhotoContest.Status.CLOSED,
+        closed_at=now + timezone.timedelta(days=14),
+    )
+    entry = PhotoContestEntry.objects.create(
+        contest=contest,
+        photo=photo,
+        account=account,
+        final_rank=1,
+        final_votes=7,
+    )
+    other_photo = BeerPhoto.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{other.public_id}/contest.webp",
+        taken_at=now,
+    )
+    other_entry = PhotoContestEntry.objects.create(
+        contest=contest,
+        photo=other_photo,
+        account=other,
+        final_rank=2,
+        final_votes=4,
+    )
+    PhotoContestVote.objects.create(contest=contest, entry=other_entry, voter=account)
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    assert body["usage"]["mapper_xp"] == 135
+    assert body["usage"]["pivar_xp"] == 72
+    assert body["social"]["following"] == [str(other.public_id)]
+    assert body["social"]["followers"] == [str(other.public_id)]
+    assert body["mapping_history"]["added_pubs"][0]["client_id"] == str(
+        added_pub.client_id
+    )
+    assert body["mapping_history"]["name_corrections"][0]["client_id"] == str(
+        correction.client_id
+    )
+    assert body["mapping_history"]["amenity_vote_tombstones"][0]["amenity_key"] == (
+        tombstone.amenity_key
+    )
+    assert body["mapping_history"]["mapped_pubs"][0]["cache_key"] == "u2fkbn12"
+    assert body["mapping_history"]["completed_pubs"][0]["cache_key"] == "u2fkbn12"
+    assert body["mapping_history"]["community_xp_ledger"][0]["kind"] == "hours"
+    assert body["photo_contests"]["entries"][0]["entry_id"] == str(entry.public_id)
+    assert body["photo_contests"]["votes"][0]["entry_id"] == str(other_entry.public_id)
+    serialized = str(body)
+    assert token not in serialized
+    assert "token_hash" not in serialized
+    assert "password" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_includes_owned_night_story_and_only_owned_comments(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    now = timezone.now().replace(microsecond=0)
+    participant_id = str(uuid.uuid4())
+    photo_id = str(uuid.uuid4())
+    game_id = str(uuid.uuid4())
+    own_night = PublishedNight.objects.create(
+        account=account,
+        client_id="recap-client",
+        client_aliases=["recap-client", "vycep-client"],
+        drinking_day=now.date(),
+        started_at=now - timezone.timedelta(hours=4),
+        ended_at=now,
+        beer_count=4,
+        wine_count=0,
+        soft_drink_count=1,
+        shot_count=0,
+        pub_names=["U Exportu"],
+        city="Praha",
+        duration_minutes=240,
+        title="Můj exportní večer",
+        roast_line="Výčep zavíral první",
+        roast_basis="Čtyři piva a jedna limonáda",
+        participant_ids=[participant_id],
+        photo_ids=[photo_id],
+        game_ids=[game_id],
+        visibility=PublishedNight.Visibility.FRIENDS,
+        updated_at=now,
+    )
+    other_night = PublishedNight.objects.create(
+        account=other,
+        client_id="other-night",
+        drinking_day=now.date(),
+        started_at=now - timezone.timedelta(hours=2),
+        ended_at=now,
+        beer_count=1,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=[],
+        city="",
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=now,
+    )
+    own_comment = PublishedNightComment.objects.create(
+        account=account,
+        night=other_night,
+        client_id=uuid.uuid4(),
+        body="Můj komentář k cizímu večeru",
+        is_removed=True,
+    )
+    PublishedNightComment.objects.create(
+        account=other,
+        night=own_night,
+        client_id=uuid.uuid4(),
+        body="Cizí komentář se nesmí exportovat",
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    exported_night = body["published_nights"][0]
+    assert exported_night["client_aliases"] == ["recap-client", "vycep-client"]
+    assert exported_night["title"] == "Můj exportní večer"
+    assert exported_night["roast_line"] == "Výčep zavíral první"
+    assert exported_night["roast_basis"] == "Čtyři piva a jedna limonáda"
+    assert exported_night["participant_ids"] == [participant_id]
+    assert exported_night["photo_ids"] == [photo_id]
+    assert exported_night["game_ids"] == [game_id]
+    assert body["published_night_comments"] == [
+        {
+            "id": str(own_comment.public_id),
+            "client_id": str(own_comment.client_id),
+            "night_id": str(other_night.public_id),
+            "body": "Můj komentář k cizímu večeru",
+            "is_removed": True,
+            "created_at": own_comment.created_at.isoformat(),
+            "updated_at": own_comment.updated_at.isoformat(),
+        }
+    ]
+    assert "Cizí komentář se nesmí exportovat" not in str(body)
 
 
 @pytest.mark.django_db
@@ -346,6 +604,19 @@ def test_account_export_includes_party_and_community_data(client):
         event=joined_event,
         account=account,
         message="Moje soukromá zpráva",
+        status=CommunityEventMembership.Status.APPROVED,
+    )
+    team = CommunityEventTeam.objects.create(
+        event=joined_event,
+        created_by=account,
+        client_id=uuid.uuid4(),
+        name="Exportní pěna",
+    )
+    team_membership = CommunityEventTeamMembership.objects.create(
+        event=joined_event,
+        team=team,
+        account=account,
+        slot=1,
     )
 
     response = client.get("/v1/account/export", **_auth(token))
@@ -364,13 +635,145 @@ def test_account_export_includes_party_and_community_data(client):
     assert body["pub_event_suggestions"][0]["id"] == str(suggestion.id)
     assert body["pub_event_suggestions"][0]["lat"] == 50.08
     assert body["community_events"]["hosted"][0]["id"] == str(hosted_event.id)
-    assert (
-        body["community_events"]["hosted"][0]["exact_address"]
-        == "Soukromá 12, zvonek Export"
-    )
+    assert body["community_events"]["hosted"][0]["exact_address"] == "Soukromá 12, zvonek Export"
     assert body["community_events"]["memberships"][0]["event_id"] == str(joined_event.id)
     assert body["community_events"]["memberships"][0]["message"] == membership.message
+    assert body["community_events"]["created_teams"][0]["id"] == str(team.id)
+    assert body["community_events"]["created_teams"][0]["name"] == "Exportní pěna"
+    assert body["community_events"]["team_memberships"][0] == {
+        "id": str(team_membership.id),
+        "event_id": str(joined_event.id),
+        "team_id": str(team.id),
+        "team_name": "Exportní pěna",
+        "slot": 1,
+        "joined_at": team_membership.joined_at.isoformat(),
+    }
     assert "Cizí soukromá adresa" not in str(body)
+
+
+@pytest.mark.django_db
+@override_settings(PUBLIC_API_ORIGIN="https://api.example.test")
+def test_account_export_includes_owned_photo_and_only_relevant_game_payloads(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    now = timezone.now().replace(microsecond=0)
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="GAME42",
+        pub_name="U Exportu",
+        started_at=now,
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account, joined_at=now)
+    PartyEveningMember.objects.create(evening=evening, account=other, joined_at=now)
+    photo = BeerPhoto.objects.create(
+        account=account,
+        party_evening=evening,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/owned.webp",
+        caption="Moje exportní fotka",
+        visibility=BeerPhoto.Visibility.PRIVATE,
+        taken_at=now,
+    )
+    own_game = PartyGame.objects.create(
+        evening=evening,
+        started_by=account,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Pub kvíz",
+        started_at=now,
+        ended_at=now,
+    )
+    answer = PartyGameEvent.objects.create(
+        game=own_game,
+        account=account,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"questionId": "q-plzen", "option": 0},
+        created_at=now,
+    )
+    result = PartyGameEvent.objects.create(
+        game=own_game,
+        account=account,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.FINISH,
+        payload={"winner": "Já", "scores": [{"name": "Já", "score": 7}]},
+        created_at=now,
+    )
+    other_game = PartyGame.objects.create(
+        evening=evening,
+        started_by=other,
+        client_id=uuid.uuid4(),
+        catalog_key="dice",
+        name="Kostky",
+        started_at=now,
+    )
+    score_about_owner = PartyGameEvent.objects.create(
+        game=other_game,
+        account=other,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        subject=account,
+        delta=2,
+        payload={"foreign_private_payload": "nesmí ven"},
+        created_at=now,
+    )
+    unrelated = PartyGameEvent.objects.create(
+        game=other_game,
+        account=other,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"unrelated_secret": "také nesmí ven"},
+        created_at=now,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    exported_photo = body["beer_photos"][0]
+    assert exported_photo["id"] == str(photo.public_id)
+    assert exported_photo["image_url"] == (
+        f"https://api.example.test/media/beer-photos/{account.public_id}/owned.webp"
+    )
+    assert "image_path" not in exported_photo
+
+    party_games = body["party_games"]
+    assert {game["id"] for game in party_games["games"]} == {
+        str(own_game.public_id),
+        str(other_game.public_id),
+    }
+    own_game_export = next(
+        game for game in party_games["games"] if game["id"] == str(own_game.public_id)
+    )
+    other_game_export = next(
+        game for game in party_games["games"] if game["id"] == str(other_game.public_id)
+    )
+    assert own_game_export["client_id"] == str(own_game.client_id)
+    assert other_game_export["client_id"] is None
+    authored = {event["id"]: event for event in party_games["events_authored"]}
+    assert authored[answer.id]["payload"] == {"questionId": "q-plzen", "option": 0}
+    assert authored[result.id]["payload"]["winner"] == "Já"
+    assert party_games["score_events_as_subject"] == [
+        {
+            "id": score_about_owner.id,
+            "game_id": str(other_game.public_id),
+            "kind": PartyGameEvent.Kind.SCORE,
+            "delta": 2,
+            "created_at": now.isoformat(),
+        }
+    ]
+    serialized = str(body)
+    assert "foreign_private_payload" not in serialized
+    assert "unrelated_secret" not in serialized
+    assert str(unrelated.id) not in {
+        str(event["id"])
+        for event in [
+            *party_games["events_authored"],
+            *party_games["score_events_as_subject"],
+        ]
+    }
 
 
 @pytest.mark.django_db
@@ -389,6 +792,13 @@ def test_account_export_reuses_loaded_auth_relations(client):
         subject="google-export",
         email="social@example.com",
     )
+    AuthIdentity.objects.create(
+        account=account,
+        provider=AuthIdentity.Provider.APPLE,
+        subject="apple-export",
+        email="apple@example.com",
+        apple_refresh_token="TOP-SECRET-REFRESH",
+    )
 
     with CaptureQueriesContext(connection) as queries:
         resp = client.get("/v1/account/export", **_auth(token))
@@ -397,7 +807,28 @@ def test_account_export_reuses_loaded_auth_relations(client):
     body = resp.json()
     assert body["account"]["email"] == "export@example.com"
     assert body["account"]["email_verified"] is True
-    assert set(body["account"]["providers"]) == {"email", "google"}
+    assert set(body["account"]["providers"]) == {"email", "google", "apple"}
+    assert sorted(body["account"]["identities"], key=lambda i: i["provider"]) == [
+        {
+            "provider": "apple",
+            "subject": "apple-export",
+            "email": "apple@example.com",
+            "created_at": next(
+                i for i in body["account"]["identities"] if i["provider"] == "apple"
+            )["created_at"],
+        },
+        {
+            "provider": "google",
+            "subject": "google-export",
+            "email": "social@example.com",
+            "created_at": next(
+                i for i in body["account"]["identities"] if i["provider"] == "google"
+            )["created_at"],
+        },
+    ]
+    serialized = str(body)
+    assert "apple_refresh_token" not in serialized
+    assert "TOP-SECRET-REFRESH" not in serialized
 
     select_queries = [
         query["sql"].lower()
@@ -406,16 +837,19 @@ def test_account_export_reuses_loaded_auth_relations(client):
     ]
     assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
     assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
+    assert len(queries.captured_queries) <= 41
 
 
 @pytest.mark.django_db
+@override_settings(PUBLIC_API_ORIGIN="https://api.example.test")
 def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
     sent: dict = {}
 
-    def fake_send_account_export_email(to, *, filename, json_bytes):
+    def fake_send_account_export_email(to, *, filename, json_bytes, idempotency_key=None):
         sent["to"] = to
         sent["filename"] = filename
         sent["json_bytes"] = json_bytes
+        sent["idempotency_key"] = idempotency_key
         return True
 
     monkeypatch.setattr(emailer, "send_account_export_email", fake_send_account_export_email)
@@ -427,6 +861,16 @@ def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
         email="export@example.com",
         password="!",
         email_verified=True,
+    )
+    account.avatar = "avatars/email-export.webp"
+    account.save(update_fields=["avatar"])
+    BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/email-owned.webp",
+        caption="Fotka v e-mailovém exportu",
+        visibility=BeerPhoto.Visibility.PRIVATE,
+        taken_at=timezone.now(),
     )
     DrinkLog.objects.create(
         account=account,
@@ -448,6 +892,14 @@ def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
     assert sent["to"] == "export@example.com"
     assert sent["filename"].startswith("na-pivo-export-")
     assert sent["filename"].endswith(".json")
+    assert sent["idempotency_key"].startswith("account-export/")
+    payload = json.loads(sent["json_bytes"])
+    assert payload["account"]["avatar_url"] == (
+        "https://api.example.test/media/avatars/email-export.webp"
+    )
+    assert payload["beer_photos"][0]["image_url"] == (
+        f"https://api.example.test/media/beer-photos/{account.public_id}/email-owned.webp"
+    )
     body = sent["json_bytes"].decode("utf-8")
     assert '"beer_name": "Ležák"' in body
     assert token not in body

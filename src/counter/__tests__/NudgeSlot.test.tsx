@@ -26,11 +26,11 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: jest.fn(() => null),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
-const { NudgeSlot } = require('../NudgeSlot');
-const { CounterCta } = require('../CounterCta');
+const { NudgeSlot } = jest.requireActual('../NudgeSlot');
+const { CounterCta } = jest.requireActual('../CounterCta');
 
 type AnyInstance = { props: Record<string, any> };
 

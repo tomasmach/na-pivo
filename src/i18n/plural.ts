@@ -41,6 +41,16 @@ export function peopleCountLabel(count: number): string {
   return `${count} ${czechPlural(count, { one: 'člověk', few: 'lidi', many: 'lidí' })}`;
 }
 
+/** "1 hospoda" / "3 hospody" / "5 hospod". */
+export function pubCountLabel(count: number): string {
+  return `${count} ${czechPlural(count, { one: 'hospoda', few: 'hospody', many: 'hospod' })}`;
+}
+
+/** "1 hra" / "3 hry" / "5 her". */
+export function gameCountLabel(count: number): string {
+  return `${count} ${czechPlural(count, { one: 'hra', few: 'hry', many: 'her' })}`;
+}
+
 export function softDrinkCountLabel(count: number): string {
   return `${count} nealko`;
 }

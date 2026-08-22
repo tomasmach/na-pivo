@@ -1,14 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import {
   readPubAmenitiesSnapshot,
   writePubAmenitiesSnapshot,
 } from '../pubAmenitiesSnapshot';
 import type { WireAmenityAggregate, WireAmenityCompleteness } from '../pubAmenitiesClient';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 const PUB = 'u2fkbf8x';
 

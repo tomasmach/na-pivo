@@ -1,9 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueuePubCommunity, flushCommunityQueue } from '../communityQueue';
+import { clearCommunityQueue, enqueuePubCommunity, flushCommunityQueue } from '../communityQueue';
 import { submitPubCommunity, type CommunityEntry } from '../communityClient';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 // communityClient → account → expo-secure-store, which isn't transformed for the
@@ -38,9 +42,20 @@ async function readQueue(): Promise<CommunityEntry[]> {
   return raw ? JSON.parse(raw) : [];
 }
 
+async function flushMicrotasks(times = 5): Promise<void> {
+  for (let index = 0; index < times; index += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
+
 beforeEach(async () => {
+  resetPrivateAccountBoundaryForTests();
   jest.clearAllMocks();
   await AsyncStorage.clear();
+});
+
+afterEach(() => {
+  resetPrivateAccountBoundaryForTests();
 });
 
 describe('enqueuePubCommunity', () => {
@@ -76,6 +91,64 @@ describe('enqueuePubCommunity', () => {
     await enqueuePubCommunity(entry({ client_id: 'b', lat: 49.1951, lng: 16.6068 }));
 
     expect(await readQueue()).toHaveLength(2);
+  });
+
+  it('persists a new contribution while an older flush is waiting on the network', async () => {
+    const older = entry({ client_id: 'older', lat: 50.0812, lng: 14.4182 });
+    const newer = entry({ client_id: 'newer', lat: 49.1951, lng: 16.6068 });
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([older]));
+    let release!: () => void;
+    (submitPubCommunity as jest.Mock)
+      .mockReturnValueOnce(new Promise((resolve) => { release = () => resolve(null); }))
+      .mockResolvedValue(null);
+
+    const flushing = flushCommunityQueue();
+    await flushMicrotasks();
+    const enqueueing = enqueuePubCommunity(newer);
+    await flushMicrotasks();
+
+    expect((await readQueue()).map((queued) => queued.client_id)).toContain('newer');
+    release();
+    await Promise.all([flushing, enqueueing]);
+  });
+
+  it('does not evict an older offline contribution when the former cap is reached', async () => {
+    const queued = Array.from({ length: 30 }, (_, index) =>
+      entry({ client_id: `old-${index}`, lat: 48 + index * 0.01, lng: 12 + index * 0.01 }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queued));
+    (submitPubCommunity as jest.Mock).mockResolvedValue(null);
+
+    await enqueuePubCommunity(entry({ client_id: 'new-31', lat: 51, lng: 18 }));
+
+    expect(await readQueue()).toHaveLength(31);
+    expect((await readQueue()).some((item) => item.client_id === 'old-0')).toBe(true);
+  });
+
+  it('aborts direct delivery and removes the old account queue at a credential boundary', async () => {
+    let sendStarted!: () => void;
+    const started = new Promise<void>((resolve) => { sendStarted = resolve; });
+    (submitPubCommunity as jest.Mock).mockImplementationOnce(
+      async (_entry: CommunityEntry, signal: AbortSignal) => {
+        sendStarted();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return null;
+      },
+    );
+
+    const enqueueing = enqueuePubCommunity(entry({ client_id: 'account-a' }));
+    await started;
+    const transition = beginPrivateAccountTransition('account-switch', 'account-a');
+    expect(transition).not.toBeNull();
+    await transition!.drain();
+    await expect(enqueueing).resolves.toBeNull();
+    await clearCommunityQueue();
+    transition!.release();
+
+    expect(await readQueue()).toEqual([]);
   });
 });
 
@@ -116,5 +189,21 @@ describe('flushCommunityQueue', () => {
     await AsyncStorage.setItem(STORAGE_KEY, '{not json');
     await expect(flushCommunityQueue()).resolves.toBeUndefined();
     expect(submitPubCommunity).not.toHaveBeenCalled();
+  });
+
+  it('drops malformed persisted contributions while delivering healthy siblings', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      entry({ client_id: 'healthy' }),
+      entry({ client_id: 'bad-coordinates', lat: 999 }),
+      entry({ client_id: 'bad-menu', hours: undefined, beers: [{ name: '', price_czk: 0 }] }),
+    ]));
+
+    await flushCommunityQueue();
+
+    expect(submitPubCommunity).toHaveBeenCalledTimes(1);
+    expect(submitPubCommunity).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 'healthy' }),
+      expect.any(AbortSignal),
+    );
   });
 });

@@ -6,7 +6,7 @@
  * treatment for the same reason, so the presentation lives here and each screen
  * only decides which doors it shows.
  *
- * Rules it carries (docs/design-system.md §5.5): equal columns, one 34pt amber
+ * Rules it carries (DESIGN.md §5.5): equal columns, one 34pt amber
  * medallion each, separated by light and never by a frame, and it navigates —
  * it never counts, mutates or competes with the screen's one amber button.
  */
@@ -16,7 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { type IconProps } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 /** Above this the badge stops being a count and becomes "a lot". */
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.stout2,
   },
   badgeText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 10,
     lineHeight: 13,
     color: Colors.stout,
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   label: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,

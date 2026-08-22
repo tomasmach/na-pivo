@@ -46,7 +46,7 @@ import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -239,12 +239,12 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.border, 0.6),
   },
   numeral: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 16,
     color: Colors.amber,
   },
   deadLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.mutedText,
   },

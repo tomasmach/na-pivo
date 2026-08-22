@@ -17,7 +17,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -122,12 +122,12 @@ const styles = StyleSheet.create({
   value: {
     minWidth: 72,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 26,
     color: Colors.foam,
   },
   suffix: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 20,
     color: Colors.mutedText,
   },

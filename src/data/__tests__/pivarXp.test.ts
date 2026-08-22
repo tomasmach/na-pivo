@@ -1,13 +1,14 @@
+import { notePivarSnapshot, setPivarSnapshotListener } from '../pivarXp';
+
 const applyPivarSnapshot = jest.fn();
-
-jest.mock('@/stores/accountStore', () => ({
-  useAccountStore: { getState: () => ({ applyPivarSnapshot }) },
-}));
-
-import { notePivarSnapshot } from '../pivarXp';
 
 beforeEach(() => {
   jest.clearAllMocks();
+  setPivarSnapshotListener(applyPivarSnapshot);
+});
+
+afterEach(() => {
+  setPivarSnapshotListener(null);
 });
 
 describe('notePivarSnapshot', () => {

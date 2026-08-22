@@ -18,14 +18,14 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
 import { ChevronLeftIcon, UsersIcon } from '@/components/shared/IconGlyph';
-import { claimInviteCode } from '@/data/friendInviteLink';
+import { claimInviteCode, clearPendingInviteCode } from '@/data/friendInviteLink';
 import { resolveInviteCode, type FriendProfile } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 type ClaimState = 'loading' | 'valid' | 'expired' | 'invalid' | 'self';
@@ -81,18 +81,27 @@ export default function InviteClaimScreen() {
     };
   }, [code, myId]);
 
-  const goToParta = useCallback(() => {
-    router.replace('/friends' as Href);
+  const goAfterClaim = useCallback(() => {
+    router.replace('/friends/parta/people?focus=outgoing' as Href);
+  }, [router]);
+
+  const goBack = useCallback(() => {
+    void clearPendingInviteCode().finally(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace('/friends/parta' as Href);
+    });
   }, [router]);
 
   const handleClaim = useCallback(() => {
     if (claiming || !code) return;
     setClaiming(true);
-    void claimInviteCode(code).then((result) => {
+    void claimInviteCode(code).then(async (result) => {
       if (!mountedRef.current) return;
       if (result.ok) {
+        await clearPendingInviteCode();
+        if (!mountedRef.current) return;
         showToast(cs.friends.claimDone, { icon: <UsersIcon size={20} color={Colors.amber} /> });
-        goToParta();
+        goAfterClaim();
         return;
       }
       setClaiming(false);
@@ -101,7 +110,7 @@ export default function InviteClaimScreen() {
         result.code === 'invite_expired' ? cs.friends.claimExpired : result.detail || cs.friends.claimInvalid;
       showToast(message);
     });
-  }, [claiming, code, goToParta, showToast]);
+  }, [claiming, code, goAfterClaim, showToast]);
 
   const errorMessage =
     state === 'expired'
@@ -116,7 +125,7 @@ export default function InviteClaimScreen() {
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={goToParta}
+          onPress={goBack}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={cs.friends.claimBack}
@@ -140,7 +149,7 @@ export default function InviteClaimScreen() {
             <View style={styles.ctaWrap}>
               <GlowButton
                 label={cs.friends.claimBack}
-                onPress={goToParta}
+                onPress={goBack}
                 variant="secondary"
                 glow="none"
                 height={52}
@@ -203,7 +212,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   loadingText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
   },
@@ -214,21 +223,21 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     lineHeight: 30,
     color: Colors.foam,
     textAlign: 'center',
   },
   claimBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foamMuted,
     textAlign: 'center',
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,

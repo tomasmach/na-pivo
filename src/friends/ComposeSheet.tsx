@@ -18,7 +18,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,17 +26,13 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -52,11 +47,12 @@ import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { cs } from '@/i18n/cs';
+import { MockLayout, MockColors } from '@/mocks/mockTheme';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -67,7 +63,6 @@ import SectionHeader from './SectionHeader';
 import SegmentedControl from './SegmentedControl';
 import SkeletonBlock from './SkeletonBlock';
 
-const SLIDE_SPRING = { damping: 18, stiffness: 180, mass: 0.9 } as const;
 const MESSAGE_MAX = 80;
 const HOUR_PRESETS = [18, 19, 20, 21, 22] as const;
 const RECENT_LIMIT = 6;
@@ -79,6 +74,8 @@ interface ComposeSheetProps {
   onSubmitted: () => void;
   /** Fired once the sheet has finished sliding out (parent then unmounts it). */
   onClose: () => void;
+  /** A hub action has one intent; the legacy combined picker remains the default. */
+  intent?: 'live' | 'plan' | 'choose';
 }
 
 interface PubOption {
@@ -200,7 +197,7 @@ function FriendRecipientRow({
   );
 }
 
-function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): React.ReactElement {
+function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose' }: ComposeSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // Modals host their own window, so KeyboardAvoidingView is unreliable here —
@@ -215,7 +212,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
   const pruneMemberIds = usePartyGroupsStore((s) => s.pruneMemberIds);
 
   const [placeTab, setPlaceTab] = useState<0 | 1>(0);
-  const [timeTab, setTimeTab] = useState<0 | 1>(0);
+  const [timeTab, setTimeTab] = useState<0 | 1>(intent === 'plan' ? 1 : 0);
   const [audienceMode, setAudienceMode] = useState<'all' | 'custom'>('all');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
@@ -349,29 +346,15 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
     [minHour],
   );
 
-  // ── Slide-up + owned slide-out. Shared value written ONLY in the effect. ──
   const [closing, setClosing] = useState(false);
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (closing) {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    } else {
-      progress.value = reduceMotion ? withTiming(1, { duration: 0 }) : withSpring(1, SLIDE_SPRING);
-    }
-  }, [closing, reduceMotion, progress]);
 
   const requestClose = useCallback(() => {
     if (closing) return;
     setClosing(true);
-    setTimeout(onClose, reduceMotion ? 0 : 150);
-  }, [closing, onClose, reduceMotion]);
+    setTimeout(onClose, 280);
+  }, [closing, onClose]);
 
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
-
-  const isPlan = timeTab === 1;
+  const isPlan = intent === 'plan' || (intent === 'choose' && timeTab === 1);
   // A plan needs a strictly-future hour today (minutes clamped to :00). Kept pure
   // (no render-time clock call) — the actual ISO is built in the submit handler.
   const isValidPlanTime = hour > nowHour;
@@ -440,44 +423,36 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
   const showNearbyLoading = placeTab === 0 && permissionState === 'granted' && loading;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={requestClose}>
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={requestClose}
-          accessibilityRole="button"
-          accessibilityLabel={cs.friends.settingsClose}
-        />
-
-        <Animated.View
+    <BottomSheetModal visible={!closing} onClose={requestClose}>
+      <View
+        style={[
+          styles.cardWrap,
+          {
+            marginBottom: keyboardHeight > 0 ? keyboardHeight : -insets.bottom,
+            maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+          },
+        ]}
+      >
+        <View
           style={[
             styles.card,
             softDrop(),
             {
-              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
-              marginBottom: keyboardHeight,
-              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+              paddingBottom: keyboardHeight > 0 ? Spacing.lg : insets.bottom + Spacing.lg,
             },
-            cardAnim,
           ]}
         >
           <View style={styles.handle} />
 
           <View style={styles.headerRow}>
             <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.composeTitle}
+              {isPlan ? cs.friends.planComposeTitle : cs.friends.composeTitle}
             </Text>
           </View>
 
-          <Pressable
-            onPress={requestClose}
-            hitSlop={12}
-            style={({ pressed }) => [styles.closeBtn, pressed && styles.dim]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.friends.settingsClose}
-          >
-            <XIcon size={18} color={Colors.foamMuted} />
-          </Pressable>
+          <View style={styles.closeBtn}>
+            <CloseButton onPress={requestClose} label={cs.friends.settingsClose} />
+          </View>
 
           <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>
             {/* KOMU */}
@@ -534,7 +509,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
                     value={groupName}
                     onChangeText={setGroupName}
                     placeholder={cs.friends.recipientGroupPlaceholder}
-                    placeholderTextColor={Colors.mutedText}
+                    placeholderTextColor={MockColors.fieldHint}
                     style={styles.groupNameInput}
                     maxLength={28}
                     maxFontSizeMultiplier={FontScaleCap.body}
@@ -603,14 +578,16 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
               )}
             </View>
 
-            {/* KDY */}
-            <View style={styles.sectionGap}>
+            {/* KDY — the hub opens a single-intent sheet, so no Teď/Na čas fork. */}
+            {intent !== 'live' ? <View style={styles.sectionGap}>
               <SectionHeader label={cs.friends.composeTimeLabel} />
-              <SegmentedControl
-                options={[cs.friends.composeNow, cs.friends.composeLater]}
-                value={timeTab}
-                onChange={setTimeTab}
-              />
+              {intent === 'choose' ? (
+                <SegmentedControl
+                  options={[cs.friends.composeNow, cs.friends.composeLater]}
+                  value={timeTab}
+                  onChange={setTimeTab}
+                />
+              ) : null}
               {isPlan ? (
                 <View style={styles.timePicker}>
                   {availablePresets.length > 0 ? (
@@ -646,7 +623,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
                   </View>
                 </View>
               ) : null}
-            </View>
+            </View> : null}
 
             {/* VZKAZ */}
             <View style={styles.sectionGap}>
@@ -655,7 +632,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
                 value={message}
                 onChangeText={setMessage}
                 placeholder={cs.friends.composeMsgPlaceholder}
-                placeholderTextColor={Colors.mutedText}
+                placeholderTextColor={MockColors.fieldHint}
                 style={styles.messageInput}
                 multiline
                 maxLength={MESSAGE_MAX}
@@ -692,36 +669,30 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
               )}
             </Pressable>
           </View>
-        </Animated.View>
-
-        <Toast />
+        </View>
       </View>
-    </Modal>
+
+      <Toast />
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
+  cardWrap: { width: '100%' },
   card: {
-    maxHeight: '90%',
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
   },
   handle: {
     alignSelf: 'center',
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     marginBottom: Spacing.md,
   },
   headerRow: {
@@ -731,7 +702,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -748,6 +719,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   body: {
+    flexGrow: 0,
     flexShrink: 1,
     marginTop: Spacing.md,
   },
@@ -777,7 +749,7 @@ const styles = StyleSheet.create({
   },
   recipientChipText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -786,7 +758,7 @@ const styles = StyleSheet.create({
   },
   recipientSummary: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -826,13 +798,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   recipientName: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },
   recipientSub: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -845,7 +817,7 @@ const styles = StyleSheet.create({
   groupNameInput: {
     flex: 1,
     minHeight: 44,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foam,
     fontSize: 15,
     backgroundColor: Colors.stout2,
@@ -868,7 +840,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   groupSaveText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.amber,
   },
@@ -880,7 +852,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   emptyText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.mutedText,
     paddingVertical: Spacing.md,
@@ -893,7 +865,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   permText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
   },
@@ -916,18 +888,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   pubName: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },
   pubCity: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubDistance: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -955,7 +927,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   presetText: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -969,7 +941,7 @@ const styles = StyleSheet.create({
   messageInput: {
     marginTop: Spacing.sm,
     minHeight: 54,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foam,
     fontSize: 16,
     backgroundColor: Colors.stout2,
@@ -985,7 +957,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   hint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -996,7 +968,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
     alignItems: 'center',
     justifyContent: 'center',
-    ...softDrop(),
   },
   submitDisabled: {
     opacity: 0.5,
@@ -1006,7 +977,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   submitLabel: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     letterSpacing: 0.3,
     color: Colors.stout,

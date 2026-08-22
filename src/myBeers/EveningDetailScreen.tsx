@@ -1,26 +1,41 @@
 /**
- * Evening detail — the full breakdown of one drinking evening plus the private
- * pub rating. Reached from the "Moje piva" list by the session's `startedAt`
- * (a stable per-session identity). Drinks can be corrected, removed or added
- * back into the same evening while the personal pub rating stays editable.
+ * Evening detail — the full breakdown of one evening, plus the private pub
+ * rating and the public mapping entry. Reached from the diary by the session's
+ * `startedAt` (a stable per-session identity). Drinks can be corrected, removed
+ * or added back into the same evening while the personal rating stays editable.
+ *
+ * 3.0 pass. The screen used to be six bordered cards stacked on top of each
+ * other, each opened by an amber 11pt uppercase kicker, with three filled amber
+ * controls competing on one scroll. It is now the same content on the stout
+ * ground, split by `SectionBreak` (§4.1), with exactly one filled amber surface
+ * — "Vyvěsit na Výčep", the only action here that leaves the phone.
+ *
+ * The one structural change: "CO PADLO" and "ZAPSANÉ NÁPOJE" were two lists of
+ * the same drinks, one read-only and one editable, differing only in whether
+ * draft and bottled collapsed into one row. That is the duplicate surface §0.6
+ * asks you to merge, so there is now one list — what you drank, what it cost,
+ * and the two controls that fix it — with the total under it.
+ *
+ * Nothing moved off the screen: the rename dialog, the per-drink retract, the
+ * back-dated add, publishing, sharing, rating and mapping are all still here.
  */
 
 import React, { useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
-import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { MockLayout } from '@/mocks/mockTheme';
+import { SectionBreak } from '@/mocks/SectionBreak';
+import { StatGrid, type Stat } from '@/mocks/StatGrid';
+import { Colors, withAlpha } from '@/theme/colors';
+import { FontScaleCap } from '@/theme/fonts';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
 import { formatPrice } from '@/utils/currency';
 import {
@@ -38,14 +53,13 @@ import {
   ChevronLeftIcon,
   HandPlatterIcon,
   HouseIcon,
-  MapPinIcon,
   MinusIcon,
   PencilIcon,
   PlusIcon,
   Share2Icon,
   TreePineIcon,
-  XIcon,
 } from '@/components/shared/IconGlyph';
+import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import {
   contextFromPubKey,
   isContextPubKey,
@@ -56,6 +70,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
   findSessionByStart,
+  sessionDrinkTypeCounts,
   sessionTotalCzk,
   drinkingDayKey,
   type TallyDrink,
@@ -66,16 +81,14 @@ import { buildNightSummary, sessionsOfNight } from '@/vycep/nightModel';
 import { PublishNightSheet } from '@/vycep/PublishNightSheet';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
 import {
-  sessionBreakdown,
   sessionDrinkActionGroups,
-  sessionDrinkSummary,
   eveningDateLabel,
   type DrinkActionGroup,
 } from '@/myBeers/eveningModel';
-import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { RenamePromptSheet } from '@/components/shared/RenamePromptSheet';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { generateUuidV4 } from '@/data/account';
@@ -96,6 +109,15 @@ function latestDrinkAt(session: TallySession): string {
     }
   }
   return latest;
+}
+
+/** How long the evening ran, measured between its first and last drink. */
+function sessionSpanMs(session: TallySession): number {
+  const stamps = session.drinks
+    .map((drink) => Date.parse(drink.at))
+    .filter((ms) => Number.isFinite(ms))
+    .sort((a, b) => a - b);
+  return stamps.length > 1 ? stamps[stamps.length - 1] - stamps[0] : 0;
 }
 
 export default function EveningDetailScreen() {
@@ -143,7 +165,6 @@ export default function EveningDetailScreen() {
   const session = localSession ?? remoteSession;
   const isEditable = localSession !== null;
 
-  const breakdown = useMemo(() => sessionBreakdown(session), [session]);
   // The Výčep publishes the whole drinking day (a pub crawl is one night), so
   // the summary re-groups every session sharing this evening's drinking day.
   const nightSummary = useMemo(() => {
@@ -155,6 +176,28 @@ export default function EveningDetailScreen() {
     nightSummary ? s.published[nightSummary.clientKey] : undefined,
   );
   const drinkActionGroups = useMemo(() => sessionDrinkActionGroups(session), [session]);
+
+  // The hero numbers. Beers lead because beers are what this app counts; the
+  // rest of the glasses get one honest column rather than four.
+  const heroStats: Stat[] = useMemo(() => {
+    if (!session) return [];
+    const counts = sessionDrinkTypeCounts(session);
+    const others = counts.wine + counts.shot + counts.soft_drink;
+    const spentCzk = sessionTotalCzk(session);
+    const spanMs = sessionSpanMs(session);
+    const stats: Stat[] = [{ label: cs.myBeers.statBeers, value: String(counts.beer) }];
+    if (others > 0) stats.push({ label: cs.myBeers.statOther, value: String(others) });
+    stats.push({
+      label: cs.diary.factSpent,
+      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : cs.diary.factEmpty,
+    });
+    stats.push({
+      label: cs.diary.factSpan,
+      value: spanMs > 0 ? cs.stats.span(spanMs) : cs.diary.factEmpty,
+    });
+    return stats;
+  }, [priceCurrency, session]);
+
   const addDrinkSeed = useMemo(() => {
     if (!session?.drinks.length) return null;
     const drink = session.drinks[session.drinks.length - 1];
@@ -289,9 +332,9 @@ export default function EveningDetailScreen() {
       },
       id,
     );
-    void enqueueDrink(entry).then((delivered) => {
-      if (delivered) markDrinkSynced(id);
-    });
+    void enqueueDrink(entry).then((result) => {
+      if (result === 'delivered') markDrinkSynced(id);
+    }).catch(() => undefined);
     void trackClientEvent({
       event: 'drink_added',
       context: {
@@ -307,29 +350,27 @@ export default function EveningDetailScreen() {
     });
   };
 
+  const context = session ? contextFromPubKey(session.pubKey) : 'pub';
+  // An icon in a detail usually decorates a title that already said everything
+  // (§19) — but "Doma" and "Venku" are the two cases where the place is not a
+  // pub name and the glyph carries what the words cannot.
+  const ContextIcon = context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : null;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
-          hitSlop={4}
-        >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {session ? eveningDateLabel(session.startedAt, now) : cs.myBeers.title}
-        </Text>
-        <View style={styles.headerSpacer} />
+      {/* The bar carries the way out and nothing else: the date and the place
+          are the page's own title block, where a name too long for a centred
+          header still gets the whole width. */}
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+        <GlassIconButton size={HitArea.min} accessibilityLabel={cs.a11y.backButton} onPress={() => router.back()}>
+          <ChevronLeftIcon size={20} color={Colors.foam} />
+        </GlassIconButton>
       </View>
 
       {!session ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.emptyTitle}
+            {cs.myBeers.eveningGoneTitle}
           </Text>
         </View>
       ) : (
@@ -339,119 +380,110 @@ export default function EveningDetailScreen() {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
         >
-          {/* Place + summary (an outside evening shows its context icon) */}
-          <View style={styles.card}>
-            <View style={styles.pubRow}>
-              {(() => {
-                const context = contextFromPubKey(session.pubKey);
-                const Icon =
-                  context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : MapPinIcon;
-                return <Icon size={18} color={Colors.amber} />;
-              })()}
-              <Text style={styles.pubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {session.pubName || cs.diary.noPub}
-              </Text>
-            </View>
-            <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.myBeers.summary(
-                sessionDrinkSummary(session),
-                formatPrice(sessionTotalCzk(session), priceCurrency),
-              )}
+          <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
+            {eveningDateLabel(session.startedAt, now)}
+          </Text>
+          <View style={styles.titleRow}>
+            {ContextIcon ? <ContextIcon size={20} color={Colors.mutedText} /> : null}
+            <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {session.pubName || cs.diary.noPub}
             </Text>
           </View>
-
-          {/* Breakdown */}
-          <View style={styles.card}>
-            <View style={styles.cardSectionHeader}>
-              <Text style={styles.cardSectionHeaderText}>{cs.myBeers.breakdownHeader}</Text>
-            </View>
-            <EveningBreakdown
-              lines={breakdown}
-              totalCzk={sessionTotalCzk(session)}
-              priceCurrency={priceCurrency}
+          {/* Four columns only when there genuinely is a fourth number —
+              `StatGrid` does not space a wrapped row, so the four-stat evening
+              has to fit on one line rather than fold under itself. */}
+          <View style={styles.heroStats}>
+            <StatGrid
+              columns={heroStats.length > 3 ? 4 : 3}
+              compact={heroStats.length > 3}
+              stats={heroStats}
             />
           </View>
 
-          {isEditable ? (
-            <View style={styles.card}>
-              <View style={styles.cardSectionHeader}>
-                <Text style={styles.cardSectionHeaderText}>{cs.myBeers.drinkActionsHeader}</Text>
-                <View style={styles.headerFlex} />
-                <Pressable
-                  onPress={openAddDrink}
-                  style={({ pressed }) => [
-                    styles.addDrinkButton,
-                    pressed && styles.iconButtonPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
-                >
-                  <PlusIcon size={15} color={Colors.stout} />
-                  <Text style={styles.addDrinkButtonText}>{cs.myBeers.addDrinkToEvening}</Text>
-                </Pressable>
+          {/* One list, not two. Each row is what you drank, how many and what it
+              cost, and carries the two controls that fix it. */}
+          <SectionBreak title={cs.myBeers.breakdownTitle} inset={MockLayout.screenPad} />
+          {drinkActionGroups.map((group, index) => (
+            <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowDivider]}>
+              <View style={styles.drinkInfo}>
+                <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
+                  {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
+                  {group.count > 1 ? ` · ${group.count}×` : ''}
+                </Text>
+                <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {[
+                    group.servingType ? cs.counter.servingTypeLabel(group.servingType) : null,
+                    group.pricedCount === group.count
+                      ? group.count > 1
+                        ? cs.myBeers.drinkGroupTotal(formatPrice(group.totalCzk, priceCurrency))
+                        : formatPrice(group.totalCzk, priceCurrency)
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || cs.diary.factEmpty}
+                </Text>
               </View>
-              {drinkActionGroups.map((group, index) => (
-                <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
-                  <View style={styles.drinkInfo}>
-                    <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
-                      {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
-                      {group.count > 1 ? ` · ${group.count}×` : ''}
-                    </Text>
-                    <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {[
-                        group.servingType
-                          ? cs.counter.servingTypeLabel(group.servingType)
-                          : null,
-                        group.pricedCount === group.count
-                          ? group.count > 1
-                            ? cs.myBeers.drinkGroupTotal(
-                                formatPrice(group.totalCzk, priceCurrency),
-                              )
-                            : formatPrice(group.totalCzk, priceCurrency)
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ') || '—'}
-                    </Text>
-                  </View>
-                  <View style={styles.drinkActions}>
-                    <Pressable
-                      onPress={() => setEditingGroup(group)}
-                      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={cs.myBeers.editDrink}
-                    >
-                      <PencilIcon size={17} color={Colors.amber} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
-                      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={cs.myBeers.deleteDrink}
-                    >
-                      <MinusIcon size={17} color={Colors.mutedText} />
-                    </Pressable>
-                  </View>
+              {/* Bare glyphs on 44pt targets. Two bordered discs inside a
+                  bordered card was a frame on a frame on a frame (§14.10).
+                  Remote evenings are factual records, so they render without
+                  the controls that would mutate local state. */}
+              {isEditable ? (
+                <View style={styles.drinkActions}>
+                  <Pressable
+                    onPress={() => setEditingGroup(group)}
+                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.myBeers.editDrink}
+                  >
+                    <PencilIcon size={18} color={Colors.foamMuted} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
+                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.myBeers.deleteDrink}
+                  >
+                    <MinusIcon size={18} color={Colors.mutedText} />
+                  </Pressable>
                 </View>
-              ))}
+              ) : null}
             </View>
+          ))}
+
+          <View style={[styles.drinkRow, styles.totalRow]}>
+            <Text style={styles.totalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.myBeers.totalLabel}
+            </Text>
+            <Text style={styles.totalValue} allowFontScaling={false}>
+              {formatPrice(sessionTotalCzk(session), priceCurrency)}
+            </Text>
+          </View>
+
+          {isEditable ? (
+            <Pressable
+              onPress={openAddDrink}
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
+            >
+              <PlusIcon size={16} color={Colors.amber} />
+              <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.myBeers.addDrinkToEvening}
+              </Text>
+            </Pressable>
           ) : null}
 
           {/* Výčep — hang the night on the feed and/or share it as a story.
               Only a night with something on it qualifies. */}
           {nightSummary ? (
-            <View style={styles.card}>
-              <View style={styles.cardSectionHeader}>
-                <Text style={styles.cardSectionHeaderText}>{cs.vycep.sectionHeader}</Text>
-              </View>
-              <Text style={styles.vycepBody} maxFontSizeMultiplier={FontScaleCap.body}>
+            <>
+              <SectionBreak title={cs.vycep.sectionTitle} inset={MockLayout.screenPad} />
+              <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.vycep.publishEntryBody}
               </Text>
               {publishedRecord ? (
-                <Text style={styles.vycepState} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text style={styles.publishedState} maxFontSizeMultiplier={FontScaleCap.body}>
                   {cs.vycep.publishedState(
                     publishedRecord.visibility === 'public'
                       ? cs.vycep.visibilityChipWorld
@@ -459,51 +491,48 @@ export default function EveningDetailScreen() {
                   )}
                 </Text>
               ) : null}
-              <View style={styles.vycepActions}>
-                <Pressable
-                  onPress={() => setPublishSheetVisible(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.publishNightButton}
-                  style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
-                >
-                  <HandPlatterIcon size={16} color={Colors.stout} />
-                  <Text style={styles.vycepPrimaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishEntryTitle}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setShareModalVisible(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.shareNightButton}
-                  style={({ pressed }) => [styles.vycepGhost, pressed && styles.iconButtonPressed]}
-                >
-                  <Share2Icon size={16} color={Colors.foamMuted} />
-                  <Text style={styles.vycepGhostText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.vycep.shareNightCta}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+              {/* The one filled amber surface on this screen (§2.2): the single
+                  action that takes the evening off this phone. */}
+              <Pressable
+                onPress={() => setPublishSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.publishNightButton}
+                style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
+              >
+                <HandPlatterIcon size={17} color={Colors.stout} />
+                <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishEntryTitle}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShareModalVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.shareNightButton}
+                style={({ pressed }) => [styles.secondary, styles.secondaryTight, pressed && styles.pressed]}
+              >
+                <Share2Icon size={16} color={Colors.amber} />
+                <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.vycep.shareNightCta}
+                </Text>
+              </Pressable>
+            </>
           ) : null}
 
           {/* Rating + public mapping are pub concepts — an outside evening
-              ("Doma / na chatě") has nothing to rate or map. */}
+              ("Doma / na chatě") has nothing to rate or map. The band between
+              them keeps the private/public split obvious now that neither of
+              them is a card of its own. */}
           {!isContextPubKey(session.pubKey) ? (
             <>
-              {/* Rating */}
-              <View style={styles.card}>
-                <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
-              </View>
+              <SectionBreak inset={MockLayout.screenPad} />
+              <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
 
-              {/* Public community mapping — separate card so the public/private
-                  split is visually obvious next to the private rating above. */}
-              <View style={styles.card}>
+              <SectionBreak inset={MockLayout.screenPad} />
+              <View style={styles.mapEntry}>
                 <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
               </View>
             </>
           ) : null}
-
-          <View style={{ height: Spacing.lg }} />
         </KeyboardAwareScrollView>
       )}
       {nightSummary ? (
@@ -555,23 +584,9 @@ function EditDrinkNameModal({
   onCancel: () => void;
   onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
-  return (
-    <Modal visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        style={styles.modalBackdrop}
-        behavior="padding"
-      >
-        {group ? (
-          <EditDrinkNameForm
-            key={group.key}
-            group={group}
-            onCancel={onCancel}
-            onSave={onSave}
-          />
-        ) : null}
-      </KeyboardAvoidingView>
-    </Modal>
-  );
+  return group ? (
+    <EditDrinkNameForm key={group.key} group={group} onCancel={onCancel} onSave={onSave} />
+  ) : null;
 }
 
 function EditDrinkNameForm({
@@ -584,317 +599,184 @@ function EditDrinkNameForm({
   onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
   const [name, setName] = useState(group.name);
+  const canSubmit = name.trim().length > 0 && name.trim() !== group.name.trim();
 
   return (
-    <View style={styles.modalCard}>
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.myBeers.editDrinkGroupTitle(group.count)}
-        </Text>
-        <Pressable
-          onPress={onCancel}
-          style={({ pressed }) => [styles.modalClose, pressed && styles.iconButtonPressed]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.myBeers.editDrinkCancel}
-        >
-          <XIcon size={18} color={Colors.mutedText} />
-        </Pressable>
-      </View>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder={cs.myBeers.editDrinkPlaceholder}
-        placeholderTextColor={Colors.mutedText}
-        style={styles.nameInput}
-        autoCapitalize="words"
-        autoCorrect
-        maxLength={80}
-        returnKeyType="done"
-        onSubmitEditing={() => onSave(group, name)}
-      />
-      <View style={styles.modalActions}>
-        <Pressable onPress={onCancel} style={styles.modalSecondaryButton} accessibilityRole="button">
-          <Text style={styles.modalSecondaryText}>{cs.myBeers.editDrinkCancel}</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => onSave(group, name)}
-          style={styles.modalPrimaryButton}
-          accessibilityRole="button"
-        >
-          <Text style={styles.modalPrimaryText}>{cs.myBeers.editDrinkSave}</Text>
-        </Pressable>
-      </View>
-    </View>
+    <RenamePromptSheet
+      visible
+      title={cs.myBeers.editDrinkGroupTitle(group.count)}
+      value={name}
+      placeholder={cs.myBeers.editDrinkPlaceholder}
+      inputLabel={cs.myBeers.editDrinkPlaceholder}
+      cancelLabel={cs.myBeers.editDrinkCancel}
+      saveLabel={cs.myBeers.editDrinkSave}
+      maxLength={80}
+      canSubmit={canSubmit}
+      onChange={setName}
+      onCancel={onCancel}
+      onSubmit={() => onSave(group, name)}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.stout,
-  },
+  safeArea: { flex: 1, backgroundColor: Colors.stout },
+  pressed: { opacity: 0.65 },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 12,
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    color: Colors.foam,
-  },
-  headerSpacer: {
-    width: 44,
-    height: 44,
+    paddingBottom: Spacing.sm,
+    paddingHorizontal: MockLayout.screenPad,
   },
 
   scroll: { flex: 1 },
+  // One width through the whole app (§20.1). The sections bleed past exactly
+  // this much, so no host may add a second padding on top of it.
   scrollContent: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm + 2,
+    paddingHorizontal: MockLayout.screenPad,
+    paddingBottom: Spacing.xxl,
   },
 
-  card: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 18,
+  eyebrow: {
+    fontWeight: '500',
+    fontSize: 14,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  pubRow: {
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
+    gap: Spacing.sm,
+    marginTop: 2,
   },
-  pubName: {
-    flex: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+  title: {
+    flexShrink: 1,
+    fontWeight: '800',
+    fontSize: 28,
+    letterSpacing: -0.5,
     color: Colors.foam,
+    includeFontPadding: false,
   },
-  summary: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.amber,
-  },
-  cardSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  cardSectionHeaderText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: Colors.amber,
-  },
-  headerFlex: { flex: 1 },
-  addDrinkButton: {
-    minHeight: 32,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-    paddingHorizontal: 11,
-  },
-  addDrinkButtonText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 12,
-    color: Colors.stout,
-  },
+  heroStats: { marginTop: MockLayout.controlGap },
+
+  // 60 is the reading minimum for a one-line row; 44 is the minimum for
+  // touching it, and a list packed to the touch minimum reads as a table (§4.1).
   drinkRow: {
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 10,
+    paddingVertical: Spacing.sm,
   },
-  drinkRowBorder: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+  drinkRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.08),
   },
-  drinkInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
+  drinkInfo: { flex: 1, minWidth: 0 },
   drinkName: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
+    fontWeight: '600',
+    fontSize: 16,
     color: Colors.foam,
+    includeFontPadding: false,
   },
   drinkMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    color: Colors.amber,
-  },
-  drinkActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconButtonPressed: {
-    opacity: 0.75,
-  },
-
-  vycepBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '400',
     fontSize: 13,
-    lineHeight: 19,
-    color: Colors.foamMuted,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
-  vycepState: {
-    marginTop: 6,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12.5,
-    color: Colors.amber,
-  },
-  vycepActions: {
-    marginTop: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  vycepPrimary: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
+  drinkActions: { flexDirection: 'row', alignItems: 'center' },
+  iconButton: {
+    width: HitArea.min,
+    height: HitArea.min,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-    paddingHorizontal: 16,
-  },
-  vycepPrimaryText: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 14,
-    color: Colors.stout,
-  },
-  vycepGhost: {
-    minHeight: 44,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 16,
-  },
-  vycepGhostText: {
-    fontFamily: Fonts.display.semibold,
-    fontSize: 14,
-    color: Colors.foamMuted,
+    justifyContent: 'center',
   },
 
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: Spacing.lg,
-    backgroundColor: 'rgba(12, 8, 5, 0.72)',
+  totalRow: {
+    justifyContent: 'space-between',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  modalCard: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 18,
-    gap: 14,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  modalTitle: {
-    flex: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
-    color: Colors.foam,
-  },
-  modalClose: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nameInput: {
-    minHeight: 50,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout,
-    paddingHorizontal: 14,
-    fontFamily: Fonts.ui.semibold,
+  totalLabel: {
+    fontWeight: '600',
     fontSize: 16,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  totalValue: {
+    fontWeight: '800',
+    fontSize: 20,
     color: Colors.foam,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
-  modalActions: {
+
+  body: {
+    fontWeight: '400',
+    fontSize: 15,
+    lineHeight: 21,
+    color: Colors.foamMuted,
+  },
+  publishedState: {
+    marginTop: 6,
+    fontWeight: '600',
+    fontSize: 13,
+    color: Colors.amber,
+  },
+
+  primary: {
+    marginTop: MockLayout.controlGap,
+    height: MockLayout.buttonHeight,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  modalSecondaryButton: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modalSecondaryText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 14,
-    color: Colors.mutedText,
-  },
-  modalPrimaryButton: {
-    minHeight: 44,
-    paddingHorizontal: 18,
+    gap: Spacing.sm,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
+  },
+  primaryText: {
+    fontWeight: '700',
+    fontSize: 16,
+    color: Colors.stout,
+    includeFontPadding: false,
+  },
+  // Outline, never filled (§6.2).
+  secondary: {
+    marginTop: MockLayout.controlGap,
+    minHeight: MockLayout.buttonHeight,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.18),
+    backgroundColor: withAlpha(Colors.amber, 0.06),
   },
-  modalPrimaryText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 14,
-    color: Colors.stout,
+  secondaryTight: { marginTop: Spacing.sm },
+  secondaryText: {
+    fontWeight: '600',
+    fontSize: 15,
+    color: Colors.amber,
+    includeFontPadding: false,
   },
+
+  mapEntry: { marginTop: Spacing.lg },
 
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 36,
+    paddingHorizontal: Spacing.xl,
     paddingBottom: 60,
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     textAlign: 'center',

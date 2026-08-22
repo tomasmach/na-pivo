@@ -1,36 +1,61 @@
 /**
- * Hand-rolled bottom tab bar — matches the stout/amber pub theme instead of the
- * default react-navigation look. Four items (Kompas / Štamgast / Parta / Profil),
- * each an IconGlyph + Baloo2 label. Active = amber with a subtle glow; inactive =
- * muted. A light haptic fires on press when the user has haptics enabled.
+ * Hand-rolled bottom tab bar — the stout/amber pub theme, not the default
+ * react-navigation look. Five items (Feed / Hospody / Party / Community /
+ * Profil), each an IconGlyph + Baloo2 label.
  *
- * The Parta item carries an amber signal badge fed by `usePartaSignalStore`
+ * The five labels sit on the FOUR original routes plus `community`; the routes
+ * themselves were deliberately not renamed. `napivo://beer` is the Live Activity
+ * deep link running on people's lock screens, and `/beer` / `/friends` are still
+ * named in telemetry, `appReviewPolicy` and a dozen `router.replace` calls. The
+ * bar's copy moved; the URLs did not.
+ *
+ * Party is the centre and inverted: a filled amber disc with a stout glyph on
+ * it, amber whether or not it is focused. That is a deliberate exception to
+ * §2.2 ("one full amber surface per screen") — the bar rides every screen, so
+ * §17.2 needs amending to record the exception rather than leaving the doc and
+ * the code disagreeing. Nothing here glows; the disc is the emphasis.
+ *
+ * The bar's surface is liquid glass where the OS has it (§15.1) and the exact
+ * solid `stout2` it has always been where it does not (§15.2) — iOS 26+ only,
+ * and never on Android.
+ *
+ * The Feed item carries an amber signal badge fed by `usePartaSignalStore`
  * (Parta 3.0 §D1): a numeric pill when friend requests wait, else an ambient dot
  * when the feed has unread items or a friend is live now. The dot is static:
  * this bar sits on every screen, so any looping motion here would be ambient
- * animation across the whole app (§10), and the active tab carries no glow —
- * the one glow on a screen belongs to its one amber button (§6.1).
+ * animation across the whole app (§10).
  *
  * Driven by expo-router's <Tabs> via `tabBar={(props) => <TabBar {...props} />}`.
  */
 
 import React, { memo, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
+  withRepeat,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
 
-import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Colors, withAlpha } from '@/theme/colors';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
-import { CompassIcon, BeerIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import {
+  CompassIcon,
+  BeerIcon,
+  UserIcon,
+  CheersIcon,
+  TrophyIcon,
+} from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
@@ -59,7 +84,8 @@ export interface TabBarProps {
   navigation: TabBarNavigation;
 }
 
-/** Maps a route name to its icon + label + a11y label. */
+/** Maps a route name to its icon + label + a11y label.
+ *  Keys are ROUTE names (unchanged since 2.x); labels are the 3.0 copy. */
 const TAB_META: Record<
   string,
   {
@@ -67,25 +93,36 @@ const TAB_META: Record<
     label: string;
     a11yLabel: string;
     telemetryTarget: UiInteractionTarget;
+    /** The centre item: amber even when inactive (§17.2). Exactly one. */
+    accent?: boolean;
   }
 > = {
-  index: {
+  friends: {
+    // Two mugs meeting, not a generic pair of people. The tab is nights out with
+    // the table, and the clink says that where a "users" glyph says "contacts".
+    Icon: CheersIcon,
+    label: cs.tabs.feed,
+    a11yLabel: cs.a11y.tabFeed,
+    telemetryTarget: 'tab_friends',
+  },
+  '(pubs)': {
     Icon: CompassIcon,
-    label: cs.tabs.compass,
-    a11yLabel: cs.a11y.tabCompass,
+    label: cs.tabs.pubs,
+    a11yLabel: cs.a11y.tabPubs,
     telemetryTarget: 'tab_compass',
   },
   beer: {
     Icon: BeerIcon,
-    label: cs.tabs.beer,
-    a11yLabel: cs.a11y.tabBeer,
+    label: cs.tabs.party,
+    a11yLabel: cs.a11y.tabParty,
     telemetryTarget: 'tab_beer',
+    accent: true,
   },
-  friends: {
-    Icon: UsersIcon,
-    label: cs.tabs.friends,
-    a11yLabel: cs.a11y.tabFriends,
-    telemetryTarget: 'tab_friends',
+  community: {
+    Icon: TrophyIcon,
+    label: cs.tabs.community,
+    a11yLabel: cs.a11y.tabCommunity,
+    telemetryTarget: 'tab_community',
   },
   profile: {
     Icon: UserIcon,
@@ -94,6 +131,10 @@ const TAB_META: Record<
     telemetryTarget: 'tab_profile',
   },
 };
+
+/** Whether the OS can draw liquid glass. Constant for the process, so it is
+ *  resolved once rather than on every render (iOS 26+; false everywhere else). */
+const GLASS = isLiquidGlassAvailable();
 
 /** What the Parta item's badge should render, if anything. */
 interface TabBadgeState {
@@ -140,7 +181,11 @@ const TabBadge = memo(function TabBadge({ count, dot, live }: TabBadgeState) {
     <Animated.View style={[styles.badgeDotWrap, appearStyle]} pointerEvents="none">
       {/* Static, never breathing: this badge rides the tab bar, so a looping
           dot would put permanent ambient motion on every rebuilt screen (§10).
-          A dot versus a numbered pill is already signal enough. */}
+          A dot versus a numbered pill is already signal enough.
+
+          The one loop this bar is allowed is `LiveRing`, and only because a
+          running evening is genuinely still happening while you look elsewhere.
+          "A friend is live" is somebody else's news; it can wait for a glance. */}
       <View style={styles.badgeDotStatic} />
     </Animated.View>
   );
@@ -152,18 +197,73 @@ interface TabItemProps {
   focused: boolean;
   onPress: () => void;
   badge: TabBadgeState | null;
+  /** A night is running right now. Only the party item cares. */
+  running?: boolean;
 }
 
-const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: TabItemProps) {
+/**
+ * The ring around the party disc, breathing, while a night is running.
+ *
+ * This is a deliberate exception to the rule two lines down in `TabBadge`, which
+ * says nothing on this bar may loop: the bar is on every screen, so a loop here
+ * runs all the time. It is allowed exactly once, for exactly one state, because
+ * "there is an evening happening right now" is the only thing in this app that
+ * is genuinely still going while you are looking at something else — and a
+ * static ring says "there is a mode", not "it is running".
+ *
+ * Kept as quiet as a pulse can be: 2.4 seconds a cycle, the RING only and never
+ * the glyph, and nothing moves at all under reduced motion.
+ */
+function LiveRing() {
+  const reduceMotion = useReducedMotion();
+  const pulse = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) return undefined;
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      // Reverses rather than restarting: a ring that snaps back to small is a
+      // blink, and a blinking tab bar is an alert.
+      true,
+    );
+    return () => cancelAnimation(pulse);
+  }, [reduceMotion, pulse]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + pulse.value * 0.1 }],
+    opacity: 1 - pulse.value * 0.55,
+  }));
+
+  return <Animated.View style={[styles.liveRing, style]} pointerEvents="none" />;
+}
+
+const TabItem = memo(function TabItem({
+  routeName,
+  focused,
+  onPress,
+  badge,
+  running,
+}: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
-  const color = focused ? Colors.amber : Colors.mutedText;
+  // Party inverts: the glyph sits ON the amber disc, so it is stout. The LABEL
+  // is not on the disc — it sits under it on the dark bar, so giving it the
+  // same stout made it invisible. Icon and label need separate colours here.
+  const iconColor = meta.accent
+    ? Colors.stout
+    : focused
+      ? Colors.amber
+      : Colors.mutedText;
+  const labelColor = meta.accent || focused ? Colors.amber : Colors.mutedText;
   const { Icon } = meta;
 
-  // Fold the badge count into the tab's own a11y label so VoiceOver announces
-  // "Parta, N nových" instead of leaving the badge silent.
+  // Fold the visible signal into the tab's own label. The numeric pill wins
+  // over the dot visually, so VoiceOver follows the same priority.
   const accessibilityLabel =
-    badge && badge.count > 0 ? cs.a11y.tabFriendsBadge(badge.count) : meta.a11yLabel;
+    routeName === 'friends' && badge
+      ? cs.a11y.tabFeedBadge(badge.count, badge.dot, badge.live)
+      : meta.a11yLabel;
 
   return (
     <Pressable
@@ -176,38 +276,88 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
     >
       {/* No glow here. The tab bar is on every screen, so a lit active icon
           would be a second permanent glow next to each screen's one amber
-          button (§6.1). Amber on the icon and the label already says "active". */}
-      <View style={styles.iconWrap}>
-        <Icon size={24} color={color} />
+          button (§6.1). Amber on the icon and the label already says "active".
+          Party adds the 12 % medallion §2.2 allows for an icon in a row — never
+          a filled amber circle, which would be a full amber surface on top of
+          every screen's own primary button. */}
+      {/* While a night is running the party disc wears a ring: the tab is no
+          longer "start something", it is "the thing you are already in". Same
+          disc, one ring — a different icon would make it read as a different
+          destination. */}
+      <View style={[styles.iconWrap, meta.accent && styles.accentWrap]}>
+        {running && meta.accent ? <LiveRing /> : null}
+        <Icon size={24} color={iconColor} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
+      {/* A fifth of the screen is all a tab label ever gets, so at large
+          Dynamic Type sizes it has to shrink rather than truncate — "Koco… /
+          Hosp… / Komu… / Pr…" turns the bar into initials (§3.3). */}
       <Text
-        style={[styles.label, { color }]}
+        style={[styles.label, { color: labelColor }]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {meta.label}
+        {running && meta.accent ? 'Večer' : meta.label}
       </Text>
     </Pressable>
   );
 });
 
+/** The party is a fullscreen mode, not a page with chrome: while it is open the
+ *  bar steps out of the way entirely and the screen carries its own minimise.
+ *  Route name, not label — `beer` is the party's route (see TAB_META). */
+const FULLSCREEN_ROUTES = new Set(['beer']);
+
+/**
+ * Room the floating bottom chrome needs above a screen's last row.
+ *
+ * The bar is absolutely positioned (see `app/(tabs)/_layout.tsx`), so the
+ * navigator no longer insets the scene and every scrollable screen pads by this
+ * itself. Bar + safe area, plus the live-party pill when a night is running —
+ * screens reserve the taller figure unconditionally, because content that only
+ * fits while nobody is drinking is not a layout, it is a coincidence.
+ */
+export const TAB_CHROME = 132;
+
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const activeRoute = state.routes[state.index]?.name;
+  const hidden = !!activeRoute && FULLSCREEN_ROUTES.has(activeRoute);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
+  // Your OWN night, not a friend's — the ring means "you are in one".
+  const nightRunning = useLivePartyStore((s) => s.live);
   const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
   const unread = usePartaSignalStore((s) => s.unread);
-  const liveNow = usePartaSignalStore((s) => s.liveNow);
-
+  const friendLiveNow = usePartaSignalStore((s) => s.liveNow);
   const partaBadge: TabBadgeState | null =
-    pendingRequests > 0
-      ? { count: pendingRequests, dot: false, live: liveNow }
-      : unread > 0 || liveNow
-        ? { count: 0, dot: true, live: liveNow }
-        : null;
+    pendingRequests > 0 || unread > 0 || friendLiveNow
+      ? { count: pendingRequests, dot: unread > 0 || friendLiveNow, live: friendLiveNow }
+      : null;
+
+  // After every hook, never before — an early return above them would change
+  // the hook order between renders (rules-of-hooks).
+  if (hidden) return null;
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {/* §15.1: the bar is chrome, so it is the glass. §15.2: below iOS 26 and
+          on Android this is exactly the solid stout2 the bar always had. The
+          surface sits behind the items, never over them — nothing you read
+          shows through. */}
+      {GLASS ? (
+        <GlassView
+          style={StyleSheet.absoluteFill}
+          glassEffectStyle="regular"
+          tintColor={withAlpha(Colors.stout2, 0.6)}
+          colorScheme="dark"
+          pointerEvents="none"
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.barSolid]} pointerEvents="none" />
+      )}
       {state.routes.map((route, index) => {
         const focused = state.index === index;
 
@@ -220,8 +370,17 @@ export function TabBar({ state, navigation }: TabBarProps) {
             target: route.key,
             canPreventDefault: true,
           });
+          const meta = TAB_META[route.name];
+
+          // Party is a door, not a destination: it opens the fullscreen night
+          // as a modal so it slides up, and dismissing it slides back down.
+          if (meta?.accent) {
+            trackUiInteraction(meta.telemetryTarget, 'select');
+            router.push('/party-live' as Href);
+            return;
+          }
+
           if (!focused && !event.defaultPrevented) {
-            const meta = TAB_META[route.name];
             if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
             navigation.navigate(route.name);
           }
@@ -235,6 +394,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
             focused={focused}
             onPress={onPress}
             badge={route.name === 'friends' ? partaBadge : null}
+            running={route.name === 'beer' && nightRunning}
           />
         );
       })}
@@ -245,10 +405,16 @@ export function TabBar({ state, navigation }: TabBarProps) {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    backgroundColor: Colors.stout2,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    // No backgroundColor: the surface is the glass / solid layer underneath.
+    // No top hairline either — on glass a hard line reads as a seam, and the
+    // material already separates the bar from what scrolls behind it.
     paddingTop: 8,
+    // Glass needs the layer to clip to the bar, not bleed past the hairline.
+    overflow: 'hidden',
+  },
+  /** The pre-3.0 surface, kept verbatim as the no-glass fallback (§15.2). */
+  barSolid: {
+    backgroundColor: Colors.stout2,
   },
   item: {
     flex: 1,
@@ -261,8 +427,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** Party, inverted: a filled amber disc with a stout glyph on it. This is a
+   *  deliberate exception to §2.2's "one full amber surface per screen" — the
+   *  bar rides every screen, so §17.2 in the design system needs updating to
+   *  say so rather than leaving code and doc disagreeing. */
+  accentWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.amber,
+  },
+  /** A running night, said with a ring rather than a colour: the bar already has
+   *  exactly one amber and a second state colour here would compete with it. */
+  liveRing: {
+    position: 'absolute',
+    left: -5,
+    right: -5,
+    top: -5,
+    bottom: -5,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: withAlpha(Colors.amber, 0.45),
+  },
   label: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.2,
   },
@@ -282,7 +470,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeCount: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 11,
     lineHeight: 13,
     color: Colors.stout,

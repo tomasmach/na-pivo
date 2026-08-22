@@ -36,7 +36,7 @@ import {
 } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { NightCard } from '@/vycep/NightCard';
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     letterSpacing: 0.2,
     includeFontPadding: false,
@@ -477,14 +477,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.foam,
     textAlign: 'center',
     includeFontPadding: false,
   },
   emptyBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,

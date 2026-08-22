@@ -12,8 +12,8 @@ import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Spacing } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 function shortDate(iso: string): string {
@@ -121,7 +121,13 @@ export default function BeerDetailScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
       <View style={styles.header}>
-        <Pressable onPress={goBack} hitSlop={10} style={styles.headerBtn} accessibilityRole="button">
+        <Pressable
+          onPress={goBack}
+          hitSlop={10}
+          style={styles.headerBtn}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.backButton}
+        >
           <ChevronLeftIcon size={26} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -138,7 +144,15 @@ export default function BeerDetailScreen() {
         </View>
       ) : failed ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText}>{cs.friends.profileError}</Text>
+          <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.beerCheckins.detailLoadError}</Text>
+          <Pressable
+            onPress={load}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.beerCheckins.detailRetry}
+          >
+            <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.beerCheckins.detailRetry}</Text>
+          </Pressable>
         </View>
       ) : detail ? (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}>
@@ -161,16 +175,16 @@ export default function BeerDetailScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{detail.myCount}</Text>
-              <Text style={styles.statLabel}>moje</Text>
+              <Text style={styles.statValue} allowFontScaling={false}>{detail.myCount}</Text>
+              <Text style={styles.statLabel} maxFontSizeMultiplier={FontScaleCap.body}>moje</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{formatAverage(detail.myAverageRating)}</Text>
-              <Text style={styles.statLabel}>můj průměr</Text>
+              <Text style={styles.statValue} allowFontScaling={false}>{formatAverage(detail.myAverageRating)}</Text>
+              <Text style={styles.statLabel} maxFontSizeMultiplier={FontScaleCap.body}>můj průměr</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{formatAverage(detail.partyAverageRating)}</Text>
-              <Text style={styles.statLabel}>parta</Text>
+              <Text style={styles.statValue} allowFontScaling={false}>{formatAverage(detail.partyAverageRating)}</Text>
+              <Text style={styles.statLabel} maxFontSizeMultiplier={FontScaleCap.body}>parta</Text>
             </View>
           </View>
 
@@ -218,7 +232,7 @@ export default function BeerDetailScreen() {
                 </HairlineRow>
               ))
             ) : (
-              <Text style={styles.emptyText}>Zatím žádný zápis.</Text>
+              <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>Zatím žádný zápis.</Text>
             )}
           </View>
 
@@ -248,7 +262,7 @@ export default function BeerDetailScreen() {
                 </HairlineRow>
               ))
             ) : (
-              <Text style={styles.emptyText}>Tohle pivo sis ještě nezapsal.</Text>
+              <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>Tohle pivo sis ještě nezapsal.</Text>
             )}
           </View>
         </ScrollView>
@@ -278,7 +292,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
@@ -291,7 +305,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.md,
   },
+  retryButton: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+  },
+  retryText: { fontSize: 15, fontWeight: '700', color: Colors.stout },
+  pressed: { opacity: 0.65 },
   content: {
     paddingTop: Spacing.lg,
     gap: Spacing.lg,
@@ -301,20 +325,20 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 30,
     lineHeight: 36,
     color: Colors.foam,
     textAlign: 'center',
   },
   subtitle: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.foamMuted,
   },
   relationship: {
     marginTop: 2,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.amber,
   },
@@ -336,13 +360,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   statValue: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.amber,
   },
   statLabel: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -359,18 +383,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
   },
   rowMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   emptyText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.mutedText,
     textAlign: 'center',

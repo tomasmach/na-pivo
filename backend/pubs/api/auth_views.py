@@ -39,11 +39,11 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from pubs import accounts
 from pubs.accounts import AccountError
+from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.models import Account, AuthIdentity
 
 from . import auth_serializers as s
@@ -246,9 +246,8 @@ class _AuthView(APIView):
                     }
                 )
             logger.error(
-                "auth: unexpected error: %s",
-                exc,
-                exc_info=True,
+                "auth: unexpected error (%s)",
+                type(exc).__name__,
                 extra={"event": "auth_failure", "observability": observability},
             )
             return Response(
@@ -279,7 +278,8 @@ class RegisterView(_AuthView):
 
         def run() -> Response:
             account = _optional_bearer_account(request)
-            if account is None:
+            merge_operation_id = ser.validated_data.get("merge_operation_id")
+            if account is None and merge_operation_id is None:
                 account = Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
             account, token = accounts.register_email(
                 account,
@@ -287,6 +287,7 @@ class RegisterView(_AuthView):
                 password=ser.validated_data["password"],
                 display_name=ser.validated_data.get("display_name", ""),
                 verification_link_base=_verification_link_base(request),
+                merge_operation_id=merge_operation_id,
             )
             return Response(
                 _account_state(account, request=request, token=token, created=True),
@@ -320,6 +321,7 @@ class LoginView(_AuthView):
                 email=ser.validated_data["email"],
                 password=ser.validated_data["password"],
                 current_account=_optional_bearer_account(request),
+                merge_operation_id=ser.validated_data.get("merge_operation_id"),
             )
             return Response(
                 _account_state(account, request=request, token=token),
@@ -362,6 +364,7 @@ class GoogleAuthView(_AuthView):
                 # Forward Google's asserted name so display_name is captured (the
                 # token also carries `picture`, captured in resolve_social).
                 full_name=claims.get("name", ""),
+                merge_operation_id=ser.validated_data.get("merge_operation_id"),
             )
             return Response(
                 _account_state(account, request=request, token=token, created=created),
@@ -402,6 +405,7 @@ class AppleAuthView(_AuthView):
                 claims=claims,
                 full_name=data.get("full_name", ""),
                 apple_refresh_token=refresh,
+                merge_operation_id=data.get("merge_operation_id"),
             )
             return Response(
                 _account_state(account, request=request, token=token, created=created),
@@ -543,6 +547,8 @@ class RequestPasswordResetView(_AuthView):
 class ResetPasswordLandingView(APIView):
     authentication_classes: list = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "auth"
 
     def get(self, request: Request) -> HttpResponse:
         raw_token = str(request.query_params.get("token") or "").strip()
@@ -584,11 +590,9 @@ class ResetPasswordView(_AuthView):
         ser.is_valid(raise_exception=True)
 
         def run() -> Response:
-            account = accounts.reset_password(
+            account, token = accounts.reset_password(
                 ser.validated_data["token"], new_password=ser.validated_data["password"]
             )
-            # Reset revoked all sessions; issue a fresh one so the user is logged in.
-            token = accounts.issue_token(account)
             return Response(
                 _account_state(account, request=request, token=token),
                 status=status.HTTP_200_OK,
@@ -640,7 +644,10 @@ class VerifyEmailView(_AuthView):
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.error("auth: unexpected email verification link error: %s", exc, exc_info=True)
+            logger.error(
+                "auth: unexpected email verification link error (%s)",
+                type(exc).__name__,
+            )
             return _verify_email_page(
                 title="Něco se pokazilo",
                 body="Ověření teď neproběhlo. Zkus odkaz otevřít za chvíli znovu.",

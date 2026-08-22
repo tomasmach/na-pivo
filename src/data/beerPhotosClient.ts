@@ -50,6 +50,8 @@ export interface BeerPhotoUploadFields {
   pubCacheKey?: string;
   pubName?: string;
   pubCity?: string;
+  /** Shared table this photo belongs to; never inferred from location. */
+  partyCode?: string;
   visibility: BeerPhotoVisibility;
   /** ISO-8601 timestamp of when the photo was taken. */
   takenAt: string;
@@ -146,6 +148,7 @@ export async function uploadBeerPhoto(
         pub_cache_key: fields.pubCacheKey ?? '',
         pub_name: fields.pubName ?? '',
         pub_city: fields.pubCity ?? '',
+        party_code: fields.partyCode ?? '',
         visibility: fields.visibility,
         taken_at: fields.takenAt,
       },
@@ -208,14 +211,19 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    session?: AccountSession;
+  } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
   }
 
-  const session = await ensureAccount(options.signal);
+  const session = options.session ?? (await ensureAccount(options.signal));
   if (!session || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
@@ -256,8 +264,11 @@ async function requestJson(
 }
 
 /** GET /v1/beer-photos — my diary, newest first. null on any failure. */
-export async function fetchMyBeerPhotos(signal?: AbortSignal): Promise<BeerPhoto[] | null> {
-  const res = await requestJson('/v1/beer-photos', { signal });
+export async function fetchMyBeerPhotos(
+  signal?: AbortSignal,
+  session?: AccountSession,
+): Promise<BeerPhoto[] | null> {
+  const res = await requestJson('/v1/beer-photos', { signal, session });
   if (!res.ok) return null;
   return Array.isArray(res.data.photos)
     ? (res.data.photos as RawBeerPhoto[]).map(beerPhotoFromWire)
@@ -270,6 +281,27 @@ export async function deleteBeerPhoto(photoId: string): Promise<FriendActionResu
     method: 'DELETE',
   });
   return res.ok ? { ok: true } : res.result;
+}
+
+/**
+ * Idempotent durable cancellation by upload client id. The backend records a
+ * tombstone even when the multipart POST has not committed yet, so a native
+ * upload that ignores AbortSignal cannot resurrect the deleted photo. False is
+ * intentionally retryable (including a 404 from an older backend deployment).
+ */
+export async function deleteBeerPhotoByClientId(
+  clientId: string,
+  signal?: AbortSignal,
+  session?: AccountSession,
+): Promise<boolean> {
+  const res = await requestJson(
+    `/v1/beer-photos/by-client/${encodeURIComponent(clientId)}`,
+    { method: 'DELETE', signal, session },
+  );
+  // The database row/tombstone and durable cleanup outbox are already committed
+  // when media deletion returns this 503. Treat it as a privacy acknowledgement;
+  // the backend worker owns the remaining file cleanup.
+  return res.ok || res.result.code === 'photo_cleanup_pending';
 }
 
 /** Compact author block riding on parta-feed photos. */

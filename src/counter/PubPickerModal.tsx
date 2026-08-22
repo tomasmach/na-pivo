@@ -7,19 +7,14 @@
  * screen itself never shows a "detecting" or "no pub" full screen.
  */
 
-import React, { useEffect } from 'react';
-import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  useReducedMotion,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import React from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
@@ -28,10 +23,10 @@ import {
   MapPinPlusIcon,
   RefreshCwIcon,
   TreePineIcon,
-  XIcon,
 } from '@/components/shared/IconGlyph';
 import { formatDistanceCs } from '@/compass/distance';
 import { cs } from '@/i18n/cs';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { Pub } from '@/data/pubs';
 import type { NearbyCandidate } from '@/counter/useNearbyPub';
 import {
@@ -45,8 +40,6 @@ const OUTSIDE_ICONS: Record<OutsidePlaceContext, typeof HouseIcon> = {
   outdoors: TreePineIcon,
   other: MapPinIcon,
 };
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 interface PubPickerModalProps {
   visible: boolean;
@@ -75,72 +68,16 @@ export function PubPickerModal({
   onClose,
 }: PubPickerModalProps) {
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReducedMotion();
-  const genericOutsideSelected = contextPubKey('other') === selectedKey;
-
-  // One-shot slide-up on open; no motion at all under reduced motion.
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = reduceMotion
-        ? withTiming(1, { duration: 0 })
-        : withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = 0;
-    }
-  }, [visible, reduceMotion, progress]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
-
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={cs.a11y.counterCloseModal}>
-        {/* The card swallows presses so a row tap never falls through to the backdrop. */}
-        <AnimatedPressable
-          style={[styles.card, cardAnim, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}
-          onPress={() => undefined}
-        >
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               {cs.counter.pickerTitle}
             </Text>
-            <View style={styles.headerActions}>
-              {onSelectOutside ? (
-                <Pressable
-                  onPress={() => onSelectOutside('other')}
-                  style={({ pressed }) => [
-                    styles.outsideButton,
-                    genericOutsideSelected && styles.outsideButtonSelected,
-                    pressed && styles.rowPressed,
-                  ]}
-                  hitSlop={4}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: genericOutsideSelected }}
-                  accessibilityLabel={cs.counter.outsideLabel('other')}
-                >
-                  <HouseIcon size={16} color={genericOutsideSelected ? Colors.stout : Colors.amber} />
-                  <Text
-                    style={[styles.outsideButtonText, genericOutsideSelected && styles.outsideButtonTextSelected]}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {cs.counter.outsideLabel('other')}
-                  </Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={onClose}
-                style={styles.closeButton}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
+            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
           </View>
 
           <ScrollView
@@ -153,7 +90,7 @@ export function PubPickerModal({
                 {cs.counter.pickerNearbyHeader}
               </Text>
             ) : null}
-            {candidates.map((candidate) => {
+            {candidates.map((candidate, index) => {
               const isSelected = candidate.pubKey === selectedKey;
               const distance = formatDistanceCs(candidate.distanceMeters);
               return (
@@ -162,14 +99,14 @@ export function PubPickerModal({
                   onPress={() => onSelect(candidate.pub)}
                   style={({ pressed }) => [
                     styles.row,
-                    isSelected && styles.rowSelected,
+                    index > 0 && styles.rowDivider,
                     pressed && styles.rowPressed,
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={cs.a11y.counterPickPub(candidate.pub.name, distance)}
                 >
-                  <MapPinIcon size={18} color={isSelected ? Colors.stout : Colors.amber} />
+                  <MapPinIcon size={18} color={Colors.amber} />
                   <Text
                     style={[styles.rowName, isSelected && styles.rowNameSelected]}
                     numberOfLines={1}
@@ -177,10 +114,7 @@ export function PubPickerModal({
                   >
                     {candidate.pub.name}
                   </Text>
-                  <Text
-                    style={[styles.rowDistance, isSelected && styles.rowDistanceSelected]}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
+                  <Text style={styles.rowDistance} maxFontSizeMultiplier={FontScaleCap.body}>
                     {distance}
                   </Text>
                 </Pressable>
@@ -189,12 +123,20 @@ export function PubPickerModal({
             {onRetry ? (
               <Pressable
                 onPress={onRetry}
-                style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
+                style={({ pressed }) => [
+                  styles.quietRow,
+                  candidates.length > 0 && styles.rowDivider,
+                  pressed && styles.rowPressed,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={cs.a11y.counterRetry}
               >
                 <RefreshCwIcon size={18} color={Colors.foamMuted} />
-                <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.quietRowLabel}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {cs.counter.retry}
                 </Text>
               </Pressable>
@@ -205,81 +147,81 @@ export function PubPickerModal({
                 {cs.counter.pickerOutsideHeader}
               </Text>
             ) : null}
-            {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.filter((context) => context !== 'other').map((context) => {
-              const isSelected = contextPubKey(context) === selectedKey;
-              const Icon = OUTSIDE_ICONS[context];
-              const label = cs.counter.outsideLabel(context);
-              return (
-                <Pressable
-                  key={context}
-                  onPress={() => onSelectOutside(context)}
-                  style={({ pressed }) => [
-                    styles.row,
-                    isSelected && styles.rowSelected,
-                    pressed && styles.rowPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={label}
-                >
-                  <Icon size={18} color={isSelected ? Colors.stout : Colors.amber} />
-                  <Text
-                    style={[styles.rowName, isSelected && styles.rowNameSelected]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            }) : null}
+            {onSelectOutside
+              ? OUTSIDE_PLACE_CONTEXTS.map((context, index) => {
+                  const isSelected = contextPubKey(context) === selectedKey;
+                  const Icon = OUTSIDE_ICONS[context];
+                  const label = cs.counter.outsideLabel(context);
+                  return (
+                    <Pressable
+                      key={context}
+                      onPress={() => onSelectOutside(context)}
+                      style={({ pressed }) => [
+                        styles.row,
+                        index > 0 && styles.rowDivider,
+                        pressed && styles.rowPressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={label}
+                    >
+                      <Icon size={18} color={Colors.amber} />
+                      <Text
+                        style={[styles.rowName, isSelected && styles.rowNameSelected]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              : null}
 
             {onAddPub ? (
               <Pressable
                 onPress={onAddPub}
-                style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
+                style={({ pressed }) => [
+                  styles.quietRow,
+                  styles.rowDivider,
+                  pressed && styles.rowPressed,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel={cs.counter.noPubAddPub}
               >
                 <MapPinPlusIcon size={18} color={Colors.foamMuted} />
-                <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.quietRowLabel}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {cs.counter.noPubAddPub}
                 </Text>
               </Pressable>
             ) : null}
           </ScrollView>
-        </AnimatedPressable>
-      </Pressable>
-    </Modal>
+        </View>
+      </View>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
+  cardWrap: { width: '100%', maxHeight: '92%' },
   card: {
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    maxHeight: '80%',
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.border,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -291,115 +233,63 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  outsideButton: {
-    minHeight: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  outsideButtonSelected: {
-    backgroundColor: Colors.amber,
-    borderColor: Colors.amber,
-  },
-  outsideButtonText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foam,
-  },
-  outsideButtonTextSelected: {
-    color: Colors.stout,
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   list: {
     flexGrow: 0,
+    flexShrink: 1,
   },
   listContent: {
-    gap: 8,
     paddingBottom: Spacing.sm,
   },
   sectionHeader: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: Colors.mutedText,
+    ...MockType.titleS,
+    color: Colors.foam,
     marginTop: Spacing.xs,
     marginBottom: 2,
     marginLeft: 4,
   },
   row: {
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: Radius.medium,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingVertical: Spacing.sm + 2,
   },
-  rowSelected: {
-    backgroundColor: Colors.amber,
-    borderColor: Colors.amber,
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rowPressed: {
-    opacity: 0.8,
+    opacity: 0.65,
   },
   rowName: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   rowNameSelected: {
-    color: Colors.stout,
+    color: Colors.amber,
   },
   rowDistance: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
-  },
-  rowDistanceSelected: {
-    color: Colors.stout,
   },
   // Recovery rows: same shape as a pub row but visually quiet — no fill, no
   // amber, muted label — so they read as escape hatches, not destinations.
   quietRow: {
-    minHeight: 48,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingVertical: Spacing.sm + 2,
   },
   quietRowLabel: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
   },

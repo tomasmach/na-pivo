@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -122,16 +122,16 @@ function CurrentEveningCard({
 
 // ─── Past evening row ──────────────────────────────────────────────────────────
 
-function PastEveningRow({
+const PastEveningRow = React.memo(function PastEveningRow({
   session,
   priceCurrency,
-  now,
-  onPress,
+  nowMinuteMs,
+  onOpen,
 }: {
   session: TallySession;
   priceCurrency: PriceCurrency;
-  now: Date;
-  onPress: () => void;
+  nowMinuteMs: number;
+  onOpen: (session: TallySession) => void;
 }) {
   const totalCzk = sessionTotalCzk(session);
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
@@ -139,14 +139,14 @@ function PastEveningRow({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onOpen(session)}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={cs.a11y.myBeersEvening(session.pubName, summary)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowDate} maxFontSizeMultiplier={FontScaleCap.body}>
-          {eveningDateLabel(session.startedAt, now)}
+          {eveningDateLabel(session.startedAt, new Date(nowMinuteMs))}
         </Text>
         <Text style={styles.rowPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {session.pubName}
@@ -159,7 +159,7 @@ function PastEveningRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 function shortDateTime(iso: string): string {
   const ms = Date.parse(iso);
@@ -207,14 +207,14 @@ function checkInAmountLabel(checkIn: BeerCheckIn, priceCurrency: PriceCurrency):
   return parts.join(' · ');
 }
 
-function HistoricalCheckInRow({
+const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
   checkIn,
   priceCurrency,
-  onPress,
+  onOpen,
 }: {
   checkIn: BeerCheckIn;
   priceCurrency: PriceCurrency;
-  onPress: () => void;
+  onOpen: (checkIn: BeerCheckIn) => void;
 }) {
   const meta = [
     checkInAmountLabel(checkIn, priceCurrency),
@@ -226,7 +226,7 @@ function HistoricalCheckInRow({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onOpen(checkIn)}
       style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
@@ -245,7 +245,7 @@ function HistoricalCheckInRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-}
+});
 
 function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
   return (
@@ -322,6 +322,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
     return () => clearInterval(timer);
   }, []);
   const now = useMemo(() => new Date(nowMs), [nowMs]);
+  const nowMinuteMs = Math.floor(nowMs / 60_000) * 60_000;
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -369,6 +370,24 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const isEmpty = !currentEvening && pastEvenings.length === 0 && visibleDiaryEntries.length === 0;
 
   const openHistorical = useCallback(() => setHistoricalOpen(true), []);
+  const openEvening = useCallback(
+    (session: TallySession) => {
+      router.push({
+        pathname: '/evening',
+        params: { startedAt: session.startedAt },
+      });
+    },
+    [router],
+  );
+  const openHistoricalCheckIn = useCallback(
+    (checkIn: BeerCheckIn) => {
+      router.push({
+        pathname: '/beer-detail',
+        params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+      });
+    },
+    [router],
+  );
   const handleHistoricalSaved = useCallback(
     (entries: BeerCheckInInput[]) => {
       const optimistic = entries.map(optimisticCheckIn);
@@ -439,13 +458,8 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <PastEveningRow
                       session={session}
                       priceCurrency={priceCurrency}
-                      now={now}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/evening',
-                          params: { startedAt: session.startedAt },
-                        })
-                      }
+                      nowMinuteMs={nowMinuteMs}
+                      onOpen={openEvening}
                     />
                   </View>
                 ))}
@@ -467,12 +481,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <HistoricalCheckInRow
                       checkIn={checkIn}
                       priceCurrency={priceCurrency}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/beer-detail',
-                          params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
-                        })
-                      }
+                      onOpen={openHistoricalCheckIn}
                     />
                   </View>
                 ))}
@@ -505,7 +514,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   headerTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 28,
     color: Colors.foam,
   },
@@ -536,29 +545,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardSectionHeaderText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
   },
   dateLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     marginBottom: 4,
   },
   summary: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
   },
   lastDrink: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 4,
@@ -571,7 +580,7 @@ const styles = StyleSheet.create({
 
   // — Past list —
   listHeader: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -598,19 +607,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowDate: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,
     textTransform: 'uppercase',
   },
   rowPub: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },
   rowSummary: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },
@@ -641,12 +650,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   addHistoryTitle: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },
   addHistorySubtitle: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -671,12 +680,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   diaryTitle: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },
   diaryMeta: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -694,13 +703,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
   },
   emptyBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',

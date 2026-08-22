@@ -10,11 +10,11 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -54,7 +54,7 @@ export default function VerifyEmailScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)' as Href);
     }
   };
 
@@ -112,14 +112,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 34,
     lineHeight: 42,
     color: Colors.foam,
     textAlign: 'center',
   },
   body: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,

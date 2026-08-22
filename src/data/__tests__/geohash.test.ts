@@ -7,7 +7,7 @@ import { geohash8, decodeGeohash8 } from '../geohash';
  * a contract test between the two repos.
  */
 describe('geohash8', () => {
-  const REFERENCE: Array<[number, number, string]> = [
+  const REFERENCE: [number, number, string][] = [
     [57.64911, 10.40744, 'u4pruydq'], // classic geohash reference coordinate
     [50.0875, 14.4213, 'u2fkbnjk'], // Praha — Staroměstské náměstí
     [49.1951, 16.6068, 'u2ezcgsw'], // Brno

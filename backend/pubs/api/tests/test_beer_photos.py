@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.utils import timezone
 from PIL import Image
 from rest_framework import status
@@ -23,9 +24,13 @@ from rest_framework.test import APIClient
 from pubs.models import (
     Account,
     BeerPhoto,
+    BeerPhotoDeletionTombstone,
+    BeerPhotoFileDeletion,
     ContentReport,
     FriendBlock,
     Friendship,
+    PartyEvening,
+    PartyEveningMember,
     PhotoContestEntry,
 )
 from pubs.photo_contest import current_photo_contest
@@ -75,6 +80,18 @@ def _make_friends(a: Account, b: Account) -> None:
         status=Friendship.Status.ACCEPTED,
         responded_at=timezone.now(),
     )
+
+
+def _active_party(account: Account, code: str = "PRAH24") -> PartyEvening:
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code=code,
+        pub_name="U Zlatého tygra",
+        pub_city="Praha",
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account)
+    return evening
 
 
 def _create_photo(
@@ -158,9 +175,7 @@ def test_upload_happy_path_stores_downscaled_webp(client, tmp_media):
     assert body["pub_city"] == "Praha"
     assert body["visibility"] == "friends"
     assert body["in_contest"] is False
-    assert body["image_url"].startswith(
-        f"http://testserver/media/beer-photos/{account.public_id}/"
-    )
+    assert body["image_url"].startswith(f"http://testserver/media/beer-photos/{account.public_id}/")
     assert body["image_url"].endswith(".webp")
 
     # The stored file is a downscaled webp on disk (long edge 1600, ratio kept).
@@ -202,6 +217,83 @@ def test_upload_retry_same_client_id_is_idempotent(client):
     assert second.json()["photo"]["caption"] == "Večer u Tygra"
     media_files = list(Path(BeerPhoto.objects.get().image.path).parent.iterdir())
     assert len(media_files) == 1
+
+
+@pytest.mark.django_db
+def test_upload_retry_attaches_photo_after_pending_table_create_lands(client):
+    token, account = _register(client, "janek")
+    client_id = uuid.uuid4()
+    taken_at = timezone.now()
+
+    before_table = _post_photo(
+        client,
+        token,
+        client_id=client_id,
+        party_code="PRAH24",
+        taken_at=taken_at.isoformat(),
+    )
+    assert before_table.status_code == status.HTTP_201_CREATED
+    photo = BeerPhoto.objects.get(account=account, client_id=client_id)
+    assert photo.party_evening is None
+
+    evening = _active_party(account)
+    evening.started_at = taken_at - timedelta(minutes=5)
+    evening.save(update_fields=["started_at"])
+    retry = _post_photo(
+        client,
+        token,
+        client_id=client_id,
+        party_code="PRAH24",
+        caption="Retry nesmí přepsat popisek",
+        taken_at=taken_at.isoformat(),
+        image=False,
+    )
+
+    assert retry.status_code == status.HTTP_200_OK
+    photo.refresh_from_db()
+    assert photo.party_evening == evening
+    assert photo.caption == "Večer u Tygra"
+    assert BeerPhoto.objects.filter(account=account, client_id=client_id).count() == 1
+
+
+@pytest.mark.django_db
+def test_upload_links_active_and_historical_membership_but_not_stale_or_foreign_code(
+    client,
+):
+    token, account = _register(client, "janek")
+    evening = _active_party(account)
+
+    linked = _post_photo(client, token, party_code="PRAH24")
+    assert linked.status_code == status.HTTP_201_CREATED, linked.content
+    assert BeerPhoto.objects.get(public_id=linked.json()["photo"]["id"]).party_evening == evening
+
+    now = timezone.now()
+    evening.started_at = now - timedelta(hours=2)
+    evening.active = False
+    evening.ended_at = now - timedelta(minutes=5)
+    evening.save(update_fields=["started_at", "active", "ended_at"])
+
+    offline = _post_photo(
+        client,
+        token,
+        party_code="PRAH24",
+        caption="z fronty po zavíračce",
+        taken_at=(now - timedelta(minutes=30)).isoformat(),
+    )
+    assert offline.status_code == status.HTTP_201_CREATED, offline.content
+    assert BeerPhoto.objects.get(public_id=offline.json()["photo"]["id"]).party_evening == evening
+
+    evening.ended_at = now - timedelta(minutes=30)
+    evening.save(update_fields=["ended_at"])
+    stale = _post_photo(client, token, party_code="PRAH24", caption="po zavíračce")
+    assert stale.status_code == status.HTTP_201_CREATED, stale.content
+    assert BeerPhoto.objects.get(public_id=stale.json()["photo"]["id"]).party_evening is None
+
+    _active_party(account, code="TABR24")
+    other_token, _other = _register(client, "cizi")
+    foreign = _post_photo(client, other_token, party_code="TABR24", caption="cizí stůl")
+    assert foreign.status_code == status.HTTP_201_CREATED, foreign.content
+    assert BeerPhoto.objects.get(public_id=foreign.json()["photo"]["id"]).party_evening is None
 
 
 @pytest.mark.django_db
@@ -275,19 +367,174 @@ def test_delete_photo_removes_row_and_file(client):
     token_other, _other = _register(client, "petr")
     created = _post_photo(client, token)
     photo_id = created.json()["photo"]["id"]
+    client_id = created.json()["photo"]["client_id"]
     stored = Path(BeerPhoto.objects.get().image.path)
     assert stored.exists()
 
     foreign = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token_other))
     deleted = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token))
     again = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token))
+    replay = _post_photo(client, token, client_id=uuid.UUID(client_id))
 
     # Owner-only: someone else's delete is an opaque 404 and removes nothing.
     assert foreign.status_code == status.HTTP_404_NOT_FOUND, foreign.content
     assert deleted.status_code == status.HTTP_204_NO_CONTENT, deleted.content
     assert again.status_code == status.HTTP_404_NOT_FOUND, again.content
+    assert replay.status_code == status.HTTP_410_GONE, replay.content
     assert BeerPhoto.objects.count() == 0
     assert not stored.exists()
+
+
+@pytest.mark.django_db
+def test_delete_keeps_failed_storage_cleanup_durable_and_public_retry_works(
+    client,
+    monkeypatch,
+):
+    token, account = _register(client, "janek")
+    created = _post_photo(client, token)
+    photo_id = created.json()["photo"]["id"]
+    client_id = created.json()["photo"]["client_id"]
+    stored = Path(BeerPhoto.objects.get().image.path)
+    storage = BeerPhoto._meta.get_field("image").storage
+    original_delete = storage.delete
+    attempts = 0
+
+    def fail_once(name):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("media volume temporarily unavailable")
+        return original_delete(name)
+
+    monkeypatch.setattr(storage, "delete", fail_once)
+
+    first = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token))
+
+    assert first.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, first.content
+    assert first.json()["code"] == "photo_cleanup_pending"
+    assert not BeerPhoto.objects.filter(account=account).exists()
+    assert client.get("/v1/beer-photos", **_auth(token)).json()["photos"] == []
+    assert stored.exists()
+    cleanup = BeerPhotoFileDeletion.objects.get(
+        account=account,
+        client_id=client_id,
+        photo_public_id=photo_id,
+    )
+    assert cleanup.last_attempted_at is not None
+
+    retried = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token))
+    repeated = client.delete(f"/v1/beer-photos/{photo_id}", **_auth(token))
+
+    assert retried.status_code == status.HTTP_204_NO_CONTENT, retried.content
+    assert repeated.status_code == status.HTTP_404_NOT_FOUND, repeated.content
+    assert not stored.exists()
+    assert not BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).exists()
+
+
+@pytest.mark.django_db
+def test_worker_retries_failed_beer_photo_storage_cleanup(client, monkeypatch):
+    token, _account = _register(client, "janek")
+    created = _post_photo(client, token)
+    client_id = created.json()["photo"]["client_id"]
+    stored = Path(BeerPhoto.objects.get().image.path)
+    storage = BeerPhoto._meta.get_field("image").storage
+    original_delete = storage.delete
+
+    monkeypatch.setattr(
+        storage,
+        "delete",
+        lambda _name: (_ for _ in ()).throw(OSError("media volume unavailable")),
+    )
+    failed = client.delete(
+        f"/v1/beer-photos/by-client/{client_id}",
+        **_auth(token),
+    )
+    assert failed.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, failed.content
+    assert stored.exists()
+    assert BeerPhotoFileDeletion.objects.count() == 1
+
+    monkeypatch.setattr(storage, "delete", original_delete)
+    call_command("retry_beer_photo_deletions", "--batch-size", "1")
+
+    assert not stored.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_late_upload_cleanup_remains_durable_when_storage_is_unavailable(
+    client,
+    monkeypatch,
+    settings,
+):
+    token, account = _register(client, "janek")
+    client_id = uuid.uuid4()
+    original_filter = BeerPhotoDeletionTombstone.objects.filter
+    tombstone_checks = 0
+
+    def tombstone_filter(*args, **kwargs):
+        nonlocal tombstone_checks
+        if kwargs.get("account") == account and kwargs.get("client_id") == client_id:
+            tombstone_checks += 1
+            if tombstone_checks == 2:
+                BeerPhotoDeletionTombstone.objects.get_or_create(
+                    account=account,
+                    client_id=client_id,
+                )
+        return original_filter(*args, **kwargs)
+
+    storage = BeerPhoto._meta.get_field("image").storage
+    original_delete = storage.delete
+    monkeypatch.setattr(BeerPhotoDeletionTombstone.objects, "filter", tombstone_filter)
+    monkeypatch.setattr(
+        storage,
+        "delete",
+        lambda _name: (_ for _ in ()).throw(OSError("media volume unavailable")),
+    )
+
+    response = _post_photo(client, token, client_id=client_id)
+
+    assert response.status_code == status.HTTP_410_GONE, response.content
+    assert tombstone_checks == 2
+    assert not BeerPhoto.objects.filter(account=account, client_id=client_id).exists()
+    cleanup = BeerPhotoFileDeletion.objects.get(account=account, client_id=client_id)
+    stored = Path(settings.MEDIA_ROOT) / cleanup.image_name
+    assert stored.exists()
+
+    monkeypatch.setattr(storage, "delete", original_delete)
+    call_command("retry_beer_photo_deletions")
+
+    assert not stored.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_by_client_id_is_idempotent_and_blocks_late_upload(client):
+    token, account = _register(client, "janek")
+    token_other, other = _register(client, "petr")
+    client_id = uuid.uuid4()
+    other_photo = _post_photo(client, token_other, client_id=client_id)
+    assert other_photo.status_code == status.HTTP_201_CREATED, other_photo.content
+
+    first = client.delete(
+        f"/v1/beer-photos/by-client/{client_id}",
+        **_auth(token),
+    )
+    again = client.delete(
+        f"/v1/beer-photos/by-client/{client_id}",
+        **_auth(token),
+    )
+    late_upload = _post_photo(client, token, client_id=client_id)
+
+    assert first.status_code == status.HTTP_204_NO_CONTENT, first.content
+    assert again.status_code == status.HTTP_204_NO_CONTENT, again.content
+    assert late_upload.status_code == status.HTTP_410_GONE, late_upload.content
+    assert late_upload.json()["code"] == "photo_deleted"
+    assert not BeerPhoto.objects.filter(account=account, client_id=client_id).exists()
+    assert BeerPhoto.objects.filter(account=other, client_id=client_id).exists()
+    assert BeerPhotoDeletionTombstone.objects.filter(
+        account=account,
+        client_id=client_id,
+    ).count() == 1
 
 
 @pytest.mark.django_db
@@ -376,7 +623,7 @@ def test_friends_beer_photos_feed_orders_limits_and_joins_accounts(
     ]
     current_photo_contest()
 
-    with django_assert_num_queries(5):
+    with django_assert_num_queries(6):
         response = client.get("/v1/friends/beer-photos/feed", **_auth(token))
 
     assert response.status_code == status.HTTP_200_OK, response.content

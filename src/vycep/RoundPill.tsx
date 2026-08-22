@@ -30,7 +30,7 @@ import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -121,10 +121,10 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
     pendingRef.current = true;
     const seq = ++seqRef.current;
     const call = turningOn ? reactToNight(nightId) : clearNightReaction(nightId);
-    void call.then((res) => {
+    void call.then(async (res) => {
       if (seq !== seqRef.current) return;
-      pendingRef.current = false;
       if (res.ok) {
+        pendingRef.current = false;
         trackUiInteraction('night_react', 'success');
         showToast(turningOn ? cs.vycep.roundSentToast : cs.vycep.roundUndoneToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
@@ -133,16 +133,27 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
         return;
       }
       if (isRetriableNightError(res)) {
-        trackUiInteraction('night_react', 'success');
-        // Offline / transient: keep the flip, queue the op (it WILL land).
-        void enqueueNightOp(
+        const queued = await enqueueNightOp(
           turningOn ? { op: 'round', nightId } : { op: 'round-clear', nightId },
-        );
+        ).catch(() => false);
+        if (seq !== seqRef.current) return;
+        pendingRef.current = false;
+        if (!queued) {
+          trackUiInteraction('night_react', 'failure');
+          setActive(prevActive);
+          setDisplayCount(prevCount);
+          showToast(cs.vycep.roundErrorToast, {
+            icon: <HandPlatterIcon size={20} color={Colors.amber} />,
+          });
+          return;
+        }
+        trackUiInteraction('night_react', 'success');
         showToast(cs.vycep.roundQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         return;
       }
+      pendingRef.current = false;
       trackUiInteraction('night_react', 'failure');
       // Hard reject: revert.
       setActive(prevActive);
@@ -201,7 +212,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   count: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

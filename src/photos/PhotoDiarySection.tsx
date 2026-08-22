@@ -24,12 +24,14 @@ import {
   RefreshCwIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 /** How many photos the strip shows (the full album lives per-photo for now). */
@@ -116,7 +118,15 @@ function AddTile({ onPress, lead }: { onPress: () => void; lead: boolean }) {
 
 type StripItem = { kind: 'add' } | { kind: 'photo'; photo: BeerPhotoLocal };
 
-export function PhotoDiarySection() {
+/**
+ * `full` is the standalone album screen (2.x header pill, composed empty card).
+ * `profile` is the same strip inside the 3.0 profile: a section heading with an
+ * amber text link (the Odznaky idiom) and a flat empty state — one sentence and
+ * one quiet action, because the profile already spends its primary elsewhere.
+ */
+export type PhotoDiaryVariant = 'full' | 'profile';
+
+export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVariant } = {}) {
   const router = useRouter();
   const photos = useBeerPhotosStore((s) => s.photos);
 
@@ -125,7 +135,7 @@ export function PhotoDiarySection() {
   // Diary bootstrap: hydrate the persisted view, then reconcile with the server.
   useEffect(() => {
     const controller = new AbortController();
-    void loadBeerPhotos(controller.signal);
+    void loadBeerPhotos(controller.signal, { once: true });
     return () => controller.abort();
   }, []);
 
@@ -139,9 +149,36 @@ export function PhotoDiarySection() {
     [photos],
   );
 
+  const profile = variant === 'profile';
+
   return (
     <>
       {/* Section header: title + count · FotoPivař contest link */}
+      {profile ? (
+        <View style={styles.profileHeaderRow}>
+          <Text style={styles.profileTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.photoDiary.title}
+          </Text>
+          {/* "Zobrazit vše" — the Odznaky idiom, so the same-looking link means
+              the same thing: more of what is above it. FotoPivař keeps its own
+              door inside the album, where the whole diary is on screen. */}
+          <Pressable
+            onPress={() => {
+              trackUiInteraction('profile_photos_open');
+              router.push('/profile/photos' as Href);
+            }}
+            style={({ pressed }) => [styles.profileLink, pressed && styles.pressed]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.photoAlbumLink}
+          >
+            <Text style={styles.profileLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.photoDiary.viewAll}
+            </Text>
+            <ChevronRightIcon size={16} color={Colors.amber} />
+          </Pressable>
+        </View>
+      ) : (
       <View style={styles.headerRow}>
         <Text style={styles.sectionHeader}>
           {cs.photoDiary.header}
@@ -163,8 +200,29 @@ export function PhotoDiarySection() {
           <ChevronRightIcon size={14} color={Colors.amber} />
         </Pressable>
       </View>
+      )}
 
-      {photos.length === 0 ? (
+      {photos.length === 0 && profile ? (
+        /* Flat empty state: one sentence, one quiet action (§20.12, §6.2). */
+        <View style={styles.profileEmpty}>
+          <Text style={styles.profileEmptyLine} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.photoDiary.emptyProfile}
+          </Text>
+          <Pressable
+            onPress={openCapture}
+            style={({ pressed }) => [styles.profileEmptyAction, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.photoAddTile}
+          >
+            <Text
+              style={styles.profileEmptyActionText}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {cs.photoDiary.addPhoto}
+            </Text>
+          </Pressable>
+        </View>
+      ) : photos.length === 0 ? (
         /* Composed empty state — one photo away from an album. */
         <View style={styles.emptyCard}>
           <View style={styles.emptyIconWell}>
@@ -231,7 +289,7 @@ const styles = StyleSheet.create({
   // Mirrors ProfileScreen's sectionHeader idiom.
   sectionHeader: {
     flex: 1,
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -253,10 +311,42 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   contestLinkText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.amber,
   },
+
+  // — Profile (3.0) header: mirrors the Odznaky row in ProfileMockScreen —
+  profileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    // Heading → content is controlGap (DESIGN.md §4).
+    marginBottom: MockLayout.controlGap,
+  },
+  profileTitle: { ...MockType.titleS, flex: 1, color: Colors.foam },
+  profileLink: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32 },
+  profileLinkText: { fontSize: 14, fontWeight: '700', color: Colors.amber },
+
+  // — Profile empty state: flat on the ground, no card, no primary —
+  profileEmpty: {
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  profileEmptyLine: {
+    ...MockType.bodySmall,
+    color: Colors.mutedText,
+    lineHeight: 20,
+  },
+  profileEmptyAction: {
+    minHeight: 48,
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    paddingHorizontal: Spacing.lg,
+  },
+  profileEmptyActionText: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 
   // — Strip —
   strip: {
@@ -302,7 +392,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.amber,
     textAlign: 'center',
@@ -330,7 +420,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.glow,
   },
   syncChipText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 9,
     letterSpacing: 0.4,
     color: Colors.foamMuted,
@@ -362,14 +452,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 19,
     color: Colors.foam,
     textAlign: 'center',
     marginTop: Spacing.xs,
   },
   emptyBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,

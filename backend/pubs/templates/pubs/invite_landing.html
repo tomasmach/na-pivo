@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#201006">
     <meta name="robots" content="noindex, nofollow">
-    <title>Přidej se k partě | Na pivo</title>
-    <meta name="description" content="Hospoda je lepší s kámoši. Otevři pozvánku v aplikaci Na pivo.">
+    <title>{{ page_title }}</title>
+    <meta name="description" content="{{ description }}">
     <link rel="canonical" href="{{ canonical_url }}">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -14,8 +14,8 @@
     <meta property="og:type" content="website">
     <meta property="og:locale" content="cs_CZ">
     <meta property="og:site_name" content="Na pivo">
-    <meta property="og:title" content="Přidej se k partě | Na pivo">
-    <meta property="og:description" content="Hospoda je lepší s kámoši. Otevři pozvánku v aplikaci Na pivo.">
+    <meta property="og:title" content="{{ page_title }}">
+    <meta property="og:description" content="{{ description }}">
     <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:image" content="{{ og_image_url }}">
     <meta property="og:image:secure_url" content="{{ og_image_url }}">
@@ -24,8 +24,8 @@
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="Tři půllitry si připíjejí. Přidej se k partě.">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Přidej se k partě | Na pivo">
-    <meta name="twitter:description" content="Hospoda je lepší s kámoši.">
+    <meta name="twitter:title" content="{{ page_title }}">
+    <meta name="twitter:description" content="{{ description }}">
     <meta name="twitter:image" content="{{ og_image_url }}">
 
     <style>
@@ -126,8 +126,8 @@
         <span>NA PIVO</span>
       </div>
       <img class="art" src="/og/invite.png" alt="Tři půllitry si připíjejí" width="1200" height="630">
-      <h1>Kámoš tě zve do party.</h1>
-      <p>Otevři pozvánku v Na pivo a hned budeš vědět, kdy se jde na jedno.</p>
+      <h1>{{ headline }}</h1>
+      <p>{{ body }}</p>
       <a class="open-app" href="{{ deep_link }}">Otevřít v appce</a>
       <div class="hint">Když se nic nestane, nainstaluj nebo aktualizuj Na pivo a klepni znovu.</div>
     </main>

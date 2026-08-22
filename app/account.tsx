@@ -24,7 +24,7 @@ import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import {
   ChevronLeftIcon,
   MenuIcon,
-  MailIcon,
+  Share2Icon,
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
@@ -41,7 +41,7 @@ import {
 } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const MIN_PASSWORD = 8;
@@ -90,6 +90,7 @@ export default function AccountScreen() {
     [profile?.providers],
   );
   const hasEmail = providers.includes('email');
+  const isClaimed = providers.length > 0;
   const appleSupported = isAppleSignInSupported();
 
   const runAfterSheetClose = useCallback((action: () => void) => {
@@ -236,10 +237,17 @@ export default function AccountScreen() {
   const handleLogout = useCallback(async () => {
     if (busy) return;
     setBusy('logout');
-    await logout();
-    setBusy(null);
-    router.back();
-  }, [busy, logout, router]);
+    try {
+      const result = await logout();
+      if (!result.ok) {
+        showToast(result.detail || cs.account.errorGeneric);
+        return;
+      }
+      router.back();
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, logout, router, showToast]);
 
   const handleDelete = useCallback(() => {
     showAppDialog({
@@ -349,7 +357,7 @@ export default function AccountScreen() {
       {
         key: 'export',
         label: cs.account.exportData,
-        icon: MailIcon,
+        icon: Share2Icon,
         onPress: () => void handleExportData(),
         accessibilityLabel: cs.a11y.accountExportData,
       },
@@ -506,18 +514,20 @@ export default function AccountScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {linkedMethods}
+            {isClaimed ? linkedMethods : cs.account.anonymousName}
           </Text>
           <Text
             style={styles.verification}
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {profile.email
-              ? profile.emailVerified
-                ? cs.account.emailVerified
-                : cs.account.emailUnverified
-              : cs.account.emailMissing}
+            {!isClaimed
+              ? cs.account.anonymousDataNote
+              : profile.email
+                ? profile.emailVerified
+                  ? cs.account.emailVerified
+                  : cs.account.emailUnverified
+                : cs.account.emailMissing}
           </Text>
         </View>
       </View>
@@ -531,11 +541,13 @@ export default function AccountScreen() {
         accessibilityLabel={cs.a11y.accountMethods}
       />
 
-      <CounterSecondary
-        label={busy === 'logout' ? cs.account.loading : cs.account.logout}
-        onPress={() => void handleLogout()}
-        accessibilityLabel={cs.a11y.accountLogout}
-      />
+      {isClaimed ? (
+        <CounterSecondary
+          label={busy === 'logout' ? cs.account.loading : cs.account.logout}
+          onPress={() => void handleLogout()}
+          accessibilityLabel={cs.a11y.accountLogout}
+        />
+      ) : null}
 
       <LoginMethodsSheet
         visible={methodsOpen}
@@ -603,7 +615,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     marginLeft: 12,
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
@@ -641,13 +653,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   identityName: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
   identityMeta: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -660,13 +672,13 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   linkedMethods: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   verification: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

@@ -5,6 +5,7 @@ import {
   type BeerCheckInInput,
 } from './beerCheckinsClient';
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 import type { QueueSyncResult } from './apiFetch';
 
 const STORAGE_KEY = 'na-pivo-beer-checkins-queue';
@@ -111,7 +112,7 @@ export async function enqueueBeerCheckInOp(item: BeerCheckInQueueItem): Promise<
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
   });
   await flushBeerCheckinsQueue();
 }
@@ -124,7 +125,7 @@ export function clearBeerCheckinsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 export async function getPendingBeerCheckIns(): Promise<BeerCheckInInput[]> {

@@ -17,7 +17,9 @@ import { File, UploadType } from 'expo-file-system';
 
 import {
   ensureAccount,
+  generateUuidV4,
   getSessionToken,
+  readDurableAccountSession,
   revertToAnonymous,
   setSession,
   type AccountSession,
@@ -28,10 +30,45 @@ import {
   type RawAchievementsBlock,
 } from './achievements';
 import { getBackendEndpoint } from './backendConfig';
-import { clearLocalPrivateAccountData } from './privateAccountData';
-import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
+import {
+  flushBeerPhotoDeletionsForAccountMerge,
+  flushBeerPhotoDeletionsBeforeSessionEnd,
+} from './beerPhotoDeletionSync';
+import {
+  beginBeerPhotoSessionTransition,
+  type BeerPhotoSessionTransition,
+} from './beerPhotoSessionBoundary';
+import {
+  archiveAccountDeletionReceipt,
+  clearAccountDeletionReceipt,
+  completeAccountDeletionReceipt,
+  readAccountDeletionReceipt,
+  retireAccountDeletionOrphan,
+  writeAccountDeletionReceipt,
+  type AccountDeletionOrphan,
+} from './accountDeletionReceipt';
+import {
+  clearLocalPrivateAccountData,
+  rehydratePrivateStoresAfterBoundary,
+} from './privateAccountData';
+import {
+  beginPrivateAccountTransition,
+  readPrivateAccountMergeIntent,
+  type PrivateAccountTransition,
+} from './privateAccountBoundary';
+import {
+  cancelUncommittedPartyGameAccountMerge,
+  finalizePartyGameQueuesForAccountMerge,
+  preflightPartyGameQueuesForAccountMerge,
+  promotePartyGameQueuesAccountMerge,
+} from './partyGameStartsQueue';
+import {
+  disableCachedPushDeviceWithBearer,
+  registerCachedPushDeviceWithBearer,
+} from './pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
+import { refreshPartyGamesAfterAccountMerge } from '@/stores/partyGamesStore';
 
 const REQUEST_TIMEOUT_MS = 12000;
 
@@ -450,25 +487,49 @@ interface FetchOutcome {
  */
 async function authFetch(
   path: string,
-  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'claim' | 'none' },
+  opts: {
+    method?: string;
+    body?: unknown;
+    bearer?: 'current' | 'ensure' | 'claim' | 'none';
+    /** Additional non-secret/capability headers for the exact endpoint. */
+    headers?: Record<string, string>;
+    /** Captured before a credential transition so auth and privacy flush agree. */
+    session?: AccountSession | null;
+  },
 ): Promise<FetchOutcome | { networkError: true }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint) return { networkError: true };
 
   let token: string | null = null;
-  if (opts.bearer === 'ensure') {
-    const session = await ensureAccount();
-    token = session?.token ?? null;
-  } else if (opts.bearer === 'claim') {
-    const session = await ensureAccount();
-    token = session && !session.authenticated ? session.token : null;
-  } else if (opts.bearer === 'current') {
-    token = await getSessionToken();
+  try {
+    if (opts.bearer === 'ensure') {
+      const session = Object.prototype.hasOwnProperty.call(opts, 'session')
+        ? opts.session
+        : await ensureAccount();
+      token = session?.token ?? null;
+    } else if (opts.bearer === 'claim') {
+      const session = Object.prototype.hasOwnProperty.call(opts, 'session')
+        ? opts.session
+        : await ensureAccount();
+      token = session && !session.authenticated ? session.token : null;
+    } else if (opts.bearer === 'current') {
+      token = await getSessionToken();
+    }
+  } catch (error) {
+    trackApiFailure('auth_request', {
+      endpoint: path,
+      reason: 'session_unavailable',
+      error,
+    });
+    return { networkError: true };
   }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...opts.headers,
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   try {
@@ -504,18 +565,230 @@ const NETWORK_ERROR = {
   detail: 'Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu.',
 };
 
-async function disablePushDeviceForCurrentSession(): Promise<void> {
-  try {
-    await disableCachedPushDeviceWithBearer(await getSessionToken());
-  } catch {
-    // Logout/delete must still proceed if push cleanup is offline or unavailable.
+const PHOTO_DELETIONS_PENDING = {
+  ok: false as const,
+  code: 'photo_deletions_pending',
+  detail:
+    'Nejdřív potřebujeme dosmazat fotky. Připoj se k internetu a zkus to znovu.',
+};
+
+const PHOTO_DELETIONS_REKEY_FAILED = {
+  ok: false as const,
+  code: 'photo_deletions_storage',
+  detail:
+    'Rozpracované mazání fotek se nepodařilo bezpečně převést. Uvolni místo v telefonu a zkus to znovu.',
+};
+
+const SESSION_BOUNDARY_FAILED = {
+  ok: false as const,
+  code: 'session_storage',
+  detail:
+    'Odhlášení se nepodařilo bezpečně dokončit. Odemkni telefon a zkus to znovu.',
+};
+
+const CREDENTIAL_BOUNDARY_FAILED = {
+  ok: false as const,
+  code: 'session_storage',
+  detail:
+    'Přihlášení nejde bezpečně dokončit, dokud se nesmažou stará data v telefonu. Uvolni místo a zkus to znovu.',
+};
+
+const ACCOUNT_DELETION_RECEIPT_FAILED = {
+  ok: false as const,
+  code: 'account_deletion_storage',
+  detail:
+    'Žádost o smazání nejde v telefonu bezpečně dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
+};
+
+const ACCOUNT_DELETION_RECOVERED = {
+  ok: false as const,
+  code: 'account_deletion_recovered',
+  detail:
+    'Předchozí mazání jsme dokončili. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+};
+
+interface CredentialTransition {
+  outgoingSession: AccountSession | null;
+  photoSessionTransition: BeerPhotoSessionTransition;
+  privateAccountTransition: PrivateAccountTransition | null;
+  /** Login/social endpoints merge an anonymous source into their target. */
+  mergesAnonymousAccount: boolean;
+  /** Only true after a strict pre-auth read proved A has no pending marker. */
+  strictMergePreflightClean: boolean;
+  /** Phase-0 game queue freeze persisted before a merge-capable HTTP request. */
+  partyGameMerge: {
+    sourceAccountId: string;
+    operationId: string;
+    cancelSafe: boolean;
+  } | null;
+  blockingResult?: Extract<AuthActionResult, { ok: false }>;
+}
+
+async function prepareCredentialTransition(
+  mergesAnonymousAccount: boolean,
+): Promise<CredentialTransition> {
+  const privateAccountTransition = beginPrivateAccountTransition('credential-auth');
+  const photoSessionTransition = beginBeerPhotoSessionTransition();
+  if (!privateAccountTransition) {
+    return {
+      outgoingSession: null,
+      photoSessionTransition,
+      privateAccountTransition: null,
+      mergesAnonymousAccount,
+      strictMergePreflightClean: false,
+      partyGameMerge: null,
+      blockingResult: CREDENTIAL_BOUNDARY_FAILED,
+    };
   }
+  let outgoingSession: AccountSession | null = null;
+  let preflight: Awaited<ReturnType<typeof flushBeerPhotoDeletionsBeforeSessionEnd>>;
+  try {
+    await privateAccountTransition.drain();
+    const durableSession = await readDurableAccountSession();
+    if (!durableSession.available) throw new Error('Secure session is unavailable.');
+    outgoingSession = durableSession.session;
+    if (outgoingSession && !privateAccountTransition.bindOwner(outgoingSession.accountId)) {
+      throw new Error('Credential boundary owner changed.');
+    }
+
+    const mergeIntent = await readPrivateAccountMergeIntent();
+    if (
+      !mergeIntent.ok ||
+      (mergeIntent.intent &&
+        (!mergesAnonymousAccount ||
+          !outgoingSession ||
+          outgoingSession.authenticated ||
+          mergeIntent.intent.fromAccountId !== outgoingSession.accountId))
+    ) {
+      throw new Error('Anonymous account merge owner is unavailable.');
+    }
+    preflight = await flushBeerPhotoDeletionsBeforeSessionEnd({
+      session: outgoingSession,
+      preferProvidedSession: true,
+    });
+  } catch {
+    // Public auth actions are deliberately never-throw. Keep the transition
+    // handle alive until the caller returns the fail-closed result so photo
+    // mutations cannot slip into the boundary between this catch and cleanup.
+    return {
+      outgoingSession,
+      photoSessionTransition,
+      privateAccountTransition,
+      mergesAnonymousAccount,
+      strictMergePreflightClean: false,
+      partyGameMerge: null,
+      blockingResult: CREDENTIAL_BOUNDARY_FAILED,
+    };
+  }
+  const mustFinishAnonymousDeletes =
+    mergesAnonymousAccount &&
+    !!outgoingSession &&
+    !outgoingSession.authenticated &&
+    (preflight.remaining !== 0 || preflight.storageError);
+  const missingOwnerCannotCrossBoundary =
+    !outgoingSession && (preflight.remaining !== 0 || preflight.storageError);
+  const preflightStorageCannotCrossBoundary = preflight.storageError;
+  const blockingResult =
+    mustFinishAnonymousDeletes ||
+    missingOwnerCannotCrossBoundary ||
+    preflightStorageCannotCrossBoundary
+      ? preflight.storageError
+        ? PHOTO_DELETIONS_REKEY_FAILED
+        : PHOTO_DELETIONS_PENDING
+      : undefined;
+  if (blockingResult) {
+    return {
+      outgoingSession,
+      photoSessionTransition,
+      privateAccountTransition,
+      mergesAnonymousAccount,
+      strictMergePreflightClean: preflight.remaining === 0 && !preflight.storageError,
+      partyGameMerge: null,
+      blockingResult,
+    };
+  }
+
+  let partyGameMerge: CredentialTransition['partyGameMerge'] = null;
+  if (mergesAnonymousAccount && outgoingSession && !outgoingSession.authenticated) {
+    try {
+      const preflightResult = await preflightPartyGameQueuesForAccountMerge(
+        outgoingSession.accountId,
+        privateAccountTransition,
+      );
+      if (!preflightResult) {
+        return {
+          outgoingSession,
+          photoSessionTransition,
+          privateAccountTransition,
+          mergesAnonymousAccount,
+          strictMergePreflightClean: true,
+          partyGameMerge: null,
+          blockingResult: CREDENTIAL_BOUNDARY_FAILED,
+        };
+      }
+      partyGameMerge = {
+        sourceAccountId: outgoingSession.accountId,
+        operationId: preflightResult.operationId,
+        cancelSafe: preflightResult.cancelSafe,
+      };
+    } catch {
+      return {
+        outgoingSession,
+        photoSessionTransition,
+        privateAccountTransition,
+        mergesAnonymousAccount,
+        strictMergePreflightClean: true,
+        partyGameMerge: null,
+        blockingResult: CREDENTIAL_BOUNDARY_FAILED,
+      };
+    }
+  }
+
+  return {
+    outgoingSession,
+    photoSessionTransition,
+    privateAccountTransition,
+    mergesAnonymousAccount,
+    strictMergePreflightClean: preflight.remaining === 0 && !preflight.storageError,
+    partyGameMerge,
+  };
+}
+
+async function abortCredentialTransition<T>(
+  transition: CredentialTransition,
+  result: T,
+  options?: { cancelUncommittedPartyGameMerge?: boolean },
+): Promise<T | Extract<AuthActionResult, { ok: false }>> {
+  if (
+    options?.cancelUncommittedPartyGameMerge &&
+    transition.partyGameMerge?.cancelSafe
+  ) {
+    try {
+      const cancelled = await cancelUncommittedPartyGameAccountMerge(
+        transition.partyGameMerge.sourceAccountId,
+        transition.partyGameMerge.operationId,
+      );
+      if (!cancelled) result = CREDENTIAL_BOUNDARY_FAILED as T;
+    } catch {
+      result = CREDENTIAL_BOUNDARY_FAILED as T;
+    }
+  }
+  transition.photoSessionTransition.release();
+  transition.privateAccountTransition?.release();
+  await rehydratePrivateStoresAfterBoundary();
+  return result;
+}
+
+function authFailureCanSafelyCancelMergePreflight(res: FetchOutcome): boolean {
+  // Auth endpoints are atomic for validated client failures. A 5xx may have
+  // lost a success response after committing the merge, so it stays frozen.
+  return res.status >= 400 && res.status < 500;
 }
 
 /** Apply a successful auth response: persist the new session, return the profile. */
-async function applyAuthSuccess(
+async function applyAuthSuccessInner(
   data: RawAccount,
-  options?: { clearLocalPrivateData?: boolean },
+  transition?: CredentialTransition,
 ): Promise<AuthResult> {
   const profile = parseProfile(data);
   if (!data.token || !profile.id) {
@@ -527,16 +800,113 @@ async function applyAuthSuccess(
     };
   }
 
-  if (options?.clearLocalPrivateData) {
-    await clearLocalPrivateAccountData();
+  const outgoing = transition?.outgoingSession ?? null;
+  const accountChanged = !!outgoing && outgoing.accountId !== profile.id;
+  let shouldClearLocalPrivateData = false;
+  const incomingSession = {
+    deviceId: profile.deviceId || undefined,
+    accountId: profile.id,
+    token: data.token,
+    authenticated: true,
+  };
+  const incomingDeletionSession: AccountSession = {
+    ...incomingSession,
+    deviceId: profile.deviceId || outgoing?.deviceId || '',
+  };
+  const partyGameMerge = transition?.partyGameMerge ?? null;
+  if (partyGameMerge) {
+    try {
+      const targetBound = await promotePartyGameQueuesAccountMerge(
+        partyGameMerge.sourceAccountId,
+        profile.id,
+        partyGameMerge.operationId,
+      );
+      if (!targetBound) return CREDENTIAL_BOUNDARY_FAILED;
+    } catch {
+      return CREDENTIAL_BOUNDARY_FAILED;
+    }
   }
-  try {
-    await setSession({
-      deviceId: profile.deviceId || undefined,
-      accountId: profile.id,
-      token: data.token,
-      authenticated: true,
+
+  const outgoingDeletionsRemain = async (): Promise<boolean> => {
+    if (!outgoing) return false;
+    const latest = await flushBeerPhotoDeletionsBeforeSessionEnd({
+      session: outgoing,
+      preferProvidedSession: true,
     });
+    return latest.storageError || latest.remaining !== 0;
+  };
+
+  if (accountChanged && outgoing.authenticated) {
+    // A credential-backed A is never merged into B. Do not let a login to the
+    // wrong account discard the only bearer capable of finishing A's deletes.
+    if (await outgoingDeletionsRemain()) {
+      return PHOTO_DELETIONS_PENDING;
+    }
+    shouldClearLocalPrivateData = true;
+  } else if (accountChanged && !outgoing.authenticated) {
+    if (transition?.mergesAnonymousAccount) {
+      // A strict empty preflight ran before the auth request. Any marker created
+      // while that request was in flight is now sent directly with B's response
+      // bearer before SecureStore can fail or the revoked A credential is lost.
+      const mergeFlush = await flushBeerPhotoDeletionsForAccountMerge(
+        outgoing.accountId,
+        profile.id,
+        incomingDeletionSession,
+        { strictPreflightClean: transition.strictMergePreflightClean },
+      );
+      if (mergeFlush.storageError || mergeFlush.remaining !== 0) {
+        return mergeFlush.storageError
+          ? PHOTO_DELETIONS_REKEY_FAILED
+          : PHOTO_DELETIONS_PENDING;
+      }
+    } else {
+      if (await outgoingDeletionsRemain()) {
+        return PHOTO_DELETIONS_PENDING;
+      }
+      shouldClearLocalPrivateData = true;
+    }
+  } else if (!outgoing && transition) {
+    // Without a captured anonymous owner there was nothing the server could
+    // claim/merge. Treat any local private state as unrelated before B lands.
+    shouldClearLocalPrivateData = true;
+  }
+
+  if (shouldClearLocalPrivateData) {
+    if (
+      outgoing &&
+      !(accountChanged && !outgoing.authenticated && transition?.mergesAnonymousAccount) &&
+      !(await disableCachedPushDeviceWithBearer(outgoing.token))
+    ) {
+      trackApiFailure('auth_push_rebind', { reason: 'outgoing_disable_failed' });
+      return CREDENTIAL_BOUNDARY_FAILED;
+    }
+
+    // Authenticated A is never merged into unrelated B. Clear and strictly
+    // verify A while its credential is still installed; a kill at any point
+    // therefore leaves either A + empty caches or the later durable B session,
+    // never B with A's persisted queues. Anonymous claim/merge deliberately
+    // skips this branch so its progress follows the user.
+    try {
+      const cleared = await clearLocalPrivateAccountData({ outgoingSession: outgoing });
+      if (!cleared.ok) {
+        trackApiFailure('auth_private_data_clear', {
+          reason: 'local_clear_incomplete',
+          errorName: `failed_operations_${cleared.failedOperations.length}`,
+        });
+        return CREDENTIAL_BOUNDARY_FAILED;
+      }
+    } catch (err) {
+      trackApiFailure('auth_private_data_clear', {
+        reason: 'local_clear_failed',
+        error: err,
+      });
+      return CREDENTIAL_BOUNDARY_FAILED;
+    }
+
+  }
+
+  try {
+    await setSession(incomingSession);
   } catch (err) {
     trackApiFailure('auth_session_persist', { reason: 'secure_store', error: err });
     return {
@@ -545,7 +915,73 @@ async function applyAuthSuccess(
       detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
     };
   }
+
+  // B must be durable before this installation can receive B's private push.
+  // A failed rebind only delays notifications; normal launch/focus registration
+  // retries it without ever routing B payloads to a durable A session.
+  if (shouldClearLocalPrivateData && !(await registerCachedPushDeviceWithBearer(data.token))) {
+    trackApiFailure('auth_push_rebind', { reason: 'incoming_register_deferred' });
+  }
+
+  if (partyGameMerge) {
+    let finalized = false;
+    try {
+      finalized = await finalizePartyGameQueuesForAccountMerge(
+        partyGameMerge.sourceAccountId,
+        profile.id,
+        partyGameMerge.operationId,
+      );
+    } catch {
+      finalized = false;
+    }
+    if (finalized) {
+      try {
+        refreshPartyGamesAfterAccountMerge();
+      } catch (error) {
+        trackApiFailure('auth_party_games_refresh', {
+          reason: 'post_merge_refresh_failed',
+          error,
+        });
+      }
+    } else {
+      // B is already the durable credential. Leave the exact A→B intent for
+      // the queue's cold-boot recovery instead of presenting a false A session.
+      trackApiFailure('auth_party_games_merge', {
+        reason: 'post_session_finalize_deferred',
+      });
+    }
+  }
+
+  // Re-snapshot after every credential transition. This catches a Delete that
+  // raced the auth request; same-account re-auth uses its fresh bearer and an
+  // anonymous merge repeats the already-acknowledged B cleanup if needed.
+  if (transition) {
+    await flushBeerPhotoDeletionsBeforeSessionEnd({
+      session: incomingDeletionSession,
+      preferProvidedSession: true,
+    });
+  }
   return { ok: true, profile };
+}
+
+/** Always reopen photo mutations under whichever credential remained durable. */
+async function applyAuthSuccess(
+  data: RawAccount,
+  transition?: CredentialTransition,
+): Promise<AuthResult> {
+  try {
+    return await applyAuthSuccessInner(data, transition);
+  } catch (error) {
+    trackApiFailure('auth_session', {
+      reason: 'credential_boundary_exception',
+      error,
+    });
+    return CREDENTIAL_BOUNDARY_FAILED;
+  } finally {
+    transition?.photoSessionTransition.release();
+    transition?.privateAccountTransition?.release();
+    if (transition) await rehydratePrivateStoresAfterBoundary();
+  }
 }
 
 /** Collapse a profile-returning call's outcome into an AuthResult. */
@@ -570,25 +1006,50 @@ export async function registerEmail(params: {
   password: string;
   displayName?: string;
 }): Promise<AuthResult> {
+  const transition = await prepareCredentialTransition(true);
+  if (transition.blockingResult) {
+    return abortCredentialTransition(transition, transition.blockingResult);
+  }
   const res = await authFetch('/v1/auth/register', {
     bearer: 'ensure', // claim the current anonymous account
+    session: transition.outgoingSession,
     body: {
       email: params.email,
       password: params.password,
       display_name: params.displayName ?? '',
+      ...(transition.partyGameMerge
+        ? { merge_operation_id: transition.partyGameMerge.operationId }
+        : {}),
     },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data);
+  if ('networkError' in res) return abortCredentialTransition(transition, NETWORK_ERROR);
+  if (!res.ok) {
+    return abortCredentialTransition(
+      transition,
+      { ok: false, ...extractError(res.data, res.status) },
+      { cancelUncommittedPartyGameMerge: authFailureCanSafelyCancelMergePreflight(res) },
+    );
+  }
+  return applyAuthSuccess(res.data, transition);
 }
 
 export async function loginEmail(params: { email: string; password: string }): Promise<AuthResult> {
+  const transition = await prepareCredentialTransition(true);
+  if (transition.blockingResult) {
+    return abortCredentialTransition(transition, transition.blockingResult);
+  }
   const res = await authFetch('/v1/auth/login', {
     bearer: 'claim',
-    body: { email: params.email, password: params.password },
+    session: transition.outgoingSession,
+    body: {
+      email: params.email,
+      password: params.password,
+      ...(transition.partyGameMerge
+        ? { merge_operation_id: transition.partyGameMerge.operationId }
+        : {}),
+    },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
+  if ('networkError' in res) return abortCredentialTransition(transition, NETWORK_ERROR);
   if (!res.ok) {
     if (res.status === 401) {
       trackApiFailure('auth_login', {
@@ -603,9 +1064,13 @@ export async function loginEmail(params: { email: string; password: string }): P
         reason: 'login_server_error',
       });
     }
-    return { ok: false, ...extractError(res.data, res.status) };
+    return abortCredentialTransition(
+      transition,
+      { ok: false, ...extractError(res.data, res.status) },
+      { cancelUncommittedPartyGameMerge: authFailureCanSafelyCancelMergePreflight(res) },
+    );
   }
-  return applyAuthSuccess(res.data);
+  return applyAuthSuccess(res.data, transition);
 }
 
 // ---------------------------------------------------------------------------
@@ -660,10 +1125,29 @@ export async function signInWithGoogle(): Promise<AuthResult> {
     }
     return mapSocialError(err);
   }
-  const res = await authFetch('/v1/auth/google', { bearer: 'ensure', body: { id_token: idToken } });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data);
+  const transition = await prepareCredentialTransition(true);
+  if (transition.blockingResult) {
+    return abortCredentialTransition(transition, transition.blockingResult);
+  }
+  const res = await authFetch('/v1/auth/google', {
+    bearer: 'ensure',
+    session: transition.outgoingSession,
+    body: {
+      id_token: idToken,
+      ...(transition.partyGameMerge
+        ? { merge_operation_id: transition.partyGameMerge.operationId }
+        : {}),
+    },
+  });
+  if ('networkError' in res) return abortCredentialTransition(transition, NETWORK_ERROR);
+  if (!res.ok) {
+    return abortCredentialTransition(
+      transition,
+      { ok: false, ...extractError(res.data, res.status) },
+      { cancelUncommittedPartyGameMerge: authFailureCanSafelyCancelMergePreflight(res) },
+    );
+  }
+  return applyAuthSuccess(res.data, transition);
 }
 
 export async function signInWithApple(): Promise<AuthResult> {
@@ -673,17 +1157,31 @@ export async function signInWithApple(): Promise<AuthResult> {
   } catch (err) {
     return mapSocialError(err);
   }
+  const transition = await prepareCredentialTransition(true);
+  if (transition.blockingResult) {
+    return abortCredentialTransition(transition, transition.blockingResult);
+  }
   const res = await authFetch('/v1/auth/apple', {
     bearer: 'ensure',
+    session: transition.outgoingSession,
     body: {
       identity_token: credential.identityToken,
       authorization_code: credential.authorizationCode,
       full_name: credential.fullName,
+      ...(transition.partyGameMerge
+        ? { merge_operation_id: transition.partyGameMerge.operationId }
+        : {}),
     },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data);
+  if ('networkError' in res) return abortCredentialTransition(transition, NETWORK_ERROR);
+  if (!res.ok) {
+    return abortCredentialTransition(
+      transition,
+      { ok: false, ...extractError(res.data, res.status) },
+      { cancelUncommittedPartyGameMerge: authFailureCanSafelyCancelMergePreflight(res) },
+    );
+  }
+  return applyAuthSuccess(res.data, transition);
 }
 
 // ---------------------------------------------------------------------------
@@ -738,28 +1236,368 @@ export async function setPassword(params: { password: string; email?: string }):
 // ---------------------------------------------------------------------------
 // Session / lifecycle
 // ---------------------------------------------------------------------------
-export async function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
-  await disablePushDeviceForCurrentSession();
-  const res = await authFetch('/v1/auth/logout', {
-    bearer: 'current',
-    body: { all: options?.all === true },
+async function finishAnonymousSessionBoundary(
+  outgoingSession: AccountSession | null,
+): Promise<AuthActionResult> {
+  try {
+    await revertToAnonymous(undefined, async () => {
+      const cleared = await clearLocalPrivateAccountData({ outgoingSession });
+      if (!cleared.ok) throw new Error('Private account storage clear failed.');
+    });
+    return { ok: true };
+  } catch (error) {
+    trackApiFailure('auth_session_clear', {
+      reason: 'secure_store',
+      errorName: error instanceof Error ? error.name : typeof error,
+    });
+    return SESSION_BOUNDARY_FAILED;
+  }
+}
+
+async function logoutWithinPhotoBoundary(
+  options?: { all?: boolean },
+): Promise<AuthActionResult> {
+  // A native multipart upload may still be committing after the user deleted
+  // it. Put every durable by-client tombstone on the server before logout
+  // revokes the only bearer that is authorized to delete account A's photo.
+  const durableSession = await readDurableAccountSession();
+  if (!durableSession.available) return SESSION_BOUNDARY_FAILED;
+  const outgoingSession = durableSession.session;
+  const deletionFlush = await flushBeerPhotoDeletionsBeforeSessionEnd({
+    session: outgoingSession,
+    preferProvidedSession: true,
   });
-  // Even if the network call fails, drop the local session so the UI signs out.
-  await clearLocalPrivateAccountData();
-  await revertToAnonymous();
-  if ('networkError' in res) return { ok: true };
+  if (deletionFlush.storageError || deletionFlush.remaining !== 0) {
+    return deletionFlush.storageError
+      ? PHOTO_DELETIONS_REKEY_FAILED
+      : PHOTO_DELETIONS_PENDING;
+  }
+  if (!(await disableCachedPushDeviceWithBearer(outgoingSession?.token ?? null))) {
+    return SESSION_BOUNDARY_FAILED;
+  }
+  if (outgoingSession) {
+    await authFetch('/v1/auth/logout', {
+      bearer: 'current',
+      body: { all: options?.all === true },
+    });
+  }
+  // Offline logout is intentionally local-first, but it is complete only when
+  // SecureStore actually stopped exposing A. The boundary callback clears A's
+  // private queues before any replacement anonymous identity can be observed.
+  return finishAnonymousSessionBoundary(outgoingSession);
+}
+
+export async function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
+  const privateAccountTransition = beginPrivateAccountTransition('logout');
+  const photoSessionTransition = beginBeerPhotoSessionTransition();
+  if (!privateAccountTransition) {
+    photoSessionTransition.release();
+    return SESSION_BOUNDARY_FAILED;
+  }
+  try {
+    await privateAccountTransition.drain();
+    const mergeIntent = await readPrivateAccountMergeIntent();
+    if (!mergeIntent.ok || mergeIntent.intent) return SESSION_BOUNDARY_FAILED;
+    return await logoutWithinPhotoBoundary(options);
+  } catch (error) {
+    trackApiFailure('auth_logout', { reason: 'session_boundary_exception', error });
+    return SESSION_BOUNDARY_FAILED;
+  } finally {
+    photoSessionTransition.release();
+    privateAccountTransition.release();
+    await rehydratePrivateStoresAfterBoundary();
+  }
+}
+
+async function fetchAccountDeletionCompletion(
+  operationId: string,
+): Promise<boolean | null> {
+  const res = await authFetch('/v1/account/deletion-status', {
+    method: 'GET',
+    bearer: 'none',
+    // Keep the deletion capability out of query/access logs.
+    headers: { 'X-Account-Deletion-Operation-Id': operationId },
+  });
+  if ('networkError' in res || !res.ok) return null;
+  return typeof res.data.complete === 'boolean' ? res.data.complete : null;
+}
+
+async function recoverAccountDeletionOrphans(
+  orphans: AccountDeletionOrphan[],
+): Promise<boolean> {
+  // Probe every durable capability, but cap simultaneous requests. A fixed
+  // `slice(0, n)` permanently starves the fifth orphan because receipt order is
+  // stable; this worker pool eventually proves/retire all of them without an
+  // unbounded request burst.
+  const completionProofs = new Array<{
+    orphan: AccountDeletionOrphan;
+    serverComplete: boolean | null;
+  }>(orphans.length);
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (nextIndex < orphans.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const orphan = orphans[index];
+      completionProofs[index] = {
+        orphan,
+        serverComplete:
+          orphan.phase === 'complete'
+            ? true
+            : await fetchAccountDeletionCompletion(orphan.operationId),
+      };
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(4, orphans.length) }, () => worker()),
+  );
+
+  for (const { orphan, serverComplete } of completionProofs) {
+    // An unavailable/false proof stays bounded and owner-scoped for a later
+    // tap. It must not occupy or block the current account's active slot.
+    if (serverComplete !== true) continue;
+    const retired = await retireAccountDeletionOrphan(
+      orphan.accountId,
+      orphan.operationId,
+    );
+    if (!retired.ok) return false;
+  }
+  return true;
+}
+
+export type StartupAccountDeletionRecoveryResult =
+  | 'none'
+  | 'deferred'
+  | 'recovered'
+  | 'blocked';
+
+/**
+ * Resolve a crash-lost account DELETE before the cached A session is published.
+ *
+ * Only the opaque public completion proof is authoritative. A revoked bearer,
+ * a local `complete` bit, or a generic 401 is never enough. False/unavailable
+ * status deliberately leaves A intact for retry; proven completion freezes
+ * photo mutations, strictly clears A, rotates to anonymous, then retires the
+ * exact receipt.
+ */
+export async function recoverPendingAccountDeletionAtStartup(): Promise<
+  StartupAccountDeletionRecoveryResult
+> {
+  const privateAccountTransition = beginPrivateAccountTransition('account-deletion-recovery');
+  const photoSessionTransition = beginBeerPhotoSessionTransition();
+  if (!privateAccountTransition) {
+    photoSessionTransition.release();
+    return 'blocked';
+  }
+  try {
+    await privateAccountTransition.drain();
+    const mergeIntent = await readPrivateAccountMergeIntent();
+    if (!mergeIntent.ok || mergeIntent.intent) return 'blocked';
+
+    const loaded = await readAccountDeletionReceipt();
+    if (!loaded.ok) return 'blocked';
+    const intent = loaded.intent;
+    if (!intent) return 'none';
+
+    const serverComplete = await fetchAccountDeletionCompletion(intent.operationId);
+    const durableSession = await readDurableAccountSession();
+    if (!durableSession.available) return 'blocked';
+    const outgoingSession = durableSession.session;
+    if (serverComplete !== true) {
+      // With no readable durable identity, publishing hydrated private stores
+      // could expose A while Keychain is merely locked. Hold the startup gate;
+      // a later retry can distinguish that from a genuinely empty cache.
+      return outgoingSession ? 'deferred' : 'blocked';
+    }
+
+    if (intent.phase !== 'complete') {
+      const completed = await completeAccountDeletionReceipt(
+        intent.accountId,
+        intent.operationId,
+      );
+      if (!completed.ok) return 'blocked';
+    }
+
+    if (outgoingSession && outgoingSession.accountId !== intent.accountId) {
+      // B is already durable, so never clear B using A's receipt. A successful
+      // account transition has its own strict boundary; retire only the proven
+      // old completion capability.
+      const cleared = await clearAccountDeletionReceipt(
+        intent.accountId,
+        intent.operationId,
+      );
+      return cleared.ok ? 'recovered' : 'blocked';
+    }
+
+    const boundary = await finishAnonymousSessionBoundary(outgoingSession);
+    if (!boundary.ok) return 'blocked';
+
+    const cleared = await clearAccountDeletionReceipt(
+      intent.accountId,
+      intent.operationId,
+    );
+    return cleared.ok ? 'recovered' : 'blocked';
+  } catch (error) {
+    trackApiFailure('auth_account_delete_startup', {
+      reason: 'recovery_exception',
+      error,
+    });
+    return 'blocked';
+  } finally {
+    photoSessionTransition.release();
+    privateAccountTransition.release();
+    await rehydratePrivateStoresAfterBoundary();
+  }
+}
+
+async function deleteAccountWithinPhotoBoundary(): Promise<AuthActionResult> {
+  const durableSession = await readDurableAccountSession();
+  if (!durableSession.available) return ACCOUNT_DELETION_RECEIPT_FAILED;
+  const outgoingSession = durableSession.session;
+  if (!outgoingSession?.accountId) return NETWORK_ERROR;
+
+  const loaded = await readAccountDeletionReceipt();
+  if (!loaded.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+  if (!(await recoverAccountDeletionOrphans(loaded.orphans))) {
+    return ACCOUNT_DELETION_RECEIPT_FAILED;
+  }
+  let intent = loaded.intent;
+
+  if (intent && intent.accountId !== outgoingSession.accountId) {
+    // A durable B credential proves A's local session boundary crossed. A
+    // pending proof still needs the public one-bit server status before it can
+    // be upgraded/retired; never infer completion from B or from A's old 401.
+    const serverComplete =
+      intent.phase === 'complete'
+        ? true
+        : await fetchAccountDeletionCompletion(intent.operationId);
+    if (serverComplete === true) {
+      if (intent.phase === 'pending') {
+        const completed = await completeAccountDeletionReceipt(
+          intent.accountId,
+          intent.operationId,
+        );
+        if (!completed.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+      }
+      const cleared = await clearAccountDeletionReceipt(
+        intent.accountId,
+        intent.operationId,
+      );
+      if (!cleared.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    } else {
+      const archived = await archiveAccountDeletionReceipt(
+        intent.accountId,
+        intent.operationId,
+      );
+      if (!archived.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    }
+    return outgoingSession.authenticated
+      ? ACCOUNT_DELETION_RECOVERED
+      : { ok: true };
+  }
+
+  let createdNow = false;
+  if (!intent) {
+    intent = {
+      accountId: outgoingSession.accountId,
+      operationId: generateUuidV4(),
+      phase: 'pending',
+    };
+    const persisted = await writeAccountDeletionReceipt(
+      intent.accountId,
+      intent.operationId,
+    );
+    if (!persisted.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    createdNow = true;
+  }
+
+  let serverDeletionConfirmed = false;
+  if (!createdNow) {
+    // A local `complete` bit is only a crash-recovery hint, never current server
+    // truth. A later credential auth may have reactivated the same account and
+    // atomically invalidated this deletion epoch while the old receipt survived
+    // a client crash or storage failure.
+    const complete = await fetchAccountDeletionCompletion(intent.operationId);
+    if (complete === null) return NETWORK_ERROR;
+    if (complete) {
+      if (intent.phase !== 'complete') {
+        const completed = await completeAccountDeletionReceipt(
+          intent.accountId,
+          intent.operationId,
+        );
+        if (!completed.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+        intent = { ...intent, phase: 'complete' };
+      }
+      serverDeletionConfirmed = true;
+    }
+  }
+
+  if (!serverDeletionConfirmed) {
+    // Establish every by-client photo delete while A's bearer is still valid.
+    // The session barrier has already aborted native uploads, so once this is
+    // empty the account-wide deletion cannot strand a late local tombstone.
+    const deletionFlush = await flushBeerPhotoDeletionsBeforeSessionEnd({
+      session: outgoingSession,
+      preferProvidedSession: true,
+    });
+    if (deletionFlush.storageError || deletionFlush.remaining !== 0) {
+      return deletionFlush.storageError
+        ? PHOTO_DELETIONS_REKEY_FAILED
+        : PHOTO_DELETIONS_PENDING;
+    }
+    const res = await authFetch('/v1/account/me', {
+      method: 'DELETE',
+      bearer: 'current',
+      headers: { 'X-Account-Deletion-Operation-Id': intent.operationId },
+    });
+    if ('networkError' in res) return NETWORK_ERROR;
+    // Only canonical 204 or the public status proof upgrades the local intent.
+    // Generic 401/404 and partial schedule failures remain errors.
+    if (res.status !== 204) {
+      return { ok: false, ...extractError(res.data, res.status) };
+    }
+    const completed = await completeAccountDeletionReceipt(
+      intent.accountId,
+      intent.operationId,
+    );
+    if (!completed.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    intent = { ...intent, phase: 'complete' };
+  }
+
+  const boundary = await finishAnonymousSessionBoundary(outgoingSession);
+  if (!boundary.ok) return boundary;
+
+  const clearedReceipt = await clearAccountDeletionReceipt(
+    intent.accountId,
+    intent.operationId,
+  );
+  if (!clearedReceipt.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
   return { ok: true };
 }
 
 export async function deleteAccount(): Promise<AuthActionResult> {
-  const res = await authFetch('/v1/account/me', { method: 'DELETE', bearer: 'current' });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok && res.status !== 204) {
-    return { ok: false, ...extractError(res.data, res.status) };
+  const privateAccountTransition = beginPrivateAccountTransition('account-delete');
+  const photoSessionTransition = beginBeerPhotoSessionTransition();
+  if (!privateAccountTransition) {
+    photoSessionTransition.release();
+    return ACCOUNT_DELETION_RECEIPT_FAILED;
   }
-  await clearLocalPrivateAccountData();
-  await revertToAnonymous();
-  return { ok: true };
+  try {
+    await privateAccountTransition.drain();
+    const mergeIntent = await readPrivateAccountMergeIntent();
+    if (!mergeIntent.ok || mergeIntent.intent) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    return await deleteAccountWithinPhotoBoundary();
+  } catch (error) {
+    trackApiFailure('auth_account_delete', {
+      reason: 'deletion_boundary_exception',
+      error,
+    });
+    return ACCOUNT_DELETION_RECEIPT_FAILED;
+  } finally {
+    photoSessionTransition.release();
+    privateAccountTransition.release();
+    await rehydratePrivateStoresAfterBoundary();
+  }
 }
 
 export async function requestPasswordReset(email: string): Promise<AuthActionResult> {
@@ -772,13 +1610,22 @@ export async function requestPasswordReset(email: string): Promise<AuthActionRes
 }
 
 export async function resetPassword(params: { token: string; password: string }): Promise<AuthResult> {
+  const transition = await prepareCredentialTransition(false);
+  if (transition.blockingResult) {
+    return abortCredentialTransition(transition, transition.blockingResult);
+  }
   const res = await authFetch('/v1/auth/reset-password', {
     bearer: 'none',
     body: { token: params.token, password: params.password },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data, { clearLocalPrivateData: true });
+  if ('networkError' in res) return abortCredentialTransition(transition, NETWORK_ERROR);
+  if (!res.ok) {
+    return abortCredentialTransition(transition, {
+      ok: false,
+      ...extractError(res.data, res.status),
+    });
+  }
+  return applyAuthSuccess(res.data, transition);
 }
 
 export async function requestEmailVerification(): Promise<AuthActionResult> {

@@ -16,9 +16,10 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 
+import { MockColors, MockType } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import {
   ThumbsUpIcon,
@@ -89,12 +90,13 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
 
   return (
     <View>
-      <View style={styles.sectionHeader}>
-        <ThumbsUpIcon size={14} color={Colors.amber} />
-        <Text style={styles.sectionHeaderText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.myBeers.ratingHeader}
-        </Text>
-      </View>
+      {/* Sentence case, foam, 18pt — the section heading shape the rest of 3.0
+          uses (`SectionBreak`). The amber 11pt uppercase kicker with an icon
+          beside it was the decoration §0.5 bans, and it competed with the
+          verdict buttons right under it. */}
+      <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {cs.myBeers.ratingTitle}
+      </Text>
 
       {/* Thumb verdict */}
       <View style={styles.verdictRow}>
@@ -194,7 +196,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
         value={noteDraft}
         onChangeText={changeNote}
         placeholder={cs.myBeers.notePlaceholder}
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         multiline
         maxLength={NOTE_MAX_LENGTH}
         textAlignVertical="top"
@@ -210,17 +212,11 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
 }
 
 const styles = StyleSheet.create({
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-  sectionHeaderText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: Colors.amber,
+  sectionTitle: {
+    ...MockType.titleS,
+    color: Colors.foam,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
   },
 
   verdictRow: {
@@ -252,7 +248,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.mutedText,
   },
   verdictText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -265,7 +261,7 @@ const styles = StyleSheet.create({
 
   // Small muted label above the tag row and the note field.
   subLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
@@ -298,7 +294,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   tagChipText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
@@ -323,14 +319,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foam,
   },
 
   hint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     marginTop: 14,

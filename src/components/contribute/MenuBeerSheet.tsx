@@ -11,11 +11,8 @@ interface MenuBeerSheetProps {
   visible: boolean;
   beer: CommunityBeer | null;
   formKey: string | number;
-  canAddSmallVariant: boolean;
   onClose: () => void;
   onSubmit: (result: BeerFormResult) => void;
-  onRemove?: () => void;
-  onAddSmallVariant?: () => void;
 }
 
 /**
@@ -27,11 +24,8 @@ export function MenuBeerSheet({
   visible,
   beer,
   formKey,
-  canAddSmallVariant,
   onClose,
   onSubmit,
-  onRemove,
-  onAddSmallVariant,
 }: MenuBeerSheetProps) {
   return (
     <BeerFormModal
@@ -43,11 +37,8 @@ export function MenuBeerSheet({
         beer ? cs.contribute.editBeerSheetTitle : cs.contribute.addBeerSheetTitle
       }
       submitLabelOverride={cs.contribute.done}
-      canAddSmallVariant={canAddSmallVariant}
       onCancel={onClose}
       onSubmit={onSubmit}
-      onRemove={onRemove}
-      onAddSmallVariant={onAddSmallVariant}
     />
   );
 }

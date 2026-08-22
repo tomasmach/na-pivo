@@ -174,7 +174,9 @@ describe('AddPubScreen', () => {
 
   async function submit() {
     const saveButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubSaveButton,
+      accessibilityLabel: mockSearchParams.clientId
+        ? cs.addPub.editSave
+        : cs.a11y.addPubSaveButton,
     });
 
     await act(async () => {

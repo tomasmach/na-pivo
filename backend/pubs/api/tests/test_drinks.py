@@ -6,6 +6,7 @@ plus the server-side merge of each drunk beer into the pub's community menu
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -37,6 +38,7 @@ _NAME = "U Zlatého tygra"
 _LAT = 50.0876
 _LNG = 14.4214
 _KEY = geohash8(_LAT, _LNG)
+_DRANK_AT = dj_timezone.now().replace(microsecond=0)
 
 
 @pytest.fixture
@@ -64,6 +66,32 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
+@pytest.mark.django_db
+def test_legacy_snapshot_read_remains_complete_without_pagination(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    DrinkLog.objects.bulk_create(
+        [
+            DrinkLog(
+                account=account,
+                client_id=uuid.uuid4(),
+                cache_key=None,
+                name="",
+                place_context=DrinkLog.PlaceContext.PRIVATE,
+                beer_name="Ležák",
+                drank_at=dj_timezone.now(),
+            )
+            for _ in range(501)
+        ]
+    )
+
+    response = client.get("/v1/drinks", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["drinks"]) == 501
+    assert "truncated" not in response.json()
+
+
 def _payload(**overrides):
     data = {
         "client_id": _CLIENT_ID,
@@ -73,7 +101,7 @@ def _payload(**overrides):
         "city": "Praha",
         "external_id": "mapy:50.08755,14.42141",
         "beer": {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
-        "drank_at": "2026-06-12T19:45:00+02:00",
+        "drank_at": _DRANK_AT.isoformat(),
     }
     data.update(overrides)
     return data
@@ -88,7 +116,7 @@ def _non_pub_payload(**overrides):
             "volume_ml": 500,
             "serving_type": "bottle",
         },
-        "drank_at": "2026-06-12T19:45:00+02:00",
+        "drank_at": _DRANK_AT.isoformat(),
     }
     data.update(overrides)
     return data
@@ -186,7 +214,7 @@ def test_get_returns_only_the_accounts_authoritative_drink_snapshot(client):
                     "volume_ml": 500,
                     "serving_type": "unknown",
                 },
-                "drank_at": "2026-06-12T17:45:00+00:00",
+                "drank_at": _DRANK_AT.isoformat(),
                 "is_suspect": False,
             }
         ]
@@ -296,7 +324,7 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
     assert drink.beer_name == "Pilsner Urquell"
     assert drink.price_czk == 62
     assert drink.volume_ml == 500
-    assert drink.drank_at.isoformat() == "2026-06-12T17:45:00+00:00"
+    assert drink.drank_at == _DRANK_AT
 
     # A community row was created holding just this beer; hours untouched.
     row = PubCommunityData.objects.get()
@@ -1102,6 +1130,64 @@ def test_patch_updates_logged_drink_beer_name(client):
 
 
 @pytest.mark.django_db
+def test_patch_updates_full_private_drink_details(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={
+            "beer_name": "Ryzlink",
+            "drink_type": "wine",
+            "price_czk": 85,
+            "volume_ml": 200,
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert (drink.beer_name, drink.drink_type, drink.price_czk, drink.volume_ml) == (
+        "Ryzlink", "wine", 85, 200,
+    )
+    assert drink.beer_brand_key == ""
+    assert drink.beer_product_key == ""
+
+
+@pytest.mark.django_db
+def test_patch_can_clear_optional_price_and_volume(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"price_czk": None, "volume_ml": None},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert (drink.price_czk, drink.volume_ml) == (None, None)
+
+
+@pytest.mark.django_db
+def test_patch_rejects_invalid_volume_for_resulting_type(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"drink_type": "shot", "volume_ml": 500},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_patch_reuses_catalog_cache_for_private_and_community_signals(client):
     token = _register(client)
     created = client.post(
@@ -1242,3 +1328,27 @@ def test_patch_does_not_change_community_menu(client):
 
     assert resp.status_code == status.HTTP_200_OK
     assert PubCommunityData.objects.get(cache_key=_KEY).beers == beers_before
+@pytest.mark.django_db
+def test_get_supports_additive_cursor_pagination(client):
+    token = _register(client)
+    for index in range(3):
+        response = client.post(
+            "/v1/drinks",
+            data=_payload(client_id=f"00000000-0000-4000-8000-00000000001{index}"),
+            format="json",
+            **_auth(token),
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    first = client.get("/v1/drinks?limit=2", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+    assert len(first.json()["drinks"]) == 2
+    assert first.json()["truncated"] is True
+
+    second = client.get(
+        f"/v1/drinks?limit=2&cursor={first.json()['next_cursor']}",
+        **_auth(token),
+    )
+    assert second.status_code == status.HTTP_200_OK
+    assert len(second.json()["drinks"]) == 1
+    assert second.json()["truncated"] is False

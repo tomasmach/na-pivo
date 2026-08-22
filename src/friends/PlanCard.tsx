@@ -30,14 +30,13 @@ import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
 
 import CheersPill from './CheersPill';
 import { focusPubFromActivity } from './focusPubHandoff';
 import { useFriendSafety } from './friendSafety';
-import GoingRoster from './GoingRoster';
+import GoingRosterView from './GoingRoster';
 import RsvpControl from './RsvpControl';
 
 interface PlanCardProps {
@@ -199,7 +198,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
       ) : null}
 
       <View style={styles.roster}>
-        <GoingRoster
+        <GoingRosterView
           profiles={responses.goingProfiles}
           goingCount={responses.going}
           maybeCount={responses.maybe}
@@ -211,55 +210,50 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
         />
       </View>
 
+      {mine && activity.reactions.cheers > 0 ? (
+        <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.friends.cheersCount(activity.reactions.cheers)}
+        </Text>
+      ) : null}
+
       <View style={styles.footer}>
+        <Pressable
+          onPress={showOnCompass}
+          accessibilityRole="button"
+          accessibilityLabel={cs.friends.showOnCompass}
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
+          style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
+        >
+          <CompassIcon size={16} color={Colors.mutedText} />
+          <Text
+            style={styles.compassLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.friends.showOnCompass}
+          </Text>
+        </Pressable>
         {mine ? (
-          <>
-            {activity.reactions.cheers > 0 ? (
-              <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.cheersCount(activity.reactions.cheers)}
-              </Text>
-            ) : (
-              <View />
-            )}
-            <Pressable
-              onPress={handleCancelPress}
-              hitSlop={PILL_HIT_SLOP}
-              accessibilityRole="button"
-              accessibilityLabel={cs.friends.planCancel}
-              style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
-            >
-              <XIcon size={15} color={Colors.foamMuted} />
-              <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.friends.planCancel}
-              </Text>
-            </Pressable>
-          </>
+          <Pressable
+            onPress={handleCancelPress}
+            hitSlop={PILL_HIT_SLOP}
+            accessibilityRole="button"
+            accessibilityLabel={cs.friends.planCancel}
+            style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
+          >
+            <XIcon size={15} color={Colors.foamMuted} />
+            <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.friends.planCancel}
+            </Text>
+          </Pressable>
         ) : (
-          <>
-            <Pressable
-              onPress={showOnCompass}
-              accessibilityRole="button"
-              accessibilityLabel={cs.friends.showOnCompass}
-              hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
-              style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
-            >
-              <CompassIcon size={16} color={Colors.mutedText} />
-              <Text
-                style={styles.compassLabel}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {cs.friends.showOnCompass}
-              </Text>
-            </Pressable>
-            <CheersPill
-              activityId={activity.id}
-              count={activity.reactions.cheers}
-              mine={activity.myReaction === 'cheers'}
-              ownerName={nameOf(account)}
-              onChanged={onResponded}
-            />
-          </>
+          <CheersPill
+            activityId={activity.id}
+            count={activity.reactions.cheers}
+            mine={activity.myReaction === 'cheers'}
+            ownerName={nameOf(account)}
+            onChanged={onResponded}
+          />
         )}
       </View>
     </View>
@@ -270,11 +264,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
-    borderWidth: 1,
-    // Between hairline and live (0.42): warmer than a row, cooler than "alive".
-    borderColor: withAlpha(Colors.amber, 0.28),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
     padding: Spacing.lg,
-    ...softDrop(),
   },
   header: {
     flexDirection: 'row',
@@ -284,9 +276,8 @@ const styles = StyleSheet.create({
   },
   mineKicker: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 12,
-    letterSpacing: 1,
+    fontWeight: '800',
+    fontSize: 14,
     color: Colors.amber,
   },
   identity: {
@@ -301,7 +292,7 @@ const styles = StyleSheet.create({
   },
   identityName: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -314,7 +305,7 @@ const styles = StyleSheet.create({
   },
   compassLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -329,13 +320,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   timeChipText: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.amber,
   },
   pubName: {
     marginTop: Spacing.md,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 21,
     lineHeight: 25,
     color: Colors.foam,
@@ -348,13 +339,13 @@ const styles = StyleSheet.create({
   },
   cityText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
   message: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -372,8 +363,9 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   cheersLine: {
+    marginTop: Spacing.sm,
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -393,7 +385,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   cancelLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },

@@ -96,7 +96,7 @@ internal object BeerLiveActivityNotification {
   @Synchronized
   fun end(context: Context): Map<String, Any?> {
     NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
-    preferences(context).edit()
+    val cleared = preferences(context).edit()
       .remove(ACTIVE_SESSION_KEY)
       .remove(DISMISSED_SESSION_KEY)
       .remove(BEER_COUNT_KEY)
@@ -107,7 +107,12 @@ internal object BeerLiveActivityNotification {
       .remove(REPEAT_BEER_PRICE_CZK_KEY)
       .remove(REPEAT_BEER_VOLUME_ML_KEY)
       .remove(REPEAT_BEER_SERVING_TYPE_KEY)
-      .apply()
+      // Account-boundary callers must never leave an action from the previous
+      // session for the next account to reconcile. This synchronized commit is
+      // atomic with addBeer() and ackPendingAdds().
+      .remove(PENDING_ADDS_KEY)
+      .commit()
+    check(cleared) { "Could not clear beer live activity state" }
     return getStatus(context)
   }
 
@@ -186,6 +191,14 @@ internal object BeerLiveActivityNotification {
     check(acknowledgedOnDisk) { "Could not acknowledge pending beer additions" }
   }
 
+  @Synchronized
+  fun clearPendingAdds(context: Context) {
+    val cleared = preferences(context).edit()
+      .remove(PENDING_ADDS_KEY)
+      .commit()
+    check(cleared) { "Could not clear pending beer additions" }
+  }
+
   fun getStatus(context: Context): Map<String, Any?> {
     val manager = NotificationManagerCompat.from(context)
     val activeNotification = activeNotification(context)
@@ -260,7 +273,7 @@ internal object BeerLiveActivityNotification {
       .addAction(
         NotificationCompat.Action.Builder(
           R.drawable.beer_live_activity_add,
-          "Přidat další",
+          "Zapsat stejné pivo",
           addBeerIntent(context, state.sessionId)
         ).build()
       )

@@ -9,10 +9,15 @@
 
 import React from 'react';
 
+import { CounterCta } from '@/counter/CounterCta';
+import { trackClientEvent } from '@/data/telemetryClient';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import OnboardingScreen from '../onboarding';
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 const mockReplace = jest.fn();
@@ -29,6 +34,14 @@ jest.mock('@/counter/CounterCta', () => ({
   CounterCta: jest.fn(() => null),
 }));
 
+// The slides open with real app components (the compass cell, the night's
+// numbers, the board). This test is about the pager — the CTA label, the
+// finish/skip wiring — so the preview is stubbed rather than dragging
+// react-native-svg and reanimated into it.
+jest.mock('@/onboarding/OnboardingPreview', () => ({
+  OnboardingPreview: jest.fn(() => null),
+}));
+
 jest.mock('@/theme/fonts', () => ({
   Fonts: {
     display: { extrabold: 'display-extrabold' },
@@ -41,12 +54,7 @@ jest.mock('@/data/telemetryClient', () => ({
   trackClientEvent: jest.fn(),
 }));
 
-import { CounterCta } from '@/counter/CounterCta';
-import { trackClientEvent } from '@/data/telemetryClient';
-import { useOnboardingStore } from '@/stores/onboardingStore';
-import OnboardingScreen from '../onboarding';
-
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 const mockCounterCta = CounterCta as unknown as jest.Mock;

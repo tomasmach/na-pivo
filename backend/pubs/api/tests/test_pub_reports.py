@@ -298,7 +298,145 @@ def test_blocked_reports_ignore_inactive_or_deleted_accounts(client, settings):
     ).json()["blocked"] != []
 
 
+@pytest.mark.django_db
 def test_blocked_reports_validates_query(client):
     resp = client.get("/v1/pub-reports/blocked", data={"lat": 999, "lng": 14.4})
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_blocked_report_read_uses_public_read_throttle(client, monkeypatch):
+    rates = dict(ScopedRateThrottle.THROTTLE_RATES)
+    rates.update({"public_reads": "1/min", "pub_reports": "100/min"})
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", rates)
+
+    first = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+        REMOTE_ADDR="192.0.2.40",
+    )
+    second = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+        REMOTE_ADDR="192.0.2.40",
+    )
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.django_db
+def test_quorum_is_aggregated_before_optional_blocked_report_pagination(client, settings):
+    settings.PUB_REPORT_GLOBAL_HIDE_THRESHOLD = 3
+    for pub_index in range(3):
+        lat = _LAT + pub_index * 0.001
+        lng = _LNG + pub_index * 0.001
+        cache_key = geohash8(lat, lng)
+        for reporter_index in range(3):
+            account = Account.objects.create(
+                device_id=f"quorum-{pub_index}-{reporter_index}"
+            )
+            PubReport.objects.create(
+                account=account,
+                cache_key=cache_key,
+                external_id=f"mapy:{pub_index}",
+                name=f"Hospoda {pub_index}",
+                lat=lat,
+                lng=lng,
+                reason=PubReport.Reason.CLOSED,
+            )
+
+    legacy = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 2},
+        REMOTE_ADDR="192.0.2.41",
+    )
+    first = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 2, "limit": 2},
+        REMOTE_ADDR="192.0.2.42",
+    )
+
+    assert legacy.status_code == status.HTTP_200_OK
+    assert len(legacy.json()["blocked"]) == 3
+    assert "truncated" not in legacy.json()
+    assert first.status_code == status.HTTP_200_OK
+    assert len(first.json()["blocked"]) == 2
+    assert first.json()["truncated"] is True
+    assert first.json()["next_cursor"] is not None
+
+    second = client.get(
+        "/v1/pub-reports/blocked",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 2,
+            "limit": 2,
+            "cursor": first.json()["next_cursor"],
+        },
+        REMOTE_ADDR="192.0.2.43",
+    )
+    assert second.status_code == status.HTTP_200_OK
+    assert len(second.json()["blocked"]) == 1
+    assert second.json()["truncated"] is False
+
+
+@pytest.mark.django_db
+def test_blocked_report_picks_an_in_radius_row_before_paginating(client, settings):
+    settings.PUB_REPORT_GLOBAL_HIDE_THRESHOLD = 1
+    inside = Account.objects.create(device_id="inside-radius-reporter")
+    outside = Account.objects.create(device_id="outside-radius-reporter")
+    PubReport.objects.create(
+        account=inside,
+        cache_key=_KEY,
+        external_id="mapy:inside",
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        reason=PubReport.Reason.CLOSED,
+    )
+    PubReport.objects.create(
+        account=outside,
+        cache_key=_KEY,
+        external_id="mapy:outside",
+        name=_NAME,
+        lat=_LAT + 0.0008,
+        lng=_LNG + 0.0008,
+        reason=PubReport.Reason.CLOSED,
+    )
+
+    response = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 0.1, "limit": 1},
+        REMOTE_ADDR="192.0.2.44",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["blocked"] == [
+        {"cache_key": _KEY, "external_id": "mapy:inside", "reason": "closed"}
+    ]
+
+
+@pytest.mark.django_db
+def test_runtime_never_allows_one_report_to_hide_a_pub_globally(client, settings):
+    settings.PUB_REPORT_GLOBAL_HIDE_THRESHOLD = 1
+    reporter = Account.objects.create(device_id="single-reporter")
+    PubReport.objects.create(
+        account=reporter,
+        cache_key=_KEY,
+        external_id="mapy:single",
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        reason=PubReport.Reason.NOT_PUB,
+    )
+
+    response = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 0.1},
+        REMOTE_ADDR="192.0.2.45",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["blocked"] == []

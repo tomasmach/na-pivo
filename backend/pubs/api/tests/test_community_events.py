@@ -5,7 +5,8 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth.hashers import make_password
-from django.db import connection
+from django.core.cache import cache
+from django.db import IntegrityError, connection, transaction
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
@@ -13,7 +14,12 @@ from rest_framework.test import APIClient
 
 from pubs.accounts import issue_token
 from pubs.api.community_event_views import _dashboard_payload
-from pubs.community_events import CommunityEvent, CommunityEventMembership
+from pubs.community_events import (
+    CommunityEvent,
+    CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
+)
 from pubs.models import Account, ContentReport, EmailCredential, FriendBlock
 
 
@@ -24,6 +30,7 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _generous_throttle(settings):
+    cache.clear()
     settings.REST_FRAMEWORK = {
         **settings.REST_FRAMEWORK,
         "DEFAULT_THROTTLE_RATES": {
@@ -32,6 +39,8 @@ def _generous_throttle(settings):
             "feedback": "10000/min",
         },
     }
+    yield
+    cache.clear()
 
 
 def _account(nickname: str) -> tuple[Account, str]:
@@ -77,6 +86,44 @@ def _create(client: APIClient, token: str, **overrides):
     return client.post(
         "/v1/community-events",
         data=_payload(**overrides),
+        format="json",
+        **_auth(token),
+    )
+
+
+def _join_and_approve(
+    client: APIClient,
+    event_id: str,
+    host_token: str,
+    guest_token: str,
+) -> str:
+    joined = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(guest_token),
+    )
+    assert joined.status_code == status.HTTP_202_ACCEPTED
+    request_id = joined.json()["request_id"]
+    approved = client.post(
+        f"/v1/community-events/{event_id}/requests/{request_id}/approve",
+        **_auth(host_token),
+    )
+    assert approved.status_code == status.HTTP_200_OK
+    return request_id
+
+
+def _create_team(
+    client: APIClient,
+    event_id: str,
+    token: str,
+    *,
+    client_id: str | None = None,
+    name: str = "Výčepní esa",
+):
+    return client.post(
+        f"/v1/community-events/{event_id}/teams",
+        data={"client_id": client_id or str(uuid.uuid4()), "name": name},
         format="json",
         **_auth(token),
     )
@@ -395,3 +442,387 @@ def test_create_requires_adult_confirmation_and_is_idempotent(client):
     assert second.status_code == status.HTTP_200_OK
     assert CommunityEvent.objects.count() == 1
     assert CommunityEventMembership.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_team_roster_is_private_to_host_and_approved_participants(client):
+    _host, host_token = _account("host")
+    _pending, pending_token = _account("pending")
+    _stranger, stranger_token = _account("stranger")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+
+    created = _create_team(client, event_id, host_token)
+    assert created.status_code == status.HTTP_201_CREATED
+    assert created.json()["team_roster"]["participant_count"] == 1
+    assert created.json()["team_roster"]["assigned_count"] == 1
+    assert created.json()["team"]["member_count"] == 1
+
+    public_detail = client.get(
+        f"/v1/community-events/{event_id}",
+        **_auth(stranger_token),
+    )
+    assert public_detail.status_code == status.HTTP_200_OK
+    assert "team_roster" not in public_detail.json()
+
+    request_id = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(pending_token),
+    ).json()["request_id"]
+    pending_detail = client.get(
+        f"/v1/community-events/{event_id}",
+        **_auth(pending_token),
+    )
+    assert "team_roster" not in pending_detail.json()
+    denied = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(pending_token),
+    )
+    assert denied.status_code == status.HTTP_404_NOT_FOUND
+    assert denied.json()["code"] == "event_not_found"
+
+    assert (
+        client.post(
+            f"/v1/community-events/{event_id}/requests/{request_id}/approve",
+            **_auth(host_token),
+        ).status_code
+        == status.HTTP_200_OK
+    )
+    member_detail = client.get(
+        f"/v1/community-events/{event_id}",
+        **_auth(pending_token),
+    ).json()
+    roster = member_detail["team_roster"]
+    assert roster["max_team_size"] == 4
+    assert roster["participant_count"] == 2
+    assert roster["assigned_count"] == 1
+    assert roster["unassigned_count"] == 1
+    assert roster["teams"][0]["members"][0]["account"]["nickname"] == "host"
+
+
+@pytest.mark.django_db
+def test_team_create_join_and_leave_are_idempotent(client):
+    _host, host_token = _account("host")
+    guest, guest_token = _account("guest")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, guest_token)
+    client_id = str(uuid.uuid4())
+
+    first_create = _create_team(
+        client,
+        event_id,
+        host_token,
+        client_id=client_id,
+    )
+    replayed_create = _create_team(
+        client,
+        event_id,
+        host_token,
+        client_id=client_id,
+        name="Retry nesmí přejmenovat",
+    )
+    assert first_create.status_code == status.HTTP_201_CREATED
+    assert replayed_create.status_code == status.HTTP_200_OK
+    assert first_create.json()["team"]["id"] == replayed_create.json()["team"]["id"]
+    assert replayed_create.json()["team"]["name"] == "Výčepní esa"
+    assert CommunityEventTeam.objects.count() == 1
+    assert CommunityEventTeamMembership.objects.count() == 1
+    team_id = first_create.json()["team"]["id"]
+
+    first_join = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guest_token),
+    )
+    replayed_join = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guest_token),
+    )
+    assert first_join.status_code == status.HTTP_201_CREATED
+    assert first_join.json()["joined"] is True
+    assert replayed_join.status_code == status.HTTP_200_OK
+    assert replayed_join.json()["joined"] is False
+    assert CommunityEventTeamMembership.objects.count() == 2
+
+    duplicate_team = _create_team(client, event_id, guest_token, name="Vedlejší stůl")
+    assert duplicate_team.status_code == status.HTTP_409_CONFLICT
+    assert duplicate_team.json()["code"] == "already_on_team"
+
+    left = client.delete(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guest_token),
+    )
+    replayed_leave = client.delete(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guest_token),
+    )
+    assert left.status_code == status.HTTP_200_OK
+    assert left.json()["left"] is True
+    assert replayed_leave.json()["left"] is False
+
+    rejoined = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guest_token),
+    )
+    assert rejoined.status_code == status.HTTP_201_CREATED
+    event_left = client.delete(
+        f"/v1/community-events/{event_id}/join",
+        **_auth(guest_token),
+    )
+    assert event_left.json()["status"] == "left"
+    assert not CommunityEventTeamMembership.objects.filter(
+        event_id=event_id,
+        account=guest,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_team_capacity_is_four_and_fifth_join_is_rejected(client):
+    _host, host_token = _account("host")
+    guests = [_account(f"guest-{index}") for index in range(4)]
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    for _guest, guest_token in guests:
+        _join_and_approve(client, event_id, host_token, guest_token)
+    team_id = _create_team(client, event_id, host_token).json()["team"]["id"]
+
+    for _guest, guest_token in guests[:3]:
+        response = client.post(
+            f"/v1/community-events/{event_id}/teams/{team_id}/join",
+            **_auth(guest_token),
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+    full = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guests[3][1]),
+    )
+    assert full.status_code == status.HTTP_409_CONFLICT
+    assert full.json()["code"] == "team_full"
+    assert CommunityEventTeamMembership.objects.filter(team_id=team_id).count() == 4
+    assert set(
+        CommunityEventTeamMembership.objects.filter(team_id=team_id).values_list("slot", flat=True)
+    ) == {1, 2, 3, 4}
+
+
+@pytest.mark.django_db
+def test_team_join_respects_event_and_teammate_blocks(client):
+    host, host_token = _account("host")
+    teammate, teammate_token = _account("teammate")
+    applicant, applicant_token = _account("applicant")
+    blocked_by_host, blocked_by_host_token = _account("blocked-host")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    for token in (teammate_token, applicant_token, blocked_by_host_token):
+        _join_and_approve(client, event_id, host_token, token)
+    team_id = _create_team(client, event_id, host_token).json()["team"]["id"]
+    assert (
+        client.post(
+            f"/v1/community-events/{event_id}/teams/{team_id}/join",
+            **_auth(teammate_token),
+        ).status_code
+        == status.HTTP_201_CREATED
+    )
+
+    FriendBlock.objects.create(blocker=teammate, blocked=applicant)
+    teammate_block = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(applicant_token),
+    )
+    assert teammate_block.status_code == status.HTTP_404_NOT_FOUND
+    assert teammate_block.json()["code"] == "team_unavailable"
+
+    FriendBlock.objects.create(blocker=host, blocked=blocked_by_host)
+    host_block = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(blocked_by_host_token),
+    )
+    assert host_block.status_code == status.HTTP_404_NOT_FOUND
+    assert host_block.json()["code"] == "event_not_found"
+
+
+@pytest.mark.django_db
+def test_team_db_constraints_close_capacity_and_cross_team_races(client):
+    host, host_token = _account("host")
+    account, _token = _account("member")
+    other, _other_token = _account("other")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    event = CommunityEvent.objects.get(pk=event_id)
+    first = CommunityEventTeam.objects.create(
+        event=event,
+        created_by=host,
+        client_id=uuid.uuid4(),
+        name="První",
+    )
+    second = CommunityEventTeam.objects.create(
+        event=event,
+        created_by=host,
+        client_id=uuid.uuid4(),
+        name="Druhý",
+    )
+    CommunityEventTeamMembership.objects.create(
+        event=event,
+        team=first,
+        account=account,
+        slot=1,
+    )
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        CommunityEventTeamMembership.objects.create(
+            event=event,
+            team=first,
+            account=other,
+            slot=1,
+        )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        CommunityEventTeamMembership.objects.create(
+            event=event,
+            team=second,
+            account=account,
+            slot=1,
+        )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        CommunityEventTeamMembership.objects.create(
+            event=event,
+            team=first,
+            account=other,
+            slot=5,
+        )
+
+
+@pytest.mark.django_db
+def test_team_join_recovers_when_a_concurrent_insert_wins_a_slot(
+    client,
+    monkeypatch,
+):
+    _host, host_token = _account("host")
+    guest, guest_token = _account("guest")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, guest_token)
+    team_id = _create_team(client, event_id, host_token).json()["team"]["id"]
+    real_create = CommunityEventTeamMembership.objects.create
+    state = {"raised": False}
+
+    def racing_create(*args, **kwargs):
+        if not state["raised"]:
+            state["raised"] = True
+            raise IntegrityError("duplicate key value violates unique_event_team_slot")
+        return real_create(*args, **kwargs)
+
+    monkeypatch.setattr(CommunityEventTeamMembership.objects, "create", racing_create)
+    response = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(guest_token),
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    assert state["raised"] is True
+    assert CommunityEventTeamMembership.objects.get(account=guest).slot == 3
+
+
+@pytest.mark.django_db
+def test_team_creator_can_rename_and_event_host_can_delete(client):
+    host, host_token = _account("host")
+    _creator, creator_token = _account("creator")
+    _outsider, outsider_token = _account("outsider")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    _join_and_approve(client, event_id, host_token, outsider_token)
+    created = _create_team(client, event_id, creator_token)
+    team_id = created.json()["team"]["id"]
+
+    renamed = client.patch(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        data={"name": "Pěna a říz"},
+        format="json",
+        **_auth(creator_token),
+    )
+    host_rename = client.patch(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        data={"name": "Host nepřejmenovává"},
+        format="json",
+        **_auth(host_token),
+    )
+    outsider_delete = client.delete(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        **_auth(outsider_token),
+    )
+
+    assert renamed.status_code == status.HTTP_200_OK
+    assert renamed.json()["team"]["name"] == "Pěna a říz"
+    assert host_rename.status_code == status.HTTP_404_NOT_FOUND
+    assert outsider_delete.status_code == status.HTTP_404_NOT_FOUND
+
+    deleted = client.delete(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        **_auth(host_token),
+    )
+    assert deleted.status_code == status.HTTP_204_NO_CONTENT
+    assert not CommunityEventTeam.objects.filter(pk=team_id).exists()
+    assert not CommunityEventTeamMembership.objects.filter(team_id=team_id).exists()
+    assert CommunityEvent.objects.filter(pk=event_id, host=host).exists()
+
+
+@pytest.mark.django_db
+def test_team_roster_hides_blocked_ghost_and_inactive_creators(client):
+    _host, host_token = _account("host")
+    creator, creator_token = _account("creator")
+    viewer, viewer_token = _account("viewer")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    _join_and_approve(client, event_id, host_token, viewer_token)
+    team_id = _create_team(client, event_id, creator_token).json()["team"]["id"]
+
+    visible = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    assert [team["id"] for team in visible.json()["teams"]] == [team_id]
+
+    block = FriendBlock.objects.create(blocker=creator, blocked=viewer)
+    blocked = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    blocked_join = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(viewer_token),
+    )
+    assert blocked.json()["teams"] == []
+    assert blocked_join.status_code == status.HTTP_404_NOT_FOUND
+    block.delete()
+
+    creator.ghost_mode = True
+    creator.save(update_fields=["ghost_mode"])
+    ghosted = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    assert ghosted.json()["teams"] == []
+
+    creator.ghost_mode = False
+    creator.status = Account.Status.PENDING_DELETION
+    creator.save(update_fields=["ghost_mode", "status"])
+    inactive = client.get(
+        f"/v1/community-events/{event_id}/teams",
+        **_auth(viewer_token),
+    )
+    assert inactive.json()["teams"] == []
+
+
+@pytest.mark.django_db
+def test_hard_deleted_team_creator_preserves_team_with_anonymized_creator(client):
+    _host, host_token = _account("host")
+    creator, creator_token = _account("creator")
+    _member, member_token = _account("member")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    _join_and_approve(client, event_id, host_token, member_token)
+    team_id = _create_team(client, event_id, creator_token).json()["team"]["id"]
+    joined = client.post(
+        f"/v1/community-events/{event_id}/teams/{team_id}/join",
+        **_auth(member_token),
+    )
+    assert joined.status_code == status.HTTP_201_CREATED
+
+    creator.delete()
+
+    team = CommunityEventTeam.objects.get(pk=team_id)
+    assert team.created_by_id is None
+    assert CommunityEventTeamMembership.objects.filter(team_id=team_id).exists()

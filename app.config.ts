@@ -116,6 +116,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         locationAlwaysAndWhenInUsePermission: BACKGROUND_LOCATION_REASON,
         isIosBackgroundLocationEnabled: true,
         isAndroidBackgroundLocationEnabled: true,
+        // No Android foreground service: geofence reminders must not require
+        // FOREGROUND_SERVICE(_LOCATION) permissions.
+        isAndroidForegroundServiceEnabled: false,
       },
     ],
     'expo-notifications',
@@ -170,15 +173,21 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Activity, adds NSSupportsLiveActivities and configures its shared app
     // group. Local `npm run dev` deliberately skips it to keep simulator builds
     // lightweight; release/native builds include it by default.
-    plugins.push([
-      'expo-widgets',
-      {
-        bundleIdentifier: 'com.tomasmach.na-pivo.widgets',
-        groupIdentifier: 'group.com.tomasmach.na-pivo',
-        enablePushNotifications: false,
-        frequentUpdates: false,
-      },
-    ]);
+    // expo-widgets hard-codes the widget's marketing version; this parity
+    // pass must wrap it (mods unwind in reverse) so App Store validation
+    // sees matching versions.
+    plugins.push(
+      './plugins/with-widget-version-parity',
+      [
+        'expo-widgets',
+        {
+          bundleIdentifier: 'com.tomasmach.na-pivo.widgets',
+          groupIdentifier: 'group.com.tomasmach.na-pivo',
+          enablePushNotifications: false,
+          frequentUpdates: false,
+        },
+      ],
+    );
   }
 
   const expoConfig: ExpoConfig = {
@@ -190,7 +199,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: '1.5.1',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
-    userInterfaceStyle: 'automatic',
+    // DESIGN.md intentionally postpones light mode. Keep native surfaces such
+    // as keyboards and anchored menus on the same dark stout canvas as the app.
+    userInterfaceStyle: 'dark',
     assetBundlePatterns: ['**/*'],
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
@@ -198,13 +209,127 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: false,
       usesAppleSignIn: true,
       associatedDomains: ['applinks:na-pivo.cz'],
+      // Apple privacy manifest. Collected-data mapping mirrors what the app
+      // actually sends (see src/privacy/PrivacyScreen.tsx copy and the
+      // telemetry whitelist in src/data/telemetryClient.ts). No tracking:
+      // no ad SDKs, no cross-app identifiers, no third-party analytics.
+      privacyManifests: {
+        NSPrivacyTracking: false,
+        NSPrivacyTrackingDomains: [],
+        NSPrivacyCollectedDataTypes: [
+          // fetchPubsNear sends current coordinates (with the device account's
+          // bearer) to find nearby pubs; reminder geofences are evaluated
+          // entirely on-device and never sent anywhere.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypePreciseLocation',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          // Anonymous random device identifier that owns the temporary account
+          // (plus the push token when notifications are enabled).
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeDeviceID',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          // Public account identifiers (account/public UUIDs) sent with
+          // signed-in requests.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeUserID',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          // Optional account registration and profile fields.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeEmailAddress',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeName',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          // Beer photos and menu shots uploaded to the server.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypePhotosorVideos',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          // Beer diary entries, ratings and other community/user content
+          // synced to the server.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeOtherUserContent',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+          // Privacy-safe product/diagnostic telemetry (whitelisted events only);
+          // stored with the account id whenever the event is sent signed-in.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeProductInteraction',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAnalytics',
+            ],
+          },
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeCrashData',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAnalytics',
+            ],
+          },
+          // Walked-distance batches counted on-device and synced to the account
+          // (AccountUsageStats.walked_distance_m); never raw GPS points.
+          {
+            NSPrivacyCollectedDataType: 'NSPrivacyCollectedDataTypeFitness',
+            NSPrivacyCollectedDataTypeLinked: true,
+            NSPrivacyCollectedDataTypeTracking: false,
+            NSPrivacyCollectedDataTypePurposes: [
+              'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+            ],
+          },
+        ],
+        NSPrivacyAccessedAPITypes: [
+          // React Native / AsyncStorage read values only the app itself wrote.
+          {
+            NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryUserDefaults',
+            NSPrivacyAccessedAPITypeReasons: ['CA92.1'],
+          },
+          {
+            NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryFileTimestamp',
+            NSPrivacyAccessedAPITypeReasons: ['C617.1'],
+          },
+        ],
+      },
       infoPlist: {
         CFBundleDisplayName: 'Na pivo',
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSLocationAlwaysAndWhenInUseUsageDescription: BACKGROUND_LOCATION_REASON,
         NSMotionUsageDescription: 'Pomocí senzorů otáčíme šipku, když se otočíš.',
-        NSMicrophoneUsageDescription:
-          'Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.',
         NSPhotoLibraryUsageDescription:
           'Otevřu ti galerii, ať si vybereš profilovku, fotku pivního menu nebo fotku piva do deníčku.',
         NSCameraUsageDescription:
@@ -229,15 +354,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             {
               scheme: 'https',
               host: 'na-pivo.cz',
-              pathPrefix: '/p',
+              pathPrefix: '/p/',
+            },
+            {
+              scheme: 'https',
+              host: 'na-pivo.cz',
+              pathPrefix: '/party/',
             },
           ],
           category: ['BROWSABLE', 'DEFAULT'],
         },
       ],
       permissions: [
-        // Geofencing (Android Geofencing API) wakes the app via a broadcast
-        // receiver — no foreground service, so no permanent "tracking" notice.
+        // Geofencing (Android Geofencing API) wakes the app via a foreground
+        // service while the app is closed — required since Android 14.
         'android.permission.ACCESS_COARSE_LOCATION',
         'android.permission.ACCESS_FINE_LOCATION',
         'android.permission.ACCESS_BACKGROUND_LOCATION',
@@ -245,6 +375,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         // Snapping a pub's beer menu ("Vyfoť menu" OCR) and beer photos for the
         // photo diary ("FotoPivař").
         'android.permission.CAMERA',
+      ],
+      // Foreground-service location permissions are blocked outright: geofence
+      // reminders no longer use an Android foreground service, and blocking
+      // keeps transitive config plugins (expo-location) from re-adding them.
+      blockedPermissions: [
+        'android.permission.FOREGROUND_SERVICE',
+        'android.permission.FOREGROUND_SERVICE_LOCATION',
       ],
       adaptiveIcon: {
         foregroundImage: './assets/images/icon.png',

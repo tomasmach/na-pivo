@@ -250,7 +250,7 @@ const BeerEveningLiveActivity = (
           <Spacer />
           {props.supportsInteractiveAdd === true ? (
             <Button
-              label="Přidat další"
+              label="Zapsat stejné"
               systemImage="plus"
               target="add-beer"
               modifiers={[
@@ -260,7 +260,7 @@ const BeerEveningLiveActivity = (
                 controlSize('regular'),
                 tint(accent),
                 foregroundStyle(buttonText),
-                accessibilityLabel('Přidat stejné pivo'),
+                accessibilityLabel('Zapsat stejné pivo'),
               ]}
             />
           ) : (
@@ -433,7 +433,7 @@ const BeerEveningLiveActivity = (
         <Spacer />
         {props.supportsInteractiveAdd === true ? (
           <Button
-            label="Přidat další"
+            label="Zapsat stejné"
             systemImage="plus"
             target="add-beer"
             modifiers={[
@@ -443,7 +443,7 @@ const BeerEveningLiveActivity = (
               controlSize('small'),
               tint(accent),
               foregroundStyle(buttonText),
-              accessibilityLabel('Přidat stejné pivo'),
+              accessibilityLabel('Zapsat stejné pivo'),
             ]}
           />
         ) : (

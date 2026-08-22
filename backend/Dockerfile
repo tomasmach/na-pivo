@@ -16,7 +16,7 @@ WORKDIR /app
 
 # --- Dependency layer (cached unless lock / pyproject change) --------------
 # Resolve third-party deps first so editing source doesn't bust this layer.
-# --extra prod pulls gunicorn + psycopg; --no-dev drops pytest/ruff.
+# --extra prod pulls gunicorn + the ASGI worker; --no-dev drops pytest/ruff.
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra prod --no-install-project

@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { Text } from 'react-native';
 
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { cs } from '@/i18n/cs';
@@ -10,6 +11,12 @@ import type { Pub } from '@/data/pubs';
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
+
+jest.mock('@/components/shared/BottomSheetModal', () => ({
+  BottomSheetModal: ({ visible, children }: { visible: boolean; children?: React.ReactNode }) =>
+    visible ? children : null,
+}));
+jest.mock('@/components/shared/CloseButton', () => ({ CloseButton: () => null }));
 
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
@@ -166,7 +173,7 @@ describe('BeerCheckInSheet — verdict tags', () => {
     await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
 
     fireEvent.press(screen.getByLabelText(t.tagAddA11y('Má říz')));
-    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Ještě jedno')));
+    fireEvent.press(screen.getByLabelText(t.tagAddA11y('Chutnalo mi')));
     fireEvent.press(screen.getByText(t.submit));
 
     await waitFor(() => expect(enqueueBeerCheckInOp).toHaveBeenCalled());
@@ -229,5 +236,18 @@ describe('BeerCheckInSheet — memory strip', () => {
     await act(async () => {
       resolve(null);
     });
+  });
+});
+
+describe('BeerCheckInSheet — Dynamic Type contract', () => {
+  it('caps every text node or explicitly fixes numeric text', async () => {
+    const screen = renderSheet();
+    await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
+
+    for (const node of screen.UNSAFE_getAllByType(Text)) {
+      expect(
+        node.props.maxFontSizeMultiplier !== undefined || node.props.allowFontScaling === false,
+      ).toBe(true);
+    }
   });
 });

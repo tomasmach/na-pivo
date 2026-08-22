@@ -9,14 +9,20 @@ import CommunityEventsScreen from '../community-events';
 const mockFetchCommunityEvents = jest.fn();
 const mockCreateCommunityEvent = jest.fn();
 const mockRequestCommunityEventJoin = jest.fn();
+const mockCancelCommunityEvent = jest.fn();
+const mockDecideCommunityJoinRequest = jest.fn();
 const mockShowToast = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
 const mockEnsureLocationPermission = jest.fn();
 const mockGenerateUuidV4 = jest.fn(() => 'community-draft-id');
+const mockShowAppDialog = jest.fn();
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: jest.fn() }) }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+jest.mock('@/components/shared/AppDialog', () => ({
+  showAppDialog: (...args: unknown[]) => mockShowAppDialog(...args),
 }));
 jest.mock('@/components/shared/KeyboardAwareScrollView', () => {
   const RN = jest.requireActual('react-native');
@@ -53,8 +59,8 @@ jest.mock('@/data/communityEventsClient', () => ({
   createCommunityEvent: (input: unknown) => mockCreateCommunityEvent(input),
   requestCommunityEventJoin: (eventId: string, message: string) =>
     mockRequestCommunityEventJoin(eventId, message),
-  cancelCommunityEvent: jest.fn(),
-  decideCommunityJoinRequest: jest.fn(),
+  cancelCommunityEvent: (...args: unknown[]) => mockCancelCommunityEvent(...args),
+  decideCommunityJoinRequest: (...args: unknown[]) => mockDecideCommunityJoinRequest(...args),
   leaveCommunityEvent: jest.fn(),
   reportCommunityEvent: jest.fn(),
 }));
@@ -109,6 +115,8 @@ describe('CommunityEventsScreen', () => {
       detail: 'Zkus to znovu.',
     });
     mockRequestCommunityEventJoin.mockResolvedValue({ ok: true });
+    mockCancelCommunityEvent.mockResolvedValue({ ok: true });
+    mockDecideCommunityJoinRequest.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -181,6 +189,25 @@ describe('CommunityEventsScreen', () => {
     expect(updatedInputs[1].props.value).toBe('');
   });
 
+  it('routes report confirmation through the coordinated app dialog', async () => {
+    mockFetchCommunityEvents.mockResolvedValueOnce({
+      ok: true,
+      dashboard: { nearby: [event('one', 'Večer za rohem')], hosted: [], joined: [] },
+    });
+    await renderScreen();
+
+    const reportLabel = renderer!.root.findByProps({ children: cs.communityEvents.report });
+    act(() => reportLabel.parent!.props.onPress());
+
+    expect(mockShowAppDialog).toHaveBeenCalledWith(expect.objectContaining({
+      title: cs.communityEvents.reportTitle,
+      message: 'Večer za rohem',
+      buttons: expect.arrayContaining([
+        expect.objectContaining({ text: cs.communityEvents.report, style: 'destructive' }),
+      ]),
+    }));
+  });
+
   it('reuses one client id for retries and rotates it only after confirmed success', async () => {
     mockCreateCommunityEvent
       .mockResolvedValueOnce({ ok: false, code: 'network', detail: 'Zkus to znovu.' })
@@ -220,6 +247,15 @@ describe('CommunityEventsScreen', () => {
 
     const nextCreateTabLabel = renderer!.root.findByProps({ children: cs.communityEvents.create });
     act(() => nextCreateTabLabel.parent!.props.onPress());
+    act(() => {
+      renderer!.root.findByProps({ placeholder: cs.communityEvents.formTitlePlaceholder }).props.onChangeText('Druhý večer');
+      renderer!.root.findByProps({ placeholder: cs.communityEvents.cityPlaceholder }).props.onChangeText('Brno');
+      renderer!.root.findByProps({ placeholder: cs.communityEvents.exactAddressPlaceholder }).props.onChangeText('Česká 1');
+    });
+    await act(async () => {
+      await renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.useLocation }).props.onPress();
+    });
+    act(() => renderer!.root.findByProps({ children: cs.communityEvents.adultsConfirm }).parent!.props.onPress());
     const nextPublish = renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.publish });
     await act(async () => {
       await nextPublish.props.onPress();
@@ -228,5 +264,79 @@ describe('CommunityEventsScreen', () => {
     expect(mockCreateCommunityEvent).toHaveBeenCalledTimes(3);
     expect(mockCreateCommunityEvent.mock.calls[2][0].clientId).toBe('community-next-id');
     expect(mockGenerateUuidV4).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a retry state when loading fails instead of pretending the list is empty', async () => {
+    mockFetchCommunityEvents
+      .mockResolvedValueOnce({ ok: false, code: 'network', detail: 'Síť spadla.' })
+      .mockResolvedValueOnce({ ok: true, dashboard: emptyDashboard });
+
+    await renderScreen();
+    expect(renderer!.root.findByProps({ children: 'Síť spadla.' })).toBeTruthy();
+
+    const retry = renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.retry });
+    await act(async () => {
+      await retry.props.onPress();
+    });
+
+    expect(mockFetchCommunityEvents).toHaveBeenCalledTimes(2);
+    expect(renderer!.root.findByProps({ children: cs.communityEvents.noNearby })).toBeTruthy();
+  });
+
+  it('confirms cancellation and ignores a duplicate destructive press', async () => {
+    let finishCancel: ((value: { ok: true }) => void) | undefined;
+    mockCancelCommunityEvent.mockReturnValueOnce(new Promise((resolve) => {
+      finishCancel = resolve;
+    }));
+    mockFetchCommunityEvents.mockResolvedValueOnce({
+      ok: true,
+      dashboard: {
+        nearby: [],
+        hosted: [{ ...event('hosted', 'Můj stůl'), isHost: true }],
+        joined: [],
+      },
+    });
+    await renderScreen();
+    act(() => renderer!.root.findByProps({ children: cs.communityEvents.mine }).parent!.props.onPress());
+
+    act(() => renderer!.root.findByProps({ children: cs.communityEvents.cancelEvent }).parent!.props.onPress());
+    const destructive = mockShowAppDialog.mock.calls[0][0].buttons.find(
+      (button: { style?: string }) => button.style === 'destructive',
+    );
+    act(() => {
+      destructive.onPress();
+      destructive.onPress();
+    });
+    expect(mockCancelCommunityEvent).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishCancel?.({ ok: true });
+      await Promise.resolve();
+    });
+  });
+
+  it('rolls the default start into tomorrow late at night', async () => {
+    const now = new Date('2026-08-21T23:30:00+02:00');
+    jest.setSystemTime(now);
+    await renderScreen();
+    act(() => renderer!.root.findByProps({ children: cs.communityEvents.create }).parent!.props.onPress());
+    act(() => {
+      renderer!.root.findByProps({ placeholder: cs.communityEvents.formTitlePlaceholder }).props.onChangeText('Noční stůl');
+      renderer!.root.findByProps({ placeholder: cs.communityEvents.cityPlaceholder }).props.onChangeText('Praha');
+      renderer!.root.findByProps({ placeholder: cs.communityEvents.exactAddressPlaceholder }).props.onChangeText('Dlouhá 1');
+    });
+    await act(async () => {
+      await renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.useLocation }).props.onPress();
+    });
+    act(() => renderer!.root.findByProps({ children: cs.communityEvents.adultsConfirm }).parent!.props.onPress());
+
+    await act(async () => {
+      await renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.publish }).props.onPress();
+    });
+
+    const startsAt = new Date(mockCreateCommunityEvent.mock.calls[0][0].startsAt);
+    expect(startsAt.getTime()).toBeGreaterThan(now.getTime());
+    expect(startsAt.getDate()).toBe(22);
+    expect(startsAt.getHours()).toBe(1);
   });
 });

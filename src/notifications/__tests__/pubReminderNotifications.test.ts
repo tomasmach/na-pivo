@@ -1,4 +1,5 @@
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockGetLastKnownPositionAsync = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
@@ -9,10 +10,19 @@ const mockStopGeofencingAsync = jest.fn();
 const mockFetchPubsNear = jest.fn();
 const mockFindNearbyPubs = jest.fn();
 const mockSettingsGetState = jest.fn();
+let mockGeofenceTask: ((event: unknown) => Promise<void>) | null = null;
+const mockDefineTask = jest.fn((_name: string, task: (event: unknown) => Promise<void>) => {
+  mockGeofenceTask = task;
+});
+const mockScheduleNotificationAsync = jest.fn();
+const mockCancelScheduledNotificationAsync = jest.fn();
+const mockGetAllScheduledNotificationsAsync = jest.fn();
+const mockDismissAllNotificationsAsync = jest.fn();
+const mockGetPresentedNotificationsAsync = jest.fn();
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 jest.mock('expo-constants', () => ({
@@ -22,16 +32,21 @@ jest.mock('expo-constants', () => ({
 
 jest.mock('expo-notifications', () => ({
   AndroidImportance: { DEFAULT: 3 },
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: 'timeInterval' },
   setNotificationHandler: jest.fn(),
   setNotificationChannelAsync: jest.fn(async () => undefined),
   getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[test]' })),
-  scheduleNotificationAsync: jest.fn(async () => undefined),
+  scheduleNotificationAsync: mockScheduleNotificationAsync,
+  cancelScheduledNotificationAsync: mockCancelScheduledNotificationAsync,
+  getAllScheduledNotificationsAsync: mockGetAllScheduledNotificationsAsync,
+  dismissAllNotificationsAsync: mockDismissAllNotificationsAsync,
+  getPresentedNotificationsAsync: mockGetPresentedNotificationsAsync,
 }));
 
 jest.mock('expo-task-manager', () => ({
-  defineTask: jest.fn(),
+  defineTask: mockDefineTask,
 }));
 
 jest.mock('expo-location', () => ({
@@ -63,6 +78,7 @@ jest.mock('@/stores/settingsStore', () => ({
 
 // eslint-disable-next-line import/first
 import {
+  clearPubReminderAccountData,
   initializePubReminderNotifications,
   isPubReminderEligible,
   refreshPubReminderGeofences,
@@ -79,8 +95,9 @@ function location(lat: number, lng: number) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  await AsyncStorage.clear();
   mockSettingsGetState.mockReturnValue({ pubReminderEnabled: true });
   mockGetBackgroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
   mockFetchPubsNear.mockResolvedValue(undefined);
@@ -98,6 +115,108 @@ beforeEach(() => {
   mockHasStartedGeofencingAsync.mockResolvedValue(false);
   mockStopGeofencingAsync.mockResolvedValue(undefined);
   mockStartGeofencingAsync.mockResolvedValue(undefined);
+  mockScheduleNotificationAsync.mockResolvedValue('scheduled-default');
+  mockCancelScheduledNotificationAsync.mockResolvedValue(undefined);
+  mockGetAllScheduledNotificationsAsync.mockResolvedValue([]);
+  mockDismissAllNotificationsAsync.mockResolvedValue(undefined);
+  mockGetPresentedNotificationsAsync.mockResolvedValue([]);
+});
+
+describe('account boundary', () => {
+  it.each(['{truncated', 'null', '[]', '42'])(
+    'still completes strict cleanup for malformed reminder state %s',
+    async (stored) => {
+      await AsyncStorage.setItem('na-pivo-pub-reminder-state', stored);
+
+      await expect(clearPubReminderAccountData()).resolves.toBe(true);
+
+      expect(await AsyncStorage.getItem('na-pivo-pub-reminder-state')).toBeNull();
+      expect(mockGetAllScheduledNotificationsAsync).toHaveBeenCalled();
+      expect(mockDismissAllNotificationsAsync).toHaveBeenCalled();
+    },
+  );
+
+  it('cancels a headless A reminder that schedules after strict clear', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 7, 20, 0, 0));
+    try {
+      await AsyncStorage.setItem('na-pivo-pub-reminders-enabled', 'true');
+      await AsyncStorage.setItem('na-pivo-pub-reminder-geofences', JSON.stringify({
+        'pub-a': 'U Áčka',
+      }));
+
+      let resolveSchedule!: (id: string) => void;
+      let markScheduleStarted!: () => void;
+      const schedulePaused = new Promise<string>((resolve) => {
+        resolveSchedule = resolve;
+      });
+      const scheduleStarted = new Promise<void>((resolve) => {
+        markScheduleStarted = resolve;
+      });
+      mockScheduleNotificationAsync.mockImplementationOnce(() => {
+        markScheduleStarted();
+        return schedulePaused;
+      });
+
+      const task = mockGeofenceTask;
+      expect(task).toBeDefined();
+      const lateTask = task!({
+        data: {
+          eventType: 1,
+          region: { identifier: 'pub-a' },
+        },
+      });
+      await scheduleStarted;
+      expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+
+      await expect(clearPubReminderAccountData()).resolves.toBe(true);
+      resolveSchedule('late-a-notification');
+      await lateTask;
+
+      expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith(
+        'late-a-notification',
+      );
+      expect(await AsyncStorage.getItem('na-pivo-pub-reminder-state')).toBeNull();
+      expect(await AsyncStorage.getItem('na-pivo-pub-reminder-geofences')).toBeNull();
+      expect(await AsyncStorage.getItem('na-pivo-pub-reminders-enabled')).toBe('true');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops a stale geofence registration that completes after strict clear', async () => {
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+    let resolveStart!: () => void;
+    let markStartCalled!: () => void;
+    const startPaused = new Promise<void>((resolve) => {
+      resolveStart = resolve;
+    });
+    const startCalled = new Promise<void>((resolve) => {
+      markStartCalled = resolve;
+    });
+    mockStartGeofencingAsync.mockImplementationOnce(() => {
+      markStartCalled();
+      return startPaused;
+    });
+    // Strict clear sees no native registration yet and verifies that state;
+    // once the paused A call lands, the stale callback must stop it itself.
+    mockHasStartedGeofencingAsync
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    const refresh = refreshPubReminderGeofences();
+    await startCalled;
+    await expect(clearPubReminderAccountData()).resolves.toBe(true);
+
+    resolveStart();
+    await refresh;
+
+    expect(mockStopGeofencingAsync).toHaveBeenCalledWith(
+      'na-pivo-pub-reminder-geofence',
+    );
+    expect(await AsyncStorage.getItem('na-pivo-pub-reminder-geofences')).toBeNull();
+  });
 });
 
 describe('initializePubReminderNotifications', () => {

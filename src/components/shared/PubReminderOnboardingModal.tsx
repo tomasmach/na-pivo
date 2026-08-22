@@ -1,125 +1,140 @@
-/**
- * First-run/update explainer for pub reminders.
- *
- * This is deliberately a pre-permission screen: it explains why Na pivo needs
- * notifications + background location, then the native prompts only appear after
- * the user taps the primary CTA. The screen is shown once per app version while
- * the feature is off, so updates can reintroduce the capability without nagging
- * during normal launches.
- */
-
 import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BellRingIcon, ChevronLeftIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
-import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
-import { GlowButton } from '@/components/shared/GlowButton';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
+import { BellRingIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
+import { getCurrentAppVersion } from '@/data/releaseNotesClient';
 import { cs } from '@/i18n/cs';
-import {
-  enablePubReminderNotifications,
-} from '@/notifications/pubReminderNotifications';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
+import { enablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 import {
   getSeenPubReminderOnboardingVersion,
   markPubReminderOnboardingSeen,
   shouldShowPubReminderOnboarding,
 } from '@/notifications/pubReminderOnboarding';
-import { getCurrentAppVersion } from '@/data/releaseNotesClient';
-import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
+import { Colors, withAlpha } from '@/theme/colors';
+import { FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 
-function PourVisual() {
-  // Static. This used to run two endless loops — a breathing foam cap and a
-  // swinging bell — which is the decorative ambient motion §10 bans outright
-  // (the same habit that got the bubbles thrown out of the counter).
+/**
+ * Store policy gate: true whenever enabling reminders will trigger (or needs)
+ * the OS background-location prompt, so both entry points can show the
+ * prominent disclosure BEFORE any system dialog appears.
+ */
+export async function pubReminderNeedsBackgroundDisclosure(): Promise<boolean> {
+  try {
+    const status = await Location.getBackgroundPermissionsAsync();
+    return status.status !== 'granted';
+  } catch {
+    return true;
+  }
+}
+
+interface DisclosureProps {
+  visible: boolean;
+  onAllow: () => void;
+  onDeny: () => void;
+}
+
+/**
+ * Prominent in-app disclosure required by store policy before the
+ * background-location system prompt. It must say explicitly that location is
+ * accessed while the app is closed / not in use and solely for the
+ * nearby-pub reminder purpose.
+ */
+export function PubReminderBackgroundLocationDisclosure({
+  visible,
+  onAllow,
+  onDeny,
+}: DisclosureProps) {
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.visual} accessibilityElementsHidden>
-      <View style={styles.visualRail} />
-      <View style={styles.pint}>
-        <View style={styles.foamCap} />
-        <View style={styles.beerFill} />
-        <View style={styles.pintShine} />
+    <BottomSheetModal visible={visible} onClose={onDeny} presentationId="pub-reminder-disclosure">
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+          <Text style={styles.disclosureTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.pubReminderOnboarding.backgroundDisclosureTitle}
+          </Text>
+          <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+            <Text style={styles.disclosureBody} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.pubReminderOnboarding.backgroundDisclosureBody}
+            </Text>
+          </ScrollView>
+          <View style={styles.actions}>
+            <Pressable
+              onPress={onAllow}
+              accessibilityRole="button"
+              accessibilityLabel={cs.pubReminderOnboarding.backgroundDisclosureConfirm}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryPressed]}
+            >
+              <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
+                {cs.pubReminderOnboarding.backgroundDisclosureConfirm}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={onDeny}
+              accessibilityRole="button"
+              accessibilityLabel={cs.pubReminderOnboarding.backgroundDisclosureDeny}
+              hitSlop={{ top: 8, bottom: 8 }}
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
+            >
+              <Text
+                style={styles.secondaryText}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.pubReminderOnboarding.backgroundDisclosureDeny}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
-      <View style={styles.bellBubble}>
-        <BellRingIcon size={26} color={Colors.amber} />
-      </View>
-      <View style={styles.locationBubble}>
-        <MapPinIcon size={22} color={Colors.amberLight} />
-      </View>
-    </View>
+    </BottomSheetModal>
   );
 }
 
-interface ReasonRowProps {
+function ReasonRow({
+  icon,
+  title,
+  first = false,
+}: {
   icon: React.ReactNode;
   title: string;
-  body: string;
-}
-
-function ReasonRow({ icon, title, body }: ReasonRowProps) {
+  first?: boolean;
+}) {
   return (
-    <View style={styles.reasonRow}>
+    <View style={[styles.reasonRow, first && styles.reasonRowFirst]}>
       <View style={styles.reasonIcon}>{icon}</View>
-      <View style={styles.reasonText}>
-        <Text style={styles.reasonTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {title}
-        </Text>
-        <Text style={styles.reasonBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {body}
-        </Text>
-      </View>
+      <Text style={styles.reasonTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+        {title}
+      </Text>
     </View>
   );
 }
 
 export function PubReminderOnboardingModal() {
   const insets = useSafeAreaInsets();
-  // Gate on checkSettled, NOT hasChecked: hasChecked flips before the release
-  // note fetch resolves, so gating on it raced this modal against WhatsNewModal.
-  // Two sibling RN Modals visible at once wedge the whole UI on iOS (the second
-  // never presents but blocks touches until the app restarts).
   const releaseSettled = useReleaseStore((s) => s.checkSettled);
   const releaseNote = useReleaseStore((s) => s.pendingNote);
   const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
   const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
+  const firstLaunchSession = useOnboardingStore((s) => s.firstLaunchSession);
   const [eligible, setEligible] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [step, setStep] = useState<'intro' | 'permissions'>('intro');
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
-  // The very first launch belongs to the welcome pager — this explainer stays
-  // quiet for that whole session (not just while the pager route is open) and
-  // gets its turn on the next launch. Mark-seen only happens on user action,
-  // so staying hidden here never burns the once-per-version stamp.
-  const firstLaunchSession = useOnboardingStore((s) => s.firstLaunchSession);
-  // A late-arriving note must also hide an already-eligible onboarding.
+
   const wantVisible =
     eligible && !pubReminderEnabled && releaseNote === null && !firstLaunchSession;
-
-  // Launch-modal mutex: don't present while another launch popup (e.g. the
-  // FotoPivař results celebration) holds the slot; re-claim when it frees.
-  const mutexHolder = useLaunchModalMutex((s) => s.holder);
-  useEffect(() => {
-    const mutex = useLaunchModalMutex.getState();
-    if (wantVisible) mutex.claim('pub-reminder');
-    else mutex.release('pub-reminder');
-  }, [wantVisible, mutexHolder]);
-  useEffect(() => () => useLaunchModalMutex.getState().release('pub-reminder'), []);
-  const visible = wantVisible && mutexHolder === 'pub-reminder';
-
-  const progress = useSharedValue(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,26 +142,24 @@ export function PubReminderOnboardingModal() {
 
     async function checkVisibility() {
       if (!releaseSettled || releaseNote) return;
-
       await waitForSettingsHydration();
       const currentVersion = getCurrentAppVersion();
       const seenVersion = await getSeenPubReminderOnboardingVersion();
       const enabled = useSettingsStore.getState().pubReminderEnabled;
-
       if (cancelled) return;
-      const shouldShow = shouldShowPubReminderOnboarding({
-        currentVersion,
-        seenVersion,
-        pubReminderEnabled: enabled,
-      });
+
       setVersion(currentVersion);
-      if (!shouldShow) {
+      if (
+        !shouldShowPubReminderOnboarding({
+          currentVersion,
+          seenVersion,
+          pubReminderEnabled: enabled,
+        })
+      ) {
         setEligible(false);
         return;
       }
-      setStep('intro');
-      // Present a beat later: iOS silently drops a Modal presented while the
-      // what's-new modal is still mid-dismissal, wedging the UI.
+
       showTimer = setTimeout(() => {
         if (!cancelled) setEligible(true);
       }, 600);
@@ -159,31 +172,12 @@ export function PubReminderOnboardingModal() {
     };
   }, [releaseSettled, releaseNote]);
 
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = withSpring(1, { damping: 16, stiffness: 145, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: 140 });
-    }
-  }, [progress, visible]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [
-      { scale: 0.94 + progress.value * 0.06 },
-      { translateY: (1 - progress.value) * 18 },
-    ],
-  }));
-
   const closeAsSeen = useCallback(async () => {
     await markPubReminderOnboardingSeen(version);
     setEligible(false);
-    setStep('intro');
   }, [version]);
 
-  const handleEnable = useCallback(async () => {
-    if (busy) return;
+  const runEnable = useCallback(async () => {
     setBusy(true);
     try {
       const result = await enablePubReminderNotifications();
@@ -191,373 +185,220 @@ export function PubReminderOnboardingModal() {
       if (result.ok) {
         setPubReminderEnabled(true);
         setEligible(false);
-        setStep('intro');
         return;
       }
+
       setPubReminderEnabled(false);
       setEligible(false);
-      setStep('intro');
+      // The canonical dialog participates in the same presentation mutex. It
+      // can be requested now and will wait for this native sheet to dismiss.
       showPubReminderEnableFailure(result.reason);
     } finally {
       setBusy(false);
     }
-  }, [busy, setPubReminderEnabled, version]);
+  }, [setPubReminderEnabled, version]);
+
+  const handleEnable = useCallback(async () => {
+    if (busy || disclosureOpen) return;
+    // Store policy: the prominent disclosure must be the last thing the user
+    // confirms BEFORE the OS background-location prompt can appear.
+    if (await pubReminderNeedsBackgroundDisclosure()) {
+      setDisclosureOpen(true);
+      return;
+    }
+    await runEnable();
+  }, [busy, disclosureOpen, runEnable]);
+
+  const handleDisclosureAllow = useCallback(() => {
+    setDisclosureOpen(false);
+    void runEnable();
+  }, [runEnable]);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={() => void closeAsSeen()}
-    >
-      <View style={[styles.backdrop, { paddingTop: insets.top + Spacing.lg }]}>
-        <Animated.View style={[styles.sheet, softDrop(), cardAnim]}>
+    <>
+      <BottomSheetModal
+        visible={wantVisible && !disclosureOpen}
+        onClose={() => void closeAsSeen()}
+        presentationId="pub-reminder"
+      >
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.pubReminderOnboarding.title}
+            </Text>
+            <CloseButton onPress={() => void closeAsSeen()} label={cs.pubReminderOnboarding.skip} />
+          </View>
+
           <ScrollView
-            bounces={false}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            bounces={false}
           >
-            {step === 'intro' ? (
-              <>
-                <View style={styles.heroBand}>
-                  <View style={styles.eyebrowPill}>
-                    <BellRingIcon size={14} color={Colors.amberLight} />
-                    <Text style={styles.eyebrow}>{cs.pubReminderOnboarding.eyebrow}</Text>
-                  </View>
-                  <PourVisual />
-                </View>
-
-                <View style={styles.copy}>
-                  <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.pubReminderOnboarding.title}
-                  </Text>
-                  <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.pubReminderOnboarding.body}
-                  </Text>
-                </View>
-
-                <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
-                  <GlowButton
-                    label={cs.pubReminderOnboarding.introCta}
-                    onPress={() => setStep('permissions')}
-                    glow="none"
-                    height={58}
-                    accessibilityLabel={cs.pubReminderOnboarding.introCta}
-                  />
-                  <Pressable
-                    onPress={() => void closeAsSeen()}
-                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.skip}
-                  >
-                    <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.skip}
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.detailHeader}>
-                  <Pressable
-                    onPress={() => setStep('intro')}
-                    style={({ pressed }) => [styles.backButton, pressed && styles.secondaryPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.back}
-                    hitSlop={6}
-                  >
-                    <ChevronLeftIcon size={18} color={Colors.foam} />
-                  </Pressable>
-                  <View style={styles.detailCopy}>
-                    <Text style={styles.detailTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.pubReminderOnboarding.detailsTitle}
-                    </Text>
-                    <Text style={styles.detailBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.detailsBody}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.reasons}>
-                  <ReasonRow
-                    icon={<BellRingIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.notificationTitle}
-                    body={cs.pubReminderOnboarding.notificationBody}
-                  />
-                  <ReasonRow
-                    icon={<MapPinIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.locationTitle}
-                    body={cs.pubReminderOnboarding.locationBody}
-                  />
-                  <ReasonRow
-                    icon={<ShieldIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.privacyTitle}
-                    body={cs.pubReminderOnboarding.privacyBody}
-                  />
-                </View>
-
-                <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
-                  <GlowButton
-                    label={busy ? cs.pubReminderOnboarding.ctaBusy : cs.pubReminderOnboarding.cta}
-                    onPress={() => void handleEnable()}
-                    glow="none"
-                    height={58}
-                    accessibilityLabel={cs.pubReminderOnboarding.cta}
-                  />
-                  <Pressable
-                    onPress={() => void closeAsSeen()}
-                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.skip}
-                  >
-                    <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.skip}
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+            <ReasonRow
+              first
+              icon={<BellRingIcon size={20} color={Colors.amber} />}
+              title={cs.pubReminderOnboarding.notificationTitle}
+            />
+            <ReasonRow
+              icon={<MapPinIcon size={20} color={Colors.amber} />}
+              title={cs.pubReminderOnboarding.locationTitle}
+            />
+            <ReasonRow
+              icon={<ShieldIcon size={20} color={Colors.amber} />}
+              title={cs.pubReminderOnboarding.privacyTitle}
+            />
           </ScrollView>
-        </Animated.View>
+
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => void handleEnable()}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={cs.pubReminderOnboarding.cta}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                busy && styles.primaryDisabled,
+                pressed && styles.primaryPressed,
+              ]}
+            >
+              <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
+                {busy ? cs.pubReminderOnboarding.ctaBusy : cs.pubReminderOnboarding.cta}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
-    </Modal>
+      </BottomSheetModal>
+
+      <PubReminderBackgroundLocationDisclosure
+        visible={disclosureOpen}
+        onAllow={handleDisclosureAllow}
+        onDeny={() => setDisclosureOpen(false)}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.82),
-  },
-  sheet: {
+  cardWrap: {
+    width: '100%',
     maxHeight: '92%',
-    marginHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
-    overflow: 'hidden',
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.26),
-    backgroundColor: Colors.stout2,
   },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  heroBand: {
-    minHeight: 178,
-    padding: Spacing.lg,
-    backgroundColor: Colors.stout3,
-    borderBottomWidth: 1,
-    borderBottomColor: withAlpha(Colors.border, 0.7),
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-  },
-  detailCopy: {
-    flex: 1,
-  },
-  detailTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 25,
-    lineHeight: 30,
-    color: Colors.foam,
-  },
-  detailBody: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-  },
-  eyebrowPill: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.34),
-  },
-  eyebrow: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 11,
-    letterSpacing: 1.1,
-    color: Colors.amberLight,
-  },
-  visual: {
-    position: 'absolute',
-    right: Spacing.xl,
-    bottom: Spacing.lg,
-    width: 150,
-    height: 138,
-  },
-  visualRail: {
-    position: 'absolute',
-    left: 12,
-    right: 4,
-    bottom: 20,
-    height: 1,
-    backgroundColor: withAlpha(Colors.foam, 0.18),
-  },
-  pint: {
-    position: 'absolute',
-    left: 22,
-    bottom: 18,
-    width: 82,
-    height: 108,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.36),
-    overflow: 'hidden',
-    backgroundColor: withAlpha(Colors.foam, 0.08),
-    transform: [{ rotate: '-4deg' }],
-  },
-  foamCap: {
-    position: 'absolute',
-    left: -10,
-    right: -10,
-    top: 10,
-    height: 32,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.foam,
-  },
-  beerFill: {
-    position: 'absolute',
-    left: 7,
-    right: 7,
-    bottom: 8,
-    height: 66,
-    borderRadius: 13,
-    backgroundColor: Colors.amber,
-  },
-  pintShine: {
-    position: 'absolute',
-    top: 18,
-    bottom: 18,
-    left: 16,
-    width: 8,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.white, 0.28),
-  },
-  bellBubble: {
-    position: 'absolute',
-    right: 6,
-    top: 4,
-    width: 58,
-    height: 58,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.5),
-  },
-  locationBubble: {
-    position: 'absolute',
-    right: 20,
-    bottom: 18,
-    width: 48,
-    height: 48,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+  card: {
+    flexShrink: 1,
     backgroundColor: Colors.stout,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.4),
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
+    paddingTop: Spacing.sm,
+    paddingHorizontal: MockLayout.screenPad,
+    ...softDrop(),
   },
-  copy: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
+  grabber: {
+    width: 44,
+    height: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   title: {
-    maxWidth: 280,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 32,
-    lineHeight: 36,
+    flexShrink: 1,
+    ...MockType.titleS,
     color: Colors.foam,
   },
-  body: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 16,
-    lineHeight: 23,
-    color: Colors.foamMuted,
+  disclosureTitle: {
+    ...MockType.titleS,
+    color: Colors.foam,
+    marginBottom: Spacing.sm,
   },
-  reasons: {
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
+  disclosureBody: {
+    ...MockType.body,
+    lineHeight: MockType.body.fontSize * 1.5,
+    color: Colors.foamMuted,
+    paddingBottom: Spacing.sm,
+  },
+  list: {
+    flexGrow: 0,
+    flexShrink: 1,
+    marginTop: Spacing.sm,
+  },
+  listContent: {
+    paddingBottom: Spacing.sm,
   },
   reasonRow: {
+    minHeight: 64,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.md,
-    padding: Spacing.md,
-    borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.stout, 0.55),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.58),
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  reasonRowFirst: {
+    borderTopWidth: 0,
   },
   reasonIcon: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
-  reasonText: {
-    flex: 1,
-    gap: 3,
-  },
   reasonTitle: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    lineHeight: 20,
+    flex: 1,
+    ...MockType.bodySemibold,
     color: Colors.foam,
   },
-  reasonBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-  },
   actions: {
-    paddingTop: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
-    gap: Spacing.md,
+    paddingTop: Spacing.md,
+    marginTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  secondaryButton: {
-    minHeight: 46,
+  primaryButton: {
+    height: 56,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  primaryDisabled: {
+    opacity: 0.45,
+  },
+  primaryPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.97 }],
+  },
+  primaryText: {
+    ...MockType.buttonLabel,
+    color: Colors.stout,
+  },
+  secondaryButton: {
+    minHeight: 44,
     borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
   },
-  secondaryPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.98 }],
-  },
+  secondaryPressed: { opacity: 0.65 },
   secondaryText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foamMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.foam,
+    includeFontPadding: false,
   },
 });

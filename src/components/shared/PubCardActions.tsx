@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 interface PubCardAction {
@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   },
   primaryText: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 11.5,
     lineHeight: 14,
     color: Colors.stout,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   },
   secondaryText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 10.8,
     lineHeight: 13,
     color: Colors.foamMuted,

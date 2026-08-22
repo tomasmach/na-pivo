@@ -1,17 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 /**
- * `beforeEach` calls `jest.resetModules()`, so each fresh `require('../settingsStore')`
+ * `beforeEach` calls `jest.resetModules()`, so each fresh load of `../settingsStore`
  * pulls in a NEW AsyncStorage mock instance with its own in-memory storage. The
  * top-level `import AsyncStorage` is bound to a different (stale) instance, so we
  * must read the SAME instance the freshly-required store persisted into.
  */
 function currentAsyncStorage() {
-  const mod = require('@react-native-async-storage/async-storage');
+  const mod = jest.requireMock('@react-native-async-storage/async-storage');
   return mod.default ?? mod;
 }
 
@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe('useSettingsStore', () => {
   it('has correct default state', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     const state = useSettingsStore.getState();
 
     expect(state.mode).toBe('nearest');
@@ -43,7 +43,7 @@ describe('useSettingsStore', () => {
   });
 
   it('persists the local-only water reminder opt-in', async () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
 
     useSettingsStore.getState().setWaterNudgeEnabled(true);
@@ -61,7 +61,7 @@ describe('useSettingsStore', () => {
       version: 0,
     }));
 
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
 
     expect(useSettingsStore.getState().waterNudgeEnabled).toBe(false);
@@ -69,7 +69,7 @@ describe('useSettingsStore', () => {
   });
 
   it('stores only an explicitly set home point and navigation provider', async () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
 
     useSettingsStore.getState().setHomePoint({ lat: 50.08, lng: 14.42 });
@@ -84,22 +84,22 @@ describe('useSettingsStore', () => {
   });
 
   it('defaults hidePubNames to false (show pub names out of the box)', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     expect(useSettingsStore.getState().hidePubNames).toBe(false);
   });
 
   it('defaults hideClosedPubs to true (hide known-closed pubs out of the box)', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     expect(useSettingsStore.getState().hideClosedPubs).toBe(true);
   });
 
   it('defaults pub reminders to false (background location is explicit opt-in)', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     expect(useSettingsStore.getState().pubReminderEnabled).toBe(false);
   });
 
   it('setHideClosedPubs toggles the filter off and back on', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
 
     useSettingsStore.getState().setHideClosedPubs(false);
     expect(useSettingsStore.getState().hideClosedPubs).toBe(false);
@@ -109,7 +109,7 @@ describe('useSettingsStore', () => {
   });
 
   it('setHidePubNames toggles hidden names off and back on', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
 
     useSettingsStore.getState().setHidePubNames(true);
     expect(useSettingsStore.getState().hidePubNames).toBe(true);
@@ -121,7 +121,7 @@ describe('useSettingsStore', () => {
   it('persists hideClosedPubs through the partialize/rehydrate cycle', async () => {
     // First store instance: flip the filter off and let it persist.
     {
-      const { useSettingsStore } = require('../settingsStore');
+      const { useSettingsStore } = jest.requireActual('../settingsStore');
       await (useSettingsStore.persist as any).rehydrate?.();
       useSettingsStore.getState().setHideClosedPubs(false);
       // Let zustand's async setItem write flush through the storage mock.
@@ -137,7 +137,7 @@ describe('useSettingsStore', () => {
   });
 
   it('keeps hideClosedPubs in the partialized payload', async () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
     // Mutate any field so a write is triggered, then inspect the stored shape.
     useSettingsStore.getState().setHideClosedPubs(true);
@@ -151,7 +151,7 @@ describe('useSettingsStore', () => {
   });
 
   it('keeps hidePubNames in the partialized payload', async () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
 
     useSettingsStore.getState().setHidePubNames(true);
@@ -164,7 +164,7 @@ describe('useSettingsStore', () => {
   });
 
   it('keeps pub reminders in the partialized payload', async () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
 
     useSettingsStore.getState().setPubReminderEnabled(true);
@@ -177,7 +177,7 @@ describe('useSettingsStore', () => {
   });
 
   it('setMode updates the mode', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     const { setMode } = useSettingsStore.getState();
 
     setMode('surprise');
@@ -186,7 +186,7 @@ describe('useSettingsStore', () => {
   });
 
   it('setMode can switch back to nearest', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     const { setMode } = useSettingsStore.getState();
 
     setMode('surprise');
@@ -196,7 +196,7 @@ describe('useSettingsStore', () => {
   });
 
   it('bumpSurpriseSeed increments the seed by 1', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     const initial = useSettingsStore.getState().surpriseSeed;
 
     useSettingsStore.getState().bumpSurpriseSeed();
@@ -207,20 +207,20 @@ describe('useSettingsStore', () => {
   });
 
   it('setMaxDistanceKm updates the distance', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     useSettingsStore.getState().setMaxDistanceKm(5);
     expect(useSettingsStore.getState().maxDistanceKm).toBe(5);
   });
 
   it('setMaxDistanceKm accepts null (unlimited)', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     useSettingsStore.getState().setMaxDistanceKm(5);
     useSettingsStore.getState().setMaxDistanceKm(null);
     expect(useSettingsStore.getState().maxDistanceKm).toBeNull();
   });
 
   it('setPriceCurrency switches between CZK and EUR', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
 
     useSettingsStore.getState().setPriceCurrency('EUR');
     expect(useSettingsStore.getState().priceCurrency).toBe('EUR');
@@ -230,7 +230,7 @@ describe('useSettingsStore', () => {
   });
 
   it('keeps priceCurrency in the partialized payload', async () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();
 
     useSettingsStore.getState().setPriceCurrency('EUR');
@@ -243,13 +243,13 @@ describe('useSettingsStore', () => {
   });
 
   it('setHapticEnabled toggles haptic', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     useSettingsStore.getState().setHapticEnabled(false);
     expect(useSettingsStore.getState().hapticEnabled).toBe(false);
   });
 
   it('setSoundEnabled toggles sound', () => {
-    const { useSettingsStore } = require('../settingsStore');
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
     useSettingsStore.getState().setSoundEnabled(true);
     expect(useSettingsStore.getState().soundEnabled).toBe(true);
   });

@@ -30,7 +30,7 @@ The Expo mobile app is in the monorepo root (`..`).
 | DB (dev) | SQLite |
 | DB (prod) | PostgreSQL via `psycopg[binary]` + `dj-database-url` |
 | Package management | `uv` |
-| WSGI (prod) | `gunicorn` |
+| ASGI (prod) | `gunicorn` + `uvicorn` worker |
 | Scraping/enrichment | `requests`, Firmy.cz parsing, Mapy.cz integration |
 | Opening-hours eval | `opening-hours-py` (Rust-backed OSM grammar) |
 | Name/geo matching | `rapidfuzz` + haversine |
@@ -56,8 +56,8 @@ uv run python manage.py migrate
 # 5. Optional: create a superuser
 uv run python manage.py createsuperuser
 
-# 6. Start the dev server
-uv run python manage.py runserver
+# 6. Start the ASGI dev server
+uv run --extra prod uvicorn config.asgi:application --reload --no-access-log --port 8000
 ```
 
 Useful local URLs:
@@ -71,7 +71,7 @@ Useful local URLs:
 For local Expo testing on a physical device, bind the backend to the LAN interface:
 
 ```bash
-uv run python manage.py runserver 0.0.0.0:8000
+uv run --extra prod uvicorn config.asgi:application --reload --no-access-log --host 0.0.0.0 --port 8000
 ```
 
 Then start Expo from the repository root:
@@ -176,11 +176,13 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
 | `ALLOWED_HOSTS` | `*` in dev, env value in prod | Comma-separated allowed hosts |
 | `PUBLIC_WEB_ORIGIN` | `https://na-pivo.cz` | Canonical origin for invite links and Open Graph metadata |
+| `PUBLIC_API_ORIGIN` | `http://localhost:8012` (dev), `https://api.na-pivo.cz` (prod) | Bare API origin (`scheme://host`, no path/query) used when the backend links to itself |
+| `ANDROID_APP_LINK_CERT_FINGERPRINTS` | _(unset)_ | Comma-separated SHA-256 fingerprints of the Android signing cert; served via `/.well-known/assetlinks.json`. Unset/malformed serves no association (fail closed) and the production deploy check refuses to pass |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |
-| `FIRMY_DAILY_CAP` | `2000` | Hard daily request cap |
+| `FIRMY_DAILY_CAP` | `2000` | Shared DB-backed daily request cap across web and worker processes |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
 | `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call; `0` makes cold lookups pending-only and leaves enrichment to the worker |
 | `GOOGLE_MAPS_SERVER_API_KEY` | _(unset)_ | Backend-only, IP/API-restricted key for Geocoding API v4 and Places API (New); never ship it in Expo |
@@ -198,6 +200,10 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
 | `PUB_REPORT_GLOBAL_HIDE_THRESHOLD` | `3` | Distinct active reporting accounts required before a pub is hidden globally |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
+| `PUBLIC_READS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for public changelog and report-filter reads |
+| `API_RATE_LIMIT_RETENTION_DAYS` | `2` | Retention for expired shared throttle buckets |
+| `ACCOUNT_EXPORT_JOB_RETENTION_DAYS` | `30` | Retention for delivered and terminally failed durable export jobs |
+| `ACCOUNT_EXPORT_JOB_MAX_ATTEMPTS` | `8` | Maximum delivery attempts before an export job fails permanently |
 | `DRINKS_THROTTLE_RATE` | `30/min` | Per-account rate limit for `POST /v1/drinks` |
 | `DRINK_FUTURE_GRACE_MINUTES` | `10` | Future timestamp grace before clamping to server time |
 | `DRINK_BACKDATE_FLAG_DAYS` | `60` | Age at which a drink is flagged as backdated |
@@ -222,13 +228,13 @@ Every install currently gets an anonymous, device-bound account automatically. T
 
 The bearer token is returned once at registration and stored only as a SHA-256 hash (`token_hash`). Re-registration for an existing `device_id` rotates it only when the request already presents the valid Bearer token for that same account.
 
-The `account` and other DRF throttles should be backed by a shared cache such as Redis or Memcached for exact global limits in production. The default `LocMemCache` is per-process, so under multiple gunicorn workers the effective limit is `rate x workers`.
+The `account` and other scoped throttles use atomic PostgreSQL counters. Their limits stay exact when gunicorn adds workers; the maintenance worker removes expired buckets.
 
 ---
 
 ## Observability and stats
 
-Server logs include a privacy-safe request id, path, status, duration, app version headers and a hashed client IP.
+Structured Django logs include a privacy-safe request id, redacted path, status, duration, app version headers and a hashed client IP. Gunicorn logs only method, status and latency, so sensitive URL segments and query parameters never reach the raw access log.
 
 The Expo app sends a small event whitelist to:
 
@@ -257,7 +263,7 @@ Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner V
 Services:
 
 - `napivo-web` - gunicorn web process;
-- `worker` - background opening-hours refresh;
+- `worker` - background enrichment, durable account-export delivery and retention cleanup;
 - `db` - PostgreSQL 17.
 
 `docker-entrypoint.sh` applies migrations and collects static files on every start, so a deploy is pull + rebuild.
@@ -337,6 +343,10 @@ docker compose -p na-pivo logs --tail=30 napivo-web
 Always pass `-p na-pivo`: the compose project name is pinned in
 `docker-compose.yml`, but the explicit flag keeps a stray invocation from a
 different directory from ever creating a parallel project with empty volumes.
+
+Never deploy from `/opt/na-pivo.pre-monorepo-2026-07-17` — it is an archived
+checkout of the old backend-only repo, and deploying it would roll production
+back.
 
 Migrations run inside the container on start. `set -e` means a failed migration stops `napivo-web` before gunicorn; check `docker compose logs napivo-web` if it will not go healthy.
 

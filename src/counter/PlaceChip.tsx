@@ -18,7 +18,7 @@ import {
   TreePineIcon,
 } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export type PlaceChipKind = 'pub' | 'private' | 'outdoors' | 'other' | 'detecting' | 'unknown';
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     flexShrink: 1,
     includeFontPadding: false,

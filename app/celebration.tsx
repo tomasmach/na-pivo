@@ -18,7 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { Radius } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { fireSuccessHaptic } from '@/utils/haptics';
@@ -337,13 +337,13 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   headlineLine1: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     letterSpacing: -2,
     color: Colors.foam,
     textAlign: 'center',
   },
   headlineLine2: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     letterSpacing: -2,
     color: Colors.amber,
     textAlign: 'center',
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 18,
     color: Colors.foamMuted,
     textAlign: 'center',
@@ -367,14 +367,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   pubCardEyebrow: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.8,
     color: Colors.mutedText,
     marginBottom: 4,
   },
   pubCardName: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     letterSpacing: -1,
     color: Colors.amber,
   },
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     paddingTop: 6,
   },
   mapsLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.neon,
   },

@@ -10,8 +10,16 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  clearBeerCheckinsQueue,
+  enqueueBeerCheckInOp,
+  flushBeerCheckinsQueue,
+  getPendingBeerCheckIns,
+} from '../beerCheckinsQueue';
+import type { BeerCheckInInput } from '../beerCheckinsClient';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const submitBeerCheckIn: jest.Mock = jest.fn(async () => 'ok');
@@ -20,14 +28,6 @@ jest.mock('../beerCheckinsClient', () => ({
   reactToBeerCheckIn: jest.fn(async () => ({ ok: true })),
   clearBeerCheckInReaction: jest.fn(async () => ({ ok: true })),
 }));
-
-import {
-  clearBeerCheckinsQueue,
-  enqueueBeerCheckInOp,
-  flushBeerCheckinsQueue,
-  getPendingBeerCheckIns,
-} from '../beerCheckinsQueue';
-import type { BeerCheckInInput } from '../beerCheckinsClient';
 
 const STORAGE_KEY = 'na-pivo-beer-checkins-queue';
 

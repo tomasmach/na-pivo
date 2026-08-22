@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HistoricalBeersSheet } from '@/components/contribute/HistoricalBeersSheet';
 import { SplitTimeInput } from '@/components/contribute/SplitTimeInput';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { MenuBeerSheet } from '@/components/contribute/MenuBeerSheet';
 import {
@@ -65,6 +66,8 @@ import {
   type HoursInterval,
   type WeeklyHours,
 } from '@/data/communityHours';
+import { showMenuScanPermissionBlocked } from '@/contribute/menuScanPermission';
+import { menuPhotoPickFeedback, menuScanFailureCopy } from '@/contribute/menuScanFeedback';
 import { enqueuePubCommunity } from '@/data/communityQueue';
 import { geohash8 } from '@/data/geohash';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
@@ -75,8 +78,8 @@ import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import {
   formatPrice,
   formatPriceInputFromCzk,
@@ -575,58 +578,81 @@ export default function ContributeScreen() {
     [closeBeerEditor, editingBeerId, priceCurrency],
   );
 
-  const removeBeer = useCallback(
-    (id: string) => {
-      setBeersTouched(true);
-      setBeers((previous) => {
-        const next = previous.filter((beer) => beer.id !== id);
-        beersRef.current = next;
-        return next;
-      });
-      closeBeerEditor();
-    },
-    [closeBeerEditor],
-  );
-
-  const canAddSmallVariant = useMemo(() => {
-    if (!editingBeer || beers.length >= MAX_BEERS) return false;
-    const name = editingBeer.name.trim();
-    if (!name || editingBeer.volumeMl === VOLUME_SMALL) return false;
-    return !beers.some(
-      (beer) =>
-        beer.id !== editingBeer.id &&
-        normalizeBeerName(beer.name) === normalizeBeerName(name) &&
-        beer.volumeMl === VOLUME_SMALL,
-    );
-  }, [beers, editingBeer]);
-
-  const addSmallBeerVariant = useCallback(() => {
-    if (!editingBeer || !canAddSmallVariant) return;
-    const row: BeerRow = {
-      id: nextBeerRowId(),
-      name: editingBeer.name.trim(),
-      priceText: '',
-      volumeMl: VOLUME_SMALL,
-    };
+  const removeBeer = useCallback((id: string) => {
     setBeersTouched(true);
     setBeers((previous) => {
-      const sourceIndex = previous.findIndex(
-        (beer) => beer.id === editingBeer.id,
-      );
-      if (sourceIndex < 0 || previous.length >= MAX_BEERS) {
-        return previous;
-      }
-      const insertAt = sourceIndex + 1;
-      const next = [
-        ...previous.slice(0, insertAt),
-        row,
-        ...previous.slice(insertAt),
-      ];
+      const next = previous.filter((beer) => beer.id !== id);
       beersRef.current = next;
       return next;
     });
-    closeBeerEditor();
-  }, [canAddSmallVariant, closeBeerEditor, editingBeer]);
+  }, []);
+
+  const canAddSmallVariant = useCallback(
+    (beer: BeerRow) => {
+      if (beers.length >= MAX_BEERS) return false;
+      const name = beer.name.trim();
+      if (!name || beer.volumeMl === VOLUME_SMALL) return false;
+      return !beers.some(
+        (candidate) =>
+          candidate.id !== beer.id &&
+          normalizeBeerName(candidate.name) === normalizeBeerName(name) &&
+          candidate.volumeMl === VOLUME_SMALL,
+      );
+    },
+    [beers],
+  );
+
+  const addSmallBeerVariant = useCallback(
+    (beer: BeerRow) => {
+      if (!canAddSmallVariant(beer)) return;
+      const row: BeerRow = {
+        id: nextBeerRowId(),
+        name: beer.name.trim(),
+        priceText: '',
+        volumeMl: VOLUME_SMALL,
+      };
+      setBeersTouched(true);
+      setBeers((previous) => {
+        const sourceIndex = previous.findIndex(
+          (candidate) => candidate.id === beer.id,
+        );
+        if (sourceIndex < 0 || previous.length >= MAX_BEERS) return previous;
+        const alreadyHasSmallVariant = previous.some(
+          (candidate) =>
+            candidate.id !== beer.id &&
+            normalizeBeerName(candidate.name) === normalizeBeerName(beer.name) &&
+            candidate.volumeMl === VOLUME_SMALL,
+        );
+        if (alreadyHasSmallVariant) return previous;
+        const insertAt = sourceIndex + 1;
+        const next = [
+          ...previous.slice(0, insertAt),
+          row,
+          ...previous.slice(insertAt),
+        ];
+        beersRef.current = next;
+        return next;
+      });
+    },
+    [canAddSmallVariant],
+  );
+
+  const confirmRemoveBeer = useCallback(
+    (beer: BeerRow) => {
+      showAppDialog({
+        title: cs.contribute.removeBeer,
+        buttons: [
+          { text: cs.common.cancel, style: 'cancel' },
+          {
+            text: cs.contribute.removeBeer,
+            style: 'destructive',
+            onPress: () => removeBeer(beer.id),
+          },
+        ],
+      });
+    },
+    [removeBeer],
+  );
 
   const availableHistoricalBeers = useMemo(
     () =>
@@ -677,76 +703,61 @@ export default function ContributeScreen() {
           '@/data/menuPhotoPicker'
         );
         const picked = await pickAndPrepareMenuPhoto(source);
-        if (picked.status === 'cancelled') return;
-        if (
-          picked.status === 'denied' ||
-          picked.status === 'denied-permanent'
-        ) {
-          toast(cs.contribute.scanMenu.permissionDenied, {
-            icon: <CameraIcon size={18} color={Colors.amber} />,
+        const pickFeedback = menuPhotoPickFeedback(picked.status, source);
+        if (pickFeedback.action === 'cancel') return;
+        if (pickFeedback.action === 'settings') {
+          showMenuScanPermissionBlocked(source);
+          return;
+        }
+        if (pickFeedback.action === 'toast') {
+          toast(pickFeedback.message, {
+            icon:
+              picked.status === 'denied'
+                ? <CameraIcon size={18} color={Colors.amber} />
+                : <InfoIcon size={18} color={Colors.foamMuted} />,
           });
           return;
         }
-        if (picked.status === 'error') {
-          toast(cs.contribute.scanMenu.errorToast, {
-            icon: <InfoIcon size={18} color={Colors.foamMuted} />,
-          });
-          return;
-        }
+        if (picked.status !== 'picked') return;
 
         const result = await scanMenuPhoto(picked.uri);
-        switch (result.status) {
-          case 'ok': {
-            const { rows, count } = mergeScannedIntoRows(
-              beersRef.current,
-              result.beers,
-              priceCurrency,
-            );
-            if (count > 0) {
-              beersRef.current = rows;
-              setBeers(rows);
-              setBeersTouched(true);
-              fireSuccessHaptic();
-              toast(cs.contribute.scanMenu.successToast(count), {
-                icon: <SparklesIcon size={18} color={Colors.amber} />,
-              });
-            } else {
-              toast(cs.contribute.scanMenu.nothingNewToast, {
-                icon: <CheckIcon size={18} color={Colors.amber} />,
-              });
-            }
-            break;
+        if (result.status === 'ok') {
+          const { rows, count } = mergeScannedIntoRows(
+            beersRef.current,
+            result.beers,
+            priceCurrency,
+          );
+          if (count > 0) {
+            beersRef.current = rows;
+            setBeers(rows);
+            setBeersTouched(true);
+            fireSuccessHaptic();
+            toast(cs.contribute.scanMenu.successToast(count), {
+              icon: <SparklesIcon size={18} color={Colors.amber} />,
+            });
+          } else {
+            toast(cs.contribute.scanMenu.nothingNewToast, {
+              icon: <CheckIcon size={18} color={Colors.amber} />,
+            });
           }
-          case 'empty':
-            toast(cs.contribute.scanMenu.emptyToast, {
-              icon: <SearchIcon size={18} color={Colors.foamMuted} />,
-            });
-            break;
-          case 'unavailable':
-            toast(cs.contribute.scanMenu.unavailableToast, {
-              icon: <InfoIcon size={18} color={Colors.foamMuted} />,
-            });
-            break;
-          case 'daily-cap':
-            toast(cs.contribute.scanMenu.dailyCapToast, {
-              icon: <ClockIcon size={18} color={Colors.foamMuted} />,
-            });
-            break;
-          case 'rate-limited':
-            toast(cs.contribute.scanMenu.rateLimitedToast, {
-              icon: <ClockIcon size={18} color={Colors.foamMuted} />,
-            });
-            break;
-          case 'bad-image':
-            toast(cs.contribute.scanMenu.badImageToast, {
-              icon: <CameraIcon size={18} color={Colors.amber} />,
-            });
-            break;
-          default:
-            toast(cs.contribute.scanMenu.errorToast, {
-              icon: <InfoIcon size={18} color={Colors.foamMuted} />,
-            });
+          return;
         }
+        const FailureIcon =
+          result.status === 'empty'
+            ? SearchIcon
+            : result.status === 'daily-cap' || result.status === 'rate-limited'
+              ? ClockIcon
+              : result.status === 'bad-image'
+                ? CameraIcon
+                : InfoIcon;
+        toast(menuScanFailureCopy(result.status), {
+          icon: (
+            <FailureIcon
+              size={18}
+              color={result.status === 'bad-image' ? Colors.amber : Colors.foamMuted}
+            />
+          ),
+        });
       } finally {
         scanInFlightRef.current = false;
         setScanning(false);
@@ -1125,41 +1136,65 @@ export default function ContributeScreen() {
                   </Text>
                 ) : (
                   beers.map((beer, index) => (
-                    <Pressable
+                    <View
                       key={beer.id}
-                      onPress={() => openBeer(beer.id)}
-                      style={({ pressed }) => [
-                        styles.beerRow,
-                        index > 0 && styles.rowDivider,
-                        pressed && styles.pressed,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={cs.contribute.editBeerA11y(
-                        beer.name,
-                        beerMeta(beer, priceCurrency),
-                      )}
+                      style={[styles.beerRow, index > 0 && styles.rowDivider]}
                     >
-                      <View style={styles.beerCopy}>
-                        <Text
-                          style={styles.beerName}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
+                      <Pressable
+                        onPress={() => openBeer(beer.id)}
+                        style={({ pressed }) => [styles.beerEdit, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={cs.contribute.editBeerA11y(
+                          beer.name,
+                          beerMeta(beer, priceCurrency),
+                        )}
+                      >
+                        <View style={styles.beerCopy}>
+                          <Text
+                            style={styles.beerName}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {beer.name}
+                          </Text>
+                          <Text
+                            style={styles.beerMeta}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {beerMeta(beer, priceCurrency)}
+                          </Text>
+                        </View>
+                        <ChevronRightIcon size={15} color={Colors.mutedText} />
+                      </Pressable>
+                      {canAddSmallVariant(beer) ? (
+                        <Pressable
+                          onPress={() => addSmallBeerVariant(beer)}
+                          style={({ pressed }) => [
+                            styles.beerSmallAction,
+                            pressed && styles.pressed,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={cs.contribute.addSmallBeer}
                         >
-                          {beer.name}
-                        </Text>
-                        <Text
-                          style={styles.beerMeta}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {beerMeta(beer, priceCurrency)}
-                        </Text>
-                      </View>
-                      <ChevronRightIcon
-                        size={15}
-                        color={Colors.mutedText}
-                      />
-                    </Pressable>
+                          <PlusIcon size={15} color={Colors.amber} />
+                          <Text
+                            style={styles.beerSmallActionLabel}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {formatVolume(VOLUME_SMALL)}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => confirmRemoveBeer(beer)}
+                        style={({ pressed }) => [styles.beerRowAction, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={cs.a11y.contributeRemoveBeer}
+                      >
+                        <Trash2Icon size={17} color={Colors.mutedText} />
+                      </Pressable>
+                    </View>
                   ))
                 )}
 
@@ -1290,17 +1325,8 @@ export default function ContributeScreen() {
         visible={beerEditorOpen}
         beer={editingBeerSeed}
         formKey={beerFormNonce}
-        canAddSmallVariant={canAddSmallVariant}
         onClose={closeBeerEditor}
         onSubmit={submitBeerEditor}
-        onRemove={
-          editingBeerId
-            ? () => removeBeer(editingBeerId)
-            : undefined
-        }
-        onAddSmallVariant={
-          canAddSmallVariant ? addSmallBeerVariant : undefined
-        }
       />
 
       <HistoricalBeersSheet
@@ -1348,7 +1374,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1376,7 +1402,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1397,7 +1423,7 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1425,7 +1451,7 @@ const styles = StyleSheet.create({
   dayName: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1436,7 +1462,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   closedLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1455,7 +1481,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   timeDash: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1473,7 +1499,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     marginBottom: 8,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1493,7 +1519,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   menuTypeLabel: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
   },
@@ -1520,7 +1546,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   menuTypeOptionText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1529,7 +1555,7 @@ const styles = StyleSheet.create({
   },
   menuTypeHint: {
     marginTop: 9,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -1538,8 +1564,34 @@ const styles = StyleSheet.create({
     minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     paddingVertical: Spacing.sm,
+  },
+  beerEdit: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  beerRowAction: {
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beerSmallAction: {
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+  },
+  beerSmallActionLabel: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: Colors.amber,
   },
   beerCopy: {
     flex: 1,
@@ -1547,14 +1599,14 @@ const styles = StyleSheet.create({
   },
   beerName: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   beerMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1567,7 +1619,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addBeerLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1588,7 +1640,7 @@ const styles = StyleSheet.create({
   },
   footerFact: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1600,7 +1652,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   copyWeekLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12.5,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1614,14 +1666,14 @@ const styles = StyleSheet.create({
   },
   historyDoorLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
   },
   footerHint: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
