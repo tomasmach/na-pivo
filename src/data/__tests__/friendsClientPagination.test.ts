@@ -1,9 +1,14 @@
 import {
   fetchAllFriendsDashboard,
   fetchFriendsDashboard,
+  fetchFriendsLive,
   mergeFriendsDashboardPage,
   type FriendsDashboard,
 } from '../friendsClient';
+import {
+  saveFriendsDashboardSnapshot,
+  snapshotGeneration,
+} from '../friendsSnapshot';
 
 jest.mock('../account', () => ({
   ensureAccount: jest.fn(async () => ({ accountId: 'me', token: 'token' })),
@@ -19,8 +24,23 @@ jest.mock('../friendsSnapshot', () => ({
 }));
 jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
+const mockedSnapshotGeneration = snapshotGeneration as jest.Mock;
+const mockedSaveSnapshot = saveFriendsDashboardSnapshot as jest.Mock;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => { resolve = res; });
+  return { promise, resolve };
+}
+
+/** Flush microtasks so ensureAccount resolves and global.fetch gets called. */
+async function pump() {
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
+  mockedSnapshotGeneration.mockReturnValue(0);
 });
 
 it('parses relationship page metadata from a paginated dashboard payload', async () => {
@@ -243,4 +263,92 @@ it('merge keeps current live slices while appending relationship pages', () => {
   expect(merged.myPresence).toBe(current.myPresence);
   expect(merged.settings).toBe(current.settings);
   expect(merged.notifications).toBe(current.notifications);
+});
+
+const livePayload = JSON.stringify({
+  active_friends: [{ id: 'a1', display_name: 'Live' }],
+  my_active_activity: null,
+  plans: [],
+  my_plan: null,
+  presence: [],
+  my_presence: null,
+  incoming_count: 1,
+  unread_count: 2,
+  server_time: '2026-08-23T10:00:00Z',
+});
+
+it('drops a dashboard response that resolves after the account boundary moved', async () => {
+  const gate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest.fn(() => gate.promise) as jest.Mock;
+  const pending = fetchFriendsDashboard();
+  await pump();
+  mockedSnapshotGeneration.mockReturnValue(1);
+  gate.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ friends: [] }) });
+
+  const result = await pending;
+
+  expect(result).toBeNull();
+  expect(mockedSaveSnapshot).not.toHaveBeenCalled();
+});
+
+it('parses and saves the dashboard when the generation holds', async () => {
+  global.fetch = jest.fn(async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      friends: [{ id: 'f1', display_name: 'A' }],
+    }),
+  })) as jest.Mock;
+
+  const dashboard = await fetchFriendsDashboard();
+
+  expect(dashboard?.friends.map((f) => f.id)).toEqual(['f1']);
+  expect(mockedSaveSnapshot).toHaveBeenCalledWith(dashboard, 0);
+});
+
+it('drops a direct live response after the account boundary moved', async () => {
+  const gate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest.fn(() => gate.promise) as jest.Mock;
+  const pending = fetchFriendsLive();
+  await pump();
+  mockedSnapshotGeneration.mockReturnValue(1);
+  gate.resolve({ ok: true, status: 200, text: async () => livePayload });
+
+  const result = await pending;
+
+  expect(result).toBeNull();
+});
+
+it('skips the dashboard fallback when the boundary moved before the live 404 resolved', async () => {
+  const gate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest.fn(() => gate.promise) as jest.Mock;
+  const pending = fetchFriendsLive();
+  await pump();
+  mockedSnapshotGeneration.mockReturnValue(1);
+  gate.resolve({ ok: false, status: 404, text: async () => '' });
+
+  const result = await pending;
+
+  expect(result).toBeNull();
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});
+
+it('drops the live slice when the boundary moves during the 404 fallback', async () => {
+  const first = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  const fallback = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest
+    .fn()
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementationOnce(() => fallback.promise) as jest.Mock;
+  const pending = fetchFriendsLive();
+  await pump();
+  first.resolve({ ok: false, status: 404, text: async () => '' });
+  await pump();
+  mockedSnapshotGeneration.mockReturnValue(1);
+  fallback.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ friends: [] }) });
+
+  const result = await pending;
+
+  expect(result).toBeNull();
+  expect(mockedSaveSnapshot).not.toHaveBeenCalled();
 });

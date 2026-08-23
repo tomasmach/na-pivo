@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
@@ -12,6 +12,7 @@ import {
 } from '@/data/friendsClient';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
+import { useAccountStore } from '@/stores/accountStore';
 import { hasLiveFriendSignal, usePartaSignalStore } from '@/stores/partaSignalStore';
 
 const LIVE_POLL_MS = 35_000;
@@ -30,6 +31,10 @@ export interface PartaDashboardController {
 
 /** Shared, race-safe controller for every Parta surface. */
 export function usePartaDashboard({ markRead = false }: { markRead?: boolean } = {}): PartaDashboardController {
+  // Active account boundary: Parta screens stay mounted across an account
+  // switch, so every piece of state and async work below is owned by whoever
+  // this id pointed at when the work started.
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const [dashboard, setDashboard] = useState<FriendsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,6 +42,9 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
   const [loadingMore, setLoadingMore] = useState(false);
   const [focused, setFocused] = useState(false);
   const mountedRef = useRef(true);
+  const ownerAccountRef = useRef<string | null>(accountId);
+  /** Bumped only at account boundaries — unlike generationRef, which every load moves. */
+  const boundaryEpochRef = useRef(0);
   const generationRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const pollGenerationRef = useRef(0);
@@ -54,20 +62,34 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
     [],
   );
 
+  // Snapshot hydration is account-bound: the read captures the accountId and
+  // boundary epoch it started under, and a result that outlives either one
+  // never touches state — so a blob persisted by the previous account cannot
+  // leak into the next one.
   useEffect(() => {
     let alive = true;
+    const ownerAccount = accountId;
+    const epoch = boundaryEpochRef.current;
     void loadFriendsDashboardSnapshot().then((snapshot) => {
-      if (!alive || !snapshot) return;
+      if (
+        !alive ||
+        !snapshot ||
+        ownerAccount !== ownerAccountRef.current ||
+        epoch !== boundaryEpochRef.current
+      ) {
+        return;
+      }
       setDashboard((current) => current ?? snapshot.dashboard);
       setLoading(false);
     });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [accountId]);
 
   const load = useCallback(
     async (mode: 'initial' | 'refresh' | 'silent' = 'silent') => {
+      const ownerAccount = ownerAccountRef.current;
       const generation = ++generationRef.current;
       pageAbortRef.current?.abort();
       pageAbortRef.current = null;
@@ -78,10 +100,14 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
       const controller = new AbortController();
       abortRef.current = controller;
       if (mode === 'refresh') setRefreshing(true);
+      const isCurrent = () =>
+        mountedRef.current &&
+        ownerAccount === ownerAccountRef.current &&
+        generation === generationRef.current;
 
       try {
         const next = await fetchFriendsDashboard(controller.signal);
-        if (!mountedRef.current || generation !== generationRef.current) return;
+        if (!isCurrent()) return;
         if (!next) {
           setStale(true);
           return;
@@ -98,9 +124,9 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
           liveNow: hasLiveFriendSignal(next),
         });
       } catch {
-        if (!controller.signal.aborted && generation === generationRef.current) setStale(true);
+        if (!controller.signal.aborted && isCurrent()) setStale(true);
       } finally {
-        if (mountedRef.current && generation === generationRef.current) {
+        if (isCurrent()) {
           if (mode === 'initial') setLoading(false);
           if (mode === 'refresh') setRefreshing(false);
         }
@@ -109,13 +135,46 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
     [markRead],
   );
 
+  /**
+   * Account boundary (P0 privacy): when the active accountId rotates while the
+   * screens stay mounted, wipe every trace the previous account owned
+   * synchronously (before paint) — dashboard state, loading flags, in-flight
+   * controllers and generations — zero the badge signal it left behind, then
+   * reload through the normal focused flow. A token refresh for the same
+   * accountId is not a boundary.
+   */
+  useLayoutEffect(() => {
+    if (ownerAccountRef.current === accountId) return;
+    ownerAccountRef.current = accountId;
+    boundaryEpochRef.current += 1;
+    generationRef.current += 1;
+    pollGenerationRef.current += 1;
+    abortRef.current?.abort();
+    pollAbortRef.current?.abort();
+    pageAbortRef.current?.abort();
+    abortRef.current = null;
+    pollAbortRef.current = null;
+    pageAbortRef.current = null;
+    pagePromiseRef.current = null;
+    setDashboard(null);
+    setLoading(true);
+    setRefreshing(false);
+    setStale(false);
+    setLoadingMore(false);
+    usePartaSignalStore.getState().setSignal({ pendingRequests: 0, unread: 0, liveNow: false });
+    void load('initial');
+  }, [accountId, load]);
+
   const pollLive = useCallback(async () => {
+    const ownerAccount = ownerAccountRef.current;
     const generation = ++pollGenerationRef.current;
     pollAbortRef.current?.abort();
     const controller = new AbortController();
     pollAbortRef.current = controller;
     const live = await fetchFriendsLive(controller.signal);
-    if (!mountedRef.current || generation !== pollGenerationRef.current) return;
+    if (!mountedRef.current || ownerAccount !== ownerAccountRef.current || generation !== pollGenerationRef.current) {
+      return;
+    }
     if (!live) {
       setStale(true);
       return;
@@ -194,6 +253,7 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
 
   const loadMore = useCallback(() => {
     if (!dashboard || !hasMore || pagePromiseRef.current) return;
+    const ownerAccount = ownerAccountRef.current;
     const capturedDashboard = dashboard;
     const generation = generationRef.current;
     const controller = new AbortController();
@@ -202,7 +262,14 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
 
     const task: Promise<void> = fetchNextFriendsDashboardPage(capturedDashboard, controller.signal)
       .then((next) => {
-        if (!mountedRef.current || controller.signal.aborted || generation !== generationRef.current) return;
+        if (
+          !mountedRef.current ||
+          controller.signal.aborted ||
+          ownerAccount !== ownerAccountRef.current ||
+          generation !== generationRef.current
+        ) {
+          return;
+        }
         if (!next) {
           setStale(true);
           return;
@@ -211,7 +278,12 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
         setStale(false);
       })
       .catch(() => {
-        if (mountedRef.current && !controller.signal.aborted && generation === generationRef.current) {
+        if (
+          mountedRef.current &&
+          !controller.signal.aborted &&
+          ownerAccount === ownerAccountRef.current &&
+          generation === generationRef.current
+        ) {
           setStale(true);
         }
       })

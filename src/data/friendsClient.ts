@@ -943,7 +943,9 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
   // of re-persisting the previous account's graph under the next account.
   const generation = snapshotGeneration();
   const res = await requestJson('/v1/friends?limit=100', { signal });
-  if (!res.ok) return null;
+  // Fail closed: if the account boundary moved while this fetch was in flight,
+  // the response belongs to the previous account — never parse or return it.
+  if (!res.ok || snapshotGeneration() !== generation) return null;
   const dashboard = parseFriendsDashboard(res.data);
   // Persist the freshly-loaded graph so an offline cold start can hydrate it
   // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
@@ -1107,11 +1109,15 @@ export async function fetchAllFriendsDashboard(signal?: AbortSignal): Promise<Fr
  * full dashboard when the endpoint 404s (older backend that predates §D2).
  */
 export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiveSlice | null> {
+  const generation = snapshotGeneration();
   const res = await requestJson('/v1/friends/live', { signal });
+  // Fail closed before reading the body or falling back: a boundary crossed
+  // mid-request makes this response (and any dashboard fallback) prior-account data.
+  if (snapshotGeneration() !== generation) return null;
   if (!res.ok) {
     if (res.result.code === 'http_404') {
       const dashboard = await fetchFriendsDashboard(signal);
-      if (!dashboard) return null;
+      if (!dashboard || snapshotGeneration() !== generation) return null;
       return {
         activeFriends: dashboard.activeFriends,
         myActiveActivity: dashboard.myActiveActivity,
