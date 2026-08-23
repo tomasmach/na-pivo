@@ -8,6 +8,14 @@
  *
  *   npm run build:games
  *
+ * With `--check` nothing is written: every game is built in memory and compared
+ * byte-for-byte against the committed `assets/games/*.html`, exiting nonzero and
+ * listing every stale or missing file if they differ. CI uses this so a forgotten
+ * rebuild fails loudly instead of shipping an old game over the air.
+ *
+ * Set `NAPIVO_GAMES_OUTPUT_ROOT` to redirect where the HTML files are read and
+ * written (tests use a temp directory); source resolution always stays in-repo.
+ *
  * Run it whenever anything under `src/games/web/` changes. It is deliberately
  * not wired into `npm run dev`: a build step that runs on every start is a build
  * step people learn to wait for.
@@ -21,11 +29,22 @@
 
 import { build } from 'esbuild';
 import { Buffer } from 'node:buffer';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// Only output paths move; entries, alias and everything source-side stay in-repo.
+const outputRoot = process.env.NAPIVO_GAMES_OUTPUT_ROOT
+  ? resolve(process.env.NAPIVO_GAMES_OUTPUT_ROOT)
+  : root;
+
+const checkOnly = process.argv.slice(2).includes('--check');
+const unknownFlags = process.argv.slice(2).filter((arg) => arg !== '--check');
+if (unknownFlags.length > 0) {
+  console.error(`unknown arguments: ${unknownFlags.join(' ')} — supported: [--check]`);
+  process.exit(2);
+}
 
 const GAMES = [
   { key: 'dice', entry: 'src/games/web/dice/main.ts' },
@@ -41,7 +60,11 @@ const CSS = `
   canvas { display: block; width: 100%; height: 100%; }
 `;
 
-for (const game of GAMES) {
+/** Relative paths in logs and check reports are always repo-relative. */
+const relPath = (key) => `assets/games/${key}.html`;
+
+/** Builds one game to its final normalized HTML, entirely in memory. */
+async function buildGameHtml(game) {
   const result = await build({
     entryPoints: [resolve(root, game.entry)],
     bundle: true,
@@ -70,14 +93,42 @@ for (const game of GAMES) {
 </body>
 </html>`;
 
-  const out = resolve(root, `assets/games/${game.key}.html`);
   // Strip trailing spaces/tabs per line and spaces before leading tab
   // indentation — esbuild-inlined shaders carry both and the release diff-check flags them.
-  const normalized = html
-    .replace(/[ \t]+$/gm, '')
-    .replace(/^( +)\t/gm, '\t');
-  await mkdir(dirname(out), { recursive: true });
-  await writeFile(out, normalized, 'utf8');
-  const kb = Math.round(Buffer.byteLength(normalized) / 1024);
-  console.log(`built assets/games/${game.key}.html — ${kb} kB`);
+  return Buffer.from(
+    html.replace(/[ \t]+$/gm, '').replace(/^( +)\t/gm, '\t'),
+    'utf8',
+  );
+}
+
+if (checkOnly) {
+  const stale = [];
+  for (const game of GAMES) {
+    const expected = await buildGameHtml(game);
+    let actual;
+    try {
+      actual = await readFile(resolve(outputRoot, relPath(game.key)));
+    } catch {
+      stale.push(relPath(game.key));
+      continue;
+    }
+    if (!actual.equals(expected)) stale.push(relPath(game.key));
+  }
+
+  if (stale.length > 0) {
+    console.error(
+      `stale generated games — run \`npm run build:games\` and commit:\n${stale.map((p) => `  ${p}`).join('\n')}`,
+    );
+    process.exit(1);
+  }
+  console.log(`all ${GAMES.length} generated games are up to date`);
+} else {
+  for (const game of GAMES) {
+    const normalized = await buildGameHtml(game);
+    const out = resolve(outputRoot, relPath(game.key));
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, normalized);
+    const kb = Math.round(normalized.byteLength / 1024);
+    console.log(`built ${relPath(game.key)} — ${kb} kB`);
+  }
 }
