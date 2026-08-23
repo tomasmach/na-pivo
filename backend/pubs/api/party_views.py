@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -57,8 +56,6 @@ PARTY_HISTORY_MAX_EVENINGS = 20
 # The same ceiling protects recap/game payloads and, more importantly, bounds
 # the pairwise friendship work performed when somebody joins a table.
 PARTY_EVENING_MAX_MEMBERS = PARTY_RECORD_MAX_PARTICIPANTS
-
-logger = logging.getLogger(__name__)
 
 
 def _roster_needs_repair(value) -> bool:
