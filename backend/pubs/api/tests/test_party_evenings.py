@@ -270,7 +270,9 @@ def test_opt_out_hides_preexisting_legacy_and_diary_drinks_from_other_members(cl
 
 
 @pytest.mark.django_db
-def test_valid_code_creates_membership_and_friendship(client):
+def test_stranger_join_creates_membership_and_no_relationship(client):
+    """A join code admits you to the table, not into somebody's friend list."""
+
     host_token, host = _register(client, "host")
     stranger_token, stranger = _register(client, "cizi")
     assert _create(client, host_token).status_code == status.HTTP_201_CREATED
@@ -278,11 +280,12 @@ def test_valid_code_creates_membership_and_friendship(client):
     joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(stranger_token))
     assert joined.status_code == status.HTTP_200_OK
     assert [member["nickname"] for member in joined.json()["members"]] == ["host", "cizi"]
-    friendship = Friendship.objects.get(
-        requester__in=(host, stranger), recipient__in=(host, stranger)
+
+    membership = PartyEveningMember.objects.get(
+        evening=PartyEvening.objects.get(join_code="PRAH24"), account=stranger
     )
-    assert friendship.status == Friendship.Status.ACCEPTED
-    assert friendship.responded_at is not None
+    assert membership.active is True
+    assert Friendship.objects.count() == 0
 
     foreign_end = client.post("/v1/party-evenings/PRAH24/end", **_auth(stranger_token))
     assert foreign_end.status_code == status.HTTP_404_NOT_FOUND
@@ -296,7 +299,59 @@ def test_valid_code_creates_membership_and_friendship(client):
 
 
 @pytest.mark.django_db
-def test_join_connects_three_people_once(client):
+@pytest.mark.parametrize("reverse", [False, True])
+def test_existing_pending_request_survives_join_in_either_direction(client, reverse):
+    """Joining never touches a friend request — not even the one pointing at you."""
+
+    host_token, host = _register(client, "host")
+    joiner_token, joiner = _register(client, "novy")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    requester, recipient = (joiner, host) if reverse else (host, joiner)
+    pending = Friendship.objects.create(
+        requester=requester,
+        recipient=recipient,
+        status=Friendship.Status.PENDING,
+    )
+    old_requested_at = timezone.now() - timedelta(days=1)
+    Friendship.objects.filter(pk=pending.pk).update(requested_at=old_requested_at)
+
+    joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(joiner_token))
+
+    assert joined.status_code == status.HTTP_200_OK
+    pending.refresh_from_db()
+    assert pending.status == Friendship.Status.PENDING
+    assert pending.requester_id == requester.id
+    assert pending.recipient_id == recipient.id
+    assert pending.requested_at == old_requested_at
+    assert pending.responded_at is None
+    assert Friendship.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_existing_accepted_friendship_stays_untouched_after_join(client):
+    host_token, host = _register(client, "host")
+    joiner_token, joiner = _register(client, "novy")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    accepted = Friendship.objects.create(
+        requester=host,
+        recipient=joiner,
+        status=Friendship.Status.ACCEPTED,
+        responded_at=timezone.now(),
+    )
+
+    joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(joiner_token))
+
+    assert joined.status_code == status.HTTP_200_OK
+    accepted.refresh_from_db()
+    assert accepted.status == Friendship.Status.ACCEPTED
+    assert accepted.requester_id == host.id
+    assert accepted.recipient_id == joiner.id
+    assert accepted.responded_at is not None
+    assert Friendship.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_three_person_table_never_creates_relationship_rows(client):
     host_token, host = _register(client, "host")
     first_token, first = _register(client, "prvni")
     second_token, second = _register(client, "druhy")
@@ -311,31 +366,25 @@ def test_join_connects_three_people_once(client):
 
     assert client.post("/v1/party-evenings/PRAH24/join", **_auth(first_token)).status_code == 200
     pending.refresh_from_db()
-    assert pending.status == Friendship.Status.ACCEPTED
-    assert pending.requested_at > old_requested_at
-    assert pending.responded_at is not None
+    assert pending.status == Friendship.Status.PENDING
+    assert pending.requester_id == host.id
+    assert pending.recipient_id == first.id
+    assert pending.requested_at == old_requested_at
+    assert pending.responded_at is None
+
     assert client.post("/v1/party-evenings/PRAH24/join", **_auth(second_token)).status_code == 200
 
-    rows = Friendship.objects.filter(status=Friendship.Status.ACCEPTED)
-    assert rows.count() == 3
-    pairs = {
-        frozenset((row.requester_id, row.recipient_id))
-        for row in rows
-    }
-    assert pairs == {
-        frozenset((host.id, first.id)),
-        frozenset((host.id, second.id)),
-        frozenset((first.id, second.id)),
-    }
-    assert all(row.responded_at is not None for row in rows)
+    # The table grows by memberships only; relationships stay untouched.
+    assert PartyEveningMember.objects.filter(evening__join_code="PRAH24", active=True).count() == 3
+    assert Friendship.objects.count() == 1
 
     replayed = client.post("/v1/party-evenings/PRAH24/join", **_auth(second_token))
     assert replayed.status_code == status.HTTP_200_OK
-    assert Friendship.objects.filter(status=Friendship.Status.ACCEPTED).count() == 3
+    assert Friendship.objects.count() == 1
 
 
 @pytest.mark.django_db
-def test_join_is_bounded_and_friendship_sync_has_constant_query_growth(client, monkeypatch):
+def test_join_is_bounded_and_creates_no_relationship_debris(client, monkeypatch):
     host_token, host = _register(client, "host")
     first_token, _first = _register(client, "first")
     second_token, _second = _register(client, "second")
@@ -355,9 +404,8 @@ def test_join_is_bounded_and_friendship_sync_has_constant_query_growth(client, m
     assert response.json()["code"] == "party_full"
     assert not PartyEveningMember.objects.filter(account=overflow).exists()
     assert len(captured) <= 15
-    assert Friendship.objects.filter(
-        Q(requester=overflow, recipient=host) | Q(requester=host, recipient=overflow)
-    ).count() == 0
+    # A full table must not leave any relationship debris behind either.
+    assert not Friendship.objects.filter(Q(requester=overflow) | Q(recipient=overflow)).exists()
 
 
 @pytest.mark.django_db
@@ -383,31 +431,45 @@ def test_join_preserves_declines_and_skips_blocked_members(client):
     assert joined.status_code == status.HTTP_200_OK
     declined.refresh_from_db()
     assert declined.status == Friendship.Status.DECLINED
+    assert declined.responded_at is not None
+    assert declined.requester_id == joiner.id
     assert not Friendship.objects.filter(
         Q(requester=joiner, recipient=blocked_peer)
         | Q(requester=blocked_peer, recipient=joiner)
     ).exists()
-    assert Friendship.objects.filter(
-        Q(requester=joiner, recipient=host)
-        | Q(requester=host, recipient=joiner),
-        status=Friendship.Status.ACCEPTED,
-    ).count() == 1
+    assert not Friendship.objects.filter(
+        Q(requester=joiner, recipient=host) | Q(requester=host, recipient=joiner)
+    ).exists()
+    assert PartyEveningMember.objects.filter(account=joiner, active=True).exists()
 
 
 @pytest.mark.django_db
-def test_friendship_sync_failure_does_not_fail_join(client, monkeypatch):
+def test_join_is_a_membership_only_contract(client):
     host_token, _host = _register(client, "host")
     member_token, member = _register(client, "kamos")
+    rejoiner_token, rejoiner = _register(client, "navstevnik")
     assert _create(client, host_token).status_code == status.HTTP_201_CREATED
 
-    def fail_sync(*_args, **_kwargs):
-        raise RuntimeError("friendship sync failed")
-
-    monkeypatch.setattr(party_views, "_accept_evening_friendships", fail_sync)
     joined = client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token))
 
     assert joined.status_code == status.HTTP_200_OK
     assert PartyEveningMember.objects.filter(account=member, active=True).exists()
+    assert Friendship.objects.count() == 0
+
+    # Rejoining after leaving stays a pure membership operation too.
+    assert (
+        client.delete("/v1/party-evenings/PRAH24/join", **_auth(member_token)).status_code == 200
+    )
+    rejoined = client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token))
+    assert rejoined.status_code == status.HTTP_200_OK
+    assert (
+        PartyEveningMember.objects.filter(account=member, active=True).count() == 1
+    )
+    assert Friendship.objects.count() == 0
+
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(rejoiner_token)).status_code == 200
+    assert PartyEveningMember.objects.filter(account=rejoiner, active=True).exists()
+    assert Friendship.objects.count() == 0
 
 
 @pytest.mark.django_db

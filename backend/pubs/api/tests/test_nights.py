@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -12,6 +13,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.accounts import _merge_anonymous_account
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
     BeerPhoto,
@@ -71,6 +73,18 @@ def _register(
 
 def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+def _ugc(version: str | None = settings.UGC_POLICY_VERSION) -> dict[str, str]:
+    if version is None:
+        return {}
+    return {f"HTTP_{UGC_POLICY_HEADER.replace('-', '_').upper()}": version}
+
+
+def _accept(account: Account, version: str = settings.UGC_POLICY_VERSION) -> None:
+    account.ugc_terms_version = version
+    account.ugc_terms_accepted_at = timezone.now()
+    account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
 
 
 def _make_friends(a: Account, b: Account) -> None:
@@ -888,6 +902,22 @@ def test_round_reaction_upserts_unreacts_and_rejects_self_or_invisible(client):
 
 
 @pytest.mark.django_db
+def test_round_reaction_bypasses_ugc_gate_without_stored_acceptance(client):
+    owner_token, _owner = _register(client, "autor")
+    viewer_token, viewer = _register(client, "divak")
+    assert viewer.ugc_terms_accepted_at is None
+    public = _publish(client, owner_token, visibility="public").json()["night"]
+
+    response = client.post(
+        f"/v1/nights/{public['id']}/react", **_auth(viewer_token), **_ugc()
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.json() == {"rounds": 1, "my_round": True}
+    assert NightRound.objects.filter(night__public_id=public["id"], account=viewer).exists()
+
+
+@pytest.mark.django_db
 def test_night_detail_and_comments_inherit_visibility_and_are_idempotent(client):
     owner_token, owner = _register(client, "autor")
     viewer_token, viewer = _register(client, "divak")
@@ -1059,3 +1089,242 @@ def test_content_report_accepts_visible_night_target(client):
     assert report.target_snapshot["night_id"] == night_id
     assert report.target_snapshot["night"]["beer_count"] == 4
     assert report.target_snapshot["night"]["pub_names"] == ["U Zlatého tygra", "Lokál"]
+
+
+@pytest.mark.django_db
+def test_content_report_with_comment_id_snapshots_visible_comment(client):
+    owner_token, _owner = _register(client, "autor")
+    commenter_token, commenter = _register(client, "komentator")
+    reporter_token, _reporter = _register(client, "hlasatel")
+    night = _publish(client, owner_token, visibility="public").json()["night"]
+    created = client.post(
+        f"/v1/nights/{night['id']}/comments",
+        data={"client_id": str(uuid.uuid4()), "body": "Tohle je přes čáru."},
+        format="json",
+        **_auth(commenter_token),
+    )
+    assert created.status_code == status.HTTP_201_CREATED, created.content
+    comment_id = created.json()["comment"]["id"]
+
+    response = client.post(
+        "/v1/content-reports",
+        data={
+            "target_account_id": str(commenter.public_id),
+            "reason": ContentReport.Reason.OTHER,
+            "comment_id": comment_id,
+        },
+        format="json",
+        **_auth(reporter_token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    report = ContentReport.objects.get()
+    assert report.target_account == commenter
+    snapshot = report.target_snapshot
+    assert snapshot["comment_id"] == comment_id
+    assert snapshot["comment"]["body"] == "Tohle je přes čáru."
+    assert snapshot["comment"]["author"]["id"] == str(commenter.public_id)
+    assert snapshot["comment"]["author"]["nickname"] == "komentator"
+    assert snapshot["night_id"] == night["id"]
+    assert snapshot["night"]["visibility"] == "public"
+
+
+@pytest.mark.django_db
+def test_content_report_rejects_removed_hidden_or_mismatched_comment(client):
+    owner_token, owner = _register(client, "autor")
+    commenter_token, commenter = _register(client, "komentator")
+    other_token, other = _register(client, "cizi")
+    reporter_token, _reporter = _register(client, "hlasatel")
+    night = _publish(client, owner_token, visibility="public").json()["night"]
+    hidden_night = _publish(
+        client,
+        owner_token,
+        client_id="friends-only",
+        drinking_day="2026-07-22",
+        visibility="friends",
+    ).json()["night"]
+
+    def _comment(night_body: dict, token: str) -> str:
+        created = client.post(
+            f"/v1/nights/{night_body['id']}/comments",
+            data={"client_id": str(uuid.uuid4()), "body": "Nazdar."},
+            format="json",
+            **_auth(token),
+        )
+        assert created.status_code == status.HTTP_201_CREATED, created.content
+        return created.json()["comment"]["id"]
+
+    removed_comment_id = _comment(night, commenter_token)
+    removed = client.delete(
+        f"/v1/nights/{night['id']}/comments/{removed_comment_id}",
+        **_auth(owner_token),
+    )
+    assert removed.status_code == status.HTTP_200_OK, removed.content
+    hidden_comment_id = _comment(hidden_night, owner_token)
+    visible_comment_id = _comment(night, other_token)
+
+    cases = [
+        # Soft-removed comment: nobody can see it, so nobody can report it.
+        {"target_account_id": str(commenter.public_id), "comment_id": removed_comment_id},
+        # Visible comment living on a night the reporter cannot see.
+        {"target_account_id": str(owner.public_id), "comment_id": hidden_comment_id},
+        # The comment author does not match the reported account.
+        {"target_account_id": str(commenter.public_id), "comment_id": visible_comment_id},
+    ]
+    for payload in cases:
+        response = client.post(
+            "/v1/content-reports",
+            data={"reason": ContentReport.Reason.OTHER, **payload},
+            format="json",
+            **_auth(reporter_token),
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
+    assert ContentReport.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_night_post_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+
+    response = client.post(
+        "/v1/nights",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert response.status_code == 428, response.content
+    assert response.json()["code"] == "ugc_consent_required"
+    assert PublishedNight.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_night_post_with_stale_stored_acceptance(client):
+    token, account = _register(client, "janek")
+    _accept(account, version="2020-01-01")
+
+    response = client.post(
+        "/v1/nights",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert response.status_code == 428, response.content
+    assert response.json()["code"] == "ugc_policy_update_required"
+    assert PublishedNight.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_night_post_with_stale_header(client):
+    token, _account = _register(client, "janek")
+    _accept(_account)
+
+    response = client.post(
+        "/v1/nights",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_ugc(version="2020-01-01"),
+    )
+
+    assert response.status_code == 428, response.content
+    assert response.json()["code"] == "ugc_policy_update_required"
+    assert PublishedNight.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_accepted_account_with_current_header(client):
+    token, account = _register(client, "janek")
+    _accept(account)
+
+    response = client.post(
+        "/v1/nights",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PublishedNight.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_keeps_no_header_requests_legacy_compatible(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+
+    response = _publish(client, token)
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PublishedNight.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_deletes_without_acceptance(client):
+    owner_token, owner = _register(client, "autor")
+    viewer_token, viewer = _register(client, "divak")
+    night = _publish(client, owner_token, visibility="public").json()["night"]
+    comment = client.post(
+        f"/v1/nights/{night['id']}/comments",
+        data={"client_id": str(uuid.uuid4()), "body": "Nazdar."},
+        format="json",
+        **_auth(viewer_token),
+    ).json()["comment"]
+    comment_id = comment["id"]
+
+    deleted_comment = client.delete(
+        f"/v1/nights/{night['id']}/comments/{comment_id}",
+        **_auth(viewer_token),
+        **_ugc(),
+    )
+    deleted_night = client.delete(f"/v1/nights/{night['client_id']}", **_auth(owner_token), **_ugc())
+
+    assert deleted_comment.status_code == status.HTTP_200_OK, deleted_comment.content
+    assert deleted_night.status_code == status.HTTP_200_OK, deleted_night.content
+    # Deleting the night cascade-hard-deletes its comment rows.
+    assert not PublishedNightComment.objects.filter(public_id=comment_id).exists()
+    assert not PublishedNight.objects.filter(public_id=night["id"]).exists()
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_comment_post_without_acceptance(client):
+    owner_token, _owner = _register(client, "autor")
+    viewer_token, viewer = _register(client, "divak")
+    assert viewer.ugc_terms_accepted_at is None
+    night = _publish(client, owner_token, visibility="public").json()["night"]
+
+    response = client.post(
+        f"/v1/nights/{night['id']}/comments",
+        data={"client_id": str(uuid.uuid4()), "body": "Nazdar."},
+        format="json",
+        **_auth(viewer_token),
+        **_ugc(),
+    )
+
+    assert response.status_code == 428, response.content
+    assert response.json()["code"] == "ugc_consent_required"
+    assert PublishedNightComment.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_comment_post_from_accepted_account_with_current_header(client):
+    owner_token, _owner = _register(client, "autor")
+    viewer_token, viewer = _register(client, "divak")
+    _accept(viewer)
+    night = _publish(client, owner_token, visibility="public").json()["night"]
+
+    response = client.post(
+        f"/v1/nights/{night['id']}/comments",
+        data={"client_id": str(uuid.uuid4()), "body": "Nazdar."},
+        format="json",
+        **_auth(viewer_token),
+        **_ugc(),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PublishedNightComment.objects.count() == 1

@@ -55,3 +55,16 @@ def ugc_consent_precondition(request):
             "ugc_policy_update_required", _UGC_POLICY_UPDATE_DETAIL
         )
     return None
+
+
+def ugc_may_publish(request) -> bool:
+    """True when this request may produce UGC side effects.
+
+    Derived from :func:`ugc_consent_precondition`: headerless legacy clients
+    pass and keep released-client publishing behavior, while a request carrying
+    the current policy header from an account without a matching stored
+    acceptance must not write community data, brand/product/price indexes or
+    author pointers. Callers decide per-endpoint which writes count as UGC;
+    private/offline-core writes are never gated here.
+    """
+    return ugc_consent_precondition(request) is None

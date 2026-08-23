@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
@@ -14,6 +15,7 @@ from rest_framework.test import APIClient
 
 from pubs.accounts import issue_token
 from pubs.api.community_event_views import _dashboard_payload
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.community_events import (
     CommunityEvent,
     CommunityEventMembership,
@@ -82,12 +84,13 @@ def _payload(**overrides):
     return data
 
 
-def _create(client: APIClient, token: str, **overrides):
+def _create(client: APIClient, token: str, *, headers: dict | None = None, **overrides):
     return client.post(
         "/v1/community-events",
         data=_payload(**overrides),
         format="json",
         **_auth(token),
+        **(headers or {}),
     )
 
 
@@ -120,13 +123,31 @@ def _create_team(
     *,
     client_id: str | None = None,
     name: str = "Výčepní esa",
+    headers: dict | None = None,
 ):
     return client.post(
         f"/v1/community-events/{event_id}/teams",
         data={"client_id": client_id or str(uuid.uuid4()), "name": name},
         format="json",
         **_auth(token),
+        **(headers or {}),
     )
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
 
 
 @pytest.mark.django_db
@@ -826,3 +847,164 @@ def test_hard_deleted_team_creator_preserves_team_with_anonymized_creator(client
     team = CommunityEventTeam.objects.get(pk=team_id)
     assert team.created_by_id is None
     assert CommunityEventTeamMembership.objects.filter(team_id=team_id).exists()
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_event_create_with_current_header_and_no_acceptance_returns_428(client):
+    _host, token = _account("host")
+    denied = _create(client, token, headers=_policy_header())
+    assert denied.status_code == 428
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert CommunityEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_accepted_account_creates_event_with_current_header(client):
+    _host, token = _account("host")
+    _accept_ugc(client, token)
+    created = _create(client, token, headers=_policy_header())
+    assert created.status_code == status.HTTP_201_CREATED
+    assert CommunityEvent.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_legacy_create_without_policy_header_still_succeeds(client):
+    _host, token = _account("host")
+    created = _create(client, token)
+    assert created.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+def test_join_with_message_gated_by_current_header_without_acceptance(client):
+    _host, host_token = _account("host")
+    guest, guest_token = _account("guest")
+    event_id = _create(client, host_token).json()["id"]
+    denied = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"message": "Přinesu karty.", "adults_confirmed": True},
+        format="json",
+        **_auth(guest_token),
+        **_policy_header(),
+    )
+    assert denied.status_code == 428
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert not CommunityEventMembership.objects.filter(account=guest).exists()
+
+
+@pytest.mark.django_db
+def test_join_with_blank_message_bypasses_gate(client):
+    _host, host_token = _account("host")
+    guest, guest_token = _account("guest")
+    event_id = _create(client, host_token).json()["id"]
+    joined = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(guest_token),
+        **_policy_header(),
+    )
+    assert joined.status_code == status.HTTP_202_ACCEPTED
+    assert CommunityEventMembership.objects.filter(
+        account=guest,
+        status=CommunityEventMembership.Status.PENDING,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_non_authored_state_actions_bypass_gate(client):
+    _host, host_token = _account("host")
+    guest, guest_token = _account("guest")
+    event_id = _create(client, host_token).json()["id"]
+    request_id = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(guest_token),
+        **_policy_header(),
+    ).json()["request_id"]
+    assert (
+        client.post(
+            f"/v1/community-events/{event_id}/requests/{request_id}/approve",
+            **{**_auth(host_token), **_policy_header()},
+        ).status_code
+        == status.HTTP_200_OK
+    )
+    team_id = _create_team(client, event_id, host_token).json()["team"]["id"]
+    assert (
+        client.post(
+            f"/v1/community-events/{event_id}/teams/{team_id}/join",
+            **{**_auth(guest_token), **_policy_header()},
+        ).status_code
+        == status.HTTP_201_CREATED
+    )
+    assert (
+        client.post(
+            f"/v1/community-events/{event_id}/report",
+            data={"reason": "other"},
+            format="json",
+            **{**_auth(guest_token), **_policy_header()},
+        ).status_code
+        == status.HTTP_201_CREATED
+    )
+    left = client.delete(
+        f"/v1/community-events/{event_id}/join",
+        **{**_auth(guest_token), **_policy_header()},
+    )
+    assert left.json()["status"] == "left"
+    cancelled = client.post(
+        f"/v1/community-events/{event_id}/cancel",
+        **{**_auth(host_token), **_policy_header()},
+    )
+    assert cancelled.json()["status"] == "cancelled"
+
+
+@pytest.mark.django_db
+def test_team_create_gated_until_acceptance_then_succeeds_with_header(client):
+    _host, host_token = _account("host")
+    _guest, guest_token = _account("guest")
+    event_id = _create(client, host_token).json()["id"]
+    _join_and_approve(client, event_id, host_token, guest_token)
+    denied = _create_team(client, event_id, guest_token, headers=_policy_header())
+    assert denied.status_code == 428
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert CommunityEventTeam.objects.count() == 0
+
+    _accept_ugc(client, guest_token)
+    created = _create_team(client, event_id, guest_token, headers=_policy_header())
+    assert created.status_code == status.HTTP_201_CREATED
+    assert CommunityEventTeam.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_team_rename_gated_until_acceptance_then_succeeds_with_header(client):
+    _host, host_token = _account("host")
+    creator, creator_token = _account("creator")
+    event_id = _create(client, host_token, capacity=10).json()["id"]
+    _join_and_approve(client, event_id, host_token, creator_token)
+    team_id = _create_team(client, event_id, creator_token).json()["team"]["id"]
+
+    denied = client.patch(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        data={"name": "Pěna a říz"},
+        format="json",
+        **_auth(creator_token),
+        **_policy_header(),
+    )
+    assert denied.status_code == 428
+    assert CommunityEventTeam.objects.get(pk=team_id).name == "Výčepní esa"
+
+    _accept_ugc(client, creator_token)
+    renamed = client.patch(
+        f"/v1/community-events/{event_id}/teams/{team_id}",
+        data={"name": "Pěna a říz"},
+        format="json",
+        **_auth(creator_token),
+        **_policy_header(),
+    )
+    assert renamed.status_code == status.HTTP_200_OK
+    assert renamed.json()["team"]["name"] == "Pěna a říz"

@@ -13,6 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -21,6 +22,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
     BeerPhoto,
@@ -71,6 +73,18 @@ def _register(client: APIClient, nickname: str) -> tuple[str, Account]:
 
 def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+def _ugc(version: str | None = settings.UGC_POLICY_VERSION) -> dict[str, str]:
+    if version is None:
+        return {}
+    return {f"HTTP_{UGC_POLICY_HEADER.replace('-', '_').upper()}": version}
+
+
+def _accept(account: Account, version: str = settings.UGC_POLICY_VERSION) -> None:
+    account.ugc_terms_version = version
+    account.ugc_terms_accepted_at = timezone.now()
+    account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
 
 
 def _make_friends(a: Account, b: Account) -> None:
@@ -131,6 +145,7 @@ def _post_photo(
     *,
     client_id: uuid.UUID | None = None,
     image=None,
+    headers: dict[str, str] | None = None,
     **overrides,
 ):
     data = {
@@ -145,7 +160,9 @@ def _post_photo(
     data.update(overrides)
     if image is not False:
         data["image"] = image if image is not None else _upload()
-    return client.post("/v1/beer-photos", data=data, format="multipart", **_auth(token))
+    return client.post(
+        "/v1/beer-photos", data=data, format="multipart", **_auth(token), **(headers or {})
+    )
 
 
 @pytest.mark.django_db
@@ -681,3 +698,53 @@ def test_content_report_with_photo_id_gates_on_photo_visibility(client):
     # A photo the reporter cannot see is an opaque 404.
     assert invisible.status_code == status.HTTP_404_NOT_FOUND, invisible.content
     assert invisible.json()["code"] == "photo_not_found"
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_friends_photo_post_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+
+    resp = _post_photo(client, token, visibility="friends", headers=_ugc())
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    assert BeerPhoto.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_accepted_account_with_current_header(client):
+    token, account = _register(client, "janek")
+    _accept(account)
+
+    resp = _post_photo(client, token, visibility="friends", headers=_ugc())
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert BeerPhoto.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_keeps_no_header_photo_post_legacy_compatible(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+
+    resp = _post_photo(client, token, visibility="friends")
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert BeerPhoto.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_private_photo_post_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+
+    resp = _post_photo(client, token, visibility="private", headers=_ugc())
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert BeerPhoto.objects.get().visibility == BeerPhoto.Visibility.PRIVATE

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
@@ -13,6 +14,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
     AccountUsageStats,
@@ -487,6 +489,72 @@ def test_follow_rejects_private_and_blocked_profiles_and_block_removes_existing(
         "code": "blocked",
         "detail": "Tenhle profil sledovat nejde.",
     }
+
+
+@pytest.mark.django_db
+def test_block_bypasses_ugc_gate_without_stored_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    _target_token, target = _register(client, "petr")
+
+    response = client.post(
+        "/v1/friends/blocks",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **{
+            **_auth(token),
+            "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION,
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"blocked": True}
+    assert FriendBlock.objects.filter(blocker=account, blocked=target).exists()
+
+
+def _current_ugc_header(token: str) -> dict[str, str]:
+    return {
+        **_auth(token),
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION,
+    }
+
+
+@pytest.mark.django_db
+def test_friend_request_bypasses_ugc_gate_without_stored_acceptance(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    assert account_a.ugc_terms_accepted_at is None
+
+    response = client.post(
+        "/v1/friends/requests",
+        data={"nickname": "petr"},
+        format="json",
+        **_current_ugc_header(token_a),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert Friendship.objects.filter(
+        requester=account_a,
+        recipient=account_b,
+        status=Friendship.Status.PENDING,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_follow_bypasses_ugc_gate_without_stored_acceptance(client):
+    token, follower = _register(client, "janek")
+    _target_token, target = _register(client, "petr")
+    assert follower.ugc_terms_accepted_at is None
+
+    response = client.post(
+        "/v1/follows",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **_current_ugc_header(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert Follow.objects.filter(follower=follower, target=target).exists()
 
 
 @pytest.mark.django_db

@@ -9,12 +9,14 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.enrichment import community_hours_to_osm, geohash8
 from pubs.models import (
     Account,
@@ -943,3 +945,83 @@ def test_xp_shares_distinct_pub_marker_with_amenities(client):
         **_auth(token),
     )
     assert AccountMappedPub.objects.count() == 1
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+def test_submit_with_current_header_and_no_acceptance_returns_428(client):
+    token = _register(client)
+
+    denied = client.post(
+        "/v1/pub-community",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert PubCommunityData.objects.count() == 0
+    assert PubContributionLog.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_accepted_account_submits_with_current_header(client):
+    token = _register(client)
+    _accept_ugc(client, token)
+
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert PubCommunityData.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_legacy_submit_without_policy_header_still_succeeds(client):
+    token = _register(client)
+
+    resp = client.post("/v1/pub-community", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_pub_hours_read_is_not_blocked_by_consent_gate(client):
+    _register(client)  # no acceptance stored on purpose
+
+    read = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}]},
+        format="json",
+        **_policy_header(),
+    )
+
+    assert read.status_code == status.HTTP_200_OK

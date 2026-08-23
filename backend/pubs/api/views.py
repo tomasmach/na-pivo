@@ -299,7 +299,7 @@ from .serializers import (
     normalize_beer_checkin_tags,
 )
 from .stats import compute_my_stats, drinking_day, drinking_day_bounds
-from .ugc_consent import ugc_consent_snapshot
+from .ugc_consent import ugc_consent_precondition, ugc_consent_snapshot, ugc_may_publish
 
 logger = logging.getLogger(__name__)
 
@@ -1416,6 +1416,10 @@ class PubNameCorrectionView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
+
         data = serializer.validated_data
         identity = _resolve_pub_input(data)
         cache_key = identity.cache_key
@@ -1496,6 +1500,10 @@ class UserAddedPubView(APIView):
         serializer = UserAddedPubRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
 
         data = serializer.validated_data
         city = data.get("city") or ""
@@ -1657,6 +1665,10 @@ class UserAddedPubView(APIView):
         serializer = UserAddedPubRenameRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
 
         # Resolve ownership before a potentially billable geocode. The locked
         # lookup below repeats the same owner filter before writing.
@@ -1843,6 +1855,10 @@ class PubCommunityView(APIView):
         )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
 
         data = serializer.validated_data
         identity = _resolve_pub_input(data)
@@ -2295,6 +2311,12 @@ class DrinksView(APIView):
     PATCH fixes the private beer name on a single DrinkLog row. It is scoped to
     the account, idempotent for repeated retries, and deliberately does NOT edit
     PubCommunityData, price, volume, pub or timestamps.
+
+    UGC consent: the private log (and the 201/duplicate responses) is offline
+    core and never gated. A request carrying the current policy header from an
+    account without matching acceptance still gets its DrinkLog, but skips all
+    public side effects — community menu merge, brand/product/price indexes and
+    the contributor pointer. Headerless legacy clients keep released behavior.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -2361,6 +2383,9 @@ class DrinksView(APIView):
         is_beer = drink_type == DrinkLog.DrinkType.BEER
         brand_match = match_beer_brand(beer["name"], match_cache=match_cache) if is_beer else None
         drank_at = data.get("drank_at") or dj_timezone.now()
+        # The private DrinkLog is offline core and is never consent-gated; only
+        # the public side effects below are. Headerless legacy clients pass.
+        may_publish = ugc_may_publish(request)
 
         try:
             with transaction.atomic():
@@ -2463,7 +2488,7 @@ class DrinksView(APIView):
                 }
 
                 menu_updated = False
-                if is_pub and is_beer:
+                if may_publish and is_pub and is_beer:
                     menu_updated = self._merge_into_community(
                         cache_key,
                         {
@@ -2507,6 +2532,9 @@ class DrinksView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         update = serializer.validated_data
+        # Private DrinkLog fields may always change; the public brand/product
+        # index refresh below is a UGC side effect and stays consent-gated.
+        may_publish = ugc_may_publish(request)
         try:
             with transaction.atomic():
                 drink = (
@@ -2581,9 +2609,13 @@ class DrinksView(APIView):
                     ]
                 )
 
-                if drink.place_context == DrinkLog.PlaceContext.PUB and (
-                    old_drink_type == DrinkLog.DrinkType.BEER
-                    or drink.drink_type == DrinkLog.DrinkType.BEER
+                if (
+                    may_publish
+                    and drink.place_context == DrinkLog.PlaceContext.PUB
+                    and (
+                        old_drink_type == DrinkLog.DrinkType.BEER
+                        or drink.drink_type == DrinkLog.DrinkType.BEER
+                    )
                 ):
                     self._refresh_drink_brand_indexes_after_patch(
                         drink=drink,
@@ -3004,6 +3036,34 @@ class ContentReportView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+        # Additive (moderation): a report can target one specific night
+        # comment. The same contract as the comment list applies: the parent
+        # night must be visible to the reporter, and the comment itself must
+        # not be soft-removed, belong to the reported (active) account and be
+        # written by someone the reporter is not blocked from seeing.
+        comment = None
+        if data.get("comment_id") is not None:
+            comment = (
+                PublishedNightComment.objects.select_related("account", "night", "night__account")
+                .filter(public_id=data["comment_id"])
+                .first()
+            )
+            blocked_from_reporter = _blocked_account_ids(request.user)
+            comment_visible = (
+                comment is not None
+                and target is not None
+                and not comment.is_removed
+                and comment.account_id == target.pk
+                and target.status == Account.Status.ACTIVE
+                and target.pk not in blocked_from_reporter
+                and _published_night_visible_to(comment.night, request.user)
+            )
+            if not comment_visible:
+                return Response(
+                    {"detail": "Comment not found.", "code": "comment_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
         # A profile the reporter can actually see can be reported: a public
         # profile, or a non-public one they share a friendship with. "Share a
         # friendship" includes a still-pending request in either direction, not
@@ -3013,6 +3073,7 @@ class ContentReportView(APIView):
         can_report = (
             photo is not None
             or night is not None
+            or comment is not None
             or (
                 target is not None
                 and (
@@ -3053,6 +3114,19 @@ class ContentReportView(APIView):
             snapshot["photo_id"] = str(photo.public_id)
             snapshot["photo_url"] = photo_url
             snapshot["photo_caption"] = photo.caption
+        if comment is not None:
+            # Snapshot the reported comment so moderation keeps the exact body
+            # and author context even if it is deleted before review.
+            snapshot["comment_id"] = str(comment.public_id)
+            snapshot["comment"] = {
+                "body": comment.body,
+                "author": {
+                    "id": str(comment.account.public_id),
+                    "nickname": comment.account.nickname,
+                    "display_name": comment.account.display_name,
+                },
+            }
+            night = comment.night
         if night is not None:
             # Keep enough immutable context for moderation if the author later
             # unpublishes or edits the night. No raw location or price data is
@@ -6110,6 +6184,13 @@ class BeerCheckInView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        if (data.get("visibility") or BeerCheckIn.Visibility.PRIVATE) == (
+            BeerCheckIn.Visibility.FRIENDS
+        ):
+            precondition = ugc_consent_precondition(request)
+            if precondition is not None:
+                return precondition
+
         match_cache = BeerCatalogMatchCache()
         catalog_match = match_beer_identity(
             data["beer_name"],
@@ -6360,6 +6441,10 @@ class PublishedNightView(APIView):
         serializer = PublishedNightRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
 
         data = serializer.validated_data
         data["updated_at"] = bounded_client_time(data["updated_at"])
@@ -6640,6 +6725,9 @@ class PublishedNightCommentView(APIView):
                 {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
         serializer = PublishedNightCommentRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -7013,6 +7101,12 @@ class BeerPhotoView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         data = serializer.validated_data
+        if (data.get("visibility") or BeerPhoto.Visibility.FRIENDS) == (
+            BeerPhoto.Visibility.FRIENDS
+        ):
+            precondition = ugc_consent_precondition(request)
+            if precondition is not None:
+                return precondition
         contest = current_photo_contest()
         pub_identity = resolve_pub_identity(
             data.get("pub_cache_key") or "",
@@ -7451,6 +7545,9 @@ class PhotoContestEntryView(APIView):
         serializer = PhotoContestEnterSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
         if not request.user.nickname:
             return Response(
                 {
@@ -10802,16 +10899,61 @@ class AccountMeView(APIView):
                 return Response({"detail": detail, "code": code}, status=http_status)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            account = serializer.save()
-        except IntegrityError:
-            # DB UniqueConstraint backstop for a nickname TOCTOU race.
-            return Response(
-                {"detail": "Tuto přezdívku už někdo používá.", "code": "nickname_taken"},
-                status=status.HTTP_409_CONFLICT,
+        data = serializer.validated_data
+        # Re-saving the already persisted nickname/display_name (compared on
+        # normalized serializer values) is a true no-op, not authoring. Any real
+        # change to either field — including one hidden in a mixed payload —
+        # gates the whole request before mutation.
+        nickname_changed = (
+            "nickname" in data and data["nickname"] != request.user.nickname
+        )
+        display_name_changed = (
+            "display_name" in data
+            and (data["display_name"] or "") != (request.user.display_name or "")
+        )
+        authors_public_profile = (
+            nickname_changed
+            or display_name_changed
+            or (
+                "is_public" in data
+                and data["is_public"] is True
+                and request.user.is_public is not True
             )
-        except AccountError as exc:
-            return _coded_error(exc)
+        )
+        if authors_public_profile:
+            precondition = ugc_consent_precondition(request)
+            if precondition is not None:
+                return precondition
+
+        # True no-op: when EVERY validated field already matches the persisted
+        # Account (normalized where model semantics require it, e.g. display_name
+        # empty string vs None), skip serializer.save entirely — last_seen_at is
+        # auto_now, so a redundant UPDATE would still churn the row.
+        def _field_unchanged(key: str, value) -> bool:
+            current = getattr(request.user, key)
+            if key == "display_name":
+                return (value or "") == (current or "")
+            return value == current
+
+        all_fields_unchanged = all(
+            _field_unchanged(key, value) for key, value in data.items()
+        )
+        if not all_fields_unchanged:
+            try:
+                account = serializer.save()
+            except IntegrityError:
+                # DB UniqueConstraint backstop for a nickname TOCTOU race.
+                return Response(
+                    {
+                        "detail": "Tuto přezdívku už někdo používá.",
+                        "code": "nickname_taken",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            except AccountError as exc:
+                return _coded_error(exc)
+        else:
+            account = request.user
         return Response(
             AccountMeSerializer(account, context={"request": request}).data,
             status=status.HTTP_200_OK,
@@ -11087,6 +11229,10 @@ class AccountAvatarView(APIView):
     throttle_scope = "avatar"
 
     def _store(self, request: Request) -> Response:
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
+
         upload = request.FILES.get("avatar")
         if upload is None:
             return Response(
@@ -11731,6 +11877,13 @@ class PubAmenityVoteView(APIView):
         serializer = PubAmenityVotesRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # A null-only batch is pure retraction (privacy-preserving), so it and
+        # the DELETE endpoint bypass the consent gate; any real vote gates it.
+        if any(row.get("value") is not None for row in serializer.validated_data["votes"]):
+            precondition = ugc_consent_precondition(request)
+            if precondition is not None:
+                return precondition
 
         try:
             active_keys = _active_amenity_keys()

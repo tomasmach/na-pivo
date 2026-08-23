@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from pubs.api.authentication import AccountTokenAuthentication
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
+from pubs.api.ugc_consent import ugc_consent_precondition
 from pubs.community_events import (
     COMMUNITY_EVENT_TEAM_MAX_MEMBERS,
     CommunityEvent,
@@ -580,6 +581,9 @@ class CommunityEventCollectionView(APIView):
             )
         serializer = CommunityEventCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
         data = serializer.validated_data
         event, created = CommunityEvent.objects.get_or_create(
             host=request.user,
@@ -684,6 +688,10 @@ class CommunityEventJoinView(APIView):
             return error
         serializer = CommunityEventJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        if serializer.validated_data["message"]:
+            precondition = ugc_consent_precondition(request)
+            if precondition is not None:
+                return precondition
         event = _event_queryset().filter(pk=event_id).first()
         if (
             not event
@@ -783,6 +791,9 @@ class CommunityEventTeamCollectionView(APIView):
             return error
         serializer = CommunityEventTeamCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
         data = serializer.validated_data
 
         with transaction.atomic():
@@ -1000,6 +1011,9 @@ class CommunityEventTeamDetailView(APIView):
             return error
         serializer = CommunityEventTeamUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
 
         with transaction.atomic():
             event = (

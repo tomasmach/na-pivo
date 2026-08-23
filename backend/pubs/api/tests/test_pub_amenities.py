@@ -18,6 +18,7 @@ daily-cap behaviour is covered in test_pub_amenities_mapper.py.
 from __future__ import annotations
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
@@ -25,6 +26,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
@@ -1126,3 +1128,132 @@ def test_amenity_status_boundaries_pin_min_votes_before_dispute(settings):
     # Confidence is exact agreement×volume rounded to 4 (pins the formula).
     assert _amenity_status(3, 0)[1] == round((3 / 3) * (3 / 5), 4)
     assert _amenity_status(2, 1)[1] == round((2 / 3) * (3 / 5), 4)
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", ["yes", "no"])
+def test_shared_vote_with_current_header_and_no_acceptance_returns_428(client, value):
+    token = _register(client)
+
+    denied = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [_vote(value=value)]},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert PubAmenityVote.objects.count() == 0
+    assert PubAmenity.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_mixed_batch_with_any_shared_vote_is_gated(client):
+    """One null retraction plus one affirmative vote → the whole PUT is gated."""
+    token = _register(client)
+
+    denied = client.put(
+        "/v1/pub-amenities/votes",
+        data={
+            "votes": [
+                _vote(
+                    amenity_key="practical_wifi",
+                    value=None,
+                    client_updated_at="2026-06-23T18:30:00+02:00",
+                ),
+                _vote(value="yes"),
+            ]
+        },
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert PubAmenityVoteTombstone.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_null_retraction_with_current_header_bypasses_gate(client):
+    token = _register(client)
+
+    resp = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [_vote(value=None)]},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    result = resp.json()["results"][0]
+    assert result["applied"] is True
+    assert result["deleted"] is False
+    assert PubAmenityVote.objects.count() == 0
+    assert PubAmenityVoteTombstone.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_accepted_account_votes_with_current_header(client):
+    token = _register(client)
+    _accept_ugc(client, token)
+
+    resp = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [_vote()]},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["results"][0]["applied"] is True
+    assert PubAmenityVote.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_reads_and_delete_retract_are_not_blocked(client):
+    token = _register(client)
+    _put(client, token, _vote(value="yes"))  # legacy write without header
+
+    own = client.get("/v1/pub-amenities/votes", **_auth(token), **_policy_header())
+    assert own.status_code == status.HTTP_200_OK
+
+    aggregates = client.get(
+        "/v1/pub-amenities",
+        {"cache_keys": _KEY},
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert aggregates.status_code == status.HTTP_200_OK
+
+    deleted = client.delete(
+        f"/v1/pub-amenities/votes/{_KEY}/seating_garden",
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert deleted.json() == {"deleted": True}
+    assert PubAmenityVote.objects.count() == 0

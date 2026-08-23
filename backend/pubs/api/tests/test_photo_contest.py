@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -20,9 +21,11 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
     AccountUsageStats,
+    ContentReport,
     FriendBlock,
     PhotoContest,
     PhotoContestEntry,
@@ -67,6 +70,18 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
+def _ugc(version: str | None = settings.UGC_POLICY_VERSION) -> dict[str, str]:
+    if version is None:
+        return {}
+    return {f"HTTP_{UGC_POLICY_HEADER.replace('-', '_').upper()}": version}
+
+
+def _accept(account: Account, version: str = settings.UGC_POLICY_VERSION) -> None:
+    account.ugc_terms_version = version
+    account.ugc_terms_accepted_at = timezone.now()
+    account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
+
+
 def _jpeg_bytes(size: tuple[int, int] = (400, 300), color=(210, 160, 40)) -> bytes:
     img = Image.new("RGB", size, color)
     buf = io.BytesIO()
@@ -90,12 +105,13 @@ def _upload_photo(client: APIClient, token: str, **overrides) -> str:
     return resp.json()["photo"]["id"]
 
 
-def _enter(client: APIClient, token: str, photo_id: str):
+def _enter(client: APIClient, token: str, photo_id: str, headers: dict[str, str] | None = None):
     return client.post(
         "/v1/photo-contest/entries",
         data={"photo_id": photo_id},
         format="json",
         **_auth(token),
+        **(headers or {}),
     )
 
 
@@ -238,6 +254,87 @@ def test_withdraw_entry_is_idempotent_204(client):
     assert first.status_code == status.HTTP_204_NO_CONTENT
     assert second.status_code == status.HTTP_204_NO_CONTENT
     assert PhotoContestEntry.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_entry_post_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token)
+
+    resp = _enter(client, token, photo_id, headers=_ugc())
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    assert PhotoContestEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_accepted_account_with_current_header(client):
+    token, account = _register(client, "janek")
+    _accept(account)
+    photo_id = _upload_photo(client, token)
+
+    resp = _enter(client, token, photo_id, headers=_ugc())
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert PhotoContestEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_keeps_no_header_entry_post_legacy_compatible(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token)
+
+    resp = _enter(client, token, photo_id)
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert PhotoContestEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_withdraw_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token)
+    assert _enter(client, token, photo_id).status_code == status.HTTP_201_CREATED
+
+    resp = client.delete("/v1/photo-contest/entries", **_auth(token), **_ugc())
+
+    assert resp.status_code == status.HTTP_204_NO_CONTENT, resp.content
+    assert PhotoContestEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_content_report_without_acceptance(client):
+    token_owner, owner = _register(client, "janek")
+    token_stranger, stranger = _register(client, "cizinec")
+    assert stranger.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token_owner)
+    assert _enter(client, token_owner, photo_id).status_code == status.HTTP_201_CREATED
+
+    resp = client.post(
+        "/v1/content-reports",
+        data={
+            "target_account_id": str(owner.public_id),
+            "reason": "inappropriate_photo",
+            "photo_id": photo_id,
+        },
+        format="json",
+        **_auth(token_stranger),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    report = ContentReport.objects.get()
+    assert report.target_account == owner
+    assert report.target_snapshot["photo_id"] == photo_id
 
 
 # ---------------------------------------------------------------------------

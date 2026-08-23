@@ -29,6 +29,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -43,6 +44,7 @@ import pubs.accounts as accounts
 import pubs.oauth as oauth
 from pubs.accounts import AccountError
 from pubs.api.profile_helpers import derive_account_profile_stats
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import Account, DrinkLog, PubRating, PubVisit
 
 # ---------------------------------------------------------------------------
@@ -84,6 +86,23 @@ def _bootstrap(client) -> tuple[str, str]:
 
 def _auth(token: str) -> dict:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+# ---------------------------------------------------------------------------
+# UGC consent helpers (mirrors test_nights.py)
+# ---------------------------------------------------------------------------
+
+
+def _ugc(version: str | None = settings.UGC_POLICY_VERSION) -> dict:
+    if version is None:
+        return {}
+    return {f"HTTP_{UGC_POLICY_HEADER.replace('-', '_').upper()}": version}
+
+
+def _accept(account: Account, version: str = settings.UGC_POLICY_VERSION) -> None:
+    account.ugc_terms_version = version
+    account.ugc_terms_accepted_at = timezone.now()
+    account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
 
 
 # ---------------------------------------------------------------------------
@@ -1371,3 +1390,321 @@ def test_avatar_upload_is_throttled(client, tmp_media, monkeypatch):
 def test_makemigrations_reports_no_pending_changes():
     """No model drift: 0026 captures every field/constraint on Account."""
     call_command("makemigrations", "pubs", check=True, dry_run=True, verbosity=0)
+
+
+# ===========================================================================
+# 13. UGC consent gate — avatar upload + selective PATCH /v1/account/me
+# ===========================================================================
+
+
+def _assert_avatar_untouched(public_id: str, media_root) -> None:
+    account = Account.objects.get(public_id=public_id)
+    account.refresh_from_db()
+    assert not account.avatar
+    avatars_dir = media_root / "avatars"
+    assert not avatars_dir.exists() or not any(avatars_dir.iterdir())
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_avatar_upload_without_acceptance(client, tmp_media):
+    token, account_id = _bootstrap(client)
+
+    resp = client.put(
+        "/v1/account/me/avatar",
+        data={"avatar": _upload(_png_bytes((300, 300)))},
+        format="multipart",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    _assert_avatar_untouched(account_id, tmp_media)
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_accepted_avatar_upload_with_current_header(client, tmp_media):
+    token, account_id = _bootstrap(client)
+    _accept(Account.objects.get(public_id=account_id))
+
+    resp = client.put(
+        "/v1/account/me/avatar",
+        data={"avatar": _upload(_png_bytes((300, 300)))},
+        format="multipart",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert Account.objects.get(public_id=account_id).avatar
+
+
+@pytest.mark.django_db
+def test_ugc_gate_keeps_no_header_avatar_upload_legacy_compatible(client, tmp_media):
+    token, account_id = _bootstrap(client)
+    assert Account.objects.get(public_id=account_id).ugc_terms_accepted_at is None
+
+    resp = client.put(
+        "/v1/account/me/avatar",
+        data={"avatar": _upload(_png_bytes((300, 300)))},
+        format="multipart",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert Account.objects.get(public_id=account_id).avatar
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_avatar_delete(client, tmp_media):
+    token, account_id = _bootstrap(client)
+    client.put(
+        "/v1/account/me/avatar",
+        data={"avatar": _upload(_png_bytes((300, 300)))},
+        format="multipart",
+        **_auth(token),
+    )
+    assert Account.objects.get(public_id=account_id).avatar
+
+    resp = client.delete("/v1/account/me/avatar", **_auth(token), **_ugc())
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert not Account.objects.get(public_id=account_id).avatar
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("field_payload", [
+    {"nickname": "Novak"},
+    {"display_name": "Tomáš"},
+    {"nickname": "Novak", "hide_pub_names": True},  # mixed: gate the whole request
+])
+def test_ugc_gate_blocks_publishing_profile_patch_without_acceptance(
+    client, field_payload
+):
+    token, account_id = _bootstrap(client)
+
+    resp = client.patch(
+        "/v1/account/me", data=field_payload, format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    account = Account.objects.get(public_id=account_id)
+    assert account.nickname is None
+    assert account.display_name == ""
+    assert account.hide_pub_names is False
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_private_to_public_is_public_without_acceptance(client):
+    """A real private→public transition is gated: with the current policy header
+    but no acceptance it must 428 and leave the account private."""
+    token, account_id = _bootstrap(client)
+    Account.objects.filter(public_id=account_id).update(is_public=False)
+    assert Account.objects.get(public_id=account_id).is_public is False
+
+    resp = client.patch(
+        "/v1/account/me", data={"is_public": True}, format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    assert Account.objects.get(public_id=account_id).is_public is False
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_noop_is_public_true_on_already_public(client):
+    """An already-public account PATCHing is_public=true is a no-op, not a
+    publishing change — it passes without any consent."""
+    token, account_id = _bootstrap(client)
+    assert Account.objects.get(public_id=account_id).is_public is True
+
+    resp = client.patch(
+        "/v1/account/me", data={"is_public": True}, format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["is_public"] is True
+
+
+@pytest.mark.django_db
+def test_ugc_gate_bypasses_private_profile_changes(client):
+    """Safety/privacy-only fields must pass even without any acceptance."""
+    token, account_id = _bootstrap(client)
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"is_public": False, "hide_pub_names": True},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["is_public"] is False
+    assert body["hide_pub_names"] is True
+    account = Account.objects.get(public_id=account_id)
+    assert account.is_public is False
+    assert account.hide_pub_names is True
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_accepted_publishing_profile_patch(client):
+    token, account_id = _bootstrap(client)
+    _accept(Account.objects.get(public_id=account_id))
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"nickname": "Novak"},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert Account.objects.get(public_id=account_id).nickname == "Novak"
+
+
+@pytest.mark.django_db
+def test_ugc_gate_keeps_no_header_profile_patch_legacy_compatible(client):
+    token, account_id = _bootstrap(client)
+
+    resp = client.patch(
+        "/v1/account/me", data={"nickname": "Novak"}, format="json", **_auth(token)
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert Account.objects.get(public_id=account_id).nickname == "Novak"
+
+
+# ---------------------------------------------------------------------------
+# True no-op profile patches: re-saving the already persisted nickname or
+# display_name changes nothing public, so consent is not required even with
+# the current policy header. Any real authored change still gates the whole
+# request before mutation.
+# ---------------------------------------------------------------------------
+
+
+def _persist_profile_fields(client, token: str, payload: dict) -> None:
+    """Set profile fields via a headerless (legacy) patch, which stays ungated."""
+    setup = client.patch("/v1/account/me", data=payload, format="json", **_auth(token))
+    assert setup.status_code == status.HTTP_200_OK, setup.content
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_same_value_nickname_patch_as_true_noop(client):
+    token, account_id = _bootstrap(client)
+    _persist_profile_fields(client, token, {"nickname": "Novak"})
+
+    resp = client.patch(
+        "/v1/account/me", data={"nickname": "Novak"}, format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert Account.objects.get(public_id=account_id).nickname == "Novak"
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_same_value_display_name_patch_as_true_noop(client):
+    token, account_id = _bootstrap(client)
+    _persist_profile_fields(client, token, {"display_name": "Tomáš"})
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"display_name": "Tomáš"},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert Account.objects.get(public_id=account_id).display_name == "Tomáš"
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_real_nickname_change_with_current_header(client):
+    token, account_id = _bootstrap(client)
+    _persist_profile_fields(client, token, {"nickname": "Novak"})
+
+    resp = client.patch(
+        "/v1/account/me", data={"nickname": "Orel"}, format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    assert Account.objects.get(public_id=account_id).nickname == "Novak"
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_mixed_payload_with_any_real_authored_change(client):
+    """A same-value field must not smuggle a real change past the gate."""
+    token, account_id = _bootstrap(client)
+    _persist_profile_fields(client, token, {"nickname": "Novak"})
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"nickname": "Novak", "display_name": "Jina"},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == 428, resp.content
+    account = Account.objects.get(public_id=account_id)
+    assert account.nickname == "Novak"
+    assert account.display_name == ""
+
+
+@pytest.mark.django_db
+def test_ugc_gate_same_value_profile_patch_does_not_write_account(client):
+    """A pure same-value nickname/display_name PATCH is a true no-op: 200 with
+    the current policy header and no acceptance, and the persisted
+    ``last_seen_at`` (auto_now) must NOT advance — skipping consent is not
+    enough if the serializer still issues a hidden UPDATE."""
+    token, account_id = _bootstrap(client)
+    _persist_profile_fields(
+        client, token, {"nickname": "Novak", "display_name": "Tomáš"}
+    )
+
+    before = Account.objects.get(public_id=account_id).last_seen_at
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"nickname": "Novak", "display_name": "Tomáš"},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["nickname"] == "Novak"
+    assert body["display_name"] == "Tomáš"
+    after = Account.objects.get(public_id=account_id)
+    assert after.last_seen_at == before
+
+
+@pytest.mark.django_db
+def test_ugc_gate_real_preference_change_with_same_value_nickname_still_persists(client):
+    """An actual non-authored change mixed with a same-value nickname must be
+    saved as before — the no-op skip only applies when NOTHING differs."""
+    token, account_id = _bootstrap(client)
+    _persist_profile_fields(client, token, {"nickname": "Novak"})
+
+    before = Account.objects.get(public_id=account_id).last_seen_at
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"nickname": "Novak", "hide_pub_names": True},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["hide_pub_names"] is True
+    account = Account.objects.get(public_id=account_id)
+    assert account.hide_pub_names is True
+    assert account.nickname == "Novak"
+    assert account.last_seen_at > before

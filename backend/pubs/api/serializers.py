@@ -382,10 +382,17 @@ class ContentReportRequestSerializer(serializers.Serializer):
     # Additive (Výčep): pin a report to one explicitly published night. The
     # view verifies both ownership and visibility before snapshotting it.
     night_id = serializers.UUIDField(required=False, allow_null=True)
+    # Additive (moderation): pin a report to one specific night comment. The
+    # view re-checks the full comment-list visibility contract and snapshots
+    # the comment body with its author for moderation.
+    comment_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
-        if attrs.get("photo_id") is not None and attrs.get("night_id") is not None:
-            raise serializers.ValidationError("Report either a photo or a night, not both.")
+        targets = [
+            key for key in ("photo_id", "night_id", "comment_id") if attrs.get(key) is not None
+        ]
+        if len(targets) > 1:
+            raise serializers.ValidationError("Report only one target: photo, night or comment.")
         return attrs
 
 

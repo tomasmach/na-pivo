@@ -34,7 +34,6 @@ from pubs.models import (
     BeerPhoto,
     DrinkLog,
     FriendBlock,
-    Friendship,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
@@ -110,74 +109,6 @@ def _blocked_account_ids(account: Account) -> set[int]:
     return blocked_ids
 
 
-def _accept_evening_friendships(evening: PartyEvening, account: Account, now) -> None:
-    """Accept the joiner's relationship with every other active table member."""
-
-    other_ids = list(
-        evening.memberships.filter(
-            active=True,
-            account__status=Account.Status.ACTIVE,
-        )
-        .exclude(account=account)
-        .values_list("account_id", flat=True)
-    )
-    if not other_ids:
-        return
-    blocked_ids = set(
-        FriendBlock.objects.filter(
-            Q(blocker=account, blocked_id__in=other_ids)
-            | Q(blocked=account, blocker_id__in=other_ids)
-        ).values_list("blocker_id", "blocked_id")
-    )
-    blocked_peer_ids = {
-        blocked_id if blocker_id == account.id else blocker_id
-        for blocker_id, blocked_id in blocked_ids
-    }
-    eligible_ids = set(other_ids) - blocked_peer_ids
-    existing = list(
-        Friendship.objects.select_for_update()
-        .filter(
-            Q(requester=account, recipient_id__in=eligible_ids)
-            | Q(requester_id__in=eligible_ids, recipient=account)
-        )
-        .order_by("pk")
-    )
-    rows_by_peer: dict[int, list[Friendship]] = {}
-    for row in existing:
-        peer_id = row.recipient_id if row.requester_id == account.id else row.requester_id
-        rows_by_peer.setdefault(peer_id, []).append(row)
-
-    pending_to_accept: list[Friendship] = []
-    new_rows: list[Friendship] = []
-    for peer_id in eligible_ids:
-        rows = rows_by_peer.get(peer_id, [])
-        if any(row.status in {Friendship.Status.ACCEPTED, Friendship.Status.DECLINED} for row in rows):
-            continue
-        pending = next((row for row in rows if row.status == Friendship.Status.PENDING), None)
-        if pending is not None:
-            pending.status = Friendship.Status.ACCEPTED
-            pending.requested_at = now
-            pending.responded_at = now
-            pending.updated_at = now
-            pending_to_accept.append(pending)
-        else:
-            new_rows.append(
-                Friendship(
-                    requester=account,
-                    recipient_id=peer_id,
-                    status=Friendship.Status.ACCEPTED,
-                    responded_at=now,
-                )
-            )
-    if pending_to_accept:
-        Friendship.objects.bulk_update(
-            pending_to_accept,
-            ["status", "requested_at", "responded_at", "updated_at"],
-        )
-    if new_rows:
-        Friendship.objects.bulk_create(new_rows, ignore_conflicts=True)
-
-
 def _can_access(evening: PartyEvening, account: Account) -> bool:
     if account.status != Account.Status.ACTIVE or account.ghost_mode:
         return False
@@ -186,8 +117,8 @@ def _can_access(evening: PartyEvening, account: Account) -> bool:
         return False
     if host is not None and _blocked(account, host):
         return False
-    # A join code grants access to this table. Friendship is still not a
-    # prerequisite because joining the table is the consent that creates it.
+    # A join code grants access to this table and nothing else: membership
+    # never creates or mutates a social relationship.
     return evening.memberships.filter(account=account, active=True).exists()
 
 
@@ -577,14 +508,6 @@ class PartyEveningJoinView(APIView):
                 account=account,
                 defaults={"active": True, "left_at": None, "joined_at": now},
             )
-            try:
-                with transaction.atomic():
-                    _accept_evening_friendships(evening, account, now)
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "party evening friendship sync failed",
-                    extra={"event": "party_evening_friendship_sync_failed"},
-                )
         return Response(_serialize_evening(evening, request.user))
 
     def delete(self, request: Request, code: str) -> Response:
