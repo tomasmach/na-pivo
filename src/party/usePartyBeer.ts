@@ -22,12 +22,15 @@ import React from 'react';
 
 import { contextPubKey } from '@/drinks/drinkTypes';
 import { useLivePartyStore, type PartyPubVisit } from '@/mocks/livePartyStore';
-import { logPartyBeer, renamePartyBeer, unlogPartyBeer, updatePartyDrink, type PartyBeerPlace } from '@/party/logBeer';
-import type { DrinkType, ServingType } from '@/drinks/drinkTypes';
 import {
-  selectPartyJoinCode,
-  usePartyEveningStore,
-} from '@/stores/partyEveningStore';
+  logPartyBeer,
+  renamePartyBeer,
+  unlogPartyBeer,
+  updatePartyDrink,
+  type PartyBeerPlace,
+} from '@/party/logBeer';
+import type { DrinkType, ServingType } from '@/drinks/drinkTypes';
+import { selectPartyJoinCode, usePartyEveningStore } from '@/stores/partyEveningStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
 export interface PartyBeerActions {
@@ -49,9 +52,9 @@ export interface PartyBeerActions {
     },
   ) => string;
   /** Take one back — a mis-tap, or a beer that never came. */
-  remove: (drinkId: string) => void;
+  remove: typeof unlogPartyBeer;
   /** Fix a typo in what it was called. */
-  rename: (drinkId: string, beerName: string) => void;
+  rename: typeof renamePartyBeer;
   update: typeof updatePartyDrink;
 }
 
@@ -61,9 +64,7 @@ export function usePartyBeer(): PartyBeerActions {
   const pubKey = useLivePartyStore((s) => s.pubKey);
   const selectedVisit = useLivePartyStore((s) => s.pubVisits.at(-1) ?? null);
   const partyCode = usePartyEveningStore(selectPartyJoinCode);
-  const tableCreatePending = usePartyEveningStore(
-    (s) => !s.evening && s.pendingJoinCode !== null,
-  );
+  const tableCreatePending = usePartyEveningStore((s) => !s.evening && s.pendingJoinCode !== null);
 
   const place: PartyBeerPlace = React.useMemo(() => {
     if (selectedVisit && selectedVisit.pubKey === pubKey) {
@@ -108,27 +109,28 @@ export function usePartyBeer(): PartyBeerActions {
           at?: string;
           backdated?: boolean;
         },
-      ) => logPartyBeer({
-        place: options?.visit
-          ? {
-              pubKey: options.visit.pubKey,
-              pubName: options.visit.pubName,
-              pubCity: options.visit.pubCity,
-              pubExternalId: options.visit.pubExternalId,
-              visitClientId: options.visit.clientId,
-              visitStartedAt: options.visit.startedAt,
-            }
-          : place,
-        beerName,
-        drinkType: options?.drinkType,
-        priceCzk: options?.priceCzk,
-        volumeMl: options?.volumeMl,
-        servingType: options?.servingType,
-        at: options?.at,
-        backdated: options?.backdated,
-        partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
-        deferDelivery: options?.deferDelivery ?? tableCreatePending,
-      }),
+      ) =>
+        logPartyBeer({
+          place: options?.visit
+            ? {
+                pubKey: options.visit.pubKey,
+                pubName: options.visit.pubName,
+                pubCity: options.visit.pubCity,
+                pubExternalId: options.visit.pubExternalId,
+                visitClientId: options.visit.clientId,
+                visitStartedAt: options.visit.startedAt,
+              }
+            : place,
+          beerName,
+          drinkType: options?.drinkType,
+          priceCzk: options?.priceCzk,
+          volumeMl: options?.volumeMl,
+          servingType: options?.servingType,
+          at: options?.at,
+          backdated: options?.backdated,
+          partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
+          deferDelivery: options?.deferDelivery ?? tableCreatePending,
+        }),
       remove: (drinkId: string) => unlogPartyBeer(drinkId),
       rename: (drinkId: string, beerName: string) => renamePartyBeer(drinkId, beerName),
       update: updatePartyDrink,

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   buildVisitEntry,
+  deleteVisitByClientId,
   syncVisit,
   seedVisitsFromHistory,
 } from '../visitsSync';
@@ -122,11 +123,24 @@ describe('buildVisitEntry', () => {
 });
 
 describe('syncVisit', () => {
-  it('enqueues an upsert for a session', () => {
-    syncVisit(session());
+  it('enqueues an upsert for a session', async () => {
+    await expect(syncVisit(session())).resolves.toBe('queued');
     expect(enqueueVisitOp).toHaveBeenCalledWith(
       expect.objectContaining({ op: 'upsert', clientId: 'v1' }),
     );
+  });
+
+  it('surfaces a storage failure to callers', async () => {
+    enqueueVisitOp.mockResolvedValueOnce('storage-error');
+
+    await expect(syncVisit(session())).resolves.toBe('storage-error');
+  });
+
+  it('surfaces a delete storage failure to callers', async () => {
+    enqueueVisitOp.mockResolvedValueOnce('storage-error');
+
+    await expect(deleteVisitByClientId('v1')).resolves.toBe('storage-error');
+    expect(enqueueVisitOp).toHaveBeenCalledWith({ op: 'delete', clientId: 'v1' });
   });
 
   it('keeps the party code in the queued visit entry', () => {

@@ -1,5 +1,10 @@
 import { ensureAccount, type AccountSession } from './account';
-import { chainAbortSignal, classifyQueueHttpFailure, type QueueSyncResult } from './apiFetch';
+import {
+  chainAbortSignal,
+  classifyQueueHttpFailure,
+  classifyQueueHttpStatus,
+  type QueueSyncResult,
+} from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import type { FriendActionError, FriendActionResult, FriendProfile } from './friendsClient';
 import { trackApiFailure } from './telemetryClient';
@@ -334,8 +339,7 @@ export async function submitBeerCheckIn(input: BeerCheckInInput): Promise<QueueS
   }
   const httpMatch = /^http_(\d{3})$/.exec(res.result.code);
   if (httpMatch) {
-    const status = Number(httpMatch[1]);
-    if (status === 401 || status === 428 || status === 429 || status >= 500) return 'retry';
+    return classifyQueueHttpStatus(Number(httpMatch[1]));
   }
   return 'permanent-error';
 }

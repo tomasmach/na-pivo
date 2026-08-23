@@ -25,6 +25,8 @@ jest.mock('../drinksClient', () => ({
 }));
 
 const STORAGE_KEY = 'na-pivo-update-drinks-queue';
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
 
 async function readQueue(): Promise<DrinkUpdateEntry[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -55,22 +57,32 @@ beforeEach(async () => {
 });
 
 describe('enqueueDrinkUpdate', () => {
+  it('reports a storage failure and never sends a non-durable update', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Kozel' }),
+    ).resolves.toBe('storage-error');
+
+    expect(updateDrinkName).not.toHaveBeenCalled();
+  });
+
   it('sends the update and drops it from the queue on success', async () => {
-    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Kozel' });
-    expect(updateDrinkName).toHaveBeenCalledWith('a', 'Kozel');
+    await enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Kozel' });
+    expect(updateDrinkName).toHaveBeenCalledWith(UUID_A, 'Kozel');
     expect(await readQueue()).toEqual([]);
   });
 
   it('keeps the latest name queued when the update must retry', async () => {
     (updateDrinkName as jest.Mock).mockResolvedValue('retry');
-    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Plzen' });
-    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Plzeň' });
-    expect(await readQueue()).toEqual([{ client_id: 'a', beer_name: 'Plzeň' }]);
+    await enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Plzen' });
+    await enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Plzeň' });
+    expect(await readQueue()).toEqual([{ client_id: UUID_A, beer_name: 'Plzeň' }]);
   });
 
   it('drops a permanently-rejected update from the queue', async () => {
     (updateDrinkName as jest.Mock).mockResolvedValue('permanent-error');
-    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Kozel' });
+    await enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Kozel' });
     expect(await readQueue()).toEqual([]);
   });
 });
@@ -78,9 +90,9 @@ describe('enqueueDrinkUpdate', () => {
 describe('removeQueuedDrinkUpdate', () => {
   it('removes a pending update without sending it again', async () => {
     (updateDrinkName as jest.Mock).mockResolvedValue('retry');
-    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Plzeň' });
+    await enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Plzeň' });
 
-    await expect(removeQueuedDrinkUpdate('a')).resolves.toBe(true);
+    await expect(removeQueuedDrinkUpdate(UUID_A)).resolves.toBe(true);
 
     expect(await readQueue()).toEqual([]);
   });
@@ -96,11 +108,11 @@ describe('removeQueuedDrinkUpdate', () => {
         resolveUpdate = resolve;
       }),
     );
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: 'a', beer_name: 'Kozel' }]));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: UUID_A, beer_name: 'Kozel' }]));
 
     const flushing = flushUpdateDrinksQueue();
     await waitForExpectation(() => expect(updateDrinkName).toHaveBeenCalledTimes(1));
-    await expect(removeQueuedDrinkUpdate('a')).resolves.toBe(true);
+    await expect(removeQueuedDrinkUpdate(UUID_A)).resolves.toBe(true);
     expect(await readQueue()).toEqual([]);
 
     resolveUpdate('retry');
@@ -110,17 +122,41 @@ describe('removeQueuedDrinkUpdate', () => {
 });
 
 describe('flushUpdateDrinksQueue', () => {
+  it('drops malformed persisted client IDs instead of retrying them forever', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      { client_id: 'not-a-uuid', beer_name: 'Rozbité' },
+      { client_id: UUID_A, beer_name: 'Kozel' },
+    ]));
+
+    await flushUpdateDrinksQueue();
+
+    expect(updateDrinkName).toHaveBeenCalledTimes(1);
+    expect(updateDrinkName).toHaveBeenCalledWith(UUID_A, 'Kozel');
+  });
+
+  it('drops malformed update fields instead of sending a poisoned PATCH', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      { client_id: UUID_A, beer_name: 42 },
+      { client_id: UUID_B, junk: { nested: true } },
+    ]));
+
+    await flushUpdateDrinksQueue();
+
+    expect(updateDrinkName).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('retries queued updates and keeps only retryable failures', async () => {
     (updateDrinkName as jest.Mock).mockResolvedValue('retry');
-    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Kozel' });
-    await enqueueDrinkUpdate({ client_id: 'b', beer_name: 'Plzeň' });
+    await enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Kozel' });
+    await enqueueDrinkUpdate({ client_id: UUID_B, beer_name: 'Plzeň' });
 
     (updateDrinkName as jest.Mock).mockImplementation(async (clientId: string) =>
-      clientId === 'a' ? 'ok' : 'retry',
+      clientId === UUID_A ? 'ok' : 'retry',
     );
     await flushUpdateDrinksQueue();
 
-    expect(await readQueue()).toEqual([{ client_id: 'b', beer_name: 'Plzeň' }]);
+    expect(await readQueue()).toEqual([{ client_id: UUID_B, beer_name: 'Plzeň' }]);
   });
 
   it('is a no-op on an empty queue', async () => {
@@ -139,18 +175,18 @@ describe('flushUpdateDrinksQueue', () => {
       }),
     );
 
-    const first = enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Kozel' });
+    const first = enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Kozel' });
     await waitForExpectation(() => expect(updateDrinkName).toHaveBeenCalledTimes(1));
 
-    const second = enqueueDrinkUpdate({ client_id: 'b', beer_name: 'Plzeň' });
+    const second = enqueueDrinkUpdate({ client_id: UUID_B, beer_name: 'Plzeň' });
     await waitForExpectation(async () => {
-      expect((await readQueue()).map((entry) => entry.client_id)).toContain('b');
+      expect((await readQueue()).map((entry) => entry.client_id)).toContain(UUID_B);
     });
 
     resolveUpdate('retry');
     await first;
     await second;
-    expect((await readQueue()).map((entry) => entry.client_id).sort()).toEqual(['a', 'b']);
+    expect((await readQueue()).map((entry) => entry.client_id).sort()).toEqual([UUID_A, UUID_B]);
   });
 
   it('keeps a newer update for the same client_id when an older in-flight op settles', async () => {
@@ -164,18 +200,18 @@ describe('flushUpdateDrinksQueue', () => {
       }),
     );
 
-    const first = enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Plzen' });
+    const first = enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Plzen' });
     await waitForExpectation(() => expect(updateDrinkName).toHaveBeenCalledTimes(1));
 
-    const second = enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Plzeň' });
+    const second = enqueueDrinkUpdate({ client_id: UUID_A, beer_name: 'Plzeň' });
     await waitForExpectation(async () => {
-      expect(await readQueue()).toEqual([{ client_id: 'a', beer_name: 'Plzeň' }]);
+      expect(await readQueue()).toEqual([{ client_id: UUID_A, beer_name: 'Plzeň' }]);
     });
 
     resolveUpdate('ok');
     await first;
     await second;
-    expect(await readQueue()).toEqual([{ client_id: 'a', beer_name: 'Plzeň' }]);
+    expect(await readQueue()).toEqual([{ client_id: UUID_A, beer_name: 'Plzeň' }]);
   });
 
   it('keeps the queue cleared when clear runs during an in-flight flush', async () => {
@@ -185,7 +221,7 @@ describe('flushUpdateDrinksQueue', () => {
         resolveUpdate = resolve;
       }),
     );
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: 'a', beer_name: 'Kozel' }]));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: UUID_A, beer_name: 'Kozel' }]));
 
     const flushing = flushUpdateDrinksQueue();
     await waitForExpectation(() => expect(updateDrinkName).toHaveBeenCalledTimes(1));
@@ -206,7 +242,7 @@ describe('flushUpdateDrinksQueue', () => {
         }),
       )
       .mockResolvedValue('retry');
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: 'a', beer_name: 'Kozel' }]));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: UUID_A, beer_name: 'Kozel' }]));
 
     const first = flushUpdateDrinksQueue();
     const second = flushUpdateDrinksQueue();
@@ -220,6 +256,6 @@ describe('flushUpdateDrinksQueue', () => {
     // The mid-flight caller scheduled exactly one trailing pass — not zero (so a
     // mid-flush enqueue is retried) and not more than one (no busy loop).
     expect(updateDrinkName).toHaveBeenCalledTimes(2);
-    expect(await readQueue()).toEqual([{ client_id: 'a', beer_name: 'Kozel' }]);
+    expect(await readQueue()).toEqual([{ client_id: UUID_A, beer_name: 'Kozel' }]);
   });
 });

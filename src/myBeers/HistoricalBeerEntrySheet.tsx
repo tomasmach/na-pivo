@@ -24,11 +24,10 @@
  *                             "needs your attention" is amber (§2.2)
  *
  * Everything it does is unchanged: many beers per evening with brand
- * suggestions, pub, interval, note, visibility, and one enqueue per beer line
- * through the released offline queue.
+ * suggestions, pub, interval, note, visibility, and one atomic offline batch.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
   Platform,
@@ -43,12 +42,28 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BeerIcon, LockKeyholeIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
+import {
+  BeerIcon,
+  LockKeyholeIcon,
+  PlusIcon,
+  UsersIcon,
+  XIcon,
+} from '@/components/shared/IconGlyph';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { generateUuidV4 } from '@/data/account';
 import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';
-import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
+import {
+  enqueueBeerCheckInBatch,
+  getOrCreateBeerCheckInActionTicket,
+  removeBeerCheckInActionTicket,
+  saveBeerCheckInActionTicket,
+} from '@/data/beerCheckinsQueue';
+import {
+  PrivateAccountMutationFrozenError,
+  isPrivateAccountMutationScopeCurrent,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
@@ -57,7 +72,12 @@ import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { currencyFractionDigits, currencySuffix, parsePriceInputToCzk, sanitizePriceInput } from '@/utils/currency';
+import {
+  currencyFractionDigits,
+  currencySuffix,
+  parsePriceInputToCzk,
+  sanitizePriceInput,
+} from '@/utils/currency';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   buildHistoricalInterval,
@@ -130,7 +150,11 @@ function FieldLabel({ children, first = false }: { children: string; first?: boo
   );
 }
 
-export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: HistoricalBeerEntrySheetProps) {
+export function HistoricalBeerEntrySheet({
+  visible,
+  onClose,
+  onSaved,
+}: HistoricalBeerEntrySheetProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
@@ -138,6 +162,8 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const initialDate = new Date();
   const scrollRef = useRef<ScrollView>(null);
+  const submittingRef = useRef(false);
+  const generationRef = useRef(0);
 
   const [dateText, setDateText] = useState(() => formatHistoricalDate(initialDate));
   const [startTimeText, setStartTimeText] = useState(() => formatHistoricalTime(initialDate));
@@ -148,11 +174,18 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const [note, setNote] = useState('');
   const [visibility, setVisibility] = useState<BeerCheckInVisibility>('friends');
   const [dateError, setDateError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useLayoutEffect(() => {
+    generationRef.current += 1;
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) return;
+    submittingRef.current = false;
     let frame: number | null = null;
     const timer = setTimeout(() => {
+      setSubmitting(false);
       const date = new Date();
       setDateText(formatHistoricalDate(date));
       setStartTimeText(formatHistoricalTime(date));
@@ -192,16 +225,24 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   );
   const beerLinesValid =
     parsedBeerLines.length > 0 &&
-    parsedBeerLines.every((line) => line.beerName.length > 0 && line.quantityValid && line.priceValid);
+    parsedBeerLines.every(
+      (line) => line.beerName.length > 0 && line.quantityValid && line.priceValid,
+    );
   const canSubmit = cleanPub.length > 0 && beerLinesValid;
 
   const updateBeerLine = useCallback((id: string, patch: Partial<BeerLine>) => {
-    setBeerLines((current) => current.map((line) => (line.id === id ? { ...line, ...patch } : line)));
+    setBeerLines((current) =>
+      current.map((line) => (line.id === id ? { ...line, ...patch } : line)),
+    );
   }, []);
 
   const onChangeBeerName = useCallback(
     (id: string, value: string) => {
-      updateBeerLine(id, { beerName: value, pickedBeerName: null, suggestions: [] });
+      updateBeerLine(id, {
+        beerName: value,
+        pickedBeerName: null,
+        suggestions: [],
+      });
       setActiveBeerLineId(id);
     },
     [updateBeerLine],
@@ -241,7 +282,9 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   }, [beerLines.length]);
 
   const removeBeerLine = useCallback((id: string) => {
-    setBeerLines((current) => (current.length > 1 ? current.filter((line) => line.id !== id) : current));
+    setBeerLines((current) =>
+      current.length > 1 ? current.filter((line) => line.id !== id) : current,
+    );
     setActiveBeerLineId((current) => (current === id ? null : current));
   }, []);
 
@@ -251,7 +294,12 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
 
   useEffect(() => {
     const query = activeBeerName.trim();
-    if (!visible || !activeBeerLineId || query.length < 2 || activePickedBeerName === activeBeerName) {
+    if (
+      !visible ||
+      !activeBeerLineId ||
+      query.length < 2 ||
+      activePickedBeerName === activeBeerName
+    ) {
       return;
     }
 
@@ -278,47 +326,119 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
     setDateError(false);
   }, []);
 
+  const cancelAndClose = useCallback(() => {
+    generationRef.current += 1;
+    submittingRef.current = false;
+    setSubmitting(false);
+    onClose();
+  }, [onClose]);
+
   const submit = useCallback(() => {
-    if (!canSubmit) return;
+    if (!canSubmit || submittingRef.current) return;
     const checked = buildHistoricalInterval(dateText, startTimeText, endTimeText);
     if (!checked) {
       setDateError(true);
       return;
     }
     setDateError(false);
-    const visitClientId = generateUuidV4();
-    const payloads: BeerCheckInInput[] = parsedBeerLines.map((line) => ({
-      clientId: generateUuidV4(),
-      beerName: line.beerName,
-      breweryName: '',
-      beerStyle: '',
-      quantity: line.quantity,
-      priceCzk: line.priceCzk,
-      rating: null,
-      note: note.trim(),
-      tags: [],
-      pubName: cleanPub,
-      pubCity: '',
-      visitClientId,
-      visibility,
-      checkedInAt: checked.iso,
-      endedAt: checked.endedIso ?? null,
-    }));
-    void Promise.all(payloads.map((payload) => enqueueBeerCheckInOp({ op: 'checkin', payload }))).then(() => {
+    submittingRef.current = true;
+    setSubmitting(true);
+    const generation = generationRef.current;
+    void runPrivateAccountMutation(async (scope) => {
+      const actionKey = JSON.stringify([
+        'historical-checkin',
+        checked.iso,
+        checked.endedIso ?? null,
+        cleanPub,
+        parsedBeerLines.map((line) => [line.beerName, line.quantity, line.priceCzk]),
+        note.trim(),
+        visibility,
+      ]);
+      const ticket = await getOrCreateBeerCheckInActionTicket(actionKey, () => ({
+        key: actionKey,
+        visitClientId: generateUuidV4(),
+        clientIds: parsedBeerLines.map(() => generateUuidV4()),
+        checkedInAt: checked.iso,
+        endedAt: checked.endedIso ?? null,
+        createdAt: Date.now(),
+      }));
+      if (!ticket || ticket.clientIds.length !== parsedBeerLines.length) {
+        if (generationRef.current !== generation) return;
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.myBeers.historicalSaveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+        return;
+      }
+      const payloads: BeerCheckInInput[] = parsedBeerLines.map((line, index) => ({
+        clientId: ticket.clientIds[index],
+        beerName: line.beerName,
+        breweryName: '',
+        beerStyle: '',
+        quantity: line.quantity,
+        priceCzk: line.priceCzk,
+        rating: null,
+        note: note.trim(),
+        tags: [],
+        pubName: cleanPub,
+        pubCity: '',
+        visitClientId: ticket.visitClientId,
+        visibility,
+        checkedInAt: ticket.checkedInAt,
+        endedAt: ticket.endedAt ?? null,
+      }));
+      const result = await enqueueBeerCheckInBatch(
+        payloads.map((payload) => ({ op: 'checkin' as const, payload })),
+      );
+      if (generationRef.current !== generation) return;
+      if (!isPrivateAccountMutationScopeCurrent(scope)) {
+        throw new PrivateAccountMutationFrozenError();
+      }
+      if (result === 'storage-error') {
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.myBeers.historicalSaveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+        return;
+      }
+      if (!(await removeBeerCheckInActionTicket(actionKey))) {
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.myBeers.historicalSaveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+        return;
+      }
+      if (generationRef.current !== generation) {
+        await saveBeerCheckInActionTicket(ticket);
+        return;
+      }
+      submittingRef.current = false;
+      setSubmitting(false);
       showToast(cs.myBeers.historicalSaved(payloads.length), {
         icon: <BeerIcon size={20} color={Colors.amber} />,
       });
       reset();
       onSaved(payloads);
-      onClose();
-    });
+      cancelAndClose();
+    })
+      .catch(() => {
+        if (generationRef.current !== generation) return;
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.myBeers.historicalSaveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+      });
   }, [
     canSubmit,
+    cancelAndClose,
     cleanPub,
     dateText,
     endTimeText,
     note,
-    onClose,
     onSaved,
     parsedBeerLines,
     reset,
@@ -336,19 +456,28 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const isPrivate = visibility === 'private';
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
+    <BottomSheetModal visible={visible} onClose={cancelAndClose}>
       {/* Height bound and keyboard lift on the card itself, not on a wrapper:
           the bound has to be a definite pixel height (the keyboard changes it),
           and a definite parent is exactly what lets the scroll below shrink and
           keep the pinned action on screen (§7.5). */}
-      <View style={[styles.card, { marginBottom: sheetBottomOffset, maxHeight, paddingBottom: bottomPad }]}>
+      <View
+        style={[
+          styles.card,
+          {
+            marginBottom: sheetBottomOffset,
+            maxHeight,
+            paddingBottom: bottomPad,
+          },
+        ]}
+      >
         <View style={styles.grabber} />
 
         <View style={styles.header}>
           <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {cs.myBeers.historicalTitle}
           </Text>
-          <CloseButton onPress={onClose} label={cs.myBeers.editDrinkCancel} />
+          <CloseButton onPress={cancelAndClose} label={cs.myBeers.editDrinkCancel} />
         </View>
 
         <KeyboardAwareScrollView
@@ -369,10 +498,14 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                     value={line.beerName}
                     onFocus={() => setActiveBeerLineId(line.id)}
                     onChangeText={(value) => onChangeBeerName(line.id, value)}
-                    placeholder={index === 0 ? cs.beerCheckins.beerPlaceholder : cs.myBeers.historicalNextBeerPlaceholder}
+                    placeholder={
+                      index === 0
+                        ? cs.beerCheckins.beerPlaceholder
+                        : cs.myBeers.historicalNextBeerPlaceholder
+                    }
                     placeholderTextColor={MockColors.fieldHint}
                     style={[styles.input, styles.beerNameInput]}
-                    maxLength={80}
+                    maxLength={120}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   />
                   {beerLines.length > 1 ? (
@@ -381,7 +514,9 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                       style={({ pressed }) => [styles.removeBeerButton, pressed && styles.dim]}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.a11y.myBeersRemoveHistoricalBeer(line.beerName || `${index + 1}`)}
+                      accessibilityLabel={cs.a11y.myBeersRemoveHistoricalBeer(
+                        line.beerName || `${index + 1}`,
+                      )}
                     >
                       <XIcon size={16} color={Colors.mutedText} />
                     </Pressable>
@@ -402,7 +537,11 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                         accessibilityRole="button"
                         accessibilityLabel={suggestion.name}
                       >
-                        <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                        <Text
+                          style={styles.suggestionText}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
                           {suggestion.name}
                         </Text>
                       </Pressable>
@@ -419,7 +558,9 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                       value={line.quantityText}
                       onFocus={dismissSuggestions}
                       onChangeText={(value) =>
-                        updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
+                        updateBeerLine(line.id, {
+                          quantityText: value.replace(/\D/g, '').slice(0, 2),
+                        })
                       }
                       placeholder="1"
                       placeholderTextColor={MockColors.fieldHint}
@@ -437,12 +578,16 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                         value={line.priceText}
                         onFocus={dismissSuggestions}
                         onChangeText={(value) =>
-                          updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
+                          updateBeerLine(line.id, {
+                            priceText: sanitizePriceInput(value, priceCurrency),
+                          })
                         }
                         placeholder={cs.myBeers.historicalPricePlaceholder}
                         placeholderTextColor={MockColors.fieldHint}
                         style={styles.priceInput}
-                        keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
+                        keyboardType={
+                          currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'
+                        }
                         maxFontSizeMultiplier={FontScaleCap.body}
                       />
                       <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -608,10 +753,13 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
         <View style={styles.actions}>
           <Pressable
             onPress={submit}
-            disabled={!canSubmit}
-            style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+            disabled={!canSubmit || submitting}
+            style={({ pressed }) => [
+              styles.submit,
+              (pressed || !canSubmit || submitting) && styles.dim,
+            ]}
             accessibilityRole="button"
-            accessibilityState={{ disabled: !canSubmit }}
+            accessibilityState={{ disabled: !canSubmit || submitting }}
             accessibilityLabel={cs.myBeers.historicalSubmit}
           >
             <Text style={styles.submitText} maxFontSizeMultiplier={FontScaleCap.heading}>

@@ -35,9 +35,11 @@ jest.mock('@/data/deleteDrinksQueue', () => ({
 
 const enqueueDrinkUpdate: jest.Mock = jest.fn(async () => undefined);
 const removeQueuedDrinkUpdate: jest.Mock = jest.fn(async () => true);
+const flushUpdateDrinksQueue: jest.Mock = jest.fn(async () => undefined);
 jest.mock('@/data/updateDrinksQueue', () => ({
   enqueueDrinkUpdate: (...args: unknown[]) => enqueueDrinkUpdate(...(args as [])),
   removeQueuedDrinkUpdate: (...args: unknown[]) => removeQueuedDrinkUpdate(...(args as [])),
+  flushUpdateDrinksQueue: (...args: unknown[]) => flushUpdateDrinksQueue(...(args as [])),
 }));
 
 const syncVisit: jest.Mock = jest.fn();
@@ -87,6 +89,9 @@ beforeEach(() => {
   updateQueuedDrinkBeerName.mockResolvedValue('queued');
   updateQueuedDrink.mockResolvedValue('queued');
   flushDrinksQueue.mockResolvedValue(undefined);
+  flushUpdateDrinksQueue.mockResolvedValue(undefined);
+  enqueueDelete.mockResolvedValue('queued');
+  enqueueDrinkUpdate.mockResolvedValue('queued');
   useTallyStore.setState({ current: null, history: [] });
 });
 
@@ -319,6 +324,28 @@ describe('logPartyBeer', () => {
 });
 
 describe('unlogPartyBeer', () => {
+  it('keeps the local drink when a delivered delete cannot reach storage', async () => {
+    removeQueuedDrink.mockResolvedValue(false);
+    enqueueDelete.mockResolvedValueOnce('storage-error');
+    const id = logPartyBeer({ place: PLACE, beerName: 'Plzeň' });
+
+    await expect(unlogPartyBeer(id)).resolves.toBe('storage-error');
+
+    expect(useTallyStore.getState().current?.drinks.map((drink) => drink.id)).toContain(id);
+    expect(removeQueuedDrinkUpdate).not.toHaveBeenCalled();
+  });
+
+  it('drops a pending edit only after the server delete is durable', async () => {
+    removeQueuedDrink.mockResolvedValue(false);
+    const id = logPartyBeer({ place: PLACE, beerName: 'Plzeň' });
+
+    await expect(unlogPartyBeer(id)).resolves.toBe('removed');
+
+    expect(enqueueDelete.mock.invocationCallOrder[0]).toBeLessThan(
+      removeQueuedDrinkUpdate.mock.invocationCallOrder[0],
+    );
+  });
+
   it('drops a drink that never left the phone without telling the server', async () => {
     const id = logPartyBeer({ place: PLACE, beerName: 'Plzeň' });
     enqueueDrink.mockClear();
@@ -368,6 +395,16 @@ describe('unlogPartyBeer', () => {
 });
 
 describe('renamePartyBeer', () => {
+  it('keeps the old local name when the update cannot reach storage', async () => {
+    updateQueuedDrinkBeerName.mockResolvedValue('storage-error');
+    enqueueDrinkUpdate.mockResolvedValueOnce('storage-error');
+    const id = logPartyBeer({ place: PLACE, beerName: 'Plze' });
+
+    await expect(renamePartyBeer(id, 'Plzeň')).resolves.toBe('storage-error');
+
+    expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Plze');
+  });
+
   it('fixes the name in the session and in the queued payload', async () => {
     const id = logPartyBeer({ place: PLACE, beerName: 'Plze' });
     renamePartyBeer(id, '  Plzeň  ');

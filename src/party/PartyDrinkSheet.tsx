@@ -39,7 +39,7 @@ export function PartyDrinkSheet({
   onClose: () => void;
   onPick: (choice: PartyDrinkChoice) => void;
   onNew: (type: DrinkType) => void;
-  onBackdate?: () => void;
+  onBackdate?: (nowMs: number) => void;
   onScan: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -131,7 +131,7 @@ export function PartyDrinkSheet({
             </Pressable>
             {onBackdate ? (
               <Pressable
-                onPress={() => finish(onBackdate)}
+                onPress={() => finish(() => onBackdate(Date.now()))}
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel={cs.counter.backdateLink}

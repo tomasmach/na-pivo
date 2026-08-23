@@ -20,13 +20,8 @@
  * back-dated add, publishing, sharing, rating and mapping are all still here.
  */
 
-import React, { useMemo, useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
@@ -40,15 +35,21 @@ import { cs, formatVolume } from '@/i18n/cs';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { formatPrice } from '@/utils/currency';
 import {
-  enqueueDrink,
   updateQueuedDrinkBeerName,
-  removeQueuedDrink,
   flushDrinksQueue,
+  isDrinkQueued,
 } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
-import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
+import { enqueueDrinkUpdate } from '@/data/updateDrinksQueue';
+import { prepareDrinkDeletion } from '@/data/drinkDeletion';
+import { prepareDrinkAddition } from '@/data/drinkAddition';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
+import { flushVisitsQueue } from '@/data/visitsQueue';
+import {
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import {
   BeerIcon,
   ChevronLeftIcon,
@@ -126,10 +127,12 @@ export default function EveningDetailScreen() {
   const insets = useSafeAreaInsets();
   const now = new Date();
 
-  const params = useLocalSearchParams<{ startedAt?: string; visitClientId?: string }>();
+  const params = useLocalSearchParams<{
+    startedAt?: string;
+    visitClientId?: string;
+  }>();
   const startedAt = typeof params.startedAt === 'string' ? params.startedAt : '';
-  const visitClientId =
-    typeof params.visitClientId === 'string' ? params.visitClientId : '';
+  const visitClientId = typeof params.visitClientId === 'string' ? params.visitClientId : '';
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -149,6 +152,10 @@ export default function EveningDetailScreen() {
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
   const [publishSheetVisible, setPublishSheetVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  const savingDrinkNamesRef = useRef(false);
+  const deletingDrinkIdsRef = useRef(new Set<string>());
+  const addingDrinkActionRef = useRef(false);
+  const addDrinkTicketRef = useRef<{ key: string; id: string; drankAt: string } | null>(null);
 
   const localSession = useMemo(
     () => findSessionByStart(current, history, startedAt),
@@ -209,7 +216,7 @@ export default function EveningDetailScreen() {
     };
   }, [session]);
 
-  const handleSaveDrinkName = (group: DrinkActionGroup, beerName: string) => {
+  const handleSaveDrinkName = async (group: DrinkActionGroup, beerName: string) => {
     if (!session) return;
     const trimmed = beerName.trim();
     if (!trimmed) {
@@ -220,26 +227,39 @@ export default function EveningDetailScreen() {
       return;
     }
     const changedDrinks = group.drinks.filter((drink) => drink.beerName !== trimmed);
-    setEditingGroup(null);
     if (changedDrinks.length === 0) return;
-
-    for (const drink of changedDrinks) {
-      updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
-    }
-
-    const nextSession = findSessionByStart(
-      useTallyStore.getState().current,
-      useTallyStore.getState().history,
-      session.startedAt,
-    );
-    if (nextSession) syncVisit(nextSession, new Date().toISOString());
-
-    for (const drink of changedDrinks) {
-      void updateQueuedDrinkBeerName(drink.id, trimmed).then((updateState) => {
-        if (updateState !== 'queued') {
-          void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
+    if (savingDrinkNamesRef.current) return;
+    savingDrinkNamesRef.current = true;
+    try {
+      for (const drink of changedDrinks) {
+        const state = await updateQueuedDrinkBeerName(drink.id, trimmed);
+        if (state !== 'queued') {
+          await flushDrinksQueue();
+          if (
+            (await enqueueDrinkUpdate({
+              client_id: drink.id,
+              beer_name: trimmed,
+            })) === 'storage-error'
+          ) {
+            showToast(cs.friends.queueSaveError);
+            return;
+          }
         }
-      });
+      }
+      for (const drink of changedDrinks) {
+        updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
+      }
+      const nextSession = findSessionByStart(
+        useTallyStore.getState().current,
+        useTallyStore.getState().history,
+        session.startedAt,
+      );
+      if (nextSession) void syncVisit(nextSession, new Date().toISOString());
+      setEditingGroup(null);
+    } catch {
+      showToast(cs.friends.queueSaveError);
+    } finally {
+      savingDrinkNamesRef.current = false;
     }
   };
 
@@ -254,29 +274,28 @@ export default function EveningDetailScreen() {
           text: cs.myBeers.deleteDrinkConfirm,
           style: 'destructive',
           onPress: () => {
-            const removed = removeDrinkFromSession(session.startedAt, drink.id);
-            if (!removed) return;
-            if (removed.remainingDrinks > 0) {
-              const nextSession = findSessionByStart(
-                useTallyStore.getState().current,
-                useTallyStore.getState().history,
-                session.startedAt,
-              );
-              syncVisit(nextSession, new Date().toISOString());
-            } else {
-              deleteVisitByClientId(removed.sessionClientId);
-            }
-            void removeQueuedDrinkUpdate(removed.drinkId);
-            void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-              // Already delivered (or its POST is in flight): wait for the active
-              // flush to settle before the DELETE so it can't race ahead of an
-              // in-flight POST and recreate the drink after we deleted it.
-              if (!pulledFromQueue) {
-                void flushDrinksQueue()
-                  .then(() => enqueueDelete(removed.drinkId))
-                  .catch(() => undefined);
+            if (deletingDrinkIdsRef.current.has(drink.id)) return;
+            deletingDrinkIdsRef.current.add(drink.id);
+            void (async () => {
+              if ((await prepareDrinkDeletion(drink.id)) === 'storage-error') {
+                showToast(cs.friends.queueSaveError);
+                return;
               }
-            });
+              const removed = removeDrinkFromSession(session.startedAt, drink.id);
+              if (!removed) return;
+              if (removed.remainingDrinks > 0) {
+                const nextSession = findSessionByStart(
+                  useTallyStore.getState().current,
+                  useTallyStore.getState().history,
+                  session.startedAt,
+                );
+                void syncVisit(nextSession, new Date().toISOString());
+              } else {
+                void deleteVisitByClientId(removed.sessionClientId);
+              }
+            })()
+              .catch(() => showToast(cs.friends.queueSaveError))
+              .finally(() => deletingDrinkIdsRef.current.delete(drink.id));
           },
         },
       ],
@@ -290,15 +309,31 @@ export default function EveningDetailScreen() {
 
   const handleAddDrink = (result: BeerFormResult) => {
     if (!session) return;
-    setAddingDrink(false);
-
-    const id = generateUuidV4();
+    if (addingDrinkActionRef.current) return;
     const isCurrentEvening = current?.clientId === session.clientId;
-    const drankAt = isCurrentEvening ? new Date().toISOString() : latestDrinkAt(session);
+    const actionKey = JSON.stringify([
+      session.clientId,
+      result.name,
+      result.drinkType,
+      result.priceCzk ?? null,
+      result.volumeMl ?? null,
+      result.servingType ?? null,
+    ]);
+    const ticket =
+      addDrinkTicketRef.current?.key === actionKey
+        ? addDrinkTicketRef.current
+        : {
+            key: actionKey,
+            id: generateUuidV4(),
+            drankAt: isCurrentEvening ? new Date().toISOString() : latestDrinkAt(session),
+          };
+    addDrinkTicketRef.current = ticket;
+    addingDrinkActionRef.current = true;
+    const { id, drankAt } = ticket;
     const placeContext = normalizePlaceContext(
       session.placeContext ?? contextFromPubKey(session.pubKey),
     );
-    const updatedSession = addDrinkToSession(session.clientId, {
+    const tallyDrink = {
       id,
       beerName: result.name,
       drinkType: result.drinkType,
@@ -306,10 +341,8 @@ export default function EveningDetailScreen() {
       volumeMl: result.volumeMl,
       servingType: result.servingType,
       at: drankAt,
-    });
-    if (!updatedSession) return;
-
-    syncVisit(updatedSession, new Date().toISOString());
+    };
+    const prospectiveSession = { ...session, drinks: [...session.drinks, tallyDrink] };
     const pubIdentity =
       placeContext === 'pub'
         ? {
@@ -333,29 +366,52 @@ export default function EveningDetailScreen() {
       },
       id,
     );
-    void enqueueDrink(entry).then((result) => {
-      if (result === 'delivered') markDrinkSynced(id);
-    }).catch(() => undefined);
-    void trackClientEvent({
-      event: 'drink_added',
-      context: {
-        had_active_session: isCurrentEvening,
-        backdated: !isCurrentEvening,
-        source: 'evening_detail',
-        ...(result.drinkType === 'beer' ? {} : { drink_type: result.drinkType }),
-        ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
-      },
-    });
-    showToast(cs.myBeers.addDrinkToEveningSaved, {
-      icon: <BeerIcon size={20} color={Colors.amber} />,
-    });
+    void runPrivateAccountMutation(async (scope) => {
+      if ((await prepareDrinkAddition(entry, prospectiveSession)) === 'storage-error') {
+        showToast(cs.friends.queueSaveError);
+        return;
+      }
+      if (!isPrivateAccountMutationScopeCurrent(scope)) {
+        throw new PrivateAccountMutationFrozenError();
+      }
+      const updatedSession = addDrinkToSession(session.clientId, tallyDrink);
+      if (!updatedSession) return;
+      addDrinkTicketRef.current = null;
+      setAddingDrink(false);
+      void flushDrinksQueue().then(async () => {
+        if (!(await isDrinkQueued(id))) markDrinkSynced(id);
+      });
+      void flushVisitsQueue();
+      void trackClientEvent({
+        event: 'drink_added',
+        context: {
+          had_active_session: isCurrentEvening,
+          backdated: !isCurrentEvening,
+          source: 'evening_detail',
+          ...(result.drinkType === 'beer' ? {} : { drink_type: result.drinkType }),
+          ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
+        },
+      });
+      showToast(cs.myBeers.addDrinkToEveningSaved, {
+        icon: <BeerIcon size={20} color={Colors.amber} />,
+      });
+    })
+      .catch((error) => {
+        if (!(error instanceof PrivateAccountMutationFrozenError)) {
+          showToast(cs.friends.queueSaveError);
+        }
+      })
+      .finally(() => {
+        addingDrinkActionRef.current = false;
+      });
   };
 
   const context = session ? contextFromPubKey(session.pubKey) : 'pub';
   // An icon in a detail usually decorates a title that already said everything
   // (§19) — but "Doma" and "Venku" are the two cases where the place is not a
   // pub name and the glyph carries what the words cannot.
-  const ContextIcon = context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : null;
+  const ContextIcon =
+    context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : null;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -363,7 +419,11 @@ export default function EveningDetailScreen() {
           are the page's own title block, where a name too long for a centred
           header still gets the whole width. */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-        <GlassIconButton size={HitArea.min} accessibilityLabel={cs.a11y.backButton} onPress={() => leaveRoute(router)}>
+        <GlassIconButton
+          size={HitArea.min}
+          accessibilityLabel={cs.a11y.backButton}
+          onPress={() => leaveRoute(router)}
+        >
           <ChevronLeftIcon size={20} color={Colors.foam} />
         </GlassIconButton>
       </View>
@@ -386,7 +446,11 @@ export default function EveningDetailScreen() {
           </Text>
           <View style={styles.titleRow}>
             {ContextIcon ? <ContextIcon size={20} color={Colors.mutedText} /> : null}
-            <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
+            <Text
+              style={styles.title}
+              numberOfLines={2}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
               {session.pubName || cs.diary.noPub}
             </Text>
           </View>
@@ -407,9 +471,15 @@ export default function EveningDetailScreen() {
           {drinkActionGroups.map((group, index) => (
             <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowDivider]}>
               <View style={styles.drinkInfo}>
-                <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.drinkName}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
-                  {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
+                  {group.drinkType !== 'beer'
+                    ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}`
+                    : ''}
                   {group.count > 1 ? ` · ${group.count}×` : ''}
                 </Text>
                 <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -509,7 +579,11 @@ export default function EveningDetailScreen() {
                 onPress={() => setShareModalVisible(true)}
                 accessibilityRole="button"
                 accessibilityLabel={cs.a11y.shareNightButton}
-                style={({ pressed }) => [styles.secondary, styles.secondaryTight, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.secondary,
+                  styles.secondaryTight,
+                  pressed && styles.pressed,
+                ]}
               >
                 <Share2Icon size={16} color={Colors.amber} />
                 <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -559,9 +633,7 @@ export default function EveningDetailScreen() {
         visible={addingDrink}
         mode="add"
         beer={addDrinkSeed}
-        initialDrinkType={normalizeDrinkType(
-          session?.drinks[session.drinks.length - 1]?.drinkType,
-        )}
+        initialDrinkType={normalizeDrinkType(session?.drinks[session.drinks.length - 1]?.drinkType)}
         placeContext={normalizePlaceContext(
           session?.placeContext ?? contextFromPubKey(session?.pubKey ?? ''),
         )}

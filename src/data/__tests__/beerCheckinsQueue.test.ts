@@ -12,11 +12,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   clearBeerCheckinsQueue,
+  enqueueBeerCheckInBatch,
   enqueueBeerCheckInOp,
   flushBeerCheckinsQueue,
   getPendingBeerCheckIns,
+  getOrCreateBeerCheckInActionTicket,
+  loadBeerCheckInActionTicket,
+  removeBeerCheckInActionTicket,
+  saveBeerCheckInActionTicket,
 } from '../beerCheckinsQueue';
 import type { BeerCheckInInput } from '../beerCheckinsClient';
+import {
+  PrivateAccountMutationFrozenError,
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -42,22 +52,26 @@ jest.mock('../account', () => ({
 jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
 const submitBeerCheckIn: jest.Mock = jest.fn(async () => 'ok');
+const reactToBeerCheckIn: jest.Mock = jest.fn(async () => ({ ok: true }));
 jest.mock('../beerCheckinsClient', () => {
   const actual = jest.requireActual('../beerCheckinsClient');
   return {
     ...actual,
     submitBeerCheckIn: (...args: unknown[]) => submitBeerCheckIn(...(args as [])),
-    reactToBeerCheckIn: jest.fn(async () => ({ ok: true })),
+    reactToBeerCheckIn: (...args: unknown[]) => reactToBeerCheckIn(...(args as [])),
     clearBeerCheckInReaction: jest.fn(async () => ({ ok: true })),
   };
 });
 
 const STORAGE_KEY = 'na-pivo-beer-checkins-queue';
+const ACTION_TICKETS_STORAGE_KEY = 'na-pivo-beer-checkin-action-tickets';
 const ORIGINAL_FETCH = global.fetch;
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
 
 function checkin(over: Partial<BeerCheckInInput> = {}): BeerCheckInInput {
   return {
-    clientId: 'c1',
+    clientId: UUID_A,
     beerName: 'Radegast 12',
     breweryName: '',
     rating: 4,
@@ -80,16 +94,155 @@ async function readQueue(): Promise<unknown[]> {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  resetPrivateAccountBoundaryForTests();
   submitBeerCheckIn.mockResolvedValue('ok');
+  reactToBeerCheckIn.mockResolvedValue({ ok: true });
   await AsyncStorage.clear();
   await clearBeerCheckinsQueue();
 });
 
+it.each(['http_408', 'http_409', 'http_425'])('keeps a cheer queued after transient %s', async (code) => {
+  reactToBeerCheckIn.mockResolvedValue({ ok: false, code, detail: 'zkus znovu' });
+
+  await enqueueBeerCheckInOp({ op: 'cheer', checkInId: UUID_A });
+
+  expect(await readQueue()).toEqual([{ op: 'cheer', checkInId: UUID_A }]);
+});
+
 afterEach(async () => {
   await flushBeerCheckinsQueue();
+  resetPrivateAccountBoundaryForTests();
 });
 
 describe('beer-checkins queue — tag round-trip', () => {
+  it('restores the same bounded action ticket after a restart and ignores malformed storage', async () => {
+    const ticket = {
+      key: 'counter:radegast',
+      visitClientId: null,
+      clientIds: [UUID_A],
+      checkedInAt: '2026-07-01T19:40:00.000Z',
+      createdAt: 1,
+    };
+    await expect(saveBeerCheckInActionTicket(ticket)).resolves.toBe(true);
+    await expect(loadBeerCheckInActionTicket(ticket.key)).resolves.toEqual(ticket);
+
+    await AsyncStorage.setItem(
+      ACTION_TICKETS_STORAGE_KEY,
+      JSON.stringify([{ ...ticket, clientIds: ['not-a-uuid'] }]),
+    );
+    await expect(loadBeerCheckInActionTicket(ticket.key)).resolves.toBeNull();
+
+    for (let index = 0; index < 25; index += 1) {
+      await saveBeerCheckInActionTicket({
+        ...ticket,
+        key: `ticket-${index}`,
+        clientIds: [index % 2 === 0 ? UUID_A : UUID_B],
+      });
+    }
+    const raw = await AsyncStorage.getItem(ACTION_TICKETS_STORAGE_KEY);
+    expect(JSON.parse(raw as string)).toHaveLength(20);
+    await expect(removeBeerCheckInActionTicket('ticket-24')).resolves.toBe(true);
+    await expect(loadBeerCheckInActionTicket('ticket-24')).resolves.toBeNull();
+  });
+
+  it('serializes close→reopen ticket acquisition onto one exact ID', async () => {
+    const create = jest
+      .fn()
+      .mockReturnValueOnce({
+        key: 'same-action',
+        visitClientId: null,
+        clientIds: [UUID_A],
+        checkedInAt: '2026-07-01T19:40:00.000Z',
+        createdAt: 1,
+      })
+      .mockReturnValue({
+        key: 'same-action',
+        visitClientId: null,
+        clientIds: [UUID_B],
+        checkedInAt: '2026-07-01T19:41:00.000Z',
+        createdAt: 2,
+      });
+
+    const [first, reopened] = await Promise.all([
+      getOrCreateBeerCheckInActionTicket('same-action', create),
+      getOrCreateBeerCheckInActionTicket('same-action', create),
+    ]);
+
+    expect(first?.clientIds).toEqual([UUID_A]);
+    expect(reopened?.clientIds).toEqual([UUID_A]);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists a historical batch once before partially delivering it', async () => {
+    submitBeerCheckIn.mockResolvedValueOnce('ok').mockResolvedValueOnce('retry');
+    const setItem = jest.spyOn(AsyncStorage, 'setItem');
+
+    await expect(enqueueBeerCheckInBatch([
+      { op: 'checkin', payload: checkin({ clientId: UUID_A, beerName: 'Plzeň' }) },
+      { op: 'checkin', payload: checkin({ clientId: UUID_B, beerName: 'Kozel' }) },
+    ])).resolves.toBe('queued');
+
+    expect(setItem).toHaveBeenCalledTimes(2);
+    expect(submitBeerCheckIn).toHaveBeenCalledTimes(2);
+    expect(setItem.mock.invocationCallOrder[0]).toBeLessThan(
+      submitBeerCheckIn.mock.invocationCallOrder[0],
+    );
+    expect((await getPendingBeerCheckIns()).map((item) => item.clientId)).toEqual([UUID_B]);
+  });
+
+  it('refuses to commit an A batch after an account transition starts mid-delivery', async () => {
+    let deliveryStarted!: () => void;
+    let finishDelivery!: (result: 'retry') => void;
+    const started = new Promise<void>((resolve) => { deliveryStarted = resolve; });
+    submitBeerCheckIn.mockReturnValueOnce(new Promise((resolve) => {
+      finishDelivery = resolve;
+      deliveryStarted();
+    }));
+
+    const enqueue = enqueueBeerCheckInBatch([
+      { op: 'checkin', payload: checkin({ clientId: UUID_A }) },
+    ]);
+    const outcome = enqueue.then(
+      (value) => ({ status: 'resolved' as const, value }),
+      (error: unknown) => ({ status: 'rejected' as const, error }),
+    );
+    await started;
+
+    const transition = beginPrivateAccountTransition('account-switch', 'A');
+    expect(transition).not.toBeNull();
+    const drain = transition!.drain();
+    finishDelivery('retry');
+    await drain;
+    transition!.release();
+
+    expect(await outcome).toEqual({
+      status: 'rejected',
+      error: expect.any(PrivateAccountMutationFrozenError),
+    });
+  });
+
+  it('reports a storage failure and never sends a non-durable check-in', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      enqueueBeerCheckInOp({ op: 'checkin', payload: checkin() }),
+    ).resolves.toBe('storage-error');
+
+    expect(submitBeerCheckIn).not.toHaveBeenCalled();
+  });
+
+  it('drops malformed persisted client IDs while delivering healthy siblings', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      { op: 'checkin', payload: checkin({ clientId: 'not-a-uuid' }) },
+      { op: 'checkin', payload: checkin({ clientId: UUID_A }) },
+    ]));
+
+    await flushBeerCheckinsQueue();
+
+    expect(submitBeerCheckIn).toHaveBeenCalledTimes(1);
+    expect(submitBeerCheckIn).toHaveBeenCalledWith(expect.objectContaining({ clientId: UUID_A }));
+  });
+
   it('persists the full input (tags included) to storage on enqueue', async () => {
     // Keep it in the queue: make delivery retry so it is not drained.
     submitBeerCheckIn.mockResolvedValue('retry');
@@ -126,11 +279,11 @@ describe('beer-checkins queue — tag round-trip', () => {
 
     await enqueueBeerCheckInOp({
       op: 'checkin',
-      payload: checkin({ clientId: 'c1', beerName: 'Pilsner Urquell', visitClientId }),
+      payload: checkin({ clientId: UUID_A, beerName: 'Pilsner Urquell', visitClientId }),
     });
     await enqueueBeerCheckInOp({
       op: 'checkin',
-      payload: checkin({ clientId: 'c2', beerName: 'Kozel 11', visitClientId }),
+      payload: checkin({ clientId: UUID_B, beerName: 'Kozel 11', visitClientId }),
     });
 
     const pending = await getPendingBeerCheckIns();
@@ -145,11 +298,11 @@ describe('beer-checkins queue — tag round-trip', () => {
 
     await enqueueBeerCheckInOp({
       op: 'checkin',
-      payload: checkin({ clientId: 'c1', beerName: 'Pilsner Urquell', visitClientId, quantity: 1 }),
+      payload: checkin({ clientId: UUID_A, beerName: 'Pilsner Urquell', visitClientId, quantity: 1 }),
     });
     await enqueueBeerCheckInOp({
       op: 'checkin',
-      payload: checkin({ clientId: 'c1', beerName: 'Pilsner Urquell', visitClientId, quantity: 2 }),
+      payload: checkin({ clientId: UUID_A, beerName: 'Pilsner Urquell', visitClientId, quantity: 2 }),
     });
 
     const pending = await getPendingBeerCheckIns();
@@ -165,7 +318,7 @@ describe('beer-checkins queue — tag round-trip', () => {
     expect(delivered.tags).toEqual(['smooth']);
     // The whole input object round-trips, not just tags.
     expect(delivered.beerName).toBe('Radegast 12');
-    expect(delivered.clientId).toBe('c1');
+    expect(delivered.clientId).toBe(UUID_A);
   });
 
   it('drains the queue once delivery succeeds', async () => {

@@ -60,7 +60,12 @@ import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 
 import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
-import { isPrivateAccountMutationFrozen } from '@/data/privateAccountBoundary';
+import {
+  isPrivateAccountMutationFrozen,
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import {
   mergeBeerIntoMenu,
   isSameBeerIdentity,
@@ -77,7 +82,7 @@ import {
   isDrinkQueued,
   removeQueuedDrink,
 } from '@/data/drinksQueue';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { prepareDrinkDeletion } from '@/data/drinkDeletion';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { shareFriendPubActivity } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
@@ -442,7 +447,7 @@ function Tacek({
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
 
   // — Friends broadcast —
-  const [sharingWithFriends, setSharingWithFriends] = useState(false);
+  const sharingWithFriendsRef = useRef(false);
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
   const broadcasted = cell !== null && broadcastCell === cell;
 
@@ -451,6 +456,9 @@ function Tacek({
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const countActionTicketsRef = useRef(new Map<string, { id: string; at: string }>());
+  const countActionsInFlightRef = useRef(new Set<string>());
+  const removingDrinkIdsRef = useRef(new Set<string>());
   /** The single slot a sheet row hands its action to while the sheet closes. */
   const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rapidTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -756,11 +764,25 @@ function Tacek({
     (beer: CountableBeer, atOverride?: string) => {
       if (isPrivateAccountMutationFrozen()) return;
       if (!place || !cell) return;
-      const id = generateUuidV4();
-      const at = atOverride ?? new Date().toISOString();
+      const actionKey = JSON.stringify([
+        cell,
+        beer.name,
+        beer.drinkType ?? 'beer',
+        beer.priceCzk ?? null,
+        beer.volumeMl ?? null,
+        beer.servingType ?? null,
+        atOverride ?? null,
+      ]);
+      if (countActionsInFlightRef.current.has(actionKey)) return;
+      const ticket = countActionTicketsRef.current.get(actionKey) ?? {
+        id: generateUuidV4(),
+        at: atOverride ?? new Date().toISOString(),
+      };
+      countActionTicketsRef.current.set(actionKey, ticket);
+      countActionsInFlightRef.current.add(actionKey);
+      const { id, at } = ticket;
       const drinkType = beer.drinkType ?? 'beer';
       const startsSession = !isThisSession || (current?.drinks.length ?? 0) === 0;
-      setNowMs(atOverride ? Date.now() : Date.parse(at));
 
       const label = pub ? pub.name : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext);
       const tallyPlace = pub
@@ -792,43 +814,6 @@ function Tacek({
       // the table right now. Never leak it into the currently active party.
       const activePartyCode = atOverride ? null : partyCode;
 
-      let landedSession: TallySession | null;
-      if (backdateToPast) {
-        landedSession = addBackdatedDrink(tallyPlace, tallyBeer);
-      } else {
-        addDrink(tallyPlace, tallyBeer);
-        landedSession = useTallyStore.getState().current;
-      }
-
-      if (!atOverride && drinkType === 'beer' && landedSession) {
-        void refreshBeerCountReminderAfterBeer(landedSession.clientId);
-      }
-      // An outside evening is NOT a pub visit — skip the visit record there.
-      if (pub) syncVisit(landedSession, undefined, activePartyCode);
-      if (!atOverride && startsSession) {
-        void trackClientEvent({ event: 'counter_session_started' });
-      }
-      void trackClientEvent({
-        event: 'drink_added',
-        context: {
-          had_active_session: !startsSession,
-          backdated: !!atOverride,
-          ...(drinkType === 'beer' ? {} : { drink_type: drinkType }),
-          ...(outsideContext ? { place_context: outsideContext } : {}),
-        },
-      });
-
-      // Merge into the local community menu so the price shows instantly across
-      // the app. Pub only — an outside beer must never enter community data.
-      if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
-        setOverride(cell, {
-          beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }),
-        });
-      }
-      // The check-in prompt is now-semantic and pub-bound — skip it for a
-      // backdated or outside log.
-      if (pub && !atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
-
       const entry = buildDrinkEntry(
         {
           ...(pub
@@ -855,61 +840,109 @@ function Tacek({
         },
         id,
       );
-      // Persist now (crash-safe) but hold the send for the undo window so the
-      // queued payload stays retractable; deliver + mark synced when it ends.
-      const enqueueResult = enqueueDrink(entry, { deliver: false })
-        .catch(() => 'storage-error' as const);
-      const timer = setTimeout(() => {
-        sendTimers.current.delete(id);
-        setLastCounted((prev) => (prev?.id === id ? null : prev));
-        void enqueueResult.then(async (result) => {
-          // A failed AsyncStorage write means there is no durable retry payload.
-          // Never turn that local row into a fake "sent" beer.
-          if (result === 'storage-error') return;
-          await flushDrinksQueue();
-          if (!(await isDrinkQueued(id))) markDrinkSynced(id);
-        });
-      }, UNDO_WINDOW_MS);
-      sendTimers.current.set(id, timer);
+      void runPrivateAccountMutation(async (scope) => {
+        // The drink and its visit update must both be durable before the tally
+        // claims success. Keep this ticket on either storage failure so Retry
+        // reuses the exact same idempotency ID.
+        if ((await enqueueDrink(entry, { deliver: false })) === 'storage-error') {
+          showToast(cs.friends.queueSaveError);
+          return;
+        }
+        if (!isPrivateAccountMutationScopeCurrent(scope)) {
+          throw new PrivateAccountMutationFrozenError();
+        }
+        const before = useTallyStore.getState();
+        let landedSession: TallySession | null;
+        if (backdateToPast) {
+          landedSession = addBackdatedDrink(tallyPlace, tallyBeer);
+        } else {
+          addDrink(tallyPlace, tallyBeer);
+          landedSession = useTallyStore.getState().current;
+        }
+        const visitResult = pub
+          ? await syncVisit(landedSession, undefined, activePartyCode, { deliver: false })
+          : 'skipped';
+        if (!isPrivateAccountMutationScopeCurrent(scope)) {
+          throw new PrivateAccountMutationFrozenError();
+        }
+        if (visitResult === 'storage-error') {
+          useTallyStore.setState({ current: before.current, history: before.history });
+          await removeQueuedDrink(id);
+          showToast(cs.friends.queueSaveError);
+          return;
+        }
+        countActionTicketsRef.current.delete(actionKey);
+        setNowMs(atOverride ? Date.now() : Date.parse(at));
 
-      // The undo strip owns the nudge slot for the whole window. A backdated
-      // drink is not "the beer you just had", so it gets no strip.
-      if (!atOverride) {
-        const liveCountAfter = sessionCount(useTallyStore.getState().current);
-        setLastCounted({
-          id,
-          ordinal: liveCountAfter,
-          isBeer: drinkType === 'beer',
+        if (!atOverride && drinkType === 'beer' && landedSession) {
+          void refreshBeerCountReminderAfterBeer(landedSession.clientId);
+        }
+        if (!atOverride && startsSession) {
+          void trackClientEvent({ event: 'counter_session_started' });
+        }
+        void trackClientEvent({
+          event: 'drink_added',
+          context: {
+            had_active_session: !startsSession,
+            backdated: !!atOverride,
+            ...(drinkType === 'beer' ? {} : { drink_type: drinkType }),
+            ...(outsideContext ? { place_context: outsideContext } : {}),
+          },
         });
-      }
+        if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
+          setOverride(cell, {
+            beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }),
+          });
+        }
+        if (pub && !atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
 
-      if (hapticEnabled) fireSuccessHaptic();
+        const timer = setTimeout(() => {
+          sendTimers.current.delete(id);
+          setLastCounted((prev) => (prev?.id === id ? null : prev));
+          void flushDrinksQueue().then(async () => {
+            if (!(await isDrinkQueued(id))) markDrinkSynced(id);
+          });
+        }, UNDO_WINDOW_MS);
+        sendTimers.current.set(id, timer);
+        if (!atOverride) {
+          setLastCounted({
+            id,
+            ordinal: sessionCount(useTallyStore.getState().current),
+            isBeer: drinkType === 'beer',
+          });
+        }
+        if (hapticEnabled) fireSuccessHaptic();
 
-      // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only.
-      const liveSession = useTallyStore.getState().current;
-      const liveCount = sessionCount(liveSession);
-      const nudgeKey = liveSession ? `${liveSession.clientId}:${liveCount}` : '';
-      const waterNudged =
-        !atOverride &&
-        drinkType === 'beer' &&
-        waterNudgeEnabled &&
-        liveCount > 0 &&
-        liveCount % 4 === 0 &&
-        waterNudgeKeyRef.current !== nudgeKey;
-      if (waterNudged) {
-        waterNudgeKeyRef.current = nudgeKey;
-        showToast(cs.counter.waterNudge(liveCount), {
-          icon: <GlassWaterIcon size={20} color={Colors.amber} />,
-        });
-      } else if (!atOverride) {
-        // The small pat on the back for the tap itself. One toast slot, so the
-        // water nudge wins whenever both would fire — and a backdated entry gets
-        // neither, it isn't "the beer you just had".
-        showToast(
-          drinkType === 'beer' ? cs.counter.countedToast(liveCount) : cs.counter.countedToastOther,
-          { icon: <DrinkToastIcon drinkType={drinkType} /> },
-        );
-      }
+        const liveSession = useTallyStore.getState().current;
+        const liveCount = sessionCount(liveSession);
+        const nudgeKey = liveSession ? `${liveSession.clientId}:${liveCount}` : '';
+        const waterNudged =
+          !atOverride &&
+          drinkType === 'beer' &&
+          waterNudgeEnabled &&
+          liveCount > 0 &&
+          liveCount % 4 === 0 &&
+          waterNudgeKeyRef.current !== nudgeKey;
+        if (waterNudged) {
+          waterNudgeKeyRef.current = nudgeKey;
+          showToast(cs.counter.waterNudge(liveCount), {
+            icon: <GlassWaterIcon size={20} color={Colors.amber} />,
+          });
+        } else if (!atOverride) {
+          showToast(
+            drinkType === 'beer'
+              ? cs.counter.countedToast(liveCount)
+              : cs.counter.countedToastOther,
+            { icon: <DrinkToastIcon drinkType={drinkType} /> },
+          );
+        }
+      })
+        .catch((error) => {
+          if (!(error instanceof PrivateAccountMutationFrozenError)) {
+            showToast(cs.friends.queueSaveError);
+          }
+        })
+        .finally(() => countActionsInFlightRef.current.delete(actionKey));
     },
     [
       addBackdatedDrink,
@@ -984,42 +1017,61 @@ function Tacek({
    *  it is still queued, otherwise enqueue a durable backend DELETE. */
   const removeDrinkById = useCallback(
     (targetId: string) => {
-      const timer = sendTimers.current.get(targetId);
-      if (timer) {
-        clearTimeout(timer);
-        sendTimers.current.delete(targetId);
-      }
-      setLastCounted((prev) => (prev?.id === targetId ? null : prev));
-
-      const visitUpdatedAt = new Date().toISOString();
-      const currentVisitClientId = current?.clientId;
-      removeDrink(targetId);
-
-      // Outside evenings never had a visit record, so there's none to touch.
-      if (pub) {
-        const nextSession = useTallyStore.getState().current;
-        if (nextSession && nextSession.drinks.length > 0) {
-          syncVisit(nextSession, visitUpdatedAt, partyCode);
-        } else if (currentVisitClientId) {
-          deleteVisitByClientId(currentVisitClientId);
+      if (removingDrinkIdsRef.current.has(targetId)) return;
+      removingDrinkIdsRef.current.add(targetId);
+      void runPrivateAccountMutation(async (scope) => {
+        const session = useTallyStore.getState().current;
+        if (!session?.drinks.some((drink) => drink.id === targetId)) return;
+        const deletion = await prepareDrinkDeletion(targetId);
+        if (!isPrivateAccountMutationScopeCurrent(scope)) {
+          throw new PrivateAccountMutationFrozenError();
         }
-      }
-
-      void removeQueuedDrink(targetId).then((pulledFromQueue) => {
+        if (deletion === 'storage-error') {
+          showToast(cs.friends.queueSaveError);
+          return;
+        }
+        if (pub) {
+          const remaining = session.drinks.filter((drink) => drink.id !== targetId);
+          const visitResult =
+            remaining.length > 0
+              ? await syncVisit(
+                  { ...session, drinks: remaining },
+                  new Date().toISOString(),
+                  partyCode,
+                  { deliver: false },
+                )
+              : await deleteVisitByClientId(session.clientId);
+          if (!isPrivateAccountMutationScopeCurrent(scope)) {
+            throw new PrivateAccountMutationFrozenError();
+          }
+          if (visitResult === 'storage-error') {
+            showToast(cs.friends.queueSaveError);
+            return;
+          }
+        }
+        const timer = sendTimers.current.get(targetId);
+        if (timer) {
+          clearTimeout(timer);
+          sendTimers.current.delete(targetId);
+        }
+        setLastCounted((prev) => (prev?.id === targetId ? null : prev));
+        removeDrink(targetId);
         void trackClientEvent({
           event: 'drink_removed',
-          context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
+          context: {
+            delivery_state: deletion === 'local-create-removed' ? 'queued' : 'delivered',
+          },
         });
-        if (!pulledFromQueue) {
-          void flushDrinksQueue()
-            .then(() => enqueueDelete(targetId))
-            .catch(() => undefined);
-        }
-      });
-
-      if (hapticEnabled) fireLightImpactHaptic();
+        if (hapticEnabled) fireLightImpactHaptic();
+      })
+        .catch((error) => {
+          if (!(error instanceof PrivateAccountMutationFrozenError)) {
+            showToast(cs.friends.queueSaveError);
+          }
+        })
+        .finally(() => removingDrinkIdsRef.current.delete(targetId));
     },
-    [current, hapticEnabled, partyCode, pub, removeDrink],
+    [hapticEnabled, partyCode, pub, removeDrink, showToast],
   );
 
   /** Receipt minus: drop the most recent drink of that identity. */
@@ -1384,26 +1436,42 @@ function Tacek({
   // ── Friends ─────────────────────────────────────────────────────────────────
 
   const handleShareWithFriends = useCallback(async () => {
-    if (!pub || !cell || sharingWithFriends || broadcasted) return;
+    if (!pub || !cell || sharingWithFriendsRef.current || broadcasted) return;
     trackUiInteraction('counter_share_friends', 'share');
-    setSharingWithFriends(true);
+    sharingWithFriendsRef.current = true;
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
-    const result = await shareFriendPubActivity(pub, '', shareClientId);
-    setSharingWithFriends(false);
-    if (result.ok) {
-      setBroadcastCell(cell);
-      showToast(cs.friends.shareSuccess);
-      if (hapticEnabled) fireLightImpactHaptic();
-    } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({
-        op: 'activity',
-        clientId: shareClientId,
-        payload: { pub, message: '' },
+    try {
+      const result = await runPrivateAccountMutation(async () => {
+        const direct = await shareFriendPubActivity(pub, '', shareClientId);
+        if (direct.ok) return { state: 'delivered' as const };
+        if (!isRetriableFriendError(direct)) return { state: 'rejected' as const, direct };
+        const queued = await enqueueFriendOp({
+          op: 'activity',
+          clientId: shareClientId,
+          payload: { pub, message: '' },
+        });
+        return {
+          state: queued === 'storage-error' ? ('storage-error' as const) : ('queued' as const),
+        };
       });
-      setBroadcastCell(cell);
-      showToast(cs.friends.composeQueued);
-    } else {
-      showToast(result.detail || cs.friends.shareError);
+      if (result.state === 'delivered') {
+        setBroadcastCell(cell);
+        showToast(cs.friends.shareSuccess);
+        if (hapticEnabled) fireLightImpactHaptic();
+      } else if (result.state === 'queued') {
+        setBroadcastCell(cell);
+        showToast(cs.friends.composeQueued);
+      } else if (result.state === 'storage-error') {
+        showToast(cs.friends.queueSaveError);
+      } else {
+        showToast(result.direct?.detail || cs.friends.shareError);
+      }
+    } catch (error) {
+      if (!(error instanceof PrivateAccountMutationFrozenError)) {
+        showToast(cs.friends.shareError);
+      }
+    } finally {
+      sharingWithFriendsRef.current = false;
     }
   }, [
     broadcasted,
@@ -1412,7 +1480,6 @@ function Tacek({
     hapticEnabled,
     isThisSession,
     pub,
-    sharingWithFriends,
     showToast,
   ]);
 

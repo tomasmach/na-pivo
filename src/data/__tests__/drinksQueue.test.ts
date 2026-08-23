@@ -137,6 +137,16 @@ describe('enqueueDrink', () => {
     expect(queue.map((e) => e.client_id).sort()).toEqual(['a', 'b']);
   });
 
+  it('reuses one durable row when the same action ticket is retried', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    const retried = entry({ client_id: 'same-ticket' });
+
+    await enqueueDrink(retried, { deliver: false });
+    await enqueueDrink(retried, { deliver: false });
+
+    expect((await readQueue()).filter((queued) => queued.client_id === 'same-ticket')).toHaveLength(1);
+  });
+
   it('keeps older offline drinks when the former queue cap is exceeded', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     for (let i = 0; i < 205; i++) {
@@ -432,6 +442,14 @@ describe('ensureHistoricalDrinkBatchQueued', () => {
 });
 
 describe('removeQueuedDrink', () => {
+  it('keeps the queued create and reports false when removing it is not durable', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(removeQueuedDrink('a')).resolves.toBe(false);
+    expect((await readQueue()).map((item) => item.client_id)).toEqual(['a']);
+  });
+
   it('removes a queued drink by client_id (undo before delivery)', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDrink(entry({ client_id: 'a' }));
@@ -468,6 +486,13 @@ describe('removeQueuedDrink', () => {
 });
 
 describe('updateQueuedDrinkBeerName', () => {
+  it('does not report a queued edit when the rewritten create cannot be stored', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(updateQueuedDrinkBeerName('a', 'Plzeň')).resolves.toBe('storage-error');
+  });
+
   it('updates the beer name on a drink that has not been delivered yet', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDrink(entry({ client_id: 'a', beer: { name: 'Plzen', price_czk: 62, volume_ml: 500 } }));

@@ -18,6 +18,10 @@ import React from 'react';
 import type { TallySession } from '@/stores/tallyStore';
 import type { PartyEvening } from '@/data/partyClient';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '@/data/privateAccountBoundary';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -137,9 +141,16 @@ const removeQueuedDrink = jest.fn((_clientId: string) => Promise.resolve(true));
 const isDrinkQueued = jest.fn((_clientId: string) => Promise.resolve(false));
 jest.mock('@/data/drinksQueue', () => ({ enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink }));
 
-const enqueueDelete = jest.fn((_clientId: string) => Promise.resolve(undefined));
+const enqueueDelete = jest.fn((_clientId: string) => Promise.resolve<'queued' | 'storage-error'>('queued'));
 const flushDeleteDrinksQueue = jest.fn(() => Promise.resolve(undefined));
 jest.mock('@/data/deleteDrinksQueue', () => ({ enqueueDelete, flushDeleteDrinksQueue }));
+const prepareDrinkDeletion = jest.fn(async (clientId: string) => {
+  const pulled = await removeQueuedDrink(clientId);
+  if (pulled) return 'local-create-removed';
+  await flushDrinksQueue();
+  return (await enqueueDelete(clientId)) === 'storage-error' ? 'storage-error' : 'delete-queued';
+});
+jest.mock('@/data/drinkDeletion', () => ({ prepareDrinkDeletion }));
 
 const mockTrackClientEvent = jest.fn(async () => undefined);
 jest.mock('@/data/telemetryClient', () => ({ trackClientEvent: mockTrackClientEvent }));
@@ -166,8 +177,8 @@ jest.mock('@/data/account', () => ({
 
 // Visit ("evening") sync — keep it out of the network path; the wiring is
 // covered by visitsSync/visitsQueue tests.
-const syncVisit = jest.fn();
-const deleteVisitByClientId = jest.fn();
+const syncVisit = jest.fn(async () => 'queued');
+const deleteVisitByClientId = jest.fn(async () => 'queued');
 jest.mock('@/data/visitsSync', () => ({ syncVisit, deleteVisitByClientId }));
 
 const useNearbyPub = jest.fn();
@@ -613,6 +624,40 @@ describe('CounterScreen counting', () => {
     ]);
   });
 
+  it('does not commit account A tally after an A→B transition starts mid-write', async () => {
+    resetPrivateAccountBoundaryForTests();
+    let resolveWrite!: (result: 'queued') => void;
+    enqueueDrink.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveWrite = resolve;
+      }),
+    );
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({
+      drinkType: 'beer',
+      name: 'Plzeň',
+      priceCzk: 62,
+      volumeMl: 500,
+    });
+    await act(async () => {
+      for (let index = 0; index < 20 && enqueueDrink.mock.calls.length === 0; index += 1) {
+        await Promise.resolve();
+      }
+    });
+    const transition = beginPrivateAccountTransition('account-switch', 'A');
+    expect(transition).not.toBeNull();
+    await act(async () => resolveWrite('queued'));
+    await transition!.drain();
+
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(syncVisit).not.toHaveBeenCalled();
+    transition!.release();
+    resetPrivateAccountBoundaryForTests();
+  });
+
   it('counts a menu row picked from "Co si dáš?" without re-asking the price', async () => {
     useCommunityStore.setState({
       overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
@@ -659,6 +704,7 @@ describe('CounterScreen counting', () => {
       expect.objectContaining({ clientId: expect.any(String) }),
       undefined,
       'PIVOXY',
+      { deliver: false },
     );
   });
 
@@ -685,6 +731,7 @@ describe('CounterScreen counting', () => {
       expect.objectContaining({ clientId: expect.any(String) }),
       undefined,
       'PIVOXY',
+      { deliver: false },
     );
   });
 
@@ -705,6 +752,7 @@ describe('CounterScreen counting', () => {
       expect.objectContaining({ clientId: expect.any(String) }),
       undefined,
       null,
+      { deliver: false },
     );
   });
 
@@ -724,6 +772,7 @@ describe('CounterScreen counting', () => {
       expect.objectContaining({ clientId: expect.any(String) }),
       undefined,
       null,
+      { deliver: false },
     );
   });
 });
@@ -782,23 +831,27 @@ describe('CounterScreen undo', () => {
     expect(surface(renderer, copy.a11y.counterUndoStrip)).toBeUndefined();
   });
 
-  it('never marks a drink synced when its retry payload was not persisted', async () => {
-    enqueueDrink.mockResolvedValueOnce('storage-error');
+  it('does not count or confirm a drink whose retry payload was not persisted', async () => {
+    enqueueDrink.mockResolvedValueOnce('storage-error').mockResolvedValueOnce('queued');
     useNearbyPub.mockReturnValue(nearbyState());
     const renderer = render();
     await countFirstBeer(renderer);
 
-    await act(async () => {
-      jest.advanceTimersByTime(UNDO_WINDOW_MS);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
     expect(flushDrinksQueue).not.toHaveBeenCalled();
-    expect(useTallyStore.getState().current?.drinks[0].syncStatus).toBe('pending');
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useToastStore.getState().message).not.toBe(copy.counter.countedToast(1));
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    const firstAttempt = enqueueDrink.mock.calls[0][0] as any;
+    expect(enqueueDrink.mock.calls[1][0]).toMatchObject({
+      client_id: firstAttempt.client_id,
+      drank_at: firstAttempt.drank_at,
+    });
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
   });
 
-  it('keeps a frozen-boundary enqueue rejection handled and pending', async () => {
+  it('keeps a frozen-boundary enqueue rejection handled without a false local count', async () => {
     enqueueDrink.mockRejectedValueOnce(new Error('account transition'));
     useNearbyPub.mockReturnValue(nearbyState());
     const renderer = render();
@@ -811,7 +864,7 @@ describe('CounterScreen undo', () => {
     });
 
     expect(flushDrinksQueue).not.toHaveBeenCalled();
-    expect(useTallyStore.getState().current?.drinks[0].syncStatus).toBe('pending');
+    expect(useTallyStore.getState().current).toBeNull();
   });
 
   it('a receipt minus after delivery enqueues a durable backend DELETE', async () => {
@@ -849,6 +902,28 @@ describe('CounterScreen undo', () => {
       event: 'drink_removed',
       context: { delivery_state: 'delivered' },
     });
+  });
+
+  it('keeps the drink visible when its delivered DELETE cannot reach storage', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+    act(() => surface(renderer, copy.a11y.counterReceiptChip).props.onPress());
+    removeQueuedDrink.mockResolvedValueOnce(false);
+    enqueueDelete.mockResolvedValueOnce('storage-error');
+
+    await act(async () => {
+      sheetButton(
+        renderer,
+        copy.counter.receiptTitle,
+        copy.a11y.counterRemoveIdentity('Plzeň'),
+      ).props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
   });
 });
 

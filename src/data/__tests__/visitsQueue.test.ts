@@ -26,6 +26,11 @@ jest.mock('../visitsClient', () => ({
 }));
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
+const UUID_C = '33333333-3333-4333-8333-333333333333';
+const UUID_D = '44444444-4444-4444-8444-444444444444';
+const UUID_E = '55555555-5555-4555-8555-555555555555';
 
 function entry(clientId: string, over: Partial<VisitEntry> = {}): VisitEntry {
   return {
@@ -77,16 +82,42 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
   it('reports storage failure and does not attempt delivery', async () => {
     (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
 
-    await expect(enqueueVisitOp(upsert('not-durable'))).resolves.toBe('storage-error');
+    await expect(enqueueVisitOp(upsert(UUID_A))).resolves.toBe('storage-error');
 
     expect(submitVisit).not.toHaveBeenCalled();
     expect(await readQueue()).toEqual([]);
   });
 
+  it('retries an in-memory last-write intent after storage recovers', async () => {
+    const latest = upsert(UUID_A, { ended_at: '2026-06-14T21:00:00.000Z' });
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(enqueueVisitOp(latest)).resolves.toBe('storage-error');
+    expect(submitVisit).not.toHaveBeenCalled();
+
+    await flushVisitsQueue();
+
+    expect(submitVisit).toHaveBeenCalledWith(expect.objectContaining({
+      client_id: UUID_A,
+      ended_at: '2026-06-14T21:00:00.000Z',
+    }));
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('lets a delete replace a storage-failed upsert before either reaches the server', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+    await expect(enqueueVisitOp(upsert(UUID_A))).resolves.toBe('storage-error');
+
+    await expect(enqueueVisitOp({ op: 'delete', clientId: UUID_A })).resolves.toBe('delivered');
+
+    expect(submitVisit).not.toHaveBeenCalled();
+    expect(deleteVisit).toHaveBeenCalledWith(UUID_A);
+  });
+
   it('replaces a pending upsert for the same client_id (e.g. a bumped ended_at)', async () => {
     submitVisit.mockResolvedValue('retry');
-    await enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T19:10:00.000Z' }));
-    await enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T20:30:00.000Z' }));
+    await enqueueVisitOp(upsert(UUID_A, { ended_at: '2026-06-14T19:10:00.000Z' }));
+    await enqueueVisitOp(upsert(UUID_A, { ended_at: '2026-06-14T20:30:00.000Z' }));
 
     const queue = await readQueue();
     expect(queue).toHaveLength(1);
@@ -96,8 +127,8 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
   it('lets a delete supersede a queued upsert for the same client_id', async () => {
     submitVisit.mockResolvedValue('retry');
     deleteVisit.mockResolvedValue('retry');
-    await enqueueVisitOp(upsert('v1'));
-    await enqueueVisitOp({ op: 'delete', clientId: 'v1' });
+    await enqueueVisitOp(upsert(UUID_A));
+    await enqueueVisitOp({ op: 'delete', clientId: UUID_A });
 
     const queue = await readQueue();
     expect(queue).toHaveLength(1);
@@ -106,30 +137,42 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
 
   it('keeps distinct client_ids as separate items', async () => {
     submitVisit.mockResolvedValue('retry');
-    await enqueueVisitOp(upsert('v1'));
-    await enqueueVisitOp(upsert('v2'));
+    await enqueueVisitOp(upsert(UUID_A));
+    await enqueueVisitOp(upsert(UUID_B));
     const queue = await readQueue();
-    expect(queue.map((i) => i.clientId).sort()).toEqual(['v1', 'v2']);
+    expect(queue.map((i) => i.clientId).sort()).toEqual([UUID_A, UUID_B]);
   });
 
   it('clears the queue once delivery succeeds', async () => {
-    await expect(enqueueVisitOp(upsert('v1'))).resolves.toBe('delivered');
+    await expect(enqueueVisitOp(upsert(UUID_A))).resolves.toBe('delivered');
     expect(submitVisit).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([]);
   });
 
   it('drops a permanently-rejected op', async () => {
     submitVisit.mockResolvedValue('permanent-error');
-    await enqueueVisitOp(upsert('v1'));
+    await enqueueVisitOp(upsert(UUID_A));
     expect(await readQueue()).toEqual([]);
   });
 });
 
 describe('flushVisitsQueue', () => {
+  it('drops malformed persisted client IDs instead of retrying them forever', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      upsert('not-a-uuid'),
+      upsert(UUID_A),
+    ]));
+
+    await flushVisitsQueue();
+
+    expect(submitVisit).toHaveBeenCalledTimes(1);
+    expect(submitVisit).toHaveBeenCalledWith(expect.objectContaining({ client_id: UUID_A }));
+  });
+
   it('re-sends queued ops once the backend recovers and clears the queue', async () => {
     submitVisit.mockResolvedValue('retry');
-    await enqueueVisitOp(upsert('v1'));
-    await enqueueVisitOp(upsert('v2'));
+    await enqueueVisitOp(upsert(UUID_A));
+    await enqueueVisitOp(upsert(UUID_B));
     expect(await readQueue()).toHaveLength(2);
 
     submitVisit.mockResolvedValue('ok');
@@ -139,8 +182,8 @@ describe('flushVisitsQueue', () => {
 
   it('routes delete ops through deleteVisit', async () => {
     deleteVisit.mockResolvedValue('retry');
-    await enqueueVisitOp({ op: 'delete', clientId: 'v1' });
-    expect(deleteVisit).toHaveBeenCalledWith('v1');
+    await enqueueVisitOp({ op: 'delete', clientId: UUID_A });
+    expect(deleteVisit).toHaveBeenCalledWith(UUID_A);
   });
 
   it('does nothing on an empty queue', async () => {
@@ -156,15 +199,15 @@ describe('flushVisitsQueue', () => {
 
   it('drops malformed persisted operations while delivering healthy siblings', async () => {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
-      upsert('healthy'),
-      upsert('bad-date', { started_at: 'not-a-date' }),
-      { ...upsert('mismatch'), clientId: 'other-id' },
+      upsert(UUID_C),
+      upsert(UUID_D, { started_at: 'not-a-date' }),
+      { ...upsert(UUID_E), clientId: UUID_B },
     ]));
 
     await flushVisitsQueue();
 
     expect(submitVisit).toHaveBeenCalledTimes(1);
-    expect(submitVisit).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'healthy' }));
+    expect(submitVisit).toHaveBeenCalledWith(expect.objectContaining({ client_id: UUID_C }));
   });
 
   it('persists a newer enqueue while an older delivery is still in flight', async () => {
@@ -178,19 +221,19 @@ describe('flushVisitsQueue', () => {
       }),
     );
 
-    const first = enqueueVisitOp(upsert('v1'));
+    const first = enqueueVisitOp(upsert(UUID_A));
     await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
 
-    const second = enqueueVisitOp(upsert('v2'));
+    const second = enqueueVisitOp(upsert(UUID_B));
     await waitForExpectation(async () => {
       const queuedIds = (await readQueue()).map((item) => item.clientId);
-      expect(queuedIds).toContain('v2');
+      expect(queuedIds).toContain(UUID_B);
     });
 
     resolveSubmit('retry');
     await first;
     await second;
-    expect((await readQueue()).map((item) => item.clientId).sort()).toEqual(['v1', 'v2']);
+    expect((await readQueue()).map((item) => item.clientId).sort()).toEqual([UUID_A, UUID_B]);
   });
 
   it('keeps a newer operation for the same client_id when an older in-flight op settles', async () => {
@@ -204,10 +247,10 @@ describe('flushVisitsQueue', () => {
       }),
     );
 
-    const first = enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T19:10:00.000Z' }));
+    const first = enqueueVisitOp(upsert(UUID_A, { ended_at: '2026-06-14T19:10:00.000Z' }));
     await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
 
-    const second = enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T20:30:00.000Z' }));
+    const second = enqueueVisitOp(upsert(UUID_A, { ended_at: '2026-06-14T20:30:00.000Z' }));
     await waitForExpectation(async () => {
       const queue = await readQueue();
       expect((queue[0] as { entry: VisitEntry }).entry.ended_at).toBe('2026-06-14T20:30:00.000Z');
@@ -229,7 +272,7 @@ describe('flushVisitsQueue', () => {
         resolveSubmit = resolve;
       }),
     );
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1')]));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert(UUID_A)]));
 
     const flushing = flushVisitsQueue();
     await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
@@ -252,7 +295,7 @@ describe('flushVisitsQueue', () => {
         resolveFirst = resolve;
       }),
     );
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1'), upsert('v2')]));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert(UUID_A), upsert(UUID_B)]));
 
     const flushing = flushVisitsQueue();
     await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
@@ -262,7 +305,7 @@ describe('flushVisitsQueue', () => {
     await flushing;
 
     expect(submitVisit).toHaveBeenCalledTimes(1);
-    expect((submitVisit as jest.Mock).mock.calls[0][0]).toMatchObject({ client_id: 'v1' });
+    expect((submitVisit as jest.Mock).mock.calls[0][0]).toMatchObject({ client_id: UUID_A });
     expect(await readQueue()).toEqual([]);
   });
 
@@ -275,7 +318,7 @@ describe('flushVisitsQueue', () => {
         }),
       )
       .mockResolvedValue('retry');
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1')]));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert(UUID_A)]));
 
     const first = flushVisitsQueue();
     const second = flushVisitsQueue();
@@ -289,6 +332,6 @@ describe('flushVisitsQueue', () => {
     // The mid-flight caller scheduled exactly one trailing pass — not zero (so a
     // mid-flush enqueue is retried) and not more than one (no busy loop).
     expect(submitVisit).toHaveBeenCalledTimes(2);
-    expect((await readQueue()).map((item) => item.clientId)).toEqual(['v1']);
+    expect((await readQueue()).map((item) => item.clientId)).toEqual([UUID_A]);
   });
 });

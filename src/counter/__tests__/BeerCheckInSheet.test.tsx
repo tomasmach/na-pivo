@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { Text, TextInput } from 'react-native';
 
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { cs } from '@/i18n/cs';
@@ -52,11 +52,36 @@ jest.mock('@/theme/fonts', () => ({
   FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
 
-jest.mock('@/data/account', () => ({ generateUuidV4: () => 'uuid-1' }));
+let mockUuidSequence = 0;
+const mockGenerateUuidV4 = jest.fn(() => `uuid-${++mockUuidSequence}`);
+jest.mock('@/data/account', () => ({ generateUuidV4: () => mockGenerateUuidV4() }));
 
-const enqueueBeerCheckInOp = jest.fn(async (_op: unknown) => undefined);
+const enqueueBeerCheckInOp = jest.fn(async (_op: unknown) => 'queued');
+let savedActionTicket: any = null;
 jest.mock('@/data/beerCheckinsQueue', () => ({
   enqueueBeerCheckInOp: (op: unknown) => enqueueBeerCheckInOp(op),
+  getOrCreateBeerCheckInActionTicket: async (key: string, create: () => unknown) => {
+    if (savedActionTicket?.key === key) return savedActionTicket;
+    savedActionTicket = create();
+    return savedActionTicket;
+  },
+  loadBeerCheckInActionTicket: async (key: string) =>
+    savedActionTicket?.key === key ? savedActionTicket : null,
+  saveBeerCheckInActionTicket: async (ticket: unknown) => {
+    savedActionTicket = ticket;
+    return true;
+  },
+  removeBeerCheckInActionTicket: async (key: string) => {
+    if (savedActionTicket?.key === key) savedActionTicket = null;
+    return true;
+  },
+}));
+jest.mock('@/data/privateAccountBoundary', () => ({
+  PrivateAccountMutationFrozenError: class PrivateAccountMutationFrozenError extends Error {},
+  isPrivateAccountMutationScopeCurrent: () => true,
+  runPrivateAccountMutation: (
+    task: (scope: { generation: number; signal: AbortSignal }) => Promise<unknown>,
+  ) => task({ generation: 0, signal: new AbortController().signal }),
 }));
 
 const suggestBeerBrands = jest.fn();
@@ -114,6 +139,8 @@ function renderSheet(visible = true) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUuidSequence = 0;
+  savedActionTicket = null;
   fetchBeerMemory.mockResolvedValue(null);
   suggestBeerBrands.mockResolvedValue([]);
 });
@@ -179,6 +206,114 @@ describe('BeerCheckInSheet — verdict tags', () => {
     await waitFor(() => expect(enqueueBeerCheckInOp).toHaveBeenCalled());
     const op = enqueueBeerCheckInOp.mock.calls[0][0] as unknown as { payload: { tags: string[] } };
     expect(op.payload.tags).toEqual(['crisp', 'one_more']);
+  });
+});
+
+describe('BeerCheckInSheet — durable save', () => {
+  it('ignores an old save after close and reopen without unlocking the new submit', async () => {
+    let resolveOld!: (result: 'queued') => void;
+    let resolveCurrent!: (result: 'queued') => void;
+    enqueueBeerCheckInOp
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveCurrent = resolve; }));
+    const onClose = jest.fn();
+    const onSubmitted = jest.fn();
+    const screen = render(
+      <BeerCheckInSheet
+        visible
+        beerName="Radegast 12"
+        pub={PUB}
+        pubKey="pk"
+        onClose={onClose}
+        onSubmitted={onSubmitted}
+      />,
+    );
+    await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
+
+    fireEvent.press(screen.getByText(t.submit));
+    screen.rerender(
+      <BeerCheckInSheet
+        visible={false}
+        beerName="Radegast 12"
+        pub={PUB}
+        pubKey="pk"
+        onClose={onClose}
+        onSubmitted={onSubmitted}
+      />,
+    );
+    screen.rerender(
+      <BeerCheckInSheet
+        visible
+        beerName="Radegast 12"
+        pub={PUB}
+        pubKey="pk"
+        onClose={onClose}
+        onSubmitted={onSubmitted}
+      />,
+    );
+    fireEvent.press(screen.getByText(t.submit));
+
+    await act(async () => resolveOld('queued'));
+    fireEvent.press(screen.getByText(t.submit));
+    expect(enqueueBeerCheckInOp).toHaveBeenCalledTimes(2);
+    expect(mockGenerateUuidV4).toHaveBeenCalledTimes(1);
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => resolveCurrent('queued'));
+    expect(onSubmitted).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts only one submit while the durable write is pending', async () => {
+    let resolveWrite!: (result: 'queued') => void;
+    enqueueBeerCheckInOp.mockReturnValueOnce(new Promise((resolve) => {
+      resolveWrite = resolve;
+    }));
+    const screen = renderSheet();
+    await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
+
+    const submit = screen.getByText(t.submit);
+    fireEvent.press(submit);
+    fireEvent.press(submit);
+
+    await waitFor(() => expect(enqueueBeerCheckInOp).toHaveBeenCalledTimes(1));
+    await act(async () => resolveWrite('queued'));
+  });
+
+  it('stays open and reports an error when the check-in could not reach storage', async () => {
+    enqueueBeerCheckInOp.mockResolvedValueOnce('storage-error');
+    const onClose = jest.fn();
+    const onSubmitted = jest.fn();
+    const screen = render(
+      <BeerCheckInSheet
+        visible
+        beerName="Radegast 12"
+        pub={PUB}
+        pubKey="pk"
+        onClose={onClose}
+        onSubmitted={onSubmitted}
+      />,
+    );
+
+    await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
+    fireEvent.press(screen.getByText(t.submit));
+    await waitFor(() => expect(enqueueBeerCheckInOp).toHaveBeenCalledTimes(1));
+
+    expect(showToast).toHaveBeenCalledWith(t.saveError, expect.any(Object));
+    expect(showToast).not.toHaveBeenCalledWith(t.saved, expect.anything());
+    expect(onSubmitted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('caps beer and brewery at 120 characters and style at 80', async () => {
+    const screen = renderSheet();
+    await waitFor(() => expect(fetchBeerMemory).toHaveBeenCalled());
+    const inputs = screen.UNSAFE_getAllByType(TextInput);
+
+    expect(inputs[0].props.maxLength).toBe(120);
+    expect(inputs[1].props.maxLength).toBe(120);
+    expect(inputs[2].props.maxLength).toBe(80);
   });
 });
 

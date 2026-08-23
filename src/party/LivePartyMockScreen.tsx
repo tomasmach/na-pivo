@@ -106,6 +106,10 @@ import {
 } from '@/party/partyPubVisits';
 import { rememberNightRecord, useNightRecord } from '@/party/useNightRecord';
 import { usePartyBeer } from '@/party/usePartyBeer';
+import {
+  closeAfterDurablePartyBeerMutation,
+  createPartyBeerMutationGate,
+} from '@/party/partyBeerMutation';
 import { finishPartyToRecap, minimizeParty } from '@/party/partyRouting';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -253,6 +257,12 @@ export default function LivePartyMockScreen() {
   // instant; this runs alongside it and is allowed to be slow or to fail.
   const night = useNightRecord({ pollingEnabled: isFocused });
   const beer = usePartyBeer();
+  const mutateBeer = React.useMemo(
+    () => createPartyBeerMutationGate(() => {
+      useToastStore.getState().show(cs.friends.queueSaveError);
+    }),
+    [],
+  );
   const evening = usePartyEveningStore((s) => s.evening);
   const confirmedIdentity = usePartyEveningStore((s) => s.confirmedIdentity);
   const pendingJoinCode = usePartyEveningStore((s) => s.pendingJoinCode);
@@ -422,6 +432,7 @@ export default function LivePartyMockScreen() {
   const [formDrinkType, setFormDrinkType] = React.useState<DrinkType>('beer');
   const [formDrink, setFormDrink] = React.useState<TallyDrink | null>(null);
   const [formNonce, setFormNonce] = React.useState(0);
+  const formGenerationRef = React.useRef(0);
   const [backdateAt, setBackdateAt] = React.useState<string | null>(null);
   const [scanOpen, setScanOpen] = React.useState(false);
   const [scannedDrinks, setScannedDrinks] = React.useState<ScannedDrink[]>([]);
@@ -622,15 +633,15 @@ export default function LivePartyMockScreen() {
     setFormMode(mode);
     setFormDrinkType(type);
     setFormDrink(drink);
-    setFormNonce((value) => value + 1);
+    formGenerationRef.current += 1;
+    setFormNonce(formGenerationRef.current);
     setFormOpen(true);
   };
   const openBackdateForm = (at: string) => {
     setBackdateAt(at);
     openDrinkForm('add', 'beer');
   };
-  const openBackdatePicker = () => {
-    const now = Date.now();
+  const openBackdatePicker = (now: number) => {
     const CAP_MS = 48 * 60 * 60 * 1000;
     const clamp = (ms: number) => new Date(Math.max(ms, now - CAP_MS)).toISOString();
     const yesterdayEvening = new Date(now);
@@ -707,14 +718,16 @@ export default function LivePartyMockScreen() {
         {
           text: cs.myBeers.deleteDrinkConfirm,
           style: 'destructive',
-          onPress: () => beer.remove(drinkId),
+          onPress: () => {
+            void mutateBeer(drinkId, () => beer.remove(drinkId));
+          },
         },
       ],
     });
   };
   const removeReceiptIdentity = (key: string) => {
     const drink = [...privateDrinks].reverse().find((candidate) => drinkIdentity(candidate) === key);
-    if (drink) beer.remove(drink.id);
+    if (drink) void mutateBeer(drink.id, () => beer.remove(drink.id));
   };
   const runDrinkScan = async (source: MenuScanSource) => {
     setScanOpen(false);
@@ -1248,7 +1261,10 @@ export default function LivePartyMockScreen() {
                           options={privateDrink && drinkTypeOf(privateDrink) === 'beer'
                             ? Array.from(new Set([privateDrink.beerName, ...taps.map((tap) => tap.name)]))
                             : undefined}
-                          onChange={(next) => beer.rename(event.beerId as string, next)}
+                          onChange={(next) => {
+                            const drinkId = event.beerId as string;
+                            void mutateBeer(drinkId, () => beer.rename(drinkId, next));
+                          }}
                           // Repeat the current selection from the row; this is the only place
                           // that knows which private drink the event represents.
                           repeat={{
@@ -1289,9 +1305,12 @@ export default function LivePartyMockScreen() {
             </Text>
             <Pressable
               onPress={() => {
-                beer.remove(undoDrink.id);
-                setUndoDrink(null);
-                if (undoTimer.current) clearTimeout(undoTimer.current);
+                const drink = undoDrink;
+                void mutateBeer(drink.id, () => beer.remove(drink.id)).then((stored) => {
+                  if (!stored) return;
+                  setUndoDrink((current) => (current?.id === drink.id ? null : current));
+                  if (undoTimer.current) clearTimeout(undoTimer.current);
+                });
               }}
               accessibilityRole="button"
               accessibilityLabel={`Vrátit zápis ${undoDrink.beerName}`}
@@ -1457,17 +1476,31 @@ export default function LivePartyMockScreen() {
           setBackdateAt(null);
         }}
         onSubmit={(result) => {
-          if (formMode === 'edit' && formDrink) beer.update(formDrink.id, {
-            beerName: result.name,
-            drinkType: result.drinkType,
-            priceCzk: result.priceCzk,
-            volumeMl: result.volumeMl,
-            servingType: result.servingType,
-          });
-          else logDrink(result, backdateAt ?? undefined);
-          setFormOpen(false);
-          setFormDrink(null);
-          setBackdateAt(null);
+          const closeForm = () => {
+            setFormOpen(false);
+            setFormDrink(null);
+            setBackdateAt(null);
+          };
+          if (formMode === 'edit' && formDrink) {
+            const drink = formDrink;
+            const submittedFormGeneration = formGenerationRef.current;
+            void closeAfterDurablePartyBeerMutation(
+              mutateBeer,
+              drink.id,
+              () => beer.update(drink.id, {
+                beerName: result.name,
+                drinkType: result.drinkType,
+                priceCzk: result.priceCzk,
+                volumeMl: result.volumeMl,
+                servingType: result.servingType,
+              }),
+              closeForm,
+              () => formGenerationRef.current === submittedFormGeneration,
+            );
+            return;
+          }
+          logDrink(result, backdateAt ?? undefined);
+          closeForm();
         }}
         onScanMenu={backdateAt ? undefined : () => {
           setFormOpen(false);

@@ -6,10 +6,25 @@ import {
 } from './beerCheckinsClient';
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import { preserveDurableQueue } from './durableQueuePolicy';
-import type { QueueSyncResult } from './apiFetch';
+import { runPrivateAccountMutation } from './privateAccountBoundary';
+import { classifyQueueHttpStatus, type QueueSyncResult } from './apiFetch';
 
 const STORAGE_KEY = 'na-pivo-beer-checkins-queue';
+const ACTION_TICKETS_STORAGE_KEY = 'na-pivo-beer-checkin-action-tickets';
 const MAX_QUEUE_LENGTH = 300;
+const MAX_ACTION_TICKETS = 20;
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+export type BeerCheckInEnqueueResult = 'queued' | 'storage-error';
+
+export interface BeerCheckInActionTicket {
+  key: string;
+  visitClientId: string | null;
+  clientIds: string[];
+  checkedInAt: string;
+  endedAt?: string | null;
+  createdAt: number;
+}
 
 export type BeerCheckInQueueItem =
   | { op: 'checkin'; payload: BeerCheckInInput }
@@ -32,22 +47,48 @@ function isQueueItem(value: unknown): value is BeerCheckInQueueItem {
   switch (item.op) {
     case 'checkin':
       return (
-        typeof item.payload?.clientId === 'string' &&
+        typeof item.payload?.clientId === 'string' && UUID_PATTERN.test(item.payload.clientId) &&
         typeof item.payload?.beerName === 'string' &&
+        (item.payload.visitClientId == null || UUID_PATTERN.test(item.payload.visitClientId)) &&
         (item.payload.visibility === 'private' || item.payload.visibility === 'friends')
       );
     case 'cheer':
     case 'cheer-clear':
-      return typeof item.checkInId === 'string';
+      return typeof item.checkInId === 'string' && UUID_PATTERN.test(item.checkInId);
     default:
       return false;
   }
+}
+
+function isActionTicket(value: unknown): value is BeerCheckInActionTicket {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const ticket = value as Partial<BeerCheckInActionTicket>;
+  return (
+    typeof ticket.key === 'string' &&
+    ticket.key.length > 0 &&
+    ticket.key.length <= 4_000 &&
+    (ticket.visitClientId === null ||
+      (typeof ticket.visitClientId === 'string' && UUID_PATTERN.test(ticket.visitClientId))) &&
+    Array.isArray(ticket.clientIds) &&
+    ticket.clientIds.length > 0 &&
+    ticket.clientIds.length <= 100 &&
+    ticket.clientIds.every((id) => typeof id === 'string' && UUID_PATTERN.test(id)) &&
+    typeof ticket.checkedInAt === 'string' &&
+    Number.isFinite(Date.parse(ticket.checkedInAt)) &&
+    (ticket.endedAt === undefined ||
+      ticket.endedAt === null ||
+      (typeof ticket.endedAt === 'string' && Number.isFinite(Date.parse(ticket.endedAt)))) &&
+    typeof ticket.createdAt === 'number' &&
+    Number.isFinite(ticket.createdAt)
+  );
 }
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<BeerCheckInQueueItem>(
   STORAGE_KEY,
   isQueueItem,
 );
+const { load: loadActionTickets, save: saveActionTickets } =
+  createQueueStorage<BeerCheckInActionTicket>(ACTION_TICKETS_STORAGE_KEY, isActionTicket);
 const runMutation = createQueueLock();
 
 function classifyAction(result: { ok: true } | { ok: false; code: string }): QueueSyncResult {
@@ -57,8 +98,7 @@ function classifyAction(result: { ok: true } | { ok: false; code: string }): Que
   }
   const httpMatch = /^http_(\d{3})$/.exec(result.code);
   if (httpMatch) {
-    const status = Number(httpMatch[1]);
-    if (status === 401 || status === 429 || status >= 500) return 'retry';
+    return classifyQueueHttpStatus(Number(httpMatch[1]));
   }
   return 'permanent-error';
 }
@@ -106,15 +146,76 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
 
-export async function enqueueBeerCheckInOp(item: BeerCheckInQueueItem): Promise<void> {
-  const key = dedupKey(item);
-  await runMutation(async () => {
-    const queue = await loadQueue();
-    const deduped = queue.filter((existing) => dedupKey(existing) !== key);
-    deduped.push(item);
-    await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+export async function enqueueBeerCheckInOp(
+  item: BeerCheckInQueueItem,
+): Promise<BeerCheckInEnqueueResult> {
+  return enqueueBeerCheckInBatch([item]);
+}
+
+/** Persist a whole user action before attempting any delivery. Historical
+ * evenings can contain several beers; saving them one-by-one let the first
+ * reach the server while a later storage write failed, leaving a ghost partial
+ * evening. One queue mutation makes the batch all-or-nothing locally. */
+export async function enqueueBeerCheckInBatch(
+  items: readonly BeerCheckInQueueItem[],
+): Promise<BeerCheckInEnqueueResult> {
+  if (items.length === 0) return 'queued';
+  return runPrivateAccountMutation(async () => {
+    const persisted = await runMutation(async () => {
+      let next = await loadQueue();
+      for (const item of items) {
+        const key = dedupKey(item);
+        next = next.filter((existing) => dedupKey(existing) !== key);
+        next.push(item);
+      }
+      return saveQueue(preserveDurableQueue(next, MAX_QUEUE_LENGTH));
+    });
+    if (!persisted) return 'storage-error';
+    await flushBeerCheckinsQueue();
+    return 'queued';
   });
-  await flushBeerCheckinsQueue();
+}
+
+export function loadBeerCheckInActionTicket(
+  key: string,
+): Promise<BeerCheckInActionTicket | null> {
+  return runMutation(async () => {
+    const tickets = await loadActionTickets();
+    return tickets.find((ticket) => ticket.key === key) ?? null;
+  });
+}
+
+export function getOrCreateBeerCheckInActionTicket(
+  key: string,
+  create: () => BeerCheckInActionTicket,
+): Promise<BeerCheckInActionTicket | null> {
+  return runMutation(async () => {
+    const tickets = await loadActionTickets();
+    const existing = tickets.find((ticket) => ticket.key === key);
+    if (existing) return existing;
+    const ticket = create();
+    const next = [...tickets, ticket].slice(-MAX_ACTION_TICKETS);
+    return (await saveActionTickets(next)) ? ticket : null;
+  });
+}
+
+export function saveBeerCheckInActionTicket(
+  ticket: BeerCheckInActionTicket,
+): Promise<boolean> {
+  return runMutation(async () => {
+    const tickets = (await loadActionTickets()).filter((current) => current.key !== ticket.key);
+    tickets.push(ticket);
+    return saveActionTickets(tickets.slice(-MAX_ACTION_TICKETS));
+  });
+}
+
+export function removeBeerCheckInActionTicket(key: string): Promise<boolean> {
+  return runMutation(async () => {
+    const tickets = await loadActionTickets();
+    const remaining = tickets.filter((ticket) => ticket.key !== key);
+    if (remaining.length === tickets.length) return true;
+    return saveActionTickets(remaining);
+  });
 }
 
 export function flushBeerCheckinsQueue(): Promise<void> {
@@ -125,6 +226,7 @@ export function clearBeerCheckinsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
+    await saveActionTickets([]);
   }, { allowDuringPrivateTransition: true });
 }
 

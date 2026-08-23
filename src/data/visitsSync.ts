@@ -21,7 +21,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { decodeGeohash8 } from './geohash';
 import { runPrivateAccountMutation } from './privateAccountBoundary';
-import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
+import {
+  enqueueVisitOp,
+  flushVisitsQueue,
+  type VisitEnqueueResult,
+} from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
@@ -76,26 +80,30 @@ export function buildVisitEntry(
 
 /**
  * Enqueue an upsert for one session. Call after each beer is counted (the
- * current session) so the backend tracks the evening as it grows. Fire-and-
- * forget, never throws.
+ * current session) so the backend tracks the evening as it grows. Resolves to
+ * `storage-error` when the operation was not durably accepted; never throws.
  */
+export type VisitSyncResult = VisitEnqueueResult | 'skipped';
+
 export function syncVisit(
   session: TallySession | null,
   updatedAt?: string,
   partyCode?: string | null,
   options?: { deliver?: boolean },
-): void {
-  if (!session) return;
+): Promise<VisitSyncResult> {
+  if (!session) return Promise.resolve('skipped');
   const entry = buildVisitEntry(session, updatedAt, partyCode);
-  if (!entry) return;
+  if (!entry) return Promise.resolve('skipped');
   const item = { op: 'upsert' as const, clientId: entry.client_id, entry };
-  void (options ? enqueueVisitOp(item, options) : enqueueVisitOp(item)).catch(() => undefined);
+  return (options ? enqueueVisitOp(item, options) : enqueueVisitOp(item)).catch(
+    () => 'storage-error',
+  );
 }
 
-/** Enqueue a delete for a removed evening. Fire-and-forget, never throws. */
-export function deleteVisitByClientId(clientId: string): void {
-  if (!clientId) return;
-  void enqueueVisitOp({ op: 'delete', clientId }).catch(() => undefined);
+/** Enqueue a delete for a removed evening. The result exposes storage failure and never throws. */
+export function deleteVisitByClientId(clientId: string): Promise<VisitSyncResult> {
+  if (!clientId) return Promise.resolve('skipped');
+  return enqueueVisitOp({ op: 'delete', clientId }).catch(() => 'storage-error');
 }
 
 /**

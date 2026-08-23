@@ -24,20 +24,15 @@ import { buildDrinkEntry } from '@/data/drinksClient';
 import {
   enqueueDrink,
   flushDrinksQueue,
-  removeQueuedDrink,
   updateQueuedDrink,
   updateQueuedDrinkBeerName,
 } from '@/data/drinksQueue';
-import { enqueueDelete } from '@/data/deleteDrinksQueue';
-import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
+import { enqueueDrinkUpdate } from '@/data/updateDrinksQueue';
+import { prepareDrinkDeletion } from '@/data/drinkDeletion';
 import { decodeGeohash8 } from '@/data/geohash';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { flushVisitsQueue } from '@/data/visitsQueue';
-import {
-  isPastEveningBackdate,
-  useTallyStore,
-  type TallySession,
-} from '@/stores/tallyStore';
+import { isPastEveningBackdate, useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { contextFromPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
 
 export interface PartyBeerPlace {
@@ -99,7 +94,15 @@ export function logPartyBeer({
     visitClientId: place.visitClientId,
     visitStartedAt: place.visitStartedAt,
   };
-  const tallyDrink = { id, beerName, drinkType, priceCzk, volumeMl, servingType, at: drankAt };
+  const tallyDrink = {
+    id,
+    beerName,
+    drinkType,
+    priceCzk,
+    volumeMl,
+    servingType,
+    at: drankAt,
+  };
   let landedSession: TallySession | null;
   if (backdated && isPastEveningBackdate(drankAt)) {
     landedSession = useTallyStore.getState().addBackdatedDrink(tallyPlace, tallyDrink);
@@ -136,9 +139,11 @@ export function logPartyBeer({
     },
     id,
   );
-  void enqueueDrink(entry, { deliver: !deferDelivery }).then((result) => {
-    if (result === 'delivered') useTallyStore.getState().markDrinkSynced(id);
-  }).catch(() => undefined);
+  void enqueueDrink(entry, { deliver: !deferDelivery })
+    .then((result) => {
+      if (result === 'delivered') useTallyStore.getState().markDrinkSynced(id);
+    })
+    .catch(() => undefined);
 
   return id;
 }
@@ -162,32 +167,24 @@ function sessionContainingDrink(drinkId: string): TallySession | null {
  * current flush, or it can overtake an in-flight POST and delete a row that has
  * not been created yet.
  */
-export function unlogPartyBeer(drinkId: string): void {
+export async function unlogPartyBeer(
+  drinkId: string,
+): Promise<'removed' | 'missing' | 'storage-error'> {
   const session = sessionContainingDrink(drinkId);
-  if (!session) return;
+  if (!session) return 'missing';
+  const deletion = await prepareDrinkDeletion(drinkId);
+  if (deletion === 'storage-error') return 'storage-error';
+  const pulledFromQueue = deletion === 'local-create-removed';
   const wasCurrent = useTallyStore.getState().current?.startedAt === session.startedAt;
-  const removed = useTallyStore
-    .getState()
-    .removeDrinkFromSession(session.startedAt, drinkId);
-  if (!removed) return;
+  const removed = useTallyStore.getState().removeDrinkFromSession(session.startedAt, drinkId);
+  if (!removed) return 'missing';
   if (!wasCurrent && removed.remainingDrinks === 0) {
     // addBackdatedDrink can mint a one-drink historical visit. Undo must replace
     // its queued upsert with a delete, otherwise it would sync as an empty night.
-    deleteVisitByClientId(removed.sessionClientId);
+    void deleteVisitByClientId(removed.sessionClientId);
   }
-
-  void removeQueuedDrinkUpdate(drinkId).catch(() => undefined);
-  void removeQueuedDrink(drinkId).then((pulledFromQueue) => {
-    if (pulledFromQueue) {
-      // A newer undo timer may also have been holding older drinks. Once the
-      // visible latest one is gone, release whatever remains.
-      void flushDrinksQueue();
-      return;
-    }
-    void flushDrinksQueue()
-      .then(() => enqueueDelete(drinkId))
-      .catch(() => undefined);
-  }).catch(() => undefined);
+  if (pulledFromQueue) void flushDrinksQueue();
+  return 'removed';
 }
 
 /**
@@ -197,26 +194,30 @@ export function unlogPartyBeer(drinkId: string): void {
  * where correcting it belongs. Renaming never touches the price, the pub or the
  * time — those were right, the name was a typo.
  */
-export function renamePartyBeer(drinkId: string, beerName: string): void {
+export async function renamePartyBeer(
+  drinkId: string,
+  beerName: string,
+): Promise<'updated' | 'missing' | 'storage-error'> {
   const trimmed = beerName.trim();
-  if (!trimmed) return;
+  if (!trimmed) return 'missing';
   const session = sessionContainingDrink(drinkId);
-  if (!session) return;
+  if (!session) return 'missing';
+  const state = await updateQueuedDrinkBeerName(drinkId, trimmed);
+  if (state !== 'queued') {
+    if (state === 'in-flight' || state === 'storage-error') await flushDrinksQueue();
+    if (
+      (await enqueueDrinkUpdate({ client_id: drinkId, beer_name: trimmed })) === 'storage-error'
+    ) {
+      return 'storage-error';
+    }
+  }
   const changed = useTallyStore
     .getState()
     .updateDrinkNameInSession(session.startedAt, drinkId, trimmed);
-  if (!changed) return;
-
-  void updateQueuedDrinkBeerName(drinkId, trimmed).then((state) => {
-    // Not in the queue any more means it is already on the server, so the fix
-    // has to travel as its own update.
-    if (state !== 'queued') {
-      void enqueueDrinkUpdate({ client_id: drinkId, beer_name: trimmed }).catch(() => undefined);
-    }
-  }).catch(() => undefined);
+  return changed ? 'updated' : 'missing';
 }
 
-export function updatePartyDrink(
+export async function updatePartyDrink(
   drinkId: string,
   update: {
     beerName: string;
@@ -225,11 +226,9 @@ export function updatePartyDrink(
     volumeMl?: number;
     servingType?: ServingType;
   },
-): void {
+): Promise<'updated' | 'missing' | 'storage-error'> {
   const session = sessionContainingDrink(drinkId);
-  if (!session) return;
-  const changed = useTallyStore.getState().updateDrinkInSession(session.startedAt, drinkId, update);
-  if (!changed) return;
+  if (!session) return 'missing';
   const wire = {
     beer_name: update.beerName.trim(),
     drink_type: update.drinkType,
@@ -237,17 +236,13 @@ export function updatePartyDrink(
     volume_ml: update.volumeMl ?? null,
     serving_type: update.servingType ?? 'unknown',
   };
-  void updateQueuedDrink(drinkId, wire).then((state) => {
-    if (state === 'queued') return;
-    if (state === 'in-flight') {
-      // The initial POST already captured its old payload. Wait for it to
-      // settle before PATCHing, otherwise a fast PATCH can arrive first and be
-      // discarded as "not found".
-      void flushDrinksQueue()
-        .then(() => enqueueDrinkUpdate({ client_id: drinkId, ...wire }))
-        .catch(() => undefined);
-      return;
+  const state = await updateQueuedDrink(drinkId, wire);
+  if (state !== 'queued') {
+    if (state === 'in-flight' || state === 'storage-error') await flushDrinksQueue();
+    if ((await enqueueDrinkUpdate({ client_id: drinkId, ...wire })) === 'storage-error') {
+      return 'storage-error';
     }
-    void enqueueDrinkUpdate({ client_id: drinkId, ...wire }).catch(() => undefined);
-  }).catch(() => undefined);
+  }
+  const changed = useTallyStore.getState().updateDrinkInSession(session.startedAt, drinkId, update);
+  return changed ? 'updated' : 'missing';
 }

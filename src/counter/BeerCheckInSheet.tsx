@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -17,8 +17,18 @@ import {
   type BeerMemory,
   type BeerTag,
 } from '@/data/beerCheckinsClient';
-import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
+import {
+  enqueueBeerCheckInOp,
+  getOrCreateBeerCheckInActionTicket,
+  removeBeerCheckInActionTicket,
+  saveBeerCheckInActionTicket,
+} from '@/data/beerCheckinsQueue';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
+import {
+  PrivateAccountMutationFrozenError,
+  isPrivateAccountMutationScopeCurrent,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import type { Pub } from '@/data/pubs';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
@@ -132,6 +142,13 @@ export function BeerCheckInSheet({
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const pickedSuggestionRef = useRef('');
+  const submittingRef = useRef(false);
+  const generationRef = useRef(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  useLayoutEffect(() => {
+    generationRef.current += 1;
+  }, [visible]);
 
   const cleanName = name.trim();
   const canSubmit = cleanName.length > 0;
@@ -154,7 +171,9 @@ export function BeerCheckInSheet({
   // body) to avoid cascading re-renders.
   useEffect(() => {
     if (visible) return;
+    submittingRef.current = false;
     const t = setTimeout(() => {
+      setSubmitting(false);
       setTags([]);
       setMemory(null);
       setMemoryLoading(false);
@@ -227,38 +246,111 @@ export function BeerCheckInSheet({
     setSuggestions([]);
   }, []);
 
+  const closeSheet = useCallback(() => {
+    generationRef.current += 1;
+    submittingRef.current = false;
+    setSubmitting(false);
+    onClose();
+  }, [onClose]);
+
   const submit = useCallback(() => {
-    if (!canSubmit) return;
-    void enqueueBeerCheckInOp({
-      op: 'checkin',
-      payload: {
-        clientId: generateUuidV4(),
-        beerName: cleanName,
-        breweryName: brewery.trim(),
-        beerStyle: style.trim(),
+    if (!canSubmit || submittingRef.current) return;
+    const generation = generationRef.current;
+    submittingRef.current = true;
+    setSubmitting(true);
+    void runPrivateAccountMutation(async (scope) => {
+      const actionKey = JSON.stringify([
+        'counter-checkin',
+        pubKey,
+        visitClientId ?? null,
+        cleanName,
+        brewery.trim(),
+        style.trim(),
         rating,
-        note: note.trim(),
+        note.trim(),
         tags,
-        pubCacheKey: pubKey,
-        pubName: pub.name,
-        pubCity: pub.city ?? '',
-        visitClientId: visitClientId ?? null,
         visibility,
+      ]);
+      const ticket = await getOrCreateBeerCheckInActionTicket(actionKey, () => ({
+        key: actionKey,
+        visitClientId: visitClientId ?? null,
+        clientIds: [generateUuidV4()],
         checkedInAt: new Date().toISOString(),
-      },
-    }).then(() => {
+        createdAt: Date.now(),
+      }));
+      if (!ticket) {
+        if (generationRef.current !== generation) return;
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.beerCheckins.saveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+        return;
+      }
+      const result = await enqueueBeerCheckInOp({
+        op: 'checkin',
+        payload: {
+          clientId: ticket.clientIds[0],
+          beerName: cleanName,
+          breweryName: brewery.trim(),
+          beerStyle: style.trim(),
+          rating,
+          note: note.trim(),
+          tags,
+          pubCacheKey: pubKey,
+          pubName: pub.name,
+          pubCity: pub.city ?? '',
+          visitClientId: visitClientId ?? null,
+          visibility,
+          checkedInAt: ticket.checkedInAt,
+        },
+      });
+      if (!isPrivateAccountMutationScopeCurrent(scope)) {
+        throw new PrivateAccountMutationFrozenError();
+      }
+      if (generationRef.current !== generation) return;
+      if (result === 'storage-error') {
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.beerCheckins.saveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+        return;
+      }
+      if (!(await removeBeerCheckInActionTicket(actionKey))) {
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.beerCheckins.saveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+        return;
+      }
+      if (generationRef.current !== generation) {
+        await saveBeerCheckInActionTicket(ticket);
+        return;
+      }
+      submittingRef.current = false;
+      setSubmitting(false);
       showToast(cs.beerCheckins.saved, {
         icon: <BeerIcon size={20} color={Colors.amber} />,
       });
       onSubmitted();
-      onClose();
-    });
+      closeSheet();
+    })
+      .catch(() => {
+        if (generationRef.current !== generation) return;
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(cs.beerCheckins.saveError, {
+          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
+        });
+      });
   }, [
     brewery,
     canSubmit,
     cleanName,
+    closeSheet,
     note,
-    onClose,
     onSubmitted,
     pub,
     pubKey,
@@ -271,7 +363,7 @@ export function BeerCheckInSheet({
   ]);
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift>
+    <BottomSheetModal visible={visible} onClose={closeSheet} keyboardLift>
       <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
         <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.lg }]}>
           <View style={styles.grabber} />
@@ -292,7 +384,7 @@ export function BeerCheckInSheet({
                 {pub.name}
               </Text>
             </View>
-            <CloseButton onPress={onClose} label={cs.common.cancel} />
+            <CloseButton onPress={closeSheet} label={cs.common.cancel} />
           </View>
 
           <KeyboardAwareScrollView
@@ -341,6 +433,7 @@ export function BeerCheckInSheet({
               placeholder={cs.beerCheckins.beerPlaceholder}
               placeholderTextColor={MockColors.fieldHint}
               style={styles.input}
+              maxLength={120}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
             {suggestions.length > 0 ? (
@@ -388,6 +481,7 @@ export function BeerCheckInSheet({
                   placeholder={cs.beerCheckins.optionalPlaceholder}
                   placeholderTextColor={MockColors.fieldHint}
                   style={styles.input}
+                  maxLength={120}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
               </View>
@@ -401,6 +495,7 @@ export function BeerCheckInSheet({
                   placeholder={cs.beerCheckins.optionalPlaceholder}
                   placeholderTextColor={MockColors.fieldHint}
                   style={styles.input}
+                  maxLength={80}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
               </View>
@@ -503,10 +598,13 @@ export function BeerCheckInSheet({
 
           <Pressable
             onPress={submit}
-            disabled={!canSubmit}
-            style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+            disabled={!canSubmit || submitting}
+            style={({ pressed }) => [
+              styles.submit,
+              (pressed || !canSubmit || submitting) && styles.dim,
+            ]}
             accessibilityRole="button"
-            accessibilityState={{ disabled: !canSubmit }}
+            accessibilityState={{ disabled: !canSubmit || submitting }}
           >
             <Text style={styles.submitText} maxFontSizeMultiplier={FontScaleCap.display}>
               {cs.beerCheckins.submit}
