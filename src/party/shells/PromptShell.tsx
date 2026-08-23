@@ -63,6 +63,9 @@ export function promptDeck(
   return deck;
 }
 
+/** Long enough to cover a slow round trip, short enough that the card frees up. */
+const LOCK_RECOVERY_MS = 1200;
+
 export function PromptShell({
   prompts,
   intro,
@@ -86,9 +89,24 @@ export function PromptShell({
   const [localStep, setLocalStep] = React.useState(0);
   const currentStep = step ?? localStep;
   const pendingStep = React.useRef<number | null>(null);
+  // Bounds an optimistic lock whose canonical step never arrives — a dropped
+  // callback or a lost race must not freeze the deck until remount.
+  const pendingUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
-    if (pendingStep.current !== currentStep) pendingStep.current = null;
+    if (pendingStep.current !== currentStep) {
+      pendingStep.current = null;
+      if (pendingUnlock.current) {
+        clearTimeout(pendingUnlock.current);
+        pendingUnlock.current = null;
+      }
+    }
   }, [currentStep]);
+  React.useEffect(
+    () => () => {
+      if (pendingUnlock.current) clearTimeout(pendingUnlock.current);
+    },
+    [],
+  );
   const cycle =
     prompts.length > 0 ? Math.floor(currentStep / prompts.length) : 0;
   const deck = React.useMemo(() => {
@@ -103,8 +121,16 @@ export function PromptShell({
   const next = () => {
     if (spectator || single || pendingStep.current === currentStep) return;
     pendingStep.current = currentStep;
-    if (onNext) onNext();
-    else setLocalStep((current) => current + 1);
+    if (onNext) {
+      const atPress = currentStep;
+      if (pendingUnlock.current) clearTimeout(pendingUnlock.current);
+      pendingUnlock.current = setTimeout(() => {
+        if (pendingStep.current === atPress) pendingStep.current = null;
+      }, LOCK_RECOVERY_MS);
+      onNext();
+    } else {
+      setLocalStep((current) => current + 1);
+    }
   };
 
   const card = (

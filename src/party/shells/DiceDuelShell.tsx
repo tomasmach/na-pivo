@@ -84,6 +84,9 @@ function callFor(name: string, sum: number): string | null {
   return null;
 }
 
+/** Bounds an optimistic lock whose canonical roll never arrives. */
+const LOCK_RECOVERY_MS = 1200;
+
 export function DiceDuelShell({
   players,
   onFinished,
@@ -118,6 +121,9 @@ export function DiceDuelShell({
   const controlled = sharedState !== undefined;
   const [rolling, setRolling] = React.useState(false);
   const interactionLocked = React.useRef(false);
+  const fallbackUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const reported = React.useRef(false);
 
   const turn = whoseTurn(state);
@@ -125,7 +131,18 @@ export function DiceDuelShell({
   const over = isOver(state);
   React.useEffect(() => {
     interactionLocked.current = false;
+    if (fallbackUnlock.current) {
+      clearTimeout(fallbackUnlock.current);
+      fallbackUnlock.current = null;
+    }
   }, [state.round.length, state.roundNumber]);
+
+  React.useEffect(
+    () => () => {
+      if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (!over || reported.current || spectator) return;
@@ -164,7 +181,16 @@ export function DiceDuelShell({
       const dice = throwDice();
       const player = players.find((candidate) => candidate.id === turn);
       if (controlled) {
-        if (player) onRoll?.({ playerId: player.id, dice });
+        if (player) {
+          onRoll?.({ playerId: player.id, dice });
+          // Canonical state advances us; bound the lock in case it never does.
+          if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+          fallbackUnlock.current = setTimeout(() => {
+            interactionLocked.current = false;
+          }, LOCK_RECOVERY_MS);
+        } else {
+          interactionLocked.current = false;
+        }
       } else {
         setLocalState((current) => recordRoll(current, turn, dice));
       }

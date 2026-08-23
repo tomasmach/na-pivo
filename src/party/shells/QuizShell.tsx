@@ -50,6 +50,9 @@ import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap, Fonts } from "@/theme/fonts";
 import { Radius, Spacing } from "@/theme/layout";
 
+/** Bounds an optimistic answer lock whose canonical answer never arrives. */
+const LOCK_RECOVERY_MS = 1200;
+
 export function QuizShell({
   entrants,
   answers,
@@ -88,9 +91,20 @@ export function QuizShell({
   const state = quizState({ entrants, answers, index });
   const question = state.question;
   const answerLocked = React.useRef<string | null>(null);
+  const answerUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
     answerLocked.current = null;
+    if (answerUnlock.current) {
+      clearTimeout(answerUnlock.current);
+      answerUnlock.current = null;
+    }
   }, [question?.id]);
+  React.useEffect(
+    () => () => {
+      if (answerUnlock.current) clearTimeout(answerUnlock.current);
+    },
+    [],
+  );
   const locked = question
     ? hasAnswered(answers, entrants, me, question.id)
     : false;
@@ -182,6 +196,14 @@ export function QuizShell({
               onPress={() => {
                 if (!canAnswer || answerLocked.current === question.id) return;
                 answerLocked.current = question.id;
+                // Canonical answers unlock us; bound the lock in case this
+                // answer never lands anywhere.
+                if (answerUnlock.current) clearTimeout(answerUnlock.current);
+                const atQuestion = question.id;
+                answerUnlock.current = setTimeout(() => {
+                  if (answerLocked.current === atQuestion)
+                    answerLocked.current = null;
+                }, LOCK_RECOVERY_MS);
                 onAnswer(optionIndex);
               }}
               disabled={!canAnswer}

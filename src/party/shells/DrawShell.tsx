@@ -37,6 +37,9 @@ export type DrawKind = "person" | "card";
 /** Long enough to be a moment, short enough that nobody puts the phone down. */
 const ROLL_MS = 900;
 
+/** Bounds an optimistic lock whose canonical result never arrives. */
+const LOCK_RECOVERY_MS = 1200;
+
 /** Module scope so `react-hooks/purity` can see these are taps, not render. */
 const pick = <T,>(items: readonly T[]): T =>
   items[Math.floor(Math.random() * items.length)];
@@ -86,6 +89,9 @@ export function DrawShell({
   const [localCardIds, setLocalCardIds] = React.useState<string[]>([]);
   const [rolling, setRolling] = React.useState(false);
   const interactionLocked = React.useRef(false);
+  const fallbackUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const timers = React.useRef<ReturnType<typeof setTimeout>[]>([]);
   const shown = result === undefined ? localResult : result;
   const effectiveCardIds = drawnCardIds ?? localCardIds;
@@ -99,8 +105,18 @@ export function DrawShell({
     KINGS_CARDS.find((card) => card.card === shown?.cardId);
   React.useEffect(() => {
     interactionLocked.current = false;
+    if (fallbackUnlock.current) {
+      clearTimeout(fallbackUnlock.current);
+      fallbackUnlock.current = null;
+    }
   }, [shown?.nonce]);
-  React.useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  React.useEffect(
+    () => () => {
+      if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+      timers.current.forEach(clearTimeout);
+    },
+    [],
+  );
 
   const later = (callback: () => void, delay: number) => {
     const timer = setTimeout(callback, delay);
@@ -147,6 +163,12 @@ export function DrawShell({
 
     if (reduceMotion) {
       publish();
+      // No animation to finish, so nothing else unlocks: bound the lock in
+      // case the canonical result never lands.
+      if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+      fallbackUnlock.current = setTimeout(() => {
+        interactionLocked.current = false;
+      }, LOCK_RECOVERY_MS);
       return;
     }
 

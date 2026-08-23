@@ -37,6 +37,9 @@ export interface PickPlayer {
 const pickOne = (players: PickPlayer[]): string =>
   players[Math.floor(Math.random() * players.length)]?.id ?? "";
 
+/** Bounds an optimistic lock whose canonical pick never arrives. */
+const LOCK_RECOVERY_MS = 1200;
+
 export function PickShell({
   game,
   players,
@@ -74,6 +77,9 @@ export function PickShell({
   const [localPickRevision, setLocalPickRevision] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
   const interactionLocked = React.useRef(false);
+  const fallbackUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   /** Set only by games that end — Flaška never does. */
   const [outcome, setOutcome] = React.useState<GameOutcome | null>(null);
 
@@ -92,7 +98,17 @@ export function PickShell({
     players.find((player) => player.id === effectivePickedId) ?? null;
   React.useEffect(() => {
     interactionLocked.current = false;
+    if (fallbackUnlock.current) {
+      clearTimeout(fallbackUnlock.current);
+      fallbackUnlock.current = null;
+    }
   }, [effectivePickedId, effectiveRevision]);
+  React.useEffect(
+    () => () => {
+      if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+    },
+    [],
+  );
 
   const recordPick = (playerId: string) => {
     if (spectator) return;
@@ -114,6 +130,12 @@ export function PickShell({
       if (player) onFinished?.(player.name, player.id);
       if (onDone && player)
         setOutcome({ scores: [], winnerId: null, payingId: player.name });
+      // Controlled mode waits for canonical props; bound the lock in case
+      // they never advance.
+      if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+      fallbackUnlock.current = setTimeout(() => {
+        interactionLocked.current = false;
+      }, LOCK_RECOVERY_MS);
       return;
     }
     setSpinning(true);
