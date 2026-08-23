@@ -40,6 +40,7 @@ import pubs.accounts as accounts
 import pubs.emailer as emailer
 import pubs.oauth as oauth
 from pubs.accounts import _delete_or_move_account_rows
+from pubs.beer_photo_deletions import retry_beer_photo_file_deletion
 from pubs.models import (
     Account,
     AccountMergeOperation,
@@ -872,6 +873,72 @@ def test_photo_merge_locks_accounts_and_cleans_duplicate_file_after_commit(
     assert BeerPhoto.objects.filter(account=target, client_id=client_id).count() == 1
     assert Path(target_path).exists()
     assert not Path(source_path).exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_anonymous_merge_enqueues_durable_source_avatar_cleanup(tmp_media, monkeypatch):
+    source = Account.objects.create(device_id="avatar-merge-source")
+    target = Account.objects.create(device_id="avatar-merge-target")
+    source.avatar = SimpleUploadedFile("avatar.webp", b"anonymous-avatar-bytes")
+    source.save(update_fields=["avatar"])
+    avatar_name = source.avatar.name
+    avatar_path = Path(source.avatar.path)
+    storage = Account._meta.get_field("avatar").storage
+    original_delete = storage.delete
+
+    def failing_delete(_name):
+        raise OSError("media unavailable")
+
+    # Force the post-commit cleanup to fail so the outbox row survives for the
+    # worker-retry assertions below instead of vanishing on commit.
+    monkeypatch.setattr(storage, "delete", failing_delete)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    assert not Account.objects.filter(pk=source.pk).exists()
+    assert avatar_path.exists()
+    pending = BeerPhotoFileDeletion.objects.get(
+        image_name=avatar_name,
+        file_kind=BeerPhotoFileDeletion.FileKind.AVATAR,
+        client_id=None,
+        photo_public_id=None,
+    )
+    # The row must survive the source-account CASCADE as a durable pointer.
+    assert pending.account_id is None
+
+    monkeypatch.setattr(storage, "delete", original_delete)
+    assert retry_beer_photo_file_deletion(pending.pk)
+    assert not avatar_path.exists()
+    assert not BeerPhotoFileDeletion.objects.exists()
+
+    # A second worker attempt after the row is gone stays idempotent.
+    assert retry_beer_photo_file_deletion(pending.pk)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_avatar_merge_rollback_keeps_file_and_leaves_no_orphan_job(
+    tmp_media,
+    monkeypatch,
+):
+    source = Account.objects.create(device_id="avatar-rollback-source")
+    target = Account.objects.create(device_id="avatar-rollback-target")
+    source.avatar = SimpleUploadedFile("avatar.webp", b"rollback-avatar-bytes")
+    source.save(update_fields=["avatar"])
+    avatar_path = Path(source.avatar.path)
+
+    def fail_source_delete(self, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        raise RuntimeError("forced merge rollback")
+
+    monkeypatch.setattr(Account, "delete", fail_source_delete)
+
+    with pytest.raises(RuntimeError, match="forced merge rollback"):
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
+
+    source.refresh_from_db()
+    assert Path(avatar_path).exists()
     assert not BeerPhotoFileDeletion.objects.exists()
 
 

@@ -2075,6 +2075,12 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         target.ugc_terms_version = source.ugc_terms_version
         target.ugc_terms_accepted_at = source.ugc_terms_accepted_at
         target.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
+    # The durable outbox keeps the storage name alive even though the source
+    # account row is about to disappear; the physical delete runs post-commit
+    # and stays retryable if storage fails.
+    avatar_cleanup_id = enqueue_account_avatar_file_deletion(source)
+    if avatar_cleanup_id is not None:
+        schedule_beer_photo_file_deletions((avatar_cleanup_id,))
     source.delete()
     logger.info(
         "anonymous account merge completed",
