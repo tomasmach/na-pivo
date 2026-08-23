@@ -8,13 +8,12 @@
  * to the tabs; on error we surface `detail`.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   TextInput,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
@@ -49,6 +48,7 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const operationInFlight = useRef(false);
 
   const leave = useCallback(() => {
     if (router.canGoBack()) {
@@ -59,7 +59,7 @@ export default function ResetPasswordScreen() {
   }, [router]);
 
   const handleSubmit = useCallback(async () => {
-    if (busy) return;
+    if (operationInFlight.current) return;
     const token = linkToken || code.trim();
     if (!token) {
       setError(cs.account.errorResetCodeMissing);
@@ -69,6 +69,7 @@ export default function ResetPasswordScreen() {
       setError(cs.account.errorPasswordShort);
       return;
     }
+    operationInFlight.current = true;
     setError('');
     setBusy(true);
     try {
@@ -80,9 +81,10 @@ export default function ResetPasswordScreen() {
       }
       setError(result.detail || cs.account.errorGeneric);
     } finally {
+      operationInFlight.current = false;
       setBusy(false);
     }
-  }, [busy, code, linkToken, password, resetPassword, showToast, router]);
+  }, [code, linkToken, password, resetPassword, showToast, router]);
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -95,7 +97,9 @@ export default function ResetPasswordScreen() {
       >
         <ChevronLeftIcon size={22} color={Colors.foam} />
       </Pressable>
-      <Text style={styles.headerTitle}>{cs.account.resetTitle}</Text>
+      <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {cs.account.resetTitle}
+      </Text>
       <View style={styles.headerSpacer} />
     </View>
   );
@@ -114,7 +118,9 @@ export default function ResetPasswordScreen() {
       >
           {!linkToken && (
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>{cs.account.resetCodeLabel}</Text>
+              <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.account.resetCodeLabel}
+              </Text>
               <TextInput
                 style={styles.input}
                 value={code}
@@ -135,7 +141,9 @@ export default function ResetPasswordScreen() {
           )}
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>{cs.account.resetNewPasswordLabel}</Text>
+            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.account.resetNewPasswordLabel}
+            </Text>
             <TextInput
               style={styles.input}
               value={password}
@@ -166,13 +174,9 @@ export default function ResetPasswordScreen() {
               label={busy ? cs.account.loading : cs.account.resetSubmit}
               onPress={handleSubmit}
               glow={busy ? 'none' : 'soft'}
+              loading={busy}
               accessibilityLabel={cs.account.resetSubmit}
             />
-            {busy && (
-              <View style={styles.buttonSpinner} pointerEvents="none">
-                <ActivityIndicator color={Colors.stout} />
-              </View>
-            )}
           </View>
       </KeyboardAwareScrollView>
     </View>
@@ -254,12 +258,4 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: Spacing.xs,
   },
-  buttonSpinner: {
-    position: 'absolute',
-    top: 0,
-    right: 24,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-
 });

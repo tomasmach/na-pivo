@@ -12,15 +12,13 @@
  * `detail` inline. Client-side validation runs before any network call.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   TextInput,
-  ActivityIndicator,
   Linking,
-  Platform,
   StyleSheet,
   type KeyboardTypeOptions,
   type TextInputProps,
@@ -78,7 +76,9 @@ function Field({
 }: FieldProps) {
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+        {label}
+      </Text>
       <TextInput
         style={styles.input}
         value={value}
@@ -175,13 +175,22 @@ export default function AuthScreen() {
   const [nickname, setNickname] = useState('');
   const [nicknameReady, setNicknameReady] = useState(false);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState<null | 'submit' | 'google' | 'apple'>(null);
+  const [busy, setBusy] = useState<null | 'submit' | 'google' | 'apple' | 'reset'>(null);
+  const operationInFlight = useRef(false);
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
 
   const appleSupported = useMemo(() => isAppleSignInSupported(), []);
   const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
+
+  const leave = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)' as Href);
+    }
+  }, [router]);
 
   const switchMode = useCallback((next: Mode) => {
     trackUiInteraction(next === 'login' ? 'auth_login_mode' : 'auth_register_mode', 'select');
@@ -190,7 +199,7 @@ export default function AuthScreen() {
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (busy) return;
+    if (operationInFlight.current) return;
     trackUiInteraction('auth_email_submit', 'submit');
     const trimmedEmail = email.trim();
     if (!isValidEmail(trimmedEmail)) {
@@ -216,6 +225,7 @@ export default function AuthScreen() {
         return;
       }
     }
+    operationInFlight.current = true;
     setError('');
     setBusy('submit');
     try {
@@ -241,7 +251,7 @@ export default function AuthScreen() {
           }
           router.replace('/profile/privacy' as Href);
         } else {
-          router.back();
+          leave();
         }
         return;
       }
@@ -252,10 +262,10 @@ export default function AuthScreen() {
         trackUiInteraction('auth_email_submit', 'cancel');
       }
     } finally {
+      operationInFlight.current = false;
       setBusy(null);
     }
   }, [
-    busy,
     email,
     password,
     nickname,
@@ -264,13 +274,15 @@ export default function AuthScreen() {
     login,
     register,
     updateProfile,
+    leave,
     router,
     showToast,
   ]);
 
   const handleSocial = useCallback(
     async (provider: 'google' | 'apple') => {
-      if (busy) return;
+      if (operationInFlight.current) return;
+      operationInFlight.current = true;
       const target = provider === 'google' ? 'auth_google_submit' : 'auth_apple_submit';
       trackUiInteraction(target, 'submit');
       setError('');
@@ -285,7 +297,7 @@ export default function AuthScreen() {
           if (result.profile.created === true || result.profile.nickname == null) {
             router.replace('/profile/privacy' as Href);
           } else {
-            router.back();
+            leave();
           }
           return;
         }
@@ -296,13 +308,15 @@ export default function AuthScreen() {
           trackUiInteraction(target, 'cancel');
         }
       } finally {
+        operationInFlight.current = false;
         setBusy(null);
       }
     },
-    [busy, signInGoogle, signInApple, router],
+    [leave, signInGoogle, signInApple, router],
   );
 
   const handleSendReset = useCallback(async () => {
+    if (operationInFlight.current) return;
     trackUiInteraction('auth_reset_submit', 'submit');
     const trimmed = resetEmail.trim();
     if (!isValidEmail(trimmed)) {
@@ -310,18 +324,25 @@ export default function AuthScreen() {
       setError(cs.account.errorEmailInvalid);
       return;
     }
+    operationInFlight.current = true;
     setError('');
-    const result = await requestPasswordReset(trimmed);
-    if (!result.ok) {
-      trackUiInteraction('auth_reset_submit', 'failure');
-      setError(result.detail || cs.account.errorGeneric);
-      return;
+    setBusy('reset');
+    try {
+      const result = await requestPasswordReset(trimmed);
+      if (!result.ok) {
+        trackUiInteraction('auth_reset_submit', 'failure');
+        setError(result.detail || cs.account.errorGeneric);
+        return;
+      }
+      setResetOpen(false);
+      trackUiInteraction('auth_reset_submit', 'success');
+      setResetEmail('');
+      showToast(cs.account.resetSentToast);
+      router.push('/auth/reset');
+    } finally {
+      operationInFlight.current = false;
+      setBusy(null);
     }
-    setResetOpen(false);
-    trackUiInteraction('auth_reset_submit', 'success');
-    setResetEmail('');
-    showToast(cs.account.resetSentToast);
-    router.push('/auth/reset');
   }, [resetEmail, requestPasswordReset, showToast, router]);
 
   const submitLabel =
@@ -333,7 +354,7 @@ export default function AuthScreen() {
   const visibleError =
     error ||
     (sessionRecoveryRequired
-      ? 'Přihlášení vypršelo. Přihlas se znovu, piva uložená v telefonu zůstanou v bezpečí.'
+      ? cs.account.sessionExpired
       : '');
 
   return (
@@ -341,7 +362,7 @@ export default function AuthScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={leave}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}
@@ -349,7 +370,9 @@ export default function AuthScreen() {
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
-        <Text style={styles.headerTitle}>{cs.account.authTitle}</Text>
+        <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {cs.account.authTitle}
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -362,14 +385,12 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.account.intro}
-          </Text>
-
           {/* ── Fields ── */}
           {mode === 'register' && (
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>{cs.account.nicknameLabel}</Text>
+              <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.account.nicknameLabel}
+              </Text>
               <NicknameField
                 value={nickname}
                 onChangeText={(value) => {
@@ -378,11 +399,6 @@ export default function AuthScreen() {
                 }}
                 onReadyChange={setNicknameReady}
               />
-              {nickname.trim().length === 0 && (
-                <Text style={styles.nicknameHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.account.nicknameHint}
-                </Text>
-              )}
             </View>
           )}
           <Field
@@ -424,13 +440,10 @@ export default function AuthScreen() {
               label={submitLabel}
               onPress={handleSubmit}
               glow={busy || sessionRecoveryRequired ? 'none' : 'soft'}
+              loading={busy === 'submit'}
+              disabled={busy !== null && busy !== 'submit'}
               accessibilityLabel={submitLabel}
             />
-            {busy === 'submit' && (
-              <View style={styles.buttonSpinner} pointerEvents="none">
-                <ActivityIndicator color={Colors.stout} />
-              </View>
-            )}
           </View>
 
           {/* ── Forgot password ── */}
@@ -443,8 +456,10 @@ export default function AuthScreen() {
                 setError('');
               }}
               style={({ pressed }) => [styles.forgotLink, pressed && styles.pressed]}
+              disabled={busy !== null}
               accessibilityRole="button"
               accessibilityLabel={cs.a11y.authForgotPassword}
+              accessibilityState={{ disabled: busy !== null }}
               hitSlop={8}
             >
               <Text style={styles.forgotText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -478,6 +493,8 @@ export default function AuthScreen() {
                 variant="secondary"
                 glow="none"
                 height={52}
+                loading={busy === 'reset'}
+                disabled={busy !== null && busy !== 'reset'}
                 accessibilityLabel={cs.account.resetSend}
               />
             </View>
@@ -486,7 +503,9 @@ export default function AuthScreen() {
           {/* ── Divider ── */}
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>{cs.account.orDivider}</Text>
+            <Text style={styles.dividerText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.account.orDivider}
+            </Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -502,20 +521,13 @@ export default function AuthScreen() {
             />
           )}
           {googleConfigured && (
-            <>
-              <SocialButton
-                label={cs.account.continueWithGoogle}
-                icon={<GoogleIcon size={20} color={Colors.foam} />}
-                onPress={() => handleSocial('google')}
-                accessibilityLabel={cs.a11y.authSignInGoogle}
-                disabled={busy != null}
-              />
-              {Platform.OS === 'android' ? (
-                <Text style={styles.googleHelp}>
-                  Google účet je volitelná cesta k přihlášení a synchronizaci. Případné ověření věku řeší Google Play; Na pivo nevidí datum narození ani doklady.
-                </Text>
-              ) : null}
-            </>
+            <SocialButton
+              label={cs.account.continueWithGoogle}
+              icon={<GoogleIcon size={20} color={Colors.foam} />}
+              onPress={() => handleSocial('google')}
+              accessibilityLabel={cs.a11y.authSignInGoogle}
+              disabled={busy != null}
+            />
           )}
 
           {/* ── Terms consent (covers e-mail registration and social sign-in) ── */}
@@ -546,10 +558,12 @@ export default function AuthScreen() {
           <Pressable
             onPress={() => switchMode(mode === 'register' ? 'login' : 'register')}
             style={({ pressed }) => [styles.switchRow, pressed && styles.pressed]}
+            disabled={busy !== null}
             accessibilityRole="button"
             accessibilityLabel={
               mode === 'register' ? cs.a11y.authTabLogin : cs.a11y.authTabRegister
             }
+            accessibilityState={{ disabled: busy !== null }}
           >
             <Text style={styles.switchText} maxFontSizeMultiplier={FontScaleCap.body}>
               {mode === 'register' ? cs.account.haveAccount : cs.account.noAccount}{' '}
@@ -586,14 +600,6 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  googleHelp: {
-    marginTop: Spacing.xs,
-    fontWeight: '400',
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.mutedText,
-    textAlign: 'center',
-  },
 
   // ── Header ──
   header: {
@@ -629,12 +635,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
     gap: Spacing.md,
-  },
-  intro: {
-    fontWeight: '400',
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.foamMuted,
   },
 
   // ── Mode toggle ──
@@ -688,13 +688,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.foam,
   },
-  nicknameHint: {
-    fontWeight: '400',
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-    marginLeft: 2,
-  },
   errorText: {
     fontWeight: '500',
     fontSize: 13,
@@ -706,13 +699,6 @@ const styles = StyleSheet.create({
   primaryButton: {
     position: 'relative',
     marginTop: Spacing.xs,
-  },
-  buttonSpinner: {
-    position: 'absolute',
-    top: 0,
-    right: 24,
-    bottom: 0,
-    justifyContent: 'center',
   },
 
   // ── Forgot password ──

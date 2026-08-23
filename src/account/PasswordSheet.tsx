@@ -110,6 +110,7 @@ export function PasswordSheet({
               onPress={onSave}
               glow="none"
               height={52}
+              loading={busy}
               accessibilityLabel={cs.a11y.accountSetPassword}
             />
           </View>

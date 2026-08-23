@@ -954,14 +954,12 @@ export const cs = {
     tabRegister: 'Registrovat',
     haveAccount: 'Už mám účet.',
     noAccount: 'Ještě nemáš účet?',
-    intro: 'Založ si účet a měj svá piva a hodnocení na všech zařízeních.',
     emailLabel: 'E-mail',
     emailPlaceholder: 'tvuj@email.cz',
     passwordLabel: 'Heslo',
     passwordPlaceholder: 'Alespoň 8 znaků',
     nicknameLabel: 'Přezdívka',
-    nicknameHint: 'Pod @přezdívkou tě najdou kamarádi.',
-    termsNotePrefix: 'Vytvořením účtu souhlasíš s ',
+    termsNotePrefix: 'Pokračováním souhlasíš s ',
     termsNoteTermsLink: 'podmínkami použití',
     termsNoteMiddle: ' a bereš na vědomí ',
     termsNotePrivacyLink: 'zásady soukromí',
@@ -981,6 +979,8 @@ export const cs = {
     errorEmailInvalid: 'Zadej platný e-mail.',
     errorPasswordShort: 'Heslo musí mít alespoň 8 znaků.',
     errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
+    sessionExpired:
+      'Přihlášení vypršelo. Přihlas se znovu, piva uložená v telefonu zůstanou.',
 
     // — Forgot password (inline) —
     resetPrompt: 'Zadej e-mail a pošlu ti odkaz i kód pro obnovu hesla.',
@@ -992,6 +992,8 @@ export const cs = {
 
     // — Account management screen —
     accountTitle: 'Účet',
+    accountLoadError: 'Účet se teď nenačetl.',
+    accountRetry: 'Zkusit znovu',
     emailVerified: 'E-mail ověřen',
     emailUnverified: 'E-mail není ověřen',
     emailMissing: 'E-mail není nastaven',
@@ -1055,7 +1057,9 @@ export const cs = {
     deleteAccount: 'Smazat účet',
     deleteConfirmTitle: 'Smazat účet?',
     deleteConfirmBody:
-      'Účet hned vypnu. Když se do 14 dní znovu přihlásíš, smazání zruším. Potom smažu profil a soukromá data. Komunitní příspěvky mohou zůstat anonymně. Omezené záznamy pro podporu, moderaci a doložení povinností mohou po omezenou dobu zůstat.',
+      'Účet hned vypnu. Když se do 14 dní znovu přihlásíš, smazání zruším. Potom smažu profil, soukromá data i tvoje příspěvky k hospodám. Zůstat mohou jen nutné záznamy pro moderaci a anonymizovaný kontext společných her.',
+    deleteAnonymousConfirmBody:
+      'Anonymní účet hned vypnu. Za 14 dní smažu profil, soukromá data i tvoje příspěvky k hospodám. Obnovit ho nepůjde. Zůstat mohou jen nutné záznamy pro moderaci a anonymizovaný kontext společných her.',
     deleteConfirmCancel: 'Zrušit',
     deleteConfirmConfirm: 'Smazat',
     deleteToast: 'Účet je vypnutý. Za 14 dní ho smažu.',
@@ -1075,7 +1079,7 @@ export const cs = {
     // — Email verification screen (deep link) —
     verifyTitle: 'Ověření e-mailu',
     verifyLoading: 'Ověřuji e-mail…',
-    verifySuccessTitle: 'E-mail ověřen ✅',
+    verifySuccessTitle: 'E-mail ověřen',
     verifySuccessBody: 'Díky! Tvůj e-mail je teď ověřený.',
     verifyErrorTitle: 'Ověření se nezdařilo',
     verifyErrorBody: 'Odkaz už neplatí nebo je neplatný. Zkus si nechat poslat nový.',
@@ -3255,7 +3259,7 @@ export const cs = {
     accountLinkProvider: (provider: string) => `Propojit ${provider}`,
     accountUnlinkProvider: (provider: string) => `Odpojit ${provider}`,
     accountSetPassword: 'Nastavit heslo',
-    accountExportData: 'Poslat moje data e-mailem',
+    accountExportData: 'Sdílet export mých dat',
     accountMethods: 'Otevřít způsoby přihlášení',
     accountMore: 'Otevřít další možnosti účtu',
     accountIdentity: (name: string, email: string, methods: string) =>
@@ -3263,6 +3267,7 @@ export const cs = {
     accountRestorePurchases: 'Obnovit nákupy',
     accountReportProfile: 'Nahlásit profil',
     accountLogout: 'Odhlásit se',
+    accountRetry: 'Znovu načíst účet',
     accountDelete: 'Smazat účet',
 
     // — Profil —

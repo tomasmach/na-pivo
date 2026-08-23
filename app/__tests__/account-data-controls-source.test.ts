@@ -65,8 +65,8 @@ describe("app/account.tsx source contract", () => {
     const fn = blockFrom("const handleExportData");
     expect(fn).not.toBe("");
 
-    // sets busy to export
-    expect(fn).toMatch(/setBusy\(\s*["']export["']\s*\)/);
+    // atomically claims the export operation before the async boundary
+    expect(fn).toMatch(/startBusy\(\s*["']export["']\s*\)/);
 
     // awaits the data client call
     expect(fn).toMatch(/await\s+(?:\(\s*await\s+)?exportAccountData/);
@@ -77,6 +77,6 @@ describe("app/account.tsx source contract", () => {
     );
 
     // busy state always resets
-    expect(fn).toMatch(/finally\s*\{[\s\S]*setBusy\(\s*null\s*\)/);
+    expect(fn).toMatch(/finally\s*\{[\s\S]*finishBusy\(\s*["']export["']\s*\)/);
   });
 });
