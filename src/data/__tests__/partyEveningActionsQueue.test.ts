@@ -18,7 +18,7 @@ jest.mock('../partyClient', () => ({
   endPartyEvening: (...args: unknown[]) => endPartyEvening(...(args as [])),
   leavePartyEvening: (...args: unknown[]) => leavePartyEvening(...(args as [])),
   isRetriablePartyError: (error: { code: string }) =>
-    ['offline', 'network', 'account', 'http_500', 'http_429'].includes(error.code),
+    ['offline', 'network', 'account', 'auth', 'http_500', 'http_429'].includes(error.code),
 }));
 
 async function stored(): Promise<unknown[]> {
@@ -60,6 +60,20 @@ it('persists an offline end before accepting it and retries on foreground', asyn
   expect(endPartyEvening).toHaveBeenLastCalledWith('PJVQXY', expect.any(AbortSignal));
   expect(await stored()).toEqual([]);
   expect(await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)).toBeNull();
+});
+
+it('keeps an end queued while credentials are temporarily unavailable', async () => {
+  endPartyEvening.mockResolvedValueOnce({ ok: false, code: 'auth', detail: 'Přihlas se.' });
+
+  await expect(enqueuePartyEveningAction('end', 'PJVQXY')).resolves.toEqual({
+    accepted: true,
+    completed: false,
+  });
+  expect(await stored()).toHaveLength(1);
+
+  await flushPartyEveningActionsQueue();
+
+  expect(await stored()).toEqual([]);
 });
 
 it('queues leave separately and treats an already-gone table as completed', async () => {

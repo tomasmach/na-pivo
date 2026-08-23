@@ -233,12 +233,6 @@ def test_get_drinks_requires_account_token(client):
 def test_log_validation_errors(client):
     token = _register(client)
 
-    missing_price = client.post(
-        "/v1/drinks",
-        data=_payload(beer={"name": "Pilsner", "volume_ml": 500}),
-        format="json",
-        **_auth(token),
-    )
     bad_volume = client.post(
         "/v1/drinks",
         data=_payload(beer={"name": "Pilsner", "price_czk": 50, "volume_ml": 250}),
@@ -274,7 +268,6 @@ def test_log_validation_errors(client):
     )
 
     for resp in (
-        missing_price,
         bad_volume,
         price_zero,
         price_too_high,
@@ -285,6 +278,30 @@ def test_log_validation_errors(client):
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert DrinkLog.objects.count() == 0
     assert PubCommunityData.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_pub_quick_add_without_price_preserves_drink_without_publishing_menu(client):
+    token = _register(client)
+
+    response = client.post(
+        "/v1/drinks",
+        data=_payload(beer={"name": "Pilsner", "volume_ml": 500}),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert response.json()["menu_updated"] is False
+    drink = DrinkLog.objects.get()
+    assert drink.name == _NAME
+    assert drink.beer_name == "Pilsner Urquell"
+    assert drink.price_czk is None
+    assert drink.volume_ml == 500
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+    assert PubPriceIndex.objects.count() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -800,7 +817,7 @@ def test_non_pub_drink_rejects_every_pub_identity_field(client, field, value):
 
 
 @pytest.mark.django_db
-def test_pub_accepts_serving_type_but_still_requires_price(client):
+def test_pub_accepts_serving_type_with_or_without_price(client):
     token = _register(client)
     missing_price = client.post(
         "/v1/drinks",
@@ -818,9 +835,11 @@ def test_pub_accepts_serving_type_but_still_requires_price(client):
         **_auth(token),
     )
 
-    assert missing_price.status_code == status.HTTP_400_BAD_REQUEST
+    assert missing_price.status_code == status.HTTP_201_CREATED
+    assert missing_price.json()["menu_updated"] is False
     assert accepted.status_code == status.HTTP_201_CREATED
-    assert DrinkLog.objects.get().serving_type == DrinkLog.ServingType.CAN
+    assert DrinkLog.objects.count() == 2
+    assert not DrinkLog.objects.exclude(serving_type=DrinkLog.ServingType.CAN).exists()
 
 
 @pytest.mark.django_db

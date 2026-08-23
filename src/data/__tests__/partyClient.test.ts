@@ -14,6 +14,7 @@ import {
   fetchPartyEveningHistory,
   fetchPartyNightRecord,
   generateJoinCode,
+  isRetriablePartyError,
   joinPartyEvening,
   leavePartyEvening,
   parsePartyNightRecord,
@@ -74,6 +75,13 @@ describe('generateJoinCode', () => {
     const codes = Array.from({ length: 200 }, () => generateJoinCode()).join('');
 
     expect(codes).not.toMatch(/[OILSZ015]/);
+  });
+});
+
+describe('isRetriablePartyError', () => {
+  it('keeps a durable action queued while credentials are being restored', () => {
+    expect(isRetriablePartyError({ ok: false, code: 'auth', detail: 'Přihlas se.' })).toBe(true);
+    expect(isRetriablePartyError({ ok: false, code: 'not_host', detail: 'Jen hostitel.' })).toBe(false);
   });
 });
 

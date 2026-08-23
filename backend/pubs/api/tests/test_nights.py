@@ -591,7 +591,7 @@ def test_client_alias_repair_heals_database_that_applied_old_0098_revision(
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"beer_count": 100},
+        {"beer_count": 65_536},
         {"pub_names": ["A", "B", "C", "D", "E", "F"]},
         {
             "beer_count": 0,
@@ -609,6 +609,17 @@ def test_publish_validation(client, overrides):
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
     assert PublishedNight.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_publish_preserves_a_three_digit_offline_drink_count(client):
+    token, _account = _register(client, "janek")
+
+    response = _publish(client, token, beer_count=100)
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert response.json()["night"]["beer_count"] == 100
+    assert PublishedNight.objects.get().beer_count == 100
 
 
 @pytest.mark.django_db

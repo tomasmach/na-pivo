@@ -102,6 +102,7 @@ export function isRetriablePartyError(error: PartyError): boolean {
     error.code === 'offline' ||
     error.code === 'network' ||
     error.code === 'account' ||
+    error.code === 'auth' ||
     /^http_(408|425|429|5\d\d)$/.test(error.code)
   );
 }

@@ -1208,10 +1208,13 @@ class PublishedNightRequestSerializer(serializers.Serializer):
     drinking_day = serializers.DateField()
     started_at = serializers.DateTimeField()
     ended_at = serializers.DateTimeField()
-    beer_count = serializers.IntegerField(min_value=0, max_value=99)
-    wine_count = serializers.IntegerField(min_value=0, max_value=99)
-    soft_drink_count = serializers.IntegerField(min_value=0, max_value=99)
-    shot_count = serializers.IntegerField(min_value=0, max_value=99)
+    # PositiveSmallIntegerField stores up to 65,535. Keeping the wire contract
+    # aligned with storage prevents a long offline evening from appearing
+    # published locally and then being dropped permanently on a 400 retry.
+    beer_count = serializers.IntegerField(min_value=0, max_value=65_535)
+    wine_count = serializers.IntegerField(min_value=0, max_value=65_535)
+    soft_drink_count = serializers.IntegerField(min_value=0, max_value=65_535)
+    shot_count = serializers.IntegerField(min_value=0, max_value=65_535)
     pub_names = serializers.ListField(
         child=serializers.CharField(max_length=80, trim_whitespace=True, allow_blank=False),
         max_length=5,
@@ -2228,8 +2231,10 @@ class DrinkItemSerializer(serializers.Serializer):
 class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/drinks.
 
-    Pub identity and price remain mandatory when ``place_context`` is ``pub``.
-    Outside a pub, pub identity fields are forbidden and price is optional.
+    Pub identity remains mandatory when ``place_context`` is ``pub``. Price is
+    optional so quick-add clients can durably preserve the private drink; an
+    unpriced drink is never published into the community menu. Outside a pub,
+    pub identity fields are forbidden.
     Missing ``place_context`` and ``serving_type`` retain released-client
     defaults of ``pub`` and ``unknown``.
     """
@@ -2280,8 +2285,6 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
             for field in ("name", "lat", "lng"):
                 if attrs.get(field) in (None, ""):
                     required_errors[field] = "This field is required."
-            if "price_czk" not in attrs["beer"]:
-                required_errors.setdefault("beer", {})["price_czk"] = "This field is required."
             if required_errors:
                 raise serializers.ValidationError(required_errors)
         else:

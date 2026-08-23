@@ -2524,7 +2524,10 @@ class DrinksView(APIView):
                 }
 
                 menu_updated = False
-                if may_publish and is_pub and is_beer:
+                # Quick-add party actions intentionally know the pub and beer,
+                # but not always its current price. Preserve that private drink
+                # without inventing a price or mutating the community menu.
+                if may_publish and is_pub and is_beer and beer.get("price_czk") is not None:
                     menu_updated = self._merge_into_community(
                         cache_key,
                         {
