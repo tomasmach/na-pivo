@@ -52,7 +52,13 @@ export function mergeNightGames(
   const games = localGames.map((game) => {
     const shared = sharedByKey.get(game.key);
     const sharedResult = shared ? finishedResults.get(shared.id) : undefined;
-    return sharedResult ? { ...game, result: sharedResult } : game;
+    return {
+      ...game,
+      // Provenance follows the real starter on the server, even when this
+      // phone is the one merging the row — never the merger.
+      ...(shared?.startedBy ? { by: shared.startedBy.id } : {}),
+      ...(sharedResult ? { result: sharedResult } : {}),
+    };
   });
   const known = new Set(games.map((game) => game.key));
   for (const shared of sharedGames) {
@@ -60,6 +66,7 @@ export function mergeNightGames(
     games.push({
       key: shared.catalogKey,
       name: shared.name,
+      by: shared.startedBy.id,
       startedAt: shared.startedAt,
       ...(finishedResults.get(shared.id) ? { result: finishedResults.get(shared.id)! } : {}),
     });
@@ -111,8 +118,12 @@ function earliestStartedAt(values: (string | null | undefined)[]): string | null
 export function mergeNightRecords(remote: NightRecord, local: NightRecord): NightRecord {
   const meId = local.people[0]?.id;
   const localPeople = new Map(local.people.map((person) => [person.id, person]));
+  // The server record is authoritative even when its roster is empty: a stale
+  // local copy never restores omitted peers (privacy-hidden, blocked, deleted
+  // or already gone). At most this account's own provable identity survives,
+  // so an offline table still has a "you".
   const peopleById = new Map(
-    (remote.people.length > 0 ? remote.people : local.people).map((person) => {
+    remote.people.map((person) => {
       const localPerson = localPeople.get(person.id);
       const isMe = person.id === meId;
       return [
@@ -130,8 +141,9 @@ export function mergeNightRecords(remote: NightRecord, local: NightRecord): Nigh
       ];
     }),
   );
-  for (const person of local.people) {
-    if (!peopleById.has(person.id)) peopleById.set(person.id, person);
+  if (meId && !peopleById.has(meId)) {
+    const localSelf = localPeople.get(meId);
+    if (localSelf) peopleById.set(meId, localSelf);
   }
   const people = [...peopleById.values()].sort((left, right) => {
     if (left.id === meId) return -1;
@@ -146,7 +158,11 @@ export function mergeNightRecords(remote: NightRecord, local: NightRecord): Nigh
     if (clientId) remoteStopsByLocalId.set(clientId, stop);
   }
   const stopAliases = new Map<string, string>();
+  // Only this account's own pending stops survive the merge; rows attributed
+  // to an omitted peer never come back from the local copy. Legacy local rows
+  // without an owner were recorded by this phone.
   const pendingStops = local.stops.filter((stop) => {
+    if (meId && stop.by != null && stop.by !== meId) return false;
     const exact = remoteStopsByLocalId.get(stop.id);
     const equivalent =
       exact ??
@@ -178,7 +194,12 @@ export function mergeNightRecords(remote: NightRecord, local: NightRecord): Nigh
     };
   });
   const games = new Map(remote.games.map((game) => [game.key, game]));
-  for (const localGame of local.games) {
+  // Same owner rule as drinks and photos: only this account's own unsynced
+  // games (and legacy by-less rows recorded by this phone) merge over the
+  // authoritative server set; an omitted peer's local-only game never returns.
+  for (const localGame of local.games.filter(
+    (game) => !meId || game.by == null || game.by === meId,
+  )) {
     const serverGame = games.get(localGame.key);
     games.set(localGame.key, {
       ...serverGame,
@@ -204,9 +225,13 @@ export function mergeNightRecords(remote: NightRecord, local: NightRecord): Nigh
       a.at.localeCompare(b.at),
     ),
     games: [...games.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
-    photos: mergeByKey(remote.photos, local.photos, (photo) => photo.id).sort((a, b) =>
-      a.at.localeCompare(b.at),
-    ),
+    // Same owner rule as drinks: only this account's own unsynced photos are
+    // merged over the authoritative server set.
+    photos: mergeByKey(
+      remote.photos,
+      local.photos.filter((photo) => photo.by === meId),
+      (photo) => photo.id,
+    ).sort((a, b) => a.at.localeCompare(b.at)),
   };
 }
 
@@ -483,6 +508,9 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
     const localNightGames: NightGame[] = localGames.map((game) => ({
       key: game.key,
       name: game.name,
+      // Games this phone put on the table are owner-attributed like its drinks
+      // and photos, so the privacy merge can tell them from peers' rows.
+      by: meId,
       // `at` is already an epoch stamp in livePartyStore.
       startedAt: new Date(game.at).toISOString(),
       ...(game.result ? { result: game.result } : {}),
@@ -547,7 +575,20 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
       inFlight = true;
       const result = await fetchPartyNightRecord(code, accountId, controller.signal);
       inFlight = false;
-      if (!result.ok || controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
+      if (!result.ok) {
+        // Terminal loss is not a cellar: the server itself says this exact
+        // table is gone for this account, so keeping a cached record and an
+        // active identity would fake a night that no longer exists. A plain
+        // network/offline/5xx failure keeps everything as it was.
+        if (
+          result.code === 'party_not_found' &&
+          useAccountStore.getState().session?.accountId === accountId
+        ) {
+          usePartyEveningStore.getState().closeLostTable(code);
+        }
+        return;
+      }
       freshRecordApplied = true;
       void writeNightRecordCache(accountId, result.record);
       setRemote({ code, accountId, record: result.record });

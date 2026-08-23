@@ -8,6 +8,7 @@
  */
 
 import {
+  clearPartyEveningState,
   selectConfirmedPartyJoinCode,
   selectPartyJoinCode,
   usePartyEveningStore,
@@ -33,6 +34,11 @@ jest.mock('@/data/partyClient', () => ({
   createPartyEvening: (...args: unknown[]) => createPartyEvening(...(args as [])),
   joinPartyEvening: (...args: unknown[]) => joinPartyEvening(...(args as [])),
   generateJoinCode: () => 'PIVOXY',
+  isRetriablePartyError: (error: { code: string }) =>
+    error.code === 'offline' ||
+    error.code === 'network' ||
+    error.code === 'account' ||
+    /^http_(408|425|429|5\d\d)$/.test(error.code),
 }));
 jest.mock('@/data/partyEveningActionsQueue', () => ({
   enqueuePartyEveningAction: (action: string, code: string) =>
@@ -40,9 +46,10 @@ jest.mock('@/data/partyEveningActionsQueue', () => ({
   hasQueuedPartyEveningAction: (...args: unknown[]) =>
     hasQueuedPartyEveningAction(...(args as [])),
 }));
+let mockUuidTicket = 0;
 jest.mock('@/data/account', () => ({
   ensureAccount: (...args: unknown[]) => ensureAccount(...(args as [])),
-  generateUuidV4: () => 'uuid-1',
+  generateUuidV4: () => `ticket-${(mockUuidTicket += 1)}`,
 }));
 jest.mock('@/data/partyEveningIdentityCache', () => ({
   partyEveningIdentityGeneration: () => 0,
@@ -81,6 +88,7 @@ const EVENING = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUuidTicket = 0;
   ensureAccount.mockResolvedValue({ accountId: 'account-a' });
   loadPartyEveningIdentity.mockResolvedValue(null);
   savePartyEveningIdentity.mockImplementation(
@@ -360,5 +368,49 @@ describe('partyEveningStore', () => {
     expect(closed).toBe(true);
     expect(usePartyEveningStore.getState().evening).toBeNull();
     expect(usePartyEveningStore.getState().lastEvening).toEqual(ended);
+  });
+
+  it('recovers the created table when the first start lost its response', async () => {
+    const attempts: { clientId: string; joinCode: string }[] = [];
+    createPartyEvening.mockImplementation(async (input: { clientId: string; joinCode: string }) => {
+      attempts.push(input);
+      if (attempts.length === 1) {
+        // The server committed this create, but the response was lost.
+        return { ok: false, code: 'network', detail: 'Síť se netváří.' };
+      }
+      return input.clientId === attempts[0].clientId && input.joinCode === attempts[0].joinCode
+        ? { ok: true, evening: EVENING }
+        : { ok: false, code: 'active_party_membership_exists', detail: 'Už máš otevřený stůl.' };
+    });
+
+    const inFlight = usePartyEveningStore.getState().start('U Fleků');
+    expect(usePartyEveningStore.getState().start('U Fleků')).toBe(inFlight);
+
+    expect(await inFlight).toBeNull();
+    expect(usePartyEveningStore.getState().error).toBeTruthy();
+
+    const second = await usePartyEveningStore.getState().start('U Fleků');
+
+    expect(createPartyEvening).toHaveBeenCalledTimes(2);
+    expect(second).toEqual(EVENING);
+    expect(usePartyEveningStore.getState().evening).toEqual(EVENING);
+    expect(usePartyEveningStore.getState().error).toBeNull();
+  });
+
+  it('does not let a stale create land after an account switch', async () => {
+    let resolve!: (value: { ok: true; evening: PartyEvening }) => void;
+    createPartyEvening.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+
+    const pending = usePartyEveningStore.getState().start('U Fleků');
+    clearPartyEveningState();
+    resolve({ ok: true, evening: EVENING });
+    await pending;
+
+    expect(usePartyEveningStore.getState().evening).toBeNull();
+    expect(usePartyEveningStore.getState().confirmedIdentity).toBeNull();
   });
 });

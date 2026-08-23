@@ -36,6 +36,7 @@ import {
   createPartyEvening,
   fetchCurrentPartyEvening,
   generateJoinCode,
+  isRetriablePartyError,
   joinPartyEvening,
   type PartyError,
   type PartyEvening,
@@ -67,12 +68,30 @@ export interface PartyEveningState {
   leave: () => Promise<boolean>;
   end: () => Promise<boolean>;
   finishFromServer: (endedAt: string) => void;
+  /** The server says this exact active table no longer exists; close it locally. */
+  closeLostTable: (joinCode: string) => void;
   clearError: () => void;
 }
 
 let boundaryGeneration = 0;
 let membershipGeneration = 0;
 let startPromise: Promise<PartyEvening | null> | null = null;
+
+/**
+ * The idempotent create ticket kept across one ambiguous failure.
+ *
+ * A lost response may have left the table created server-side; replaying the
+ * SAME clientId + joinCode + fields recovers it instead of hitting
+ * `active_party_membership_exists`. Module-local on purpose: process death is
+ * already covered by the current-table refresh.
+ */
+interface PartyCreateTicket {
+  clientId: string;
+  joinCode: string;
+  pubName: string;
+  pubCity?: string;
+}
+let retainedCreateTicket: PartyCreateTicket | null = null;
 
 function failed(set: (patch: Partial<PartyEveningState>) => void, error: PartyError): null {
   set({ busy: false, error: error.detail });
@@ -227,28 +246,52 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
   start: (pubName, pubCity, requestedJoinCode) => {
     if (startPromise) return startPromise;
     if (get().busy) return Promise.resolve(null);
+    // A retry of the same create replays the retained idempotent ticket so the
+    // server returns the table it already made. Anything that does not match
+    // the ticket exactly makes replay unsafe, so the ticket is dropped.
+    const reusable =
+      retainedCreateTicket &&
+      retainedCreateTicket.pubName === pubName &&
+      (retainedCreateTicket.pubCity ?? undefined) === (pubCity ?? undefined) &&
+      (!requestedJoinCode ||
+        requestedJoinCode.toUpperCase() === retainedCreateTicket.joinCode.toUpperCase())
+        ? retainedCreateTicket
+        : null;
+    retainedCreateTicket = null;
+    const ticket: PartyCreateTicket = reusable ?? {
+      clientId: generateUuidV4(),
+      joinCode: requestedJoinCode ?? generateJoinCode(),
+      pubName,
+      pubCity,
+    };
     membershipGeneration += 1;
     const membership = membershipGeneration;
     const generation = boundaryGeneration;
     const cacheGeneration = partyEveningIdentityGeneration();
     const sessionPromise = ensureAccount();
-    const joinCode = requestedJoinCode ?? generateJoinCode();
+    const joinCode = ticket.joinCode;
     set({ busy: true, error: null, lastEvening: null, pendingJoinCode: joinCode });
     const request = (async () => {
       const result = await createPartyEvening({
         // The id is the retry ticket: a second attempt after a lost response
         // returns the evening already created rather than starting another.
-        clientId: generateUuidV4(),
+        clientId: ticket.clientId,
         joinCode,
         pubName,
         pubCity,
       });
       const session = await sessionPromise;
-      if (generation !== boundaryGeneration || membership !== membershipGeneration) return null;
+      if (generation !== boundaryGeneration || membership !== membershipGeneration) {
+        retainedCreateTicket = null;
+        return null;
+      }
       if (!result.ok) {
         failed(set, result);
         set({ pendingJoinCode: null });
         await settlePendingPartyAssociations(joinCode, null);
+        // Ambiguous failures keep the ticket for an explicit retry; definitive
+        // rejections (validation, membership exists, …) must not replay.
+        if (isRetriablePartyError(result)) retainedCreateTicket = ticket;
         return null;
       }
       if (!result.evening) {
@@ -259,6 +302,8 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
         });
         set({ pendingJoinCode: null });
         await settlePendingPartyAssociations(joinCode, null);
+        // The create may have committed; only the response looks wrong.
+        retainedCreateTicket = ticket;
         return null;
       }
       const evening = result.evening;
@@ -269,7 +314,11 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
             cacheGeneration,
           )
         : null;
-      if (generation !== boundaryGeneration || membership !== membershipGeneration) return null;
+      if (generation !== boundaryGeneration || membership !== membershipGeneration) {
+        retainedCreateTicket = null;
+        return null;
+      }
+      retainedCreateTicket = null;
       set({
         evening,
         confirmedIdentity: confirmedIdentity ?? identityFromEvening(evening),
@@ -401,6 +450,24 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     });
   },
 
+  closeLostTable: (joinCode) => {
+    const wanted = joinCode.toUpperCase();
+    const state = get();
+    const matches =
+      state.evening?.joinCode.toUpperCase() === wanted ||
+      state.confirmedIdentity?.joinCode.toUpperCase() === wanted;
+    if (!matches) return;
+    membershipGeneration += 1;
+    retainedCreateTicket = null;
+    void clearPartyEveningIdentityForCode(wanted);
+    set({
+      evening: null,
+      confirmedIdentity: null,
+      busy: false,
+      error: null,
+    });
+  },
+
   clearError: () => set({ error: null }),
 }));
 
@@ -409,6 +476,7 @@ export function clearPartyEveningState(): void {
   boundaryGeneration += 1;
   membershipGeneration += 1;
   startPromise = null;
+  retainedCreateTicket = null;
   usePartyEveningStore.setState({
     evening: null,
     confirmedIdentity: null,
@@ -424,5 +492,6 @@ registerPrivateAccountFreezeListener(() => {
   boundaryGeneration += 1;
   membershipGeneration += 1;
   startPromise = null;
+  retainedCreateTicket = null;
   usePartyEveningStore.setState({ busy: false });
 });

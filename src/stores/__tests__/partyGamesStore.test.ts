@@ -15,7 +15,10 @@ import {
 } from '@/stores/partyGamesStore';
 import type { PartyGame, PartyGameEvent } from '@/data/partyGamesClient';
 import type { PartyGameStartDelivery } from '@/data/partyGameStartsQueue';
-import { beginPrivateAccountTransition } from '@/data/privateAccountBoundary';
+import {
+  beginPrivateAccountTransition,
+  setPrivateAccountDeletionRecoveryBlocked,
+} from '@/data/privateAccountBoundary';
 
 const enqueuePartyGameStart: jest.Mock = jest.fn();
 const flushPartyGameStartsQueue: jest.Mock = jest.fn(async () => undefined);
@@ -87,6 +90,7 @@ const startTicket = (
 
 beforeEach(() => {
   jest.clearAllMocks();
+  setPrivateAccountDeletionRecoveryBlocked(false);
   enqueuePartyGameStart.mockResolvedValue(startTicket());
   usePartyGamesStore.setState({
     code: null,
@@ -95,6 +99,10 @@ beforeEach(() => {
     sharingFailures: {},
     live: false,
   });
+});
+
+afterEach(() => {
+  setPrivateAccountDeletionRecoveryBlocked(false);
 });
 
 describe('partyGamesStore', () => {
@@ -311,6 +319,33 @@ describe('partyGamesStore', () => {
     expect(usePartyGamesStore.getState().games).toEqual([]);
     subscribeToPartyGames.mock.calls[1][1].onGames([GAME]);
     expect(usePartyGamesStore.getState().games).toEqual([GAME]);
+  });
+
+  it('stays disconnected across startup retries while deletion recovery blocks, then reconnects once when it clears', () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    expect(subscribeToPartyGames).toHaveBeenCalledTimes(1);
+
+    setPrivateAccountDeletionRecoveryBlocked(true);
+    const closesBefore = close.mock.calls.length;
+
+    // Two startup retries: the freeze from setPrivateAccountDeletionRecoveryBlocked
+    // already closed A resources once; a transition begun while still frozen must
+    // not emit another close, and none of this may drive a thaw — the real
+    // boundary listener stays installed.
+    const firstRetry = beginPrivateAccountTransition('credential-auth', 'me');
+    expect(firstRetry).not.toBeNull();
+    expect(close).toHaveBeenCalledTimes(closesBefore);
+    firstRetry!.release();
+    expect(subscribeToPartyGames).toHaveBeenCalledTimes(1);
+
+    const secondRetry = beginPrivateAccountTransition('credential-auth', 'me');
+    expect(secondRetry).not.toBeNull();
+    secondRetry!.release();
+    expect(subscribeToPartyGames).toHaveBeenCalledTimes(1);
+
+    setPrivateAccountDeletionRecoveryBlocked(false);
+    expect(subscribeToPartyGames).toHaveBeenCalledTimes(2);
+    expect(subscribeToPartyGames.mock.calls[1][0]).toBe('STUL24');
   });
 });
 

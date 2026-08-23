@@ -10,7 +10,11 @@ import {
   stopsForSessions,
   useNightRecord,
 } from '@/party/useNightRecord';
-import { nightMinutes, type NightRecord } from '@/party/nightRecord';
+import {
+  nightMinutes,
+  nightStandings,
+  type NightRecord,
+} from '@/party/nightRecord';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
@@ -220,6 +224,171 @@ describe('mergeNightRecords', () => {
     expect(merged.startedAt).toBe('2026-08-05T22:03:00Z');
     expect(nightMinutes(merged, Date.parse(endedAt))).toBe(191);
   });
+
+  it('treats a fresh server record as authoritative for people', () => {
+    const remote = record({
+      people: [{ id: 'me', name: 'Ty', avatarUrl: null, tint: '#E8A317' }],
+    });
+    const myOptimisticDrink = {
+      id: 'client-drink-1',
+      at: '2026-08-05T19:30:00Z',
+      by: 'me',
+      beerName: 'Ležák',
+      drinkType: 'beer' as const,
+      stopId: null,
+    };
+    const local = record({
+      people: [
+        { id: 'me', name: 'Ty', avatarUrl: null, tint: '#E8A317' },
+        {
+          id: 'friend',
+          name: 'Honza',
+          avatarUrl: null,
+          tint: '#7DD66B',
+          active: false,
+          leftAt: '2026-08-05T19:00:00Z',
+        },
+      ],
+      drinks: [
+        myOptimisticDrink,
+        {
+          id: 'stale-peer-beer',
+          at: '2026-08-05T18:40:00Z',
+          by: 'friend',
+          beerName: 'Kozel',
+          drinkType: 'beer' as const,
+          stopId: null,
+        },
+      ],
+      photos: [
+        {
+          id: 'stale-peer-photo',
+          url: 'file:///peer.jpg',
+          at: '2026-08-05T18:45:00Z',
+          by: 'friend',
+        },
+      ],
+      stops: [
+        {
+          id: 'visit-friend',
+          by: 'friend',
+          pubName: 'U Orlů',
+          cacheKey: null,
+          arrivedAt: '2026-08-05T18:10:00Z',
+        },
+      ],
+      games: [
+        {
+          key: 'stale-peer-game',
+          name: 'Kdo platí rundu',
+          startedAt: '2026-08-05T18:50:00Z',
+          by: 'friend',
+          result: { winner: 'friend', paying: null, scores: [] },
+        },
+        {
+          key: 'own-optimistic-game',
+          name: 'Piškvorky',
+          startedAt: '2026-08-05T19:20:00Z',
+          by: 'me',
+        },
+      ],
+    });
+
+    const merged = mergeNightRecords(remote, local);
+
+    // The whole merged record stays clean, not just the standings view.
+    expect(merged.people.map((person) => person.id)).toEqual(['me']);
+    expect(merged.drinks).toEqual([myOptimisticDrink]);
+    expect(merged.drinks.some((drink) => drink.by === 'friend')).toBe(false);
+    expect(merged.photos).toEqual([]);
+    expect(merged.stops).toEqual([]);
+    // Games are owner-attributed too: an omitted peer's local-only game never
+    // comes back, while this account's own unsynced one survives.
+    expect(merged.games.some((game) => game.by === 'friend')).toBe(false);
+    expect(merged.games.find((game) => game.key === 'own-optimistic-game')).toEqual(
+      expect.objectContaining({ by: 'me' }),
+    );
+  });
+
+  it('keeps only a provable local self when a successful remote roster is empty', () => {
+    const remote = record({ people: [] });
+    const myOptimisticDrink = {
+      id: 'client-drink-1',
+      at: '2026-08-05T19:30:00Z',
+      by: 'me',
+      beerName: 'Ležák',
+      drinkType: 'beer' as const,
+      stopId: null,
+    };
+    const local = record({
+      people: [
+        { id: 'me', name: 'Ty', avatarUrl: null, tint: '#E8A317' },
+        { id: 'friend', name: 'Honza', avatarUrl: null, tint: '#7DD66B' },
+      ],
+      drinks: [
+        myOptimisticDrink,
+        {
+          id: 'stale-peer-beer',
+          at: '2026-08-05T18:40:00Z',
+          by: 'friend',
+          beerName: 'Kozel',
+          drinkType: 'beer' as const,
+          stopId: null,
+        },
+      ],
+    });
+
+    const merged = mergeNightRecords(remote, local);
+
+    // An empty roster from the server is still an authoritative answer: only
+    // this account's own identity and its own unsynced rows survive.
+    expect(merged.people.map((person) => person.id)).toEqual(['me']);
+    expect(merged.drinks).toEqual([myOptimisticDrink]);
+  });
+
+  it('keeps the roster and the standings in agreement after a peer leaves', () => {
+    const myBeer = {
+      id: 'beer-me',
+      at: '2026-08-05T18:30:00Z',
+      by: 'me',
+      beerName: 'Ležák',
+      drinkType: 'beer' as const,
+      stopId: null,
+    };
+    const remote = record({
+      people: [{ id: 'me', name: 'Ty', avatarUrl: null, tint: '#E8A317' }],
+      drinks: [myBeer],
+    });
+    const local = record({
+      people: [
+        { id: 'me', name: 'Ty', avatarUrl: null, tint: '#E8A317' },
+        {
+          id: 'friend',
+          name: 'Honza',
+          avatarUrl: null,
+          tint: '#7DD66B',
+          active: false,
+          leftAt: '2026-08-05T19:00:00Z',
+        },
+      ],
+      drinks: [
+        myBeer,
+        {
+          id: 'beer-friend',
+          at: '2026-08-05T18:40:00Z',
+          by: 'friend',
+          beerName: 'Kozel',
+          drinkType: 'beer' as const,
+          stopId: null,
+        },
+      ],
+    });
+
+    const standings = nightStandings(mergeNightRecords(remote, local));
+
+    expect(standings.map((row) => row.id)).toEqual(['me']);
+    expect(standings[0].beers).toBe(1);
+  });
 });
 
 describe('mergeNightGames', () => {
@@ -244,6 +413,47 @@ describe('mergeNightGames', () => {
     expect(games).toEqual([
       expect.objectContaining({ key: 'round', result }),
     ]);
+  });
+
+  it('attributes games to their real starter, not to whoever merged them', () => {
+    const profile = (id: string) => ({
+      id,
+      nickname: id,
+      displayName: id === 'me' ? 'Ty' : 'Honza',
+      avatarUrl: null,
+    });
+    const games = mergeNightGames(
+      // This phone's own local row correlates with the server game below.
+      [{ key: 'round', name: 'Kdo platí rundu', startedAt: '2026-08-05T19:00:00Z' }],
+      [
+        {
+          id: 'game-friend',
+          catalogKey: 'rival',
+          name: 'Šibenice',
+          scoring: 'drinks',
+          startedBy: profile('friend'),
+          roster: [],
+          startedAt: '2026-08-05T19:10:00Z',
+          endedAt: null,
+          seed: 3,
+        },
+        {
+          id: 'game-mine',
+          catalogKey: 'round',
+          name: 'Kdo platí rundu',
+          scoring: 'drinks',
+          startedBy: profile('me'),
+          roster: [],
+          startedAt: '2026-08-05T19:00:00Z',
+          endedAt: null,
+          seed: 7,
+        },
+      ],
+      new Map(),
+    );
+
+    expect(games.find((game) => game.key === 'rival')?.by).toBe('friend');
+    expect(games.find((game) => game.key === 'round')?.by).toBe('me');
   });
 });
 
@@ -924,6 +1134,184 @@ describe('useNightRecord live refresh ordering', () => {
       unmount?.();
       useAccountStore.setState(originalAccount);
       usePartyEveningStore.setState(originalEvening);
+    }
+  });
+});
+
+describe('useNightRecord terminal table loss', () => {
+  const ACTIVE_EVENING = {
+    id: 'evening-1',
+    joinCode: 'PIVOXY',
+    joinUrl: 'https://na-pivo.cz/party/PIVOXY',
+    host: { id: 'account-a', nickname: 'ty', displayName: 'Ty', avatarUrl: null },
+    pubName: 'U Fleků',
+    pubCity: 'Praha',
+    active: true,
+    startedAt: '2026-08-05T18:00:00Z',
+    endedAt: null,
+    isHost: false,
+    members: [],
+    events: [],
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await clearNightRecordCache();
+  });
+
+  async function renderAtActiveTable(): Promise<{
+    unmount: () => void;
+    restore: () => void;
+    result: { current: NightRecord };
+  }> {
+    const originals = {
+      account: useAccountStore.getState(),
+      evening: usePartyEveningStore.getState(),
+    };
+    useAccountStore.setState({
+      session: { deviceId: 'device-a', accountId: 'account-a', token: 'secret' },
+      status: 'ready',
+    });
+    usePartyEveningStore.setState({
+      evening: ACTIVE_EVENING,
+      confirmedIdentity: {
+        id: 'evening-1',
+        joinCode: 'PIVOXY',
+        isHost: false,
+        confirmedAt: Date.now(),
+      },
+      lastEvening: null,
+      pendingJoinCode: null,
+    });
+    const rendered = renderHook(() => useNightRecord());
+    return {
+      unmount: rendered.unmount,
+      result: rendered.result,
+      restore: () => {
+        useAccountStore.setState(originals.account);
+        usePartyEveningStore.setState(originals.evening);
+      },
+    };
+  }
+
+  it('closes the active table when the server reports it gone', async () => {
+    await writeNightRecordCache('account-a', record({ id: 'cached-live-record' }));
+    fetchRecordMock.mockResolvedValue({
+      ok: false,
+      code: 'party_not_found',
+      detail: 'Takový večer tu není.',
+    });
+
+    const harness = await renderAtActiveTable();
+
+    try {
+      await waitFor(() => expect(fetchRecordMock).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(usePartyEveningStore.getState().confirmedIdentity).toBeNull(),
+      );
+      expect(usePartyEveningStore.getState().evening).toBeNull();
+    } finally {
+      harness.unmount();
+      harness.restore();
+    }
+  });
+
+  it('keeps the table and the cached record through a plain network failure', async () => {
+    await writeNightRecordCache('account-a', record({ id: 'cached-live-record' }));
+    fetchRecordMock.mockResolvedValue({ ok: false, code: 'network', detail: '' });
+
+    const harness = await renderAtActiveTable();
+
+    try {
+      await waitFor(() => expect(fetchRecordMock).toHaveBeenCalled());
+      expect(usePartyEveningStore.getState().confirmedIdentity?.joinCode).toBe('PIVOXY');
+      expect(usePartyEveningStore.getState().evening).toEqual(ACTIVE_EVENING);
+      expect(harness.result.current.id).toBe('cached-live-record');
+    } finally {
+      harness.unmount();
+      harness.restore();
+    }
+  });
+
+  it('carries real game provenance and never restores an omitted starter’s game', async () => {
+    const originalAccount = useAccountStore.getState();
+    const originalEvening = usePartyEveningStore.getState();
+    const originalLive = useLivePartyStore.getState();
+    const originalGames = usePartyGamesStore.getState();
+
+    useAccountStore.setState({
+      session: { deviceId: 'device-a', accountId: 'account-a', token: 'secret' },
+      status: 'ready',
+    });
+    usePartyEveningStore.setState({
+      evening: ACTIVE_EVENING,
+      confirmedIdentity: null,
+      lastEvening: null,
+      pendingJoinCode: null,
+    });
+    useLivePartyStore.setState({
+      live: false,
+      pubName: '',
+      pubKey: null,
+      startedAt: null,
+      games: [],
+    });
+    // The real shared-games sync path: a PartyGame started by a friend who the
+    // fresh server record below no longer lists.
+    usePartyGamesStore.setState({
+      code: 'PIVOXY',
+      games: [
+        {
+          id: 'game-friend',
+          catalogKey: 'rival',
+          name: 'Šibenice',
+          scoring: 'drinks',
+          startedBy: { id: 'friend', nickname: 'honza', displayName: 'Honza', avatarUrl: null },
+          roster: [],
+          startedAt: '2026-08-05T19:00:00Z',
+          endedAt: null,
+          seed: 1,
+        },
+      ],
+      events: [],
+      live: true,
+    });
+
+    try {
+      fetchRecordMock.mockResolvedValueOnce({ ok: false, code: 'network', detail: '' });
+      const first = renderHook(() => useNightRecord());
+
+      await waitFor(() => expect(fetchRecordMock).toHaveBeenCalled());
+      // Construction attribution comes from startedBy, not from this phone.
+      expect(first.result.current.games[0]?.by).toBe('friend');
+      first.unmount();
+
+      const mine = record({
+        people: [{ id: 'me', name: 'Ty', avatarUrl: null, tint: '#E8A317' }],
+        drinks: [
+          {
+            id: 'beer-me',
+            at: '2026-08-05T18:30:00Z',
+            by: 'me',
+            beerName: 'Ležák',
+            drinkType: 'beer',
+            stopId: null,
+          },
+        ],
+      });
+      fetchRecordMock.mockResolvedValue({ ok: true, record: mine });
+      const second = renderHook(() => useNightRecord());
+
+      // The authoritative roster omits the friend, so their game cannot stay.
+      await waitFor(() =>
+        expect(second.result.current.games.some((game) => game.by === 'friend')).toBe(false),
+      );
+      second.unmount();
+    } finally {
+      useAccountStore.setState(originalAccount);
+      usePartyEveningStore.setState(originalEvening);
+      useLivePartyStore.setState(originalLive);
+      usePartyGamesStore.setState(originalGames);
     }
   });
 });
