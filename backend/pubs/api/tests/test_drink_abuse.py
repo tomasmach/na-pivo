@@ -12,9 +12,13 @@ from rest_framework.test import APIClient
 from pubs.models import (
     Account,
     AccountUsageStats,
+    BeerBrand,
+    BeerProduct,
     DrinkLog,
     PartyEvening,
     PartyEveningMember,
+    PubBeerBrand,
+    PubBeerProduct,
     PubCommunityData,
 )
 
@@ -258,11 +262,20 @@ def test_forty_first_drink_is_preserved_privately_and_hard_limited(client):
     assert last.is_suspect is True
     assert last.suspect_reason == "daily_hard_cap"
 
-    # The account export / offline reconciliation read returns it too.
+    # Offline reconciliation (GET /v1/drinks) and the real account export
+    # both carry the hard-limited row.
     listed = client.get("/v1/drinks", **_auth(token))
     assert listed.status_code == status.HTTP_200_OK
     ids = {item["client_id"] for item in listed.json()["drinks"]}
     assert str(client_id) in ids
+
+    exported = client.get("/v1/account/export", **_auth(token))
+    assert exported.status_code == status.HTTP_200_OK
+    export_ids = {row["client_id"] for row in exported.json()["drinks"]}
+    assert str(client_id) in export_ids
+    exported_row = next(row for row in exported.json()["drinks"] if row["client_id"] == str(client_id))
+    assert exported_row["is_suspect"] is True
+    assert exported_row["suspect_reason"] == "daily_hard_cap"
 
     # Duplicate retry of the same hard-limited client_id changes nothing.
     xp_after_first = AccountUsageStats.objects.get(account=account).pivar_xp
@@ -469,3 +482,108 @@ def test_duplicate_retry_does_not_recompute_or_change_flags(client):
     drink = DrinkLog.objects.get(account=account)
     assert drink.is_suspect is True
     assert drink.suspect_reason == "manual"
+
+
+@pytest.mark.django_db
+def test_patch_on_hard_limited_drink_never_publishes_brand_index(client):
+    token, account = _register(client)
+    start = _yesterday_noon()
+    for index in range(40):
+        _drink(account, start + timedelta(minutes=20 * index))
+    client_id = uuid.uuid4()
+    limited = client.post(
+        "/v1/drinks",
+        data=_payload(drank_at=start + timedelta(minutes=20 * 40), client_id=client_id),
+        format="json",
+        **_auth(token),
+    )
+    assert limited.status_code == status.HTTP_201_CREATED
+    assert limited.json()["limited"] is True
+
+    patched = client.patch(
+        f"/v1/drinks/{client_id}",
+        data={"beer_name": "Velkopopovický Kozel 11°"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert patched.status_code == status.HTTP_200_OK
+    assert patched.json() == {"updated": True}
+    # The private diary row updates normally.
+    drink = DrinkLog.objects.get(account=account, client_id=client_id)
+    assert drink.beer_name == "Velkopopovický Kozel 11°"
+    assert drink.beer_brand_key == "velkopopovicky-kozel"
+    assert drink.beer_product_key == "velkopopovicky-kozel-11"
+    # A suspect row never publishes a public brand/product index.
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_suspect_row_does_not_keep_old_index_active_after_patch(client):
+    token, account = _register(client)
+    brand = BeerBrand.objects.get(key="pilsner-urquell")
+    product = BeerProduct.objects.get(key="pilsner-urquell")
+    common = dict(
+        account=account,
+        cache_key="u2fkbn1z",
+        name="U Zlatého tygra",
+        lat=50.0876,
+        lng=14.4214,
+        beer_name="Pilsner Urquell",
+        beer_brand=brand,
+        beer_brand_key=brand.key,
+        beer_brand_name=brand.name,
+        beer_product=product,
+        beer_product_key=product.key,
+        beer_product_name=product.name,
+        price_czk=65,
+        volume_ml=500,
+        drank_at=_yesterday_noon(),
+    )
+    legit = DrinkLog.objects.create(client_id=uuid.uuid4(), **common)
+    DrinkLog.objects.create(
+        client_id=uuid.uuid4(),
+        is_suspect=True,
+        suspect_reason="daily_hard_cap",
+        **common,
+    )
+    PubBeerBrand.objects.create(
+        cache_key="u2fkbn1z",
+        name="U Zlatého tygra",
+        lat=50.0876,
+        lng=14.4214,
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.DRINK,
+        account=account,
+    )
+    PubBeerProduct.objects.create(
+        cache_key="u2fkbn1z",
+        name="U Zlatého tygra",
+        lat=50.0876,
+        lng=14.4214,
+        brand=brand,
+        product=product,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        product_key=product.key,
+        product_name=product.name,
+        source=PubBeerProduct.Source.DRINK,
+        account=account,
+    )
+
+    patched = client.patch(
+        f"/v1/drinks/{legit.client_id}",
+        data={"beer_name": "Velkopopovický Kozel 11°"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert patched.status_code == status.HTTP_200_OK
+    # The suspect row must not keep the old public index active.
+    pub_brand = PubBeerBrand.objects.get(cache_key="u2fkbn1z", brand_key="pilsner-urquell")
+    pub_product = PubBeerProduct.objects.get(cache_key="u2fkbn1z", product_key="pilsner-urquell")
+    assert pub_brand.active is False
+    assert pub_product.active is False

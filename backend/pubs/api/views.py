@@ -2569,7 +2569,8 @@ class DrinksView(APIView):
 
         update = serializer.validated_data
         # Private DrinkLog fields may always change; the public brand/product
-        # index refresh below is a UGC side effect and stays consent-gated.
+        # index refresh below is a UGC side effect and stays consent-gated and
+        # suspect-gated (a hard-limited row never publishes anything).
         may_publish = ugc_may_publish(request)
         try:
             with transaction.atomic():
@@ -2647,6 +2648,7 @@ class DrinksView(APIView):
 
                 if (
                     may_publish
+                    and not drink.is_suspect
                     and drink.place_context == DrinkLog.PlaceContext.PUB
                     and (
                         old_drink_type == DrinkLog.DrinkType.BEER
@@ -2868,9 +2870,12 @@ class DrinksView(APIView):
             )
 
         if old_brand_key and old_brand_key != drink.beer_brand_key:
+            # Suspect rows never legitimately contributed to the public index,
+            # so they must not keep it active either.
             has_other_drink = DrinkLog.objects.filter(
                 cache_key=drink.cache_key,
                 beer_brand_key=old_brand_key,
+                is_suspect=False,
             ).exists()
             if not has_other_drink and not DrinksView._community_has_signal(
                 drink.cache_key,
@@ -2887,6 +2892,7 @@ class DrinksView(APIView):
             has_other_product = DrinkLog.objects.filter(
                 cache_key=drink.cache_key,
                 beer_product_key=old_product_key,
+                is_suspect=False,
             ).exists()
             if not has_other_product and not DrinksView._community_has_signal(
                 drink.cache_key,
