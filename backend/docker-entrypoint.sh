@@ -3,6 +3,9 @@
 # Applies DB migrations, collects static files, then hands off to gunicorn.
 set -e
 
+echo "[entrypoint] validating production configuration..."
+python manage.py check --deploy
+
 echo "[entrypoint] applying database migrations..."
 python manage.py migrate --no-input
 

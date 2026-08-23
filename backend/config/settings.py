@@ -850,24 +850,6 @@ OPENROUTER_TIMEOUT: int = int(os.environ.get("OPENROUTER_TIMEOUT", "30"))
 # individual requests and resets at UTC midnight.
 OPENROUTER_DAILY_CAP: int = int(os.environ.get("OPENROUTER_DAILY_CAP", "5000"))
 
-# --- OpenAI moderation (UGC text checks, Phase A backend-only) ---
-# Server-only key for the UGC moderation endpoint. Never expose it to
-# mobile/Expo builds.
-# Empty key means moderation is disabled and callers must fail closed.
-OPENAI_MODERATION_API_KEY: str = os.environ.get("OPENAI_MODERATION_API_KEY", "")
-OPENAI_MODERATION_MODEL: str = os.environ.get(
-    "OPENAI_MODERATION_MODEL", "omni-moderation-latest"
-)
-# Kept as raw strings on purpose: deploy checks and runtime validate them and
-# fail closed on malformed values; converting at import would crash Django
-# startup instead of degrading safely.
-OPENAI_MODERATION_CONNECT_TIMEOUT_SECONDS: str = os.environ.get(
-    "OPENAI_MODERATION_CONNECT_TIMEOUT_SECONDS", "2"
-)
-OPENAI_MODERATION_READ_TIMEOUT_SECONDS: str = os.environ.get(
-    "OPENAI_MODERATION_READ_TIMEOUT_SECONDS", "5"
-)
-
 # Menu-scan image pipeline limits (mirror the avatar guards).
 # Reject image files larger than this BEFORE decoding (decompression-bomb guard).
 # Mobile pre-downscales to ~1600px JPEG, but modern original phone photos can

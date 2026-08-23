@@ -197,17 +197,6 @@ Running without a residential proxy from a datacenter IP can make detail fetches
 
 All settings are read from environment variables or a `.env` file. See `.env.example` for the full list.
 
-### OpenAI UGC moderation
-
-Server-only configuration for the Phase A moderation helper — the key must never be exposed through Expo/mobile/client config. When an endpoint integrates and calls the helper, the UGC text supplied to it and the normalized image bytes (re-encoded WebP thumbnail) are sent to OpenAI for moderation at the fixed OpenAI `POST /v1/moderations` endpoint; if OpenAI is unreachable, the call raises instead of approving content. Phase A is not integrated yet — no UGC endpoints use this helper, so nothing is moderated automatically today.
-
-- `OPENAI_MODERATION_API_KEY` — _(unset)_; server-only OpenAI key, required in production
-- `OPENAI_MODERATION_MODEL` — default `omni-moderation-latest`, required exact value
-- `OPENAI_MODERATION_CONNECT_TIMEOUT_SECONDS` — default `2`, maximum `10`; connect timeout in seconds
-- `OPENAI_MODERATION_READ_TIMEOUT_SECONDS` — default `5`, maximum `30`; read timeout in seconds
-
-`manage.py check --deploy` fails with `pubs.E007` (missing production key), `pubs.E008` (wrong model) or `pubs.E009` (invalid timeout).
-
 | Variable | Default | Description |
 |---|---|---|
 | `SECRET_KEY` | insecure dev key | Django secret key |
@@ -305,7 +294,9 @@ Services:
 - `worker` - background enrichment, durable account-export delivery and retention cleanup;
 - `db` - PostgreSQL 17.
 
-`docker-entrypoint.sh` applies migrations and collects static files on every start, so a deploy is pull + rebuild.
+`docker-entrypoint.sh` runs `manage.py check --deploy` before applying migrations
+or collecting static files. Invalid production configuration therefore stops the
+new container before it changes the database. A deploy is pull + rebuild.
 
 ### Prerequisites
 
