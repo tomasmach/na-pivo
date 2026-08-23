@@ -31,6 +31,7 @@ export interface CounterSecondaryProps {
   label: string;
   onPress: () => void;
   accessibilityLabel?: string;
+  disabled?: boolean;
 }
 
 /** The quiet twin under the CTA: "Něco jiného" — a different beer, a shot, a
@@ -41,13 +42,23 @@ export const CounterSecondary = memo(function CounterSecondary({
   label,
   onPress,
   accessibilityLabel,
+  disabled = false,
 }: CounterSecondaryProps) {
+  const handlePress = useCallback(() => {
+    if (!disabled) onPress();
+  }, [disabled, onPress]);
+
   return (
     <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.secondary, pressed && styles.secondaryPressed]}
+      onPress={handlePress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.secondary,
+        pressed && !disabled && styles.secondaryPressed,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled }}
     >
       <Text style={styles.secondaryLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}

@@ -30,7 +30,7 @@ const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 const { NudgeSlot } = jest.requireActual('../NudgeSlot');
-const { CounterCta } = jest.requireActual('../CounterCta');
+const { CounterCta, CounterSecondary } = jest.requireActual('../CounterCta');
 
 type AnyInstance = { props: Record<string, any> };
 
@@ -276,6 +276,26 @@ describe('CounterCta — rendering', () => {
     expect(cta.props.disabled).toBe(true);
     expect(cta.props.accessibilityState).toEqual({ disabled: true });
     act(() => cta.props.onPress());
+    expect(onPress).not.toHaveBeenCalled();
+  });
+});
+
+describe('CounterSecondary — disabled state', () => {
+  it('exposes its disabled state and never forwards the press', () => {
+    const onPress = jest.fn();
+    const renderer = render(
+      React.createElement(CounterSecondary, {
+        label: 'Pracuji…',
+        onPress,
+        accessibilityLabel: 'Pracuji…',
+        disabled: true,
+      }),
+    );
+    const secondary = pressableWithLabel(renderer, 'Pracuji…');
+
+    expect(secondary.props.disabled).toBe(true);
+    expect(secondary.props.accessibilityState).toEqual({ disabled: true });
+    act(() => secondary.props.onPress());
     expect(onPress).not.toHaveBeenCalled();
   });
 });
