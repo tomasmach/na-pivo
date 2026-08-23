@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.core.checks import Tags, run_checks
 from django.test import override_settings
 
@@ -84,6 +86,100 @@ def test_fingerprint_check_accepts_valid_colon_separated_values(settings):
     settings.ANDROID_APP_LINK_CERT_FINGERPRINTS = ":".join(["AA"] * 32)
 
     assert _fingerprint_check_errors(settings) == []
+
+
+def test_fingerprint_check_accepts_two_valid_comma_separated_fingerprints(settings):
+    """One colon-separated + one plain entry: preview/internal builds stay supported."""
+
+    settings.DEBUG = False
+    colon_separated = ":".join(["AB"] * 32)
+    plain = "CD" * 32
+    settings.ANDROID_APP_LINK_CERT_FINGERPRINTS = f"{colon_separated}, {plain}"
+
+    assert _fingerprint_check_errors(settings) == []
+
+
+_PLAY_SOURCE_PHRASES = (
+    "Google Play Console",
+    "App integrity",
+    "App signing key certificate",
+    "SHA-256",
+)
+
+
+def test_missing_fingerprint_hint_points_to_play_app_signing(settings):
+    settings.DEBUG = False
+    settings.ANDROID_APP_LINK_CERT_FINGERPRINTS = ""
+
+    error = _fingerprint_check_errors(settings)[0]
+
+    assert error.id == "pubs.E004"
+    joined = f"{error.msg} {error.hint}"
+    for phrase in _PLAY_SOURCE_PHRASES:
+        assert phrase in joined, f"hint is missing {phrase!r}"
+    assert "EAS" not in joined
+    assert "keytool" not in joined
+
+
+def test_malformed_fingerprint_hint_points_to_play_app_signing(settings):
+    settings.DEBUG = False
+    settings.ANDROID_APP_LINK_CERT_FINGERPRINTS = "not-a-fingerprint"
+
+    error = _fingerprint_check_errors(settings)[0]
+
+    assert error.id == "pubs.E003"
+    joined = f"{error.msg} {error.hint}"
+    for phrase in _PLAY_SOURCE_PHRASES:
+        assert phrase in joined, f"hint is missing {phrase!r}"
+    assert "EAS" not in joined
+    assert "keytool" not in joined
+
+
+# ---------------------------------------------------------------------------
+# Docs copy contract — operator docs must name Play App Signing as the source
+# ---------------------------------------------------------------------------
+
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_FINGERPRINT_DOCS_FILES = (
+    ".env.example",
+    ".env.production.example",
+    "README.md",
+)
+
+
+def _fingerprint_doc_section(filename: str) -> str:
+    lines = (_BACKEND_DIR / filename).read_text(encoding="utf-8").splitlines()
+    hits = [
+        i for i, line in enumerate(lines)
+        if "ANDROID_APP_LINK_CERT_FINGERPRINTS" in line
+    ]
+    assert hits, f"{filename} never names ANDROID_APP_LINK_CERT_FINGERPRINTS"
+    center = hits[0]
+    return "\n".join(lines[max(0, center - 8):center + 9])
+
+
+def test_fingerprint_docs_name_play_console_as_production_source():
+    for filename in _FINGERPRINT_DOCS_FILES:
+        section = _fingerprint_doc_section(filename)
+        for phrase in ("Google Play Console", "App integrity",
+                       "App signing key certificate"):
+            assert phrase in section, (
+                f"{filename} does not name the production source ({phrase!r}) "
+                "near ANDROID_APP_LINK_CERT_FINGERPRINTS"
+            )
+
+
+def test_fingerprint_docs_warn_eas_and_keytool_are_not_production_source():
+    for filename in _FINGERPRINT_DOCS_FILES:
+        section = _fingerprint_doc_section(filename).lower()
+        assert "eas" in section and "keytool" in section, (
+            f"{filename} does not mention EAS/keytool near "
+            "ANDROID_APP_LINK_CERT_FINGERPRINTS"
+        )
+        assert any(
+            marker in section
+            for marker in ("may differ", "can differ", "not the production source")
+        ), f"{filename} does not warn EAS/local keytool may differ from production"
 
 
 # ---------------------------------------------------------------------------

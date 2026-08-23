@@ -61,9 +61,10 @@ def check_android_app_link_cert_fingerprints(**_kwargs):
             Error(
                 f"{ANDROID_APP_LINK_FINGERPRINTS_ENV} is not configured.",
                 hint=(
-                    f"Set {ANDROID_APP_LINK_FINGERPRINTS_ENV} to the Android "
-                    "signing certificate's SHA-256 fingerprint (from EAS "
-                    "credentials or `keytool -list -v`). Without it "
+                    f"Set {ANDROID_APP_LINK_FINGERPRINTS_ENV} to the production "
+                    "Android signing certificate's SHA-256 fingerprint from "
+                    "Google Play Console > App integrity > App signing key "
+                    "certificate (Play App Signing). Without it "
                     "/.well-known/assetlinks.json serves no association and "
                     "installed apps will not verify as app links."
                 ),
@@ -77,9 +78,11 @@ def check_android_app_link_cert_fingerprints(**_kwargs):
             f"{ANDROID_APP_LINK_FINGERPRINTS_ENV} is set but contains no valid "
             "SHA-256 fingerprint (expected 64 hex characters, colons optional).",
             hint=(
-                f"Set {ANDROID_APP_LINK_FINGERPRINTS_ENV} to the signing key's "
-                "SHA-256 value (e.g. from EAS credentials or `keytool -list "
-                "-v`), or unset it to serve no Android app-link association."
+                f"Set {ANDROID_APP_LINK_FINGERPRINTS_ENV} to the production "
+                "Android signing certificate's SHA-256 value from Google Play "
+                "Console > App integrity > App signing key certificate (Play "
+                "App Signing), or unset the variable to serve no Android "
+                "app-link association."
             ),
             id="pubs.E003",
         )
