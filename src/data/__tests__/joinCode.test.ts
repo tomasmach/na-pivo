@@ -7,7 +7,12 @@
  * into a failed join with no explanation.
  */
 
-import { cleanJoinCode as clean, generateJoinCode } from '@/data/joinCode';
+import {
+  cleanJoinCode as clean,
+  generateJoinCode,
+  JOIN_CODE_ACCEPTED_ALPHABET,
+  JOIN_CODE_GENERATOR_ALPHABET,
+} from '@/data/joinCode';
 
 describe('join code field', () => {
   it('upper-cases what you type', () => {
@@ -24,9 +29,24 @@ describe('join code field', () => {
     }
   });
 
-  it('drops the characters the server has no letter for', () => {
-    // Heard as "O", "I" and "S" — the code alphabet has none of them.
-    expect(clean('AOBICS')).toBe('ABC');
+  it('accepts every character allowed by shipped clients and the server', () => {
+    expect(JOIN_CODE_ACCEPTED_ALPHABET).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789');
+    for (const character of JOIN_CODE_ACCEPTED_ALPHABET) {
+      expect(clean(`${character}ABCDE`)[0]).toBe(character);
+    }
+    expect(clean('pivo25')).toBe('PIVO25');
+  });
+
+  it('keeps newly generated codes on the unambiguous alphabet', () => {
+    expect(JOIN_CODE_GENERATOR_ALPHABET).not.toMatch(/[OILSZ5]/);
+    for (let index = 0; index < JOIN_CODE_GENERATOR_ALPHABET.length; index += 1) {
+      const random = () => (index + 0.1) / JOIN_CODE_GENERATOR_ALPHABET.length;
+      expect(generateJoinCode(random)).toBe(JOIN_CODE_GENERATOR_ALPHABET[index].repeat(6));
+    }
+  });
+
+  it('filters characters the server rejects without deleting valid legacy letters', () => {
+    expect(clean('P0I1V-O25')).toBe('PIVO25');
   });
 
   it('stops at six, however much gets pasted', () => {

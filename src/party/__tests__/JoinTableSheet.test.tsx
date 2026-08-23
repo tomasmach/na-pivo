@@ -85,6 +85,24 @@ describe('JoinTableSheet', () => {
     expect(decorativeBoxes.props.importantForAccessibility).toBe('no-hide-descendants');
   });
 
+  it('keeps legacy server-valid letters and digits in manual input', () => {
+    act(() => {
+      renderer = TestRenderer.create(sheet(true, null));
+    });
+
+    let input = renderer!.root.findByType(TextInput);
+    act(() => input.props.onChangeText('pivo25'));
+    input = renderer!.root.findByType(TextInput);
+    expect(input.props.value).toBe('PIVO25');
+
+    const join = renderer!.root.find(
+      (node) => node.props.accessibilityLabel === 'Přisednout',
+    );
+    expect(join.props.accessibilityState).toEqual({ disabled: false });
+    act(() => join.props.onPress());
+    expect(onJoin).toHaveBeenCalledWith('PIVO25');
+  });
+
   it('does not render helper copy under the heading', () => {
     act(() => {
       renderer = TestRenderer.create(sheet(true, null));

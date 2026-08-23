@@ -4,6 +4,9 @@ describe('parsePartyInviteCodeFromUrl', () => {
   it.each([
     ['napivo://party-live?code=EFJ66G', 'EFJ66G'],
     ['https://na-pivo.cz/party/2jw642', '2JW642'],
+    ['napivo://party-live?code=PIVO25', 'PIVO25'],
+    ['https://na-pivo.cz/party/PIVO25', 'PIVO25'],
+    ['https://na-pivo.cz/party/PIVO%32%35', 'PIVO25'],
   ])('reads a table code from %s', (url, code) => {
     expect(parsePartyInviteCodeFromUrl(url)).toBe(code);
   });
@@ -15,6 +18,12 @@ describe('parsePartyInviteCodeFromUrl', () => {
     'https://na-pivo.cz/party/SHORT',
     'https://na-pivo.cz/privacy?code=EFJ66G',
     'napivo://party-live?code=50%',
+    'napivo://party-live?code=PIVO20',
+    'napivo://party-live?code=PIVO21',
+    'napivo://party-live?code=PIVO2!',
+    'napivo://party-live?code=PIVO255',
+    'https://na-pivo.cz/party/PIVO20',
+    'https://na-pivo.cz/party/PIVO2%21',
     // A friend-invite link must never be mistaken for a table code on cold start.
     'https://na-pivo.cz/p/Ab3xK9_pQ2sT?code=EFJ66G',
     // Trailing junk and empty query forms carry no code.

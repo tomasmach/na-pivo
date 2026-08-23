@@ -1,11 +1,12 @@
 /** Route-specific parsing for a six-character shared-table invite. */
 
-import { cleanJoinCode, JOIN_CODE_LENGTH } from './joinCode';
+import { JOIN_CODE_LENGTH } from './joinCode';
 
 function validJoinCode(raw: string): string | null {
   try {
-    const code = cleanJoinCode(decodeURIComponent(raw));
-    return code.length === JOIN_CODE_LENGTH ? code : null;
+    const decoded = decodeURIComponent(raw);
+    if (!new RegExp(`^[A-Z2-9]{${JOIN_CODE_LENGTH}}$`, 'i').test(decoded)) return null;
+    return decoded.toUpperCase();
   } catch {
     return null;
   }
