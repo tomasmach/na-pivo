@@ -20,6 +20,10 @@ import {
   type PendingBeerPhotoInput,
 } from '@/stores/beerPhotosStore';
 import type { BeerPhoto } from '@/data/beerPhotosClient';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '@/data/privateAccountBoundary';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -91,11 +95,16 @@ function pendingInput(clientId: string, over: Partial<PendingBeerPhotoInput> = {
 }
 
 beforeEach(async () => {
+  resetPrivateAccountBoundaryForTests();
   await clearBeerPhotoDeletionTombstones();
   jest.clearAllMocks();
   currentAccountId = 'account-a';
   await AsyncStorage.clear();
-  useBeerPhotosStore.setState({ photos: [] });
+  await (
+    useBeerPhotosStore.setState as unknown as (
+      state: { photos: [] }
+    ) => Promise<void>
+  )({ photos: [] });
 });
 
 async function waitForCallCount(mock: jest.Mock, count: number): Promise<void> {
@@ -238,6 +247,84 @@ describe('markSynced / markFailed', () => {
       syncState: 'synced',
     });
     expect(photo.localUri).toBeUndefined();
+  });
+
+  it('reports disk failure and only confirms the exact synced snapshot after a durable retry', async () => {
+    const addPendingDurably = useBeerPhotosStore.getState()
+      .addPendingPhoto as unknown as (
+      input: PendingBeerPhotoInput,
+    ) => Promise<void>;
+    await addPendingDurably(pendingInput('c1'));
+    const pendingRaw = await AsyncStorage.getItem('na-pivo-beer-photos');
+    expect(JSON.parse(pendingRaw ?? '{}').state.photos[0]).toMatchObject({
+      clientId: 'c1',
+      syncState: 'pending',
+      localUri: 'file:///docs/beer-photos/c1.jpg',
+    });
+
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<
+      typeof AsyncStorage.setItem
+    >;
+    setItem.mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      useBeerPhotosStore.getState().markSynced('c1', serverPhoto('c1')),
+    ).resolves.toBe(false);
+    expect(useBeerPhotosStore.getState().photos[0]).toMatchObject({
+      id: 'srv-c1',
+      syncState: 'synced',
+    });
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-beer-photos')) ?? '{}').state.photos[0])
+      .toMatchObject({
+        clientId: 'c1',
+        syncState: 'pending',
+        localUri: 'file:///docs/beer-photos/c1.jpg',
+      });
+
+    await expect(
+      useBeerPhotosStore.getState().markSynced('c1', serverPhoto('c1')),
+    ).resolves.toBe(true);
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-beer-photos')) ?? '{}').state.photos[0])
+      .toMatchObject({
+        id: 'srv-c1',
+        clientId: 'c1',
+        syncState: 'synced',
+      });
+  });
+
+  it('fails the checkpoint when account A persistence finishes across a private boundary', async () => {
+    const addPendingDurably = useBeerPhotosStore.getState()
+      .addPendingPhoto as unknown as (
+      input: PendingBeerPhotoInput,
+    ) => Promise<void>;
+    await addPendingDurably(pendingInput('account-a-photo'));
+
+    let resolvePersistence!: () => void;
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<
+      typeof AsyncStorage.setItem
+    >;
+    setItem.mockClear();
+    setItem.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolvePersistence = resolve;
+      }),
+    );
+
+    const syncing = useBeerPhotosStore
+      .getState()
+      .markSynced('account-a-photo', serverPhoto('account-a-photo'));
+    await waitForCallCount(setItem as jest.Mock, 1);
+    const transition = beginPrivateAccountTransition('account-switch', 'account-a');
+    expect(transition).not.toBeNull();
+
+    resolvePersistence();
+    await expect(syncing).resolves.toBe(false);
+    await transition!.drain();
+    await clearBeerPhotosAccountData({ outgoingSession: null });
+
+    expect(useBeerPhotosStore.getState().photos).toEqual([]);
+    expect(await AsyncStorage.getItem('na-pivo-beer-photos')).toBeNull();
+    transition!.release();
   });
 
   it('markFailed flips only the matching pending entry, never a synced one', () => {

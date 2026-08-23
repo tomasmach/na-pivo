@@ -75,6 +75,7 @@ export interface PartyEveningState {
 
 let boundaryGeneration = 0;
 let membershipGeneration = 0;
+let refreshGeneration = 0;
 let startPromise: Promise<PartyEvening | null> | null = null;
 
 /**
@@ -130,6 +131,7 @@ export function selectConfirmedPartyJoinCode(
 async function settlePendingPartyAssociations(
   pendingJoinCode: string,
   confirmedJoinCode: string | null,
+  authoritative = true,
 ): Promise<void> {
   // Keep the evening store independent from photo/visit queue modules at load.
   // Await settlement so callers flushing staged writes cannot overtake the
@@ -137,7 +139,11 @@ async function settlePendingPartyAssociations(
   await Promise.all([
     import('@/data/beerPhotosQueue')
       .then(({ resolveBeerPhotoPartyAssociation }) =>
-        resolveBeerPhotoPartyAssociation(pendingJoinCode, confirmedJoinCode),
+        authoritative
+          ? resolveBeerPhotoPartyAssociation(pendingJoinCode, confirmedJoinCode)
+          : resolveBeerPhotoPartyAssociation(pendingJoinCode, confirmedJoinCode, {
+              authoritative: false,
+            }),
       )
       .catch(() => undefined),
     import('@/data/visitsQueue')
@@ -151,6 +157,20 @@ async function settlePendingPartyAssociations(
       )
       .catch(() => undefined),
   ]);
+}
+
+async function releaseOrphanedPendingPhotoAssociations(
+  canRelease: () => boolean,
+  protectedPartyCode?: string,
+): Promise<void> {
+  await import('@/data/beerPhotosQueue')
+    .then(({ releaseOrphanedBeerPhotoPartyAssociations }) =>
+      releaseOrphanedBeerPhotoPartyAssociations(
+        canRelease,
+        protectedPartyCode,
+      ),
+    )
+    .catch(() => undefined);
 }
 
 export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
@@ -180,25 +200,34 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     if (!get().evening && !get().pendingJoinCode) {
       set({ confirmedIdentity: restored });
       if (restored) {
-        await settlePendingPartyAssociations(restored.joinCode, restored.joinCode);
+        await settlePendingPartyAssociations(
+          restored.joinCode,
+          restored.joinCode,
+          false,
+        );
       }
     }
   },
 
   refresh: async () => {
+    const refresh = ++refreshGeneration;
     const generation = boundaryGeneration;
     const membership = membershipGeneration;
     const cacheGeneration = partyEveningIdentityGeneration();
+    const isCurrent = () =>
+      refresh === refreshGeneration &&
+      generation === boundaryGeneration &&
+      membership === membershipGeneration;
 
     // Hydrate BEFORE starting the request. A cold launch in a cellar can now
     // attach its first offline beer to the last server-confirmed table.
     await get().restore();
-    if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+    if (!isCurrent()) return;
     const session = await ensureAccount();
-    if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+    if (!isCurrent()) return;
 
     const result = await fetchCurrentPartyEvening();
-    if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+    if (!isCurrent()) return;
     if (!result.ok) {
       // A failed refresh is not "you are not in an evening". Keep what we have
       // and say nothing — walking into a cellar must not close the table.
@@ -208,19 +237,27 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     const locallyFinished = result.evening
       ? await hasQueuedPartyEveningAction(result.evening.joinCode)
       : false;
-    if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+    if (!isCurrent()) return;
     if (locallyFinished) {
       // This phone already accepted an offline finish/leave. Keep that promise
       // even when a read succeeds before the queued write can be delivered.
       if (session) await clearPartyEveningIdentityForAccount(session.accountId);
-      if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+      if (!isCurrent()) return;
       set({ evening: null, confirmedIdentity: null, loaded: true, error: null });
       return;
     }
     if (!result.evening) {
-      if (session) await clearPartyEveningIdentityForAccount(session.accountId);
-      if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+      const identityCleared = session
+        ? await clearPartyEveningIdentityForAccount(session.accountId)
+        : true;
+      if (!isCurrent()) return;
       set({ evening: null, confirmedIdentity: null, loaded: true, error: null });
+      if (!identityCleared) return;
+      if (!get().pendingJoinCode) {
+        await releaseOrphanedPendingPhotoAssociations(
+          () => isCurrent() && !get().pendingJoinCode,
+        );
+      }
       return;
     }
     const confirmedIdentity = session
@@ -230,7 +267,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
           cacheGeneration,
         )
       : null;
-    if (generation !== boundaryGeneration || membership !== membershipGeneration) return;
+    if (!isCurrent()) return;
     set({
       evening: result.evening,
       confirmedIdentity: confirmedIdentity ?? identityFromEvening(result.evening),
@@ -240,6 +277,15 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     await settlePendingPartyAssociations(
       result.evening.joinCode,
       result.evening.joinCode,
+    );
+    if (!isCurrent()) return;
+    const confirmedCode = result.evening.joinCode.toUpperCase();
+    await releaseOrphanedPendingPhotoAssociations(
+      () =>
+        isCurrent() &&
+        !get().pendingJoinCode &&
+        get().evening?.joinCode.toUpperCase() === confirmedCode,
+      confirmedCode,
     );
   },
 
@@ -286,12 +332,15 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
         return null;
       }
       if (!result.ok) {
+        const retriable = isRetriablePartyError(result);
         failed(set, result);
         set({ pendingJoinCode: null });
-        await settlePendingPartyAssociations(joinCode, null);
         // Ambiguous failures keep the ticket for an explicit retry; definitive
-        // rejections (validation, membership exists, …) must not replay.
-        if (isRetriablePartyError(result)) retainedCreateTicket = ticket;
+        // rejections (validation, membership exists, …) release staged writes.
+        // The server may already have committed a retriable request, so its
+        // reservations stay intact until retry or an authoritative refresh.
+        if (retriable) retainedCreateTicket = ticket;
+        else await settlePendingPartyAssociations(joinCode, null);
         return null;
       }
       if (!result.evening) {
@@ -301,8 +350,8 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
           detail: 'Server neposlal založený stůl. Zkus to znovu.',
         });
         set({ pendingJoinCode: null });
-        await settlePendingPartyAssociations(joinCode, null);
-        // The create may have committed; only the response looks wrong.
+        // The create may have committed; only the response looks wrong. Keep
+        // staged writes reserved for the idempotent retry/current-table read.
         retainedCreateTicket = ticket;
         return null;
       }
@@ -475,6 +524,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
 export function clearPartyEveningState(): void {
   boundaryGeneration += 1;
   membershipGeneration += 1;
+  refreshGeneration += 1;
   startPromise = null;
   retainedCreateTicket = null;
   usePartyEveningStore.setState({
@@ -491,6 +541,7 @@ export function clearPartyEveningState(): void {
 registerPrivateAccountFreezeListener(() => {
   boundaryGeneration += 1;
   membershipGeneration += 1;
+  refreshGeneration += 1;
   startPromise = null;
   retainedCreateTicket = null;
   usePartyEveningStore.setState({ busy: false });

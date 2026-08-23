@@ -17,6 +17,7 @@ import {
   enqueueBeerPhoto,
   flushBeerPhotosQueue,
   persistBeerPhotoLocally,
+  releaseOrphanedBeerPhotoPartyAssociations,
   removeQueuedBeerPhoto,
   resolveBeerPhotoPartyAssociation,
   type BeerPhotoUploadOp,
@@ -73,8 +74,9 @@ jest.mock('../photoContestClient', () => ({
 }));
 
 const addPendingPhoto = jest.fn();
-const markSynced = jest.fn(() => {
+const markSynced = jest.fn(async () => {
   events.push('markSynced');
+  return true;
 });
 const markFailed = jest.fn(() => {
   events.push('markFailed');
@@ -425,6 +427,265 @@ describe('enqueueBeerPhoto', () => {
       expect.not.objectContaining({ pendingPartyCode: expect.anything() }),
     ]);
   });
+
+  it('recovers every reserved photo after a restart confirms there is no table', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'retry' });
+    await (await enqueueBeerPhoto(op('c1', { pendingPartyCode: 'PIVOXY' }))).completion;
+    await (await enqueueBeerPhoto(op('c2', { pendingPartyCode: 'STULIK' }))).completion;
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+
+    await expect(releaseOrphanedBeerPhotoPartyAssociations()).resolves.toBe(true);
+
+    // Retryable uploads stay visibly reserved in both the store and queue.
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({
+        pendingPartyCode: 'PIVOXY',
+        orphanReleaseCandidate: true,
+      }),
+      expect.objectContaining({
+        pendingPartyCode: 'STULIK',
+        orphanReleaseCandidate: true,
+      }),
+    ]);
+  });
+
+  it('keeps a crash-left recovery candidate inert until a current refresh reauthorizes it', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'retry' });
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      op('c1', {
+        pendingPartyCode: 'PIVOXY',
+        orphanReleaseCandidate: true,
+      }),
+    ]));
+
+    // The persisted marker can survive a process crash, but its in-memory
+    // authorization cannot. A startup flush must therefore keep it reserved.
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({
+        clientId: 'c1',
+        pendingPartyCode: 'PIVOXY',
+        orphanReleaseCandidate: true,
+      }),
+    ]);
+
+    await expect(releaseOrphanedBeerPhotoPartyAssociations()).resolves.toBe(true);
+
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a stale cached table reclaim a confirmed-none candidate after restart', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([
+      op('c1', {
+        pendingPartyCode: 'PIVOXY',
+        orphanReleaseCandidate: true,
+      }),
+    ]));
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+
+    await (
+      resolveBeerPhotoPartyAssociation as unknown as (
+        pendingCode: string,
+        confirmedCode: string,
+        options: { authoritative: boolean },
+      ) => Promise<boolean>
+    )('PIVOXY', 'PIVOXY', { authoritative: false });
+
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({
+        clientId: 'c1',
+        pendingPartyCode: 'PIVOXY',
+        orphanReleaseCandidate: true,
+      }),
+    ]);
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+
+    // The next authoritative confirmed-none refresh clears its cache and
+    // reauthorizes the durable candidate. It uploads and detaches exactly once.
+    await expect(releaseOrphanedBeerPhotoPartyAssociations()).resolves.toBe(true);
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+    expect(resolvePendingPartyAssociation).toHaveBeenCalledTimes(1);
+    expect(resolvePendingPartyAssociation).toHaveBeenCalledWith('PIVOXY', null);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('releases an old reservation while protecting the currently confirmed table', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('old') });
+    await (await enqueueBeerPhoto(op('current', { pendingPartyCode: 'STULIK' }))).completion;
+    await (await enqueueBeerPhoto(op('old', { pendingPartyCode: 'PIVOXY' }))).completion;
+
+    await expect(
+      releaseOrphanedBeerPhotoPartyAssociations(() => true, 'STULIK'),
+    ).resolves.toBe(true);
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+    expect(uploadBeerPhoto.mock.calls[0][1]).toMatchObject({ clientId: 'old' });
+    expect(resolvePendingPartyAssociation).toHaveBeenCalledWith('PIVOXY', null);
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalledWith('STULIK', null);
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({
+        clientId: 'current',
+        pendingPartyCode: 'STULIK',
+      }),
+    ]);
+  });
+
+  it('keeps an authoritative orphan release committed when a new table starts during its upload', async () => {
+    let resolveUpload!: (result: BeerPhotoUploadResult) => void;
+    uploadBeerPhoto.mockReturnValue(
+      new Promise<BeerPhotoUploadResult>((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+    await (await enqueueBeerPhoto(op('old', { pendingPartyCode: 'PIVOXY' }))).completion;
+    let canRelease = true;
+
+    const recovering = releaseOrphanedBeerPhotoPartyAssociations(
+      () => canRelease,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+    canRelease = false;
+    resolveUpload({ status: 'retry' });
+
+    await expect(recovering).resolves.toBe(true);
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({
+        clientId: 'old',
+        pendingPartyCode: 'PIVOXY',
+        orphanReleaseCandidate: true,
+      }),
+    ]);
+
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('old') });
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(resolvePendingPartyAssociation).toHaveBeenCalledWith('PIVOXY', null);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('settles an authorized orphan when upload succeeds after a newer table starts', async () => {
+    let resolveUpload!: (result: BeerPhotoUploadResult) => void;
+    uploadBeerPhoto.mockReturnValue(
+      new Promise<BeerPhotoUploadResult>((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+    await (await enqueueBeerPhoto(op('old', { pendingPartyCode: 'PIVOXY' }))).completion;
+    let canRelease = true;
+
+    const recovering = releaseOrphanedBeerPhotoPartyAssociations(
+      () => canRelease,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+    canRelease = false;
+    resolveUpload({ status: 'ok', photo: serverPhoto('old') });
+
+    await expect(recovering).resolves.toBe(true);
+    expect(markSynced).toHaveBeenCalledWith('old', serverPhoto('old'));
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(resolvePendingPartyAssociation).toHaveBeenCalledWith('PIVOXY', null);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('keeps reserved photos untouched when a new table starts during recovery', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'retry' });
+    await (await enqueueBeerPhoto(op('c1', { pendingPartyCode: 'PIVOXY' }))).completion;
+    const canRelease = jest.fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValue(false);
+
+    await expect(
+      releaseOrphanedBeerPhotoPartyAssociations(canRelease),
+    ).resolves.toBe(false);
+
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({ clientId: 'c1', pendingPartyCode: 'PIVOXY' }),
+    ]);
+  });
+
+  it('needs no destructive rollback when the table starts after the recovery checkpoint', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'retry' });
+    await (await enqueueBeerPhoto(op('c1', { pendingPartyCode: 'PIVOXY' }))).completion;
+    const setItem = jest.spyOn(AsyncStorage, 'setItem');
+    setItem.mockClear();
+    setItem.mockResolvedValueOnce(undefined);
+    const canRelease = jest.fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true)
+      .mockReturnValue(false);
+
+    await expect(
+      releaseOrphanedBeerPhotoPartyAssociations(canRelease),
+    ).resolves.toBe(false);
+
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({ clientId: 'c1', pendingPartyCode: 'PIVOXY' }),
+    ]);
+  });
+
+  it('keeps old and newly enqueued reservations when a new table starts during the recovery write', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'retry' });
+    await (await enqueueBeerPhoto(op('old', { pendingPartyCode: 'PIVOXY' }))).completion;
+    let resolveRecoveryWrite!: () => void;
+    const setItem = jest.spyOn(AsyncStorage, 'setItem');
+    setItem.mockClear();
+    setItem.mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveRecoveryWrite = resolve;
+    }));
+    let canRelease = true;
+
+    const recovering = releaseOrphanedBeerPhotoPartyAssociations(() => canRelease);
+    await waitForExpectation(() => expect(setItem).toHaveBeenCalledTimes(1));
+    canRelease = false;
+    const enqueuing = enqueueBeerPhoto(op('new', { pendingPartyCode: 'STULIK' }));
+    resolveRecoveryWrite();
+
+    await expect(recovering).resolves.toBe(false);
+    const queued = await enqueuing;
+    await queued.completion;
+
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({ clientId: 'old', pendingPartyCode: 'PIVOXY' }),
+      expect.objectContaining({ clientId: 'new', pendingPartyCode: 'STULIK' }),
+    ]);
+  });
+
+  it('does not release a reserved photo when the recovery rewrite cannot be persisted', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'retry' });
+    await (await enqueueBeerPhoto(op('c1', { pendingPartyCode: 'PIVOXY' }))).completion;
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(releaseOrphanedBeerPhotoPartyAssociations()).resolves.toBe(false);
+
+    expect(resolvePendingPartyAssociation).not.toHaveBeenCalled();
+    expect(uploadBeerPhoto).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([
+      expect.objectContaining({ clientId: 'c1', pendingPartyCode: 'PIVOXY' }),
+    ]);
+  });
 });
 
 describe('flush keep/drop contract', () => {
@@ -438,6 +699,88 @@ describe('flush keep/drop contract', () => {
     // The store swaps to the remote imageUrl BEFORE the local file dies — the
     // diary must never point at a deleted uri.
     expect(events).toEqual(['markSynced', 'file-delete']);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('keeps the local file and durable op when the final queue removal fails', async () => {
+    const photo = serverPhoto('c1');
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo });
+    jest.spyOn(AsyncStorage, 'removeItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await enqueueAndComplete(op('c1'));
+
+    expect(markSynced).toHaveBeenCalledWith('c1', photo);
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ clientId: 'c1' })]);
+
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('keeps the local file and durable op until the synced store snapshot is durable', async () => {
+    const photo = serverPhoto('c1');
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo });
+    markSynced.mockResolvedValueOnce(false);
+
+    await enqueueAndComplete(op('c1'));
+
+    expect(markSynced).toHaveBeenCalledWith('c1', photo);
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ clientId: 'c1' })]);
+
+    // A restart/lifecycle retry sends the same clientId idempotently. Only the
+    // first durably-persisted synced snapshot may release the queue and JPEG.
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(markSynced).toHaveBeenCalledTimes(2);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('handles a rejected synced-store checkpoint and retries without losing the JPEG', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+    markSynced.mockRejectedValueOnce(new Error('store disk full'));
+
+    await expect(enqueueAndComplete(op('c1'))).resolves.toBeUndefined();
+
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ clientId: 'c1' })]);
+
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('does not settle account A when its synced-store checkpoint crosses the boundary', async () => {
+    let resolveStorePersistence!: (persisted: boolean) => void;
+    markSynced.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        resolveStorePersistence = resolve;
+      }),
+    );
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+
+    const queued = await enqueueBeerPhoto(op('c1'));
+    await waitForExpectation(() => expect(markSynced).toHaveBeenCalledTimes(1));
+
+    const transition = beginBeerPhotoSessionTransition();
+    resolveStorePersistence(true);
+    await queued.completion;
+
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ clientId: 'c1' })]);
+
+    transition.release();
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([]);
   });
 
@@ -1021,6 +1364,58 @@ describe('server-echo clientId identity contract', () => {
 });
 
 describe('pending-photo deletion', () => {
+  it('reports failure and preserves the durable delete retry when storage is full', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([op('delete-me')]));
+    jest.spyOn(AsyncStorage, 'removeItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(removeQueuedBeerPhoto('delete-me')).resolves.toBe(false);
+
+    expect(deleteBeerPhotoByClientId).not.toHaveBeenCalled();
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ clientId: 'delete-me' })]);
+    expect(
+      JSON.parse(
+        (await AsyncStorage.getItem('na-pivo-beer-photo-deletion-tombstones')) ?? '[]',
+      ),
+    ).toEqual([{ clientId: 'delete-me', accountId: 'account-a' }]);
+
+    await expect(removeQueuedBeerPhoto('delete-me')).resolves.toBe(true);
+    await flushBeerPhotosQueue();
+
+    expect(deleteBeerPhotoByClientId).toHaveBeenCalledTimes(1);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+    expect(await AsyncStorage.getItem('na-pivo-beer-photo-deletion-tombstones')).toBeNull();
+  });
+
+  it('waits for durable upload-op removal before deleting after a cold restart', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([op('delete-me')]));
+    await AsyncStorage.setItem(
+      'na-pivo-beer-photo-deletion-tombstones',
+      JSON.stringify([{ clientId: 'delete-me', accountId: 'account-a' }]),
+    );
+    const removeItem = jest.spyOn(AsyncStorage, 'removeItem');
+    removeItem.mockRejectedValueOnce(new Error('disk full'));
+
+    await flushBeerPhotosQueue();
+
+    expect(deleteBeerPhotoByClientId).not.toHaveBeenCalled();
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([expect.objectContaining({ clientId: 'delete-me' })]);
+    expect(
+      JSON.parse(
+        (await AsyncStorage.getItem('na-pivo-beer-photo-deletion-tombstones')) ?? '[]',
+      ),
+    ).toEqual([{ clientId: 'delete-me', accountId: 'account-a' }]);
+
+    await flushBeerPhotosQueue();
+
+    expect(deleteBeerPhotoByClientId).toHaveBeenCalledTimes(1);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+    expect(await AsyncStorage.getItem('na-pivo-beer-photo-deletion-tombstones')).toBeNull();
+  });
+
   it('cancels an in-flight upload and deletes a late native success without re-adding it', async () => {
     let resolveUpload!: (value: BeerPhotoUploadResult) => void;
     uploadBeerPhoto.mockReturnValueOnce(

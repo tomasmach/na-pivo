@@ -27,7 +27,9 @@ const savePartyEveningIdentity: jest.Mock = jest.fn();
 const clearPartyEveningIdentityForAccount: jest.Mock = jest.fn();
 const clearPartyEveningIdentityForCode: jest.Mock = jest.fn();
 const resolveBeerPhotoPartyAssociation: jest.Mock = jest.fn(async () => true);
+const releaseOrphanedBeerPhotoPartyAssociations: jest.Mock = jest.fn(async () => true);
 const resolveQueuedDrinkPartyAssociation: jest.Mock = jest.fn(async () => undefined);
+const resolveQueuedVisitPartyAssociation: jest.Mock = jest.fn(async () => undefined);
 
 jest.mock('@/data/partyClient', () => ({
   fetchCurrentPartyEvening: (...args: unknown[]) => fetchCurrentPartyEvening(...(args as [])),
@@ -65,10 +67,16 @@ jest.mock('@/data/partyEveningIdentityCache', () => ({
 jest.mock('@/data/beerPhotosQueue', () => ({
   resolveBeerPhotoPartyAssociation: (...args: unknown[]) =>
     resolveBeerPhotoPartyAssociation(...args),
+  releaseOrphanedBeerPhotoPartyAssociations: (...args: unknown[]) =>
+    releaseOrphanedBeerPhotoPartyAssociations(...args),
 }));
 jest.mock('@/data/drinksQueue', () => ({
   resolveQueuedDrinkPartyAssociation: (...args: unknown[]) =>
     resolveQueuedDrinkPartyAssociation(...args),
+}));
+jest.mock('@/data/visitsQueue', () => ({
+  resolveQueuedVisitPartyAssociation: (...args: unknown[]) =>
+    resolveQueuedVisitPartyAssociation(...args),
 }));
 
 const EVENING = {
@@ -99,8 +107,8 @@ beforeEach(() => {
       confirmedAt: Date.now(),
     }),
   );
-  clearPartyEveningIdentityForAccount.mockResolvedValue(undefined);
-  clearPartyEveningIdentityForCode.mockResolvedValue(undefined);
+  clearPartyEveningIdentityForAccount.mockResolvedValue(true);
+  clearPartyEveningIdentityForCode.mockResolvedValue(true);
   leavePartyEvening.mockResolvedValue({ accepted: true, completed: true });
   endPartyEvening.mockResolvedValue({ accepted: true, completed: true, evening: EVENING });
   hasQueuedPartyEveningAction.mockResolvedValue(false);
@@ -162,6 +170,74 @@ describe('partyEveningStore', () => {
     expect(usePartyEveningStore.getState().confirmedIdentity).toBeNull();
     expect(usePartyEveningStore.getState().loaded).toBe(true);
     expect(clearPartyEveningIdentityForAccount).toHaveBeenCalledWith('account-a');
+    expect(releaseOrphanedBeerPhotoPartyAssociations).toHaveBeenCalledTimes(1);
+    const canRelease = releaseOrphanedBeerPhotoPartyAssociations.mock.calls[0][0];
+    expect(canRelease()).toBe(true);
+  });
+
+  it('waits for durable identity clear across restart before releasing confirmed-none photos', async () => {
+    const staleIdentity = {
+      id: EVENING.id,
+      joinCode: EVENING.joinCode,
+      isHost: EVENING.isHost,
+      confirmedAt: Date.now(),
+    };
+    loadPartyEveningIdentity.mockResolvedValue(staleIdentity);
+    fetchCurrentPartyEvening.mockResolvedValue({ ok: true, evening: null });
+    clearPartyEveningIdentityForAccount
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    await usePartyEveningStore.getState().refresh();
+
+    expect(resolveBeerPhotoPartyAssociation).toHaveBeenCalledWith(
+      'PIVOXY',
+      'PIVOXY',
+      { authoritative: false },
+    );
+    expect(releaseOrphanedBeerPhotoPartyAssociations).not.toHaveBeenCalled();
+
+    // Process restart: memory is empty but the failed removal left the same
+    // cache identity on disk. The next successful server refresh clears it and
+    // is the only attempt allowed to release the durable photo candidate.
+    clearPartyEveningState();
+    resolveBeerPhotoPartyAssociation.mockClear();
+
+    await usePartyEveningStore.getState().refresh();
+
+    expect(loadPartyEveningIdentity).toHaveBeenCalledTimes(2);
+    expect(fetchCurrentPartyEvening).toHaveBeenCalledTimes(2);
+    expect(clearPartyEveningIdentityForAccount).toHaveBeenCalledTimes(2);
+    expect(releaseOrphanedBeerPhotoPartyAssociations).toHaveBeenCalledTimes(1);
+    expect(clearPartyEveningIdentityForAccount.mock.invocationCallOrder[1]).toBeLessThan(
+      releaseOrphanedBeerPhotoPartyAssociations.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('protects reservations for the table confirmed by the server', async () => {
+    fetchCurrentPartyEvening.mockResolvedValue({ ok: true, evening: EVENING });
+
+    await usePartyEveningStore.getState().refresh();
+
+    expect(resolveBeerPhotoPartyAssociation).toHaveBeenCalledWith('PIVOXY', 'PIVOXY');
+    expect(releaseOrphanedBeerPhotoPartyAssociations).toHaveBeenCalledWith(
+      expect.any(Function),
+      'PIVOXY',
+    );
+  });
+
+  it('releases only reservations from a different failed table after an active refresh', async () => {
+    const otherEvening = { ...EVENING, id: 'e2', joinCode: 'STULIK' };
+    fetchCurrentPartyEvening.mockResolvedValue({ ok: true, evening: otherEvening });
+
+    await usePartyEveningStore.getState().refresh();
+
+    expect(resolveBeerPhotoPartyAssociation).toHaveBeenCalledWith('STULIK', 'STULIK');
+    expect(releaseOrphanedBeerPhotoPartyAssociations).toHaveBeenCalledTimes(1);
+    const [canRelease, protectedCode] =
+      releaseOrphanedBeerPhotoPartyAssociations.mock.calls[0];
+    expect(protectedCode).toBe('STULIK');
+    expect(canRelease()).toBe(true);
   });
 
   it('does not close the table because the cellar has no signal', async () => {
@@ -192,6 +268,36 @@ describe('partyEveningStore', () => {
 
     expect(usePartyEveningStore.getState().evening).toEqual(EVENING);
     expect(usePartyEveningStore.getState().confirmedIdentity?.joinCode).toBe('PIVOXY');
+  });
+
+  it('does not let an older confirmed-none refresh erase a newer active refresh', async () => {
+    let resolveOlder!: (value: { ok: true; evening: null }) => void;
+    let resolveNewer!: (value: { ok: true; evening: PartyEvening }) => void;
+    fetchCurrentPartyEvening
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOlder = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveNewer = resolve; }));
+
+    const older = usePartyEveningStore.getState().refresh();
+    for (let index = 0; index < 20 && fetchCurrentPartyEvening.mock.calls.length < 1; index += 1) {
+      await Promise.resolve();
+    }
+    const newer = usePartyEveningStore.getState().refresh();
+    for (let index = 0; index < 20 && fetchCurrentPartyEvening.mock.calls.length < 2; index += 1) {
+      await Promise.resolve();
+    }
+
+    resolveNewer({ ok: true, evening: EVENING });
+    await newer;
+    resolveOlder({ ok: true, evening: null });
+    await older;
+
+    expect(usePartyEveningStore.getState().evening).toEqual(EVENING);
+    expect(usePartyEveningStore.getState().confirmedIdentity?.joinCode).toBe('PIVOXY');
+    expect(releaseOrphanedBeerPhotoPartyAssociations).toHaveBeenCalledTimes(1);
+    expect(releaseOrphanedBeerPhotoPartyAssociations).toHaveBeenCalledWith(
+      expect.any(Function),
+      'PIVOXY',
+    );
   });
 
   it('does not resurrect a table whose offline finish is still queued', async () => {
@@ -388,6 +494,8 @@ describe('partyEveningStore', () => {
 
     expect(await inFlight).toBeNull();
     expect(usePartyEveningStore.getState().error).toBeTruthy();
+    expect(resolveBeerPhotoPartyAssociation).not.toHaveBeenCalled();
+    expect(resolveQueuedDrinkPartyAssociation).not.toHaveBeenCalled();
 
     const second = await usePartyEveningStore.getState().start('U Fleků');
 
@@ -395,6 +503,39 @@ describe('partyEveningStore', () => {
     expect(second).toEqual(EVENING);
     expect(usePartyEveningStore.getState().evening).toEqual(EVENING);
     expect(usePartyEveningStore.getState().error).toBeNull();
+  });
+
+  it('keeps reserved photos when a create response is missing its table', async () => {
+    const attempts: { clientId: string; joinCode: string }[] = [];
+    createPartyEvening.mockImplementation(
+      async (input: { clientId: string; joinCode: string }) => {
+        attempts.push(input);
+        return attempts.length === 1
+          ? { ok: true, evening: null }
+          : { ok: true, evening: EVENING };
+      },
+    );
+
+    await usePartyEveningStore.getState().start('U Fleků');
+
+    expect(resolveBeerPhotoPartyAssociation).not.toHaveBeenCalled();
+    expect(resolveQueuedDrinkPartyAssociation).not.toHaveBeenCalled();
+
+    await expect(usePartyEveningStore.getState().start('U Fleků')).resolves.toEqual(EVENING);
+    expect(attempts[1]).toEqual(attempts[0]);
+  });
+
+  it('releases reserved photos after a definitive create rejection', async () => {
+    createPartyEvening.mockResolvedValue({
+      ok: false,
+      code: 'join_code_taken',
+      detail: 'Tenhle kód už někdo používá.',
+    });
+
+    await usePartyEveningStore.getState().start('U Fleků');
+
+    expect(resolveBeerPhotoPartyAssociation).toHaveBeenCalledWith('PIVOXY', null);
+    expect(resolveQueuedDrinkPartyAssociation).toHaveBeenCalledWith('PIVOXY', null);
   });
 
   it('does not let a stale create land after an account switch', async () => {

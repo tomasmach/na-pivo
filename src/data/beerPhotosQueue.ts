@@ -67,6 +67,10 @@ const PHOTOS_DIRECTORY = 'beer-photos';
 const MAX_QUEUE_LENGTH = 100;
 /** Per-photo aborts; unlike the account abort, deleting c1 must not stop c2. */
 const inFlightDeliveryControllers = new Map<string, AbortController>();
+const orphanReleaseAuthorizations = new Map<
+  string,
+  { signature: string; pendingCode: string }
+>();
 
 /** One pending photo upload, keyed (and deduped) by clientId. */
 export interface BeerPhotoUploadOp {
@@ -84,6 +88,12 @@ export interface BeerPhotoUploadOp {
    * photo to a table that does not exist yet.
    */
   pendingPartyCode?: string;
+  /**
+   * Non-destructive durable checkpoint for a confirmed-none recovery. The
+   * reserved code remains intact, and flush additionally requires a live
+   * launch authorization before delivering the photo without a table.
+   */
+  orphanReleaseCandidate?: true;
   /** Local-only association; deliberately never leaves the phone. */
   partyDrinkingDay?: string;
   visibility: BeerPhotoVisibility;
@@ -142,6 +152,7 @@ function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
     (op.visibility === 'private' || op.visibility === 'friends') &&
     (op.partyCode === undefined || typeof op.partyCode === 'string') &&
     (op.pendingPartyCode === undefined || typeof op.pendingPartyCode === 'string') &&
+    (op.orphanReleaseCandidate === undefined || op.orphanReleaseCandidate === true) &&
     (op.partyDrinkingDay === undefined || typeof op.partyDrinkingDay === 'string') &&
     (op.enterContest === undefined || typeof op.enterContest === 'boolean') &&
     hasValidContestCheckpoint(op.contestCheckpoint, op.clientId, op.enterContest)
@@ -288,8 +299,10 @@ async function persistContestCheckpoint(
  * Atomically finalize a delivered upload: under the queue lock, revalidate that
  * the exact checkpointed op is still the current same-client queue item, the
  * session generation matches, and nothing is frozen or tombstoned — only then
- * run the synchronous markSynced + local file delete. A queued newer
- * replacement can therefore never be finalized by a stale delivery.
+ * await the synced-store persistence checkpoint. The local file is deleted
+ * only after both that checkpoint and the trailing queue removal are durable,
+ * so either failed AsyncStorage write leaves a fully retryable op. A queued
+ * newer replacement can never be finalized by a stale delivery.
  */
 async function finalizeSyncedUpload(
   checkpointedOp: BeerPhotoUploadOp,
@@ -309,9 +322,20 @@ async function finalizeSyncedUpload(
     if (index === -1 || signature(queue[index]) !== signature(checkpointedOp)) {
       return false;
     }
-    useBeerPhotosStore.getState().markSynced(checkpointedOp.clientId, photo);
-    deleteBeerPhotoLocalFile(checkpointedOp.clientId);
-    return true;
+    let syncedPersisted: boolean;
+    try {
+      syncedPersisted = await useBeerPhotosStore
+        .getState()
+        .markSynced(checkpointedOp.clientId, photo);
+    } catch {
+      return false;
+    }
+    return (
+      syncedPersisted &&
+      !isBeerPhotoSessionFrozen() &&
+      expectedBoundaryGeneration === beerPhotoSessionGeneration() &&
+      !isBeerPhotoDeletionTombstoned(checkpointedOp.clientId)
+    );
   });
 }
 
@@ -345,6 +369,8 @@ async function finalizeFailedUpload(
 /** Delivery outcome plus the durable signature after deliver's own writes. */
 interface DeliveryResult {
   status: QueueSyncResult;
+  /** Delete the durable local image only after this op is durably removed. */
+  deleteLocalFileAfterSettlement?: boolean;
   /**
    * Signature of the queued op as this delivery left it on disk — set once a
    * checkpoint has been stamped, so the flush can settle exactly that op.
@@ -498,7 +524,11 @@ async function deliver(
       if (
         await finalizeSyncedUpload(checkpointedOp, photo, expectedBoundaryGeneration)
       ) {
-        return { status: 'ok', durableSignature };
+        return {
+          status: 'ok',
+          durableSignature,
+          deleteLocalFileAfterSettlement: true,
+        };
       }
       // Lost the queue slot (replaced/removed mid-delivery): retry with the
       // durable signature — the trailing flush settles whichever op is current.
@@ -521,7 +551,11 @@ async function deliver(
     if (
       await finalizeSyncedUpload(checkpointedOp, photo, expectedBoundaryGeneration)
     ) {
-      return { status: 'ok', durableSignature: signature(checkpointedOp) };
+      return {
+        status: 'ok',
+        durableSignature: signature(checkpointedOp),
+        deleteLocalFileAfterSettlement: true,
+      };
     }
     return { status: 'retry', durableSignature: signature(checkpointedOp) };
   } finally {
@@ -535,6 +569,20 @@ async function deliver(
 /** Stable content signature — object identity is lost across the JSON round-trip. */
 function signature(op: BeerPhotoUploadOp): string {
   return JSON.stringify(op);
+}
+
+function hasOrphanReleaseAuthorization(op: BeerPhotoUploadOp): boolean {
+  if (!op.pendingPartyCode || op.orphanReleaseCandidate !== true) return false;
+  const authorization = orphanReleaseAuthorizations.get(op.clientId);
+  if (
+    !authorization ||
+    authorization.signature !== signature(op) ||
+    authorization.pendingCode !== op.pendingPartyCode.toUpperCase()
+  ) {
+    if (authorization) orphanReleaseAuthorizations.delete(op.clientId);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -596,16 +644,24 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   for (const { clientId } of applicableTombstones) {
     useBeerPhotosStore.getState().removePhoto(clientId);
   }
-  const queue = await runMutation(async () => {
+  const queueRemoval = await runMutation(async () => {
     const current = await loadQueue();
     const filtered = current.filter((op) => !tombstonedClientIds.has(op.clientId));
-    if (filtered.length !== current.length) await saveQueue(filtered);
-    return filtered;
+    if (filtered.length === current.length) {
+      return { persisted: true, queue: current };
+    }
+    const persisted = await saveQueue(filtered);
+    return { persisted, queue: persisted ? filtered : current };
   });
   if (
     signal.aborted ||
     expectedBoundaryGeneration !== beerPhotoSessionGeneration()
   ) return;
+  // The deletion marker is durable, but the queued upload is still a second
+  // durable instruction for the same photo. Do not acknowledge either side of
+  // the delete until that exact clientId is absent from the queue on disk.
+  if (!queueRemoval.persisted) return;
+  const queue = queueRemoval.queue;
 
   for (const tombstone of applicableTombstones) {
     if (
@@ -636,6 +692,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  const deleteLocalFileAfterSettlement = new Set<string>();
   /** Signature each delivery left on disk (set once a checkpoint is stamped). */
   const deliveredSignatures = new Map<string, string>();
   for (const op of queue) {
@@ -649,11 +706,14 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // A table code reserved by an in-flight create is local intent, not a
     // backend foreign key yet. Keep the op queued until the evening store
     // confirms or rejects that create.
-    if (op.pendingPartyCode) continue;
+    if (op.pendingPartyCode && !hasOrphanReleaseAuthorization(op)) continue;
     attempted.set(op.clientId, signature(op));
     const outcome = await deliver(op, signal, expectedBoundaryGeneration);
     if (outcome.durableSignature) {
       deliveredSignatures.set(op.clientId, outcome.durableSignature);
+    }
+    if (outcome.deleteLocalFileAfterSettlement) {
+      deleteLocalFileAfterSettlement.add(op.clientId);
     }
     if (outcome.status !== 'retry') settled.add(op.clientId);
   }
@@ -674,9 +734,66 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
       if (!isSameAttempt) return true;
       return !settled.has(op.clientId);
     });
-    await saveQueue(kept);
+    const persisted = await saveQueue(kept);
+    if (!persisted) return current;
+    // This is the commit point for deleting a durable image: the exact upload
+    // op is no longer on disk, so a process restart cannot retry it.
+    if (
+      isBeerPhotoSessionFrozen() ||
+      expectedBoundaryGeneration !== beerPhotoSessionGeneration()
+    ) return kept;
+    for (const op of current) {
+      if (!deleteLocalFileAfterSettlement.has(op.clientId)) continue;
+      const currentSignature = signature(op);
+      const attemptedSignature = attempted.get(op.clientId);
+      if (
+        currentSignature === attemptedSignature ||
+        currentSignature === deliveredSignatures.get(op.clientId)
+      ) {
+        deleteBeerPhotoLocalFile(op.clientId);
+      }
+    }
     return kept;
   });
+
+  if (
+    signal.aborted ||
+    expectedBoundaryGeneration !== beerPhotoSessionGeneration()
+  ) return;
+
+  const remainingSignatures = new Map(
+    remaining.map((op) => [op.clientId, signature(op)]),
+  );
+  const remainingPendingCodes = new Set(
+    remaining.flatMap((op) =>
+      op.pendingPartyCode ? [op.pendingPartyCode.toUpperCase()] : [],
+    ),
+  );
+  const releasedPendingCodes = new Set<string>();
+  for (const [clientId, authorization] of orphanReleaseAuthorizations) {
+    const remainingSignature = remainingSignatures.get(clientId);
+    if (remainingSignature === authorization.signature) continue;
+    // A durable contest checkpoint legitimately changes the same attempted
+    // op's signature. Carry the authorization forward for its retry.
+    if (
+      remainingSignature &&
+      attempted.get(clientId) === authorization.signature &&
+      deliveredSignatures.get(clientId) === remainingSignature
+    ) {
+      orphanReleaseAuthorizations.set(clientId, {
+        ...authorization,
+        signature: remainingSignature,
+      });
+      continue;
+    }
+    orphanReleaseAuthorizations.delete(clientId);
+    if (!remainingPendingCodes.has(authorization.pendingCode)) {
+      releasedPendingCodes.add(authorization.pendingCode);
+    }
+  }
+  for (const code of releasedPendingCodes) {
+    useBeerPhotosStore.getState().resolvePendingPartyAssociation(code, null);
+  }
 
   // Skip the repair when aborted (account boundary) — the store may already
   // belong to the account that replaces this one.
@@ -693,6 +810,7 @@ const { flush: _flush, abortInFlight } = createCoalescingFlush(
 
 subscribeBeerPhotoSessionBoundary(({ frozen }) => {
   if (frozen) {
+    orphanReleaseAuthorizations.clear();
     for (const controller of inFlightDeliveryControllers.values()) controller.abort();
     abortInFlight();
     return;
@@ -833,6 +951,7 @@ export function flushBeerPhotosQueue(): Promise<void> {
 export async function resolveBeerPhotoPartyAssociation(
   pendingPartyCode: string,
   confirmedPartyCode: string | null,
+  options: { authoritative?: boolean } = {},
 ): Promise<boolean> {
   if (isBeerPhotoSessionFrozen()) return false;
   const expectedBoundaryGeneration = beerPhotoSessionGeneration();
@@ -844,11 +963,29 @@ export async function resolveBeerPhotoPartyAssociation(
       expectedBoundaryGeneration !== beerPhotoSessionGeneration()
     ) return { persisted: false, changed: false };
     const queue = await loadQueue();
+    if (
+      options.authoritative === false &&
+      queue.some(
+        (op) =>
+          op.pendingPartyCode?.toUpperCase() === normalizedPending &&
+          op.orphanReleaseCandidate === true,
+      )
+    ) {
+      // A cold restore is only a bounded cache hint. A durable confirmed-none
+      // candidate is newer evidence and must survive until a live server
+      // refresh either confirms this table or reauthorizes its release.
+      return { persisted: true, changed: false };
+    }
     let changed = false;
     const rewritten = queue.map((op) => {
       if (op.pendingPartyCode?.toUpperCase() !== normalizedPending) return op;
       changed = true;
-      const { pendingPartyCode: _pendingPartyCode, partyCode: _partyCode, ...rest } = op;
+      const {
+        pendingPartyCode: _pendingPartyCode,
+        partyCode: _partyCode,
+        orphanReleaseCandidate: _orphanReleaseCandidate,
+        ...rest
+      } = op;
       return normalizedConfirmed
         ? { ...rest, partyCode: normalizedConfirmed }
         : rest;
@@ -862,6 +999,11 @@ export async function resolveBeerPhotoPartyAssociation(
     expectedBoundaryGeneration !== beerPhotoSessionGeneration()
   ) return false;
   if (mutation.changed) {
+    for (const [clientId, authorization] of orphanReleaseAuthorizations) {
+      if (authorization.pendingCode === normalizedPending) {
+        orphanReleaseAuthorizations.delete(clientId);
+      }
+    }
     useBeerPhotosStore.getState().resolvePendingPartyAssociation(
       normalizedPending,
       normalizedConfirmed,
@@ -872,11 +1014,106 @@ export async function resolveBeerPhotoPartyAssociation(
 }
 
 /**
+ * Recover photos left behind when the process died during table creation.
+ *
+ * A successful current-evening refresh resolves the reserved code normally.
+ * When that same authoritative refresh confirms there is no active table,
+ * every otherwise-unowned reservation is released as a normal diary upload.
+ * `canRelease` closes the race with a new table starting while the durable
+ * checkpoint is written. Once the final guard passes, the authoritative
+ * no-table decision is committed for those exact ops; a later table cannot
+ * retroactively reattach them. The reserved code is never removed here, so a
+ * failed guard, storage failure or process crash needs no destructive rollback.
+ */
+export async function releaseOrphanedBeerPhotoPartyAssociations(
+  canRelease: () => boolean = () => true,
+  protectedPartyCode?: string,
+): Promise<boolean> {
+  if (isBeerPhotoSessionFrozen() || !canRelease()) return false;
+  const expectedBoundaryGeneration = beerPhotoSessionGeneration();
+  const protectedPending = protectedPartyCode?.trim().toUpperCase();
+  const mutation = await runMutation(async () => {
+    if (
+      isBeerPhotoSessionFrozen() ||
+      expectedBoundaryGeneration !== beerPhotoSessionGeneration() ||
+      !canRelease()
+    ) return { persisted: false, candidates: [], codes: [] };
+
+    const previous = await loadQueue();
+    if (
+      isBeerPhotoSessionFrozen() ||
+      expectedBoundaryGeneration !== beerPhotoSessionGeneration() ||
+      !canRelease()
+    ) return { persisted: false, candidates: [], codes: [] };
+
+    const canMark = (op: BeerPhotoUploadOp) =>
+      Boolean(
+        op.pendingPartyCode &&
+        op.pendingPartyCode.toUpperCase() !== protectedPending,
+      );
+    const codes = Array.from(
+      new Set(
+        previous.flatMap((op) =>
+          canMark(op) ? [op.pendingPartyCode!.toUpperCase()] : [],
+        ),
+      ),
+    );
+    if (codes.length === 0) {
+      return { persisted: true, candidates: [], codes };
+    }
+    const rewritten = previous.map((op) => {
+      if (!canMark(op)) return op;
+      return { ...op, orphanReleaseCandidate: true as const };
+    });
+    return {
+      persisted: await saveQueue(rewritten),
+      candidates: rewritten.flatMap((op) =>
+        canMark(op)
+          ? [{
+              clientId: op.clientId,
+              pendingCode: op.pendingPartyCode!.toUpperCase(),
+              signature: signature(op),
+            }]
+          : [],
+      ),
+      codes,
+    };
+  });
+
+  if (!mutation.persisted) return false;
+  if (
+    isBeerPhotoSessionFrozen() ||
+    expectedBoundaryGeneration !== beerPhotoSessionGeneration() ||
+    !canRelease()
+  ) {
+    for (const candidate of mutation.candidates) {
+      orphanReleaseAuthorizations.delete(candidate.clientId);
+    }
+    return false;
+  }
+
+  for (const candidate of mutation.candidates) {
+    orphanReleaseAuthorizations.set(candidate.clientId, {
+      signature: candidate.signature,
+      pendingCode: candidate.pendingCode,
+    });
+  }
+
+  await flushBeerPhotosQueue();
+  if (
+    isBeerPhotoSessionFrozen() ||
+    expectedBoundaryGeneration !== beerPhotoSessionGeneration()
+  ) return false;
+  return true;
+}
+
+/**
  * Cancel ONE queued or in-flight upload (the pending-photo delete flow).
  * Persists the deletion intent BEFORE dropping the upload op, aborts only this
- * photo's native request, and schedules server tombstone delivery. The boolean
- * is false only when the deletion intent could not be made durable; callers
- * must then keep the photo visible and report failure.
+ * photo's native request, and schedules server tombstone delivery. False means
+ * either the deletion intent or removal of the conflicting durable upload op
+ * could not be saved; callers must keep the photo and local file visible so an
+ * explicit or launch retry can finish safely.
  */
 export async function removeQueuedBeerPhoto(clientId: string): Promise<boolean> {
   if (isBeerPhotoSessionFrozen()) return false;
@@ -918,8 +1155,11 @@ export async function removeQueuedBeerPhoto(clientId: string): Promise<boolean> 
       isBeerPhotoSessionFrozen() ||
       expectedBoundaryGeneration !== beerPhotoSessionGeneration()
     ) return false;
-    await saveQueue(queue.filter((op) => op.clientId !== clientId));
+    const persisted = await saveQueue(
+      queue.filter((op) => op.clientId !== clientId),
+    );
     return (
+      persisted &&
       !isBeerPhotoSessionFrozen() &&
       expectedBoundaryGeneration === beerPhotoSessionGeneration()
     );
@@ -943,6 +1183,7 @@ export function clearBeerPhotosQueue(): Promise<void> {
   // Invalidate old enqueues synchronously, before this clear can yield while it
   // waits for the queue lock.
   invalidateBeerPhotoSessionGeneration();
+  orphanReleaseAuthorizations.clear();
   for (const controller of inFlightDeliveryControllers.values()) controller.abort();
   forgetAllBeerPhotoDeletionSessions();
   abortInFlight();

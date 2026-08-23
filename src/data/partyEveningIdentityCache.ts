@@ -59,27 +59,38 @@ function isStoredIdentity(value: unknown): value is StoredPartyEveningIdentity {
   );
 }
 
-async function removeStoredIdentity(strictCleanup = false): Promise<void> {
+async function removeStoredIdentity(strictCleanup = false): Promise<boolean> {
+  const storage = strictCleanup ? privateAccountCleanupStorage : AsyncStorage;
   try {
-    await (strictCleanup ? privateAccountCleanupStorage : AsyncStorage).removeItem(
-      PARTY_EVENING_IDENTITY_STORAGE_KEY,
-    );
+    await storage.removeItem(PARTY_EVENING_IDENTITY_STORAGE_KEY);
+    return (await storage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)) === null;
   } catch {
-    // All cache operations are best effort; callers must never lose the diary
-    // path because storage is temporarily unavailable.
+    return false;
   }
 }
 
-async function readStoredIdentity(): Promise<StoredPartyEveningIdentity | null> {
+type StoredIdentityRead =
+  | { ok: true; identity: StoredPartyEveningIdentity | null }
+  | { ok: false };
+
+async function readStoredIdentity(): Promise<StoredIdentityRead> {
   try {
     const raw = await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (isStoredIdentity(parsed)) return parsed;
-    await removeStoredIdentity();
-    return null;
+    if (!raw) return { ok: true, identity: null };
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return (await removeStoredIdentity())
+        ? { ok: true, identity: null }
+        : { ok: false };
+    }
+    if (isStoredIdentity(parsed)) return { ok: true, identity: parsed };
+    return (await removeStoredIdentity())
+      ? { ok: true, identity: null }
+      : { ok: false };
   } catch {
-    return null;
+    return { ok: false };
   }
 }
 
@@ -95,7 +106,8 @@ export async function loadPartyEveningIdentity(
   const generation = boundaryGeneration;
   return queueStorage(async () => {
     if (generation !== boundaryGeneration) return null;
-    const stored = await readStoredIdentity();
+    const read = await readStoredIdentity();
+    const stored = read.ok ? read.identity : null;
     if (generation !== boundaryGeneration || !stored) {
       return null;
     }
@@ -156,28 +168,32 @@ export async function savePartyEveningIdentity(
 }
 
 /** Remove a confirmed-none/end/leave only when it belongs to this account. */
-export function clearPartyEveningIdentityForAccount(accountId: string): Promise<void> {
+export function clearPartyEveningIdentityForAccount(accountId: string): Promise<boolean> {
   return queueStorage(async () => {
-    const stored = await readStoredIdentity();
-    if (!stored || stored.accountId !== accountId) return;
-    await removeStoredIdentity();
+    const read = await readStoredIdentity();
+    if (!read.ok) return false;
+    const stored = read.identity;
+    if (!stored || stored.accountId !== accountId) return true;
+    return removeStoredIdentity();
   });
 }
 
 /** End/leave queues know the table code even when their original process died. */
-export function clearPartyEveningIdentityForCode(code: string): Promise<void> {
+export function clearPartyEveningIdentityForCode(code: string): Promise<boolean> {
   const normalized = code.toUpperCase();
   return queueStorage(async () => {
-    const stored = await readStoredIdentity();
-    if (!stored || stored.joinCode !== normalized) return;
-    await removeStoredIdentity();
+    const read = await readStoredIdentity();
+    if (!read.ok) return false;
+    const stored = read.identity;
+    if (!stored || stored.joinCode !== normalized) return true;
+    return removeStoredIdentity();
   });
 }
 
 /** Account-boundary wipe; late saves captured before this call are suppressed. */
-export function clearPartyEveningIdentityCache(): Promise<void> {
+export function clearPartyEveningIdentityCache(): Promise<boolean> {
   boundaryGeneration += 1;
   return queueStorage(async () => {
-    await removeStoredIdentity(true);
+    return removeStoredIdentity(true);
   });
 }

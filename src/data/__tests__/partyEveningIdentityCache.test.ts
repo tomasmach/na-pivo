@@ -64,6 +64,20 @@ it('clears confirmed none by account and confirmed end or leave by code', async 
   expect(await loadPartyEveningIdentity('account-a')).toBeNull();
 });
 
+it('reports a failed durable clear and succeeds on the exact retry', async () => {
+  await savePartyEveningIdentity('account-a', EVENING);
+  const removeItem = AsyncStorage.removeItem as jest.MockedFunction<
+    typeof AsyncStorage.removeItem
+  >;
+  removeItem.mockRejectedValueOnce(new Error('disk full'));
+
+  await expect(clearPartyEveningIdentityForAccount('account-a')).resolves.toBe(false);
+  expect(await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)).not.toBeNull();
+
+  await expect(clearPartyEveningIdentityForAccount('account-a')).resolves.toBe(true);
+  expect(await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)).toBeNull();
+});
+
 it('suppresses a late pre-reset write after the account boundary moves', async () => {
   const oldGeneration = partyEveningIdentityGeneration();
   await clearPartyEveningIdentityCache();

@@ -29,7 +29,10 @@ import AsyncStorage, {
   privateAccountCleanupStorage,
   suppressPrivatePersistenceDuringMemoryReset,
 } from '@/data/privateAccountStorage';
-import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
+import {
+  guardPrivateAccountStateCreator,
+  isPrivateAccountMutationFrozen,
+} from '@/data/privateAccountBoundary';
 
 import {
   fetchMyBeerPhotos,
@@ -144,8 +147,11 @@ interface BeerPhotosState {
   setServerPhotos: (list: BeerPhoto[], accountId?: string) => void;
   /** Insert an optimistic pending entry for a queued upload. */
   addPendingPhoto: (input: PendingBeerPhotoInput) => void;
-  /** The queued upload landed: swap in the server photo, drop localUri. */
-  markSynced: (clientId: string, serverPhoto: BeerPhoto) => void;
+  /**
+   * The queued upload landed: swap in the server photo, drop localUri, and
+   * resolve true only once that exact synced snapshot is durable.
+   */
+  markSynced: (clientId: string, serverPhoto: BeerPhoto) => Promise<boolean>;
   /** The queued upload was permanently rejected (code → specific error copy). */
   markFailed: (clientId: string, failureCode?: string) => void;
   /** Replace a reserved table code after its create request settles. */
@@ -234,7 +240,7 @@ function belongsToLastClearedSession(session: { accountId: string; token: string
 
 export const useBeerPhotosStore = create<BeerPhotosState>()(
   persist(
-    guardPrivateAccountStateCreator((set) => ({
+    guardPrivateAccountStateCreator((set, get) => ({
       photos: [],
 
       setServerPhotos: (list, accountId) =>
@@ -308,18 +314,48 @@ export const useBeerPhotosStore = create<BeerPhotosState>()(
           return { photos: sortNewestFirst([entry, ...others]) };
         }),
 
-      markSynced: (clientId, serverPhoto) =>
-        set((state) => ({
-          photos: state.photos.map((photo) =>
-            photo.clientId === clientId
-              ? fromServerPhoto(serverPhoto, {
-                  partyCode: photo.partyCode,
-                  pendingPartyCode: photo.pendingPartyCode,
-                  partyDrinkingDay: photo.partyDrinkingDay,
-                })
-              : photo,
-          ),
-        })),
+      markSynced: async (clientId, serverPhoto) => {
+        const boundaryGeneration = accountBoundaryGeneration;
+        try {
+          // Zustand persist returns the exact storage write from its wrapped
+          // setter at runtime (its public setter type still says `void`). Await
+          // that write before the upload queue is allowed to release its only
+          // recoverable op and JPEG.
+          const persistence = (
+            set as unknown as (
+              update: (
+                state: BeerPhotosState,
+              ) => Pick<BeerPhotosState, 'photos'>
+            ) => void | Promise<void>
+          )((state) => ({
+            photos: state.photos.map((photo) =>
+              photo.clientId === clientId
+                ? fromServerPhoto(serverPhoto, {
+                    partyCode: photo.partyCode,
+                    pendingPartyCode: photo.pendingPartyCode,
+                    partyDrinkingDay: photo.partyDrinkingDay,
+                  })
+                : photo,
+            ),
+          }));
+          await persistence;
+        } catch {
+          return false;
+        }
+
+        if (
+          isPrivateAccountMutationFrozen() ||
+          accountClearsInProgress > 0 ||
+          boundaryGeneration !== accountBoundaryGeneration
+        ) return false;
+
+        return get().photos.some(
+          (photo) =>
+            photo.clientId === clientId &&
+            photo.id === serverPhoto.id &&
+            photo.syncState === 'synced',
+        );
+      },
 
       markFailed: (clientId, failureCode) =>
         set((state) => ({
