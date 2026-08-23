@@ -41,7 +41,7 @@ it('shows loading, exposes a recoverable error, and clears it after the ready ha
   render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
 
   expect(screen.getByText('Načítám hru…')).toBeTruthy();
-  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
 
   act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
   expect(screen.getByText('Hru se nepodařilo načíst.')).toBeTruthy();
@@ -62,7 +62,7 @@ it('shows loading, exposes a recoverable error, and clears it after the ready ha
 it('recovers through the fail path when the Android renderer process is gone', async () => {
   const onError = jest.fn();
   render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
-  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
 
   act(() => (mockWebProps?.onRenderProcessGone as (() => void) | undefined)?.());
 
@@ -72,7 +72,7 @@ it('recovers through the fail path when the Android renderer process is gone', a
 
   fireEvent.press(screen.getByLabelText('Zkusit znovu'));
   await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
-  expect(screen.getByLabelText('web-game')).toBeTruthy();
+  expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' });
 });
 
 it('injects init once per attempt and resets the guard on retry', async () => {
@@ -83,7 +83,7 @@ it('injects init once per attempt and resets the guard on retry', async () => {
     }).length;
 
   render(<GameHost game="dice" players={PLAYERS} />);
-  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
   mockInject.mockClear();
 
   const sendReady = () =>
@@ -113,7 +113,7 @@ it('drops results with unknown roster identities and exposes the recoverable fai
   render(
     <GameHost game="dice" players={PLAYERS} onResult={onResult} onError={onError} />,
   );
-  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
 
   const send = (data: unknown) =>
     act(() =>
@@ -156,7 +156,7 @@ it('accepts a result naming the init roster when the parent reuses and mutates i
   const { rerender } = render(
     <GameHost game="dice" players={mutableRoster} onResult={onResult} onError={onError} />,
   );
-  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
 
   const send = (data: unknown) =>
     act(() =>
@@ -202,6 +202,36 @@ it('times out while the bundled game asset is still downloading', () => {
   jest.useRealTimers();
 });
 
+it('removes the decorative canvas from the accessibility tree', async () => {
+  render(<GameHost game="dice" players={PLAYERS} />);
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
+
+  expect(mockWebProps?.accessible).toBe(false);
+  expect(mockWebProps?.accessibilityElementsHidden).toBe(true);
+  expect(mockWebProps?.importantForAccessibility).toBe('no-hide-descendants');
+});
+
+it('announces loading politely and errors assertively while Retry stays reachable', async () => {
+  const onError = jest.fn();
+  render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
+
+  // The live region sits on the status container above the message text.
+  const liveRegionOf = (text: string) => {
+    let node = screen.getByText(text);
+    while (node && node.props.accessibilityLiveRegion === undefined) {
+      node = node.parent as typeof node;
+    }
+    return node?.props.accessibilityLiveRegion;
+  };
+  expect(liveRegionOf('Načítám hru…')).toBe('polite');
+
+  await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
+  act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
+
+  expect(liveRegionOf('Hru se nepodařilo načíst.')).toBe('assertive');
+  expect(screen.getByLabelText('Zkusit znovu').props.accessibilityRole).toBe('button');
+});
+
 it('delivers a stranded command when a slow cold load becomes ready after the timeout', async () => {
   jest.useFakeTimers();
   let resolveDownload!: (value: { localUri: string }) => void;
@@ -231,7 +261,7 @@ it('delivers a stranded command when a slow cold load becomes ready after the ti
     await Promise.resolve();
     await Promise.resolve();
   });
-  expect(screen.getByLabelText('web-game')).toBeTruthy();
+  expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' });
 
   mockInject.mockClear();
   act(() =>

@@ -63,3 +63,74 @@ it('uses the neutral saved-result ending when nobody won or paid', () => {
   expect(screen.getByText('Dohráno')).toBeTruthy();
   expect(screen.getByText('Výsledek zůstal u večera.')).toBeTruthy();
 });
+
+it('announces the ending as one assertive summary built from the existing title and note', () => {
+  render(
+    <GameResult
+      players={[{ id: 'p1', name: 'Hráč 1', tint: '#E8A317' }]}
+      outcome={{ scores: [], winnerId: 'p1', payingId: null }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  const summary = screen.getByLabelText('Vyhrává Hráč 1. Nejvíc bodů u stolu.');
+  expect(summary.props.accessible).toBe(true);
+  expect(summary.props.accessibilityLiveRegion).toBe('assertive');
+  expect(screen.getByLabelText('Konec').props.accessibilityRole).toBe('button');
+});
+
+it('builds the same summary label for the payer and neutral endings', () => {
+  const payerView = render(
+    <GameResult
+      players={[{ id: 'p1', name: 'Kája', tint: '#E8A317' }]}
+      outcome={{ scores: [], winnerId: null, payingId: 'p1' }}
+      onDone={jest.fn()}
+    />,
+  );
+  expect(payerView.getByLabelText('Platí Kája. Další runda je jasná.')).toBeTruthy();
+  payerView.unmount();
+
+  render(
+    <GameResult
+      players={[]}
+      outcome={{ scores: [], winnerId: null, payingId: null }}
+      onDone={jest.fn()}
+    />,
+  );
+  expect(screen.getByLabelText('Dohráno. Výsledek zůstal u večera.')).toBeTruthy();
+});
+
+it('reads each ranking row as a single label with rank, name and displayed score', () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'a', name: 'Hráč 1', tint: '#E8A317' },
+        { id: 'b', name: 'Hráč 2', tint: '#E8A317' },
+      ]}
+      outcome={{
+        scores: [
+          { playerId: 'a', score: 20 },
+          { playerId: 'b', score: 12 },
+        ],
+        winnerId: 'a',
+      }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByLabelText('1. Hráč 1 20')).toBeTruthy();
+  expect(screen.getByLabelText('2. Hráč 2 12')).toBeTruthy();
+});
+
+it('includes the displayed suffix verbatim in the ranking row label', () => {
+  render(
+    <GameResult
+      players={[]}
+      outcome={{ scores: [], winnerId: null, payingId: null }}
+      board={[{ name: 'Kája', score: 4, suffix: '3× trefa' }]}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByLabelText('1. Kája 3× trefa')).toBeTruthy();
+});

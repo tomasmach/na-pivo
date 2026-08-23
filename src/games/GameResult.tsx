@@ -122,7 +122,15 @@ export function GameResult({
           </Text>
         )}
 
-        <View style={styles.star}>
+        {/* One focusable summary instead of three fragmented nodes; the
+            label reuses only what is already on screen. */}
+        <View
+          style={styles.star}
+          accessible
+          accessibilityRole="header"
+          accessibilityLiveRegion="assertive"
+          accessibilityLabel={`${title}. ${note}`}
+        >
           {star ? <PersonAvatar name={star} tint={tintOf(star)} size={72} /> : null}
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
             {title}
@@ -139,6 +147,8 @@ export function GameResult({
                 key={`${row.name}-${index}`}
                 entering={reduceMotion ? undefined : FadeInDown.delay(index * 60).duration(220)}
                 style={[styles.row, index === 0 && styles.rowTop]}
+                accessible
+                accessibilityLabel={`${index + 1}. ${row.name} ${row.suffix ?? row.score}`}
               >
                 <Text style={styles.rank} allowFontScaling={false}>
                   {index + 1}

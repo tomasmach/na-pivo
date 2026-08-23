@@ -285,6 +285,11 @@ export const GameHost = React.forwardRef<
           bounces={false}
           overScrollMode="never"
           setSupportMultipleWindows={false}
+          // The canvas is decoration: every control and result is native, so
+          // the web view must not appear in the accessibility tree at all.
+          accessible={false}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
           onMessage={handleMessage}
           onError={() => fail(cs.gameHost.loadFailed)}
           onContentProcessDidTerminate={() => fail(cs.gameHost.stopped)}
@@ -293,7 +298,11 @@ export const GameHost = React.forwardRef<
         />
       ) : null}
       {status !== 'ready' ? (
-        <View style={styles.status} accessibilityLiveRegion="polite">
+        <View
+          style={styles.status}
+          accessibilityLiveRegion={status === 'error' ? 'assertive' : 'polite'}
+          accessibilityRole={status === 'error' ? 'alert' : undefined}
+        >
           <Text style={styles.statusText} maxFontSizeMultiplier={FontScaleCap.body}>
             {message}
           </Text>
