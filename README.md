@@ -139,7 +139,7 @@ npm run android:local
 # development build (custom dev client, physical device)
 eas build -p ios --profile development
 
-# internal preview build (Release config, TestFlight)
+# internal preview build (Release config, install link for testers)
 eas build -p ios --profile preview
 
 # production build (auto-increment build number)

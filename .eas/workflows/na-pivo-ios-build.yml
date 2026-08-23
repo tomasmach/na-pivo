@@ -1,4 +1,4 @@
-name: Uprate iOS Build and Submit
+name: Na pivo
 
 jobs:
   build:
@@ -6,12 +6,4 @@ jobs:
     type: build
     params:
       platform: ios
-      profile: production
-
-  submit:
-    name: Submit iOS production
-    type: submit
-    needs: [build]
-    params:
-      build_id: ${{ needs.build.outputs.build_id }}
       profile: production
