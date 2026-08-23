@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 
 import { ChevronLeftIcon, LocateFixedIcon } from '@/components/shared/IconGlyph';
@@ -66,7 +67,7 @@ export default function NearestMapMockScreen() {
       <View style={styles.screen}>
         <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => leaveRoute(router)}
             style={({ pressed }) => [styles.round, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Zpátky"
@@ -141,7 +142,7 @@ export default function NearestMapMockScreen() {
 
       <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.round, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Zpátky"

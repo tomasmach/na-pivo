@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_CHROME } from '@/components/shared/TabBar';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { getAllLoadedPubs, hydratePubsSnapshot, type Pub } from '@/data/pubs';
 import { useCompass } from '@/hooks/useCompass';
 import { NightRoute } from '@/mocks/NightRoute';
@@ -86,7 +87,7 @@ export default function PubDetailScreen() {
           pub={presentation}
           position={compass.currentPosition}
           visits={visits}
-          onClose={() => router.back()}
+          onClose={() => leaveRoute(router)}
         />
       </ScrollView>
     </View>

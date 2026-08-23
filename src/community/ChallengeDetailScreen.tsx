@@ -163,6 +163,7 @@ const styles = StyleSheet.create({
     lineHeight: 50,
     color: Colors.foam,
     letterSpacing: -0.5,
+    includeFontPadding: false,
   },
   countRest: { fontSize: 19, fontWeight: '600', color: Colors.mutedText, letterSpacing: -0.2 },
   track: {

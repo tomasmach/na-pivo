@@ -35,6 +35,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { ChevronLeftIcon, Trash2Icon, PencilIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -152,7 +153,7 @@ export default function ProfileEditScreen() {
 
     // Nothing changed → just close.
     if (!nicknameChanged && !nameChanged && !visibilityChanged) {
-      router.back();
+      leaveRoute(router);
       return;
     }
 
@@ -167,7 +168,7 @@ export default function ProfileEditScreen() {
       const result = await updateProfile(params);
       if (result.ok) {
         showToast(cs.profile.edit.savedToast);
-        router.back();
+        leaveRoute(router);
         return;
       }
       // Nickname conflicts surface inline; anything else is a generic inline note.
@@ -205,7 +206,7 @@ export default function ProfileEditScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.profileClose}

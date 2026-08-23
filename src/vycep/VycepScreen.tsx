@@ -28,6 +28,7 @@ import {
 } from '@/data/nightsClient';
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   allSessionsNewestFirst,
@@ -315,7 +316,7 @@ export default function VycepScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           hitSlop={8}
           style={({ pressed }) => [
             styles.backButton,

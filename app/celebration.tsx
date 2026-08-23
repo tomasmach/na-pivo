@@ -21,6 +21,7 @@ import { Colors } from '@/theme/colors';
 
 import { Radius } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -278,7 +279,7 @@ export default function CelebrationScreen() {
         <Animated.View style={[styles.buttonWrap, { width: layout.contentWidth }, contentAnimStyle]}>
           <GlowButton
             label={cs.celebration.backToCompass}
-            onPress={() => router.back()}
+            onPress={() => leaveRoute(router)}
             variant="primary"
             glow="strong"
             height={layout.buttonHeight}

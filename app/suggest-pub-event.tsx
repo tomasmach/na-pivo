@@ -16,6 +16,7 @@ import { ChevronLeftIcon, ClockIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { submitPubEventSuggestion } from '@/data/pubEventsClient';
 import { useToastStore } from '@/stores/toastStore';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -124,7 +125,7 @@ export default function SuggestPubEventScreen() {
     setSubmitting(false);
     if (result === 'ok') {
       showToast('Návrh je u výčepu na kontrole.');
-      router.back();
+      leaveRoute(router);
       return;
     }
     if (result === 'auth-required') {
@@ -142,7 +143,7 @@ export default function SuggestPubEventScreen() {
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Zpět"

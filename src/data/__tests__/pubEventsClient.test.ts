@@ -3,6 +3,11 @@ import {
   isPubEventActive,
   submitPubEventSuggestion,
 } from '../pubEventsClient';
+import {
+  UGC_POLICY_HEADER,
+  clearUgcConsentStateForTests,
+  subscribeUgcConsentRequired,
+} from '../ugcConsent';
 
 jest.mock('../backendConfig', () => ({
   getBackendEndpoint: (path: string) => `https://api.example.test${path}`,
@@ -15,12 +20,6 @@ jest.mock('../account', () => ({
 const { ensureAccount } = jest.requireMock('../account') as { ensureAccount: jest.Mock };
 
 const ORIGINAL_FETCH = global.fetch;
-
-import {
-  UGC_POLICY_HEADER,
-  clearUgcConsentStateForTests,
-  subscribeUgcConsentRequired,
-} from '../ugcConsent';
 
 describe('pubEventsClient', () => {
   beforeEach(() => {

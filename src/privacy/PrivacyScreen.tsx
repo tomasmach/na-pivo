@@ -20,6 +20,7 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 
 // Same complete policy the auth screen links to (app/auth/index.tsx).
 const PRIVACY_POLICY_URL = 'https://tomasmach.github.io/na-pivo/privacy.html';
@@ -43,7 +44,7 @@ export default function PrivacyScreen() {
       {/* Header row */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}

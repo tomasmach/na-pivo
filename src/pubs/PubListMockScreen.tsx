@@ -64,6 +64,7 @@ import {
 } from '@/data/pubs';
 import { useCompass } from '@/hooks/useCompass';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
@@ -72,6 +73,7 @@ import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
+import { resolvePubListEmptyState } from '@/pubs/pubListState';
 import {
   mapViewportCacheCovers,
   mapViewportRadiusKm,
@@ -515,7 +517,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
 
   const closePicker = React.useCallback(() => {
     endPickingPub();
-    router.back();
+    leaveRoute(router);
   }, [endPickingPub, router]);
 
   // The night does not need a pub. A keyless evening is already filed as
@@ -701,6 +703,15 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     ? (presentations.find((pub) => pub.id === openPubId) ?? null)
     : null;
   const hasActiveFilters = hasServerFilters || filters.openOnly;
+  const emptyState = resolvePubListEmptyState({
+    pubCount: presentations.length,
+    snapshotReady,
+    fallbackSnapshotReady,
+    hasPosition: compass.currentPosition !== null,
+    isLoading: compass.isLoading,
+    searchFailed: compass.searchFailed,
+    permissionState: compass.permissionState,
+  });
 
   // Opening a detail raises the sheet in the SAME action, not in an effect
   // watching the id: at `peek` the detail would land in a one-line slot, and an
@@ -872,7 +883,11 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
         <GlassIconButton
           size={44}
           accessibilityLabel={
-            compass.currentPosition ? 'Vycentrovat na mě' : 'Povolit polohu'
+            compass.currentPosition
+              ? 'Vycentrovat na mě'
+              : compass.permissionState === 'granted'
+                ? cs.addPub.retryLocation
+                : 'Povolit polohu'
           }
           onPress={() => {
             if (compass.currentPosition) locateOnMap();
@@ -898,7 +913,10 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
       >
         {openPub ? (
           <ScrollView
-            contentContainerStyle={[styles.detailContent, { paddingBottom: insets.bottom + 120 }]}
+            contentContainerStyle={[
+              styles.detailContent,
+              { paddingBottom: insets.bottom + TAB_CHROME },
+            ]}
             showsVerticalScrollIndicator={false}
             scrollEnabled={detent === 'full'}
             scrollEventThrottle={16}
@@ -953,7 +971,10 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
               maxToRenderPerBatch={8}
               windowSize={7}
               removeClippedSubviews
-              contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+              contentContainerStyle={[
+                styles.content,
+                { paddingBottom: insets.bottom + TAB_CHROME },
+              ]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               scrollEnabled={detent === 'full'}
@@ -1035,19 +1056,14 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
               }
               ListFooterComponent={
                 <>
-                  {!snapshotReady ||
-                  (presentations.length === 0 &&
-                    compass.isLoading &&
-                    compass.permissionState !== 'denied') ? (
+                  {emptyState === 'loading' ? (
                     <View style={styles.listState}>
                       <ActivityIndicator color={Colors.amber} />
                       <Text style={styles.listStateText}>Hledám hospody…</Text>
                     </View>
                   ) : null}
 
-                  {snapshotReady &&
-                  presentations.length === 0 &&
-                  compass.permissionState === 'denied' ? (
+                  {emptyState === 'permission-denied' ? (
                     <View style={styles.listState}>
                       <Text style={styles.listStateText}>Povol polohu a mrkneme, co je kolem.</Text>
                       <Pressable
@@ -1060,13 +1076,24 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                     </View>
                   ) : null}
 
-                  {snapshotReady &&
-                  presentations.length === 0 &&
-                  compass.permissionState !== 'denied' &&
-                  !compass.isLoading ? (
+                  {emptyState === 'location-unavailable' ? (
+                    <View style={styles.listState}>
+                      <Text style={styles.listStateText}>{cs.addPub.locationUnavailable}</Text>
+                      <Pressable
+                        onPress={() => void compass.requestPermission()}
+                        style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={cs.addPub.retryLocation}
+                      >
+                        <Text style={styles.stateButtonText}>{cs.addPub.retryLocation}</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
+                  {emptyState === 'search-failed' || emptyState === 'empty' ? (
                     <View style={styles.listState}>
                       <Text style={styles.listStateText}>
-                        {compass.searchFailed
+                        {emptyState === 'search-failed'
                           ? 'Hospody se teď nenačetly.'
                           : 'V okolí zatím nic nemáme.'}
                       </Text>

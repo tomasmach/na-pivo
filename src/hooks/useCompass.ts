@@ -202,7 +202,7 @@ export function useCompass(
   );
 
   // — Position / heading —
-  const { position } = useDevicePosition(
+  const { position, retry: retryPosition } = useDevicePosition(
     focused && sensorsEnabled && permissionState === 'granted',
   );
   const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(
@@ -1207,8 +1207,12 @@ export function useCompass(
     setPermissionState(state);
     if (state === 'denied') {
       await openSystemSettings();
+      return;
     }
-  }, []);
+    if (state === 'granted') {
+      await retryPosition();
+    }
+  }, [retryPosition]);
 
   return {
     arrowRotation,

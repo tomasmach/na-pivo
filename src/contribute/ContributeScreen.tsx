@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { leaveRoute } from '@/navigation/leaveRoute';
 
 import { HistoricalBeersSheet } from '@/components/contribute/HistoricalBeersSheet';
 import { SplitTimeInput } from '@/components/contribute/SplitTimeInput';
@@ -899,7 +900,7 @@ export default function ContributeScreen() {
       fireSuccessHaptic();
     }
     useToastStore.getState().show(cs.contribute.savedToast);
-    router.back();
+    leaveRoute(router);
   }, [
     beersTouched,
     beerMenuRotates,
@@ -987,7 +988,7 @@ export default function ContributeScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => leaveRoute(router)}
             style={({ pressed }) => [
               styles.backButton,
               pressed && styles.pressed,

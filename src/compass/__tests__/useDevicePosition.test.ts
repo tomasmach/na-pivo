@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppState } from 'react-native';
+import { AppState, Pressable } from 'react-native';
 import * as Location from 'expo-location';
 import { useDevicePosition } from '../useDevicePosition';
 
@@ -128,6 +128,78 @@ describe('useDevicePosition', () => {
     });
 
     hook.unmount();
+  });
+
+  it('queues a retry tapped while the first watcher registration is pending', async () => {
+    let rejectFirst: ((error: Error) => void) | undefined;
+    let emitSecond:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    const removeSecond = jest.fn();
+    (Location.watchPositionAsync as jest.Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementationOnce(async (_options, callback) => {
+        emitSecond = callback;
+        return { remove: removeSecond };
+      });
+
+    let latestResult: ReturnType<typeof useDevicePosition> | undefined;
+
+    function RetryHarness() {
+      latestResult = useDevicePosition(true);
+      return React.createElement(Pressable, {
+        accessibilityLabel: 'Zkusit polohu znovu',
+        onPress: () => void latestResult?.retry(),
+      });
+    }
+
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(RetryHarness));
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      const retryButton = renderer.root.findByProps({
+        accessibilityLabel: 'Zkusit polohu znovu',
+      });
+      retryButton.props.onPress();
+      retryButton.props.onPress();
+      await Promise.resolve();
+    });
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rejectFirst?.(new Error('native watcher unavailable'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      emitSecond?.({
+        coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 },
+      });
+    });
+    expect(latestResult?.position).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+
+    act(() => renderer.unmount());
+    expect(removeSecond).toHaveBeenCalledTimes(1);
   });
 
   it('publishes a recent accurate cached fix before the live watcher emits', async () => {

@@ -22,6 +22,7 @@ import { SectionBreak } from '@/mocks/SectionBreak';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
 import { loadRecentSearches, saveRecentSearch } from '@/search/recentSearches';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { usePubStore } from '@/stores/pubStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -220,7 +221,7 @@ export default function SearchMockScreen() {
           ) : null}
         </View>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           accessibilityRole="button"
           accessibilityLabel="Zrušit hledání"
           hitSlop={8}

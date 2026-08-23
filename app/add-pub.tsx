@@ -24,6 +24,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -374,7 +375,7 @@ export default function AddPubScreen() {
     });
     void fireSuccessHaptic();
     showToast(isEditing ? cs.addPub.editQueuedToast : cs.addPub.queuedToast);
-    router.back();
+    leaveRoute(router);
   }, [
     address,
     bumpCatalogRevision,
@@ -397,7 +398,7 @@ export default function AddPubScreen() {
         <Pressable
           onPress={() => {
             trackUiInteraction('add_pub_cancel', 'cancel');
-            router.back();
+            leaveRoute(router);
           }}
           style={styles.backButton}
           accessibilityRole="button"

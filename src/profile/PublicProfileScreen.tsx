@@ -42,6 +42,7 @@ import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { AchievementGrid } from '@/profile/AchievementGrid';
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import {
   profileTimelineSeries,
   type ProfilePeriod,
@@ -478,7 +479,7 @@ export default function PublicProfileScreen() {
     <View style={styles.screen}>
       <View style={[styles.top, { paddingTop: insets.top + Spacing.sm }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Zpět"

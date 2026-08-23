@@ -19,6 +19,7 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 
@@ -171,18 +172,18 @@ export default function HomePointScreen() {
   const save = useCallback(() => {
     if (!draftPoint) return;
     setHomePoint(draftPoint);
-    router.back();
+    leaveRoute(router);
   }, [draftPoint, router, setHomePoint]);
 
   const clear = useCallback(() => {
     setHomePoint(null);
-    router.back();
+    leaveRoute(router);
   }, [router, setHomePoint]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Zpět">
+        <Pressable onPress={() => leaveRoute(router)} style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Zpět">
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>Domovský bod</Text>

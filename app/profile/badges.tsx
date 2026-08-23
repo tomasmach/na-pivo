@@ -17,6 +17,7 @@ import { AchievementGrid } from '@/profile/AchievementGrid';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper } from '@/data/auth';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 
 function MapperStat({
   icon,
@@ -114,7 +115,7 @@ export default function BadgesScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}

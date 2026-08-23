@@ -893,6 +893,7 @@ export const cs = {
     locationError: 'Nejdřív potvrď polohu hospody.',
     locationPermissionDenied: 'Bez povolení polohy hospodu neumístím. Povol ji v Nastavení a zkus to znovu.',
     locationUnavailable: 'Polohu se teď nepodařilo zjistit. Zkus to ještě jednou venku nebo blíž k oknu.',
+    retryLocation: 'Zkusit polohu znovu',
     save: 'Přidat hospodu',
     editSave: 'Uložit opravu',
     saving: 'Ukládám…',

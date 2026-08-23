@@ -169,6 +169,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     letterSpacing: -0.2,
     fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
   },
   valueCompact: { fontSize: 19, lineHeight: 24 },
   valueHero: { fontSize: 34, lineHeight: 42, letterSpacing: -0.6 },

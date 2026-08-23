@@ -37,6 +37,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { formatPrice } from '@/utils/currency';
 import {
   enqueueDrink,
@@ -362,7 +363,7 @@ export default function EveningDetailScreen() {
           are the page's own title block, where a name too long for a centred
           header still gets the whole width. */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-        <GlassIconButton size={HitArea.min} accessibilityLabel={cs.a11y.backButton} onPress={() => router.back()}>
+        <GlassIconButton size={HitArea.min} accessibilityLabel={cs.a11y.backButton} onPress={() => leaveRoute(router)}>
           <ChevronLeftIcon size={20} color={Colors.foam} />
         </GlassIconButton>
       </View>

@@ -26,6 +26,7 @@ import { useNightActions } from '@/feed/useNightActions';
 import { useNightReaction } from '@/feed/useNightReaction';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { Avatar } from '@/profile/Avatar';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -164,7 +165,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
       : current);
   }, []);
   const { reactingIds, toggleReaction } = useNightReaction(applyReaction, showToast);
-  const leaveRemovedNight = React.useCallback(() => router.back(), [router]);
+  const leaveRemovedNight = React.useCallback(() => leaveRoute(router), [router]);
   const openNightActions = useNightActions(leaveRemovedNight);
 
   React.useEffect(() => {
@@ -219,7 +220,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
         if (night?.author.id === change.targetAccountId) {
           setNight(null);
           setComments(null);
-          router.back();
+          leaveRoute(router);
           return;
         }
 
@@ -303,7 +304,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
   return (
     <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
-        <GlassIconButton size={40} accessibilityLabel="Zpátky" onPress={() => router.back()}>
+        <GlassIconButton size={40} accessibilityLabel="Zpátky" onPress={() => leaveRoute(router)}>
           <ChevronLeftIcon size={20} color={Colors.foam} />
         </GlassIconButton>
         <Text style={styles.topTitle} maxFontSizeMultiplier={FontScaleCap.heading}>Večer</Text>

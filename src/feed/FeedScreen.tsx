@@ -80,7 +80,6 @@ function FeedSkeleton() {
   const reduceMotion = useReduceMotion();
   return (
     <View
-      style={styles.skeletonList}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -967,7 +966,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   mark: { width: 28, height: 28, borderRadius: 7 },
-  wordmark: { fontFamily: Fonts.numeral, fontSize: 19, color: Colors.foam },
+  wordmark: {
+    fontFamily: Fonts.numeral,
+    fontSize: 19,
+    lineHeight: 24,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
 
   statusBar: {
     minHeight: HitArea.min,
@@ -992,8 +997,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     borderTopWidth: 10,
     borderTopColor: '#0F0A05',
-    marginHorizontal: -Spacing.md,
-    paddingHorizontal: Spacing.md,
+    marginHorizontal: -MockLayout.screenPad,
+    paddingHorizontal: MockLayout.screenPad,
   },
   cardFirst: { borderTopWidth: 0, paddingTop: Spacing.sm },
   cardHead: { flexDirection: 'row', alignItems: 'center' },
@@ -1070,6 +1075,7 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
   },
   factLabel: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginTop: 2 },
 
@@ -1132,7 +1138,6 @@ const styles = StyleSheet.create({
   },
   commentCount: { fontSize: 13, fontWeight: '700', color: Colors.mutedText },
 
-  skeletonList: { marginHorizontal: -Spacing.md },
   skeletonHeadText: { flex: 1, gap: Spacing.xs },
   skeletonFacts: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.md },
   footerLoading: { paddingVertical: Spacing.md },

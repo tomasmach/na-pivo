@@ -16,6 +16,7 @@ export interface DevicePosition {
 
 export interface UseDevicePositionResult {
   position: DevicePosition | null;
+  retry: () => Promise<void>;
 }
 
 /** A recent OS-cached fix is accurate enough to choose an initial nearby pub.
@@ -44,9 +45,11 @@ function approxDistanceMeters(a: DevicePosition, b: DevicePosition): number {
 
 export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   const [position, setPosition] = useState<DevicePosition | null>(null);
+  const [startRequestNonce, setStartRequestNonce] = useState(0);
   const lastPublishedRef = useRef<DevicePosition | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const startingRef = useRef(false);
+  const retryQueuedRef = useRef(false);
   const seedingRef = useRef(false);
   const hasPositionRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -154,6 +157,18 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       // ignore — no permission or GPS unavailable
     } finally {
       startingRef.current = false;
+      const shouldRunQueuedRetry =
+        retryQueuedRef.current &&
+        !subscriptionRef.current &&
+        isMountedRef.current &&
+        enabledRef.current &&
+        AppState.currentState === 'active';
+      retryQueuedRef.current = false;
+      if (shouldRunQueuedRetry) {
+        // Re-enter through the effect after this attempt has fully settled.
+        // One nonce coalesces any number of taps and cannot loop by itself.
+        setStartRequestNonce((nonce) => nonce + 1);
+      }
     }
   }, [publishPosition, seedFromLastKnownPosition]);
 
@@ -161,6 +176,22 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     subscriptionRef.current?.remove();
     subscriptionRef.current = null;
   }, []);
+
+  const retry = useCallback(async (): Promise<void> => {
+    if (
+      !isMountedRef.current ||
+      !enabledRef.current ||
+      AppState.currentState !== 'active'
+    ) {
+      return;
+    }
+    if (startingRef.current) {
+      retryQueuedRef.current = true;
+      return;
+    }
+    stopWatching();
+    await startWatching();
+  }, [startWatching, stopWatching]);
 
   useEffect(() => {
     enabledRef.current = enabled;
@@ -172,7 +203,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     } else {
       stopWatching();
     }
-  }, [enabled, startWatching, stopWatching]);
+  }, [enabled, startRequestNonce, startWatching, stopWatching]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -200,5 +231,5 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     };
   }, [startWatching, stopWatching]);
 
-  return { position };
+  return { position, retry };
 }

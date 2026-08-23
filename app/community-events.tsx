@@ -46,6 +46,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -517,7 +518,7 @@ export default function CommunityEventsScreen() {
       <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
         <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top, paddingBottom: insets.bottom + Spacing.xl }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={cs.a11y.backButton} style={styles.backButton}>
+            <Pressable onPress={() => leaveRoute(router)} accessibilityRole="button" accessibilityLabel={cs.a11y.backButton} style={styles.backButton}>
               <ChevronLeftIcon size={24} color={Colors.foam} />
             </Pressable>
             <View style={styles.headerCopy}>

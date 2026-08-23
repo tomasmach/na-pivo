@@ -26,6 +26,7 @@ import { Colors } from '@/theme/colors';
 
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
@@ -142,7 +143,7 @@ export default function ReportScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}
@@ -169,7 +170,7 @@ export default function ReportScreen() {
           <View style={styles.successButton}>
             <GlowButton
               label={cs.report.successClose}
-              onPress={() => router.back()}
+              onPress={() => leaveRoute(router)}
             />
           </View>
         </View>

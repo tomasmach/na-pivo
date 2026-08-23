@@ -153,6 +153,7 @@ describe('useCompass', () => {
         lng: 14.42,
         accuracyMeters: 8,
       },
+      retry: jest.fn(async () => undefined),
     });
     useSettingsStore.setState({
       mode: 'surprise',
@@ -325,6 +326,24 @@ describe('useCompass', () => {
       includeOtherPlaces: false,
       radiusKm: 100,
     });
+  });
+
+  it('restarts the native position watcher when granted location has no fix', async () => {
+    const retryPosition = jest.fn(async () => undefined);
+    (useDevicePosition as jest.Mock).mockReturnValue({
+      position: null,
+      retry: retryPosition,
+    });
+    const hook = renderCompassHook();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await hook.result.requestPermission();
+    });
+
+    expect(retryPosition).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces pub search failures separately from an empty result', async () => {

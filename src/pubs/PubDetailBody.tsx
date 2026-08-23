@@ -11,6 +11,7 @@ import {
 } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import { formatVolume, cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import {
   fetchPubNightsFeed,
   type PublishedNight,
@@ -252,7 +253,7 @@ export function PubDetailBody({
 
   const closeAfterReport = () => {
     if (onClose) onClose();
-    else router.back();
+    else leaveRoute(router);
   };
 
   const startHere = () => {
@@ -285,7 +286,7 @@ export function PubDetailBody({
     if (picking) {
       endPicking();
       onClose?.();
-      router.back();
+      leaveRoute(router);
       return;
     }
     router.push('/party-live' as Href);
