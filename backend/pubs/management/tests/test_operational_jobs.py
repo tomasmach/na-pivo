@@ -350,10 +350,11 @@ def test_operational_prune_keeps_feedback_row_when_attachment_delete_fails(
     stuck_attachment_name = report.attachment.name
     assert default_storage.exists(stuck_attachment_name)
 
-    def failing_delete(self, name):  # noqa: ANN001, ARG001
+    def failing_delete(name):  # noqa: ANN001, ARG001
         raise OSError("simulated storage outage")
 
-    monkeypatch.setattr(type(default_storage._wrapped), "delete", failing_delete)
+    attachment_storage = FeedbackReport._meta.get_field("attachment").storage
+    monkeypatch.setattr(attachment_storage, "delete", failing_delete)
 
     try:
         call_command("prune_operational_data", batch_size=100, stdout=StringIO())
