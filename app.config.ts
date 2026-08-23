@@ -226,6 +226,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // as keyboards and anchored menus on the same dark stout canvas as the app.
     userInterfaceStyle: 'dark',
     assetBundlePatterns: ['**/*'],
+    // Czech-only app: declare the native localization so the store and iOS
+    // system permission dialogs render Czech instead of English. The locale
+    // JSON reuses the exact strings from infoPlist below (parity is asserted
+    // in app/__tests__/app-config.test.ts).
+    locales: {
+      cs: './locales/cs.json',
+    },
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
       icon: './assets/images/icon.png',
@@ -350,6 +357,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
       infoPlist: {
         CFBundleDisplayName: 'Na pivo',
+        // Czech is the only bundled localization; this lets the Czech
+        // InfoPlist.strings apply even on devices with other system locales.
+        CFBundleAllowMixedLocalizations: true,
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSLocationAlwaysAndWhenInUseUsageDescription: BACKGROUND_LOCATION_REASON,
         NSMotionUsageDescription: 'Pomocí senzorů otáčíme šipku, když se otočíš.',

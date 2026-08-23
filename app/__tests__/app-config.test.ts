@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import buildAppConfig from '../../app.config';
 import pkgJson from '../../package.json';
 
@@ -150,5 +153,46 @@ describe('app.config store-policy surface', () => {
         expect.objectContaining({ host: 'na-pivo.cz', pathPrefix: '/party/' }),
       ]),
     );
+  });
+});
+
+describe('app.config native Czech localization', () => {
+  const csLocalePath = path.join(__dirname, '..', '..', 'locales', 'cs.json');
+  const csLocale: {
+    ios?: Record<string, unknown>;
+    android?: Record<string, unknown>;
+  } = JSON.parse(fs.readFileSync(csLocalePath, 'utf8'));
+
+  const localizedIosKeys = [
+    'CFBundleDisplayName',
+    'NSLocationWhenInUseUsageDescription',
+    'NSLocationAlwaysAndWhenInUseUsageDescription',
+    'NSMotionUsageDescription',
+    'NSPhotoLibraryUsageDescription',
+    'NSCameraUsageDescription',
+  ] as const;
+
+  it('maps the native locales to Czech only', () => {
+    expect(config.locales).toEqual({ cs: './locales/cs.json' });
+  });
+
+  it('enables mixed localizations so Czech strings apply on any device locale', () => {
+    expect(config.ios?.infoPlist?.CFBundleAllowMixedLocalizations).toBe(true);
+  });
+
+  it('localizes exactly the display name and permission strings declared in infoPlist', () => {
+    const infoPlist = config.ios?.infoPlist ?? {};
+    for (const key of localizedIosKeys) {
+      expect(csLocale.ios?.[key]).toBe(infoPlist[key]);
+    }
+    expect(Object.keys(csLocale.ios ?? {}).sort()).toEqual([...localizedIosKeys].sort());
+  });
+
+  it('never localizes a microphone permission (it is intentionally absent)', () => {
+    expect(csLocale.ios).not.toHaveProperty('NSMicrophoneUsageDescription');
+  });
+
+  it('localizes the Android launcher app name', () => {
+    expect(csLocale.android).toEqual({ app_name: 'Na pivo' });
   });
 });
