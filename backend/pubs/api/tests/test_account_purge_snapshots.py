@@ -99,7 +99,7 @@ def test_hard_delete_scrubs_snapshot_arrays_and_actor_notifications():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_hard_delete_deidentifies_feedback_and_deletes_attachment(settings, tmp_path):
+def test_hard_delete_removes_feedback_report_and_deletes_attachment(settings, tmp_path):
     settings.MEDIA_ROOT = str(tmp_path)
     account = Account.objects.create(device_id="purge-feedback")
     feedback = FeedbackReport.objects.create(
@@ -118,13 +118,9 @@ def test_hard_delete_deidentifies_feedback_and_deletes_attachment(settings, tmp_
 
     accounts.hard_delete(account)
 
-    feedback = FeedbackReport.objects.get(pk=pk)
-    assert feedback.account_id is None
-    assert feedback.message == "Support audit may remain"
-    assert feedback.attachment.name == ""
-    assert feedback.attachment_url == ""
-    assert feedback.contact == ""
-    assert feedback.contact_type == ""
+    # The report row is purged with its author; only the durable attachment
+    # cleanup job survives (covered in test_auth.py).
+    assert not FeedbackReport.objects.filter(pk=pk).exists()
     assert not attachment_path.exists()
 
 

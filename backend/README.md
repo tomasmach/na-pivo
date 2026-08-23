@@ -114,6 +114,34 @@ Server logs are JSON on stdout and should stay privacy-safe. They must not inclu
 
 Bearer tokens are server-issued secrets and are stored as hashes. Per-user data should relate to the account model, not to token values.
 
+### Linear feedback sync
+
+Feedback reports are mirrored to a Linear team. The sync is disabled only when **both** `LINEAR_API_KEY` and `LINEAR_TEAM_ID` are unset; anything partial fails the deploy check with `pubs.E005`.
+
+When enabled, account hard purge permanently deletes the synced feedback issues via Linear's official GraphQL `issueDelete` mutation. That requires an admin-capable API key. `python manage.py check --deploy` also requires `LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED=true` — this is only an operator assertion that the key was verified in Linear, not a live permission probe (`pubs.E006` if missing).
+
+If Linear is down or an issue delete fails, purge is fail-closed: the whole transaction rolls back and the account stays pending for retry. Never assume external deletion succeeded just because local data is gone.
+
+**Unsetting both env vars stops new sync, but it is not a safe off-switch while any synced issue remains.** Hard purge of an account with a remaining `FeedbackReport.linear_issue_id` fails closed without a working admin key, so those accounts pile up pending forever. Until the backlog clears (and a durable cleanup-progress design exists), keep the verified admin key configured.
+
+Check the backlog at any time — read-only, loads no secrets into memory beyond Django settings defaults:
+
+```bash
+uv run python manage.py shell -c "from pubs.models import FeedbackReport; print(FeedbackReport.objects.exclude(linear_issue_id='').count())"
+```
+
+If this prints anything above `0`, Linear cleanup is still owed to real accounts; do not treat sync as safely retired.
+
+#### Before setting `LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED=true`
+
+Run this manual smoke once with the **production admin key**, against a sacrificial throwaway issue in the synced team:
+
+1. Call the permanent `issueDelete` mutation (`permanentlyDelete: true`) on the sacrificial issue → the response must contain `data.issueDelete.success: true`.
+2. Call the exact same delete again → the response must contain `errors[].extensions.code` equal to exactly `ENTITY_NOT_FOUND` (the only already-gone code the purge accepts).
+3. If either step returns anything else (different success shape, different error code), do **not** set the flag and do **not** deploy; fix the key's scope first and repeat.
+
+Never paste or log the API key or raw GraphQL response bodies anywhere.
+
 ---
 
 ## Costs, limits and abuse
@@ -351,6 +379,22 @@ back.
 Migrations run inside the container on start. `set -e` means a failed migration stops `napivo-web` before gunicorn; check `docker compose logs napivo-web` if it will not go healthy.
 
 Tests run on SQLite, which does not create PostgreSQL `varchar_pattern_ops` `_like` indexes, so verify migrations that depend on PostgreSQL behavior before deploying.
+
+---
+
+## Release checklist
+
+Before any release that touches account deletion or Apple sign-in:
+
+### Manual Apple revoke-twice smoke
+
+Run once per release with a **disposable test Apple account** (never a real user's identity) and its `refresh_token`, against the production Apple revoke endpoint — the same call `oauth.revoke_apple_token` makes:
+
+1. POST to `https://appleid.apple.com/auth/revoke` with the app's `client_id`, a fresh client-secret JWT, the disposable `refresh_token` and `token_type_hint=refresh_token` → response must be **HTTP 200**.
+2. Call the exact same revoke a second time → it must also return **HTTP 200**. The helper accepts only 200 as success; there is no "already revoked" error state it tolerates.
+3. If the second call is non-200, do **not** release: deletion of an account that has already had its token revoked would fail at purge time with no durable cleanup-progress design to fall back on. Fix the flow first.
+
+Never paste or log the refresh token, the client secret or raw response bodies anywhere.
 
 ---
 

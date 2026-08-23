@@ -767,6 +767,12 @@ LOGGING = {
 # command is a no-op, so leaving them unset disables the sync entirely.
 LINEAR_API_KEY: str = os.environ.get("LINEAR_API_KEY", "")
 LINEAR_TEAM_ID: str = os.environ.get("LINEAR_TEAM_ID", "")
+# Operator assertion, not a live permission probe: the deploy check trusts
+# this env flag as confirmation that the Linear key may perform permanent
+# issueDelete during account purge.
+LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED: bool = os.environ.get(
+    "LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED", ""
+).strip().lower() in ("1", "true", "yes", "on")
 
 # ---------------------------------------------------------------------------
 # CORS (django-cors-headers)

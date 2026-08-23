@@ -9,8 +9,13 @@ Account deletion is a two-step process (see pubs.accounts):
 2. This command, run on a schedule (cron on the Hetzner box), hard-purges any
    account still pending past ACCOUNT_DELETION_GRACE_DAYS. The delete cascades
    credentials / identities / tokens and the CASCADE-bound personal data
-   (drinks, ratings, visits, usage stats); SET_NULL community contributions are
-   anonymized (account → NULL), which is what GDPR + the store policies want.
+   (drinks, ratings, visits, usage stats). Authored unverified contribution,
+   report, feedback and telemetry rows are removed outright; current community
+   state and its indexes are rebuilt from the surviving contributors;
+   independently verified external pub facts survive without an author link;
+   necessary moderation records keep their content but have reporter/target
+   identity scrubbed. Remotely synced feedback deletion is fail-closed before
+   any local purge runs.
 
 Usage:
     python manage.py purge_deleted_accounts            # purge expired

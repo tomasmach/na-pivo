@@ -2940,13 +2940,9 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
     assert feedback_deletion.photo_public_id is None
     assert any(message["tag"] == "deleted" for message in sent_emails)
 
-    feedback_after = FeedbackReport.objects.get(pk=feedback_pk)
-    assert feedback_after.account_id is None
-    assert feedback_after.message == "Support audit remains"
-    assert feedback_after.attachment.name == ""
-    assert feedback_after.attachment_url == ""
-    assert feedback_after.contact == ""
-    assert feedback_after.contact_type == ""
+    # The feedback report row is purged with its author; only the durable
+    # failed-attachment cleanup above survives.
+    assert not FeedbackReport.objects.filter(pk=feedback_pk).exists()
 
     for storage_id, storage in storages.items():
         monkeypatch.setattr(storage, "delete", original_deletes[storage_id])

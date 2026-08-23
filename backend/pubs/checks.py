@@ -84,3 +84,64 @@ def check_android_app_link_cert_fingerprints(**_kwargs):
             id="pubs.E003",
         )
     ]
+
+
+def _is_explicit_truthy(value) -> bool:
+    """Accept an actual bool or a common explicit true string; else False."""
+
+    if isinstance(value, bool):
+        return value
+    return isinstance(value, str) and value.strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+@register(Tags.security, deploy=True)
+def check_linear_feedback_sync_config(**_kwargs):
+    """Linear feedback sync must be fully configured or fully disabled.
+
+    Account purge performs a permanent issueDelete on Linear, so a deploy
+    with sync enabled requires an admin-capable key plus an explicit
+    operator confirmation env var. Runs regardless of DEBUG.
+    """
+
+    api_key = str(getattr(settings, "LINEAR_API_KEY", "") or "").strip()
+    team_id = str(getattr(settings, "LINEAR_TEAM_ID", "") or "").strip()
+
+    if not api_key and not team_id:
+        return []
+
+    if not api_key or not team_id:
+        return [
+            Error(
+                "Linear feedback sync configuration is incomplete.",
+                hint=(
+                    "Set both LINEAR_API_KEY and LINEAR_TEAM_ID to enable the "
+                    "sync, or unset both to disable it entirely."
+                ),
+                id="pubs.E005",
+            )
+        ]
+
+    if not _is_explicit_truthy(
+        getattr(settings, "LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED", False)
+    ):
+        return [
+            Error(
+                "Linear feedback sync is enabled but the permanent delete "
+                "confirmation for account purge is missing.",
+                hint=(
+                    "Account purge permanently deletes the user's Linear "
+                    "issues via issueDelete, which requires an admin-capable "
+                    "API key. Set LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED=true "
+                    "to assert the key has that capability, or unset "
+                    "LINEAR_API_KEY/LINEAR_TEAM_ID to disable the sync."
+                ),
+                id="pubs.E006",
+            )
+        ]
+
+    return []

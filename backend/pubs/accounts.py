@@ -55,12 +55,14 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
 from pubs import emailer, oauth
+from pubs.beer_catalog import BeerCatalogMatchCache, sync_pub_beer_indexes_for_menu
 from pubs.beer_photo_deletions import (
     enqueue_account_avatar_file_deletion,
     enqueue_beer_photo_file_deletion,
     enqueue_feedback_attachment_file_deletion,
     schedule_beer_photo_file_deletions,
 )
+from pubs.enrichment.normalizer import community_hours_to_osm
 from pubs.models import (
     Account,
     AccountDeletionOperation,
@@ -115,6 +117,7 @@ from pubs.models import (
     PublishedNight,
     PublishedNightComment,
     PubNameCorrection,
+    PubPriceIndex,
     PubRating,
     PubReport,
     PubVisit,
@@ -126,6 +129,7 @@ from pubs.models import (
     generate_account_token,
     hash_account_token,
 )
+from pubs.price_index import upsert_pub_price_index
 
 logger = logging.getLogger("pubs.accounts")
 
@@ -142,6 +146,78 @@ class AccountError(Exception):
         self.message = message
         self.code = code
         self.http_status = http_status
+
+
+class ExternalFeedbackCleanupError(Exception):
+    """Remote feedback cleanup (Linear) failed; an account purge must abort.
+
+    Deliberately not an :class:`AccountError`: this is infrastructure cleanup,
+    not user-facing validation. Never carries response bodies or credentials.
+    """
+
+
+_LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
+# Bounded per-call timeout; deletes run sequentially, one request per issue,
+# fail-closed — any failure aborts the whole purge with nothing committed.
+_LINEAR_GRAPHQL_TIMEOUT_S = 5
+
+
+def _delete_linear_issue(issue_id: str, api_key: str) -> None:
+    """Permanently delete one Linear issue; accept only exact success states."""
+    try:
+        resp = requests.post(
+            _LINEAR_GRAPHQL_URL,
+            json={
+                "query": (
+                    "mutation IssueDelete($id: String!, $permanentlyDelete: Boolean) {"
+                    " issueDelete(id: $id, permanentlyDelete: $permanentlyDelete)"
+                    " { success } }"
+                ),
+                "variables": {"id": issue_id, "permanentlyDelete": True},
+            },
+            headers={"Authorization": api_key, "Content-Type": "application/json"},
+            timeout=_LINEAR_GRAPHQL_TIMEOUT_S,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        data = (payload or {}).get("data") or {}
+        if isinstance(data, dict):
+            result = data.get("issueDelete")
+            if isinstance(result, dict) and result.get("success") is True:
+                return
+        errors = (payload or {}).get("errors")
+        if isinstance(errors, list) and errors and all(
+            isinstance(error, dict)
+            and error.get("extensions", {}).get("code") == "ENTITY_NOT_FOUND"
+            for error in errors
+        ):
+            # The issue is already gone remotely — idempotent success.
+            return
+    except Exception as exc:  # noqa: BLE001 — any transport/parse failure aborts
+        raise ExternalFeedbackCleanupError("linear issue cleanup failed") from exc
+    raise ExternalFeedbackCleanupError("linear issue cleanup rejected")
+
+
+def _delete_linear_feedback_issues(account: Account) -> None:
+    """Delete every Linear issue synced from the account's feedback reports.
+
+    Runs inside the purge transaction BEFORE local report rows are removed, so
+    any failure rolls the whole hard delete back. No-op without synced reports;
+    never touches the network for unsynced feedback.
+    """
+    issue_ids = list(
+        FeedbackReport.objects.filter(account=account)
+        .exclude(linear_issue_id="")
+        .values_list("linear_issue_id", flat=True)
+        .distinct()
+    )
+    if not issue_ids:
+        return
+    api_key = getattr(settings, "LINEAR_API_KEY", "") or ""
+    if not api_key:
+        raise ExternalFeedbackCleanupError("linear api key missing")
+    for issue_id in issue_ids:
+        _delete_linear_issue(issue_id, api_key)
 
 
 # ---------------------------------------------------------------------------
@@ -2631,10 +2707,150 @@ def _resolve_shared_lifecycles_before_delete(account: Account) -> None:
     CommunityEvent.objects.filter(host=account).delete()
 
 
+def _capture_affected_community_keys(account: Account) -> set[str]:
+    """Collect cache keys whose public community state the purge may change.
+
+    Captured BEFORE any deletion: account-authored contribution logs, the
+    current PubCommunityData pointer, and the brand/product pointer rows.
+    """
+    keys: set[str] = set()
+    keys.update(
+        PubContributionLog.objects.filter(account=account).values_list("cache_key", flat=True)
+    )
+    keys.update(PubCommunityData.objects.filter(account=account).values_list("cache_key", flat=True))
+    keys.update(PubBeerBrand.objects.filter(account=account).values_list("cache_key", flat=True))
+    keys.update(PubBeerProduct.objects.filter(account=account).values_list("cache_key", flat=True))
+    return keys
+
+
+def _rebuild_community_signals_after_purge(cache_key: str) -> None:
+    """Rebuild one pub's public community signals from surviving contributors.
+
+    Runs inside the purge transaction after ``Account.delete()``. The only
+    provenance is the latest surviving non-anonymous PubContributionLog per
+    kind (newest created_at, then id); private DrinkLog rows are never
+    consulted. Community-sourced signal rows always restart from that
+    provenance; independent EXTERNAL price data is never touched.
+    """
+    hours_log = (
+        PubContributionLog.objects.exclude(account=None)
+        .filter(cache_key=cache_key, kind=PubContributionLog.Kind.HOURS)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    beers_log = (
+        PubContributionLog.objects.exclude(account=None)
+        .filter(cache_key=cache_key, kind=PubContributionLog.Kind.BEERS)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+    # Community-sourced state loses its provenance with the deleted author and
+    # is rebuilt from scratch below. A DRINK-derived price survives only while
+    # a surviving account still stands behind the pub's brand/product rows;
+    # independently verified EXTERNAL price data is never touched.
+    PubPriceIndex.objects.filter(
+        cache_key=cache_key, source=PubPriceIndex.Source.COMMUNITY
+    ).delete()
+    survivor_backs_drink_price = (
+        PubBeerBrand.objects.filter(
+            cache_key=cache_key,
+            source=PubBeerBrand.Source.DRINK,
+            account__isnull=False,
+        ).exists()
+        or PubBeerProduct.objects.filter(
+            cache_key=cache_key,
+            source=PubBeerProduct.Source.DRINK,
+            account__isnull=False,
+        ).exists()
+    )
+    if not survivor_backs_drink_price:
+        PubPriceIndex.objects.filter(
+            cache_key=cache_key, source=PubPriceIndex.Source.DRINK
+        ).delete()
+
+    if hours_log is None and beers_log is None:
+        # Nobody survives behind this pub's community state — remove it.
+        PubCommunityData.objects.filter(cache_key=cache_key).delete()
+        return
+
+    newest = max(
+        (log for log in (hours_log, beers_log) if log),
+        key=lambda log: (log.created_at, log.id),
+    )
+    defaults = {
+        "name": newest.name,
+        "lat": newest.lat,
+        "lng": newest.lng,
+        # Historical menus backed by the deleted author must not survive.
+        "historical_beers": [],
+        # Contribution logs cannot prove city or external_id, so the rebuilt
+        # row must not carry the deleted author's identity fields forward.
+        "city": None,
+        "external_id": None,
+        "account": newest.account,
+    }
+    if hours_log is not None:
+        defaults["hours_json"] = hours_log.payload
+        defaults["opening_hours_raw"] = community_hours_to_osm(hours_log.payload)
+        defaults["hours_updated_at"] = hours_log.created_at
+    else:
+        defaults["hours_json"] = None
+        defaults["opening_hours_raw"] = ""
+        defaults["hours_updated_at"] = None
+
+    beers: list[dict] = []
+    if beers_log is not None:
+        payload = beers_log.payload
+        rotates = False
+        if isinstance(payload, dict):
+            rotates = bool(payload.get("beer_menu_rotates"))
+            payload = payload.get("beers")
+        if isinstance(payload, list):
+            beers = payload
+        defaults["beers"] = beers
+        defaults["beer_menu_rotates"] = rotates
+        defaults["beers_updated_at"] = beers_log.created_at
+    else:
+        defaults["beers"] = []
+        defaults["beer_menu_rotates"] = False
+        defaults["beers_updated_at"] = None
+
+    PubCommunityData.objects.update_or_create(cache_key=cache_key, defaults=defaults)
+
+    if beers_log is None or not beers:
+        return
+    sync_pub_beer_indexes_for_menu(
+        cache_key=cache_key,
+        data={"name": beers_log.name, "lat": beers_log.lat, "lng": beers_log.lng},
+        beers=beers,
+        source=PubBeerBrand.Source.COMMUNITY,
+        account=beers_log.account,
+        match_cache=BeerCatalogMatchCache(),
+    )
+    upsert_pub_price_index(
+        cache_key=cache_key,
+        name=beers_log.name,
+        lat=beers_log.lat,
+        lng=beers_log.lng,
+        beers=beers,
+        observed_at=beers_log.created_at,
+        source=PubPriceIndex.Source.COMMUNITY,
+    )
+
+
 def _hard_delete_locked(account: Account) -> None:
     """Delete one row while its caller holds the Account lock and transaction."""
 
     email = account.primary_email
+    # Remote cleanup runs before anything irreversible or local. Linear goes
+    # FIRST: it is the only remote step that can legitimately fail, and a
+    # failure here must roll the whole purge back while the Apple token is
+    # still unrevoked locally — never after Apple has already revoked it.
+    # The sequence is strictly sequential and fail-closed: any remote failure
+    # aborts with nothing committed, and retries rely on idempotency
+    # (exact ENTITY_NOT_FOUND from Linear, provider-side token revocation).
+    _delete_linear_feedback_issues(account)
     _revoke_apple_identities(account, fail_on_error=True)
     cleanup_ids: list[int] = []
     avatar_cleanup_id = enqueue_account_avatar_file_deletion(account)
@@ -2644,31 +2860,44 @@ def _hard_delete_locked(account: Account) -> None:
         cleanup_id = enqueue_beer_photo_file_deletion(photo, account=account)
         if cleanup_id is not None:
             cleanup_ids.append(cleanup_id)
-    # Enqueue each feedback attachment before its field is cleared so the
-    # storage name survives de-identification; the report row itself is kept.
+    # Feedback reports authored by the account go away completely. Remote
+    # issues were deleted above (before Apple), so by this point every remote
+    # deletion has succeeded; attachments are enqueued while the storage names
+    # still exist, then the rows themselves go.
     for report in FeedbackReport.objects.filter(account=account).exclude(attachment=""):
         cleanup_id = enqueue_feedback_attachment_file_deletion(report)
         if cleanup_id is not None:
             cleanup_ids.append(cleanup_id)
-    FeedbackReport.objects.filter(account=account).update(
-        attachment="",
-        attachment_url="",
-        contact="",
-        contact_type="",
-    )
+    FeedbackReport.objects.filter(account=account).delete()
 
     affected_amenities = set(
         PubAmenityVote.objects.filter(account=account).values_list(
             "cache_key", "pub_identity_key", "amenity_key"
         )
     )
+    affected_community_keys = _capture_affected_community_keys(account)
+
+    # UGC / telemetry authored by the deleted account is purged outright.
+    PubReport.objects.filter(account=account).delete()
+    PubNameCorrection.objects.filter(account=account).delete()
+    UserAddedPub.objects.filter(account=account).delete()
+    PubContributionLog.objects.filter(account=account).delete()
+    ClientEvent.objects.filter(account=account).delete()
+    # The beer-index account FK is SET_NULL, so without this the purged
+    # author's rows would linger anonymously; survivor-owned rows stay.
+    PubBeerBrand.objects.filter(account=account).delete()
+    PubBeerProduct.objects.filter(account=account).delete()
 
     FriendNotification.objects.filter(actor=account).delete()
     _resolve_shared_lifecycles_before_delete(account)
     _scrub_account_uuid_from_json_arrays(account)
 
     ContentReport.objects.filter(target_account=account).update(target_snapshot={})
+    ContentReport.objects.filter(reporter=account).update(comment="")
     account.delete()
+
+    for cache_key in sorted(affected_community_keys):
+        _rebuild_community_signals_after_purge(cache_key)
     for cache_key, pub_identity_key, amenity_key in affected_amenities:
         _recount_amenity_aggregate(cache_key, pub_identity_key, amenity_key)
 

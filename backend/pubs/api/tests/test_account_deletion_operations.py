@@ -7,6 +7,7 @@ import uuid
 
 import pytest
 from django.contrib.auth.hashers import make_password
+from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -252,6 +253,49 @@ def test_operation_id_reuse_by_another_account_is_rejected_before_deletion(
     ).status_code == status.HTTP_200_OK
     proof = AccountDeletionOperation.objects.get(operation_id=operation_id)
     assert proof.account_fingerprint == account_deletion_fingerprint(first_account.public_id)
+
+
+@pytest.mark.django_db
+def test_concurrent_operation_insert_race_returns_conflict_not_500(
+    client: APIClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    owner, _owner_token = _bootstrap(client)
+    racer, racer_token = _bootstrap(client)
+    operation_id = uuid.uuid4()
+    # The concurrent winner already committed a proof bound to another account.
+    AccountDeletionOperation.objects.create(
+        operation_id=operation_id,
+        account_fingerprint=account_deletion_fingerprint(owner.public_id),
+    )
+
+    def racing_get_or_create(*args: object, **kwargs: object) -> tuple[object, bool]:
+        raise IntegrityError("UNIQUE constraint failed on operation_id (simulated race)")
+
+    monkeypatch.setattr(
+        AccountDeletionOperation.objects, "get_or_create", racing_get_or_create
+    )
+    scheduled: list[Account] = []
+    monkeypatch.setattr(accounts, "schedule_deletion", lambda a: scheduled.append(a))
+
+    response = client.delete(
+        "/v1/account/me",
+        data={"operation_id": str(operation_id)},
+        format="json",
+        **_auth(racer_token),
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT, response.content
+    assert response.json()["code"] == "operation_id_reused"
+    assert scheduled == []
+    racer.refresh_from_db()
+    assert racer.status == Account.Status.ACTIVE
+    owner.refresh_from_db()
+    assert owner.status == Account.Status.ACTIVE
+    assert client.get("/v1/account/me", **_auth(racer_token)).status_code == 200
+    proof = AccountDeletionOperation.objects.get(operation_id=operation_id)
+    assert proof.account_fingerprint == account_deletion_fingerprint(owner.public_id)
+    assert AccountDeletionOperation.objects.filter(operation_id=operation_id).count() == 1
 
 
 @pytest.mark.django_db(transaction=True)

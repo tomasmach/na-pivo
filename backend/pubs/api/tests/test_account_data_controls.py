@@ -32,6 +32,7 @@ from pubs.models import (
     ContentReport,
     DrinkLog,
     EmailCredential,
+    FeedbackReport,
     Follow,
     Friendship,
     PartyEvening,
@@ -47,10 +48,12 @@ from pubs.models import (
     PubBeerProduct,
     PubCommunityData,
     PubCommunityXpLedger,
+    PubContributionLog,
     PubEvent,
     PublishedNight,
     PublishedNightComment,
     PubNameCorrection,
+    PubReport,
     PushDevice,
     UserAddedPub,
 )
@@ -736,6 +739,143 @@ def test_account_export_includes_only_owned_current_pub_catalog_contributions(cl
     assert "othck001" not in str(body)
     assert "othck002" not in str(body)
     assert "othck003" not in str(body)
+
+
+@pytest.mark.django_db
+def test_account_export_includes_owned_reports_and_contributions(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-reports")
+
+    pub_report = PubReport.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        external_id="mapy-export-1",
+        name="U Nahlášeného exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        address="Exportní 5",
+        reason=PubReport.Reason.CLOSED,
+    )
+    FeedbackReport.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.IDEA,
+        message="CIZÍ soukromá zpětná vazba",
+    )
+    feedback = FeedbackReport.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.BUG,
+        message="Exportní zpětná vazba",
+        contact_type=FeedbackReport.ContactType.EMAIL,
+        contact="export@example.com",
+        app_version="3.0.0",
+        platform="ios",
+        os_version="18.0",
+    )
+    PubContributionLog.objects.create(
+        account=other,
+        cache_key="othck004",
+        name="CIZÍ příspěvek",
+        lat=49.20,
+        lng=16.60,
+        kind=PubContributionLog.Kind.BEERS,
+        payload=[{"name": "CIZÍ pivo"}],
+        client_id=uuid.uuid4(),
+    )
+    contribution = PubContributionLog.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        kind=PubContributionLog.Kind.HOURS,
+        payload={"mo": [["11:00", "23:00"]]},
+        client_id=uuid.uuid4(),
+    )
+    ContentReport.objects.create(
+        reporter=other,
+        target_account=account,
+        reason=ContentReport.Reason.SPAM,
+        comment="CIZÍ report komentář",
+    )
+    content_report = ContentReport.objects.create(
+        reporter=account,
+        target_account=other,
+        reason=ContentReport.Reason.INAPPROPRIATE_NICKNAME,
+        comment="Sprostá přezdívka.",
+    )
+    PubReport.objects.create(
+        account=other,
+        cache_key="othck004",
+        name="Cizí nahlášená hospoda",
+        lat=49.20,
+        lng=16.60,
+        reason=PubReport.Reason.NOT_PUB,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+
+    assert body["pub_reports"] == [
+        {
+            "cache_key": pub_report.cache_key,
+            "external_id": pub_report.external_id,
+            "name": pub_report.name,
+            "lat": pub_report.lat,
+            "lng": pub_report.lng,
+            "city": pub_report.city,
+            "address": pub_report.address,
+            "reason": PubReport.Reason.CLOSED,
+            "active": True,
+            "created_at": pub_report.created_at.isoformat(),
+        }
+    ]
+    assert len(body["feedback_reports"]) == 1
+    assert body["feedback_reports"][0] == {
+        "client_id": str(feedback.client_id),
+        "category": feedback.category,
+        "message": feedback.message,
+        "contact_type": feedback.contact_type,
+        "contact": feedback.contact,
+        "app_version": feedback.app_version,
+        "platform": feedback.platform,
+        "os_version": feedback.os_version,
+        "attachment_url": "",
+        "status": FeedbackReport.Status.NEW,
+        "created_at": feedback.created_at.isoformat(),
+    }
+    assert len(body["community_contributions"]) == 1
+    assert body["community_contributions"][0] == {
+        "client_id": str(contribution.client_id),
+        "kind": PubContributionLog.Kind.HOURS,
+        "cache_key": contribution.cache_key,
+        "name": contribution.name,
+        "lat": contribution.lat,
+        "lng": contribution.lng,
+        "payload": {"mo": [["11:00", "23:00"]]},
+        "created_at": contribution.created_at.isoformat(),
+    }
+    assert body["content_reports_made"] == [
+        {
+            "target_account_id": str(other.public_id),
+            "reason": ContentReport.Reason.INAPPROPRIATE_NICKNAME,
+            "comment": content_report.comment,
+            "status": ContentReport.Status.NEW,
+            "created_at": content_report.created_at.isoformat(),
+        }
+    ]
+
+    serialized = str(body)
+    assert "Cizí nahlášená hospoda" not in serialized
+    assert "othck004" not in serialized
+    assert "CIZÍ soukromá zpětná vazba" not in serialized
+    assert "CIZÍ příspěvek" not in serialized
+    assert "CIZÍ report komentář" not in serialized
 
 
 @pytest.mark.django_db

@@ -11013,14 +11013,29 @@ class AccountMeView(APIView):
                 fingerprint = account_deletion_fingerprint(account.public_id)
                 should_schedule = operation_id is None
                 if operation_id is not None:
-                    completed_operation, proof_created = (
-                        AccountDeletionOperation.objects.get_or_create(
-                            operation_id=operation_id,
-                            defaults={"account_fingerprint": fingerprint},
+                    try:
+                        # Nested atomic: a lost get_or_create race (concurrent
+                        # INSERT of the same capability) rolls back only this
+                        # savepoint, keeping the outer transaction usable.
+                        with transaction.atomic():
+                            completed_operation, proof_created = (
+                                AccountDeletionOperation.objects.get_or_create(
+                                    operation_id=operation_id,
+                                    defaults={"account_fingerprint": fingerprint},
+                                )
+                            )
+                    except IntegrityError:
+                        # The concurrent winner committed; re-read its proof
+                        # and apply the same fingerprint ownership check below.
+                        completed_operation = (
+                            AccountDeletionOperation.objects.filter(
+                                operation_id=operation_id
+                            ).first()
                         )
-                    )
+                        proof_created = False
                     operation_conflict = not proof_created and (
-                        not account_deletion_fingerprint_matches(
+                        completed_operation is None
+                        or not account_deletion_fingerprint_matches(
                             completed_operation.account_fingerprint,
                             account.public_id,
                         )
