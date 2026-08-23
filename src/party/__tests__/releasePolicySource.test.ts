@@ -75,6 +75,19 @@ describe('release policy: live activity sources', () => {
   });
 });
 
+describe('release policy: LiveParty GPS wiring', () => {
+  const liveParty = read('src', 'party', 'LivePartyMockScreen.tsx');
+
+  it('takes its map fallback position from useNearbyPub instead of a second GPS watcher', () => {
+    expect(liveParty).not.toContain('useDevicePosition');
+    expect(squash(liveParty)).toMatch(/fallbackCenter=\{\s*nearby\.position\s*\?\?\s*undefined\s*\}/);
+  });
+
+  it('gates its useNightRecord polling on route focus', () => {
+    expect(liveParty).toMatch(/useNightRecord\(\{\s*pollingEnabled:\s*isFocused\s*\}\)/);
+  });
+});
+
 describe('release policy: LeaderboardsScreen categories', () => {
   const text = read('src', 'leaderboards', 'LeaderboardsScreen.tsx');
   const flat = squash(text);

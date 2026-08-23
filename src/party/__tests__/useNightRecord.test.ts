@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import {
   hasRenderableNightRecord,
@@ -1312,6 +1312,114 @@ describe('useNightRecord terminal table loss', () => {
       usePartyEveningStore.setState(originalEvening);
       useLivePartyStore.setState(originalLive);
       usePartyGamesStore.setState(originalGames);
+    }
+  });
+});
+
+describe('useNightRecord focus-gated polling', () => {
+  const FOCUSED_EVENING = {
+    id: 'evening-1',
+    joinCode: 'PIVOXY',
+    joinUrl: 'https://na-pivo.cz/party/PIVOXY',
+    host: { id: 'account-a', nickname: 'ty', displayName: 'Ty', avatarUrl: null },
+    pubName: 'U Fleků',
+    pubCity: 'Praha',
+    active: true,
+    startedAt: '2026-08-05T18:00:00Z',
+    endedAt: null,
+    isHost: false,
+    members: [],
+    events: [],
+  };
+  const REFRESH_MS = 10_000;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await clearNightRecordCache();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('polls only while enabled: one immediate refresh, abort on disable, clean restart on enable', async () => {
+    jest.useFakeTimers();
+    const originalAccount = useAccountStore.getState();
+    const originalEvening = usePartyEveningStore.getState();
+    let unmount: (() => void) | undefined;
+    const signals: AbortSignal[] = [];
+    fetchRecordMock.mockImplementation((_code, _accountId, signal) => {
+      signals.push(signal ?? new AbortController().signal);
+      return Promise.resolve({ ok: true, record: record() });
+    });
+
+    try {
+      useAccountStore.setState({
+        session: { deviceId: 'device-a', accountId: 'account-a', token: 'secret' },
+        status: 'ready',
+      });
+      usePartyEveningStore.setState({
+        evening: FOCUSED_EVENING,
+        confirmedIdentity: null,
+        lastEvening: null,
+        pendingJoinCode: null,
+      });
+
+      const rendered = renderHook(
+        (props: { enabled: boolean }) => useNightRecord({ pollingEnabled: props.enabled }),
+        { initialProps: { enabled: true } },
+      );
+      unmount = rendered.unmount;
+
+      // Enabled: exactly one immediate remote refresh…
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(fetchRecordMock).toHaveBeenCalledTimes(1);
+      // …followed by exactly one interval tick per REFRESH_MS.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(REFRESH_MS * 2);
+      });
+      expect(fetchRecordMock).toHaveBeenCalledTimes(3);
+
+      // Disable while a refresh is in flight: the signal aborts and no timer
+      // survives — advancing well past the interval fires nothing new.
+      let releasePending!: (value: { ok: true; record: NightRecord }) => void;
+      const pending = new Promise<{ ok: true; record: NightRecord }>((resolve) => {
+        releasePending = resolve;
+      });
+      fetchRecordMock.mockImplementationOnce((_code, _accountId, signal) => {
+        signals.push(signal ?? new AbortController().signal);
+        return pending;
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(REFRESH_MS);
+      });
+      expect(fetchRecordMock).toHaveBeenCalledTimes(4);
+
+      rendered.rerender({ enabled: false });
+      expect(signals[signals.length - 1].aborted).toBe(true);
+      releasePending({ ok: true, record: record() });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(30_000);
+      });
+      expect(fetchRecordMock).toHaveBeenCalledTimes(4);
+
+      // Re-enable: one fresh immediate refresh, then a single interval again
+      // (three ticks over three intervals — never a duplicated poller).
+      rendered.rerender({ enabled: true });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      expect(fetchRecordMock).toHaveBeenCalledTimes(5);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(REFRESH_MS * 3);
+      });
+      expect(fetchRecordMock).toHaveBeenCalledTimes(8);
+    } finally {
+      unmount?.();
+      useAccountStore.setState(originalAccount);
+      usePartyEveningStore.setState(originalEvening);
     }
   });
 });

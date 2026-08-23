@@ -80,7 +80,6 @@ import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
 import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
 import { formatDistanceCs } from '@/compass/distance';
-import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
@@ -252,7 +251,7 @@ export default function LivePartyMockScreen() {
   // The real shared evening, which is what makes the code, the games and the
   // quiz reach anybody else's phone. The hub's own state stays local and
   // instant; this runs alongside it and is allowed to be slow or to fail.
-  const night = useNightRecord();
+  const night = useNightRecord({ pollingEnabled: isFocused });
   const beer = usePartyBeer();
   const evening = usePartyEveningStore((s) => s.evening);
   const confirmedIdentity = usePartyEveningStore((s) => s.confirmedIdentity);
@@ -499,9 +498,6 @@ export default function LivePartyMockScreen() {
   const mapStops = React.useMemo(
     () => (routeStops.length > 0 ? routeStops : idleStop ? [idleStop] : []),
     [idleStop, routeStops],
-  );
-  const { position: idlePosition } = useDevicePosition(
-    mapStops.length === 0 && nearby.permissionState === 'granted',
   );
   const detectedPub = nearby.selected && pubKey === geohash8(nearby.selected.lat, nearby.selected.lng)
     ? nearby.selected
@@ -830,7 +826,7 @@ export default function LivePartyMockScreen() {
           live={active}
           height={mapHeight}
           caption={false}
-          fallbackCenter={idlePosition ?? undefined}
+          fallbackCenter={nearby.position ?? undefined}
         />
       </View>
 

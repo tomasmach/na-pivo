@@ -40,6 +40,8 @@ export type NightRecordRecoveryState = 'loading' | 'ready' | 'empty' | 'unavaila
 
 interface NightRecordOptions {
   recoverLatestEnded?: boolean;
+  /** When false (e.g. a background route), no remote cache load or refresh runs. */
+  pollingEnabled?: boolean;
   onRecoveryStateChange?: (state: NightRecordRecoveryState) => void;
 }
 
@@ -384,6 +386,7 @@ export function stopsForSessions(sessions: TallySession[], meId: string): NightS
 
 export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
   const recoverLatestEnded = options.recoverLatestEnded === true;
+  const pollingEnabled = options.pollingEnabled !== false;
   const onRecoveryStateChange = options.onRecoveryStateChange;
   const currentSession = useTallyStore((state) => state.current);
   const history = useTallyStore((state) => state.history);
@@ -562,6 +565,7 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
   ]);
 
   React.useEffect(() => {
+    if (!pollingEnabled) return;
     if (!code || !accountId) return;
     const controller = new AbortController();
     let inFlight = false;
@@ -600,7 +604,7 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
       if (interval) clearInterval(interval);
       controller.abort();
     };
-  }, [code, accountId, targetEvening?.active]);
+  }, [code, accountId, targetEvening?.active, pollingEnabled]);
 
   React.useEffect(() => {
     if (!recoverLatestEnded) return;
