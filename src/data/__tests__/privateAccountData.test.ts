@@ -5,8 +5,15 @@ import { clearPhotoContestCache } from '../photoContestClient';
 import {
   clearLocalPrivateAccountData,
   PRIVATE_STORAGE_KEYS,
+  rehydratePrivateStoresAfterBoundary,
   resetPrivateAccountMemory,
 } from '../privateAccountData';
+import privateAccountStorage from '../privateAccountStorage';
+import {
+  isPrivateAccountMutationFrozen,
+  PrivateAccountMutationFrozenError,
+  setPrivateAccountDeletionRecoveryBlocked,
+} from '../privateAccountBoundary';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -16,7 +23,10 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { usePartyGamesStore } from '@/stores/partyGamesStore';
-import { clearContestResultsAccountData } from '@/stores/contestResultsStore';
+import {
+  clearContestResultsAccountData,
+  useContestResultsStore,
+} from '@/stores/contestResultsStore';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -61,7 +71,10 @@ jest.mock('@/stores/contestResultsStore', () => ({
   clearContestResultsAccountData: jest.fn(async () => undefined),
   useContestResultsStore: {
     setState: jest.fn(),
-    persist: { rehydrate: jest.fn(async () => undefined) },
+    persist: {
+      hasHydrated: jest.fn(() => true),
+      rehydrate: jest.fn(async () => undefined),
+    },
   },
 }));
 
@@ -141,7 +154,12 @@ beforeEach(async () => {
     reportedPubIds: [],
     reportedCacheKeys: [],
   });
-  useSettingsStore.setState({ homePoint: null, navigationProvider: 'google' });
+  useSettingsStore.setState({
+    homePoint: null,
+    navigationProvider: 'google',
+    priceCurrency: 'CZK',
+    priceCurrencyRate: 1,
+  });
   useLivePartyStore.getState().end();
   usePartyEveningStore.setState({
     evening: null,
@@ -445,5 +463,251 @@ it('fails closed when the persisted home point cannot be read, then retries', as
     await expect(clearLocalPrivateAccountData()).resolves.toEqual({ ok: true });
   } finally {
     getItem.mockImplementation(originalGetItem!);
+  }
+});
+
+it('reports rehydration failure when storage reads reject during pending deletion recovery', async () => {
+  await AsyncStorage.setItem(
+    'na-pivo-tally',
+    JSON.stringify({ state: { current: session(), history: [] }, version: 1 }),
+  );
+
+  const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+  const originalGetItem = getItem.getMockImplementation();
+  expect(originalGetItem).toBeDefined();
+  getItem.mockImplementation(() => Promise.reject(new Error('storage unavailable')));
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+    await expect(privateAccountStorage.getItem('na-pivo-tally')).rejects.toBeInstanceOf(
+      PrivateAccountMutationFrozenError,
+    );
+    await expect(AsyncStorage.getItem('na-pivo-tally')).rejects.toThrow('storage unavailable');
+
+    const rehydrated = await rehydratePrivateStoresAfterBoundary();
+
+    expect(rehydrated).toBe(false);
+    expect(useTallyStore.getState().current).toBeNull();
+  } finally {
+    getItem.mockImplementation(originalGetItem!);
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('rehydrates stores through authorized reads while deletion recovery stays frozen', async () => {
+  await AsyncStorage.setItem(
+    'na-pivo-tally',
+    JSON.stringify({ state: { current: session(), history: [] }, version: 1 }),
+  );
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+
+    await expect(
+      privateAccountStorage.setItem('na-pivo-tally', '{"state":{"current":null}}'),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+    await expect(
+      privateAccountStorage.removeItem('na-pivo-tally'),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+    await expect(privateAccountStorage.getItem('na-pivo-tally')).rejects.toBeInstanceOf(
+      PrivateAccountMutationFrozenError,
+    );
+
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(true);
+    expect(useTallyStore.getState().current).toMatchObject({ clientId: 'visit-1' });
+
+    await expect(privateAccountStorage.getItem('na-pivo-tally')).rejects.toBeInstanceOf(
+      PrivateAccountMutationFrozenError,
+    );
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(true);
+  } finally {
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('fails when persisted tally payload is malformed during blocked deletion recovery', async () => {
+  await AsyncStorage.setItem('na-pivo-tally', '{broken');
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(false);
+    expect(useTallyStore.getState().current).toBeNull();
+  } finally {
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('fails closed when useTallyStore.persist.hasHydrated reports no hydration after rehydrate', async () => {
+  const rehydrateSpy = jest
+    .spyOn(useTallyStore.persist, 'rehydrate')
+    .mockResolvedValue(undefined);
+  const hasHydratedSpy = jest
+    .spyOn(useTallyStore.persist, 'hasHydrated')
+    .mockReturnValue(false);
+
+  try {
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(false);
+  } finally {
+    rehydrateSpy.mockRestore();
+    hasHydratedSpy.mockRestore();
+  }
+});
+
+it('migration writes current raw versions for tally and settings behind blocked recovery', async () => {
+  await AsyncStorage.setItem(
+    'na-pivo-tally',
+    JSON.stringify({ state: { current: session(), history: [] }, version: 0 }),
+  );
+  await AsyncStorage.setItem(
+    'na-pivo-settings',
+    JSON.stringify({
+      state: { homePoint: null, priceCurrency: 'CZK', priceCurrencyRate: 1 },
+      version: 0,
+    }),
+  );
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(true);
+    expect(useTallyStore.getState().current).toMatchObject({ clientId: 'visit-1' });
+
+    const tallyRaw = JSON.parse((await AsyncStorage.getItem('na-pivo-tally')) as string) as {
+      version?: number;
+    };
+    const settingsRaw = JSON.parse(
+      (await AsyncStorage.getItem('na-pivo-settings')) as string,
+    ) as { version?: number };
+    expect(tallyRaw.version).toBe(1);
+    expect(settingsRaw.version).toBe(2);
+  } finally {
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('resets stale tally memory when the blocked-recovery migration write fails', async () => {
+  await AsyncStorage.setItem(
+    'na-pivo-tally',
+    JSON.stringify({ state: { current: session(), history: [] }, version: 0 }),
+  );
+
+  const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+  const originalSetItem = setItem.getMockImplementation();
+  expect(originalSetItem).toBeDefined();
+  setItem.mockImplementation((key, value) =>
+    key === 'na-pivo-tally'
+      ? Promise.reject(new Error('storage unavailable'))
+      : originalSetItem!(key, value),
+  );
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(false);
+    expect(useTallyStore.persist.hasHydrated()).toBe(false);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history).toEqual([]);
+  } finally {
+    setItem.mockImplementation(originalSetItem!);
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('resolves false when a real settings onRehydrate callback throws during blocked recovery', async () => {
+  await AsyncStorage.setItem(
+    'na-pivo-settings',
+    JSON.stringify({
+      state: { homePoint: null, priceCurrency: { bad: true }, priceCurrencyRate: 2 },
+      version: 2,
+    }),
+  );
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(false);
+  } finally {
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('unrelated private keys stay frozen while an authorized tally read is pending', async () => {
+  const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+  const originalGetItem = getItem.getMockImplementation();
+  expect(originalGetItem).toBeDefined();
+  let releaseTallyRead!: (value: string | null) => void;
+  const pendingTallyRead = new Promise<string | null>((resolve) => {
+    releaseTallyRead = resolve;
+  });
+  getItem.mockImplementation((key) =>
+    key === 'na-pivo-tally' ? pendingTallyRead : originalGetItem!(key),
+  );
+  setPrivateAccountDeletionRecoveryBlocked(true);
+
+  try {
+    const hydration = rehydratePrivateStoresAfterBoundary();
+    await Promise.resolve();
+
+    await expect(
+      privateAccountStorage.getItem('na-pivo-unrelated'),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+    await expect(
+      privateAccountStorage.setItem('na-pivo-unrelated', '{}'),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+
+    releaseTallyRead(null);
+    await expect(hydration).resolves.toBe(true);
+  } finally {
+    getItem.mockImplementation(originalGetItem!);
+    setPrivateAccountDeletionRecoveryBlocked(false);
+  }
+});
+
+it('queues a concurrent boundary rehydration behind the in-flight tally pass', async () => {
+  let releaseTallyRehydrate!: () => void;
+  const blockedTallyRehydrate = new Promise<void>((resolve) => {
+    releaseTallyRehydrate = resolve;
+  });
+  let tallyInvocations = 0;
+  const rehydrateSpy = jest
+    .spyOn(useTallyStore.persist, 'rehydrate')
+    .mockImplementation(() => {
+      tallyInvocations += 1;
+      if (tallyInvocations === 1) return blockedTallyRehydrate;
+      return Promise.resolve();
+    });
+
+  let first: Promise<boolean> | null = null;
+  let second: Promise<boolean> | null = null;
+  try {
+    first = rehydratePrivateStoresAfterBoundary();
+    second = rehydratePrivateStoresAfterBoundary();
+
+    expect(tallyInvocations).toBe(1);
+  } finally {
+    releaseTallyRehydrate();
+    await Promise.allSettled(
+      [first, second].filter((pending): pending is Promise<boolean> => pending !== null),
+    );
+    rehydrateSpy.mockRestore();
+  }
+
+  await expect(first).resolves.toBe(true);
+  await expect(second).resolves.toBe(true);
+});
+
+it('resolves false when contestResults rehydrate throws synchronously', async () => {
+  const rehydrateMock = useContestResultsStore.persist.rehydrate as jest.Mock;
+  const originalImplementation = rehydrateMock.getMockImplementation();
+  expect(originalImplementation).toBeDefined();
+  rehydrateMock.mockImplementation(() => {
+    throw new Error('contest results rehydrate exploded');
+  });
+
+  try {
+    await expect(rehydratePrivateStoresAfterBoundary()).resolves.toBe(false);
+  } finally {
+    rehydrateMock.mockImplementation(originalImplementation!);
   }
 });

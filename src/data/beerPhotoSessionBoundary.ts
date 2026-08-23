@@ -17,10 +17,20 @@ type BoundaryListener = (snapshot: { frozen: boolean; generation: number }) => v
 const activeTransitions = new Set<symbol>();
 const listeners = new Set<BoundaryListener>();
 let generation = 0;
+let deletionRecoveryBlocks = false;
 
 function publish(): void {
-  const snapshot = { frozen: activeTransitions.size > 0, generation };
-  for (const listener of listeners) listener(snapshot);
+  const snapshot = {
+    frozen: activeTransitions.size > 0 || deletionRecoveryBlocks,
+    generation,
+  };
+  for (const listener of listeners) {
+    try {
+      listener(snapshot);
+    } catch {
+      // One subsystem must not starve the rest of the photo boundary.
+    }
+  }
 }
 
 export function beerPhotoSessionGeneration(): number {
@@ -28,7 +38,18 @@ export function beerPhotoSessionGeneration(): number {
 }
 
 export function isBeerPhotoSessionFrozen(): boolean {
-  return activeTransitions.size > 0;
+  return activeTransitions.size > 0 || deletionRecoveryBlocks;
+}
+
+/**
+ * Freeze the photo boundary while account-deletion recovery is pending.
+ * Publishing only on a real change keeps transitions usable while blocked.
+ */
+export function setBeerPhotoDeletionRecoveryBlocked(blocked: boolean): void {
+  if (deletionRecoveryBlocks === blocked) return;
+  deletionRecoveryBlocks = blocked;
+  generation += 1;
+  publish();
 }
 
 export function subscribeBeerPhotoSessionBoundary(listener: BoundaryListener): () => void {
@@ -62,6 +83,7 @@ export function beginBeerPhotoSessionTransition(): BeerPhotoSessionTransition {
 /** Tests only; production transitions must always release their own handle. */
 export function resetBeerPhotoSessionBoundaryForTests(): void {
   activeTransitions.clear();
+  deletionRecoveryBlocks = false;
   generation += 1;
   publish();
 }

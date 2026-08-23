@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { AccountSession } from './account';
-import { suppressPrivatePersistenceDuringMemoryReset } from './privateAccountStorage';
+import { suppressPrivatePersistenceDuringMemoryReset, runAuthorizedPrivateStoreRehydration } from './privateAccountStorage';
 
 import { clearAddedPubsQueue } from './addedPubsQueue';
 import {
@@ -279,25 +279,75 @@ export function resetPrivateAccountMemory(): void {
 }
 
 /** Reload private persisted stores only after the exact boundary is released. */
-export async function rehydratePrivateStoresAfterBoundary(): Promise<boolean> {
-  try {
-    await Promise.all([
-      useTallyStore.persist.rehydrate(),
-      usePubRatingsStore.persist.rehydrate(),
-      usePubAmenitiesStore.persist.rehydrate(),
-      useCommunityStore.persist.rehydrate(),
-      usePubStore.persist.rehydrate(),
-      usePartyGroupsStore.persist.rehydrate(),
-      useLivePartyStore.persist.rehydrate(),
-      useContestResultsStore.persist.rehydrate(),
-      useBeerPhotosStore.persist.rehydrate(),
-      useVycepStore.persist.rehydrate(),
-      useSettingsStore.persist.rehydrate(),
-    ]);
-    return true;
-  } catch {
-    return false;
+const PRIVATE_STORE_REHYDRATION_REGISTRY: readonly {
+  storageKey: string;
+  store: {
+    persist: {
+      rehydrate: () => unknown;
+      hasHydrated: () => boolean;
+    };
+  };
+}[] = [
+  { storageKey: 'na-pivo-tally', store: useTallyStore },
+  { storageKey: 'na-pivo-pub-ratings', store: usePubRatingsStore },
+  { storageKey: 'na-pivo-pub-amenities', store: usePubAmenitiesStore },
+  { storageKey: 'na-pivo-community', store: useCommunityStore },
+  { storageKey: 'na-pivo-pub', store: usePubStore },
+  { storageKey: 'na-pivo-party-groups', store: usePartyGroupsStore },
+  { storageKey: 'na-pivo-live-party', store: useLivePartyStore },
+  { storageKey: CONTEST_RESULTS_STORAGE_KEY, store: useContestResultsStore },
+  { storageKey: 'na-pivo-beer-photos', store: useBeerPhotosStore },
+  { storageKey: 'na-pivo-vycep', store: useVycepStore },
+  { storageKey: 'na-pivo-settings', store: useSettingsStore },
+];
+
+async function runPrivateStoreRehydrationPass(): Promise<boolean> {
+  // Only one exact-key permit may stay active at a time, so the rehydrations
+  // must run strictly sequentially — never in parallel.
+  for (const entry of PRIVATE_STORE_REHYDRATION_REGISTRY) {
+    const ok = await runAuthorizedPrivateStoreRehydration(
+      entry.storageKey,
+      () => entry.store.persist.rehydrate(),
+      () => entry.store.persist.hasHydrated(),
+    );
+    if (!ok) {
+      // A failed entry may have left partially hydrated private memory behind;
+      // reset everything back to defaults so no outgoing-account state survives.
+      // A misbehaving reset subsystem must not mask the `false` result.
+      try {
+        resetPrivateAccountMemory();
+      } catch {
+        // Fail closed regardless.
+      }
+      return false;
+    }
   }
+  return true;
+}
+
+// Single-flight guard: while one registry pass is in flight, every caller
+// awaits that same pass instead of starting a second one.
+let inFlightRehydrationPass: Promise<boolean> | null = null;
+
+export function rehydratePrivateStoresAfterBoundary(): Promise<boolean> {
+  const existingPass = inFlightRehydrationPass;
+  if (existingPass) return existingPass;
+
+  const pass = runPrivateStoreRehydrationPass();
+  // Attach settlement handling first so `pass` never becomes an unhandled
+  // rejection; the identity check keeps a late settle from clearing a newer pass.
+  const tracked = pass.then(
+    (result) => {
+      if (inFlightRehydrationPass === tracked) inFlightRehydrationPass = null;
+      return result;
+    },
+    (error: unknown) => {
+      if (inFlightRehydrationPass === tracked) inFlightRehydrationPass = null;
+      throw error;
+    },
+  );
+  inFlightRehydrationPass = tracked;
+  return tracked;
 }
 
 /**

@@ -17,6 +17,7 @@ import { File, UploadType } from 'expo-file-system';
 
 import {
   ensureAccount,
+  ensureCredentialBindingForSession,
   generateUuidV4,
   getSessionToken,
   readDurableAccountSession,
@@ -36,6 +37,7 @@ import {
 } from './beerPhotoDeletionSync';
 import {
   beginBeerPhotoSessionTransition,
+  setBeerPhotoDeletionRecoveryBlocked,
   type BeerPhotoSessionTransition,
 } from './beerPhotoSessionBoundary';
 import {
@@ -44,6 +46,7 @@ import {
   completeAccountDeletionReceipt,
   readAccountDeletionReceipt,
   retireAccountDeletionOrphan,
+  retireQuarantinedAccountDeletionReceipt,
   writeAccountDeletionReceipt,
   type AccountDeletionOrphan,
 } from './accountDeletionReceipt';
@@ -54,6 +57,7 @@ import {
 import {
   beginPrivateAccountTransition,
   readPrivateAccountMergeIntent,
+  setPrivateAccountDeletionRecoveryBlocked,
   type PrivateAccountTransition,
 } from './privateAccountBoundary';
 import {
@@ -513,7 +517,9 @@ async function authFetch(
         : await ensureAccount();
       token = session && !session.authenticated ? session.token : null;
     } else if (opts.bearer === 'current') {
-      token = await getSessionToken();
+      token = Object.prototype.hasOwnProperty.call(opts, 'session')
+        ? opts.session?.token ?? null
+        : await getSessionToken();
     }
   } catch (error) {
     trackApiFailure('auth_request', {
@@ -1383,31 +1389,143 @@ export type StartupAccountDeletionRecoveryResult =
 export async function recoverPendingAccountDeletionAtStartup(): Promise<
   StartupAccountDeletionRecoveryResult
 > {
+  setBeerPhotoDeletionRecoveryBlocked(true);
+  setPrivateAccountDeletionRecoveryBlocked(true);
   const privateAccountTransition = beginPrivateAccountTransition('account-deletion-recovery');
   const photoSessionTransition = beginBeerPhotoSessionTransition();
   if (!privateAccountTransition) {
     photoSessionTransition.release();
     return 'blocked';
   }
+  let safeToRehydrate = false;
   try {
     await privateAccountTransition.drain();
     const mergeIntent = await readPrivateAccountMergeIntent();
     if (!mergeIntent.ok || mergeIntent.intent) return 'blocked';
 
     const loaded = await readAccountDeletionReceipt();
-    if (!loaded.ok) return 'blocked';
+    if (!loaded.ok) {
+      // io/unsupported: storage itself is unreliable or ahead of this app
+      // version. Touch nothing and keep every blocker engaged for a retry.
+      if (loaded.failureKind !== 'corrupt') return 'blocked';
+
+      // Corrupt: the receipt layer already quarantined the raw bytes with a
+      // verified durable write, so the deletion boundary can finish fully
+      // offline. No network probe may run against bytes we could not parse.
+      const corruptDurableSession = await readDurableAccountSession();
+      if (!corruptDurableSession.available) return 'blocked';
+      const corruptOutgoingSession = corruptDurableSession.session;
+      const boundary = await finishAnonymousSessionBoundary(corruptOutgoingSession);
+      if (!boundary.ok) return 'blocked';
+      const retired = await retireQuarantinedAccountDeletionReceipt(loaded.quarantineId);
+      if (!retired.ok) return 'blocked';
+      safeToRehydrate = true;
+      return 'recovered';
+    }
     const intent = loaded.intent;
-    if (!intent) return 'none';
+    if (!intent) {
+      safeToRehydrate = true;
+      return 'none';
+    }
 
     const serverComplete = await fetchAccountDeletionCompletion(intent.operationId);
     const durableSession = await readDurableAccountSession();
     if (!durableSession.available) return 'blocked';
     const outgoingSession = durableSession.session;
+
     if (serverComplete !== true) {
+      const sameAccount =
+        !!outgoingSession && outgoingSession.accountId === intent.accountId;
+      const sameCredentialBinding =
+        typeof intent.credentialBindingId === 'string' &&
+        intent.credentialBindingId.length > 0 &&
+        outgoingSession?.credentialBindingId === intent.credentialBindingId;
+      const exactPendingCredential =
+        intent.phase === 'pending' &&
+        serverComplete === false &&
+        sameAccount &&
+        sameCredentialBinding;
+
+      // The receipt belongs to an identity that is no longer the durable one.
+      // Archive the capability for the manual flow instead of ever clearing or
+      // reverting anything from startup recovery.
+      const staleCurrentReceipt =
+        !!outgoingSession &&
+        (outgoingSession.accountId !== intent.accountId ||
+          !intent.credentialBindingId ||
+          !outgoingSession.credentialBindingId ||
+          outgoingSession.credentialBindingId !== intent.credentialBindingId);
+      if (
+        staleCurrentReceipt &&
+        (serverComplete === false || serverComplete === null)
+      ) {
+        const archived = await archiveAccountDeletionReceipt(
+          intent.accountId,
+          intent.operationId,
+        );
+        if (archived.ok) {
+          safeToRehydrate = true;
+          return 'recovered';
+        }
+        return 'blocked';
+      }
+
+      // A previously completed proof that now reads false means reactivation
+      // explicitly invalidated the deletion epoch. Archive the capability for
+      // the manual flow instead of ever deleting a live account again.
+      if (
+        intent.phase === 'complete' &&
+        serverComplete === false &&
+        sameAccount &&
+        sameCredentialBinding
+      ) {
+        const archived = await archiveAccountDeletionReceipt(
+          intent.accountId,
+          intent.operationId,
+        );
+        if (!archived.ok) return 'blocked';
+        safeToRehydrate = true;
+        return 'recovered';
+      }
+
       // With no readable durable identity, publishing hydrated private stores
       // could expose A while Keychain is merely locked. Hold the startup gate;
       // a later retry can distinguish that from a genuinely empty cache.
-      return outgoingSession ? 'deferred' : 'blocked';
+      if (!exactPendingCredential) return outgoingSession ? 'deferred' : 'blocked';
+
+      // The proof says the account still exists. Finish A's photo tombstones
+      // with the captured session, then repeat the exact DELETE (same
+      // operationId). Any network or non-204 outcome stays deferred — never a
+      // local wipe on an unproven deletion.
+      const deletionFlush = await flushBeerPhotoDeletionsBeforeSessionEnd({
+        session: outgoingSession,
+        preferProvidedSession: true,
+      });
+      if (deletionFlush.storageError || deletionFlush.remaining !== 0) return 'deferred';
+      const res = await authFetch('/v1/account/me', {
+        method: 'DELETE',
+        bearer: 'current',
+        session: outgoingSession,
+        headers: { 'X-Account-Deletion-Operation-Id': intent.operationId },
+      });
+      if ('networkError' in res) return 'deferred';
+      if (res.status !== 204) {
+        // Only the backend's canonical reactivation answers may retire the
+        // receipt; anything opaque stays deferred for a later startup retry.
+        // A DELETE 401 is terminal revoked auth regardless of body shape —
+        // the bearer was invalidated because the account is gone.
+        const canonicalReactivation =
+          (res.status === 409 && res.data.code === 'deletion_epoch_cancelled') ||
+          res.status === 401;
+        if (!canonicalReactivation) return 'deferred';
+        const archived = await archiveAccountDeletionReceipt(
+          intent.accountId,
+          intent.operationId,
+        );
+        if (!archived.ok) return 'blocked';
+        safeToRehydrate = true;
+        return 'recovered';
+      }
     }
 
     if (intent.phase !== 'complete') {
@@ -1426,7 +1544,11 @@ export async function recoverPendingAccountDeletionAtStartup(): Promise<
         intent.accountId,
         intent.operationId,
       );
-      return cleared.ok ? 'recovered' : 'blocked';
+      if (cleared.ok) {
+        safeToRehydrate = true;
+        return 'recovered';
+      }
+      return 'blocked';
     }
 
     const boundary = await finishAnonymousSessionBoundary(outgoingSession);
@@ -1436,7 +1558,11 @@ export async function recoverPendingAccountDeletionAtStartup(): Promise<
       intent.accountId,
       intent.operationId,
     );
-    return cleared.ok ? 'recovered' : 'blocked';
+    if (cleared.ok) {
+      safeToRehydrate = true;
+      return 'recovered';
+    }
+    return 'blocked';
   } catch (error) {
     trackApiFailure('auth_account_delete_startup', {
       reason: 'recovery_exception',
@@ -1446,7 +1572,28 @@ export async function recoverPendingAccountDeletionAtStartup(): Promise<
   } finally {
     photoSessionTransition.release();
     privateAccountTransition.release();
-    await rehydratePrivateStoresAfterBoundary();
+    // Deferred/blocked outcomes must keep private stores frozen for the next
+    // startup attempt; only a proven-safe rehydrate may publish them.
+    if (safeToRehydrate) {
+      let rehydrated: boolean;
+      try {
+        rehydrated = await rehydratePrivateStoresAfterBoundary();
+      } catch (error) {
+        trackApiFailure('auth_account_delete_startup', {
+          reason: 'rehydrate_exception',
+          error,
+        });
+        return 'blocked';
+      }
+      if (rehydrated !== true) {
+        trackApiFailure('auth_account_delete_startup', {
+          reason: 'rehydrate_failed',
+        });
+        return 'blocked';
+      }
+      setPrivateAccountDeletionRecoveryBlocked(false);
+      setBeerPhotoDeletionRecoveryBlocked(false);
+    }
   }
 }
 
@@ -1455,22 +1602,46 @@ async function deleteAccountWithinPhotoBoundary(): Promise<AuthActionResult> {
   if (!durableSession.available) return ACCOUNT_DELETION_RECEIPT_FAILED;
   const outgoingSession = durableSession.session;
   if (!outgoingSession?.accountId) return NETWORK_ERROR;
+  // Mutable because binding an exact credential may rotate the session object;
+  // every later step must ride the SAME captured identity, never a re-read
+  // that could pick up a concurrent token rotation.
+  let deletionSession: AccountSession = outgoingSession;
 
   const loaded = await readAccountDeletionReceipt();
-  if (!loaded.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+  if (!loaded.ok) {
+    // io/unsupported: storage itself is unreliable or ahead of this app
+    // version. Touch nothing and keep the existing fail-closed behavior.
+    if (loaded.failureKind !== 'corrupt') return ACCOUNT_DELETION_RECEIPT_FAILED;
+
+    // Corrupt: the receipt layer already durably verified the quarantined raw
+    // bytes, so this tap may finish fully offline with local-only recovery:
+    // strictly clear A, rotate to a fresh anonymous identity, retire the exact
+    // quarantine — then require a second confirmation before any DELETE.
+    const boundary = await finishAnonymousSessionBoundary(deletionSession);
+    if (!boundary.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    const retired = await retireQuarantinedAccountDeletionReceipt(loaded.quarantineId);
+    if (!retired.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
+    return ACCOUNT_DELETION_RECOVERED;
+  }
   if (!(await recoverAccountDeletionOrphans(loaded.orphans))) {
     return ACCOUNT_DELETION_RECEIPT_FAILED;
   }
   let intent = loaded.intent;
 
-  if (intent && intent.accountId !== outgoingSession.accountId) {
-    // A durable B credential proves A's local session boundary crossed. A
-    // pending proof still needs the public one-bit server status before it can
-    // be upgraded/retired; never infer completion from B or from A's old 401.
-    const serverComplete =
-      intent.phase === 'complete'
-        ? true
-        : await fetchAccountDeletionCompletion(intent.operationId);
+  if (
+    intent &&
+    (intent.accountId !== deletionSession.accountId ||
+      !intent.credentialBindingId ||
+      !deletionSession.credentialBindingId ||
+      intent.credentialBindingId !== deletionSession.credentialBindingId)
+  ) {
+    // The receipt belongs to another account or to a superseded credential of
+    // the same account (a same-account re-login rotates the binding). A pending
+    // proof still needs the public one-bit server status before it can be
+    // upgraded/retired — and the local `complete` bit is re-probed too, because
+    // a same-account reactivation atomically invalidated that old epoch.
+    // Never DELETE, clear private data, or revert the current session here.
+    const serverComplete = await fetchAccountDeletionCompletion(intent.operationId);
     if (serverComplete === true) {
       if (intent.phase === 'pending') {
         const completed = await completeAccountDeletionReceipt(
@@ -1491,21 +1662,34 @@ async function deleteAccountWithinPhotoBoundary(): Promise<AuthActionResult> {
       );
       if (!archived.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
     }
-    return outgoingSession.authenticated
-      ? ACCOUNT_DELETION_RECOVERED
-      : { ok: true };
+    // A receipt that was just retired belongs to a confirmation the user never
+    // saw finish — this tap only settled A's stale receipt and must never imply
+    // the current session (B) was deleted. Require a fresh second confirmation
+    // before any DELETE can touch the current session, anonymous or
+    // authenticated alike.
+    return ACCOUNT_DELETION_RECOVERED;
   }
 
   let createdNow = false;
   if (!intent) {
+    // A fresh receipt must be bound to the exact credential performing the
+    // DELETE so token rotation can never strand it under a stale bearer.
+    const boundSession = await ensureCredentialBindingForSession(deletionSession);
+    const credentialBindingId = boundSession?.credentialBindingId;
+    if (!boundSession || typeof credentialBindingId !== 'string' || !credentialBindingId) {
+      return ACCOUNT_DELETION_RECEIPT_FAILED;
+    }
+    deletionSession = boundSession;
     intent = {
-      accountId: outgoingSession.accountId,
+      accountId: deletionSession.accountId,
       operationId: generateUuidV4(),
       phase: 'pending',
+      credentialBindingId,
     };
     const persisted = await writeAccountDeletionReceipt(
       intent.accountId,
       intent.operationId,
+      credentialBindingId,
     );
     if (!persisted.ok) return ACCOUNT_DELETION_RECEIPT_FAILED;
     createdNow = true;
@@ -1537,7 +1721,7 @@ async function deleteAccountWithinPhotoBoundary(): Promise<AuthActionResult> {
     // The session barrier has already aborted native uploads, so once this is
     // empty the account-wide deletion cannot strand a late local tombstone.
     const deletionFlush = await flushBeerPhotoDeletionsBeforeSessionEnd({
-      session: outgoingSession,
+      session: deletionSession,
       preferProvidedSession: true,
     });
     if (deletionFlush.storageError || deletionFlush.remaining !== 0) {
@@ -1548,6 +1732,7 @@ async function deleteAccountWithinPhotoBoundary(): Promise<AuthActionResult> {
     const res = await authFetch('/v1/account/me', {
       method: 'DELETE',
       bearer: 'current',
+      session: deletionSession,
       headers: { 'X-Account-Deletion-Operation-Id': intent.operationId },
     });
     if ('networkError' in res) return NETWORK_ERROR;
@@ -1564,7 +1749,7 @@ async function deleteAccountWithinPhotoBoundary(): Promise<AuthActionResult> {
     intent = { ...intent, phase: 'complete' };
   }
 
-  const boundary = await finishAnonymousSessionBoundary(outgoingSession);
+  const boundary = await finishAnonymousSessionBoundary(deletionSession);
   if (!boundary.ok) return boundary;
 
   const clearedReceipt = await clearAccountDeletionReceipt(

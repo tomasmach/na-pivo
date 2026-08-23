@@ -54,6 +54,14 @@ export interface AccountSession {
    * silently forks a new anonymous account on a 401.
    */
   authenticated?: boolean;
+  /**
+   * Random NON-SECRET UUID minted locally each time this module persists a
+   * newly server-issued credential, authenticated or anonymous. It lets
+   * deletion/startup code prove it is operating on exactly the durable session
+   * it was handed (a rotated token or replacement account always carries a
+   * different binding).
+   */
+  credentialBindingId?: string;
 }
 
 export interface AccountPreferences {
@@ -92,6 +100,16 @@ interface RegisterResponse {
   hide_pub_names?: boolean;
 }
 
+// A credential binding must be a canonical (lowercase) RFC-4122 v4 UUID.
+// Anything else read back from the secure store is treated as absent legacy
+// data, never as exact-credential proof of the durable session.
+const CREDENTIAL_BINDING_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function isCredentialBindingId(value: unknown): value is string {
+  return typeof value === 'string' && CREDENTIAL_BINDING_ID_PATTERN.test(value);
+}
+
 interface AccountMeResponse {
   id?: string;
   device_id?: string;
@@ -120,6 +138,10 @@ interface CachedAccount {
   token: string;
   /** True when this session is credential-backed (signed in), not anonymous. */
   authenticated?: boolean;
+  /** See AccountSession.credentialBindingId. Legacy cached records written
+   *  before bindings existed omit it and get one lazily via
+   *  ensureCredentialBindingForSession. */
+  credentialBindingId?: string;
 }
 
 /**
@@ -305,12 +327,19 @@ async function readCachedAccountUnlocked(): Promise<CachedAccountRead> {
   try {
     const parsed = JSON.parse(raw) as Partial<CachedAccount>;
     if (parsed?.deviceId && parsed?.accountId && parsed?.token) {
-      const account = {
+      const account: CachedAccount = {
         deviceId: parsed.deviceId,
         accountId: parsed.accountId,
         token: parsed.token,
         authenticated: parsed.authenticated === true,
       };
+      // Legacy records written before bindings existed simply omit the field;
+      // they stay readable and get a binding lazily via
+      // ensureCredentialBindingForSession. A malformed binding is treated the
+      // same way — it must never be trusted as exact-credential proof.
+      if (isCredentialBindingId(parsed.credentialBindingId)) {
+        account.credentialBindingId = parsed.credentialBindingId;
+      }
       lastKnownAccount = account;
       return { available: true, account };
     }
@@ -511,6 +540,7 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
       accountId: cached.accountId,
       token: cached.token,
       authenticated: true,
+      credentialBindingId: cached.credentialBindingId,
     };
   }
 
@@ -527,7 +557,13 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
         // Best effort. The secure record will heal it again on the next call.
       }
     }
-    return { deviceId, accountId: cached.accountId, token: cached.token, authenticated: false };
+    return {
+      deviceId,
+      accountId: cached.accountId,
+      token: cached.token,
+      authenticated: false,
+      credentialBindingId: cached.credentialBindingId,
+    };
   }
 
   // A failed Keychain read is not proof that the account is absent. Wait for a
@@ -604,6 +640,7 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
           accountId: data.id,
           token: data.token,
           authenticated: false,
+          credentialBindingId: generateUuidV4(),
         };
         const persisted = await writeCachedAccount(account);
         if (!persisted) return null;
@@ -612,6 +649,7 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
           accountId: account.accountId,
           token: account.token,
           authenticated: false,
+          credentialBindingId: account.credentialBindingId,
         };
       }
       return null;
@@ -656,6 +694,7 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
       accountId: lastKnownAccount.accountId,
       token: lastKnownAccount.token,
       authenticated: lastKnownAccount.authenticated,
+      credentialBindingId: lastKnownAccount.credentialBindingId,
     };
   }
 
@@ -869,11 +908,68 @@ export async function setSession(session: {
     token: session.token,
     authenticated: session.authenticated,
   };
+  // Every newly persisted credential gets a FRESH random binding (same-account
+  // re-login rotates it too), authenticated or anonymous.
+  nextSession.credentialBindingId = generateUuidV4();
   const persisted = await writeCachedAccount(nextSession);
   if (!persisted) {
     throw new Error('Secure session persistence failed.');
   }
   setTelemetrySession(nextSession);
+}
+
+/**
+ * Durable-binding handshake for deletion/startup flows.
+ *
+ * Given an in-memory session (authenticated or anonymous), serialize against
+ * every other session cache operation, re-read the durable record from
+ * SecureStore, and only act if that record is STILL exactly the handed-in
+ * session (same accountId, same token, same authenticated state). Reuse the
+ * record's existing binding, or generate and persist a fresh one for legacy
+ * records. Returns the updated session with its binding, or null on any
+ * mismatch, unavailable SecureStore, or persistence failure — fail closed,
+ * never guess. A binding is never attached to or reused for a different
+ * account/token.
+ */
+export async function ensureCredentialBindingForSession(
+  session: AccountSession,
+): Promise<AccountSession | null> {
+  if (!session.accountId || !session.token) return null;
+  const authenticated = session.authenticated === true;
+
+  return serializeSessionCache(async () => {
+    const cachedRead = await readCachedAccountUnlocked();
+    const cached = cachedRead.available ? cachedRead.account : null;
+    if (
+      !cached ||
+      cached.authenticated !== authenticated ||
+      cached.accountId !== session.accountId ||
+      cached.token !== session.token
+    ) {
+      return null;
+    }
+
+    if (cached.credentialBindingId) {
+      return {
+        deviceId: cached.deviceId,
+        accountId: cached.accountId,
+        token: cached.token,
+        authenticated,
+        credentialBindingId: cached.credentialBindingId,
+      };
+    }
+
+    const upgraded: CachedAccount = {
+      deviceId: cached.deviceId,
+      accountId: cached.accountId,
+      token: cached.token,
+      authenticated,
+      credentialBindingId: generateUuidV4(),
+    };
+    const persisted = await writeCachedAccountUnlocked(upgraded);
+    if (!persisted) return null;
+    return upgraded;
+  });
 }
 
 /**

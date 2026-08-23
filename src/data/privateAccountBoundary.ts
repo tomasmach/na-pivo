@@ -66,6 +66,7 @@ let boundaryGeneration = 0;
 let boundaryController = new AbortController();
 let boundaryFrozen = false;
 let durableMarkerBlocks = false;
+let deletionRecoveryBlocks = false;
 let activeTransition: ActiveTransition | null = null;
 let nextTransitionId = 1;
 let activeMutationCount = 0;
@@ -118,7 +119,7 @@ function notifyThaw(): void {
 }
 
 function recomputeFrozen(): void {
-  const shouldFreeze = activeTransition !== null || durableMarkerBlocks;
+  const shouldFreeze = activeTransition !== null || durableMarkerBlocks || deletionRecoveryBlocks;
   if (shouldFreeze === boundaryFrozen) return;
   boundaryFrozen = shouldFreeze;
   boundaryGeneration += 1;
@@ -133,6 +134,15 @@ function recomputeFrozen(): void {
 
 function setDurableMarkerBlocks(blocks: boolean): void {
   durableMarkerBlocks = blocks;
+  recomputeFrozen();
+}
+
+/**
+ * Freeze the boundary while account-deletion recovery is pending. Independent
+ * of the merge marker: clearing this must never thaw a persisted merge block.
+ */
+export function setPrivateAccountDeletionRecoveryBlocked(blocked: boolean): void {
+  deletionRecoveryBlocks = blocked;
   recomputeFrozen();
 }
 
@@ -517,6 +527,7 @@ export function resetPrivateAccountBoundaryForTests(): void {
   boundaryController = new AbortController();
   boundaryFrozen = false;
   durableMarkerBlocks = false;
+  deletionRecoveryBlocks = false;
   activeTransition = null;
   nextTransitionId = 1;
   activeMutationCount = 0;

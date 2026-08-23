@@ -279,6 +279,24 @@ describe('initAccount', () => {
     });
   });
 
+  it('stays fail-closed without publishing or hydrating when deletion recovery is deferred', async () => {
+    mockedAuth.recoverPendingAccountDeletionAtStartup.mockResolvedValueOnce('deferred');
+
+    await useAccountStore.getState().initAccount();
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: null,
+      status: 'error',
+      startupBoundaryReady: false,
+    });
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(mockSetTelemetrySession).not.toHaveBeenCalled();
+    expect(mockedAuth.fetchAccountProfile).not.toHaveBeenCalled();
+    expect(mockFetchAccountPreferences).not.toHaveBeenCalled();
+    expect(mockReconcileDiarySnapshot).not.toHaveBeenCalled();
+    expect(mockRehydratePrivateStoresAfterBoundary).not.toHaveBeenCalled();
+  });
+
   it('keeps a durable signed-in session signed in when the profile fetch is unavailable', async () => {
     await useAccountStore.getState().initAccount();
 

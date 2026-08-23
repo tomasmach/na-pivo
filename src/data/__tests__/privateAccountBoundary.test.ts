@@ -4,12 +4,15 @@ import {
   PRIVATE_ACCOUNT_MERGE_STORAGE_KEY,
   PrivateAccountMutationFrozenError,
   beginPrivateAccountTransition,
+  isPrivateAccountMutationFrozen,
   preflightPrivateAccountMerge,
   privateAccountMergeBlocksAnonymousEviction,
   promotePrivateAccountMerge,
   recoverPrivateAccountMerge,
+  registerPrivateAccountThawListener,
   resetPrivateAccountBoundaryForTests,
   runPrivateAccountMutation,
+  setPrivateAccountDeletionRecoveryBlocked,
 } from '@/data/privateAccountBoundary';
 import { createQueueLock } from '@/data/createQueue';
 import privateAccountStorage from '@/data/privateAccountStorage';
@@ -28,11 +31,13 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 describe('private account mutation boundary', () => {
   beforeEach(async () => {
+    setPrivateAccountDeletionRecoveryBlocked(false);
     resetPrivateAccountBoundaryForTests();
     await AsyncStorage.clear();
   });
 
   afterEach(() => {
+    setPrivateAccountDeletionRecoveryBlocked(false);
     resetPrivateAccountBoundaryForTests();
   });
 
@@ -111,9 +116,12 @@ describe('private account mutation boundary', () => {
     await runPrivateAccountMutation(async () => undefined);
     const started = deferred();
     const releaseRead = deferred();
-    const nativeGetItem = AsyncStorage.getItem.bind(AsyncStorage);
+    const originalGetItem = jest.mocked(AsyncStorage.getItem).getMockImplementation();
     jest.mocked(AsyncStorage.getItem).mockImplementation(async (key) => {
-      if (key !== 'private-hydration') return nativeGetItem(key);
+      if (key !== 'private-hydration') {
+        const value = await originalGetItem?.call(AsyncStorage, key);
+        return value ?? null;
+      }
       started.resolve();
       await releaseRead.promise;
       return 'A';
@@ -133,7 +141,11 @@ describe('private account mutation boundary', () => {
     await expect(hydration).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
     await drain;
     transition.release();
-    jest.mocked(AsyncStorage.getItem).mockImplementation(nativeGetItem);
+    if (originalGetItem) {
+      jest.mocked(AsyncStorage.getItem).mockImplementation(originalGetItem);
+    } else {
+      jest.mocked(AsyncStorage.getItem).mockReset();
+    }
   });
 
   it('treats an unreadable durable marker as a freeze, never as empty', async () => {
@@ -144,5 +156,77 @@ describe('private account mutation boundary', () => {
     await expect(
       runPrivateAccountMutation(async () => undefined),
     ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+  });
+
+  it('holds the boundary frozen through a normal transition while deletion recovery blocks, and thaws only when it clears', async () => {
+    let thawCount = 0;
+    const unsubscribe = registerPrivateAccountThawListener(() => {
+      thawCount += 1;
+    });
+
+    setPrivateAccountDeletionRecoveryBlocked(true);
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+    await expect(
+      runPrivateAccountMutation(async () => undefined),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+
+    // A startup retry's normal transition must not open the boundary while
+    // account-deletion recovery is still pending.
+    const transition = beginPrivateAccountTransition('logout', 'A');
+    expect(transition).not.toBeNull();
+    transition!.release();
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+    expect(thawCount).toBe(0);
+    await expect(
+      runPrivateAccountMutation(async () => 'still-frozen'),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+
+    setPrivateAccountDeletionRecoveryBlocked(false);
+    expect(isPrivateAccountMutationFrozen()).toBe(false);
+    expect(thawCount).toBe(1);
+    await expect(runPrivateAccountMutation(async () => 'thawed')).resolves.toBe('thawed');
+    unsubscribe();
+  });
+
+  it('never lets clearing the deletion recovery block override a persisted merge-marker block', async () => {
+    let thawCount = 0;
+    const unsubscribe = registerPrivateAccountThawListener(() => {
+      thawCount += 1;
+    });
+
+    // Persist an interrupted anonymous merge marker (A -> B), like a lost
+    // response would, then layer the deletion-recovery block on top.
+    const setup = beginPrivateAccountTransition('auth', 'A')!;
+    const preflight = await preflightPrivateAccountMerge(setup, 'A', async () => true);
+    expect(preflight).not.toBeNull();
+    expect(await promotePrivateAccountMerge(
+      'A',
+      'B',
+      preflight!.operationId,
+      async () => true,
+    )).toBe(true);
+    setup.release();
+
+    setPrivateAccountDeletionRecoveryBlocked(true);
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+
+    const transition = beginPrivateAccountTransition('logout', 'A')!;
+    transition.release();
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+    expect(thawCount).toBe(0);
+
+    // OR semantics: removing one blocker must not clear the other.
+    setPrivateAccountDeletionRecoveryBlocked(false);
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+    expect(thawCount).toBe(0);
+    await expect(
+      runPrivateAccountMutation(async () => undefined),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+
+    // Only once every blocker is resolved does the boundary thaw.
+    expect(await recoverPrivateAccountMerge('B', async () => true)).toBe(true);
+    expect(isPrivateAccountMutationFrozen()).toBe(false);
+    expect(thawCount).toBe(1);
+    unsubscribe();
   });
 });

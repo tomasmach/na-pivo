@@ -392,7 +392,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
         const deletionRecovery = await auth.recoverPendingAccountDeletionAtStartup();
         if (!isAccountBoundaryCurrent(requestScope, get().session)) return;
-        if (deletionRecovery === 'blocked') {
+        if (deletionRecovery === 'blocked' || deletionRecovery === 'deferred') {
           set({ status: 'error', startupBoundaryReady: false });
           return;
         }
