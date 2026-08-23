@@ -1,8 +1,5 @@
 import React from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -12,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlowButton } from '@/components/shared/GlowButton';
 import { CloseButton } from '@/components/shared/CloseButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { cs } from '@/i18n/cs';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
@@ -48,91 +46,80 @@ export function PasswordSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.keyboardWrap}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        pointerEvents="box-none"
-      >
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <View
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
+
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.account.setPasswordHeader}
+            </Text>
+            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+          </View>
+
+          <KeyboardAwareScrollView
+            style={styles.body}
+            contentContainerStyle={styles.bodyContent}
+            keyboardAvoidedExternally
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.grabber} />
-
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.account.setPasswordHeader}
-              </Text>
-              <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
-            </View>
-
-            <ScrollView
-              style={styles.body}
-              contentContainerStyle={styles.bodyContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {!hasProfileEmail ? (
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={onChangeEmail}
-                  placeholder={cs.account.emailPlaceholder}
-                  placeholderTextColor={MockColors.fieldHint}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  autoComplete="email"
-                  textContentType="emailAddress"
-                  accessibilityLabel={cs.a11y.authEmailInput}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              ) : null}
-
+            {!hasProfileEmail ? (
               <TextInput
                 style={styles.input}
-                value={password}
-                onChangeText={onChangePassword}
-                placeholder={cs.account.passwordPlaceholder}
+                value={email}
+                onChangeText={onChangeEmail}
+                placeholder={cs.account.emailPlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 autoCapitalize="none"
                 autoCorrect={false}
-                secureTextEntry
-                autoComplete="new-password"
-                textContentType="newPassword"
-                accessibilityLabel={cs.a11y.authNewPasswordInput}
+                keyboardType="email-address"
+                autoComplete="email"
+                textContentType="emailAddress"
+                accessibilityLabel={cs.a11y.authEmailInput}
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
+            ) : null}
 
-              {error ? (
-                <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {error}
-                </Text>
-              ) : null}
-            </ScrollView>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={onChangePassword}
+              placeholder={cs.account.passwordPlaceholder}
+              placeholderTextColor={MockColors.fieldHint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              autoComplete="new-password"
+              textContentType="newPassword"
+              accessibilityLabel={cs.a11y.authNewPasswordInput}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            />
 
-            <View style={styles.footer}>
-              <GlowButton
-                label={busy ? cs.account.loading : cs.account.setPasswordSave}
-                onPress={onSave}
-                glow="none"
-                height={52}
-                accessibilityLabel={cs.a11y.accountSetPassword}
-              />
-            </View>
+            {error ? (
+              <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
+                {error}
+              </Text>
+            ) : null}
+          </KeyboardAwareScrollView>
+
+          <View style={styles.footer}>
+            <GlowButton
+              label={busy ? cs.account.loading : cs.account.setPasswordSave}
+              onPress={onSave}
+              glow="none"
+              height={52}
+              accessibilityLabel={cs.a11y.accountSetPassword}
+            />
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
     maxHeight: '92%',

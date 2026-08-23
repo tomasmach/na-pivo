@@ -113,7 +113,7 @@ export function BeerList({
         </View>
       </Pressable>
 
-      <BottomSheetModal visible={custom} onClose={() => setCustom(false)}>
+      <BottomSheetModal visible={custom} onClose={() => setCustom(false)} keyboardLift>
         <View style={[styles.dialogWrap, { marginBottom: -insets.bottom }]}>
           <View style={[styles.dialog, { paddingBottom: insets.bottom + Spacing.lg }]}>
             <View style={styles.grabber} />

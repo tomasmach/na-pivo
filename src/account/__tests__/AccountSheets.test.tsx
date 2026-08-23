@@ -16,7 +16,13 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('@/components/shared/BottomSheetModal', () => ({
-  BottomSheetModal: ({ children }: { children: React.ReactNode }) => children,
+  BottomSheetModal: (props: { children?: React.ReactNode }) =>
+    React.createElement('BottomSheetModal', props, props.children),
+}));
+
+jest.mock('@/components/shared/KeyboardAwareScrollView', () => ({
+  KeyboardAwareScrollView: (props: { children?: React.ReactNode }) =>
+    React.createElement('KeyboardAwareScrollView', props, props.children),
 }));
 
 jest.mock('@/components/shared/BrandIcon', () => ({
@@ -45,7 +51,10 @@ function expectNoRolelessContentPressable(renderer: TestRenderer.ReactTestRender
   expect(offenders).toHaveLength(0);
 }
 
-function expectCanonicalIntentSheet(renderer: TestRenderer.ReactTestRenderer): void {
+function expectCanonicalIntentSheet(
+  renderer: TestRenderer.ReactTestRenderer,
+  scrollType: typeof ScrollView | string,
+): void {
   const views = renderer.root.findAllByType(View);
   const wrapper = views.find((node) => {
     const style = StyleSheet.flatten(node.props.style);
@@ -62,7 +71,7 @@ function expectCanonicalIntentSheet(renderer: TestRenderer.ReactTestRenderer): v
     paddingHorizontal: MockLayout.screenPad,
   }));
 
-  const scroll = renderer.root.findByType(ScrollView);
+  const scroll = renderer.root.findByType(scrollType as never);
   expect(StyleSheet.flatten(scroll.props.style)).toEqual(expect.objectContaining({
     flexGrow: 0,
     flexShrink: 1,
@@ -87,7 +96,7 @@ describe('account sheet accessibility grouping', () => {
       );
     });
     expectNoRolelessContentPressable(renderer);
-    expectCanonicalIntentSheet(renderer);
+    expectCanonicalIntentSheet(renderer, ScrollView);
   });
 
   it('does not wrap the password form in an unlabeled Pressable', async () => {
@@ -109,13 +118,20 @@ describe('account sheet accessibility grouping', () => {
       );
     });
     expectNoRolelessContentPressable(renderer);
-    expectCanonicalIntentSheet(renderer);
+    expectCanonicalIntentSheet(renderer, 'KeyboardAwareScrollView' as never);
+
+    const sheet = renderer.root.findByType('BottomSheetModal' as never);
+    expect(sheet.props.keyboardLift).toBe(true);
+
+    const scroll = renderer.root.findByType('KeyboardAwareScrollView' as never);
+    expect(scroll.props.keyboardAvoidedExternally).toBe(true);
+
     const footerButton = renderer.root.find(
       (node) => node.props.glow === 'none' && node.props.height === 52,
     );
     let parent = footerButton.parent;
     while (parent) {
-      expect(parent.type).not.toBe(ScrollView);
+      expect(parent.type).not.toBe('KeyboardAwareScrollView' as never);
       parent = parent.parent;
     }
   });
