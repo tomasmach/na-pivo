@@ -1820,3 +1820,153 @@ def test_account_export_includes_safe_sessions_and_targeting_metadata(client):
     assert "deletion_epoch" not in serialized
     assert "password" not in serialized
     assert "CIZÍ aktivita" not in serialized
+
+
+def test_account_export_maps_every_account_reverse_accessor_explicitly():
+    """Every reverse accessor on Account must be either explicitly exported or
+    explicitly excluded with a concrete reason, so a newly added relation can
+    never silently appear in (or vanish from) the GDPR export."""
+
+    actual_accessors = {
+        relation.get_accessor_name() for relation in Account._meta.related_objects
+    }
+
+    # Every reverse accessor that _export_account_data serializes, documented
+    # with an exact export JSON path where its rows land.
+    exported_relations = {
+        "auth_tokens": "auth_sessions[*].device_label",
+        "email_credential": "email_credential.created_at",
+        "beer_photo_deletion_tombstones": "beer_photo_deletion_tombstones[*].client_id",
+        "targeted_friend_pub_activities": "social.targeted_friend_activities[*].activity_id",
+        "push_devices": "push_devices[*].platform",
+        "usage_stats": "usage.mapper_xp",
+        "identities": "account.identities[*].provider",
+        "client_events": "telemetry_events[*].event",
+        "drinks": "drinks[*].client_id",
+        "beer_checkins": "beer_checkins[*].client_id",
+        "beer_photos": "beer_photos[*].id",
+        "published_nights": "published_nights[*].id",
+        "published_night_comments": "published_night_comments[*].id",
+        "following_set": "social.following[*]",
+        "follower_set": "social.followers[*]",
+        "sent_friendships": "social.friendships[*].requester_id",
+        "received_friendships": "social.friendships[*].recipient_id",
+        "friend_pub_activities": "social.friend_activities[*].id",
+        "activity_responses": "social.rsvp[*].response",
+        "activity_reactions": "social.reactions[?target=friend_activity].kind",
+        "beer_checkin_reactions": "social.reactions[?target=beer_checkin].checkin_id",
+        "night_rounds": "social.reactions[?target=published_night].night_id",
+        "friend_notifications": "social.notifications[*].id",
+        "blocks_made": "social.blocks[*].account_id",
+        "invite_codes": "social.invite_codes[*].expires_at",
+        "hosted_party_evenings": "party_evenings.hosted[*].id",
+        "party_evening_memberships": "party_evenings.memberships[*].evening_id",
+        "party_evening_drinks": "party_evenings.drinks[*].client_id",
+        "started_party_games": "party_games.games[*].catalog_key",
+        "party_game_events": "party_games.events_authored[*].payload",
+        "party_game_scores": "party_games.score_events_as_subject[*].delta",
+        "pub_event_suggestions": "pub_event_suggestions[*].title",
+        "hosted_community_events": "community_events.hosted[*].exact_address",
+        "community_event_memberships": "community_events.memberships[*].message",
+        "created_community_event_teams": "community_events.created_teams[*].name",
+        "community_event_team_memberships": (
+            "community_events.team_memberships[*].team_name"
+        ),
+        "pub_visits": "visits[*]",
+        "pub_ratings": "ratings[*]",
+        "contribution_logs": "community_contributions[*].payload",
+        "pub_reports": "pub_reports[*].reason",
+        "feedback_reports": "feedback_reports[*].message",
+        "content_reports_made": "content_reports_made[*].comment",
+        "amenity_votes": "amenity_votes[*].value",
+        "added_pubs": "mapping_history.added_pubs[*].client_id",
+        "pub_name_corrections": "mapping_history.name_corrections[*].suggested_name",
+        "amenity_vote_tombstones": "mapping_history.amenity_vote_tombstones[*].amenity_key",
+        "amenity_xp_ledger": "mapping_history.amenity_xp_ledger[*].amenity_key",
+        "mapped_pubs": "mapping_history.mapped_pubs[*].pub_identity_key",
+        "pub_completions": "mapping_history.completed_pubs[*].pub_identity_key",
+        "community_xp_ledger": "mapping_history.community_xp_ledger[*].kind",
+        "community_data": "mapping_history.community_data[*].hours_json",
+        "pub_beer_brands": "mapping_history.pub_beer_brands[*].brand_key",
+        "pub_beer_products": "mapping_history.pub_beer_products[*].product_key",
+        "photo_contest_entries": "photo_contests.entries[*].entry_id",
+        "photo_contest_votes": "photo_contests.votes[*].entry_id",
+    }
+
+    # Reverse accessors deliberately absent from the export, each with a
+    # concrete reason naming its exclusion category.
+    intentionally_excluded_relations = {
+        "one_time_tokens": (
+            "secret/operational row: single-use auth tokens never leave the server"
+        ),
+        "export_jobs": (
+            "secret/operational row: internal export job bookkeeping, not user data"
+        ),
+        "pending_beer_photo_file_deletions": (
+            "secret/operational row: storage cleanup queue, invisible to the account"
+        ),
+        "blocks_received": (
+            "foreign safety/moderation data: revealing incoming blocks would expose "
+            "who blocked the owner"
+        ),
+        "content_reports_received": (
+            "foreign safety/moderation data: reports filed against the owner belong "
+            "to moderation only"
+        ),
+        "friend_notifications_sent": (
+            "foreign safety/moderation data: notifications the owner caused on other "
+            "accounts are those accounts' data"
+        ),
+        "amenities_first_mapped": (
+            "shared non-owned attribution: PubAmenity rows are shared catalog data, "
+            "the account is only credited as first mapper"
+        ),
+    }
+
+    required_exclusion_categories = {
+        "one_time_tokens": "secret/operational",
+        "export_jobs": "secret/operational",
+        "pending_beer_photo_file_deletions": "secret/operational",
+        "blocks_received": "foreign safety/moderation",
+        "content_reports_received": "foreign safety/moderation",
+        "friend_notifications_sent": "foreign safety/moderation",
+        "amenities_first_mapped": "shared non-owned",
+    }
+
+    overlap = sorted(set(exported_relations) & set(intentionally_excluded_relations))
+    assert not overlap, f"accessors classified both ways: {overlap}"
+
+    empty_exported = sorted(
+        accessor
+        for accessor, path in exported_relations.items()
+        if not accessor or not path.strip()
+    )
+    empty_excluded = sorted(
+        accessor
+        for accessor, reason in intentionally_excluded_relations.items()
+        if not accessor or not reason.strip()
+    )
+    assert not empty_exported, f"exported relations need a nonempty path doc: {empty_exported}"
+    assert not empty_excluded, (
+        f"excluded relations need a nonempty reason: {empty_excluded}"
+    )
+
+    declared = set(exported_relations) | set(intentionally_excluded_relations)
+    missing = sorted(actual_accessors - declared)
+    stale = sorted(declared - actual_accessors)
+    assert actual_accessors == declared, (
+        f"Account gained/lost reverse accessors without updating this test.\n"
+        f"missing from dictionaries (add to exported_relations or exclude with "
+        f"a reason): {missing}\n"
+        f"stale entries that no longer exist on Account: {stale}"
+    )
+
+    for accessor, category in required_exclusion_categories.items():
+        reason = intentionally_excluded_relations.get(accessor)
+        assert reason, (
+            f"{accessor} must stay in intentionally_excluded_relations with a "
+            f"'{category}' reason"
+        )
+        assert category in reason, (
+            f"{accessor} exclusion reason lost its '{category}' category phrase: {reason!r}"
+        )
