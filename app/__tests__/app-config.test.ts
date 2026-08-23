@@ -110,6 +110,14 @@ describe('app.config store-policy surface', () => {
     expect(options?.microphonePermission).toBe(false);
   });
 
+  it('configures expo-secure-store without the unused Face ID permission', () => {
+    expect(findPluginOptions('expo-secure-store')?.faceIDPermission).toBe(false);
+  });
+
+  it('does not declare the unused iOS Face ID permission', () => {
+    expect(config.ios?.infoPlist?.NSFaceIDUsageDescription).toBeUndefined();
+  });
+
   it('keeps camera access enabled: CAMERA is requested and not blocked', () => {
     expect(config.android?.permissions ?? []).toContain('android.permission.CAMERA');
     expect(config.android?.blockedPermissions ?? []).not.toContain('android.permission.CAMERA');
@@ -190,6 +198,10 @@ describe('app.config native Czech localization', () => {
 
   it('never localizes a microphone permission (it is intentionally absent)', () => {
     expect(csLocale.ios).not.toHaveProperty('NSMicrophoneUsageDescription');
+  });
+
+  it('never localizes a Face ID permission (it is intentionally absent)', () => {
+    expect(csLocale.ios).not.toHaveProperty('NSFaceIDUsageDescription');
   });
 
   it('localizes the Android launcher app name', () => {

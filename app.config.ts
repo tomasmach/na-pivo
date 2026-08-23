@@ -163,7 +163,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: SPLASH_BACKGROUND,
       },
     ],
-    'expo-secure-store',
+    // Secure store never uses biometric auth (nothing passes
+    // requireAuthentication), so drop the Face ID permission string the
+    // plugin emits by default.
+    [
+      'expo-secure-store',
+      {
+        faceIDPermission: false,
+      },
+    ],
     // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
     // entitlement; requires enabling the capability on the App ID in the
     // Apple Developer portal and a dev-client rebuild.
