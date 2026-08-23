@@ -490,7 +490,12 @@ describe('flush keep/drop contract', () => {
 
     expect(markSynced).not.toHaveBeenCalled();
     expect(fileDelete).not.toHaveBeenCalled();
-    expect(await readQueue()).toEqual([op('c1', { enterContest: true })]);
+    const [retained] = await readQueue();
+    expect(retained).toMatchObject({
+      clientId: 'c1',
+      enterContest: true,
+      contestCheckpoint: { photo: { id: 'srv-c1' } },
+    });
   });
 
   it('keeps the diary photo when contest entry is permanently rejected', async () => {
@@ -508,6 +513,54 @@ describe('flush keep/drop contract', () => {
     expect(fileDelete).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([]);
   });
+
+  it.each([
+    [
+      'missing required BeerPhoto fields',
+      { photo: { id: 'srv-broken' } },
+    ],
+    [
+      'a mismatched checkpoint clientId',
+      { photo: { ...serverPhoto('someone-else'), id: 'srv-broken' } },
+    ],
+  ])(
+    'rejects a persisted contestCheckpoint with %s instead of resuming it',
+    async (_label, brokenCheckpoint) => {
+      const broken = {
+        clientId: 'broken',
+        localUri: 'file:///docs/beer-photos/broken.jpg',
+        caption: '',
+        visibility: 'private',
+        takenAt: '2026-07-01T19:00:00.000Z',
+        enterContest: true,
+        contestCheckpoint: brokenCheckpoint,
+      };
+      const legacy = {
+        clientId: 'legacy',
+        localUri: 'file:///docs/beer-photos/legacy.jpg',
+        caption: '',
+        visibility: 'private',
+        takenAt: '2026-07-01T19:00:00.000Z',
+      };
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([broken, legacy]));
+      uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('legacy') });
+
+      await flushBeerPhotosQueue();
+
+      // Only the valid legacy op may be delivered; the malformed checkpoint
+      // must be rejected by validation and never resumed into a contest entry
+      // or a store finalization built from an incomplete server photo.
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+      expect((uploadBeerPhoto.mock.calls[0] as unknown[])[1]).toMatchObject({
+        clientId: 'legacy',
+      });
+      expect(enterPhotoContest).not.toHaveBeenCalled();
+      expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(markSynced).toHaveBeenCalledWith('legacy', serverPhoto('legacy'));
+      expect(events).toEqual(['markSynced', 'file-delete']);
+      expect(await readQueue()).toEqual([]);
+    },
+  );
 
   it('does nothing on an empty queue and survives corrupted storage', async () => {
     await flushBeerPhotosQueue();
@@ -541,6 +594,429 @@ describe('flush keep/drop contract', () => {
 
     expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
     expect((uploadBeerPhoto.mock.calls[0] as unknown[])[1]).toMatchObject({ clientId: 'c2' });
+  });
+});
+
+describe('UGC consent retry contract for contest entry', () => {
+  const ugc428Failures = [
+    { ok: false as const, code: 'http_428', detail: 'Precondition required.' },
+    { ok: false as const, code: 'ugc_consent_required', detail: 'Potřebujeme souhlas.' },
+    { ok: false as const, code: 'ugc_policy_update_required', detail: 'Pravidla se změnila.' },
+  ];
+
+  it.each(ugc428Failures)(
+    'keeps the durable op and contest intent when entry returns $code',
+    async (failure) => {
+      uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+      enterPhotoContest.mockResolvedValue(failure);
+
+      await enqueueAndComplete(op('c1', { enterContest: true }));
+
+      // REGRESSION: the consent/policy gate is transient — the uploaded photo
+      // must not be finalized (synced + local file deleted) and the durable
+      // op must survive with its contest intent AND the stable server photo
+      // checkpoint, so a restart never forces another upload.
+      expect(markSynced).not.toHaveBeenCalled();
+      expect(fileDelete).not.toHaveBeenCalled();
+      const [retained] = await readQueue();
+      expect(retained).toMatchObject({
+        clientId: 'c1',
+        enterContest: true,
+        contestCheckpoint: { photo: { id: 'srv-c1' } },
+      });
+    },
+  );
+
+  it.each(ugc428Failures)(
+    'retries ONLY the contest after a restart ($code): same photo id, no re-upload',
+    async (failure) => {
+      uploadBeerPhoto.mockResolvedValueOnce({ status: 'ok', photo: serverPhoto('c1') });
+      enterPhotoContest.mockResolvedValueOnce(failure);
+      enterPhotoContest.mockResolvedValueOnce(failure);
+      enterPhotoContest.mockResolvedValue({ ok: true, entry: {} });
+
+      await enqueueAndComplete(op('c1', { enterContest: true }));
+
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+
+      // The checkpoint is durable — read and parse it straight from storage.
+      const persisted = JSON.parse(
+        (await AsyncStorage.getItem(STORAGE_KEY)) ?? '[]',
+      ) as BeerPhotoUploadOp[];
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].contestCheckpoint?.photo).toEqual(serverPhoto('c1'));
+      expect(persisted[0].enterContest).toBe(true);
+
+      // Simulated app restart: the retained op is re-read from storage and
+      // flushed again by the launch/foreground hook.
+      await flushBeerPhotosQueue();
+
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+      expect(enterPhotoContest).toHaveBeenCalledTimes(2);
+      expect(enterPhotoContest).toHaveBeenLastCalledWith('srv-c1', expect.anything());
+
+      // A repeated retry keeps the checkpoint and still never re-uploads.
+      const retainedAfterRetry = JSON.parse(
+        (await AsyncStorage.getItem(STORAGE_KEY)) ?? '[]',
+      ) as BeerPhotoUploadOp[];
+      expect(retainedAfterRetry[0].contestCheckpoint?.photo.id).toBe('srv-c1');
+
+      await flushBeerPhotosQueue();
+
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+      expect(enterPhotoContest).toHaveBeenCalledTimes(3);
+      expect(markSynced).toHaveBeenCalledWith(
+        'c1',
+        { ...serverPhoto('c1'), inContest: true },
+      );
+      expect(await readQueue()).toEqual([]);
+    },
+  );
+
+  it('never stamps a stale checkpoint onto a newer replacement op', async () => {
+    let resolveUpload!: (value: BeerPhotoUploadResult) => void;
+    uploadBeerPhoto.mockReturnValueOnce(
+      new Promise<BeerPhotoUploadResult>((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+
+    const enqueued = await enqueueBeerPhoto(
+      op('c1', { caption: 'stará', enterContest: true }),
+    );
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+
+    // Replacement enqueue lands while the stale delivery is still in flight.
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+    const replacing = await enqueueBeerPhoto(
+      op('c1', { caption: 'nová', enterContest: true }),
+    );
+
+    resolveUpload({ status: 'ok', photo: serverPhoto('c1') });
+    await enqueued.completion;
+    await replacing.completion;
+    await flushBeerPhotosQueue();
+
+    // The stale delivery must not finalize or touch the replacement; the
+    // replacement flushes cleanly on its own (one upload + one contest).
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(enterPhotoContest).toHaveBeenCalledTimes(1);
+    expect(enterPhotoContest).toHaveBeenLastCalledWith('srv-c1', expect.anything());
+    expect(markSynced).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('does not finalize a stale delivery whose op was replaced after the checkpoint persisted', async () => {
+    let resolveUploadOld!: (value: BeerPhotoUploadResult) => void;
+    let resolveUploadNew!: (value: BeerPhotoUploadResult) => void;
+    let resolveContestOld!: (value: Record<string, unknown>) => void;
+    uploadBeerPhoto
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadNew = resolve;
+        }),
+      );
+    enterPhotoContest.mockReturnValueOnce(
+      new Promise<Record<string, unknown>>((resolve) => {
+        resolveContestOld = resolve;
+      }),
+    );
+
+    const first = await enqueueBeerPhoto(op('c1', { caption: 'stará', enterContest: true }));
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+    resolveUploadOld({ status: 'ok', photo: serverPhoto('c1') });
+
+    // The old delivery reached the checkpoint phase: the checkpoint is durable
+    // and its contest POST is in flight.
+    await waitForExpectation(() => expect(enterPhotoContest).toHaveBeenCalledTimes(1));
+    const checkpointed = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? '[]') as {
+      contestCheckpoint?: { photo?: { id?: string } };
+    }[];
+    expect(checkpointed).toHaveLength(1);
+    expect(checkpointed[0].contestCheckpoint?.photo?.id).toBe('srv-c1');
+
+    // A newer same-client op replaces the queued one while the old contest is
+    // still pending — this window opens AFTER the checkpoint persistence, not
+    // during the upload.
+    const newerOp = op('c1', { caption: 'nová', enterContest: true });
+    const replacing = await enqueueBeerPhoto(newerOp);
+
+    resolveContestOld({ ok: true, entry: {} });
+    await first.completion;
+    try {
+      // The stale delivery must not finalize anything once it lost the queue
+      // slot, and the newer op must remain durable unchanged.
+      expect(markSynced).not.toHaveBeenCalled();
+      expect(fileDelete).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([newerOp]);
+    } finally {
+      // Always drain the replacement delivery — an aborted assertion must not
+      // leave the shared coalescing flush stuck on a never-resolving upload.
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+    }
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+    expect(enterPhotoContest).toHaveBeenCalledTimes(2);
+    expect(markSynced).toHaveBeenCalledTimes(1);
+    expect(markSynced).toHaveBeenCalledWith('c1', { ...serverPhoto('c1'), inContest: true });
+    expect(events).toEqual(['markSynced', 'file-delete']);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('still delivers a legacy stored op that predates any retry metadata', async () => {
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        {
+          clientId: 'legacy',
+          localUri: 'file:///docs/beer-photos/legacy.jpg',
+          caption: '',
+          visibility: 'private',
+          takenAt: '2026-07-01T19:00:00.000Z',
+        },
+      ]),
+    );
+
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+    expect((uploadBeerPhoto.mock.calls[0] as unknown[])[1]).toMatchObject({
+      clientId: 'legacy',
+    });
+    expect(await readQueue()).toEqual([]);
+  });
+});
+
+describe('stale plain delivery vs same-client replacement', () => {
+  it("an old plain 'ok' delivery must not sync or delete the file once a newer same-client op replaced it", async () => {
+    let resolveUploadOld!: (value: BeerPhotoUploadResult) => void;
+    let resolveUploadNew!: (value: BeerPhotoUploadResult) => void;
+    uploadBeerPhoto
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadNew = resolve;
+        }),
+      );
+
+    const first = await enqueueBeerPhoto(op('c1', { caption: 'stará' }));
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+
+    // Replacement lands while the stale delivery is in flight. The durable
+    // <clientId>.jpg now belongs to the NEWER op — deleting it would destroy
+    // the replacement's only copy.
+    const newerOp = op('c1', { caption: 'nová' });
+    const replacing = await enqueueBeerPhoto(newerOp);
+
+    resolveUploadOld({ status: 'ok', photo: serverPhoto('c1') });
+    try {
+      await first.completion;
+
+      // REGRESSION (P1): the stale delivery resolved 'ok' but lost the queue
+      // slot — it must not markSynced the shared clientId nor delete the file.
+      expect(markSynced).not.toHaveBeenCalled();
+      expect(markFailed).not.toHaveBeenCalled();
+      expect(fileDelete).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+      expect(await readQueue()).toEqual([newerOp]);
+
+      // The newer op still delivers successfully afterwards.
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+      await flushBeerPhotosQueue();
+
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+      expect((uploadBeerPhoto.mock.calls[1] as unknown[])[1]).toMatchObject({
+        clientId: 'c1',
+        caption: 'nová',
+      });
+      expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(['markSynced', 'file-delete']);
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+    }
+  });
+
+  it("an old plain permanent-error delivery must not markFailed a newer same-client replacement", async () => {
+    let resolveUploadOld!: (value: BeerPhotoUploadResult) => void;
+    let resolveUploadNew!: (value: BeerPhotoUploadResult) => void;
+    uploadBeerPhoto
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadNew = resolve;
+        }),
+      );
+
+    const first = await enqueueBeerPhoto(op('c1', { caption: 'stará' }));
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+
+    const newerOp = op('c1', { caption: 'nová' });
+    const replacing = await enqueueBeerPhoto(newerOp);
+
+    resolveUploadOld({ status: 'permanent-error', code: 'photo_limit_reached' });
+    try {
+      await first.completion;
+
+      // REGRESSION (P1): the rejection belongs to the OLD caption — it must
+      // never flip the replacement's optimistic row to failed.
+      expect(markFailed).not.toHaveBeenCalled();
+      expect(markSynced).not.toHaveBeenCalled();
+      expect(fileDelete).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([newerOp]);
+
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+      await flushBeerPhotosQueue();
+
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+      expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(['markSynced', 'file-delete']);
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+    }
+  });
+});
+
+describe('server-echo clientId identity contract', () => {
+  it('normalizes an empty echoed clientId onto the checkpoint so a restart never re-uploads', async () => {
+    const echoed = { ...serverPhoto('c1'), clientId: '' };
+    uploadBeerPhoto.mockResolvedValueOnce({ status: 'ok', photo: echoed });
+    enterPhotoContest.mockResolvedValueOnce({
+      ok: false,
+      code: 'network',
+      detail: 'Bez sítě.',
+    });
+
+    await enqueueAndComplete(op('c1', { enterContest: true }));
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+    // REGRESSION (P2a): the checkpoint must validate against the OP's clientId,
+    // otherwise the next load drops the whole op and the restart re-uploads.
+    const persisted = JSON.parse(
+      (await AsyncStorage.getItem(STORAGE_KEY)) ?? '[]',
+    ) as BeerPhotoUploadOp[];
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].contestCheckpoint?.photo.clientId).toBe('c1');
+
+    // Simulated restart: only the contest retries, the upload never repeats.
+    enterPhotoContest.mockResolvedValue({ ok: true, entry: {} });
+    await flushBeerPhotosQueue();
+
+    expect(uploadBeerPhoto).toHaveBeenCalledTimes(1);
+    expect(enterPhotoContest).toHaveBeenLastCalledWith('srv-c1', expect.anything());
+    expect(markSynced).toHaveBeenCalledWith(
+      'c1',
+      { ...echoed, clientId: 'c1', inContest: true },
+    );
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('rejects a success with a conflicting nonempty echoed clientId — safe guarded failure', async () => {
+    const foreign = { ...serverPhoto('other-client'), id: 'srv-other' };
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: foreign });
+
+    await enqueueAndComplete(op('c1', { enterContest: true }));
+
+    // REGRESSION: the server committed a DIFFERENT photo under this client_id.
+    // The delivery must never be accepted: no contest entry, no markSynced (no
+    // foreign URL in the local store), no local file deletion. The exact
+    // current op ends as a guarded permanent failure with a stable internal
+    // code, and the durable file stays for the detail screen's retry.
+    expect(enterPhotoContest).not.toHaveBeenCalled();
+    expect(markSynced).not.toHaveBeenCalled();
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(markFailed).toHaveBeenCalledWith('c1', 'photo_identity_mismatch');
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it("a stale 'ok' delivery with a conflicting echoed clientId must not fail the newer same-client replacement", async () => {
+    let resolveUploadOld!: (value: BeerPhotoUploadResult) => void;
+    let resolveUploadNew!: (value: BeerPhotoUploadResult) => void;
+    const foreign = { ...serverPhoto('other-client'), id: 'srv-other' };
+    uploadBeerPhoto
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<BeerPhotoUploadResult>((resolve) => {
+          resolveUploadNew = resolve;
+        }),
+      );
+
+    const first = await enqueueBeerPhoto(op('c1', { caption: 'stará' }));
+    await waitForExpectation(() => expect(uploadBeerPhoto).toHaveBeenCalledTimes(1));
+
+    const newerOp = op('c1', { caption: 'nová' });
+    const replacing = await enqueueBeerPhoto(newerOp);
+
+    resolveUploadOld({ status: 'ok', photo: foreign });
+    try {
+      await first.completion;
+
+      // The identity mismatch belongs to the OLD delivery — the guarded
+      // finalize must never flip the replacement's optimistic row to failed
+      // nor delete the replacement's durable file.
+      expect(markFailed).not.toHaveBeenCalled();
+      expect(markSynced).not.toHaveBeenCalled();
+      expect(fileDelete).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([newerOp]);
+
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+      await flushBeerPhotosQueue();
+
+      expect(uploadBeerPhoto).toHaveBeenCalledTimes(2);
+      expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(['markSynced', 'file-delete']);
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      resolveUploadNew({ status: 'ok', photo: serverPhoto('c1') });
+      await replacing.completion;
+    }
+  });
+
+  it('retains a friends-visibility photo op across a 428 consent gate until delivery succeeds', async () => {
+    // Real classification chain: beerPhotosClient maps BOTH a bare 428 (empty
+    // body) and a semantic 428 (ugc_consent_required / ugc_policy_update_required)
+    // through classifyQueueHttpFailure to {status:'retry'} — never
+    // permanent-error. This pins the queue side of that contract.
+    uploadBeerPhoto.mockResolvedValueOnce({ status: 'retry' });
+
+    await enqueueAndComplete(op('c1', { visibility: 'friends' }));
+
+    // REGRESSION (P2b): a consent/policy gate is transient — retain the op,
+    // never mark failed, never delete the durable file.
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([op('c1', { visibility: 'friends' })]);
+
+    uploadBeerPhoto.mockResolvedValueOnce({ status: 'ok', photo: serverPhoto('c1') });
+    await flushBeerPhotosQueue();
+
+    expect(markSynced).toHaveBeenCalledWith('c1', serverPhoto('c1'));
+    expect(events).toEqual(['markSynced', 'file-delete']);
+    expect(await readQueue()).toEqual([]);
   });
 });
 

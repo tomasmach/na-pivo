@@ -549,10 +549,11 @@ export function isRetriableNightError(result: NightActionError): boolean {
   if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth') {
     return true;
   }
+  if (code === 'ugc_consent_required' || code === 'ugc_policy_update_required') return true;
   const httpMatch = /^http_(\d{3})$/.exec(code);
   if (!httpMatch) return false;
   const status = Number(httpMatch[1]);
-  if (status === 401 || status === 429) return true;
+  if (status === 401 || status === 428 || status === 429) return true;
   if (status >= 400 && status < 500) return false;
   return true;
 }

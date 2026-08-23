@@ -22,14 +22,38 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-const submitBeerCheckIn: jest.Mock = jest.fn(async () => 'ok');
-jest.mock('../beerCheckinsClient', () => ({
-  submitBeerCheckIn: (...args: unknown[]) => submitBeerCheckIn(...(args as [])),
-  reactToBeerCheckIn: jest.fn(async () => ({ ok: true })),
-  clearBeerCheckInReaction: jest.fn(async () => ({ ok: true })),
+/** Real client, used verbatim by the UGC-consent regression tests below. */
+const actualSubmitBeerCheckIn =
+  jest.requireActual<typeof import('../beerCheckinsClient')>('../beerCheckinsClient')
+    .submitBeerCheckIn;
+
+jest.mock('../backendConfig', () => ({
+  getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
 }));
+jest.mock('../account', () => ({
+  ensureAccount: jest.fn(async () => ({
+    deviceId: 'd',
+    accountId: 'a',
+    token: 't',
+    authenticated: false,
+  })),
+  clearCachedAnonymousAccount: jest.fn(async () => undefined),
+}));
+jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
+
+const submitBeerCheckIn: jest.Mock = jest.fn(async () => 'ok');
+jest.mock('../beerCheckinsClient', () => {
+  const actual = jest.requireActual('../beerCheckinsClient');
+  return {
+    ...actual,
+    submitBeerCheckIn: (...args: unknown[]) => submitBeerCheckIn(...(args as [])),
+    reactToBeerCheckIn: jest.fn(async () => ({ ok: true })),
+    clearBeerCheckInReaction: jest.fn(async () => ({ ok: true })),
+  };
+});
 
 const STORAGE_KEY = 'na-pivo-beer-checkins-queue';
+const ORIGINAL_FETCH = global.fetch;
 
 function checkin(over: Partial<BeerCheckInInput> = {}): BeerCheckInInput {
   return {
@@ -146,6 +170,55 @@ describe('beer-checkins queue — tag round-trip', () => {
 
   it('drains the queue once delivery succeeds', async () => {
     await enqueueBeerCheckInOp({ op: 'checkin', payload: checkin() });
+    expect(await readQueue()).toHaveLength(0);
+  });
+});
+
+describe('UGC consent retry contract — HTTP 428 keeps the queued check-in', () => {
+  const ugc428Responses = [
+    { name: 'bare 428 without a semantic body code', body: {} as Record<string, unknown> },
+    {
+      name: '428 with ugc_consent_required',
+      body: { code: 'ugc_consent_required', detail: 'Potřebujeme souhlas.' },
+    },
+    {
+      name: '428 with ugc_policy_update_required',
+      body: { code: 'ugc_policy_update_required', detail: 'Pravidla se změnila.' },
+    },
+  ];
+
+  function fetchResponding(status: number, body: unknown): void {
+    global.fetch = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+    })) as unknown as typeof fetch;
+  }
+
+  beforeEach(() => {
+    // Run the REAL client classification against a mocked fetch, so the test
+    // covers exactly what a released app does with a 428 response.
+    submitBeerCheckIn.mockImplementation(
+      (input: BeerCheckInInput) => actualSubmitBeerCheckIn(input),
+    );
+  });
+
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+  });
+
+  it.each(ugc428Responses)('retains the op on $name until delivery succeeds', async ({ body }) => {
+    fetchResponding(428, body);
+    await enqueueBeerCheckInOp({ op: 'checkin', payload: checkin() });
+
+    // REGRESSION: a 428 (consent/policy gate) is transient — the check-in must
+    // stay durable, never be dropped like a validation error.
+    expect(await readQueue()).toHaveLength(1);
+    expect(await getPendingBeerCheckIns()).toHaveLength(1);
+
+    // Once the server accepts, the retained op drains on the next flush.
+    fetchResponding(200, { ok: true });
+    await flushBeerCheckinsQueue();
     expect(await readQueue()).toHaveLength(0);
   });
 });

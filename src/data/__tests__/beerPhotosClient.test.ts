@@ -284,6 +284,35 @@ describe('uploadBeerPhoto', () => {
   });
 });
 
+describe('UGC consent retry contract for uploads (HTTP 428)', () => {
+  const ugc428Bodies = [
+    { name: 'bare 428 without a semantic body code', body: {} as Record<string, unknown> },
+    {
+      name: '428 with ugc_consent_required',
+      body: { code: 'ugc_consent_required', detail: 'Potřebujeme souhlas.' },
+    },
+    {
+      name: '428 with ugc_policy_update_required',
+      body: { code: 'ugc_policy_update_required', detail: 'Pravidla se změnila.' },
+    },
+  ];
+
+  it.each(ugc428Bodies)(
+    'classifies a friends upload rejected with $name as retry, never permanent-error',
+    async ({ body }) => {
+      // Pins the REAL HTTP parser: the native upload resolves a bare HTTP
+      // response and classifyQueueHttpFailure must map any 428 to 'retry' —
+      // a consent/policy gate is transient, so a queued photo is kept.
+      uploadResolving(428, body);
+
+      const result = await uploadBeerPhoto('file:///tmp/beer.jpg', FIELDS);
+
+      expect(result).toEqual({ status: 'retry' });
+      expect(result).not.toEqual({ status: 'permanent-error', code: expect.anything() });
+    },
+  );
+});
+
 describe('fetchMyBeerPhotos', () => {
   it('GETs /v1/beer-photos with the bearer token and maps the photos', async () => {
     const spy = fetchResolving(200, { photos: [WIRE_PHOTO] });

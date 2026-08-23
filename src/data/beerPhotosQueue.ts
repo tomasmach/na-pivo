@@ -29,6 +29,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import {
   deleteBeerPhotoByClientId,
   uploadBeerPhoto,
+  type BeerPhoto,
   type BeerPhotoVisibility,
 } from './beerPhotosClient';
 import {
@@ -93,6 +94,40 @@ export interface BeerPhotoUploadOp {
    * on the upload op makes "save + enter" work offline and across app restarts.
    */
   enterContest?: boolean;
+  /**
+   * Durable checkpoint written AFTER a successful upload but BEFORE the contest
+   * POST is attempted. It carries the stable server photo, so after a crash or
+   * restart the flush can finish (or retry) the contest entry without
+   * uploading the file again. Optional — legacy stored ops predate it.
+   */
+  contestCheckpoint?: { photo: BeerPhoto };
+}
+
+function hasValidContestCheckpoint(
+  value: unknown,
+  opClientId: string,
+  enterContest: unknown,
+): boolean {
+  if (value === undefined) return true;
+  // A checkpoint without the durable contest intent makes no sense.
+  if (enterContest !== true) return false;
+  const photo = (value as { photo?: unknown } | null)?.photo;
+  if (typeof photo !== 'object' || photo === null) return false;
+  const p = photo as Record<string, unknown>;
+  return (
+    typeof p.id === 'string' &&
+    p.id.length > 0 &&
+    p.clientId === opClientId &&
+    typeof p.imageUrl === 'string' &&
+    typeof p.caption === 'string' &&
+    typeof p.pubCacheKey === 'string' &&
+    typeof p.pubName === 'string' &&
+    typeof p.pubCity === 'string' &&
+    typeof p.takenAt === 'string' &&
+    typeof p.createdAt === 'string' &&
+    (p.visibility === 'private' || p.visibility === 'friends') &&
+    typeof p.inContest === 'boolean'
+  );
 }
 
 function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
@@ -108,7 +143,8 @@ function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
     (op.partyCode === undefined || typeof op.partyCode === 'string') &&
     (op.pendingPartyCode === undefined || typeof op.pendingPartyCode === 'string') &&
     (op.partyDrinkingDay === undefined || typeof op.partyDrinkingDay === 'string') &&
-    (op.enterContest === undefined || typeof op.enterContest === 'boolean')
+    (op.enterContest === undefined || typeof op.enterContest === 'boolean') &&
+    hasValidContestCheckpoint(op.contestCheckpoint, op.clientId, op.enterContest)
   );
 }
 
@@ -190,6 +226,11 @@ function shouldRetryContestEntry(code: string): boolean {
     code === 'account' ||
     code === 'auth' ||
     code === 'http_408' ||
+    // UGC consent/policy gates are transient: the user just needs to accept
+    // the updated terms, then the same photo can enter the contest.
+    code === 'http_428' ||
+    code === 'ugc_consent_required' ||
+    code === 'ugc_policy_update_required' ||
     code === 'http_429' ||
     /^http_5\d\d$/.test(code)
   );
@@ -208,13 +249,116 @@ async function deleteLateUploadedTombstone(clientId: string): Promise<void> {
   if (session) await deleteBeerPhotoByClientId(clientId, undefined, session);
 }
 
+function withContestCheckpoint(
+  op: BeerPhotoUploadOp,
+  photo: BeerPhoto,
+): BeerPhotoUploadOp {
+  return { ...op, contestCheckpoint: { photo } };
+}
+
+/**
+ * Atomically stamp the contest checkpoint onto the exact op being delivered.
+ * Refuses (returns false) when the session boundary moved, the photo was
+ * tombstoned, or a newer same-client op replaced the delivered one — the
+ * replacement must never be touched by a stale delivery.
+ */
+async function persistContestCheckpoint(
+  deliveredOp: BeerPhotoUploadOp,
+  checkpointedOp: BeerPhotoUploadOp,
+  expectedBoundaryGeneration: number,
+): Promise<boolean> {
+  return runMutation(async () => {
+    if (
+      isBeerPhotoSessionFrozen() ||
+      expectedBoundaryGeneration !== beerPhotoSessionGeneration() ||
+      isBeerPhotoDeletionTombstoned(deliveredOp.clientId)
+    ) return false;
+    const queue = await loadQueue();
+    const index = queue.findIndex((item) => item.clientId === deliveredOp.clientId);
+    if (index === -1 || signature(queue[index]) !== signature(deliveredOp)) {
+      return false;
+    }
+    const rewritten = [...queue];
+    rewritten[index] = checkpointedOp;
+    return saveQueue(rewritten);
+  });
+}
+
+/**
+ * Atomically finalize a delivered upload: under the queue lock, revalidate that
+ * the exact checkpointed op is still the current same-client queue item, the
+ * session generation matches, and nothing is frozen or tombstoned — only then
+ * run the synchronous markSynced + local file delete. A queued newer
+ * replacement can therefore never be finalized by a stale delivery.
+ */
+async function finalizeSyncedUpload(
+  checkpointedOp: BeerPhotoUploadOp,
+  photo: BeerPhoto,
+  expectedBoundaryGeneration: number,
+): Promise<boolean> {
+  return runMutation(async () => {
+    if (
+      isBeerPhotoSessionFrozen() ||
+      expectedBoundaryGeneration !== beerPhotoSessionGeneration() ||
+      isBeerPhotoDeletionTombstoned(checkpointedOp.clientId)
+    ) return false;
+    const queue = await loadQueue();
+    const index = queue.findIndex(
+      (item) => item.clientId === checkpointedOp.clientId,
+    );
+    if (index === -1 || signature(queue[index]) !== signature(checkpointedOp)) {
+      return false;
+    }
+    useBeerPhotosStore.getState().markSynced(checkpointedOp.clientId, photo);
+    deleteBeerPhotoLocalFile(checkpointedOp.clientId);
+    return true;
+  });
+}
+
+/**
+ * Atomically finalize a permanently-rejected upload under the queue lock with
+ * the same exact-op/session/tombstone guards as finalizeSyncedUpload: a stale
+ * delivery that lost its queue slot to a newer same-client replacement must
+ * never flip the replacement's optimistic row to failed.
+ */
+async function finalizeFailedUpload(
+  deliveredOp: BeerPhotoUploadOp,
+  code: string | undefined,
+  expectedBoundaryGeneration: number,
+): Promise<boolean> {
+  return runMutation(async () => {
+    if (
+      isBeerPhotoSessionFrozen() ||
+      expectedBoundaryGeneration !== beerPhotoSessionGeneration() ||
+      isBeerPhotoDeletionTombstoned(deliveredOp.clientId)
+    ) return false;
+    const queue = await loadQueue();
+    const index = queue.findIndex((item) => item.clientId === deliveredOp.clientId);
+    if (index === -1 || signature(queue[index]) !== signature(deliveredOp)) {
+      return false;
+    }
+    useBeerPhotosStore.getState().markFailed(deliveredOp.clientId, code);
+    return true;
+  });
+}
+
+/** Delivery outcome plus the durable signature after deliver's own writes. */
+interface DeliveryResult {
+  status: QueueSyncResult;
+  /**
+   * Signature of the queued op as this delivery left it on disk — set once a
+   * checkpoint has been stamped, so the flush can settle exactly that op.
+   */
+  durableSignature?: string;
+}
+
 async function deliver(
   op: BeerPhotoUploadOp,
   signal: AbortSignal,
   expectedBoundaryGeneration: number,
-): Promise<QueueSyncResult> {
+): Promise<DeliveryResult> {
   if (isBeerPhotoDeletionTombstoned(op.clientId)) {
-    return isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry';
+    return { status: isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry' };
   }
 
   const controller = new AbortController();
@@ -224,91 +368,162 @@ async function deliver(
   inFlightDeliveryControllers.set(op.clientId, controller);
 
   try {
-    const result = await uploadBeerPhoto(
-      op.localUri,
-      {
-        clientId: op.clientId,
-        caption: op.caption,
-        pubCacheKey: op.pubCacheKey,
-        pubName: op.pubName,
-        pubCity: op.pubCity,
-        partyCode: op.partyCode,
-        visibility: op.visibility,
-        takenAt: op.takenAt,
-      },
-      controller.signal,
-    );
-    // A native upload can resolve successfully after its AbortSignal fired.
-    // A durable deletion marker always wins and the by-client DELETE creates a
-    // server tombstone that also beats a POST still processing on the server.
-    if (isBeerPhotoDeletionTombstoned(op.clientId)) {
-      if (
-        result.status === 'ok' &&
-        !signal.aborted &&
-        expectedBoundaryGeneration === beerPhotoSessionGeneration()
-      ) {
-        await deleteLateUploadedTombstone(op.clientId);
+    let photo: BeerPhoto;
+    if (op.contestCheckpoint) {
+      // Resume path: the upload already committed server-side (durable
+      // checkpoint). Never upload again — only finish the contest intent.
+      photo = op.contestCheckpoint.photo;
+    } else {
+      const result = await uploadBeerPhoto(
+        op.localUri,
+        {
+          clientId: op.clientId,
+          caption: op.caption,
+          pubCacheKey: op.pubCacheKey,
+          pubName: op.pubName,
+          pubCity: op.pubCity,
+          partyCode: op.partyCode,
+          visibility: op.visibility,
+          takenAt: op.takenAt,
+        },
+        controller.signal,
+      );
+      // A native upload can resolve successfully after its AbortSignal fired.
+      // A durable deletion marker always wins and the by-client DELETE creates
+      // a server tombstone that also beats a POST still processing on the server.
+      if (isBeerPhotoDeletionTombstoned(op.clientId)) {
+        if (
+          result.status === 'ok' &&
+          !signal.aborted &&
+          expectedBoundaryGeneration === beerPhotoSessionGeneration()
+        ) {
+          await deleteLateUploadedTombstone(op.clientId);
+        }
+        return { status: isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry' };
       }
-      return isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry';
+      // Account replacement is different from user deletion: never mutate the
+      // new account's store, file set, or server rows with a late old result.
+      if (
+        signal.aborted ||
+        isBeerPhotoSessionFrozen() ||
+        expectedBoundaryGeneration !== beerPhotoSessionGeneration()
+      ) {
+        return { status: 'retry' };
+      }
+      if (result.status === 'permanent-error') {
+        // Keep the local file: the photo stays visible (and retryable) in the
+        // diary. The code drives the specific Czech error copy on the tile/detail.
+        // Guarded like finalizeSyncedUpload — a stale rejection must never land
+        // on a newer same-client replacement.
+        await finalizeFailedUpload(op, result.code, expectedBoundaryGeneration);
+        return { status: 'permanent-error' };
+      }
+      if (result.status !== 'ok') return { status: 'retry' };
+      photo = result.photo;
+      // A conflicting NONEMPTY echo means the server committed a DIFFERENT
+      // photo under this client_id. Accepting it would put a foreign image in
+      // the local diary and delete the local original — reject the delivery
+      // instead: guarded permanent failure with a stable internal code, local
+      // file retained so the detail screen's retry can re-enqueue it.
+      if (photo.clientId && photo.clientId !== op.clientId) {
+        await finalizeFailedUpload(
+          op,
+          'photo_identity_mismatch',
+          expectedBoundaryGeneration,
+        );
+        return { status: 'permanent-error' };
+      }
+      // The backend echoes client_id back. A missing echo must not poison the
+      // durable contest checkpoint (it validates against the op's clientId, and
+      // an invalid checkpoint gets the whole op dropped on the next load) —
+      // fill it from the op. A conflicting NONEMPTY echo is never rewritten.
+      if (!photo.clientId) photo = { ...photo, clientId: op.clientId };
     }
-    // Account replacement is different from user deletion: never mutate the
-    // new account's store, file set, or server rows with a late old result.
-    if (
-      signal.aborted ||
-      isBeerPhotoSessionFrozen() ||
-      expectedBoundaryGeneration !== beerPhotoSessionGeneration()
-    ) {
-      return 'retry';
-    }
-    if (result.status === 'ok') {
-      let photo = result.photo;
-      if (op.enterContest && photo.id) {
-        const contestResult = await enterPhotoContest(photo.id, controller.signal);
+
+    let checkpointedOp = op;
+    if (op.enterContest && photo.id && photo.clientId === op.clientId) {
+      if (!op.contestCheckpoint) {
+        // Durable checkpoint BEFORE the contest POST: a crash from here on can
+        // never force another upload after restart. If it cannot be made
+        // durable, do not finalize — the next flush re-uploads (idempotent).
+        checkpointedOp = withContestCheckpoint(op, photo);
+        const persisted = await persistContestCheckpoint(
+          op,
+          checkpointedOp,
+          expectedBoundaryGeneration,
+        );
+        if (!persisted) return { status: 'retry' };
         if (isBeerPhotoDeletionTombstoned(op.clientId)) {
           await deleteLateUploadedTombstone(op.clientId);
-          return isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry';
+          return {
+            status: isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry',
+            durableSignature: signature(checkpointedOp),
+          };
         }
         if (
           signal.aborted ||
           isBeerPhotoSessionFrozen() ||
           expectedBoundaryGeneration !== beerPhotoSessionGeneration()
         ) {
-          return 'retry';
+          return { status: 'retry', durableSignature: signature(checkpointedOp) };
         }
-        if (!contestResult.ok && shouldRetryContestEntry(contestResult.code)) {
-          // Keep both the durable file and queue op. Re-upload is idempotent, so
-          // the next foreground flush can retry the contest intent safely.
-          return 'retry';
-        }
-        if (contestResult.ok) {
-          photo = { ...photo, inContest: true };
-        }
-        // A hard contest rejection (most commonly a missing nickname) must not
-        // turn a successfully uploaded diary photo into a failed photo. Finalize
-        // the upload normally; the UI explains that contest entry did not land.
       }
-      // Check once more immediately before the store write. JavaScript cannot
-      // interleave the synchronous markSynced after this guard.
+      const contestResult = await enterPhotoContest(photo.id, controller.signal);
+      const durableSignature = signature(checkpointedOp);
       if (isBeerPhotoDeletionTombstoned(op.clientId)) {
         await deleteLateUploadedTombstone(op.clientId);
-        return isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry';
+        return {
+          status: isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry',
+          durableSignature,
+        };
       }
-      // Store FIRST (the UI flips to the remote imageUrl), only then delete the
-      // local file — never the other way around, or the diary shows a dead uri.
-      useBeerPhotosStore.getState().markSynced(op.clientId, photo);
-      deleteBeerPhotoLocalFile(op.clientId);
-      return 'ok';
-    }
-    if (result.status === 'permanent-error') {
-      if (isBeerPhotoDeletionTombstoned(op.clientId)) {
-        return isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry';
+      if (
+        signal.aborted ||
+        isBeerPhotoSessionFrozen() ||
+        expectedBoundaryGeneration !== beerPhotoSessionGeneration()
+      ) {
+        return { status: 'retry', durableSignature };
       }
-      // Keep the local file: the photo stays visible (and retryable) in the
-      // diary. The code drives the specific Czech error copy on the tile/detail.
-      useBeerPhotosStore.getState().markFailed(op.clientId, result.code);
-      return 'permanent-error';
+      if (!contestResult.ok && shouldRetryContestEntry(contestResult.code)) {
+        // Keep both the durable file and queue op with its checkpoint. The next
+        // flush resumes the contest with the same stable photo id, no re-upload.
+        return { status: 'retry', durableSignature };
+      }
+      if (contestResult.ok) {
+        photo = { ...photo, inContest: true };
+      }
+      // A hard contest rejection (most commonly a missing nickname) must not
+      // turn a successfully uploaded diary photo into a failed photo. Finalize
+      // the upload normally; the UI explains that contest entry did not land.
+      if (
+        await finalizeSyncedUpload(checkpointedOp, photo, expectedBoundaryGeneration)
+      ) {
+        return { status: 'ok', durableSignature };
+      }
+      // Lost the queue slot (replaced/removed mid-delivery): retry with the
+      // durable signature — the trailing flush settles whichever op is current.
+      return { status: 'retry', durableSignature };
     }
-    return 'retry';
+    // Check once more immediately before the store write. JavaScript cannot
+    // interleave the synchronous markSynced after this guard.
+    if (isBeerPhotoDeletionTombstoned(op.clientId)) {
+      await deleteLateUploadedTombstone(op.clientId);
+      return {
+        status: isBeerPhotoDeletionPending(op.clientId) ? 'ok' : 'retry',
+        durableSignature: signature(checkpointedOp),
+      };
+    }
+    // Store FIRST (the UI flips to the remote imageUrl), only then delete the
+    // local file — never the other way around, or the diary shows a dead uri.
+    // Finalized under the exact-op guard: a stale delivery that lost its queue
+    // slot to a newer same-client replacement must not mutate the replacement's
+    // store row nor delete its (now newer) durable file.
+    if (
+      await finalizeSyncedUpload(checkpointedOp, photo, expectedBoundaryGeneration)
+    ) {
+      return { status: 'ok', durableSignature: signature(checkpointedOp) };
+    }
+    return { status: 'retry', durableSignature: signature(checkpointedOp) };
   } finally {
     signal.removeEventListener('abort', abortForAccountBoundary);
     if (inFlightDeliveryControllers.get(op.clientId) === controller) {
@@ -421,6 +636,8 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  /** Signature each delivery left on disk (set once a checkpoint is stamped). */
+  const deliveredSignatures = new Map<string, string>();
   for (const op of queue) {
     // Stop before the next upload once an account-boundary clear has aborted
     // us, so a previous account's photos are never uploaded under the session
@@ -434,16 +651,27 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // confirms or rejects that create.
     if (op.pendingPartyCode) continue;
     attempted.set(op.clientId, signature(op));
-    const result = await deliver(op, signal, expectedBoundaryGeneration);
-    if (result !== 'retry') settled.add(op.clientId);
+    const outcome = await deliver(op, signal, expectedBoundaryGeneration);
+    if (outcome.durableSignature) {
+      deliveredSignatures.set(op.clientId, outcome.durableSignature);
+    }
+    if (outcome.status !== 'retry') settled.add(op.clientId);
   }
 
   const remaining = await runMutation(async () => {
     if (expectedBoundaryGeneration !== beerPhotoSessionGeneration()) return [];
     const current = await loadQueue();
     const kept = current.filter((op) => {
-      const sig = attempted.get(op.clientId);
-      if (sig === undefined || sig !== signature(op)) return true;
+      const attemptedSignature = attempted.get(op.clientId);
+      if (attemptedSignature === undefined) return true;
+      // The checkpoint stamped mid-delivery changes the durable signature —
+      // match either the pre-delivery op or exactly what this delivery wrote.
+      // Anything else is a newer replacement and must never be touched here.
+      const currentSignature = signature(op);
+      const isSameAttempt =
+        currentSignature === attemptedSignature ||
+        currentSignature === deliveredSignatures.get(op.clientId);
+      if (!isSameAttempt) return true;
       return !settled.has(op.clientId);
     });
     await saveQueue(kept);

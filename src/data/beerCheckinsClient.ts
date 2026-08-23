@@ -325,10 +325,13 @@ export async function submitBeerCheckIn(input: BeerCheckInInput): Promise<QueueS
   if (res.result.code === 'offline' || res.result.code === 'account' || res.result.code === 'network' || res.result.code === 'auth') {
     return 'retry';
   }
+  if (res.result.code === 'ugc_consent_required' || res.result.code === 'ugc_policy_update_required') {
+    return 'retry';
+  }
   const httpMatch = /^http_(\d{3})$/.exec(res.result.code);
   if (httpMatch) {
     const status = Number(httpMatch[1]);
-    if (status === 401 || status === 429 || status >= 500) return 'retry';
+    if (status === 401 || status === 428 || status === 429 || status >= 500) return 'retry';
   }
   return 'permanent-error';
 }

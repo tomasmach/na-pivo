@@ -36,7 +36,12 @@ import {
   parsePublishedNight,
   type NightPublishPayload,
 } from '../nightsClient';
-import { clearNightsQueue, enqueueNightOp, type NightQueueItem } from '../nightsQueue';
+import {
+  clearNightsQueue,
+  enqueueNightOp,
+  flushNightsQueue,
+  type NightQueueItem,
+} from '../nightsQueue';
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
 
@@ -320,9 +325,55 @@ describe('nights queue collapse', () => {
   });
 });
 
+describe('UGC consent retry contract — HTTP 428 keeps the queued publish', () => {
+  const ugc428Failures = [
+    { ok: false as const, code: 'http_428', detail: 'Precondition required.' },
+    { ok: false as const, code: 'ugc_consent_required', detail: 'Potřebujeme souhlas.' },
+    { ok: false as const, code: 'ugc_policy_update_required', detail: 'Pravidla se změnila.' },
+  ];
+
+  it.each(ugc428Failures)(
+    'retains a pending publish when delivery returns $code until it succeeds',
+    async (failure) => {
+      mockPublishNight.mockResolvedValue(failure);
+      await enqueueNightOp({ op: 'publish', payload });
+
+      // REGRESSION: the consent/policy gate is transient — the evening must
+      // stay durable, never be dropped like a permanent rejection.
+      expect(await readQueue()).toEqual([{ op: 'publish', payload }]);
+
+      mockPublishNight.mockResolvedValue({ ok: true, night: {} });
+      await flushNightsQueue();
+      expect(await readQueue()).toEqual([]);
+    },
+  );
+
+  it('leaves unpublish and round keep/drop behavior unchanged on permanent errors', async () => {
+    mockUnpublishNight.mockResolvedValue({ ok: false, code: 'http_404', detail: 'x' });
+    await enqueueNightOp({ op: 'unpublish', clientId: payload.clientId });
+    expect(await readQueue()).toEqual([]);
+
+    mockReactToNight.mockResolvedValue({ ok: false, code: 'not_friends', detail: 'x' });
+    await enqueueNightOp({ op: 'round', nightId: 'night-9' });
+    expect(await readQueue()).toEqual([]);
+  });
+});
+
 describe('isRetriableNightError', () => {
   it('matches the durable queue retry policy', () => {
-    for (const code of ['offline', 'network', 'account', 'auth', 'http_401', 'http_429', 'http_500']) {
+    for (const code of [
+      'offline',
+      'network',
+      'account',
+      'auth',
+      'http_401',
+      'http_429',
+      'http_500',
+      // Consent/policy gate: transient, the queue must keep retrying.
+      'http_428',
+      'ugc_consent_required',
+      'ugc_policy_update_required',
+    ]) {
       expect(isRetriableNightError({ ok: false, code, detail: 'x' })).toBe(true);
     }
     for (const code of ['http_400', 'http_404', 'not_friends', 'self_reaction']) {
