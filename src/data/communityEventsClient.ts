@@ -2,6 +2,7 @@ import { chainAbortSignal } from './apiFetch';
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
@@ -99,6 +100,7 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  gatedUgc?: boolean;
 }
 
 function profile(raw: Record<string, unknown> | undefined): CommunityEventProfile {
@@ -233,7 +235,13 @@ function parseEvent(value: unknown): CommunityEvent | null {
 async function request(path: string, options: RequestOptions = {}) {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint) return { ok: false as const, code: 'offline', detail: 'Server teď není dostupný.' };
-  const session = await ensureAccount(options.signal);
+  let session: Awaited<ReturnType<typeof ensureAccount>>;
+  try {
+    session = await ensureAccount(options.signal);
+  } catch (error) {
+    trackApiFailure('community_events_request', { endpoint: path, reason: 'exception', error });
+    return { ok: false as const, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' };
+  }
   if (!session?.authenticated) {
     return { ok: false as const, code: 'auth', detail: 'Pro domácí setkání se nejdřív přihlas.' };
   }
@@ -241,12 +249,29 @@ async function request(path: string, options: RequestOptions = {}) {
   try {
     const response = await fetch(endpoint, {
       method: options.method ?? 'GET',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
+      },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: abort.signal,
     });
-    const text = await response.text();
-    const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    let data: Record<string, unknown> = {};
+    if (response.ok) {
+      const text = await response.text();
+      data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } else {
+      try {
+        const text = await response.text();
+        data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      } catch {
+        data = {};
+      }
+    }
+    if (!response.ok && options.gatedUgc) {
+      notifyUgcConsentRequiredFromResponse(response.status, data);
+    }
     if (response.ok) return { ok: true as const, data };
     return {
       ok: false as const,
@@ -321,6 +346,7 @@ export async function createCommunityEvent(input: {
       capacity: input.capacity,
       adults_confirmed: true,
     },
+    gatedUgc: true,
   });
   if (!result.ok) return result;
   const event = parseEvent(result.data);
@@ -331,6 +357,7 @@ export async function requestCommunityEventJoin(eventId: string, message = ''): 
   const result = await request(`/v1/community-events/${eventId}/join`, {
     method: 'POST',
     body: { message, adults_confirmed: true },
+    gatedUgc: message.trim().length > 0,
   });
   return result.ok ? { ok: true } : result;
 }
@@ -370,6 +397,7 @@ export async function createCommunityEventTeam(
   const result = await request(`/v1/community-events/${encodeURIComponent(eventId)}/teams`, {
     method: 'POST',
     body: { client_id: input.clientId, name: input.name },
+    gatedUgc: true,
   });
   if (!result.ok) return result;
   const roster = parseTeamRoster(result.data.team_roster);
