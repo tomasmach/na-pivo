@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react-native";
+import { AccessibilityInfo, Platform } from "react-native";
 import type { PartyGameEvent } from "@/data/partyGamesClient";
 
 const mockBack = jest.fn();
@@ -1808,5 +1809,263 @@ describe("PartyGameScreen spectator mode", () => {
 
     expect(mockSendGameEvent).not.toHaveBeenCalled();
     expect(mockFinishGame).not.toHaveBeenCalled();
+  });
+});
+
+describe("PartyGameScreen accessibility", () => {
+  const announceSpy = jest.fn();
+  const FAILURE = "Hru se nepodařilo bezpečně uložit pro sdílení.";
+  const SHARING_LINE = `Hra běží jen na tomhle telefonu. ${FAILURE}`;
+
+  type MockNode = {
+    props?: Record<string, unknown>;
+    parent?: MockNode | null;
+  };
+
+  const rosterWithMe = [
+    { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+    { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+  ];
+
+  function resetAccessibilitySpy() {
+    (
+      AccessibilityInfo as unknown as Record<string, unknown>
+    ).announceForAccessibility = announceSpy;
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    announceSpy.mockClear();
+    Platform.OS = "ios";
+    mockRouteKey = "dice";
+    mockPlacedGame = false;
+    mockSharedCode = "TABLE1";
+    mockSharingFailure = undefined;
+    mockSharedRoster = [];
+    mockGameEvents = [];
+    mockNight = createMockNight();
+    mockLoadPendingPartyGameRuntime.mockResolvedValue(null);
+    mockLoadQueuedPartyGameEvents.mockResolvedValue([]);
+    mockSendGameEvent.mockResolvedValue(undefined);
+    mockStartSharedGame.mockImplementation(
+      async (input: { rosterIds?: string[] }) => ({
+        gameId: "game-1",
+        rosterIds: input.rosterIds ?? [],
+      }),
+    );
+    resetAccessibilitySpy();
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+    delete (AccessibilityInfo as unknown as Record<string, unknown>)
+      .announceForAccessibility;
+    Platform.OS = "ios";
+  });
+
+  it("marks the pinned game title as a header", () => {
+    render(<PartyGameScreen />);
+    expect(screen.getByText("Kostky").props.accessibilityRole).toBe("header");
+  });
+
+  it("announces the shared-game failure band once on iOS and does not repeat on the same state", () => {
+    mockSharedRoster = rosterWithMe;
+    mockSharingFailure = FAILURE;
+
+    const view = render(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(screen.getByText(SHARING_LINE).props.accessibilityLiveRegion).toBe(
+      "assertive",
+    );
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+    expect(announceSpy).toHaveBeenCalledWith(SHARING_LINE);
+
+    view.rerender(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the shared-game failure declarative on Android with zero imperative calls", () => {
+    Platform.OS = "android";
+    mockSharedRoster = rosterWithMe;
+    mockSharingFailure = FAILURE;
+
+    const view = render(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(screen.getByText(SHARING_LINE).props.accessibilityLiveRegion).toBe(
+      "assertive",
+    );
+    view.rerender(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(announceSpy).not.toHaveBeenCalled();
+  });
+
+  it("announces the quiz retry failure once on iOS and keeps Retry a separate button", async () => {
+    mockRouteKey = "quiz";
+    mockStartSharedGame.mockImplementationOnce(async () => {
+      mockSharingFailure = FAILURE;
+      return null;
+    });
+
+    const view = render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Zkusit znovu")).toBeTruthy(),
+    );
+
+    const error = screen.getByText(FAILURE);
+    expect(error.props.accessibilityLiveRegion).toBe("assertive");
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+    expect(announceSpy).toHaveBeenCalledWith(FAILURE);
+
+    const retry = screen.getByLabelText("Zkusit znovu");
+    expect(retry.props.accessibilityRole).toBe("button");
+    let node = retry as unknown as MockNode;
+    while (node?.parent) {
+      node = node.parent;
+      expect(node.props?.accessibilityLiveRegion).toBeUndefined();
+      expect(node.props?.accessible).toBeUndefined();
+    }
+
+    view.rerender(<PartyGameScreen />);
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes score rows with roles and a polite live region and announces a local point once on iOS", async () => {
+    mockRouteKey = "score";
+    mockSharedRoster = rosterWithMe;
+
+    const view = render(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    const meRow = screen.getByLabelText("Bod pro ty. Aktuálně 0");
+    expect(meRow.props.accessibilityRole).toBe("button");
+    expect(meRow.props.accessibilityState).toEqual({ disabled: false });
+    expect(meRow.props.accessibilityLiveRegion).toBe("polite");
+
+    fireEvent.press(meRow);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Bod pro ty. Aktuálně 1")).toBeTruthy(),
+    );
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+    expect(announceSpy).toHaveBeenCalledWith("Bod pro ty. Aktuálně 1");
+
+    // Unrelated rerender of the same state stays silent.
+    view.rerender(<PartyGameScreen />);
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+
+    // The local-server acknowledgement folds without repeating the announce.
+    const [ackCall] = mockSendGameEvent.mock.calls.filter(
+      ([, event]) => (event as { kind: string }).kind === "score",
+    );
+    const ackEvent = ackCall[1] as {
+      kind: string;
+      subjectId: string;
+      delta: number;
+      createdAt: string;
+    };
+    mockGameEvents = [
+      {
+        cursor: 9,
+        clientId: "score-ack",
+        gameId: "game-1",
+        kind: "score",
+        account: GAME_PROFILE,
+        subject: {
+          id: "me",
+          nickname: "ty",
+          displayName: "Ty",
+          avatarUrl: null,
+        },
+        delta: ackEvent.delta,
+        payload: {},
+        at: ackEvent.createdAt,
+      },
+    ];
+    view.rerender(<PartyGameScreen />);
+    expect(screen.getByLabelText("Bod pro ty. Aktuálně 1")).toBeTruthy();
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not announce scores that already exist at mount or on reconnect", () => {
+    mockRouteKey = "score";
+    mockSharedRoster = rosterWithMe;
+    mockGameEvents = [
+      {
+        cursor: 7,
+        clientId: "score-7",
+        gameId: "game-1",
+        kind: "score",
+        account: GAME_PROFILE,
+        subject: {
+          id: "me",
+          nickname: "ty",
+          displayName: "Ty",
+          avatarUrl: null,
+        },
+        delta: 2,
+        payload: {},
+        at: "2026-08-07T20:00:00.000Z",
+      },
+    ];
+
+    render(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(screen.getByLabelText("Bod pro ty. Aktuálně 2")).toBeTruthy();
+    expect(announceSpy).not.toHaveBeenCalled();
+  });
+
+  it("marks score rows disabled for a spectator and stays silent on an Android score change", async () => {
+    Platform.OS = "android";
+
+    // Spectator: rows stay queryable but disabled.
+    mockRouteKey = "score";
+    mockSharedRoster = SHARED_ROSTER_WITHOUT_ME;
+
+    render(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    const honzaRow = screen.getByLabelText("Bod pro honza. Aktuálně 0");
+    expect(honzaRow.props.accessibilityRole).toBe("button");
+    expect(honzaRow.props.accessibilityState).toEqual({ disabled: true });
+    expect(honzaRow.props.accessibilityLiveRegion).toBe("polite");
+    fireEvent.press(honzaRow);
+    expect(mockSendGameEvent).not.toHaveBeenCalled();
+
+    // Active player: the 0->1 transition is declarative only.
+    mockSharedRoster = rosterWithMe;
+    const view = render(<PartyGameScreen />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const meRow = screen.getByLabelText("Bod pro ty. Aktuálně 0");
+    fireEvent.press(meRow);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Bod pro ty. Aktuálně 1")).toBeTruthy(),
+    );
+    view.rerender(<PartyGameScreen />);
+    expect(announceSpy).not.toHaveBeenCalled();
   });
 });

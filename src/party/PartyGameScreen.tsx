@@ -28,7 +28,15 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -107,6 +115,11 @@ const KINGS_CARD_IDS = new Set([
 
 function playerName(value: string | null | undefined, id: string): string {
   return value?.trim() || fallbackPlayerName(id);
+}
+
+/** One score row, said the same way in the label and in the announcement. */
+function scoreAccessibilityLabel(name: string, score: number): string {
+  return `Bod pro ${name}. Aktuálně ${score}`;
 }
 
 /** First player by sorted id — the same phone-independent pick on every device. */
@@ -704,6 +717,66 @@ export default function PartyGameScreen() {
   const leader = ranked[0];
   const played = ranked.some((row) => row.score > 0);
 
+  // Error copy derived once — the same string is rendered and, when it first
+  // becomes visible, announced.
+  const sharingFailureLine =
+    sharingFailure && roster && !spectator
+      ? `Hra běží jen na tomhle telefonu. ${sharingFailure}`
+      : null;
+  const retryFailureLine =
+    roster === null && !canonicalFinish && retryQuizRoster
+      ? (sharingFailure ?? cs.gameHost.loadFailed)
+      : null;
+
+  /**
+   * Screen reader announcements, iOS only.
+   *
+   * The visible error lines are already live regions, so Android picks them up
+   * declaratively; iOS additionally speaks the full line once when it first
+   * appears, keyed by content so an unrelated rerender never repeats it.
+   */
+  const announcedErrorRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const line = sharingFailureLine ?? retryFailureLine;
+    if (!line) {
+      announcedErrorRef.current = null;
+      return;
+    }
+    if (announcedErrorRef.current === line) return;
+    announcedErrorRef.current = line;
+    AccessibilityInfo.announceForAccessibility?.(line);
+  });
+
+  /**
+   * Score changes are announced from the diff against the previous board —
+   * mounted/reconnected values are the silent baseline, and the ref advances
+   * on every platform and state so acknowledgements and reorders never repeat.
+   */
+  const previousScoresRef = React.useRef<Record<string, number> | null>(null);
+  React.useEffect(() => {
+    const current: Record<string, number> = {};
+    for (const row of ranked) current[row.id] = row.score;
+    const previous = previousScoresRef.current;
+    previousScoresRef.current = current;
+    if (
+      Platform.OS !== "ios" ||
+      previous === null ||
+      spectator ||
+      !roster ||
+      canonicalFinish ||
+      shell !== "score"
+    )
+      return;
+    for (const row of ranked) {
+      const before = previous[row.id];
+      if (before !== undefined && before !== row.score)
+        AccessibilityInfo.announceForAccessibility?.(
+          scoreAccessibilityLabel(row.name, row.score),
+        );
+    }
+  });
+
   /**
    * How a game ends — in one place, said twice.
    *
@@ -821,6 +894,7 @@ export default function PartyGameScreen() {
           style={styles.topTitle}
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
+          accessibilityRole="header"
         >
           {name}
         </Text>
@@ -864,22 +938,24 @@ export default function PartyGameScreen() {
         </Text>
       ) : null}
 
-      {sharingFailure && roster && !spectator ? (
+      {sharingFailureLine ? (
         <Text
           style={styles.sharingFailure}
           maxFontSizeMultiplier={FontScaleCap.body}
+          accessibilityLiveRegion="assertive"
         >
-          Hra běží jen na tomhle telefonu. {sharingFailure}
+          {sharingFailureLine}
         </Text>
       ) : null}
 
       {roster === null && !canonicalFinish && retryQuizRoster ? (
-        <View style={styles.startFailure} accessibilityLiveRegion="polite">
+        <View style={styles.startFailure}>
           <Text
             style={styles.startFailureText}
             maxFontSizeMultiplier={FontScaleCap.body}
+            accessibilityLiveRegion="assertive"
           >
-            {sharingFailure ?? cs.gameHost.loadFailed}
+            {retryFailureLine}
           </Text>
           <Pressable
             onPress={() => {
@@ -1228,7 +1304,8 @@ export default function PartyGameScreen() {
                 pressed && !spectator && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={`Bod pro ${row.name}. Aktuálně ${row.score}`}
+              accessibilityLabel={scoreAccessibilityLabel(row.name, row.score)}
+              accessibilityLiveRegion="polite"
               accessibilityState={{ disabled: spectator }}
             >
               <Text
