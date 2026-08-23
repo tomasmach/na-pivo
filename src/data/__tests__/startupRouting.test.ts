@@ -1,5 +1,4 @@
 import {
-  shouldAutoClaimPendingInvite,
   isStartupFlushOwnedByAccountInitialization,
   runAfterAccountInitialization,
   shouldShowOnboardingForPath,
@@ -13,16 +12,8 @@ describe('startup routing', () => {
     },
   );
 
-  it('does not auto-claim an invite while its explicit confirmation screen is open', () => {
-    expect(shouldAutoClaimPendingInvite('/parta/pozvanka')).toBe(false);
-  });
-
   it('keeps a cold table invite ahead of onboarding', () => {
     expect(shouldShowOnboardingForPath('/party-live')).toBe(false);
-  });
-
-  it('does not auto-claim a cold invite before the router pathname catches up', () => {
-    expect(shouldAutoClaimPendingInvite('/', true)).toBe(false);
   });
 
   it('still takes over an ordinary fresh-install route', () => {

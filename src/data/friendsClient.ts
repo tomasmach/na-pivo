@@ -327,7 +327,11 @@ export interface FriendActionError {
   detail: string;
 }
 
-export type FriendActionResult = { ok: true } | FriendActionError;
+/**
+ * Additive success field: an invite redemption can be accepted immediately
+ * (`status: 'accepted'`); every other success stays a plain `{ ok: true }`.
+ */
+export type FriendActionResult = { ok: true; status?: 'accepted' } | FriendActionError;
 
 interface RawFriendProfile {
   id?: string;
@@ -1152,7 +1156,10 @@ export async function sendFriendRequest(params: {
       ? { target_account_id: params.accountId }
       : { nickname: params.nickname ?? '' };
   const res = await requestJson('/v1/friends/requests', { method: 'POST', body });
-  return res.ok ? { ok: true } : res.result;
+  if (!res.ok) return res.result;
+  // Additive: only an immediate invite acceptance carries a status; legacy and
+  // pending responses stay a plain success so existing callers don't change.
+  return res.data.status === 'accepted' ? { ok: true, status: 'accepted' } : { ok: true };
 }
 
 /** My reusable invite code + deep link, minting one if none is active (§A1). */

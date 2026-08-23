@@ -8,14 +8,6 @@ export function shouldShowOnboardingForPath(pathname: string): boolean {
   );
 }
 
-/** The confirmation screen owns its invite; startup must not race its CTA. */
-export function shouldAutoClaimPendingInvite(
-  pathname: string,
-  explicitInviteOpen = false,
-): boolean {
-  return !explicitInviteOpen && !pathname.startsWith('/parta/pozvanka');
-}
-
 /** Run launch work after account initialization, regardless of its result. */
 export function runAfterAccountInitialization(
   initialization: Promise<unknown>,

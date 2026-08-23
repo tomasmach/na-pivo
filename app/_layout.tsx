@@ -37,8 +37,8 @@ import { flushVisitsQueue } from '@/data/visitsQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { fetchFriendsLive } from '@/data/friendsClient';
 import {
-  consumeAndClaimPendingInviteCode,
   parseInviteCodeFromUrl,
+  peekPendingInviteCode,
   stashPendingInviteCode,
 } from '@/data/friendInviteLink';
 import { parsePartyInviteCodeFromUrl } from '@/data/partyInviteLink';
@@ -62,8 +62,8 @@ import {
 } from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
+import { createInviteNavigationCoordinator } from '@/data/inviteNavigation';
 import {
-  shouldAutoClaimPendingInvite,
   shouldShowOnboardingForPath,
   isStartupFlushOwnedByAccountInitialization,
   runAfterAccountInitialization,
@@ -243,6 +243,12 @@ export default function RootLayout() {
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
   const inviteConfirmationOwnsClaimRef = useRef(false);
+  // Arbitrates the invite-confirmation navigation race (warm links, delayed
+  // getInitialURL, persisted-code restore). Pure decision seam, see
+  // src/data/inviteNavigation.ts.
+  const inviteNavigationRef = useRef(createInviteNavigationCoordinator());
+  // Startup effects must run once, so late navigation reads the router via ref.
+  const routerRef = useRef(router);
   const [telemetryReady, setTelemetryReady] = useState(false);
   const startupBoundaryReady = useAccountStore((state) => state.startupBoundaryReady);
   const accountStatus = useAccountStore((state) => state.status);
@@ -282,6 +288,16 @@ export default function RootLayout() {
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
+  // Leaving the confirmation screen releases its claim so a later invite can
+  // navigate again (push) instead of being swallowed by a stale owner.
+  useEffect(() => {
+    if (pathname.startsWith('/parta/pozvanka')) return;
+    inviteConfirmationOwnsClaimRef.current = false;
+    inviteNavigationRef.current.leaveConfirmation();
+  }, [pathname]);
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
   useEffect(() => {
     if (previousAccountIdRef.current !== accountId) {
       cancelPendingPartyRecapNavigation();
@@ -341,15 +357,28 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, router, startupBoundaryReady]);
 
   useEffect(() => {
-    const handleInviteUrl = (url: string | null) => {
+    const handleInviteUrl = (url: string | null, initialTicket?: number) => {
       const friendCode = parseInviteCodeFromUrl(url);
       if (friendCode) {
-        cancelPendingPartyRecapNavigation();
-        // This flips before navigation commits, so a fast account initialization
-        // cannot consume the same cold-start invite behind the confirmation CTA.
-        inviteConfirmationOwnsClaimRef.current = true;
-        void stashPendingInviteCode(friendCode);
-        router.push({ pathname: '/parta/pozvanka', params: { code: friendCode } } as Href);
+        // A delayed getInitialURL result is an explicit event too: its ticket
+        // was claimed before the await, and it loses only to a newer explicit
+        // event that landed meanwhile. Stashing happens only for a winning
+        // decision, so an older code can never overwrite a newer one in
+        // storage out of order.
+        const decision =
+          initialTicket === undefined
+            ? inviteNavigationRef.current.handleExplicitInviteCode(friendCode)
+            : inviteNavigationRef.current.resolveExplicitLookup(initialTicket, friendCode);
+        if (decision.action !== 'none' && decision.code) {
+          cancelPendingPartyRecapNavigation();
+          // This flips before navigation commits, so a fast account initialization
+          // cannot consume the same cold-start invite behind the confirmation CTA.
+          inviteConfirmationOwnsClaimRef.current = true;
+          void stashPendingInviteCode(decision.code);
+          const href = { pathname: '/parta/pozvanka', params: { code: decision.code } } as Href;
+          if (decision.action === 'replace') router.replace(href);
+          else router.push(href);
+        }
         return;
       }
 
@@ -362,8 +391,11 @@ export default function RootLayout() {
       } as Href);
     };
 
+    // The cold-start URL is explicit as well: claim its ticket BEFORE awaiting,
+    // so a warm link tapped first keeps winning when both land.
+    const initialTicket = inviteNavigationRef.current.beginExplicitLookup();
     Linking.getInitialURL()
-      .then(handleInviteUrl)
+      .then((url) => handleInviteUrl(url, initialTicket))
       .catch(() => undefined);
     const subscription = Linking.addEventListener('url', ({ url }) => handleInviteUrl(url));
     return () => subscription.remove();
@@ -416,13 +448,23 @@ export default function RootLayout() {
       // launch-time location check, so let the cached country win once more.
       void refreshCurrencyFromLastKnownLocation();
       void trackClientEvent({ event: 'app_open', severity: 'info' });
-      // Legacy stashes without an open confirmation route can still finish.
-      if (shouldAutoClaimPendingInvite(
-        pathnameRef.current,
-        inviteConfirmationOwnsClaimRef.current,
-      )) {
-        void consumeAndClaimPendingInviteCode();
-      }
+      // A code stashed before the account existed waits for explicit consent:
+      // restore its confirmation screen instead of claiming behind the user's
+      // back. The restore ticket is claimed before the peek resolves so any
+      // explicit deep link landing meanwhile wins the race; the coordinator
+      // also prevents double navigation against the cold-start handler above.
+      const restoreTicket = inviteNavigationRef.current.beginRestoreLookup();
+      void peekPendingInviteCode().then((pendingCode) => {
+        const decision = inviteNavigationRef.current.resolveRestoreLookup(
+          restoreTicket,
+          pendingCode,
+        );
+        if (decision.action !== 'none' && decision.code) {
+          // Flip before navigation commits, mirroring the cold deep-link handler.
+          inviteConfirmationOwnsClaimRef.current = true;
+          routerRef.current.push(`/parta/pozvanka?code=${encodeURIComponent(decision.code)}` as Href);
+        }
+      });
       // Light up the Parta tab badge without waiting for the first Parta visit.
       seedPartaBadge();
       // Existing installs may hold local diary drinks from before /v1/drinks

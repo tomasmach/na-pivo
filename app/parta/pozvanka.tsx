@@ -7,8 +7,9 @@
  * and offers a single "Přidat do party" action that sends the friend request.
  *
  * A code tapped before the (auto-created) account existed is stashed by
- * `friendInviteLink` and claimed on launch, so by the time this screen renders an
- * account is ready and the request goes straight out.
+ * `friendInviteLink`; after a restart startup reopens this confirmation screen
+ * with the stashed code, and only the user's explicit "Přidat do party" tap
+ * claims/sends it — backing out clears the stash.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +19,13 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
 import { ChevronLeftIcon, UsersIcon } from '@/components/shared/IconGlyph';
-import { claimInviteCode, clearPendingInviteCode } from '@/data/friendInviteLink';
+import {
+  claimInviteCode,
+  clearPendingInviteCode,
+  inviteClaimRoute,
+  inviteClaimState,
+  isInviteClaimAccepted,
+} from '@/data/friendInviteLink';
 import { resolveInviteCode, type FriendProfile } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
@@ -41,7 +48,7 @@ export default function InviteClaimScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const showToast = useToastStore((s) => s.show);
-  const myId = useAccountStore((s) => s.profile?.id ?? null);
+  const myId = useAccountStore((s) => s.session?.accountId ?? s.profile?.id ?? null);
 
   const params = useLocalSearchParams<{ code?: string | string[] }>();
   const code = useMemo(() => {
@@ -73,16 +80,17 @@ export default function InviteClaimScreen() {
         return;
       }
       setInviter(result.inviter);
-      // A resolved inviter equal to me means I opened my own code.
-      setState(result.inviter && myId && result.inviter.id === myId ? 'self' : 'valid');
+      // A resolved inviter stays 'loading' until the own account id is known,
+      // then collapses to 'self' (own code) or 'valid' — pure decision.
+      setState(inviteClaimState(result.inviter?.id ?? null, myId));
     });
     return () => {
       alive = false;
     };
   }, [code, myId]);
 
-  const goAfterClaim = useCallback(() => {
-    router.replace('/friends/parta/people?focus=outgoing' as Href);
+  const goAfterClaim = useCallback((route: string) => {
+    router.replace(route as Href);
   }, [router]);
 
   const goBack = useCallback(() => {
@@ -100,8 +108,11 @@ export default function InviteClaimScreen() {
       if (result.ok) {
         await clearPendingInviteCode();
         if (!mountedRef.current) return;
-        showToast(cs.friends.claimDone, { icon: <UsersIcon size={20} color={Colors.amber} /> });
-        goAfterClaim();
+        showToast(
+          isInviteClaimAccepted(result) ? cs.friends.requestAcceptedToast : cs.friends.claimDone,
+          { icon: <UsersIcon size={20} color={Colors.amber} /> },
+        );
+        goAfterClaim(inviteClaimRoute(result));
         return;
       }
       setClaiming(false);
