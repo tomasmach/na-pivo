@@ -48,6 +48,7 @@ import {
   type GameHostHandle,
 } from "@/games/GameHost";
 import { GameResult } from "@/games/GameResult";
+import { DurableFinishPending, useDurableFinish } from "@/party/shells/DurableFinish";
 import {
   isOver,
   recordRoll,
@@ -110,7 +111,7 @@ export function DiceDuelShell({
     payingId: string;
     paying: string;
     standings: { playerId: string; name: string; score: number }[];
-  }) => void;
+  }) => Promise<boolean>;
   /** Leaving the finished game — the platform decides where that goes. */
   onDone: () => void;
   /** Folded append-only state. Omit for a local-only game. */
@@ -134,7 +135,6 @@ export function DiceDuelShell({
   );
   /** The current cheer's timeout; a new settled beat replaces, not stacks. */
   const cheerTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reported = React.useRef(false);
 
   const turn = whoseTurn(state);
   const roundDone = turn === null && state.round.length > 0;
@@ -155,25 +155,30 @@ export function DiceDuelShell({
     [],
   );
 
-  React.useEffect(() => {
-    if (!over || reported.current || spectator) return;
-    reported.current = true;
-    const payer = players.find((player) => player.id === state.payingId);
-    // `isOver` and the dice rules guarantee one remaining payer. Keep the
-    // guard here so malformed restored state cannot publish an empty finish.
-    if (payer) {
-      onFinished({
-        payingId: payer.id,
-        paying: payer.name,
+  const finishPayer = over
+    ? players.find((player) => player.id === state.payingId)
+    : undefined;
+  // `isOver` and the dice rules guarantee one remaining payer. Keep the guard
+  // here so malformed restored state cannot publish an empty finish.
+  const finishResult = finishPayer
+    ? {
+        payingId: finishPayer.id,
+        paying: finishPayer.name,
         standings: standings(state).map((row) => ({
           ...row,
           name:
             players.find((player) => player.id === row.playerId)?.name ??
             "Hráč",
         })),
-      });
-    }
-  }, [over, state, onFinished, players, spectator]);
+      }
+    : null;
+  const durableFinish = useDurableFinish({
+    finished: over,
+    spectator,
+    resultKey: finishResult ? JSON.stringify(finishResult) : null,
+    result: finishResult,
+    onFinished,
+  });
 
   const canvas = React.useRef<GameHostHandle>(null);
   const [cheer, setCheer] = React.useState<string | null>(null);
@@ -321,6 +326,15 @@ export function DiceDuelShell({
   }, [cheer]);
 
   if (over) {
+    if (finishResult && durableFinish.status !== "stored") {
+      return (
+        <DurableFinishPending
+          status={durableFinish.status}
+          spectator={spectator}
+          onRetry={durableFinish.retry}
+        />
+      );
+    }
     // The shared ending — the same screen every game lands on, chosen from the
     // data rather than drawn again here.
     return (
@@ -343,6 +357,7 @@ export function DiceDuelShell({
         // Who got out, in the order they managed it. The ladder is the story of
         // this game, not the raw win counts.
         board={state.safe.map((playerId, index) => ({
+          playerId,
           name: nameOf(playerId),
           score: index + 1,
           suffix: `${index + 1}.`,
@@ -605,7 +620,13 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.8 },
   kicker: { fontSize: 13, fontWeight: "700", color: Colors.mutedText },
-  fallbackDice: { fontFamily: Fonts.numeral, fontSize: 56, color: Colors.foam },
+  fallbackDice: {
+    fontFamily: Fonts.numeral,
+    fontSize: 56,
+    lineHeight: 69,
+    includeFontPadding: false,
+    color: Colors.foam,
+  },
   cheer: {
     position: "absolute",
     left: 0,
@@ -707,6 +728,8 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontFamily: Fonts.numeral,
     fontSize: 20,
+    lineHeight: 25,
+    includeFontPadding: false,
     color: Colors.foam,
   },
 

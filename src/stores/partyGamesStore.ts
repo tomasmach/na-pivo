@@ -65,7 +65,7 @@ interface PartyGamesState {
     gameId: string,
     event: Omit<PartyGameEventInput, 'clientId'>,
     clientId?: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 }
 
 export interface PartyGameStartHandle {
@@ -209,10 +209,10 @@ export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
 
   send: async (gameId, event, clientId) => {
     const code = get().code;
-    if (!code) return;
+    if (!code) return false;
     const generation = resourceGeneration;
-    if (generation !== resourceGeneration || get().code !== code) return;
-    await enqueuePartyGameEvent(code, gameId, {
+    if (generation !== resourceGeneration || get().code !== code) return false;
+    return enqueuePartyGameEvent(code, gameId, {
       ...event,
       clientId: clientId ?? generateUuidV4(),
     });

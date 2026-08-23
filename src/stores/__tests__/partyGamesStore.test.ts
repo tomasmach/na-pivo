@@ -27,7 +27,7 @@ jest.mock('@/data/partyGameStartsQueue', () => ({
   flushPartyGameStartsQueue: () => flushPartyGameStartsQueue(),
 }));
 
-const enqueuePartyGameEvent: jest.Mock = jest.fn(async () => undefined);
+const enqueuePartyGameEvent: jest.Mock = jest.fn(async () => true);
 const flushPartyGamesQueue: jest.Mock = jest.fn(async () => undefined);
 jest.mock('@/data/partyGamesQueue', () => ({
   enqueuePartyGameEvent: (...args: unknown[]) => enqueuePartyGameEvent(...(args as [])),
@@ -232,6 +232,17 @@ describe('partyGamesStore', () => {
       kind: 'answer',
       payload: { questionId: 'q-plzen', option: 2 },
     });
+  });
+
+  it('reports when an event could not be saved durably', async () => {
+    usePartyGamesStore.getState().connect('STUL24');
+    enqueuePartyGameEvent.mockResolvedValueOnce(false);
+
+    await expect(
+      usePartyGamesStore
+        .getState()
+        .send('game-1', { kind: 'action', payload: { type: 'pick', playerId: 'h' } }),
+    ).resolves.toBe(false);
   });
 
   it('preserves an optimistic action id for exact stream echo dedupe', async () => {

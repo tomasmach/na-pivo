@@ -12,7 +12,7 @@ import { useReducedMotion } from "react-native-reanimated";
 import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
-import { Radius, Spacing } from "@/theme/layout";
+import { Radius } from "@/theme/layout";
 import type { PickPlayer } from "@/party/shells/PickShell";
 
 const SPIN_MS = 2200;
@@ -36,7 +36,7 @@ export function RoundDrumShell({
 }: {
   players: PickPlayer[];
   pickedId: string | null;
-  onPicked?: (playerId: string) => void;
+  onPicked?: (playerId: string) => void | Promise<unknown>;
   /** Watch-only view: a canonical pick keeps its way back, nobody spins from here. */
   spectator?: boolean;
   onDone?: () => void;
@@ -48,17 +48,29 @@ export function RoundDrumShell({
   );
   const [cursor, setCursor] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
   // Bumped on every local publish, so a repeat pick of the same player is
   // still a fresh result worth announcing.
   const [localResultRevision, setLocalResultRevision] = React.useState(0);
   const locked = React.useRef(false);
+  const mounted = React.useRef(true);
   const timers = React.useRef<ReturnType<typeof setTimeout>[]>([]);
   const effectiveId = pickedId ?? localPickedId;
 
   React.useEffect(() => {
     locked.current = false;
   }, [pickedId]);
-  React.useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  React.useEffect(
+    () => {
+      mounted.current = true;
+      const activeTimers = timers.current;
+      return () => {
+        mounted.current = false;
+        activeTimers.forEach(clearTimeout);
+      };
+    },
+    [],
+  );
 
   const selectedIndex = Math.max(
     0,
@@ -101,14 +113,23 @@ export function RoundDrumShell({
     setLocalPickedId(playerId);
     setLocalResultRevision((value) => value + 1);
     setSpinning(false);
-    onPicked?.(playerId);
-    const unlock = setTimeout(
+    const completion = onPicked?.(playerId);
+    if (completion) {
+      setSaving(true);
+      const release = () => {
+        locked.current = false;
+        if (mounted.current) setSaving(false);
+      };
+      void completion.then(release, release);
+      return;
+    }
+    const unlockTimer = setTimeout(
       () => {
         locked.current = false;
       },
       reduceMotion ? 350 : 0,
     );
-    timers.current.push(unlock);
+    timers.current.push(unlockTimer);
   };
 
   const spin = () => {
@@ -144,7 +165,7 @@ export function RoundDrumShell({
   };
 
   return (
-    <View style={[styles.body, { paddingBottom: bottomInset + Spacing.sm }]}>
+    <View style={[styles.body, { paddingBottom: bottomInset + 88 }]}>
       <View style={styles.drumWrap}>
         <View
           style={styles.drum}
@@ -192,11 +213,12 @@ export function RoundDrumShell({
       <View style={styles.dock}>
         <Pressable
           onPress={spin}
-          disabled={spinning || Boolean(spectator && !effectiveId)}
+          disabled={spinning || saving || Boolean(spectator && !effectiveId)}
           style={({ pressed }) => [
             styles.action,
             effectiveId && styles.actionQuiet,
             spectator && !effectiveId && styles.actionMuted,
+            saving && styles.actionMuted,
             (pressed || spinning) && styles.pressed,
           ]}
           accessibilityRole="button"
@@ -208,7 +230,8 @@ export function RoundDrumShell({
                 : "Roztoč"
           }
           accessibilityState={{
-            disabled: spinning || Boolean(spectator && !effectiveId),
+            disabled:
+              spinning || saving || Boolean(spectator && !effectiveId),
           }}
         >
           <Text

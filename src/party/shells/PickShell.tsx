@@ -1,5 +1,5 @@
 /**
- * A game whose whole job is to point at somebody — Flaška, Kdo platí rundu.
+ * A game whose whole job is to point at somebody — Flaška.
  *
  * The canvas spins the object and reports an id; every word on the screen is
  * drawn here, in React Native. That split is the rule for all of these (§18.11a)
@@ -53,7 +53,7 @@ export function PickShell({
   onPicked,
   spectator = false,
 }: {
-  /** Which page to host: `bottle`, `wheel`. */
+  /** Which canvas page to host. */
   game: string;
   players: PickPlayer[];
   action: string;
@@ -80,7 +80,7 @@ export function PickShell({
   /**
    * True from a spin until its messages are accounted for. `spinning` state is
    * stale for messages that land in the same tick, and `interactionLocked` is
-   * deliberately released by the valid `picked` event before the wheel's
+   * deliberately released by the valid `picked` event before the canvas
    * result arrives — so this ref is the only honest "a spin is in flight".
    */
   const spinPending = React.useRef(false);
@@ -192,18 +192,17 @@ export function PickShell({
   }
 
   return (
-    <View style={[styles.body, { paddingBottom: insets.bottom + Spacing.sm }]}>
+    <View style={[styles.body, { paddingBottom: insets.bottom + 88 }]}>
       <View style={styles.stage}>
         {canvas ? (
           <GameHost
             ref={host}
             game={game}
-            // The label is painted on the wheel; the sentence under it is still
-            // React Native. See the note on `GamePlayer.label`.
+            // The canvas gets identity and colour only. Names stay in the
+            // native verdict layer where Dynamic Type and screen readers work.
             players={players.map((player) => ({
               id: player.id,
               colour: player.tint,
-              label: player.name,
             }))}
             onEvent={(name, payload) => {
               if (spectator || name !== "picked") return;

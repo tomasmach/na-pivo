@@ -33,15 +33,18 @@ import Animated, {
   FadeInDown,
   useReducedMotion,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckIcon } from "@/components/shared/IconGlyph";
 import { PersonAvatar } from "@/components/shared/PersonAvatar";
 import { GameResult } from "@/games/GameResult";
+import { DurableFinishPending, useDurableFinish } from "@/party/shells/DurableFinish";
 import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
 import {
   hasAnswered,
   quizState,
   quizWinner,
+  teamsOf,
   type QuizAnswer,
   type QuizEntrant,
 } from "@/party/quiz/rules";
@@ -73,7 +76,7 @@ export function QuizShell({
   /** Which entrant this phone is. */
   me: string;
   index: number;
-  tintOf: (name: string) => string;
+  tintOf: (playerId: string) => string;
   /** Somebody gave up waiting for a phone that is not coming back. */
   forceRevealed?: boolean;
   /** Watch-only phone: sees the shared question, never answers or advances. */
@@ -83,10 +86,12 @@ export function QuizShell({
   onNext: () => void;
   onFinished: (result: {
     winner: string | null;
-    standings: { name: string; score: number }[];
-  }) => void;
+    winnerId: string | null;
+    standings: { name: string; playerId: string; score: number }[];
+  }) => Promise<boolean>;
   onDone: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const state = quizState({ entrants, answers, index });
   const question = state.question;
@@ -120,22 +125,27 @@ export function QuizShell({
       )
     : undefined;
 
-  const reported = React.useRef(false);
-  React.useEffect(() => {
-    if (!state.finished || reported.current || spectator) return;
-    reported.current = true;
-    onFinished({
-      winner: quizWinner(state.standings)
-        ? (state.standings.find(
-            (row) => row.teamId === quizWinner(state.standings),
-          )?.teamName ?? null)
+  const finishWinnerId = state.finished ? quizWinner(state.standings) : null;
+  const finishResult = state.finished
+    ? {
+      winner: finishWinnerId
+        ? (state.standings.find((row) => row.teamId === finishWinnerId)?.teamName ?? null)
         : null,
+      winnerId: finishWinnerId,
       standings: state.standings.map((row) => ({
         name: row.teamName,
+        playerId: row.teamId,
         score: row.score,
       })),
-    });
-  }, [state.finished, state.standings, onFinished, spectator]);
+    }
+    : null;
+  const durableFinish = useDurableFinish({
+    finished: state.finished,
+    spectator,
+    resultKey: finishResult ? JSON.stringify(finishResult) : null,
+    result: finishResult,
+    onFinished,
+  });
 
   /** Teams still thinking. Named, because "3 čekají" makes nobody hurry. */
   const waiting = state.standings
@@ -181,21 +191,28 @@ export function QuizShell({
   }, [revealedForQuestion, correctLabel]);
 
   if (state.finished) {
+    if (durableFinish.status !== "stored") {
+      return (
+        <DurableFinishPending
+          status={durableFinish.status}
+          spectator={spectator}
+          onRetry={durableFinish.retry}
+        />
+      );
+    }
     return (
       <GameResult
-        players={entrants.map((entrant) => ({
-          name: entrant.teamName,
-          tint: tintOf(entrant.teamName),
+        players={teamsOf(entrants).map((team) => ({
+          id: team.id,
+          name: team.name,
+          tint: tintOf(team.id),
         }))}
         outcome={{
           scores: state.standings.map((row) => ({
-            playerId: row.teamName,
+            playerId: row.teamId,
             score: row.score,
           })),
-          winnerId:
-            state.standings.find(
-              (row) => row.teamId === quizWinner(state.standings),
-            )?.teamName ?? null,
+          winnerId: quizWinner(state.standings),
         }}
         onDone={onDone}
       />
@@ -205,7 +222,10 @@ export function QuizShell({
 
   return (
     <ScrollView
-      contentContainerStyle={styles.body}
+      contentContainerStyle={[
+        styles.body,
+        { paddingBottom: insets.bottom + 88 },
+      ]}
       showsVerticalScrollIndicator={false}
       // Locking mid-question would leave a half-scrolled option under the thumb.
       keyboardShouldPersistTaps="handled"
@@ -351,7 +371,7 @@ export function QuizShell({
             >
               <PersonAvatar
                 name={row.teamName}
-                tint={tintOf(row.teamName)}
+                tint={tintOf(row.teamId)}
                 size={22}
               />
               <Text
@@ -383,7 +403,6 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxl,
   },
   pressed: { opacity: 0.8 },
   kicker: { fontSize: 13, fontWeight: "700", color: Colors.mutedText },
@@ -444,6 +463,8 @@ const styles = StyleSheet.create({
   boardScore: {
     fontFamily: Fonts.numeral,
     fontSize: 17,
+    lineHeight: 21,
+    includeFontPadding: false,
     color: Colors.foam,
     fontVariant: ["tabular-nums"],
   },

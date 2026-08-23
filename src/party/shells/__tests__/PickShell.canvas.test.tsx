@@ -1,12 +1,13 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
 
 const mockCommand = jest.fn();
 let mockReducedMotion = false;
 type MockOutcome = { scores: never[]; winnerId: null; payingId: string | null };
 let mockLastOutcome: MockOutcome | null = null;
 let mockGameHostProps: {
+  players: { id: string; colour: string; label?: string }[];
   onResult: (result: { scores: never[]; winnerId: null; payingId: string }) => void;
   onEvent: (name: string, payload: { playerId: string }) => void;
 } | null = null;
@@ -71,6 +72,39 @@ const PLAYERS = [
   { id: 'me', name: 'Ty', tint: '#111' },
   { id: 'honza', name: 'Honza', tint: '#222' },
 ];
+
+it('reserves the safe bottom lane for the game beer action', () => {
+  render(
+    <PickShell
+      game="bottle"
+      players={PLAYERS}
+      action="Roztoč"
+      verdict={(name) => `${name} je na řadě`}
+    />,
+  );
+
+  expect(
+    screen
+      .UNSAFE_getAllByType(View)
+      .some((node) => StyleSheet.flatten(node.props.style)?.paddingBottom === 122),
+  ).toBe(true);
+});
+
+it('sends only stable ids and colours to the bottle canvas', () => {
+  render(
+    <PickShell
+      game="bottle"
+      players={PLAYERS}
+      action="Roztoč"
+      verdict={(name) => `${name} je na řadě`}
+    />,
+  );
+
+  expect(mockGameHostProps?.players).toEqual([
+    { id: 'me', colour: '#111' },
+    { id: 'honza', colour: '#222' },
+  ]);
+});
 
 afterEach(() => {
   mockCommand.mockClear();

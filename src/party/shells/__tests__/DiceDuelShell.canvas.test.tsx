@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { DiceState } from '@/games/web/dice/rules';
 
@@ -12,6 +12,7 @@ let mockGameHostProps: {
 const mockHostMounts = { mount: 0, unmount: 0 };
 type MockOutcome = { scores: { playerId: string; score: number }[]; winnerId: null; payingId: string | null };
 let mockLastOutcome: MockOutcome | null = null;
+let mockLastBoard: { playerId?: string; name: string; score: number; suffix?: string }[] | null = null;
 
 const mockAnnounce = jest.fn();
 
@@ -63,8 +64,15 @@ jest.mock('@/games/GameHost', () => {
   };
 });
 jest.mock('@/games/GameResult', () => ({
-  GameResult: ({ outcome }: { outcome: MockOutcome }) => {
+  GameResult: ({
+    outcome,
+    board,
+  }: {
+    outcome: MockOutcome;
+    board?: { playerId?: string; name: string; score: number; suffix?: string }[];
+  }) => {
     mockLastOutcome = outcome;
+    mockLastBoard = board ?? null;
     return null;
   },
 }));
@@ -76,6 +84,7 @@ beforeEach(() => {
   mockHostMounts.mount = 0;
   mockHostMounts.unmount = 0;
   mockLastOutcome = null;
+  mockLastBoard = null;
   mockAnnounce.mockClear();
   RN.Platform.OS = 'ios';
 });
@@ -91,6 +100,80 @@ const PLAYERS = [
   { id: 'me', name: 'Ty', tint: '#111' },
   { id: 'honza', name: 'Honza', tint: '#222' },
 ];
+
+const COMPLETE: DiceState = {
+  ...startDice(PLAYERS),
+  live: ['honza'],
+  safe: ['me'],
+  wins: { me: 3, honza: 1 },
+  round: [],
+  roundNumber: 4,
+  payingId: 'honza',
+};
+
+it('waits for a durable finish and retries the exact dice result after rejection', async () => {
+  let rejectFirst!: (reason?: unknown) => void;
+  const onFinished = jest
+    .fn()
+    .mockImplementationOnce(
+      () => new Promise<boolean>((_resolve, reject) => { rejectFirst = reject; }),
+    )
+    .mockResolvedValueOnce(true);
+
+  render(
+    <DiceDuelShell
+      players={PLAYERS}
+      onFinished={onFinished}
+      onDone={jest.fn()}
+      state={COMPLETE}
+    />,
+  );
+
+  await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
+  expect(mockLastOutcome).toBeNull();
+
+  await act(async () => {
+    rejectFirst(new Error('offline'));
+    await Promise.resolve();
+  });
+  const retry = await screen.findByLabelText('Zkusit znovu');
+  expect(mockLastOutcome).toBeNull();
+
+  act(() => retry.props.onPress());
+  await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(2));
+  expect(onFinished.mock.calls[1]).toEqual(onFinished.mock.calls[0]);
+  await waitFor(() => expect(mockLastOutcome?.payingId).toBe('honza'));
+});
+
+it('keeps stable player ids on the finished dice board with duplicate names', async () => {
+  const duplicatePlayers = [
+    { id: 'alex-a', name: 'Alex', tint: '#111111' },
+    { id: 'alex-b', name: 'Alex', tint: '#222222' },
+  ];
+  const complete: DiceState = {
+    ...startDice(duplicatePlayers),
+    live: ['alex-b'],
+    safe: ['alex-a'],
+    wins: { 'alex-a': 3, 'alex-b': 1 },
+    round: [],
+    roundNumber: 4,
+    payingId: 'alex-b',
+  };
+
+  render(
+    <DiceDuelShell
+      players={duplicatePlayers}
+      onFinished={jest.fn(async () => true)}
+      onDone={jest.fn()}
+      state={complete}
+    />,
+  );
+
+  await waitFor(() => expect(mockLastBoard).not.toBeNull());
+  expect(mockLastBoard).toEqual([
+    { playerId: 'alex-a', name: 'Alex', score: 1, suffix: '1.' },
+  ]);
+});
 
 it('keeps the latest local state in GameHost options so a WebView retry can resume', () => {
   render(

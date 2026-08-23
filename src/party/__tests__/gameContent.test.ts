@@ -19,3 +19,10 @@ describe("King's Cup deck", () => {
     expect(KINGS_CARDS.find((card) => card.card === 'K')?.rule).toContain('platí rundu');
   });
 });
+
+it('defines Runda as the native slowing drum instead of the retired wheel', () => {
+  const round = findGame('round');
+  expect(round?.shell).toBe('pick');
+  expect(round?.how).toContain('buben');
+  expect(round?.how).not.toContain('kole');
+});

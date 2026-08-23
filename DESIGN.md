@@ -130,18 +130,17 @@ desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
 |---|---|---|
 | Pub kvíz | každý na svém telefonu | body |
 | Kostky | 3D, fyzika, telefon koluje | body → kdo platí |
-| Kdo platí rundu | 3D kolo se jmény | doušky |
+| Kdo platí rundu | nativní zpomalující buben se jmény | doušky |
 | Flaška | 3D láhev | doušky |
 | Nikdy jsem…, Kategorie, Palec, Pravidlo večera | balíček karet | doušky |
 | King's Cup | tažení karty | doušky |
 
 ### Platforma a hra
 
-Fyzické hry běží v **WebView** (three.js + cannon-es), textové v React Native.
+Fyzické hry běží v **WebView** (three.js + cannon-es), textové hry a Runda v React Native.
 Mezi nimi je pevný protokol (`src/games/protocol.ts`) a tři pravidla:
 
-1. Plátno smí **zdobit, ne vyprávět** — narativní text je vždycky nativní. Krátký label
-   namalovaný na fyzické rekvizitě (jméno na výseči kola) je součást rekvizity a smí dovnitř.
+1. Plátno smí **zdobit, ne vyprávět** — text i jména jsou vždycky nativní.
 2. **Hra je zdroj náhody.**
 3. **Hra s definovaným koncem končí tím, že to řekne** — `result`, ne domněnka platformy.
    Nekonečná rekvizita (Flaška) konec nemá a emituje opakované eventy (`picked`).
@@ -1715,10 +1714,9 @@ Podmínky, jinak se z toho stane druhá aplikace uvnitř aplikace:
 1. **Do WebView jde jen plátno.** Texty, seznamy, počítadla a jména zůstávají
    v RN — to je UI aplikace, ne hra.
 2. **Most je úzký.** Sem „hoď“ a „obarvi se“, ven „padlo tohle“. Barva je
-   jediná věc, kterou plátno o hráčích ví — **žádná jména do herní logiky**. U telefonu,
+   jediná věc, kterou plátno o hráčích ví — **žádná jména ani popisky**. U telefonu,
    co koluje kolem stolu, se „tyhle jsou Honzovy“ přečte z barvy dřív, než by
-   kdo četl popisek. Výjimka z bodu 1: jméno namalované na rekvizitě (výseč
-   kola Rundy), které je součástí té rekvizity.
+   kdo četl popisek.
 3. **Text zůstává v RN, i když leží přes plátno.** Zvolání po dosednutí je
    vrstva nad WebView, ne text ve stránce — tím zůstane skutečným textem
    s Dynamic Type, VoiceOver a písmem aplikace, a přitom vypadá, že dopadlo na
@@ -1778,11 +1776,9 @@ build bez WebView). Jedna pravidla, dva hostitelé, nikdy dvě implementace.
 
 Tři pravidla, která ty tvary vynucují:
 
-1. **Plátno smí zdobit, ne vyprávět.** Hráč je `id`, `barva` a — jen tam, kde je
-   popsaný sám předmět, třeba jméno na výseči kola — krátký `label`. Popisek
-   **namalovaný na** točícím se předmětu je jeho součást, jako číslo v ruletové
-   kapse. Věta, která říká, kdo byl vybrán, se pořád kreslí v RN, kde má typografii
-   aplikace, Dynamic Type a hlas.
+1. **Plátno smí zdobit, ne vyprávět.** Hráč je `id` a `barva`; jméno ani jiný
+   popisek do WebView necestuje. Věta, která říká, kdo byl vybrán, se kreslí v RN,
+   kde má typografii aplikace, Dynamic Type a hlas.
 2. **Hra je zdroj náhody.** Výsledky jdou ven, ne dovnitř.
 3. **Hra končí tím, že to řekne.** `result` má stejný tvar pro všechny hry —
    je to to, co konzumuje recap, feed i sdílený backend.
@@ -1840,19 +1836,19 @@ telefony můžou odpovědět ve stejnou chvíli, pořadí nehraje roli, retry ne
 započítat dvakrát a telefon, co byl offline, pošle svoje pozdě a nic se neslučuje.
 Je to zároveň přesně tvar, který drží backend (`PartyGameEvent`, kind `answer`).
 
-### 21.8 Hry, které máme (WebView)
+### 21.8 Fyzické a losovací hry, které máme
 
 | hra | plátno | co vrací |
 |---|---|---|
 | Kostky | 3D, fyzika (three + cannon) | `state` po každém hodu, `result` na konci |
 | Flaška | 3D, roztočená láhev | `picked` po každém zastavení, nikdy nekončí |
-| Kdo platí rundu | 3D kolo štěstí se jmény | `picked` a rovnou `result` — runda má jednoho plátce |
+| Kdo platí rundu | nativní zpomalující buben se jmény | `pick` a potom `finish` — runda má jednoho plátce |
 
-Kostky a Flaška se točí dál, dokud stůl nemá dost. Kolo **končí prvním
-zastavením**, protože runda má právě jednoho plátce — a přesně kvůli tomuhle
-rozdílu je v protokolu `result` a nestačí `event`.
+Kostky a Flaška se točí dál, dokud stůl nemá dost. Buben Rundy **končí prvním
+zastavením**, protože runda má právě jednoho plátce. Nativní skořápka nejdřív
+uloží stabilní ID výběru a teprve potom zapíše společný konec hry.
 
-Každá hra je jeden HTML soubor (~520–600 kB s vloženými knihovnami). Three.js je
+Každá WebView hra je jeden HTML soubor (~520–600 kB s vloženými knihovnami). Three.js je
 v každém zvlášť; při osmi hrách to bude stát za sdílený chunk, do té doby je
 samostatnost souboru cennější než ušetřené megabajty.
 

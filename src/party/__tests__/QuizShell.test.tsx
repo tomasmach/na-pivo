@@ -9,8 +9,8 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform, ScrollView, StyleSheet } from 'react-native';
 
 
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
@@ -83,6 +83,120 @@ const answer = (entrantId: string, option: number): QuizAnswer => ({
 });
 
 describe('QuizShell', () => {
+  it('waits for a durable finish and retries the exact quiz result after failure', async () => {
+    const answers: QuizAnswer[] = QUIZ_QUESTIONS.flatMap((question, index) => [
+      {
+        entrantId: 'Ty',
+        questionId: question.id,
+        option: question.answer,
+        at: index * 2,
+      },
+      {
+        entrantId: 'Honza',
+        questionId: question.id,
+        option: (question.answer + 1) % question.options.length,
+        at: index * 2 + 1,
+      },
+    ]);
+    let resolveFirst!: (stored: boolean) => void;
+    const onFinished = jest
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<boolean>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockResolvedValueOnce(true);
+
+    render(
+      <QuizShell
+        entrants={TABLE}
+        answers={answers}
+        me="Ty"
+        index={QUIZ_QUESTIONS.length}
+        tintOf={() => '#E8A33D'}
+        onAnswer={jest.fn()}
+        onReveal={jest.fn()}
+        onNext={jest.fn()}
+        onFinished={onFinished}
+        onDone={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1));
+    expect(screen.queryByLabelText('Konec')).toBeNull();
+
+    await act(async () => {
+      resolveFirst(false);
+      await Promise.resolve();
+    });
+    const retry = await screen.findByLabelText('Zkusit znovu');
+    expect(screen.queryByLabelText('Konec')).toBeNull();
+
+    fireEvent.press(retry);
+    fireEvent.press(retry);
+    await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(2));
+    expect(onFinished.mock.calls[1]).toEqual(onFinished.mock.calls[0]);
+    await waitFor(() => expect(screen.getByLabelText('Konec')).toBeTruthy());
+  });
+
+  it('reports stable team ids when two teams share a display name', async () => {
+    const entrants: QuizEntrant[] = [
+      { id: 'phone-a', teamId: 'team-a', teamName: 'Alex' },
+      { id: 'phone-b', teamId: 'team-b', teamName: 'Alex' },
+    ];
+    const answers: QuizAnswer[] = QUIZ_QUESTIONS.flatMap((question, index) => [
+      {
+        entrantId: 'phone-a',
+        questionId: question.id,
+        option: question.answer,
+        at: index * 2,
+      },
+      {
+        entrantId: 'phone-b',
+        questionId: question.id,
+        option: (question.answer + 1) % question.options.length,
+        at: index * 2 + 1,
+      },
+    ]);
+    const onFinished = jest.fn(async () => true);
+    const tintOf = jest.fn((id: string) => id === 'team-a' ? '#111111' : '#222222');
+
+    render(
+      <QuizShell
+        entrants={entrants}
+        answers={answers}
+        me="phone-a"
+        index={QUIZ_QUESTIONS.length}
+        tintOf={tintOf}
+        onAnswer={jest.fn()}
+        onReveal={jest.fn()}
+        onNext={jest.fn()}
+        onFinished={onFinished}
+        onDone={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(onFinished).toHaveBeenCalledWith({
+      winner: 'Alex',
+      winnerId: 'team-a',
+      standings: [
+        { name: 'Alex', playerId: 'team-a', score: QUIZ_QUESTIONS.length },
+        { name: 'Alex', playerId: 'team-b', score: 0 },
+      ],
+    }));
+    expect(tintOf).toHaveBeenCalledWith('team-a');
+    expect(tintOf).toHaveBeenCalledWith('team-b');
+    expect(tintOf).not.toHaveBeenCalledWith('Alex');
+  });
+
+  it('reserves the bottom lane for the game beer action', () => {
+    renderShell([]);
+
+    expect(
+      StyleSheet.flatten(screen.UNSAFE_getByType(ScrollView).props.contentContainerStyle)
+        .paddingBottom,
+    ).toBe(122);
+  });
+
   it('asks before anybody has answered', () => {
     renderShell([]);
 
@@ -346,10 +460,11 @@ describe('QuizShell spectator mode', () => {
     expect(onNext).not.toHaveBeenCalled();
   });
 
-  it('does not auto-report a finished quiz but keeps the result visible', () => {
+  it('waits for the canonical finish instead of inventing a spectator result', () => {
     const { onFinished } = renderSpectator([], { index: QUIZ_QUESTIONS.length });
 
     expect(onFinished).not.toHaveBeenCalled();
-    expect(screen.getByText('Dohráno')).toBeTruthy();
+    expect(screen.getByText('Čekám na výsledek…')).toBeTruthy();
+    expect(screen.queryByText('Dohráno')).toBeNull();
   });
 });

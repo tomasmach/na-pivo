@@ -54,16 +54,42 @@ export interface ResultPlayer {
   tint: string;
 }
 
+export type ResultPlayerReference =
+  | { kind: 'id'; value: string }
+  | { kind: 'name'; value: string };
+
+type ResultScore = Omit<GameScore, 'playerId'> & {
+  playerId: string | ResultPlayerReference;
+};
+
 export interface GameOutcome {
-  scores: GameScore[];
-  winnerId: string | null;
-  payingId?: string | null;
+  scores: ResultScore[];
+  winnerId: string | ResultPlayerReference | null;
+  payingId?: string | ResultPlayerReference | null;
+}
+
+/** Stable ids win; tagged legacy names can never be reinterpreted as ids. */
+function resolvePlayer(
+  players: ResultPlayer[],
+  reference: string | ResultPlayerReference,
+): ResultPlayer | undefined {
+  if (typeof reference === 'object') {
+    return reference.kind === 'id'
+      ? players.find((player) => player.id === reference.value)
+      : players.find((player) => player.name === reference.value);
+  }
+  return players.find((player) => player.id === reference)
+    ?? players.find((player) => player.name === reference);
+}
+
+function referenceValue(reference: string | ResultPlayerReference): string {
+  return typeof reference === 'string' ? reference : reference.value;
 }
 
 /** What the ending is called, and the line under it. */
 function headline(outcome: GameOutcome, players: ResultPlayer[]): { title: string; note: string } {
-  const nameOf = (value: string) =>
-    players.find((player) => player.id === value || player.name === value)?.name ?? value;
+  const nameOf = (reference: string | ResultPlayerReference) =>
+    resolvePlayer(players, reference)?.name ?? referenceValue(reference);
   if (outcome.payingId) {
     const name = nameOf(outcome.payingId);
     return {
@@ -91,31 +117,56 @@ export function GameResult({
 }: {
   players: ResultPlayer[];
   outcome: GameOutcome;
-  board?: { name: string; score: number; suffix?: string }[];
+  board?: {
+    playerId?: string | ResultPlayerReference;
+    name: string;
+    score: number;
+    suffix?: string;
+  }[];
   onDone: () => void;
   doneLabel?: string;
 }) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const { title, note } = headline(outcome, players);
-  const playerOf = (value: string) =>
-    players.find((player) => player.id === value || player.name === value);
+  const playerOf = (reference: string | ResultPlayerReference) =>
+    resolvePlayer(players, reference);
 
   // One score is not a ranking, and zero is not a table. The game says how many
   // people its ending is about simply by how many it scored.
-  const ranking: { name: string; score: number; suffix?: string }[] =
-    board ??
-    (outcome.scores.length > 1
+  const ranking: {
+    key: string;
+    name: string;
+    score: number;
+    suffix?: string;
+    tint: string;
+  }[] =
+    board
+      ? board.map((row, index) => ({
+          ...row,
+          key: row.playerId ? referenceValue(row.playerId) : `${row.name}-${index}`,
+          tint:
+            (row.playerId ? playerOf(row.playerId) : undefined)?.tint ??
+            players.find((player) => player.name === row.name)?.tint ??
+            Colors.amber,
+        }))
+      : outcome.scores.length > 1
       ? [...outcome.scores]
           .sort((a, b) => b.score - a.score)
-          .map((row) => ({
-            name: playerOf(row.playerId)?.name ?? row.playerId,
-            score: row.score,
-          }))
-      : []);
+          .map((row, index) => {
+            const player = playerOf(row.playerId);
+            return {
+              key: player?.id ?? `${referenceValue(row.playerId)}-${index}`,
+              name: player?.name ?? referenceValue(row.playerId),
+              score: row.score,
+              tint: player?.tint ?? Colors.amber,
+            };
+          })
+      : [];
   const starId = outcome.payingId ?? outcome.winnerId ?? null;
-  const star = starId ? (playerOf(starId)?.name ?? starId) : null;
-  const tintOf = (name: string) => playerOf(name)?.tint ?? Colors.amber;
+  const starPlayer = starId ? playerOf(starId) : undefined;
+  const star = starId ? (starPlayer?.name ?? referenceValue(starId)) : null;
+  const starTint = starPlayer?.tint ?? Colors.amber;
 
   // iOS reads the whole grouped summary imperatively, once per genuinely new
   // label; Android gets the declarative assertive live region on the node.
@@ -149,7 +200,7 @@ export function GameResult({
           accessibilityLiveRegion="assertive"
           accessibilityLabel={summaryLabel}
         >
-          {star ? <PersonAvatar name={star} tint={tintOf(star)} size={72} /> : null}
+          {star ? <PersonAvatar name={star} tint={starTint} size={72} /> : null}
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
             {title}
           </Text>
@@ -162,7 +213,7 @@ export function GameResult({
           <View style={styles.board}>
             {ranking.map((row, index) => (
               <Animated.View
-                key={`${row.name}-${index}`}
+                key={row.key ?? `${row.name}-${index}`}
                 entering={reduceMotion ? undefined : FadeInDown.delay(index * 60).duration(220)}
                 style={[styles.row, index === 0 && styles.rowTop]}
                 accessible
@@ -171,7 +222,7 @@ export function GameResult({
                 <Text style={styles.rank} allowFontScaling={false}>
                   {index + 1}
                 </Text>
-                <PersonAvatar name={row.name} tint={tintOf(row.name)} size={30} />
+                <PersonAvatar name={row.name} tint={row.tint ?? Colors.amber} size={30} />
                 <Text
                   style={styles.name}
                   numberOfLines={1}
@@ -221,8 +272,10 @@ const styles = StyleSheet.create({
 
   star: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xxl },
   title: {
+    fontFamily: Fonts.numeral,
     fontSize: 32,
-    fontWeight: '800',
+    lineHeight: 40,
+    includeFontPadding: false,
     color: Colors.amber,
     letterSpacing: -0.5,
     textAlign: 'center',
@@ -249,10 +302,18 @@ const styles = StyleSheet.create({
     minWidth: 18,
     fontFamily: Fonts.numeral,
     fontSize: 17,
+    lineHeight: 21,
+    includeFontPadding: false,
     color: Colors.mutedText,
   },
   name: { flex: 1, fontSize: 16, fontWeight: '700', color: Colors.foam },
-  score: { fontFamily: Fonts.numeral, fontSize: 20, color: Colors.foam },
+  score: {
+    fontFamily: Fonts.numeral,
+    fontSize: 20,
+    lineHeight: 25,
+    includeFontPadding: false,
+    color: Colors.foam,
+  },
 
   dock: {
     marginTop: 'auto',

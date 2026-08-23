@@ -253,6 +253,8 @@ const styles = StyleSheet.create({
     marginLeft: "auto",
     fontFamily: Fonts.numeral,
     fontSize: 15,
+    lineHeight: 19,
+    includeFontPadding: false,
     color: withAlpha(Colors.foam, 0.35),
     fontVariant: ["tabular-nums"],
   },

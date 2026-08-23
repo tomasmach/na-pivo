@@ -40,7 +40,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { ChevronLeftIcon } from "@/components/shared/IconGlyph";
+import {
+  BeerIcon,
+  ChevronLeftIcon,
+  PlusIcon,
+} from "@/components/shared/IconGlyph";
 import { generateUuidV4 } from "@/data/account";
 import {
   partyGameSeedForTable,
@@ -49,8 +53,12 @@ import {
 import { loadPendingPartyGameRuntime } from "@/data/partyGameStartsQueue";
 import { loadQueuedPartyGameEvents } from "@/data/partyGamesQueue";
 import { findGame, type GameDraw } from "@/party/gameCatalog";
-import { GameResult } from "@/games/GameResult";
+import {
+  GameResult,
+  type ResultPlayerReference,
+} from "@/games/GameResult";
 import { cs } from "@/i18n/cs";
+import { beerCountLabel } from "@/i18n/plural";
 import { GAME_PROMPTS, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
 import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
 import type { QuizAnswer, QuizEntrant } from "@/party/quiz/rules";
@@ -65,6 +73,7 @@ import {
   promptStep,
   quizProgress,
   pickRevision,
+  type CanonicalGameFinish,
   type SharedGameActionPayload,
 } from "@/party/sharedGameActions";
 import { DiceDuelShell } from "@/party/shells/DiceDuelShell";
@@ -75,9 +84,11 @@ import { PickShell } from "@/party/shells/PickShell";
 import { PromptShell } from "@/party/shells/PromptShell";
 import { QuizShell } from "@/party/shells/QuizShell";
 import { RoundDrumShell } from "@/party/shells/RoundDrumShell";
+import { minimizeParty } from "@/party/partyRouting";
 import { fallbackPlayerName, tintFor } from "@/party/nightBuilder";
-import { nightMe, nightStandings } from "@/party/nightRecord";
+import { beersOf, nightMe, nightStandings } from "@/party/nightRecord";
 import { useNightRecord } from "@/party/useNightRecord";
+import { usePartyBeer } from "@/party/usePartyBeer";
 import {
   eventsOfGame,
   useFollowPartyGames,
@@ -90,7 +101,7 @@ import {
 import { useLivePartyStore } from "@/mocks/livePartyStore";
 import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
-import { FontScaleCap } from "@/theme/fonts";
+import { FontScaleCap, Fonts } from "@/theme/fonts";
 import { HitArea, Radius, Spacing } from "@/theme/layout";
 
 /**
@@ -117,6 +128,18 @@ function playerName(value: string | null | undefined, id: string): string {
   return value?.trim() || fallbackPlayerName(id);
 }
 
+function canonicalResultReference(
+  roster: LobbyPlayer[],
+  id: string | null | undefined,
+  legacyName: string | null | undefined,
+): ResultPlayerReference | null {
+  return id && roster.some((player) => player.id === id)
+    ? { kind: "id", value: id }
+    : legacyName
+      ? { kind: "name", value: legacyName }
+      : null;
+}
+
 /** One score row, said the same way in the label and in the announcement. */
 function scoreAccessibilityLabel(name: string, score: number): string {
   return `Bod pro ${name}. Aktuálně ${score}`;
@@ -133,10 +156,12 @@ function deterministicFirstPlayer(roster: LobbyPlayer[]): LobbyPlayer | null {
 export default function PartyGameScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const leaveGame = () => minimizeParty(router);
   const { key } = useLocalSearchParams<{ key: string }>();
 
   const finishGame = useLivePartyStore((s) => s.finishGame);
   const games = useLivePartyStore((s) => s.games);
+  const houseBeer = useLivePartyStore((s) => s.houseBeer);
 
   const def = key ? findGame(key) : undefined;
   const name =
@@ -154,6 +179,8 @@ export default function PartyGameScreen() {
   // is how the first round becomes an argument about whose turn it is.
   const night = useNightRecord();
   const currentPlayerId = nightMe(night)?.id;
+  const beer = usePartyBeer();
+  const beerCount = beersOf(night, currentPlayerId);
 
   /**
    * The shared side of a game.
@@ -178,6 +205,15 @@ export default function PartyGameScreen() {
     key && sharedCode
       ? (sharedGames.find((game) => game.catalogKey === key) ?? null)
       : null;
+  const knownLegacyGame = Boolean(
+    key &&
+      !def &&
+      (sharedGame || games.some((game) => game.key === key)),
+  );
+  const invalidGame = !key || (!def && !knownLegacyGame);
+  React.useEffect(() => {
+    if (invalidGame) minimizeParty(router);
+  }, [invalidGame, router]);
   const table = React.useMemo(
     () =>
       nightStandings(night)
@@ -193,6 +229,16 @@ export default function PartyGameScreen() {
     LobbyPlayer[] | null
   >(null);
   const gameScope = `${sharedCode ?? "local"}:${key ?? ""}`;
+  const activeGameScopeRef = React.useRef<string | null>(gameScope);
+  React.useLayoutEffect(() => {
+    activeGameScopeRef.current = gameScope;
+  }, [gameScope]);
+  React.useEffect(
+    () => () => {
+      activeGameScopeRef.current = null;
+    },
+    [],
+  );
   const [quizStartRetry, setQuizStartRetry] = React.useState<{
     scope: string;
     roster: LobbyPlayer[];
@@ -488,8 +534,8 @@ export default function PartyGameScreen() {
     [roster],
   );
   const appendAction = React.useCallback(
-    (payload: SharedGameActionPayload): Promise<void> => {
-      if (spectator || !gameId) return Promise.resolve();
+    (payload: SharedGameActionPayload): Promise<boolean> => {
+      if (spectator || !gameId) return Promise.resolve(true);
       const clientId = generateUuidV4();
       const event: PartyGameEventInput = {
         clientId,
@@ -497,14 +543,27 @@ export default function PartyGameScreen() {
         payload,
         createdAt: new Date(stamp()).toISOString(),
       };
+      const scope = gameScope;
       setLocalActionEvents((current) => [...current, event]);
+      const rollback = () => {
+        if (activeGameScopeRef.current !== scope) return;
+        setLocalActionEvents((current) =>
+          current.filter((pending) => pending.clientId !== clientId),
+        );
+      };
       return sendGameEvent(
         gameId,
         { kind: "action", payload, createdAt: event.createdAt },
         clientId,
-      );
+      ).then((stored) => {
+        if (stored === false) rollback();
+        return stored !== false;
+      }, () => {
+        rollback();
+        return false;
+      });
     },
-    [gameId, sendGameEvent, spectator],
+    [gameId, gameScope, sendGameEvent, spectator],
   );
   const sharedPromptStep = promptStep(sharedActions);
   const sharedCardDraws = cardDraws(sharedActions, KINGS_CARD_IDS);
@@ -533,6 +592,13 @@ export default function PartyGameScreen() {
     setLocalKings({ scope: gameScope, cards: [] });
   }
   const localKingsCards = localKings.cards;
+  const localKingsDrawerRef = React.useRef<{
+    scope: string;
+    playerId: string;
+  } | null>(null);
+  React.useEffect(() => {
+    localKingsDrawerRef.current = null;
+  }, [gameScope]);
   const localKingsDeckFinished =
     key === "kings" &&
     localKingsCards.filter((card) => card === "K" || card.endsWith("-K"))
@@ -551,10 +617,14 @@ export default function PartyGameScreen() {
     [gameId, roster, sharedActions],
   );
   const remoteFinish = canonicalGameFinish(eventsOfGame(gameEvents, gameId));
-  const [localFinish, setLocalFinish] =
-    React.useState<typeof remoteFinish>(null);
+  const [localFinishState, setLocalFinishState] = React.useState<{
+    scope: string;
+    finish: CanonicalGameFinish;
+  } | null>(null);
+  const localFinish =
+    localFinishState?.scope === gameScope ? localFinishState.finish : null;
   const canonicalFinish = remoteFinish ?? localFinish;
-  const finishLocked = React.useRef(false);
+  const finishLocked = React.useRef<string | null>(null);
   // Latest-canonical mirrors: a round pick send can resolve long after the
   // table moved on, and its continuation must read the table as it is NOW,
   // not as the tap captured it.
@@ -607,6 +677,11 @@ export default function PartyGameScreen() {
   const forceRevealed = gameId
     ? sharedQuizProgress.forceRevealed
     : localRevealed.includes(localQuestion);
+  const terminalResultPending = Boolean(
+    gameId &&
+      ((shell === "turns" && sharedDiceState?.payingId) ||
+        (shell === "quiz" && question >= QUIZ_QUESTIONS.length)),
+  );
   const localAnswerLocks = React.useRef(new Set<string>());
 
   const answer = (option: number) => {
@@ -630,21 +705,44 @@ export default function PartyGameScreen() {
       return;
     localAnswerLocks.current.add(identity);
     const at = stamp();
+    const optimisticAnswer = {
+      entrantId: me,
+      questionId: current.id,
+      option,
+      at,
+    };
     setMyAnswers((list) =>
       // A team's answer is its first one, so a second tap is not an edit.
       list.some(
         (entry) => entry.entrantId === me && entry.questionId === current.id,
       )
         ? list
-        : [...list, { entrantId: me, questionId: current.id, option, at }],
+        : [...list, optimisticAnswer],
     );
     // …and to the table. Queued, so a pub with no signal costs nothing.
     if (gameId) {
+      const scope = gameScope;
+      const rollback = () => {
+        localAnswerLocks.current.delete(identity);
+        if (activeGameScopeRef.current !== scope) return;
+        setMyAnswers((list) =>
+          list.filter(
+            (entry) =>
+              !(
+                entry.entrantId === optimisticAnswer.entrantId &&
+                entry.questionId === optimisticAnswer.questionId &&
+                entry.at === optimisticAnswer.at
+              ),
+          ),
+        );
+      };
       void sendGameEvent(gameId, {
         kind: "answer",
         payload: { questionId: current.id, option },
         createdAt: new Date(at).toISOString(),
-      });
+      }).then((stored) => {
+        if (stored === false) rollback();
+      }, rollback);
     }
   };
 
@@ -692,22 +790,29 @@ export default function PartyGameScreen() {
     if (spectator) return;
     const createdAt = new Date(stamp()).toISOString();
     localScoreSequence.current += 1;
-    setLocalScoreEvents((current) => [
-      ...current,
-      {
-        id: localScoreSequence.current,
-        subjectId: player.id,
-        delta: 1,
-        createdAt,
-      },
-    ]);
+    const optimisticScore = {
+      id: localScoreSequence.current,
+      subjectId: player.id,
+      delta: 1,
+      createdAt,
+    };
+    setLocalScoreEvents((current) => [...current, optimisticScore]);
     if (gameId) {
+      const scope = gameScope;
+      const rollback = () => {
+        if (activeGameScopeRef.current !== scope) return;
+        setLocalScoreEvents((current) =>
+          current.filter((event) => event.id !== optimisticScore.id),
+        );
+      };
       void sendGameEvent(gameId, {
         kind: "score",
         subjectId: player.id,
         delta: 1,
         createdAt,
-      });
+      }).then((stored) => {
+        if (stored === false) rollback();
+      }, rollback);
     }
   };
 
@@ -797,9 +902,13 @@ export default function PartyGameScreen() {
       winnerId?: string | null;
       payingId?: string | null;
     }) => {
-      if (spectator || canonicalFinishRef.current || finishLocked.current)
-        return;
-      finishLocked.current = true;
+      if (
+        spectator ||
+        canonicalFinishRef.current ||
+        finishLocked.current === gameScope
+      )
+        return Promise.resolve(false);
+      finishLocked.current = gameScope;
       const payload = {
         winner: result.winner,
         scores: result.scores,
@@ -807,26 +916,56 @@ export default function PartyGameScreen() {
         ...(result.winnerId !== undefined ? { winnerId: result.winnerId } : {}),
         ...(result.payingId !== undefined ? { payingId: result.payingId } : {}),
       };
-      setLocalFinish({
+      const finish: CanonicalGameFinish = {
         winnerId: result.winnerId ?? null,
         payingId: result.payingId ?? null,
         winner: result.winner,
         paying: result.paying ?? null,
         scores: result.scores,
-      });
-      if (gameId) {
-        void sendGameEvent(gameId, {
-          kind: "finish",
-          payload,
-        });
+      };
+      const commit = (): boolean => {
+        if (
+          activeGameScopeRef.current !== gameScope ||
+          canonicalFinishRef.current
+        )
+          return Boolean(canonicalFinishRef.current);
+        setLocalFinishState({ scope: gameScope, finish });
+        if (key) finishGame(key, { game: name, ...result });
+        return true;
+      };
+      if (!gameId) {
+        return Promise.resolve(commit());
       }
-      if (key) finishGame(key, { game: name, ...result });
+      return sendGameEvent(gameId, {
+        kind: "finish",
+        payload,
+      }).then((stored) => {
+        if (activeGameScopeRef.current !== gameScope) return false;
+        if (stored === false) {
+          if (finishLocked.current === gameScope) finishLocked.current = null;
+          return false;
+        }
+        return commit();
+      }, () => {
+        if (
+          activeGameScopeRef.current === gameScope &&
+          finishLocked.current === gameScope
+        )
+          finishLocked.current = null;
+        return false;
+      });
     },
-    [finishGame, gameId, key, name, sendGameEvent, spectator],
+    [finishGame, gameId, gameScope, key, name, sendGameEvent, spectator],
   );
 
   React.useEffect(() => {
-    if (key !== "kings" || canonicalFinish || !fourthKingDraw) return undefined;
+    if (
+      key !== "kings" ||
+      spectator ||
+      canonicalFinish ||
+      !fourthKingDraw
+    )
+      return undefined;
     // The payer is whoever the canonical draw names. When an old client drew
     // without an author, every phone falls back to the SAME roster member —
     // first by sorted id — instead of to whoever happens to hold this phone.
@@ -838,20 +977,30 @@ export default function PartyGameScreen() {
     // The draw action is durable before this timer starts. A process death
     // comes back to the same canonical fourth king and schedules the same
     // first-finish-wins result; meanwhile the card remains visible.
-    const timer = setTimeout(() => {
-      report({
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const retryFinish = () => {
+      timer = setTimeout(() => {
+        void report({
         winner: null,
         winnerId: null,
         scores: [],
         paying: payer.name,
         payingId: payer.id,
-      });
-    }, 1600);
-    return () => clearTimeout(timer);
-  }, [canonicalFinish, fourthKingDraw, key, report, roster]);
+        }).then((stored) => {
+          if (!stored && !cancelled && !canonicalFinishRef.current) retryFinish();
+        });
+      }, 1600);
+    };
+    retryFinish();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [canonicalFinish, fourthKingDraw, key, report, roster, spectator]);
 
   const finish = () => {
-    report({
+    void report({
       // A drinking game names nobody, and keeps no tally: the only tally it
       // could keep is who drank most.
       winner: onPoints && played ? leader.name : null,
@@ -864,24 +1013,15 @@ export default function PartyGameScreen() {
           }))
         : [],
     });
-    router.back();
   };
-
-  const finishPlayerName = (id: string | null, legacy: string | null) =>
-    (id ? roster?.find((player) => player.id === id)?.name : null) ?? legacy;
-  const finishedPaying = canonicalFinish
-    ? finishPlayerName(canonicalFinish.payingId, canonicalFinish.paying)
-    : null;
-  const finishedWinner = canonicalFinish
-    ? finishPlayerName(canonicalFinish.winnerId, canonicalFinish.winner)
-    : null;
+  if (invalidGame) return null;
   return (
     <View style={styles.screen}>
       {/* The night, pinned. Back on the left, tally and +1 on the right — the
           two things you reach for without looking away from the table. */}
       <View style={[styles.top, { paddingTop: insets.top + Spacing.sm }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={leaveGame}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Zpátky do večera"
@@ -909,6 +1049,7 @@ export default function PartyGameScreen() {
           !canonicalFinish &&
           !spectator &&
           key !== "round" &&
+          !terminalResultPending &&
           !fourthKingDraw &&
           !localKingsDeckFinished ? (
             <Pressable
@@ -994,15 +1135,22 @@ export default function PartyGameScreen() {
           players={roster}
           outcome={{
             scores: canonicalFinish.scores.map((row) => ({
-              playerId: row.playerId
-                ? (finishPlayerName(row.playerId, row.name) ?? row.name)
-                : row.name,
+              playerId:
+                canonicalResultReference(roster, row.playerId, row.name) ?? row.name,
               score: row.score,
             })),
-            winnerId: finishedWinner,
-            payingId: finishedPaying,
+            winnerId: canonicalResultReference(
+              roster,
+              canonicalFinish.winnerId,
+              canonicalFinish.winner,
+            ),
+            payingId: canonicalResultReference(
+              roster,
+              canonicalFinish.payingId,
+              canonicalFinish.paying,
+            ),
           }}
-          onDone={() => router.back()}
+          onDone={leaveGame}
         />
       ) : null}
 
@@ -1014,21 +1162,21 @@ export default function PartyGameScreen() {
           onRoll={
             gameId
               ? ({ playerId, dice }) => {
-                  appendAction({ type: "dice_roll", playerId, dice });
+                  void appendAction({ type: "dice_roll", playerId, dice });
                 }
               : undefined
           }
           onNextRound={
-            gameId ? () => appendAction({ type: "dice_next" }) : undefined
+            gameId ? () => void appendAction({ type: "dice_next" }) : undefined
           }
           // Dice already reported their canonical result before GameResult is
           // shown. This button only leaves; reporting again would overwrite the
           // payer and standings with the generic empty score.
-          onDone={() => router.back()}
+          onDone={leaveGame}
           onFinished={(result) => {
             // The board is round wins. "Who paid" is the story, and it is the
             // line the recap and the feed lead with.
-            report({
+            return report({
               winner: null,
               winnerId: null,
               scores: result.standings,
@@ -1063,24 +1211,28 @@ export default function PartyGameScreen() {
             };
             // Local-only round finishes synchronously, as it always did.
             if (!gameId) {
-              report(result);
+              void report(result);
               return;
             }
             // One spin per round: a double tap while the pick send is still
             // in flight can neither bypass the wait nor enqueue twice.
             if (roundPickPending.current === gameScope) return;
             if (sharedPick) {
-              report(result);
-              return;
+              return report(result);
             }
             const scope = gameScope;
             roundPickPending.current = scope;
-            void appendAction({
+            return appendAction({
               type: "pick",
               playerId: payer.id,
               fromRevision: sharedPickRevision,
             })
-              .then(() => {
+              .then((stored) => {
+                if (stored === false) {
+                  if (roundPickPending.current === scope)
+                    roundPickPending.current = null;
+                  return;
+                }
                 // The canonical pick is durably enqueued; only now may the
                 // finish follow, so another phone sees the payer first.
                 if (roundPickPending.current !== scope) return;
@@ -1094,7 +1246,7 @@ export default function PartyGameScreen() {
                   ? (roster.find((player) => player.id === canonicalId) ??
                     payer)
                   : payer;
-                report({
+                return report({
                   winner: null,
                   winnerId: null,
                   scores: [],
@@ -1123,21 +1275,19 @@ export default function PartyGameScreen() {
                 ? "Platíš ty"
                 : `Platí ${name}`
           }
-          // Only the round game ends on the first spin; the bottle keeps going
-          // until the table has had enough.
-          // The wheel reports its payer when it stops. Leaving GameResult must
-          // not append a second, empty finish event over that result.
+          // Flaška keeps going until the table has had enough.
           onDone={undefined}
           pickedId={gameId ? (sharedPick?.playerId ?? null) : undefined}
           pickRevision={gameId ? sharedPickRevision : undefined}
           onPicked={
             gameId
-              ? (playerId) =>
-                  appendAction({
+              ? (playerId) => {
+                  void appendAction({
                     type: "pick",
                     playerId,
                     fromRevision: sharedPickRevision,
-                  })
+                  });
+                }
               : undefined
           }
         />
@@ -1150,25 +1300,29 @@ export default function PartyGameScreen() {
           answers={answers}
           me={nightMe(night)?.id ?? "me"}
           index={question}
-          tintOf={(name) =>
-            roster.find((person) => person.name === name)?.tint ?? Colors.amber
+          tintOf={(playerId) =>
+            roster.find((person) => person.id === playerId)?.tint ?? Colors.amber
           }
           forceRevealed={forceRevealed}
           onAnswer={(option) => answer(option)}
           onReveal={() => {
-            if (gameId) appendAction({ type: "quiz_reveal", question });
+            if (gameId) void appendAction({ type: "quiz_reveal", question });
             else setLocalRevealed((current) => [...current, question]);
           }}
           onNext={() => {
             if (gameId)
-              appendAction({ type: "quiz_next", fromQuestion: question });
+              void appendAction({ type: "quiz_next", fromQuestion: question });
             else setLocalQuestion((current) => current + 1);
           }}
           onFinished={(result) => {
-            if (!key) return;
-            report({ winner: result.winner, scores: result.standings });
+            if (!key) return Promise.resolve(false);
+            return report({
+              winner: result.winner,
+              winnerId: result.winnerId,
+              scores: result.standings,
+            });
           }}
-          onDone={() => router.back()}
+          onDone={leaveGame}
         />
       ) : null}
 
@@ -1182,7 +1336,7 @@ export default function PartyGameScreen() {
           onNext={
             gameId
               ? () =>
-                  appendAction({
+                  void appendAction({
                     type: "prompt_next",
                     fromStep: sharedPromptStep,
                   })
@@ -1223,7 +1377,7 @@ export default function PartyGameScreen() {
                   const value =
                     drawKind === "person" ? result.personId : result.cardId;
                   if (value)
-                    appendAction({
+                    void appendAction({
                       type: "draw",
                       drawKind,
                       value,
@@ -1231,14 +1385,24 @@ export default function PartyGameScreen() {
                         drawKind === "card"
                           ? sharedCardDraws.length
                           : undefined,
-                      drawnById: currentPlayerId,
+                      drawnById:
+                        roster[sharedCardDraws.length % roster.length]?.id ??
+                        currentPlayerId,
                     });
                 }
               : (result) => {
                   // Local Kings only: mirror the drawn cards so the header can
                   // pull "Konec" the moment the fourth king lands, before
                   // DrawShell's own delayed payer report.
-                  if (key === "kings" && result.cardId)
+                  if (key === "kings" && result.cardId) {
+                    const drawer =
+                      roster[localKingsCards.length % roster.length];
+                    if (drawer) {
+                      localKingsDrawerRef.current = {
+                        scope: gameScope,
+                        playerId: drawer.id,
+                      };
+                    }
                     setLocalKings((current) =>
                       current.scope === gameScope
                         ? {
@@ -1247,16 +1411,22 @@ export default function PartyGameScreen() {
                           }
                         : { scope: gameScope, cards: [result.cardId!] },
                     );
+                  }
                 }
           }
           onDeckFinished={
             key === "kings" && !gameId
               ? () => {
                   const payer =
-                    roster.find((player) => player.id === currentPlayerId) ??
-                    roster[0];
+                    (localKingsDrawerRef.current?.scope === gameScope
+                      ? roster.find(
+                          (player) =>
+                            player.id ===
+                            localKingsDrawerRef.current?.playerId,
+                        )
+                      : undefined) ?? roster[0];
                   if (!payer) return;
-                  report({
+                  void report({
                     winner: null,
                     winnerId: null,
                     scores: [],
@@ -1326,6 +1496,27 @@ export default function PartyGameScreen() {
       {/* The counter floats bottom-right rather than sitting in the header: the
           one thing you do mid-game besides play is log a beer, and that belongs
           under your thumb, not up by the exit. */}
+      {roster && !canonicalFinish ? (
+        <Pressable
+          onPress={() => beer.add(houseBeer)}
+          style={({ pressed }) => [
+            styles.counter,
+            { bottom: insets.bottom + Spacing.sm },
+            pressed && styles.counterPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.partyGameBeerCounter(
+            beerCountLabel(beerCount),
+          )}
+          hitSlop={6}
+        >
+          <BeerIcon size={18} color={Colors.stout} />
+          <Text style={styles.counterText} allowFontScaling={false}>
+            {beerCount}
+          </Text>
+          <PlusIcon size={15} color={Colors.stout} />
+        </Pressable>
+      ) : null}
       <InviteSheet
         visible={inviteOpen}
         present={table.map((person) => person.id)}
@@ -1430,8 +1621,10 @@ const styles = StyleSheet.create({
   },
   counterPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
   counterText: {
-    fontSize: 16,
-    fontWeight: "800",
+    fontFamily: Fonts.numeral,
+    fontSize: 19,
+    lineHeight: 24,
+    includeFontPadding: false,
     color: Colors.stout,
     fontVariant: ["tabular-nums"],
   },

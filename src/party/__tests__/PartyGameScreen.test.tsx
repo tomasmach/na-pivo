@@ -8,8 +8,12 @@ import {
 } from "@testing-library/react-native";
 import { AccessibilityInfo, Platform } from "react-native";
 import type { PartyGameEvent } from "@/data/partyGamesClient";
+import type { NightRecord } from "@/party/nightRecord";
+import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
 
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+let mockCanGoBack = true;
 const mockFinishGame = jest.fn();
 const mockSendGameEvent = jest.fn();
 const mockStartSharedGame = jest.fn();
@@ -27,10 +31,19 @@ let mockSharedRoster: {
   avatarUrl: string | null;
 }[] = [];
 let mockGameEvents: PartyGameEvent[] = [];
+let mockCanonicalOutcome: {
+  scores: { playerId: unknown; score: number }[];
+  winnerId: unknown;
+  payingId?: unknown;
+} | null = null;
+
+beforeEach(() => {
+  mockCanGoBack = true;
+});
 
 // Mutable so individual tests can model a cold start (nobody known yet)
 // without leaking state into other tests; rebuilt in `beforeEach`.
-const createMockNight = () => ({
+const createMockNight = (): NightRecord => ({
   id: "night-1",
   code: "TABLE1",
   startedAt: "2026-08-05T18:00:00.000Z",
@@ -92,7 +105,11 @@ function actionEvent(
 
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ key: mockRouteKey }),
-  useRouter: () => ({ back: mockBack }),
+  useRouter: () => ({
+    back: mockBack,
+    replace: mockReplace,
+    canGoBack: () => mockCanGoBack,
+  }),
 }));
 
 jest.mock("react-native-safe-area-context", () => ({
@@ -110,11 +127,19 @@ jest.mock("@/games/GameResult", () => {
   const { Pressable }: typeof import("react-native") =
     jest.requireActual("react-native");
   return {
-    GameResult: ({ onDone }: { onDone: () => void }) =>
-      ReactModule.createElement(Pressable, {
+    GameResult: ({
+      outcome,
+      onDone,
+    }: {
+      outcome: typeof mockCanonicalOutcome;
+      onDone: () => void;
+    }) => {
+      mockCanonicalOutcome = outcome;
+      return ReactModule.createElement(Pressable, {
         accessibilityLabel: "canonical-done",
         onPress: onDone,
-      }),
+      });
+    },
   };
 });
 
@@ -139,6 +164,24 @@ jest.mock("@/party/gameCatalog", () => ({
       never: {
         key: "never",
         name: "Nikdy jsem",
+        scoring: "drinks",
+        shell: "prompt",
+      },
+      categories: {
+        key: "categories",
+        name: "Kategorie",
+        scoring: "drinks",
+        shell: "prompt",
+      },
+      thumb: {
+        key: "thumb",
+        name: "Palec",
+        scoring: "drinks",
+        shell: "prompt",
+      },
+      rules: {
+        key: "rules",
+        name: "Pravidlo večera",
         scoring: "drinks",
         shell: "prompt",
       },
@@ -385,6 +428,7 @@ jest.mock("@/party/shells/QuizShell", () => {
       onAnswer,
       onReveal,
       onNext,
+      onFinished,
       spectator = false,
     }: {
       entrants: { id: string }[];
@@ -394,6 +438,11 @@ jest.mock("@/party/shells/QuizShell", () => {
       onAnswer: (option: number) => void;
       onReveal: () => void;
       onNext: () => void;
+      onFinished: (result: {
+        winner: string | null;
+        winnerId: string | null;
+        standings: { name: string; playerId: string; score: number }[];
+      }) => Promise<boolean>;
       spectator?: boolean;
     }) =>
       ReactModule.createElement(
@@ -419,6 +468,18 @@ jest.mock("@/party/shells/QuizShell", () => {
         ReactModule.createElement(Pressable, {
           accessibilityLabel: "quiz-next-action",
           onPress: onNext,
+        }),
+        ReactModule.createElement(Pressable, {
+          accessibilityLabel: "quiz-result-action",
+          onPress: () =>
+            onFinished({
+              winner: "Ty",
+              winnerId: "me",
+              standings: [
+                { name: "Ty", playerId: "me", score: 3 },
+                { name: "Honza", playerId: "honza", score: 1 },
+              ],
+            }),
         }),
         ...entrants.map((entrant) =>
           ReactModule.createElement(Text, {
@@ -574,11 +635,13 @@ describe("PartyGameScreen result wiring", () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockRouteKey = "dice";
+    mockCanGoBack = true;
     mockPlacedGame = false;
     mockSharedCode = "TABLE1";
     mockSharingFailure = undefined;
     mockSharedRoster = [];
     mockGameEvents = [];
+    mockCanonicalOutcome = null;
     mockNight = createMockNight();
     mockLoadPendingPartyGameRuntime.mockResolvedValue(null);
     mockLoadQueuedPartyGameEvents.mockResolvedValue([]);
@@ -598,6 +661,84 @@ describe("PartyGameScreen result wiring", () => {
     jest.useRealTimers();
   });
 
+  it("keeps the night beer action available during play and removes it from the result", async () => {
+    const view = render(<PartyGameScreen />);
+    expect(screen.queryByLabelText(/Přidat další/)).toBeNull();
+
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("dice-result")).toBeTruthy(),
+    );
+
+    fireEvent.press(screen.getByLabelText("Máš 0 piv. Přidat další."));
+    expect(mockAddBeer).toHaveBeenCalledTimes(1);
+    expect(mockAddBeer).toHaveBeenCalledWith("Ležák");
+
+    mockNight = {
+      ...mockNight,
+      drinks: [
+        {
+          id: "beer-1",
+          at: "2026-08-05T18:10:00.000Z",
+          by: "me",
+          beerName: "Ležák",
+          drinkType: "beer",
+          stopId: null,
+        },
+      ],
+    };
+    view.rerender(<PartyGameScreen />);
+    expect(screen.getByLabelText("Máš 1 pivo. Přidat další.")).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText("dice-result"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("canonical-done")).toBeTruthy(),
+    );
+    expect(screen.queryByLabelText(/Přidat další/)).toBeNull();
+  });
+
+  it("shows GameResult before the top Konec action leaves the game", async () => {
+    mockRouteKey = "never";
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() => expect(screen.getByLabelText("Ukončit hru")).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText("Ukončit hru"));
+
+    await waitFor(() => expect(screen.getByLabelText("canonical-done")).toBeTruthy());
+    expect(mockBack).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByLabelText("canonical-done"));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a cold-start game route through the party hub", () => {
+    mockCanGoBack = false;
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("Zpátky do večera"));
+
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith("/friends");
+  });
+
+  it("leaves a cold-start canonical result through the party hub", () => {
+    mockCanGoBack = false;
+    mockRouteKey = "score";
+    mockSharedRoster = [
+      { id: "honza", nickname: null, displayName: "Honza", avatarUrl: null },
+    ];
+    const finish = actionEvent(8, "finish-cold", {});
+    finish.kind = "finish";
+    finish.payload = { winner: "Honza", scores: [] };
+    mockGameEvents = [finish];
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("canonical-done"));
+
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith("/friends");
+  });
+
   it("keeps the dice result canonical when leaving GameResult", async () => {
     render(<PartyGameScreen />);
     fireEvent.press(screen.getByLabelText("start-game"));
@@ -607,6 +748,7 @@ describe("PartyGameScreen result wiring", () => {
     const result = screen.getByLabelText("dice-result");
     fireEvent.press(result);
     fireEvent.press(result);
+    await waitFor(() => expect(screen.getByLabelText("canonical-done")).toBeTruthy());
     fireEvent.press(screen.getByLabelText("canonical-done"));
 
     expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
@@ -715,6 +857,75 @@ describe("PartyGameScreen result wiring", () => {
         payingId: "honza",
       },
     });
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not finish a round when its pick could not be stored durably", async () => {
+    mockRouteKey = "round";
+    mockSendGameEvent
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() => expect(screen.getByLabelText("pick-action")).toBeTruthy());
+    fireEvent.press(screen.getByLabelText("pick-action"));
+
+    await act(async () => undefined);
+    expect(mockFinishGame).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("canonical-done")).toBeNull();
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByLabelText("pick-action"));
+    await waitFor(() => expect(mockSendGameEvent).toHaveBeenCalledTimes(3));
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(
+      2,
+      "game-1",
+      expect.objectContaining({ kind: "action" }),
+      expect.any(String),
+    );
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a round retryable when its pick is durable but its finish is not", async () => {
+    mockRouteKey = "round";
+    mockSendGameEvent
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() => expect(screen.getByLabelText("pick-action")).toBeTruthy());
+    fireEvent.press(screen.getByLabelText("pick-action"));
+
+    await act(async () => undefined);
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+    expect(mockFinishGame).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("canonical-done")).toBeNull();
+
+    fireEvent.press(screen.getByLabelText("pick-action"));
+    await waitFor(() => expect(mockSendGameEvent).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByLabelText("canonical-done")).toBeTruthy());
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the manual finish action retryable after durable storage fails", async () => {
+    mockRouteKey = "never";
+    mockSendGameEvent.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() => expect(screen.getByLabelText("Ukončit hru")).toBeTruthy());
+    fireEvent.press(screen.getByLabelText("Ukončit hru"));
+
+    await act(async () => undefined);
+    expect(screen.queryByLabelText("canonical-done")).toBeNull();
+    expect(screen.getByLabelText("Ukončit hru")).toBeTruthy();
+    expect(mockFinishGame).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText("Ukončit hru"));
+    await waitFor(() => expect(screen.getByLabelText("canonical-done")).toBeTruthy());
     expect(mockFinishGame).toHaveBeenCalledTimes(1);
   });
 
@@ -933,7 +1144,7 @@ describe("PartyGameScreen result wiring", () => {
     expect(screen.getByLabelText("canonical-done")).toBeTruthy();
   });
 
-  it("reports the canonical staged pick when a late spin lands a different player", () => {
+  it("reports the canonical staged pick when a late spin lands a different player", async () => {
     mockRouteKey = "round";
     mockSharedRoster = [
       { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
@@ -972,7 +1183,7 @@ describe("PartyGameScreen result wiring", () => {
         payingId: "me",
       },
     });
-    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockFinishGame).toHaveBeenCalledTimes(1));
   });
 
   it("passes only active players selected in the lobby to Pub quiz", async () => {
@@ -1224,6 +1435,77 @@ describe("PartyGameScreen result wiring", () => {
     });
   });
 
+  it("rolls an optimistic score back and lets it be retried when storage fails", async () => {
+    mockRouteKey = "score";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockSendGameEvent.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("Bod pro honza. Aktuálně 0"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Bod pro honza. Aktuálně 0")).toBeTruthy(),
+    );
+
+    fireEvent.press(screen.getByLabelText("Bod pro honza. Aktuálně 0"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Bod pro honza. Aktuálně 1")).toBeTruthy(),
+    );
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("rolls a failed quiz answer back, unlocks it and accepts a retry", async () => {
+    mockRouteKey = "quiz";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockSendGameEvent.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("quiz-answer-action"));
+    await waitFor(() =>
+      expect(screen.queryByLabelText("quiz-answer-me-q-plzen")).toBeNull(),
+    );
+
+    fireEvent.press(screen.getByLabelText("quiz-answer-action"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("quiz-answer-me-q-plzen")).toBeTruthy(),
+    );
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps generic Konec hidden while the exact terminal quiz result retries", async () => {
+    mockRouteKey = "quiz";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockGameEvents = QUIZ_QUESTIONS.map((_, index) =>
+      actionEvent(index + 1, `quiz-next-${index}`, {
+        type: "quiz_next",
+        fromQuestion: index,
+      }),
+    );
+    mockSendGameEvent.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    expect(screen.getByLabelText(`quiz-index-${QUIZ_QUESTIONS.length}`)).toBeTruthy();
+    expect(screen.queryByLabelText("Ukončit hru")).toBeNull();
+
+    fireEvent.press(screen.getByLabelText("quiz-result-action"));
+    await waitFor(() => expect(mockSendGameEvent).toHaveBeenCalledTimes(1));
+    expect(screen.queryByLabelText("canonical-done")).toBeNull();
+    expect(screen.queryByLabelText("Ukončit hru")).toBeNull();
+
+    fireEvent.press(screen.getByLabelText("quiz-result-action"));
+    await waitFor(() => expect(mockSendGameEvent).toHaveBeenCalledTimes(2));
+    expect(mockSendGameEvent.mock.calls[1]).toEqual(mockSendGameEvent.mock.calls[0]);
+    expect(screen.getByLabelText("canonical-done")).toBeTruthy();
+  });
+
   it("hydrates an offline score event after the game screen reopens", async () => {
     mockRouteKey = "score";
     mockSharedRoster = [
@@ -1307,6 +1589,25 @@ describe("PartyGameScreen result wiring", () => {
     );
   });
 
+  it("handles a rejected shared action, rolls it back and accepts a retry", async () => {
+    mockRouteKey = "never";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockSendGameEvent
+      .mockRejectedValueOnce(new Error("storage unavailable"))
+      .mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("prompt-action"));
+    await waitFor(() => expect(screen.getByLabelText("prompt-step-0")).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText("prompt-action"));
+    await waitFor(() => expect(screen.getByLabelText("prompt-step-1")).toBeTruthy());
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+  });
+
   it("hydrates a queued prompt action after a cold restart", async () => {
     mockRouteKey = "never";
     mockSharedRoster = [
@@ -1362,7 +1663,7 @@ describe("PartyGameScreen result wiring", () => {
           drawKind: "card",
           value: "K",
           fromCount: 1,
-          drawnById: "me",
+          drawnById: "honza",
         },
         createdAt: expect.any(String),
       },
@@ -1370,7 +1671,162 @@ describe("PartyGameScreen result wiring", () => {
     );
   });
 
-  it("shows the canonical fourth king before finishing for the player who drew it", () => {
+  it("attributes a three-player King’s Cup draw to the roster turn, not the phone owner", async () => {
+    mockRouteKey = "kings";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+      { id: "petra", nickname: "petra", displayName: "Petra", avatarUrl: null },
+    ];
+    mockGameEvents = [
+      actionEvent(1, "draw-1", {
+        type: "draw",
+        drawKind: "card",
+        value: "clubs-A",
+        fromCount: 0,
+        drawnById: "me",
+      }),
+      actionEvent(2, "draw-2", {
+        type: "draw",
+        drawKind: "card",
+        value: "clubs-K",
+        fromCount: 1,
+        drawnById: "honza",
+      }),
+    ];
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("draw-action"));
+
+    await waitFor(() =>
+      expect(mockSendGameEvent).toHaveBeenCalledWith(
+        "game-1",
+        expect.objectContaining({
+          kind: "action",
+          payload: expect.objectContaining({ drawnById: "petra", fromCount: 2 }),
+        }),
+        expect.any(String),
+      ),
+    );
+  });
+
+  it("keeps canonical player ids when two players share the same display name", () => {
+    mockRouteKey = "score";
+    mockSharedRoster = [
+      { id: "alex-a", nickname: null, displayName: "Alex", avatarUrl: null },
+      { id: "alex-b", nickname: null, displayName: "Alex", avatarUrl: null },
+    ];
+    const finish = actionEvent(8, "finish-duplicates", {});
+    finish.kind = "finish";
+    finish.payload = {
+      winner: "Alex",
+      winnerId: "alex-b",
+      paying: null,
+      payingId: null,
+      scores: [
+        { name: "Alex", playerId: "alex-a", score: 1 },
+        { name: "Alex", playerId: "alex-b", score: 2 },
+      ],
+    };
+    mockGameEvents = [finish];
+
+    render(<PartyGameScreen />);
+
+    expect(mockCanonicalOutcome).toEqual({
+      winnerId: { kind: "id", value: "alex-b" },
+      payingId: null,
+      scores: [
+        { playerId: { kind: "id", value: "alex-a" }, score: 1 },
+        { playerId: { kind: "id", value: "alex-b" }, score: 2 },
+      ],
+    });
+  });
+
+  it("keeps name-based legacy finishes readable when stable ids are absent", () => {
+    mockRouteKey = "score";
+    mockSharedRoster = [
+      { id: "honza", nickname: null, displayName: "Honza", avatarUrl: null },
+    ];
+    const finish = actionEvent(8, "finish-legacy", {});
+    finish.kind = "finish";
+    finish.payload = {
+      winner: "Honza",
+      scores: [{ name: "Honza", score: 3 }],
+    };
+    mockGameEvents = [finish];
+
+    render(<PartyGameScreen />);
+
+    expect(mockCanonicalOutcome).toEqual({
+      winnerId: { kind: "name", value: "Honza" },
+      payingId: null,
+      scores: [{ playerId: { kind: "name", value: "Honza" }, score: 3 }],
+    });
+  });
+
+  it("falls back to legacy names when canonical ids are not in the roster", () => {
+    mockRouteKey = "score";
+    mockSharedRoster = [
+      { id: "honza", nickname: null, displayName: "Honza", avatarUrl: null },
+    ];
+    const finish = actionEvent(8, "finish-stale-ids", {});
+    finish.kind = "finish";
+    finish.payload = {
+      winner: "Honza",
+      winnerId: "deleted-player",
+      paying: null,
+      payingId: "deleted-payer",
+      scores: [{ name: "Honza", playerId: "deleted-player", score: 3 }],
+    };
+    mockGameEvents = [finish];
+
+    render(<PartyGameScreen />);
+
+    expect(mockCanonicalOutcome).toEqual({
+      winnerId: { kind: "name", value: "Honza" },
+      payingId: null,
+      scores: [{ playerId: { kind: "name", value: "Honza" }, score: 3 }],
+    });
+  });
+
+  it("routes a completely unknown game key back to Party without starting it", async () => {
+    mockRouteKey = "garbage";
+    mockCanGoBack = false;
+
+    render(<PartyGameScreen />);
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/friends"));
+    expect(screen.queryByLabelText("start-game")).toBeNull();
+    expect(mockStartSharedGame).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unknown catalogue key playable when it belongs to a known legacy game", () => {
+    mockRouteKey = "legacy-score";
+    mockPlacedGame = true;
+
+    render(<PartyGameScreen />);
+
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("start-game")).toBeTruthy();
+  });
+
+  it.each([
+    ["categories", "Kategorie"],
+    ["thumb", "Palec"],
+    ["rules", "Pravidlo večera"],
+  ])("opens and advances the %s prompt route", async (routeKey, gameName) => {
+    mockRouteKey = routeKey;
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() => expect(screen.getByLabelText("prompt-step-0")).toBeTruthy());
+    expect(mockStartSharedGame).toHaveBeenCalledWith(
+      expect.objectContaining({ catalogKey: routeKey, name: gameName }),
+    );
+    fireEvent.press(screen.getByLabelText("prompt-action"));
+    await waitFor(() => expect(screen.getByLabelText("prompt-step-1")).toBeTruthy());
+  });
+
+  it("shows the canonical fourth king before finishing for the player who drew it", async () => {
     mockRouteKey = "kings";
     mockSharedRoster = [
       { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
@@ -1414,7 +1870,10 @@ describe("PartyGameScreen result wiring", () => {
 
     act(() => jest.advanceTimersByTime(1599));
     expect(mockSendGameEvent).not.toHaveBeenCalled();
-    act(() => jest.advanceTimersByTime(1));
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
     expect(mockSendGameEvent).toHaveBeenCalledWith("game-1", {
       kind: "finish",
       payload: {
@@ -1431,7 +1890,45 @@ describe("PartyGameScreen result wiring", () => {
     expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("pays the same roster member on every phone when the fourth king has no drawn-by author", () => {
+  it("retries the same fourth-king finish after durable storage fails", async () => {
+    mockRouteKey = "kings";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockGameEvents = [
+      actionEvent(1, "king-1", {
+        type: "draw", drawKind: "card", value: "clubs-K", fromCount: 0, drawnById: "me",
+      }),
+      actionEvent(2, "king-2", {
+        type: "draw", drawKind: "card", value: "diamonds-K", fromCount: 1, drawnById: "me",
+      }),
+      actionEvent(3, "king-3", {
+        type: "draw", drawKind: "card", value: "hearts-K", fromCount: 2, drawnById: "me",
+      }),
+      actionEvent(4, "king-4", {
+        type: "draw", drawKind: "card", value: "spades-K", fromCount: 3, drawnById: "honza",
+      }),
+    ];
+    mockSendGameEvent.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    render(<PartyGameScreen />);
+    await act(async () => {
+      jest.advanceTimersByTime(1600);
+      await Promise.resolve();
+    });
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("Ukončit hru")).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1600);
+      await Promise.resolve();
+    });
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+    expect(mockSendGameEvent.mock.calls[1]).toEqual(mockSendGameEvent.mock.calls[0]);
+  });
+
+  it("pays the same roster member on every phone when the fourth king has no drawn-by author", async () => {
     mockRouteKey = "kings";
     mockSharedRoster = [
       { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
@@ -1471,7 +1968,10 @@ describe("PartyGameScreen result wiring", () => {
     render(<PartyGameScreen />);
     expect(screen.queryByLabelText("Ukončit hru")).toBeNull();
 
-    act(() => jest.advanceTimersByTime(1600));
+    await act(async () => {
+      jest.advanceTimersByTime(1600);
+      await Promise.resolve();
+    });
     expect(mockSendGameEvent).toHaveBeenCalledWith("game-1", {
       kind: "finish",
       payload: {
@@ -1537,8 +2037,8 @@ describe("PartyGameScreen result wiring", () => {
         winner: null,
         winnerId: null,
         scores: [],
-        paying: "Ty",
-        payingId: "me",
+        paying: "Honza",
+        payingId: "honza",
       }),
     );
   });
@@ -1555,7 +2055,7 @@ describe("PartyGameScreen result wiring", () => {
 
     render(<PartyGameScreen />);
     expect(screen.getByLabelText("picked-me")).toBeTruthy();
-    expect(screen.queryByLabelText(/Máš 0 piv\. Přidat další\./)).toBeNull();
+    expect(screen.getByLabelText("Máš 0 piv. Přidat další.")).toBeTruthy();
     fireEvent.press(screen.getByLabelText("pick-action"));
 
     await waitFor(() =>
@@ -1763,7 +2263,7 @@ describe("PartyGameScreen spectator mode", () => {
     expect(mockFinishGame).not.toHaveBeenCalled();
   });
 
-  it("does not auto-finish on the shared fourth king timer while spectating", () => {
+  it("does not schedule or retry the shared fourth king finish while spectating", async () => {
     mockRouteKey = "kings";
     mockSharedRoster = SHARED_ROSTER_WITHOUT_ME;
     mockGameEvents = [
@@ -1788,6 +2288,12 @@ describe("PartyGameScreen spectator mode", () => {
         fromCount: 2,
         drawnById: "petra",
       }),
+    ];
+
+    const view = render(<PartyGameScreen />);
+    const timersBeforeFourthKing = jest.getTimerCount();
+    mockGameEvents = [
+      ...mockGameEvents,
       actionEvent(4, "king-4", {
         type: "draw",
         drawKind: "card",
@@ -1796,17 +2302,18 @@ describe("PartyGameScreen spectator mode", () => {
         drawnById: "petra",
       }),
     ];
-
-    render(<PartyGameScreen />);
-    act(() => {
-      jest.runOnlyPendingTimers();
-    });
+    view.rerender(<PartyGameScreen />);
     expect(screen.getByLabelText("draw-spades-K")).toBeTruthy();
+    // The existing zero-delay roster hydration is unrelated. The fourth king
+    // must not add a finish timer on a phone that only watches the table.
+    expect(jest.getTimerCount()).toBe(timersBeforeFourthKing);
 
-    act(() => {
-      jest.advanceTimersByTime(1600);
+    await act(async () => {
+      jest.advanceTimersByTime(6400);
+      await Promise.resolve();
     });
 
+    expect(jest.getTimerCount()).toBe(timersBeforeFourthKing);
     expect(mockSendGameEvent).not.toHaveBeenCalled();
     expect(mockFinishGame).not.toHaveBeenCalled();
   });

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
 
 jest.mock('react-native-reanimated', () => ({ useReducedMotion: () => true }));
 
@@ -12,6 +12,18 @@ const PLAYERS = [
   { id: 'anonymous-1', name: '', tint: '#483511' },
   { id: 'honza', name: 'Honza', tint: '#2B3940' },
 ];
+
+it('reserves the safe bottom lane for the game beer action', () => {
+  render(
+    <RoundDrumShell players={PLAYERS} pickedId={null} bottomInset={34} />,
+  );
+
+  expect(
+    screen
+      .UNSAFE_getAllByType(View)
+      .some((node) => StyleSheet.flatten(node.props.style)?.paddingBottom === 122),
+  ).toBe(true);
+});
 
 it('chooses and publishes a stable id once on a reduced-motion double tap', () => {
   jest.spyOn(Math, 'random').mockReturnValue(0);
@@ -26,6 +38,39 @@ it('chooses and publishes a stable id once on a reduced-motion double tap', () =
 
   expect(onPicked).toHaveBeenCalledTimes(1);
   expect(onPicked).toHaveBeenCalledWith('anonymous-1');
+});
+
+it('keeps the next spin locked until a slow canonical save finishes', async () => {
+  jest.useFakeTimers();
+  let resolveSave!: () => void;
+  const save = new Promise<void>((resolve) => {
+    resolveSave = resolve;
+  });
+  const onPicked = jest.fn(() => save);
+  jest.spyOn(Math, 'random').mockReturnValue(0);
+  render(
+    <RoundDrumShell players={PLAYERS} pickedId={null} onPicked={onPicked} />,
+  );
+
+  fireEvent.press(screen.getByLabelText('Roztoč'));
+  act(() => jest.advanceTimersByTime(1000));
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText('Roztoč znovu'));
+    await Promise.resolve();
+  });
+  expect(onPicked).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    resolveSave();
+    await save;
+  });
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText('Roztoč znovu'));
+    await Promise.resolve();
+  });
+  expect(onPicked).toHaveBeenCalledTimes(2);
+  jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 it('renders an anonymous player and a canonical finished result without another spin', () => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccessibilityInfo, Platform, Pressable, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
@@ -63,6 +63,29 @@ const announceSpy = (() => {
 
 beforeEach(() => {
   announceSpy.mockClear();
+});
+
+it('keeps the prompt footer above the home indicator and the game beer action', () => {
+  render(
+    <PromptShell prompts={['První', 'Druhá']} seed={17} step={0} onNext={jest.fn()} />,
+  );
+
+  const footer = screen.getByText('Ťukni kamkoliv').parent?.parent;
+  expect(StyleSheet.flatten(footer?.props.style)).toEqual(
+    expect.objectContaining({ bottom: 122 }),
+  );
+});
+
+it('keeps the King’s Cup action above the home indicator and the game beer action', () => {
+  render(
+    <DrawShell kind="card" players={PLAYERS} action="Táhni kartu" seed={17} />,
+  );
+
+  expect(
+    screen
+      .UNSAFE_getAllByType(View)
+      .some((node) => StyleSheet.flatten(node.props.style)?.paddingBottom === 122),
+  ).toBe(true);
 });
 
 it('renders a prompt from the folded step and emits only an append action intent', () => {

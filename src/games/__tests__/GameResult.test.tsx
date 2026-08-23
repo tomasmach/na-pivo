@@ -1,10 +1,14 @@
 /* eslint-disable import/first */
 
 import React from 'react';
-import { AccessibilityInfo, Platform, ScrollView } from 'react-native';
+import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 
-jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
+jest.mock('@/components/shared/PersonAvatar', () => ({
+  PersonAvatar: ({ name, tint }: { name: string; tint: string }) => (
+    <View accessibilityLabel={`avatar-${name}-${tint}`} />
+  ),
+}));
 jest.mock('@/components/shared/IconGlyph', () => ({ BeerIcon: () => null, PlusIcon: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 34, left: 0 }),
@@ -100,6 +104,24 @@ it('builds the same summary label for the payer and neutral endings', () => {
   expect(screen.getByLabelText('Dohráno. Výsledek zůstal u večera.')).toBeTruthy();
 });
 
+it('uses the named game-result display type without Android font padding', () => {
+  render(
+    <GameResult
+      players={[{ id: 'p1', name: 'Kája', tint: '#E8A317' }]}
+      outcome={{ scores: [], winnerId: null, payingId: 'p1' }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(StyleSheet.flatten(screen.getByText('Platí Kája').props.style)).toEqual(
+    expect.objectContaining({
+      fontFamily: 'Baloo2-ExtraBold',
+      lineHeight: 40,
+      includeFontPadding: false,
+    }),
+  );
+});
+
 it('reads each ranking row as a single label with rank, name and displayed score', () => {
   render(
     <GameResult
@@ -120,6 +142,91 @@ it('reads each ranking row as a single label with rank, name and displayed score
 
   expect(screen.getByLabelText('1. Hráč 1 20')).toBeTruthy();
   expect(screen.getByLabelText('2. Hráč 2 12')).toBeTruthy();
+});
+
+it("prefers an exact player id over another player's matching display name", () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'first', name: 'target', tint: '#111111' },
+        { id: 'target', name: 'Správný hráč', tint: '#222222' },
+      ]}
+      outcome={{
+        scores: [
+          { playerId: 'first', score: 1 },
+          { playerId: 'target', score: 2 },
+        ],
+        winnerId: 'target',
+      }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText('Vyhrává Správný hráč')).toBeTruthy();
+  expect(screen.getByLabelText('2. target 1')).toBeTruthy();
+  expect(screen.getByLabelText('1. Správný hráč 2')).toBeTruthy();
+});
+
+it('keeps the exact-id tint for duplicate display names', () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'alex-a', name: 'Alex', tint: '#111111' },
+        { id: 'alex-b', name: 'Alex', tint: '#222222' },
+      ]}
+      outcome={{
+        scores: [
+          { playerId: 'alex-a', score: 1 },
+          { playerId: 'alex-b', score: 2 },
+        ],
+        winnerId: 'alex-b',
+      }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.getAllByLabelText('avatar-Alex-#222222')).toHaveLength(2);
+  expect(screen.getAllByLabelText('avatar-Alex-#111111')).toHaveLength(1);
+});
+
+it('uses stable ids for a custom board when display names are duplicated', () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'alex-a', name: 'Alex', tint: '#111111' },
+        { id: 'alex-b', name: 'Alex', tint: '#222222' },
+      ]}
+      outcome={{ scores: [], winnerId: null, payingId: 'alex-b' }}
+      board={[
+        { playerId: 'alex-a', name: 'Alex', score: 1, suffix: '1.' },
+        { playerId: 'alex-b', name: 'Alex', score: 2, suffix: '2.' },
+      ]}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.getAllByLabelText('avatar-Alex-#111111')).toHaveLength(1);
+  expect(screen.getAllByLabelText('avatar-Alex-#222222')).toHaveLength(2);
+});
+
+it('never reinterprets a tagged legacy name as another player id', () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'first', name: 'target', tint: '#111111' },
+        { id: 'target', name: 'Jiný hráč', tint: '#222222' },
+      ]}
+      outcome={{
+        scores: [{ playerId: { kind: 'name', value: 'target' }, score: 3 }],
+        winnerId: { kind: 'name', value: 'target' },
+      }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText('Vyhrává target')).toBeTruthy();
+  expect(screen.queryByText('Vyhrává Jiný hráč')).toBeNull();
+  expect(screen.getByLabelText('avatar-target-#111111')).toBeTruthy();
 });
 
 it('includes the displayed suffix verbatim in the ranking row label', () => {

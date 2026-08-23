@@ -1,8 +1,8 @@
 /**
  * Chance, drawn: dice, a person, a card off the top.
  *
- * The three games that come down to "the app decides" — Kostky, Flaška, Kdo
- * platí rundu, King's Cup. What makes them worth opening a phone for is not the
+ * The games that come down to "the app decides" — Kostky and King's Cup. What
+ * makes them worth opening a phone for is not the
  * answer, which anyone could get by counting on fingers; it is the SUSPENSE
  * before it. So none of them just prints a result: the dice tumble, the names
  * race past and slow down, the card turns over. That half second is the game.
@@ -31,6 +31,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { kingsDeck, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
 import { MockColors, MockLayout } from "@/mocks/mockTheme";
@@ -91,6 +92,7 @@ export function DrawShell({
   /** Read-only view: the last card stays up, but nobody draws from here. */
   spectator?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
   const [localResult, setLocalResult] = React.useState<DrawResult | null>(null);
   const [localCardIds, setLocalCardIds] = React.useState<string[]>([]);
@@ -226,7 +228,7 @@ export function DrawShell({
   }));
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { paddingBottom: insets.bottom + 88 }]}>
       {intro && !shown ? (
         <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
           {intro}
@@ -321,7 +323,7 @@ export function DrawShell({
   );
 }
 
-/** The names, cycling, while the wheel is still turning. */
+/** The names cycling while a random-person draw is still running. */
 function RollingNames({ players }: { players: DrawPlayer[] }) {
   const [index, setIndex] = React.useState(0);
 
@@ -381,10 +383,18 @@ const styles = StyleSheet.create({
   cardBack: {
     fontFamily: Fonts.numeral,
     fontSize: 64,
+    lineHeight: 79,
+    includeFontPadding: false,
     color: withAlpha(Colors.foam, 0.2),
     textAlign: "center",
   },
-  cardRank: { fontFamily: Fonts.numeral, fontSize: 34, color: Colors.amber },
+  cardRank: {
+    fontFamily: Fonts.numeral,
+    fontSize: 34,
+    lineHeight: 42,
+    includeFontPadding: false,
+    color: Colors.amber,
+  },
   cardTitle: {
     fontSize: 20,
     fontWeight: "800",
