@@ -1,4 +1,5 @@
 import buildAppConfig from '../../app.config';
+import pkgJson from '../../package.json';
 
 jest.mock('expo/config-plugins.js', () => ({
   withInfoPlist: (config: unknown) => config,
@@ -13,6 +14,12 @@ interface CollectedDataType {
 }
 
 const config = buildAppConfig({ config: {} } as never);
+
+const findPluginOptions = (name: string): Record<string, unknown> | undefined => {
+  const plugins =
+    (config as { plugins?: [string, Record<string, unknown>?][] } | undefined)?.plugins ?? [];
+  return plugins.find(([pluginName]) => pluginName === name)?.[1];
+};
 
 describe('app.config store-policy surface', () => {
   const collected =
@@ -73,9 +80,41 @@ describe('app.config store-policy surface', () => {
     ).not.toContain('NSPrivacyCollectedDataTypeAudio');
   });
 
-  it('removed the unused microphone permission after the playback-only audio audit', () => {
+  it('removed the unused iOS microphone permission', () => {
     expect(config.ios?.infoPlist?.NSMicrophoneUsageDescription).toBeUndefined();
+  });
+
+  it('bumps the marketing version to 3.0.0 in both package.json and the expo config', () => {
+    expect(config.version).toBe('3.0.0');
+    expect(pkgJson.version).toBe('3.0.0');
+  });
+
+  it('blocks RECORD_AUDIO outright so transitive plugins cannot re-add it', () => {
+    expect(config.android?.blockedPermissions ?? []).toContain(
+      'android.permission.RECORD_AUDIO',
+    );
     expect(config.android?.permissions ?? []).not.toContain('android.permission.RECORD_AUDIO');
+  });
+
+  it('configures expo-camera with microphone and Android audio recording disabled', () => {
+    const options = findPluginOptions('expo-camera');
+    expect(options?.recordAudioAndroid).toBe(false);
+    expect(options?.microphonePermission).toBe(false);
+  });
+
+  it('configures expo-image-picker with the microphone permission disabled', () => {
+    const options = findPluginOptions('expo-image-picker');
+    expect(options?.microphonePermission).toBe(false);
+  });
+
+  it('keeps camera access enabled: CAMERA is requested and not blocked', () => {
+    expect(config.android?.permissions ?? []).toContain('android.permission.CAMERA');
+    expect(config.android?.blockedPermissions ?? []).not.toContain('android.permission.CAMERA');
+    expect(config.ios?.infoPlist?.NSCameraUsageDescription).toBeTruthy();
+    const cameraPlugin = findPluginOptions('expo-camera');
+    expect(cameraPlugin?.cameraPermission).not.toBe(false);
+    const pickerPlugin = findPluginOptions('expo-image-picker');
+    expect(pickerPlugin?.cameraPermission).not.toBe(false);
   });
 
   it('blocks foreground-service permissions and keeps the expo-location plugin opt-out', () => {

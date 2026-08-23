@@ -122,6 +122,29 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     ],
     'expo-notifications',
+    // Camera stays on (menu OCR, beer photos) but never touches the
+    // microphone: recordAudioAndroid:false keeps expo-camera from requesting
+    // RECORD_AUDIO and microphonePermission:false drops NSMicrophoneUsageDescription.
+    [
+      'expo-camera',
+      {
+        cameraPermission:
+          'Foťák potřebuju, abych ti z menu přečetl piva a abys mohl vyfotit pivo do deníčku.',
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ],
+    // Photo library picker for avatars/menu/beer photos; same rule — no mic.
+    [
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Otevřu ti galerii, ať si vybereš profilovku, fotku pivního menu nebo fotku piva do deníčku.',
+        cameraPermission:
+          'Foťák potřebuju, abych ti z menu přečetl piva a abys mohl vyfotit pivo do deníčku.',
+        microphonePermission: false,
+      },
+    ],
     [
       'expo-audio',
       {
@@ -196,7 +219,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'na-pivo',
     owner: 'tomasmachs-organization',
     scheme: 'napivo',
-    version: '1.5.1',
+    version: '3.0.0',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
     // DESIGN.md intentionally postpones light mode. Keep native surfaces such
@@ -379,9 +402,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Foreground-service location permissions are blocked outright: geofence
       // reminders no longer use an Android foreground service, and blocking
       // keeps transitive config plugins (expo-location) from re-adding them.
+      // RECORD_AUDIO is blocked for the same reason: no plugin (expo-camera,
+      // expo-image-picker, transitive deps) may re-add microphone access.
       blockedPermissions: [
         'android.permission.FOREGROUND_SERVICE',
         'android.permission.FOREGROUND_SERVICE_LOCATION',
+        'android.permission.RECORD_AUDIO',
       ],
       adaptiveIcon: {
         foregroundImage: './assets/images/icon.png',
