@@ -82,7 +82,6 @@ import {
 } from '@/data/beerCheckinsClient';
 import {
   DEFAULT_FRIEND_SOCIAL_SETTINGS,
-  endFriendPubActivity,
   fetchFriendsDashboard,
   fetchFriendsLive,
   markFriendNotificationsRead,
@@ -92,10 +91,8 @@ import {
   type FriendsDashboard,
   type Friendship,
 } from '@/data/friendsClient';
-import {
-  enqueueFriendOp,
-  isRetriableFriendError,
-} from '@/data/friendsQueue';
+import { endFriendActivityDurably } from '@/data/friendsQueue';
+import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { fetchPartaFeed, type PartaFeedSitting } from '@/data/partaFeedClient';
@@ -699,29 +696,34 @@ export default function FriendsScreen() {
           style: 'destructive',
           onPress: () => {
             endingBroadcastRef.current = true;
-            void endFriendPubActivity(activity.id).then((result) => {
-              endingBroadcastRef.current = false;
-              if (result.ok) {
-                showToast(cs.friends.endedToast, {
-                  icon: <Undo2Icon size={20} color={Colors.amber} />,
-                });
-                reload();
-                return;
-              }
-              if (isRetriableFriendError(result)) {
-                void enqueueFriendOp({
-                  op: 'end',
-                  clientId: activity.id,
-                  activityId: activity.id,
-                });
-                showToast(cs.friends.endQueued, {
-                  icon: <Undo2Icon size={20} color={Colors.amber} />,
-                });
-                reload();
-                return;
-              }
-              showToast(result.detail);
-            });
+            void endFriendActivityDurably(activity.id)
+              .then((result) => {
+                if (!mountedRef.current) return;
+                if (result.state === 'delivered' || result.state === 'queued') {
+                  showToast(
+                    result.state === 'delivered' ? cs.friends.endedToast : cs.friends.endQueued,
+                    { icon: <Undo2Icon size={20} color={Colors.amber} /> },
+                  );
+                  reload();
+                  return;
+                }
+                showToast(
+                  result.state === 'storage-error'
+                    ? cs.friends.queueSaveError
+                    : result.error.detail,
+                );
+              })
+              .catch((error) => {
+                if (
+                  mountedRef.current &&
+                  !(error instanceof PrivateAccountMutationFrozenError)
+                ) {
+                  showToast(cs.friends.queueSaveError);
+                }
+              })
+              .finally(() => {
+                endingBroadcastRef.current = false;
+              });
           },
         },
       ],

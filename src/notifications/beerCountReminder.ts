@@ -9,9 +9,17 @@ import {
   runPrivateAccountMutation,
   type PrivateAccountMutationScope,
 } from '@/data/privateAccountBoundary';
+import type { ExplicitEntryReservation } from '@/data/inviteNavigation';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import {
+  beginNotificationResponseEvent,
+  claimHandledNotificationResponse,
+  clearNotificationResponseIfStillLast,
+  resetNotificationResponseRuntimeForTests,
+  type NotificationResponseClaim,
+} from './notificationResponseLedger';
 
 const BEER_COUNT_REMINDER_STATE_KEY = 'na-pivo-beer-count-reminder-state';
 const BEER_COUNT_REMINDER_CHANNEL_ID = 'beer-count-reminders';
@@ -43,7 +51,6 @@ const Notifications = loadNotifications();
 let tallySubscriptionInstalled = false;
 let operationQueue: Promise<void> = Promise.resolve();
 let permissionRequest: Promise<BeerCountReminderEnableResult> | null = null;
-const handledTapIds = new Set<string>();
 
 function assertCurrentScope(scope: PrivateAccountMutationScope): void {
   if (!isPrivateAccountMutationScopeCurrent(scope)) {
@@ -360,12 +367,8 @@ export function isBeerCountReminderResponse(
   return response?.notification.request.content.data?.kind === BEER_COUNT_REMINDER_KIND;
 }
 
-function claimTap(response: ExpoNotifications.NotificationResponse): boolean {
-  const id = response.notification.request.identifier;
-  if (handledTapIds.has(id)) return false;
-  if (handledTapIds.size >= 32) handledTapIds.clear();
-  handledTapIds.add(id);
-  return true;
+export function resetBeerCountReminderTapDeduperForTests(): void {
+  resetNotificationResponseRuntimeForTests();
 }
 
 async function rearmFromTap(
@@ -392,37 +395,105 @@ async function rearmFromTap(
 
 export function subscribeBeerCountReminderTap(
   onTap: () => void,
+  claimNavigation?: (notificationId: string) => ExplicitEntryReservation | null,
 ): ExpoNotifications.Subscription {
   if (!Notifications) return { remove: () => undefined };
   try {
     return Notifications.addNotificationResponseReceivedListener((response) => {
       const invocationScope = capturePrivateAccountMutationScope();
       if (!isPrivateAccountMutationScopeCurrent(invocationScope)) return;
-      if (!isBeerCountReminderResponse(response) || !claimTap(response)) return;
-      onTap();
-      void ignoreFrozen(serialize((scope) => rearmFromTap(response, scope))).catch(
-        () => undefined,
-      );
+      if (!isBeerCountReminderResponse(response)) return;
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const notificationId = response.notification.request.identifier;
+      const reservation = claimNavigation?.(notificationId) ?? null;
+      if (claimNavigation && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      void (async () => {
+        let tapCommitted = false;
+        try {
+          const claim = await claimHandledNotificationResponse(response);
+          if (
+            claim === 'unavailable' ||
+            !responseEvent.isCurrent() ||
+            !isPrivateAccountMutationScopeCurrent(invocationScope) ||
+            (reservation && !reservation.commit())
+          ) return;
+          tapCommitted = true;
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(invocationScope),
+          );
+        } finally {
+          if (
+            tapCommitted &&
+            responseEvent.isCurrent() &&
+            isPrivateAccountMutationScopeCurrent(invocationScope)
+          ) {
+            await ignoreFrozen(serialize((scope) => rearmFromTap(response, scope)));
+          }
+          reservation?.release();
+          responseEvent.release();
+        }
+      })().catch(() => undefined);
     });
   } catch {
     return { remove: () => undefined };
   }
 }
 
-export async function consumeInitialBeerCountReminderTap(onTap: () => void): Promise<void> {
+export async function consumeInitialBeerCountReminderTap(
+  onTap: () => void,
+  claimNavigation?: (notificationId: string) => ExplicitEntryReservation | null,
+): Promise<void> {
   if (!Notifications) return;
   try {
     await ignoreFrozen(serialize(async (scope) => {
       const response = await Notifications.getLastNotificationResponseAsync();
       assertCurrentScope(scope);
       if (!isBeerCountReminderResponse(response) || !response) return;
-      if (claimTap(response)) {
-        onTap();
-        await rearmFromTap(response, scope);
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const notificationId = response.notification.request.identifier;
+      const reservation = claimNavigation?.(notificationId) ?? null;
+      if (claimNavigation && !reservation) {
+        responseEvent.release();
+        return;
       }
-      assertCurrentScope(scope);
-      await Notifications.clearLastNotificationResponseAsync();
-      assertCurrentScope(scope);
+      try {
+        let claim: NotificationResponseClaim = 'unavailable';
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (!responseEvent.isCurrent()) return;
+          if (reservation && !reservation.isCurrent()) return;
+          claim = await claimHandledNotificationResponse(response);
+          assertCurrentScope(scope);
+          if (claim !== 'unavailable') break;
+        }
+        if (claim === 'unavailable') return;
+        if (!responseEvent.isCurrent()) return;
+        if (reservation && !reservation.commit()) return;
+        try {
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          if (responseEvent.isCurrent()) await rearmFromTap(response, scope);
+        }
+      } finally {
+        reservation?.release();
+        responseEvent.release();
+      }
     }));
   } catch {
     // A missing/old launch response must never block app startup.

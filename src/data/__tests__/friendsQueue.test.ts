@@ -2,11 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   clearFriendsQueue,
+  endFriendActivityDurably,
   enqueueFriendOp,
   flushFriendsQueue,
   isRetriableFriendError,
   type FriendQueueItem,
 } from '../friendsQueue';
+import {
+  beginPrivateAccountTransition,
+  PrivateAccountMutationFrozenError,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 import type { FriendActionResult } from '../friendsClient';
 import type { Pub } from '../pubs';
 
@@ -60,7 +66,42 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
+it('does not enqueue or resolve UI success after an A→B transition starts mid-delete', async () => {
+  resetPrivateAccountBoundaryForTests();
+  let resolveDelete!: (result: FriendActionResult) => void;
+  endFriendPubActivity.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveDelete = resolve;
+    }),
+  );
+  const ending = endFriendActivityDurably('activity-a');
+  for (let i = 0; i < 20 && endFriendPubActivity.mock.calls.length === 0; i += 1) {
+    await Promise.resolve();
+  }
+
+  const transition = beginPrivateAccountTransition('account-switch', 'A');
+  expect(transition).not.toBeNull();
+  resolveDelete(retry());
+  await expect(ending).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+  await transition!.drain();
+
+  expect(await readQueue()).toEqual([]);
+  expect(endFriendPubActivity).toHaveBeenCalledTimes(1);
+  transition!.release();
+  resetPrivateAccountBoundaryForTests();
+});
+
 describe('enqueueFriendOp — composite dedup keys', () => {
+  it('reports storage failure and never sends a non-durable action', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      enqueueFriendOp({ op: 'cheer', activityId: 'a1' }),
+    ).resolves.toBe('storage-error');
+
+    expect(reactToActivity).not.toHaveBeenCalled();
+  });
+
   it('treats rsvp and cheer on the same activity as distinct keys', async () => {
     respondToActivity.mockResolvedValue(retry());
     reactToActivity.mockResolvedValue(retry());
@@ -159,6 +200,14 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
     expect(await readQueue()).toHaveLength(1); // network → kept
   });
 
+  it.each(['http_408', 'http_409', 'http_425'])('keeps transient %s responses queued', async (code) => {
+    reactToActivity.mockResolvedValue({ ok: false, code, detail: 'zkus znovu' });
+
+    await enqueueFriendOp({ op: 'cheer', activityId: 'slow-gateway' });
+
+    expect(await readQueue()).toEqual([{ op: 'cheer', activityId: 'slow-gateway' }]);
+  });
+
   it('clears the queue once delivery succeeds after a recovery', async () => {
     respondToActivity.mockResolvedValue(retry());
     await enqueueFriendOp({ op: 'rsvp', activityId: 'a1', response: 'going' });
@@ -213,8 +262,14 @@ describe('isRetriableFriendError', () => {
   });
 
   it('treats hard 4xx rejects and server machine-codes as non-retriable', () => {
-    for (const code of ['http_400', 'http_403', 'http_404', 'not_friends', 'blocked', 'self_reaction', 'invite_expired']) {
+    for (const code of ['http_400', 'http_422', 'not_friends', 'blocked', 'self_reaction', 'invite_expired']) {
       expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
+    }
+  });
+
+  it('keeps non-terminal HTTP failures retriable', () => {
+    for (const code of ['http_403', 'http_404', 'http_408', 'http_409', 'http_425']) {
+      expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(true);
     }
   });
 

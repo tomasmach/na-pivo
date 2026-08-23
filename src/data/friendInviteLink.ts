@@ -35,28 +35,7 @@ function inviteRequestKey(code: string): string {
  * `?code=` form and the web-landing `/p/<code>` path. Returns null when the URL
  * carries no code.
  */
-export function parseInviteCodeFromUrl(url: string | null | undefined): string | null {
-  if (!url || typeof url !== 'string') return null;
-  // Only the dedicated friend-invite route may claim `?code=`. Party-table
-  // links carry a code too and must never be mistaken for a friend request.
-  const custom = /^napivo:\/\/parta\/pozvanka(?:[?#]|$)/i.test(url);
-  const query = custom ? /[?&]code=([^&#\s]+)/.exec(url) : null;
-  if (query?.[1]) {
-    try {
-      const decoded = decodeURIComponent(query[1]).trim();
-      return decoded.length > 0 ? decoded : null;
-    } catch {
-      return null;
-    }
-  }
-  // 2. web landing path form https://na-pivo.cz/p/<code>.
-  const path = /^https:\/\/na-pivo\.cz\/p\/([A-Za-z0-9_-]+)(?:[/?#]|$)/i.exec(url);
-  if (path?.[1]) {
-    const code = path[1].trim();
-    return code.length > 0 ? code : null;
-  }
-  return null;
-}
+export { parseFriendInviteCodeFromUrl as parseInviteCodeFromUrl } from './inviteUrl';
 
 /**
  * Latest-invocation-wins sequencing for the stashed invite code: each
@@ -67,7 +46,10 @@ export function parseInviteCodeFromUrl(url: string | null | undefined): string |
  * fresh mutations started from a stale completion.
  */
 let pendingInviteWriteSequence = 0;
-let latestPendingInviteIntent: { sequence: number; code: string | null } | null = null;
+let latestPendingInviteIntent: {
+  sequence: number;
+  code: string | null;
+} | null = null;
 
 async function applyAndReconcilePendingInviteWrite(
   sequence: number,
@@ -129,12 +111,15 @@ export async function clearPendingInviteCode(): Promise<void> {
  */
 async function claimInviteCodeWithinBoundary(code: string): Promise<FriendActionResult> {
   const result = await sendFriendRequest({ inviteCode: code });
-  if (result.ok) {
-    usePartaSignalStore.getState().requestRefresh();
-  }
   if (!result.ok && isRetriableFriendError(result)) {
-    await enqueueFriendOp({ op: 'request', key: inviteRequestKey(code), inviteCode: code });
-    usePartaSignalStore.getState().requestRefresh();
+    const queued = await enqueueFriendOp({
+      op: 'request',
+      key: inviteRequestKey(code),
+      inviteCode: code,
+    });
+    if (queued === 'storage-error') {
+      return { ...result, code: 'storage' };
+    }
     return { ok: true };
   }
   return result;
@@ -181,9 +166,9 @@ export function inviteClaimRoute(result: FriendActionResult): string {
 
 export async function claimInviteCode(code: string): Promise<FriendActionResult> {
   try {
-    return await runPrivateAccountMutation(async () =>
-      claimInviteCodeWithinBoundary(code),
-    );
+    const result = await runPrivateAccountMutation(async () => claimInviteCodeWithinBoundary(code));
+    if (result.ok) usePartaSignalStore.getState().requestRefresh();
+    return result;
   } catch (error) {
     if (error instanceof PrivateAccountMutationFrozenError) return ACCOUNT_TRANSITION_ERROR;
     return ACCOUNT_TRANSITION_ERROR;

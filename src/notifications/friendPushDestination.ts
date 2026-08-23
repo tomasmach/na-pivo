@@ -1,4 +1,5 @@
 import type { FriendTapPayload } from './pubReminderNotifications';
+import type { InviteNavigationCoordinator } from '@/data/inviteNavigation';
 
 function query(path: string, params: Record<string, string | null>): string {
   const entries = Object.entries(params).filter((entry): entry is [string, string] => Boolean(entry[1]));
@@ -26,4 +27,15 @@ export function friendPushDestination(payload?: FriendTapPayload): string {
     default:
       return '/friends/parta';
   }
+}
+
+/** Claim process ownership before the caller performs the router push. */
+export function claimFriendPushDestination(
+  coordinator: InviteNavigationCoordinator,
+  payload?: FriendTapPayload,
+): string {
+  coordinator.handleExplicitEntry(
+    `notification:${payload?.notificationId ?? `friend-${Date.now()}`}`,
+  );
+  return friendPushDestination(payload);
 }

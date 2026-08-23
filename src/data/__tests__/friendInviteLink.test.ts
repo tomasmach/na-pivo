@@ -9,6 +9,10 @@ import {
   peekPendingInviteCode,
   stashPendingInviteCode,
 } from '../friendInviteLink';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
 
@@ -24,7 +28,7 @@ jest.mock('../friendsClient', () => ({
   sendFriendRequest: (...a: unknown[]) => sendFriendRequest(...(a as [])),
 }));
 
-const enqueueFriendOp = jest.fn(async (): Promise<void> => undefined);
+const enqueueFriendOp = jest.fn(async (): Promise<'queued' | 'storage-error'> => 'queued');
 jest.mock('../friendsQueue', () => ({
   enqueueFriendOp: (...a: unknown[]) => enqueueFriendOp(...(a as [])),
   isRetriableFriendError: (result: { code?: string }) =>
@@ -39,8 +43,10 @@ jest.mock('@/stores/partaSignalStore', () => ({
 }));
 
 beforeEach(async () => {
+  resetPrivateAccountBoundaryForTests();
   jest.clearAllMocks();
   sendFriendRequest.mockResolvedValue({ ok: true });
+  enqueueFriendOp.mockResolvedValue('queued');
   await AsyncStorage.clear();
 });
 
@@ -51,6 +57,18 @@ describe('parseInviteCodeFromUrl', () => {
 
   it('reads the /p/<code> path from the web landing link', () => {
     expect(parseInviteCodeFromUrl('https://na-pivo.cz/p/Ab3xK9_pQ2sT')).toBe('Ab3xK9_pQ2sT');
+  });
+
+  it.each([
+    'https://na-pivo.cz/p/Ab3xK9_pQ2sT/',
+    'https://na-pivo.cz/p/Ab3xK9_pQ2sT?utm_source=qr',
+    'https://na-pivo.cz/p/Ab3xK9_pQ2sT/#invite',
+  ])('accepts a complete friend path with URL suffixes: %s', (url) => {
+    expect(parseInviteCodeFromUrl(url)).toBe('Ab3xK9_pQ2sT');
+  });
+
+  it('rejects nested content after a friend invite code', () => {
+    expect(parseInviteCodeFromUrl('https://na-pivo.cz/p/Ab3xK9_pQ2sT/extra')).toBeNull();
   });
 
   it('url-decodes a query code and trims it', () => {
@@ -246,12 +264,43 @@ describe('claimInviteCode', () => {
     expect(result).toEqual({ ok: true });
   });
 
+  it('does not claim success when a retriable request cannot reach storage', async () => {
+    sendFriendRequest.mockResolvedValue({ ok: false, code: 'network', detail: 'x' });
+    enqueueFriendOp.mockResolvedValueOnce('storage-error');
+
+    const result = await claimInviteCode('code-x');
+
+    expect(requestRefresh).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: false, code: 'storage', detail: 'x' });
+  });
+
   it('does not queue or refresh on a permanent failure', async () => {
     sendFriendRequest.mockResolvedValue({ ok: false, code: 'invite_expired', detail: 'x' });
     const result = await claimInviteCode('code-x');
     expect(enqueueFriendOp).not.toHaveBeenCalled();
     expect(requestRefresh).not.toHaveBeenCalled();
     expect(result).toEqual({ ok: false, code: 'invite_expired', detail: 'x' });
+  });
+
+  it('does not refresh the replacement account after an old direct request resolves', async () => {
+    let resolveRequest!: (result: { ok: true }) => void;
+    sendFriendRequest.mockReturnValueOnce(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const claiming = claimInviteCode('code-x');
+    while (sendFriendRequest.mock.calls.length === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    const transition = beginPrivateAccountTransition('test-account-swap', 'old-account');
+    expect(transition).not.toBeNull();
+
+    resolveRequest({ ok: true });
+    await expect(claiming).resolves.toEqual(expect.objectContaining({
+      ok: false,
+      code: 'account_transition',
+    }));
+    expect(requestRefresh).not.toHaveBeenCalled();
+    transition?.release();
   });
 });
 

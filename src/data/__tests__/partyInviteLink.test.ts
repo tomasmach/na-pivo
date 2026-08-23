@@ -42,6 +42,18 @@ describe('parsePartyInviteCodeFromUrl', () => {
     );
   });
 
+  it.each([
+    'https://na-pivo.cz/party/EFJ66G/',
+    'https://na-pivo.cz/party/EFJ66G?utm_source=qr',
+    'https://na-pivo.cz/party/EFJ66G/#join',
+  ])('accepts a complete party path with URL suffixes: %s', (url) => {
+    expect(parsePartyInviteCodeFromUrl(url)).toBe('EFJ66G');
+  });
+
+  it('rejects nested content after a table code', () => {
+    expect(parsePartyInviteCodeFromUrl('https://na-pivo.cz/party/EFJ66G/extra')).toBeNull();
+  });
+
   it('keeps the friend-invite parser and table parser from colliding', async () => {
     const { parseInviteCodeFromUrl } = await import('../friendInviteLink');
     const tableUrl = 'https://na-pivo.cz/party/EFJ66G';

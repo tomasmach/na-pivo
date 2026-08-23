@@ -40,8 +40,9 @@ import {
   Undo2Icon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import { endFriendPubActivity, type FriendPubActivity } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import type { FriendPubActivity } from '@/data/friendsClient';
+import { endFriendActivityDurably } from '@/data/friendsQueue';
+import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -119,29 +120,29 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
     // Optimistically hide the card, but hold the "ukončené" toast until the DELETE
     // actually resolves (§H4 — kills the "hotovo… vlastně ne" sequence).
     setEnding(true);
-    void endFriendPubActivity(activity.id).then((res) => {
-      if (!mountedRef.current) return;
-      if (res.ok) {
-        showToast(cs.friends.endedToast, {
-          icon: <Undo2Icon size={20} color={Colors.amber} />,
-        });
-        onEnded();
-        return;
-      }
-      if (isRetriableFriendError(res)) {
-        // Offline / transient: queue the end so it lands on the next flush and
-        // keep the card hidden (honest — it WILL end).
-        void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
-        showToast(cs.friends.endQueued, {
-          icon: <Undo2Icon size={20} color={Colors.amber} />,
-        });
-        onEnded();
-        return;
-      }
-      // Hard reject: bring the card back and explain.
-      setEnding(false);
-      showToast(res.detail);
-    });
+    void endFriendActivityDurably(activity.id)
+      .then((result) => {
+        if (!mountedRef.current) return;
+        if (result.state === 'delivered' || result.state === 'queued') {
+          showToast(
+            result.state === 'delivered' ? cs.friends.endedToast : cs.friends.endQueued,
+            { icon: <Undo2Icon size={20} color={Colors.amber} /> },
+          );
+          onEnded();
+          return;
+        }
+        setEnding(false);
+        showToast(
+          result.state === 'storage-error' ? cs.friends.queueSaveError : result.error.detail,
+        );
+      })
+      .catch((error) => {
+        if (!mountedRef.current) return;
+        setEnding(false);
+        if (!(error instanceof PrivateAccountMutationFrozenError)) {
+          showToast(cs.friends.queueSaveError);
+        }
+      });
   }, [activity.id, onEnded, showToast]);
 
   const handleEndPress = useCallback(() => {

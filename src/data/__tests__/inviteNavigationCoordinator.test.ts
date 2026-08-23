@@ -4,10 +4,9 @@ import { createInviteNavigationCoordinator } from '../inviteNavigation';
  * Pure seam for the invite confirmation navigation race.
  *
  * The coordinator owns one question only: given the stream of invite sources
- * (warm explicit URLs, a delayed async initial URL — itself explicit — and a
- * persisted cold-start restore), which navigation does the app perform now —
- * none, push, or replace. It never touches React, router, Linking or storage;
- * callers translate decisions into navigation.
+ * (canonical explicit routes and a persisted cold-start restore), which
+ * ownership decision applies now — none, push, or replace. It never touches
+ * React, router or storage; callers translate decisions into navigation.
  */
 
 const OLD = 'stale-old-code';
@@ -70,60 +69,112 @@ describe('createInviteNavigationCoordinator', () => {
     expect(ownedByRestore.resolveRestoreLookup(second, OLD).action).toBe('none');
   });
 
-  it('a delayed initial URL that stays newest navigates like an explicit event', () => {
+  it('a canonical route beats an older in-flight persisted restore', () => {
     const nav = createInviteNavigationCoordinator();
-
-    // getInitialURL is issued at launch; its ticket exists before the await…
-    const ticket = nav.beginExplicitLookup();
-    // …and nothing newer landed while it was in flight, so it acts explicitly.
-    expect(nav.resolveExplicitLookup(ticket, NEW)).toEqual({ action: 'push', code: NEW });
+    const lateRestore = nav.beginRestoreLookup();
+    expect(nav.handleExplicitInviteCode(NEW).action).toBe('push');
+    expect(nav.resolveRestoreLookup(lateRestore, OLD)).toEqual({ action: 'none', code: null });
+    expect(nav.handleExplicitInviteCode(NEW).action).toBe('none');
   });
 
-  it('an in-flight initial URL keeps explicit priority even when a restore resolves first', () => {
+  it.each([
+    ['friend URL', (nav: ReturnType<typeof createInviteNavigationCoordinator>) =>
+      nav.handleExplicitInviteCode(NEW)],
+    ['party URL', (nav: ReturnType<typeof createInviteNavigationCoordinator>) =>
+      nav.handleExplicitEntry('party:cold-url')],
+    ['warm push', (nav: ReturnType<typeof createInviteNavigationCoordinator>) =>
+      nav.handleExplicitEntry('notification:warm-push')],
+  ])('drops an older async initial notification after a newer %s', (_label, applyNewer) => {
     const nav = createInviteNavigationCoordinator();
+    const initialNotification = nav.beginExplicitLookup();
 
-    // Cold start issues getInitialURL…
-    const initial = nav.beginExplicitLookup();
-    // …and account initialization starts its persisted-restore lookup too.
+    applyNewer(nav);
+
+    expect(
+      nav.resolveExplicitEntry(initialNotification, 'notification:initial-push'),
+    ).toBe(false);
+  });
+
+  it('lets the initial notification claim the launch when no newer explicit input arrived', () => {
+    const nav = createInviteNavigationCoordinator();
+    const initialNotification = nav.beginExplicitLookup();
+
+    expect(
+      nav.resolveExplicitEntry(initialNotification, 'notification:initial-push'),
+    ).toBe(true);
+    expect(nav.resolveRestoreLookup(nav.beginRestoreLookup(), OLD)).toEqual({
+      action: 'none',
+      code: null,
+    });
+  });
+
+  it('invalidates a prepared warm notification when a newer invite URL arrives', () => {
+    const nav = createInviteNavigationCoordinator();
+    const prepared = nav.prepareExplicitEntry('notification:warm-a');
+
+    expect(prepared?.isCurrent()).toBe(true);
+    expect(nav.handleExplicitInviteCode(NEW).action).toBe('push');
+
+    expect(prepared?.isCurrent()).toBe(false);
+    expect(prepared?.commit()).toBe(false);
+  });
+
+  it('does not suppress restore when a prepared warm notification is released', () => {
+    const nav = createInviteNavigationCoordinator();
+    const prepared = nav.prepareExplicitEntry('notification:warm-a');
+
+    prepared?.release();
+
+    expect(nav.resolveRestoreLookup(nav.beginRestoreLookup(), OLD)).toEqual({
+      action: 'push',
+      code: OLD,
+    });
+  });
+
+  it('restores after cold A loses to prepared warm B and B then fails durably', () => {
+    const nav = createInviteNavigationCoordinator();
+    const coldTicket = nav.beginExplicitLookup();
+    const coldA = nav.reserveExplicitEntry(coldTicket, 'notification:cold-a');
+    const warmB = nav.prepareExplicitEntry('notification:warm-b');
+
+    coldA?.release();
+    expect(warmB?.isCurrent()).toBe(true);
+    warmB?.release();
+
+    expect(nav.resolveRestoreLookup(nav.beginRestoreLookup(), OLD)).toEqual({
+      action: 'push',
+      code: OLD,
+    });
+  });
+
+  it('releases a failed durable reservation so startup restore can still win', () => {
+    const nav = createInviteNavigationCoordinator();
+    const notificationTicket = nav.beginExplicitLookup();
+    const reservation = nav.reserveExplicitEntry(
+      notificationTicket,
+      'notification:initial-push',
+    );
+
+    expect(reservation?.isCurrent()).toBe(true);
+    reservation?.release();
+
     const restore = nav.beginRestoreLookup();
-
-    // The restore physically lands FIRST with the stashed code…
     expect(nav.resolveRestoreLookup(restore, OLD)).toEqual({ action: 'push', code: OLD });
-
-    // …but the initial URL is the OLDER explicit request: it must take over
-    // the confirmation via replace, not be swallowed by the restore.
-    expect(nav.resolveExplicitLookup(initial, NEW)).toEqual({ action: 'replace', code: NEW });
-    // And once replaced, the explicit owner is idempotent on its own code.
-    expect(nav.handleExplicitInviteCode(NEW).action).toBe('none');
   });
 
-  it('a newer warm explicit beats an older delayed initial explicit result', () => {
+  it('never releases over a newer explicit URL that invalidated the reservation', () => {
     const nav = createInviteNavigationCoordinator();
+    const notificationTicket = nav.beginExplicitLookup();
+    const reservation = nav.reserveExplicitEntry(
+      notificationTicket,
+      'notification:initial-push',
+    );
 
-    // getInitialURL is issued at launch…
-    const lateLookup = nav.beginExplicitLookup();
-    // …but the user taps a fresh invite link before it resolves.
-    expect(nav.handleExplicitInviteCode(NEW).action).toBe('push');
+    expect(nav.handleExplicitInviteCode(NEW).action).toBe('replace');
+    expect(reservation?.isCurrent()).toBe(false);
+    reservation?.release();
 
-    // The late async result carries an older sequence than the warm event:
-    // it must not overwrite the newer explicit URL (no replace, no second push).
-    expect(nav.resolveExplicitLookup(lateLookup, OLD)).toEqual({ action: 'none', code: null });
-
-    // The explicit owner survives: repeating its code stays a no-op.
-    expect(nav.handleExplicitInviteCode(NEW).action).toBe('none');
-  });
-
-  it('a newer explicit code wins over an older explicit async result', () => {
-    const nav = createInviteNavigationCoordinator();
-
-    const older = nav.beginExplicitLookup();
-    expect(nav.handleExplicitInviteCode(NEW).action).toBe('push');
-    const newer = nav.beginExplicitLookup();
-    expect(nav.handleExplicitInviteCode(OTHER).action).toBe('replace');
-
-    // Both lookups predate the latest explicit event; neither may win.
-    expect(nav.resolveExplicitLookup(newer, OLD).action).toBe('none');
-    expect(nav.resolveExplicitLookup(older, NEW).action).toBe('none');
+    expect(nav.resolveRestoreLookup(nav.beginRestoreLookup(), OLD).action).toBe('none');
   });
 
   it('after leaving the confirmation later invites enter via push again', () => {
@@ -133,21 +184,32 @@ describe('createInviteNavigationCoordinator', () => {
     nav.leaveConfirmation();
 
     expect(nav.handleExplicitInviteCode(OTHER)).toEqual({ action: 'push', code: OTHER });
+  });
 
-    // A restored code gets a second chance too once nothing owns the screen.
-    const closed = createInviteNavigationCoordinator();
-    expect(closed.handleExplicitInviteCode(NEW).action).toBe('push');
-    closed.leaveConfirmation();
-    const lookup = closed.beginRestoreLookup();
-    expect(closed.resolveRestoreLookup(lookup, OLD)).toEqual({ action: 'push', code: OLD });
+  it('keeps a launch restore suppressed after an explicit party intent is consumed and left', () => {
+    const nav = createInviteNavigationCoordinator();
+
+    nav.handleExplicitEntry('party:launch-intent');
+    nav.leaveConfirmation();
+    const lookup = nav.beginRestoreLookup();
+
+    expect(nav.resolveRestoreLookup(lookup, OLD)).toEqual({ action: 'none', code: null });
+  });
+
+  it('keeps a launch restore suppressed after an explicit friend confirmation closes', () => {
+    const nav = createInviteNavigationCoordinator();
+    expect(nav.handleExplicitInviteCode(NEW).action).toBe('push');
+
+    nav.leaveConfirmation();
+    const lookup = nav.beginRestoreLookup();
+
+    expect(nav.resolveRestoreLookup(lookup, OLD)).toEqual({ action: 'none', code: null });
   });
 
   it('never navigates without any code', () => {
     const nav = createInviteNavigationCoordinator();
     expect(nav.handleExplicitInviteCode('')).toEqual({ action: 'none', code: null });
     expect(nav.handleExplicitInviteCode('   ').action).toBe('none');
-    const explicitTicket = nav.beginExplicitLookup();
-    expect(nav.resolveExplicitLookup(explicitTicket, '')).toEqual({ action: 'none', code: null });
     const restoreTicket = nav.beginRestoreLookup();
     expect(nav.resolveRestoreLookup(restoreTicket, '')).toEqual({ action: 'none', code: null });
   });

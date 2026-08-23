@@ -37,7 +37,13 @@ import {
 } from './friendsClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 import { preserveDurableQueue } from './durableQueuePolicy';
-import type { QueueSyncResult } from './apiFetch';
+import { classifyQueueHttpStatus, type QueueSyncResult } from './apiFetch';
+import {
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+  type PrivateAccountMutationScope,
+} from './privateAccountBoundary';
 import type { Pub } from './pubs';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
@@ -161,10 +167,7 @@ function classify(result: FriendActionResult): QueueSyncResult {
   }
   const httpMatch = /^http_(\d{3})$/.exec(code);
   if (httpMatch) {
-    const status = Number(httpMatch[1]);
-    if (status === 401 || status === 429) return 'retry';
-    if (status >= 400 && status < 500) return 'permanent-error';
-    return 'retry';
+    return classifyQueueHttpStatus(Number(httpMatch[1]));
   }
   // A server machine-code (not_friends, blocked, activity_not_found,
   // self_reaction, invite_expired, …) is a definitive 4xx rejection → drop.
@@ -257,15 +260,49 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * flush the whole queue. A new op for a key REPLACES any pending op for the same
  * key (last write wins). Never throws.
  */
-export async function enqueueFriendOp(item: FriendQueueItem): Promise<void> {
+export type FriendEnqueueResult = 'queued' | 'storage-error';
+
+export async function enqueueFriendOp(item: FriendQueueItem): Promise<FriendEnqueueResult> {
   const key = dedupKey(item);
-  await runMutation(async () => {
+  const persisted = await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+    return saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
   });
+  if (!persisted) return 'storage-error';
   await flushFriendsQueue();
+  return 'queued';
+}
+
+export type DurableFriendEndResult =
+  | { state: 'delivered' }
+  | { state: 'queued' }
+  | { state: 'storage-error' }
+  | { state: 'rejected'; error: FriendActionError };
+
+function assertCurrentAccount(scope: PrivateAccountMutationScope): void {
+  if (!isPrivateAccountMutationScopeCurrent(scope)) {
+    throw new PrivateAccountMutationFrozenError();
+  }
+}
+
+/** Keep the direct DELETE, offline fallback and caller's eventual UI commit
+ * under one account lease. A transition that starts while DELETE is in flight
+ * cannot persist the fallback under the account installed afterwards. */
+export function endFriendActivityDurably(
+  activityId: string,
+  clientId = activityId,
+): Promise<DurableFriendEndResult> {
+  return runPrivateAccountMutation(async (scope) => {
+    const direct = await endFriendPubActivity(activityId);
+    assertCurrentAccount(scope);
+    if (direct.ok) return { state: 'delivered' };
+    if (!isRetriableFriendError(direct)) return { state: 'rejected', error: direct };
+    const queued = await enqueueFriendOp({ op: 'end', clientId, activityId });
+    assertCurrentAccount(scope);
+    return { state: queued };
+  });
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);

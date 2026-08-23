@@ -1,11 +1,16 @@
-import { Stack, useRouter, usePathname, type Href } from 'expo-router';
+import {
+  Stack,
+  useGlobalSearchParams,
+  useRouter,
+  usePathname,
+  type Href,
+} from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
   AppState,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -37,11 +42,9 @@ import { flushVisitsQueue } from '@/data/visitsQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { fetchFriendsLive } from '@/data/friendsClient';
 import {
-  parseInviteCodeFromUrl,
   peekPendingInviteCode,
   stashPendingInviteCode,
 } from '@/data/friendInviteLink';
-import { parsePartyInviteCodeFromUrl } from '@/data/partyInviteLink';
 import { flushBeerCheckinsQueue } from '@/data/beerCheckinsQueue';
 import { flushNightsQueue } from '@/data/nightsQueue';
 import { flushPartyGameStartsQueue } from '@/data/partyGameStartsQueue';
@@ -62,7 +65,10 @@ import {
 } from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
-import { createInviteNavigationCoordinator } from '@/data/inviteNavigation';
+import {
+  getProcessInitialNotificationNavigationTicket,
+  getProcessInviteNavigationCoordinator,
+} from '@/data/inviteNavigation';
 import {
   shouldShowOnboardingForPath,
   isStartupFlushOwnedByAccountInitialization,
@@ -241,12 +247,26 @@ export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
   const router = useRouter();
   const pathname = usePathname();
+  const routeParams = useGlobalSearchParams<{
+    code?: string | string[];
+    joinCode?: string | string[];
+    invite?: string | string[];
+  }>();
+  const routeInviteCode = pathname === '/parta/pozvanka'
+    ? (Array.isArray(routeParams.code) ? routeParams.code[0] : routeParams.code)?.trim() || null
+    : null;
+  const partyInviteRequest = Boolean(
+    pathname === '/party-live' && routeParams.joinCode && routeParams.invite,
+  );
   const pathnameRef = useRef(pathname);
-  const inviteConfirmationOwnsClaimRef = useRef(false);
-  // Arbitrates the invite-confirmation navigation race (warm links, delayed
-  // getInitialURL, persisted-code restore). Pure decision seam, see
-  // src/data/inviteNavigation.ts.
-  const inviteNavigationRef = useRef(createInviteNavigationCoordinator());
+  // Arbitrates a canonical explicit route against a persisted-code restore.
+  // Expo Router has already navigated by the time this coordinator sees it;
+  // this owner only decides whether startup may restore another code.
+  const inviteNavigationRef = useRef(getProcessInviteNavigationCoordinator());
+  const initialNotificationNavigationTicketRef = useRef(
+    getProcessInitialNotificationNavigationTicket(),
+  );
+  const inviteRouteWasVisibleRef = useRef(false);
   // Startup effects must run once, so late navigation reads the router via ref.
   const routerRef = useRef(router);
   const [telemetryReady, setTelemetryReady] = useState(false);
@@ -288,13 +308,32 @@ export default function RootLayout() {
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
-  // Leaving the confirmation screen releases its claim so a later invite can
-  // navigate again (push) instead of being swallowed by a stale owner.
+  // Expo Router is the sole URL consumer. The canonical route only records
+  // ownership and stashes the code for account hydration; it never performs a
+  // second push/replace behind the router's navigation.
   useEffect(() => {
-    if (pathname.startsWith('/parta/pozvanka')) return;
-    inviteConfirmationOwnsClaimRef.current = false;
+    if (routeInviteCode) {
+      inviteRouteWasVisibleRef.current = true;
+      cancelPendingPartyRecapNavigation();
+      inviteNavigationRef.current.handleExplicitInviteCode(routeInviteCode);
+      void stashPendingInviteCode(routeInviteCode);
+      return;
+    }
+    if (partyInviteRequest) {
+      inviteRouteWasVisibleRef.current = true;
+      cancelPendingPartyRecapNavigation();
+      // Native intent records this before routing; recording the canonical
+      // route too also covers direct/router and future push entry points.
+      inviteNavigationRef.current.handleExplicitEntry('party:canonical-route');
+      return;
+    }
+    // A native intent may be recorded before Expo commits its canonical route.
+    // Do not release that process owner from an intermediate startup pathname;
+    // release only after a confirmed invite route was actually visible.
+    if (!inviteRouteWasVisibleRef.current) return;
+    inviteRouteWasVisibleRef.current = false;
     inviteNavigationRef.current.leaveConfirmation();
-  }, [pathname]);
+  }, [partyInviteRequest, routeInviteCode]);
   useEffect(() => {
     routerRef.current = router;
   }, [router]);
@@ -330,76 +369,69 @@ export default function RootLayout() {
     void initializeBeerCountReminderNotifications();
   }, [startupBoundaryReady]);
 
+  const commitCounterNavigation = useCallback(() => {
+    cancelPendingPartyRecapNavigation();
+    routerRef.current.push('/beer' as Href);
+  }, []);
+
+  const claimInitialNotificationNavigation = useCallback((intentKey: string) =>
+    inviteNavigationRef.current.reserveExplicitEntry(
+      initialNotificationNavigationTicketRef.current,
+      intentKey,
+    ), []);
+
+  const prepareWarmNotificationNavigation = useCallback((intentKey: string) =>
+    inviteNavigationRef.current.prepareExplicitEntry(intentKey), []);
+
+  const commitFriendsNavigation = useCallback((payload: FriendTapPayload) => {
+    cancelPendingPartyRecapNavigation();
+    usePartaSignalStore.getState().requestRefresh(payload);
+    routerRef.current.push(friendPushDestination(payload) as Href);
+  }, []);
+
   useEffect(() => {
     if (!startupBoundaryReady) return;
     // Tapping a "nejsi v hospodě?" reminder jumps straight to the beer counter.
     // Handle both a running app (listener) and a cold start from the tap.
-    const navigateToCounter = () => {
-      cancelPendingPartyRecapNavigation();
-      router.push('/beer' as Href);
-    };
-    // A friend push tap forces a Parta refresh (and scroll to its payload row).
-    const navigateToFriends = (payload?: FriendTapPayload) => {
-      cancelPendingPartyRecapNavigation();
-      usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
-      router.push(friendPushDestination(payload) as Href);
-    };
     if (fontsLoaded || fontError) {
-      void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
-      void consumeInitialBeerCountReminderTap(navigateToCounter);
+      void consumeInitialBeerCountReminderTap(
+        commitCounterNavigation,
+        (notificationId) => claimInitialNotificationNavigation(
+          `notification:${notificationId}`,
+        ),
+      );
     }
-    const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
-    const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
+    const pubSubscription = subscribePubReminderTap(
+      commitCounterNavigation,
+      commitFriendsNavigation,
+      {
+        claimPubReminder: (notificationId) => prepareWarmNotificationNavigation(
+          `notification:${notificationId ?? `counter-${Date.now()}`}`,
+        ),
+        claimFriend: (payload) => prepareWarmNotificationNavigation(
+          `notification:${payload.notificationId ?? `friend-${Date.now()}`}`,
+        ),
+      },
+    );
+    const beerCountSubscription = subscribeBeerCountReminderTap(
+      commitCounterNavigation,
+      (notificationId) => prepareWarmNotificationNavigation(
+        `notification:${notificationId}`,
+      ),
+    );
     return () => {
       pubSubscription.remove();
       beerCountSubscription.remove();
     };
-  }, [fontsLoaded, fontError, router, startupBoundaryReady]);
-
-  useEffect(() => {
-    const handleInviteUrl = (url: string | null, initialTicket?: number) => {
-      const friendCode = parseInviteCodeFromUrl(url);
-      if (friendCode) {
-        // A delayed getInitialURL result is an explicit event too: its ticket
-        // was claimed before the await, and it loses only to a newer explicit
-        // event that landed meanwhile. Stashing happens only for a winning
-        // decision, so an older code can never overwrite a newer one in
-        // storage out of order.
-        const decision =
-          initialTicket === undefined
-            ? inviteNavigationRef.current.handleExplicitInviteCode(friendCode)
-            : inviteNavigationRef.current.resolveExplicitLookup(initialTicket, friendCode);
-        if (decision.action !== 'none' && decision.code) {
-          cancelPendingPartyRecapNavigation();
-          // This flips before navigation commits, so a fast account initialization
-          // cannot consume the same cold-start invite behind the confirmation CTA.
-          inviteConfirmationOwnsClaimRef.current = true;
-          void stashPendingInviteCode(decision.code);
-          const href = { pathname: '/parta/pozvanka', params: { code: decision.code } } as Href;
-          if (decision.action === 'replace') router.replace(href);
-          else router.push(href);
-        }
-        return;
-      }
-
-      const partyCode = parsePartyInviteCodeFromUrl(url);
-      if (!partyCode) return;
-      cancelPendingPartyRecapNavigation();
-      router.push({
-        pathname: '/party-live',
-        params: { joinCode: partyCode, invite: String(Date.now()) },
-      } as Href);
-    };
-
-    // The cold-start URL is explicit as well: claim its ticket BEFORE awaiting,
-    // so a warm link tapped first keeps winning when both land.
-    const initialTicket = inviteNavigationRef.current.beginExplicitLookup();
-    Linking.getInitialURL()
-      .then((url) => handleInviteUrl(url, initialTicket))
-      .catch(() => undefined);
-    const subscription = Linking.addEventListener('url', ({ url }) => handleInviteUrl(url));
-    return () => subscription.remove();
-  }, [router]);
+  }, [
+    claimInitialNotificationNavigation,
+    commitCounterNavigation,
+    commitFriendsNavigation,
+    fontError,
+    fontsLoaded,
+    prepareWarmNotificationNavigation,
+    startupBoundaryReady,
+  ]);
 
   useEffect(() => {
     if (!startupBoundaryReady) return;
@@ -438,6 +470,21 @@ export default function RootLayout() {
     const accountInitialization = useAccountStore.getState().initAccount();
     void runAfterAccountInitialization(accountInitialization, async () => {
       if (!useAccountStore.getState().startupBoundaryReady) return;
+      // Resolve the cold notification before considering a persisted friend
+      // invite. Its process-level owner is recorded synchronously before the
+      // push route, so an older stashed confirmation can never cover it.
+      await consumeInitialPubReminderTap(
+        commitCounterNavigation,
+        commitFriendsNavigation,
+        {
+          claimPubReminder: (notificationId) => claimInitialNotificationNavigation(
+            `notification:${notificationId ?? `counter-${Date.now()}`}`,
+          ),
+          claimFriend: (payload) => claimInitialNotificationNavigation(
+            `notification:${payload.notificationId ?? `friend-${Date.now()}`}`,
+          ),
+        },
+      );
       // Restore owner-scoped Party identity only after crash-lost account
       // deletion has been resolved and the safe session is published.
       await usePartyEveningStore.getState().restore();
@@ -452,7 +499,7 @@ export default function RootLayout() {
       // restore its confirmation screen instead of claiming behind the user's
       // back. The restore ticket is claimed before the peek resolves so any
       // explicit deep link landing meanwhile wins the race; the coordinator
-      // also prevents double navigation against the cold-start handler above.
+      // also prevents double navigation against the canonical route owner.
       const restoreTicket = inviteNavigationRef.current.beginRestoreLookup();
       void peekPendingInviteCode().then((pendingCode) => {
         const decision = inviteNavigationRef.current.resolveRestoreLookup(
@@ -460,8 +507,6 @@ export default function RootLayout() {
           pendingCode,
         );
         if (decision.action !== 'none' && decision.code) {
-          // Flip before navigation commits, mirroring the cold deep-link handler.
-          inviteConfirmationOwnsClaimRef.current = true;
           routerRef.current.push(`/parta/pozvanka?code=${encodeURIComponent(decision.code)}` as Href);
         }
       });
@@ -481,7 +526,11 @@ export default function RootLayout() {
       await usePartyEveningStore.getState().refresh();
       await initializeLiveBeerActivity();
     });
-  }, []);
+  }, [
+    claimInitialNotificationNavigation,
+    commitCounterNavigation,
+    commitFriendsNavigation,
+  ]);
 
   useEffect(() => {
     // First-run decision (kicked off at module scope) MUST resolve before the

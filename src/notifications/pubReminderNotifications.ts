@@ -6,9 +6,19 @@ import type * as ExpoTaskManager from 'expo-task-manager';
 
 import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import {
+  capturePrivateAccountMutationScope,
   isPrivateAccountMutationFrozen,
+  isPrivateAccountMutationScopeCurrent,
   runPrivateAccountMutation,
 } from '@/data/privateAccountBoundary';
+import type { ExplicitEntryReservation } from '@/data/inviteNavigation';
+import {
+  beginNotificationResponseEvent,
+  claimHandledNotificationResponse,
+  clearNotificationResponseIfStillLast,
+  resetNotificationResponseRuntimeForTests,
+  type NotificationResponseClaim,
+} from './notificationResponseLedger';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
@@ -611,6 +621,10 @@ export async function clearPubReminderAccountData(): Promise<boolean> {
   let notificationsClear = false;
   if (Notifications) {
     try {
+      // Capture A before any cleanup await. Expo clears the last response
+      // without an identifier, so the shared identity guard must re-read it
+      // immediately before clearing and leave a newer B untouched.
+      const outgoingLastResponse = await Notifications.getLastNotificationResponseAsync();
       // The persisted blob is background-written and can be truncated by an OS
       // kill. Treat malformed JSON as empty instead of letting it prevent the
       // rest of strict account cleanup.
@@ -628,13 +642,22 @@ export async function clearPubReminderAccountData(): Promise<boolean> {
       );
       // Already-delivered A content (including friend pushes) is private too.
       await Notifications.dismissAllNotificationsAsync();
+      if (outgoingLastResponse) {
+        await clearNotificationResponseIfStillLast(Notifications, outgoingLastResponse);
+      }
+      const remainingLastResponse = await Notifications.getLastNotificationResponseAsync();
+      const lastResponseClear =
+        !outgoingLastResponse ||
+        remainingLastResponse?.notification.request.identifier !==
+          outgoingLastResponse.notification.request.identifier;
       const [remainingScheduled, remainingPresented] = await Promise.all([
         Notifications.getAllScheduledNotificationsAsync(),
         Notifications.getPresentedNotificationsAsync(),
       ]);
       notificationsClear =
         !remainingScheduled.some(isScheduledPubReminder) &&
-        remainingPresented.length === 0;
+        remainingPresented.length === 0 &&
+        lastResponseClear;
     } catch {
       notificationsClear = false;
     }
@@ -687,6 +710,38 @@ export interface FriendTapPayload {
   kind: string | null;
   activityId: string | null;
   friendshipId: string | null;
+  notificationId?: string | null;
+}
+
+export interface InitialPubReminderNavigationLease {
+  claimPubReminder(notificationId: string | null): ExplicitEntryReservation | null;
+  claimFriend(payload: FriendTapPayload): ExplicitEntryReservation | null;
+}
+
+export function resetNotificationResponseDeduperForTests(): void {
+  resetNotificationResponseRuntimeForTests();
+}
+
+async function claimInitialNotificationResponse(
+  response: ExpoNotifications.NotificationResponse,
+  reservation: ExplicitEntryReservation | null,
+  isCurrent: () => boolean,
+): Promise<NotificationResponseClaim | null> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!isCurrent() || (reservation && !reservation.isCurrent())) {
+      reservation?.release();
+      return null;
+    }
+    const claim = await claimHandledNotificationResponse(response);
+    if (claim === 'unavailable') continue;
+    if (!isCurrent() || (reservation && !reservation.commit())) {
+      reservation?.release();
+      return null;
+    }
+    return claim;
+  }
+  reservation?.release();
+  return null;
 }
 
 function isFriendResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
@@ -701,6 +756,7 @@ function friendTapPayload(response: ExpoNotifications.NotificationResponse | nul
     kind: typeof data?.kind === 'string' ? data.kind : null,
     activityId: typeof data?.activity_id === 'string' ? data.activity_id : null,
     friendshipId: typeof data?.friendship_id === 'string' ? data.friendship_id : null,
+    notificationId: response?.notification.request.identifier ?? null,
   };
 }
 
@@ -726,14 +782,77 @@ export function subscribeFriendPushReceived(
 export function subscribePubReminderTap(
   onTap: () => void,
   onFriendTap?: (payload: FriendTapPayload) => void,
+  navigationLease?: InitialPubReminderNavigationLease,
 ): ExpoNotifications.Subscription {
   if (!Notifications) {
     return { remove: () => undefined };
   }
   return Notifications.addNotificationResponseReceivedListener((response) => {
-    if (isPrivateAccountMutationFrozen()) return;
-    if (isPubReminderResponse(response)) onTap();
-    else if (onFriendTap && isFriendResponse(response)) onFriendTap(friendTapPayload(response));
+    const scope = capturePrivateAccountMutationScope();
+    if (!isPrivateAccountMutationScopeCurrent(scope)) return;
+    if (isPubReminderResponse(response)) {
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const notificationId = response.notification.request.identifier;
+      const reservation = navigationLease?.claimPubReminder(notificationId) ?? null;
+      if (navigationLease && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      void (async () => {
+        try {
+          const claim = await claimHandledNotificationResponse(response);
+          if (
+            claim === 'unavailable' ||
+            !responseEvent.isCurrent() ||
+            !isPrivateAccountMutationScopeCurrent(scope) ||
+            (reservation && !reservation.commit())
+          ) return;
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          reservation?.release();
+          responseEvent.release();
+        }
+      })().catch(() => undefined);
+    } else if (onFriendTap && isFriendResponse(response)) {
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const payload = friendTapPayload(response);
+      const reservation = navigationLease?.claimFriend(payload) ?? null;
+      if (navigationLease && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      void (async () => {
+        try {
+          const claim = await claimHandledNotificationResponse(response);
+          if (
+            claim === 'unavailable' ||
+            !responseEvent.isCurrent() ||
+            !isPrivateAccountMutationScopeCurrent(scope) ||
+            (reservation && !reservation.commit())
+          ) return;
+          if (claim === 'claimed') onFriendTap(payload);
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          reservation?.release();
+          responseEvent.release();
+        }
+      })().catch(() => undefined);
+    }
   });
 }
 
@@ -741,17 +860,75 @@ export function subscribePubReminderTap(
 export async function consumeInitialPubReminderTap(
   onTap: () => void,
   onFriendTap?: (payload: FriendTapPayload) => void,
+  navigationLease?: InitialPubReminderNavigationLease,
 ): Promise<void> {
   if (!Notifications) return;
   try {
-    await runPrivateAccountMutation(async () => {
+    await runPrivateAccountMutation(async (scope) => {
       const response = await Notifications.getLastNotificationResponseAsync();
+      // The native read can outlive account A. Validate its captured lease
+      // before touching the process deduper, routing, or native response state.
+      if (!isPrivateAccountMutationScopeCurrent(scope)) return;
       if (isPubReminderResponse(response)) {
-        onTap();
-        await Notifications.clearLastNotificationResponseAsync();
+        if (!response) return;
+        const responseEvent = beginNotificationResponseEvent(response);
+        if (!responseEvent) return;
+        const notificationId = response?.notification.request.identifier ?? null;
+        const reservation = navigationLease?.claimPubReminder(notificationId) ?? null;
+        if (navigationLease && !reservation) {
+          responseEvent.release();
+          return;
+        }
+        try {
+          const claim = await claimInitialNotificationResponse(
+            response,
+            reservation,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+          if (!claim) return;
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          responseEvent.release();
+        }
       } else if (onFriendTap && isFriendResponse(response)) {
-        onFriendTap(friendTapPayload(response));
-        await Notifications.clearLastNotificationResponseAsync();
+        if (!response) return;
+        const responseEvent = beginNotificationResponseEvent(response);
+        if (!responseEvent) return;
+        const payload = friendTapPayload(response);
+        const reservation = navigationLease?.claimFriend(payload) ?? null;
+        if (navigationLease && !reservation) {
+          responseEvent.release();
+          return;
+        }
+        try {
+          const claim = await claimInitialNotificationResponse(
+            response,
+            reservation,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+          if (!claim) return;
+          if (claim === 'claimed') onFriendTap(payload);
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          responseEvent.release();
+        }
       }
     });
   } catch {

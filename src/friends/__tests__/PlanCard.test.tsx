@@ -7,7 +7,10 @@ import PlanCard from '../PlanCard';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
-jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
+const mockShowAppDialog = jest.fn();
+jest.mock('@/components/shared/AppDialog', () => ({
+  showAppDialog: (...args: unknown[]) => mockShowAppDialog(...args),
+}));
 jest.mock('@/components/shared/IconGlyph', () => ({
   ClockIcon: () => null,
   CompassIcon: () => null,
@@ -15,9 +18,11 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: () => null,
 }));
 jest.mock('@/data/friendsClient', () => ({ endFriendPubActivity: jest.fn() }));
+const mockEndFriendActivityDurably = jest.fn();
 jest.mock('@/data/friendsQueue', () => ({
   enqueueFriendOp: jest.fn(),
   isRetriableFriendError: jest.fn(),
+  endFriendActivityDurably: (...args: unknown[]) => mockEndFriendActivityDurably(...args),
 }));
 jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('@/stores/toastStore', () => ({
@@ -62,6 +67,11 @@ const activity: FriendPubActivity = {
 };
 
 describe('PlanCard', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEndFriendActivityDurably.mockResolvedValue({ state: 'queued' });
+  });
+
   it('keeps compass and cancel actions together on my plan', () => {
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
@@ -77,5 +87,24 @@ describe('PlanCard', () => {
 
     expect(renderer!.root.findByProps({ accessibilityLabel: 'Ukaž na kompasu' })).toBeTruthy();
     expect(renderer!.root.findByProps({ accessibilityLabel: 'Zrušit plán' })).toBeTruthy();
+  });
+
+  it('commits cancel UI only after the leased durable action resolves', async () => {
+    const onCanceled = jest.fn();
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <PlanCard activity={activity} mine onResponded={jest.fn()} onCanceled={onCanceled} />,
+      );
+    });
+
+    act(() => renderer!.root.findByProps({ accessibilityLabel: 'Zrušit plán' }).props.onPress());
+    const confirm = mockShowAppDialog.mock.calls[0][0].buttons.find(
+      (button: { style?: string }) => button.style === 'destructive',
+    );
+    await act(async () => confirm.onPress());
+
+    expect(mockEndFriendActivityDurably).toHaveBeenCalledWith('plan-1');
+    expect(onCanceled).toHaveBeenCalledTimes(1);
   });
 });

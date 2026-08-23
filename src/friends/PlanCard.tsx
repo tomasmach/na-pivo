@@ -20,12 +20,9 @@ import { useRouter, type Href } from 'expo-router';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { ClockIcon, CompassIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
-import {
-  endFriendPubActivity,
-  type FriendProfile,
-  type FriendPubActivity,
-} from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { type FriendProfile, type FriendPubActivity } from '@/data/friendsClient';
+import { endFriendActivityDurably } from '@/data/friendsQueue';
+import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
@@ -93,24 +90,29 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
 
   const confirmCancel = useCallback(() => {
     setCancelling(true);
-    void endFriendPubActivity(activity.id).then((res) => {
-      if (!mountedRef.current) return;
-      if (res.ok) {
-        showToast(cs.friends.planCanceled, { icon: <XIcon size={20} color={Colors.amber} /> });
-        onCanceled();
-      } else {
-        if (isRetriableFriendError(res)) {
-          void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
-          showToast(cs.friends.planCancelQueued, {
-            icon: <XIcon size={20} color={Colors.amber} />,
-          });
+    void endFriendActivityDurably(activity.id)
+      .then((result) => {
+        if (!mountedRef.current) return;
+        if (result.state === 'delivered' || result.state === 'queued') {
+          showToast(
+            result.state === 'delivered' ? cs.friends.planCanceled : cs.friends.planCancelQueued,
+            { icon: <XIcon size={20} color={Colors.amber} /> },
+          );
           onCanceled();
           return;
         }
         setCancelling(false);
-        showToast(res.detail);
-      }
-    });
+        showToast(
+          result.state === 'storage-error' ? cs.friends.queueSaveError : result.error.detail,
+        );
+      })
+      .catch((error) => {
+        if (!mountedRef.current) return;
+        setCancelling(false);
+        if (!(error instanceof PrivateAccountMutationFrozenError)) {
+          showToast(cs.friends.queueSaveError);
+        }
+      });
   }, [activity.id, onCanceled, showToast]);
 
   const handleCancelPress = useCallback(() => {

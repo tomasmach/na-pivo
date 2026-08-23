@@ -43,6 +43,10 @@ import {
   type FriendProfile,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import {
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
@@ -99,7 +103,11 @@ function PubRow({
   return (
     <Pressable
       onPress={onSelect}
-      style={({ pressed }) => [styles.pubRow, selected && styles.pubRowSelected, pressed && styles.dim]}
+      style={({ pressed }) => [
+        styles.pubRow,
+        selected && styles.pubRowSelected,
+        pressed && styles.dim,
+      ]}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={option.pub.name}
@@ -186,11 +194,19 @@ function FriendRecipientRow({
         {selected ? <CheckIcon size={14} color={Colors.stout} /> : null}
       </View>
       <View style={styles.recipientNameWrap}>
-        <Text style={styles.recipientName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text
+          style={styles.recipientName}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
           {name}
         </Text>
         {friend.displayName && friend.nickname ? (
-          <Text style={styles.recipientSub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={styles.recipientSub}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {friend.displayName}
           </Text>
         ) : null}
@@ -199,7 +215,13 @@ function FriendRecipientRow({
   );
 }
 
-function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedRecipientIds }: ComposeSheetProps): React.ReactElement {
+function ComposeSheet({
+  friends,
+  onSubmitted,
+  onClose,
+  intent = 'choose',
+  fixedRecipientIds,
+}: ComposeSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // Modals host their own window, so KeyboardAvoidingView is unreliable here —
@@ -223,6 +245,7 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
   const [selectedPub, setSelectedPub] = useState<Pub | null>(null);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Lazy-read the clock once (a useState initializer is not a render-time impure
   // call). The plan can only target a future hour today.
@@ -318,14 +341,17 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
     setSelectedRecipientIds([]);
   }, []);
 
-  const selectGroup = useCallback((groupId: string) => {
-    const group = usePartyGroupsStore.getState().groups.find((item) => item.id === groupId);
-    if (!group) return;
-    setAudienceMode('custom');
-    setActiveGroupId(group.id);
-    setSelectedRecipientIds(group.memberIds.filter((id) => friendIds.has(id)));
-    setGroupName(group.name);
-  }, [friendIds]);
+  const selectGroup = useCallback(
+    (groupId: string) => {
+      const group = usePartyGroupsStore.getState().groups.find((item) => item.id === groupId);
+      if (!group) return;
+      setAudienceMode('custom');
+      setActiveGroupId(group.id);
+      setSelectedRecipientIds(group.memberIds.filter((id) => friendIds.has(id)));
+      setGroupName(group.name);
+    },
+    [friendIds],
+  );
 
   const startCustomSelection = useCallback(() => {
     setAudienceMode('custom');
@@ -374,14 +400,16 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
   // A plan needs a strictly-future hour today (minutes clamped to :00). Kept pure
   // (no render-time clock call) — the actual ISO is built in the submit handler.
   const isValidPlanTime = hour > nowHour;
-  const hasRecipients =
-    audienceIsFixed ? fixedIds.length > 0 : audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
+  const hasRecipients = audienceIsFixed
+    ? fixedIds.length > 0
+    : audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
   const canSubmit = !!selectionPub && (!isPlan || isValidPlanTime) && hasRecipients && !submitting;
 
   const handleSubmit = useCallback(() => {
-    if (!selectionPub || submitting) return;
+    if (!selectionPub || submittingRef.current) return;
     if (isPlan && !isValidPlanTime) return;
     trackUiInteraction('parta_activity_share', 'submit');
+    submittingRef.current = true;
     setSubmitting(true);
 
     const clientId = generateUuidV4();
@@ -392,40 +420,64 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
       d.setHours(hour, 0, 0, 0);
       scheduledForISO = d.toISOString();
     }
-    const call: Promise<FriendActionResult> = isPlan
-      ? createFriendPlan(selectionPub, scheduledForISO as string, trimmed, clientId, targetRecipientIds)
-      : shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds);
-
-    void call.then((res) => {
-      if (!mountedRef.current) return;
-      if (res.ok) {
-        trackUiInteraction('parta_activity_share', 'success');
-        showToast(isPlan ? cs.friends.planCreated : cs.friends.shareSuccess);
-        onSubmitted();
-        requestClose();
-        return;
-      }
-      if (isRetriableFriendError(res)) {
-        trackUiInteraction('parta_activity_share', 'success');
-        // Offline: queue the op (it WILL send) and close honestly.
-        void enqueueFriendOp({
-          op: 'activity',
-          clientId,
-          payload: { pub: selectionPub, message: trimmed, scheduledFor: scheduledForISO, recipientIds: targetRecipientIds },
-        });
-        showToast(isPlan ? cs.friends.planCreated : cs.friends.composeQueued);
-        onSubmitted();
-        requestClose();
-        return;
-      }
-      trackUiInteraction('parta_activity_share', 'failure');
-      // Hard reject: keep the sheet open with its data.
-      setSubmitting(false);
-      showToast(res.detail || cs.friends.shareError);
-    });
+    void runPrivateAccountMutation(async () => {
+      const res: FriendActionResult = isPlan
+        ? await createFriendPlan(
+            selectionPub,
+            scheduledForISO as string,
+            trimmed,
+            clientId,
+            targetRecipientIds,
+          )
+        : await shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds);
+      if (res.ok) return { state: 'delivered' as const };
+      if (!isRetriableFriendError(res)) return { state: 'rejected' as const, res };
+      const queued = await enqueueFriendOp({
+        op: 'activity',
+        clientId,
+        payload: {
+          pub: selectionPub,
+          message: trimmed,
+          scheduledFor: scheduledForISO,
+          recipientIds: targetRecipientIds,
+        },
+      });
+      return {
+        state: queued === 'storage-error' ? ('storage-error' as const) : ('queued' as const),
+      };
+    })
+      .then((result) => {
+        if (!mountedRef.current) return;
+        if (result.state === 'delivered' || result.state === 'queued') {
+          trackUiInteraction('parta_activity_share', 'success');
+          showToast(
+            isPlan
+              ? cs.friends.planCreated
+              : result.state === 'queued'
+                ? cs.friends.composeQueued
+                : cs.friends.shareSuccess,
+          );
+          onSubmitted();
+          requestClose();
+          return;
+        }
+        trackUiInteraction('parta_activity_share', 'failure');
+        submittingRef.current = false;
+        setSubmitting(false);
+        showToast(
+          result.state === 'storage-error'
+            ? cs.friends.queueSaveError
+            : result.res?.detail || cs.friends.shareError,
+        );
+      })
+      .catch((error) => {
+        if (!mountedRef.current) return;
+        submittingRef.current = false;
+        setSubmitting(false);
+        if (!(error instanceof PrivateAccountMutationFrozenError)) showToast(cs.friends.shareError);
+      });
   }, [
     selectionPub,
-    submitting,
     isPlan,
     isValidPlanTime,
     hour,
@@ -462,7 +514,11 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
           <View style={styles.handle} />
 
           <View style={styles.headerRow}>
-            <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            <Text
+              style={styles.title}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
               {isPlan ? cs.friends.planComposeTitle : cs.friends.composeTitle}
             </Text>
           </View>
@@ -485,7 +541,12 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
                     label={cs.friends.recipientAll}
                     selected={audienceMode === 'all'}
                     onPress={selectAllRecipients}
-                    icon={<UsersIcon size={16} color={audienceMode === 'all' ? Colors.stout : Colors.amber} />}
+                    icon={
+                      <UsersIcon
+                        size={16}
+                        color={audienceMode === 'all' ? Colors.stout : Colors.amber}
+                      />
+                    }
                   />
                   {groups.map((group) => (
                     <RecipientChip
@@ -499,10 +560,23 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
                     label={cs.friends.recipientCustom}
                     selected={audienceMode === 'custom' && activeGroupId == null}
                     onPress={startCustomSelection}
-                    icon={<PlusIcon size={16} color={audienceMode === 'custom' && activeGroupId == null ? Colors.stout : Colors.amber} />}
+                    icon={
+                      <PlusIcon
+                        size={16}
+                        color={
+                          audienceMode === 'custom' && activeGroupId == null
+                            ? Colors.stout
+                            : Colors.amber
+                        }
+                      />
+                    }
                   />
                 </ScrollView>
-                <Text style={styles.recipientSummary} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text
+                  style={styles.recipientSummary}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {audienceMode === 'all'
                     ? cs.friends.recipientAllSummary(selectedCount)
                     : cs.friends.recipientCustomSummary(selectedCount)}
@@ -542,10 +616,15 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
                           pressed && selectedRecipientIdsValid.length > 0 && styles.dim,
                         ]}
                         accessibilityRole="button"
-                        accessibilityState={{ disabled: selectedRecipientIdsValid.length === 0 }}
+                        accessibilityState={{
+                          disabled: selectedRecipientIdsValid.length === 0,
+                        }}
                         accessibilityLabel={cs.friends.recipientGroupSave}
                       >
-                        <Text style={styles.groupSaveText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        <Text
+                          style={styles.groupSaveText}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
                           {cs.friends.recipientGroupSave}
                         </Text>
                       </Pressable>
@@ -580,7 +659,13 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
               ) : showNearbyLoading ? (
                 <View style={styles.skeletonList}>
                   {[0, 1, 2].map((i) => (
-                    <SkeletonBlock key={i} width="100%" height={44} radius={Radius.medium} reduceMotion={reduceMotion} />
+                    <SkeletonBlock
+                      key={i}
+                      width="100%"
+                      height={44}
+                      radius={Radius.medium}
+                      reduceMotion={reduceMotion}
+                    />
                   ))}
                 </View>
               ) : options.length === 0 ? (
@@ -600,51 +685,57 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
             </View>
 
             {/* KDY — the hub opens a single-intent sheet, so no Teď/Na čas fork. */}
-            {intent !== 'live' ? <View style={styles.sectionGap}>
-              <SectionHeader label={cs.friends.composeTimeLabel} />
-              {intent === 'choose' ? (
-                <SegmentedControl
-                  options={[cs.friends.composeNow, cs.friends.composeLater]}
-                  value={timeTab}
-                  onChange={setTimeTab}
-                />
-              ) : null}
-              {isPlan ? (
-                <View style={styles.timePicker}>
-                  {availablePresets.length > 0 ? (
-                    <View style={styles.presetRow}>
-                      {availablePresets.map((h) => {
-                        const active = hour === h;
-                        return (
-                          <Pressable
-                            key={h}
-                            onPress={() => setHourClamped(h)}
-                            style={({ pressed }) => [
-                              styles.presetChip,
-                              active && styles.presetChipActive,
-                              pressed && styles.dim,
-                            ]}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: active }}
-                            accessibilityLabel={`${h}:00`}
-                          >
-                            <Text
-                              style={[styles.presetText, active && styles.presetTextActive]}
-                              allowFontScaling={false}
+            {intent !== 'live' ? (
+              <View style={styles.sectionGap}>
+                <SectionHeader label={cs.friends.composeTimeLabel} />
+                {intent === 'choose' ? (
+                  <SegmentedControl
+                    options={[cs.friends.composeNow, cs.friends.composeLater]}
+                    value={timeTab}
+                    onChange={setTimeTab}
+                  />
+                ) : null}
+                {isPlan ? (
+                  <View style={styles.timePicker}>
+                    {availablePresets.length > 0 ? (
+                      <View style={styles.presetRow}>
+                        {availablePresets.map((h) => {
+                          const active = hour === h;
+                          return (
+                            <Pressable
+                              key={h}
+                              onPress={() => setHourClamped(h)}
+                              style={({ pressed }) => [
+                                styles.presetChip,
+                                active && styles.presetChipActive,
+                                pressed && styles.dim,
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected: active }}
+                              accessibilityLabel={`${h}:00`}
                             >
-                              {`${h}:00`}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+                              <Text
+                                style={[styles.presetText, active && styles.presetTextActive]}
+                                allowFontScaling={false}
+                              >
+                                {`${h}:00`}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                    <View style={styles.stepperLine}>
+                      <HourStepper
+                        value={hour}
+                        onChange={setHourClamped}
+                        accessibilityLabel={cs.friends.composeTimeLabel}
+                      />
                     </View>
-                  ) : null}
-                  <View style={styles.stepperLine}>
-                    <HourStepper value={hour} onChange={setHourClamped} accessibilityLabel={cs.friends.composeTimeLabel} />
                   </View>
-                </View>
-              ) : null}
-            </View> : null}
+                ) : null}
+              </View>
+            ) : null}
 
             {/* VZKAZ */}
             <View style={styles.sectionGap}>
@@ -679,7 +770,9 @@ function ComposeSheet({ friends, onSubmitted, onClose, intent = 'choose', fixedR
               ]}
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSubmit }}
-              accessibilityLabel={isPlan ? cs.friends.composeSubmitPlan : cs.friends.composeSubmitNow}
+              accessibilityLabel={
+                isPlan ? cs.friends.composeSubmitPlan : cs.friends.composeSubmitNow
+              }
             >
               {submitting ? (
                 <ActivityIndicator color={Colors.stout} size="small" />

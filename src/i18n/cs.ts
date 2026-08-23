@@ -1139,6 +1139,7 @@ export const cs = {
     visibilityFriends: 'Parta',
     submit: 'Uložit pivo',
     saved: 'Pivo zapsané. Na zdraví.',
+    saveError: 'Pivo se nepodařilo bezpečně uložit. Zkus to znovu.',
     feedHeader: 'Piva party',
     feedEmpty: 'Parta zatím žádné pivo nesdílela.',
     detailHeader: 'Detail piva',
@@ -1507,12 +1508,14 @@ export const cs = {
     requestSent: 'Pozvánka letí ke stolu.',
     requestAccepted: 'Je v partě.',
     requestDeclined: 'Pozvánka je pryč.',
+    requestActionError: 'Žádost se teď nepovedla vyřídit. Zkus to znovu.',
     friendRemoved: 'Už není v partě.',
     // One-tap quick broadcast from the counter (rich compose lives on Parta).
     shareHereShort: 'Cinknout partě',
     // "signál" is reserved for connectivity; the broadcast is a "cinknutí".
     shareSuccess: 'Cinknuto!',
     shareError: 'Nepodařilo se dát vědět partě.',
+    queueSaveError: 'Akci se nepodařilo bezpečně uložit. Zkus to znovu.',
     // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
     counterAlreadyLive: 'Už svítíš partě',
     sharedCount: (n: number) =>
@@ -2444,6 +2447,9 @@ export const cs = {
     timeout: 'Hra se nespustila včas.',
     retry: 'Zkusit znovu',
     spectator: 'Tuhle hru jen sleduješ.',
+    savingResult: 'Ukládám výsledek…',
+    waitingForResult: 'Čekám na výsledek…',
+    resultSaveFailed: 'Výsledek se nepodařilo uložit.',
   },
 
   counter: {
@@ -2819,6 +2825,7 @@ export const cs = {
     historicalSubmit: 'Uložit vzpomínku',
     historicalSaved: (count: number) =>
       count === 1 ? 'Vzpomínka zapsaná.' : count >= 2 && count <= 4 ? `${count} piva zapsaná.` : `${count} piv zapsáno.`,
+    historicalSaveError: 'Vzpomínku se nepodařilo bezpečně uložit. Zkus to znovu.',
     historicalNoPub: 'Bez hospody',
 
     // — Date labels —
@@ -3222,6 +3229,8 @@ export const cs = {
     presenceCompass: (pub: string) => `Ukázat ${pub} na kompasu`,
     sittingRow: (name: string, what: string, where: string, when: string) =>
       `${name}, ${what}, ${where}${when ? `, ${when}` : ''}. Ťukni pro profil.`,
+    partyGameBeerCounter: (count: string) =>
+      `Máš ${count}. Přidat další.`,
 
     // — Kompas —
     compassMore: 'Co ještě? Mapa, filtry a další',
