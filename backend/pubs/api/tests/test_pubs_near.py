@@ -288,7 +288,13 @@ def test_local_first_hides_actively_reported_cache_key(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = True
     visible = _directory_pub("Viditelná")
     reported = _directory_pub("Nahlášená", lat=_LAT + 0.001)
-    accounts = [Account.objects.create(device_id=f"reporter-{index}") for index in range(3)]
+    accounts = [
+        Account.objects.create(
+            device_id=f"reporter-{index}",
+            quorum_trusted_at=dj_tz.now() - timedelta(hours=24),
+        )
+        for index in range(3)
+    ]
     for account, reason in zip(
         accounts[:2],
         (PubReport.Reason.NOT_PUB, PubReport.Reason.CLOSED),

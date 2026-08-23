@@ -60,17 +60,17 @@ services:
     command:
       - |
         while true; do
-          python manage.py refresh_hours --limit 50 || true
-          python manage.py refresh_google_pub_locations --limit 25 || true
-          python manage.py sync_feedback_linear --limit 20 || true
           python manage.py advance_friend_plans || true
           python manage.py advance_photo_contests || true
+          python manage.py process_account_exports --limit 10 || true
+          python manage.py purge_deleted_accounts || true
           python manage.py retry_beer_photo_deletions || true
           python manage.py prune_friend_data || true
           python manage.py prune_client_events || true
-          python manage.py process_account_exports --limit 10 || true
-          python manage.py purge_deleted_accounts || true
           python manage.py prune_operational_data || true
+          python manage.py refresh_hours --limit 50 || true
+          python manage.py refresh_google_pub_locations --limit 25 || true
+          python manage.py sync_feedback_linear --limit 20 || true
           sleep 300
         done
 

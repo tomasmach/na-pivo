@@ -223,7 +223,7 @@ Server-only configuration for the Phase A moderation helper — the key must nev
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |
 | `FIRMY_DAILY_CAP` | `2000` | Shared DB-backed daily request cap across web and worker processes |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
-| `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call; `0` makes cold lookups pending-only and leaves enrichment to the worker |
+| `SYNC_ENRICH_BUDGET` | `3` in dev, forced `0` in production | Max pubs enriched synchronously per API call; production cache misses always return pending and leave enrichment to the worker |
 | `GOOGLE_MAPS_SERVER_API_KEY` | _(unset)_ | Backend-only, IP/API-restricted key for Geocoding API v4 and Places API (New); never ship it in Expo |
 | `GOOGLE_MAPS_TIMEOUT` | `8` | Timeout in seconds for an explicit Google lookup |
 | `GOOGLE_MAPS_DAILY_CAP` | `250` | Shared DB-backed request cap across Google geocoding/autocomplete entry points and workers |

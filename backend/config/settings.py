@@ -902,8 +902,10 @@ FIRMY_ERROR_RETRY_COOLDOWN_MINUTES: int = int(
 )
 
 # Maximum number of pubs to enrich synchronously (in-request) per POST /v1/pub-hours.
-# Pubs beyond this budget get an EnrichTask and return status "pending".
-SYNC_ENRICH_BUDGET: int = int(os.environ.get("SYNC_ENRICH_BUDGET", "3"))
+# Local/dev keeps the configurable budget for diagnostics. Production always
+# queues cache misses so a user request never waits on Firmy.cz.
+_configured_sync_enrich_budget = int(os.environ.get("SYNC_ENRICH_BUDGET", "3"))
+SYNC_ENRICH_BUDGET: int = _configured_sync_enrich_budget if DEBUG else 0
 
 # ---------------------------------------------------------------------------
 # Production hardening (only when DEBUG is False)
@@ -921,7 +923,7 @@ if not DEBUG:
             "be configured. Set FIRMY_PROXY_URL (see README)."
         )
 
-    if SYNC_ENRICH_BUDGET < 0:
+    if _configured_sync_enrich_budget < 0:
         raise ImproperlyConfigured(
             "SYNC_ENRICH_BUDGET must be >= 0. With 0, cold lookups return "
             "status 'pending' and refresh_hours performs enrichment in the "

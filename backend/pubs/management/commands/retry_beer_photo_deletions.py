@@ -1,9 +1,15 @@
 """Drain durable account-media deletions left by transient storage failures."""
 
+from datetime import timedelta
+
 from django.core.management.base import BaseCommand
+from django.db.models import F, Q
+from django.utils import timezone
 
 from pubs.beer_photo_deletions import retry_beer_photo_file_deletion
 from pubs.models import BeerPhotoFileDeletion
+
+RETRY_COOLDOWN = timedelta(minutes=15)
 
 
 class Command(BaseCommand):
@@ -19,10 +25,18 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         batch_size = max(1, int(options["batch_size"]))
+        retry_before = timezone.now() - RETRY_COOLDOWN
         cleanup_ids = list(
-            BeerPhotoFileDeletion.objects.order_by("created_at", "pk").values_list(
-                "pk", flat=True
-            )[:batch_size]
+            BeerPhotoFileDeletion.objects.filter(
+                Q(last_attempted_at__isnull=True)
+                | Q(last_attempted_at__lte=retry_before)
+            )
+            .order_by(
+                F("last_attempted_at").asc(nulls_first=True),
+                "created_at",
+                "pk",
+            )
+            .values_list("pk", flat=True)[:batch_size]
         )
         deleted = 0
         for cleanup_id in cleanup_ids:

@@ -471,10 +471,62 @@ def test_worker_retries_failed_beer_photo_storage_cleanup(client, monkeypatch):
     assert BeerPhotoFileDeletion.objects.count() == 1
 
     monkeypatch.setattr(storage, "delete", original_delete)
+    BeerPhotoFileDeletion.objects.update(
+        last_attempted_at=timezone.now() - timedelta(minutes=16)
+    )
     call_command("retry_beer_photo_deletions", "--batch-size", "1")
 
     assert not stored.exists()
     assert not BeerPhotoFileDeletion.objects.exists()
+
+
+@pytest.mark.django_db
+def test_worker_failure_does_not_starve_new_media_cleanup(monkeypatch):
+    broken = BeerPhotoFileDeletion.objects.create(image_name="beer-photos/broken.webp")
+    fresh = BeerPhotoFileDeletion.objects.create(image_name="beer-photos/fresh.webp")
+    storage = BeerPhoto._meta.get_field("image").storage
+    attempts: list[str] = []
+
+    def delete(name: str) -> None:
+        attempts.append(name)
+        if name == broken.image_name:
+            raise OSError("permanently unavailable")
+
+    monkeypatch.setattr(storage, "delete", delete)
+
+    call_command("retry_beer_photo_deletions", "--batch-size", "1")
+    broken.refresh_from_db()
+    assert attempts == [broken.image_name]
+    assert broken.last_attempted_at is not None
+
+    call_command("retry_beer_photo_deletions", "--batch-size", "1")
+
+    assert attempts == [broken.image_name, fresh.image_name]
+    assert BeerPhotoFileDeletion.objects.filter(pk=broken.pk).exists()
+    assert not BeerPhotoFileDeletion.objects.filter(pk=fresh.pk).exists()
+
+
+@pytest.mark.django_db
+def test_worker_retries_failed_media_only_after_cooldown(monkeypatch):
+    cleanup = BeerPhotoFileDeletion.objects.create(
+        image_name="beer-photos/retry-after-cooldown.webp",
+        last_attempted_at=timezone.now(),
+    )
+    storage = BeerPhoto._meta.get_field("image").storage
+    attempts: list[str] = []
+    monkeypatch.setattr(storage, "delete", attempts.append)
+
+    call_command("retry_beer_photo_deletions", "--batch-size", "1")
+    assert attempts == []
+    assert BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).exists()
+
+    BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).update(
+        last_attempted_at=timezone.now() - timedelta(minutes=16)
+    )
+    call_command("retry_beer_photo_deletions", "--batch-size", "1")
+
+    assert attempts == [cleanup.image_name]
+    assert not BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -518,6 +570,9 @@ def test_late_upload_cleanup_remains_durable_when_storage_is_unavailable(
     assert stored.exists()
 
     monkeypatch.setattr(storage, "delete", original_delete)
+    BeerPhotoFileDeletion.objects.filter(pk=cleanup.pk).update(
+        last_attempted_at=timezone.now() - timedelta(minutes=16)
+    )
     call_command("retry_beer_photo_deletions")
 
     assert not stored.exists()

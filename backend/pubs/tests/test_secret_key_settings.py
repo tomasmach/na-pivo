@@ -8,7 +8,13 @@ import pytest
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
-def run_settings(secret_key: str, *, debug: bool = False) -> subprocess.CompletedProcess[str]:
+def run_settings(
+    secret_key: str,
+    *,
+    debug: bool = False,
+    extra_env: dict[str, str] | None = None,
+    python_code: str = 'import django; django.setup(); print("SETTINGS_LOADED")',
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["DJANGO_SETTINGS_MODULE"] = "config.settings"
     env["DEBUG"] = "True" if debug else "False"
@@ -18,11 +24,12 @@ def run_settings(secret_key: str, *, debug: bool = False) -> subprocess.Complete
     env["APPLE_TEAM_ID"] = "TEST_TEAM"
     env["APPLE_KEY_ID"] = "TEST_KEY"
     env["APPLE_PRIVATE_KEY"] = "TEST_PRIVATE_KEY"
+    env.update(extra_env or {})
     return subprocess.run(
         [
             sys.executable,
             "-c",
-            "import django; django.setup(); print(\"SETTINGS_LOADED\")",
+            python_code,
         ],
         cwd=BACKEND_ROOT,
         env=env,
@@ -65,3 +72,25 @@ def test_debug_accepts_short_secret_key() -> None:
     result = run_settings("short-secret", debug=True)
     assert result.returncode == 0
     assert result.stdout.strip() == "SETTINGS_LOADED"
+
+
+@pytest.mark.parametrize(
+    ("debug", "expected_budget"),
+    [(False, "0"), (True, "5")],
+)
+def test_sync_enrich_budget_is_zero_only_in_production(
+    debug: bool,
+    expected_budget: str,
+) -> None:
+    result = run_settings(
+        "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        debug=debug,
+        extra_env={"SYNC_ENRICH_BUDGET": "5"},
+        python_code=(
+            "import django; django.setup(); "
+            "from django.conf import settings; print(settings.SYNC_ENRICH_BUDGET)"
+        ),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == expected_budget

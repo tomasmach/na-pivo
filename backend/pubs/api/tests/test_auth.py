@@ -3146,6 +3146,9 @@ def test_hard_delete_keeps_failed_media_cleanup_durable_after_account_is_gone(
 
     for storage_id, storage in storages.items():
         monkeypatch.setattr(storage, "delete", original_deletes[storage_id])
+    BeerPhotoFileDeletion.objects.update(
+        last_attempted_at=timezone.now() - timedelta(minutes=16)
+    )
     call_command("retry_beer_photo_deletions")
 
     assert not avatar_path.exists()
