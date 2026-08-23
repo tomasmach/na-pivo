@@ -10,10 +10,11 @@
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 
 
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
-import type { QuizAnswer, QuizEntrant } from '@/party/quiz/rules';
+import { quizState, type QuizAnswer, type QuizEntrant } from '@/party/quiz/rules';
 import { QuizShell } from '@/party/shells/QuizShell';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -103,8 +104,8 @@ describe('QuizShell', () => {
   it('does not leak whether the locked answer scored through the board', () => {
     renderShell([answer('Ty', QUESTION.answer)]);
 
-    expect(screen.getAllByText('0')).toHaveLength(2);
-    expect(screen.queryByText('1')).toBeNull();
+    expect(screen.getAllByLabelText(/^(Ty|Honza) 0$/)).toHaveLength(2);
+    expect(screen.queryByLabelText(/^(Ty|Honza) [1-9]\d*$/)).toBeNull();
   });
 
   it('locks and names who the table is waiting for', () => {
@@ -145,6 +146,149 @@ describe('QuizShell', () => {
     expect(screen.getByLabelText(WRONG).props.accessibilityState).toEqual(
       expect.objectContaining({ disabled: true }),
     );
+  });
+
+  it('asks each new question as a polite live header', () => {
+    renderShell([]);
+
+    const question = screen.getByText(QUESTION.text);
+    expect(question.props.accessibilityRole).toBe('header');
+    expect(question.props.accessibilityLiveRegion).toBe('polite');
+  });
+
+  it('keeps the locked wait a polite live text without swallowing Nečekat', () => {
+    renderShell([answer('Ty', 0)]);
+
+    expect(
+      screen.getByText('Zamknuto. Chybí Honza').props.accessibilityLiveRegion,
+    ).toBe('polite');
+    expect(screen.getByLabelText('Ukázat odpověď bez čekání')).toBeTruthy();
+  });
+
+  it('makes the revealed correct answer an assertive live region and keeps the wrong pick selected', () => {
+    renderShell([
+      answer('Ty', QUESTION.options.indexOf(WRONG)),
+      answer('Honza', QUESTION.answer),
+    ]);
+
+    const right = screen.getByLabelText(`${RIGHT} — správně`);
+    expect(right.props.accessibilityLiveRegion).toBe('assertive');
+
+    const wrong = screen.getByLabelText(WRONG);
+    expect(wrong.props.accessibilityState.selected).toBe(true);
+    expect(screen.queryByText(/špatně/i)).toBeNull();
+  });
+
+  it('reads each standings row as one entry built from the visible name and score', () => {
+    const answers = [answer('Ty', 0), answer('Honza', 1)];
+    renderShell(answers);
+
+    const state = quizState({ entrants: TABLE, answers, index: 0 });
+    for (const row of state.standings) {
+      expect(screen.getByLabelText(`${row.teamName} ${row.score}`)).toBeTruthy();
+    }
+  });
+});
+
+describe('QuizShell iOS announcements', () => {
+  // The repo RN mock is partial: announceForAccessibility is attached here and
+  // removed again so other suites sharing the mock stay untouched.
+  const announce = jest.fn();
+  const realOS = Platform.OS;
+
+  beforeEach(() => {
+    (AccessibilityInfo as unknown as Record<string, unknown> &
+      typeof AccessibilityInfo).announceForAccessibility = announce;
+    Platform.OS = 'ios';
+    announce.mockClear();
+  });
+
+  afterEach(() => {
+    Platform.OS = realOS;
+  });
+
+  afterAll(() => {
+    const partial = AccessibilityInfo as unknown as Record<string, unknown>;
+    delete partial.announceForAccessibility;
+    Platform.OS = realOS;
+  });
+
+  function shellProps(
+    answers: QuizAnswer[],
+    index: number,
+  ): React.ComponentProps<typeof QuizShell> {
+    return {
+      entrants: TABLE,
+      answers,
+      me: 'Ty',
+      index,
+      tintOf: () => '#E8A33D',
+      forceRevealed: false,
+      onAnswer: jest.fn(),
+      onReveal: jest.fn(),
+      onNext: jest.fn(),
+      onFinished: jest.fn(),
+      onDone: jest.fn(),
+    };
+  }
+
+  it('announces the question imperatively only when its id changes', () => {
+    const view = render(<QuizShell {...shellProps([], 0)} />);
+    expect(announce).not.toHaveBeenCalled();
+
+    view.rerender(<QuizShell {...shellProps([], 1)} />);
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith(QUIZ_QUESTIONS[1].text);
+
+    view.rerender(
+      <QuizShell {...shellProps([], 1)} tintOf={() => '#000000'} />,
+    );
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces the exact waiting line when locking, once, and keeps Nečekat focusable', () => {
+    const view = render(<QuizShell {...shellProps([], 0)} />);
+    expect(announce).not.toHaveBeenCalled();
+
+    view.rerender(<QuizShell {...shellProps([answer('Ty', 0)], 0)} />);
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenLastCalledWith('Zamknuto. Chybí Honza');
+    expect(screen.getByLabelText('Ukázat odpověď bez čekání')).toBeTruthy();
+
+    view.rerender(<QuizShell {...shellProps([answer('Ty', 0)], 0)} />);
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces the revealed correct label once on lock-to-reveal without repeating question or waiting', () => {
+    const view = render(<QuizShell {...shellProps([answer('Ty', 0)], 0)} />);
+    announce.mockClear();
+
+    view.rerender(
+      <QuizShell
+        {...shellProps([answer('Ty', 0), answer('Honza', QUESTION.answer)], 0)}
+      />,
+    );
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith(`${RIGHT} — správně`);
+
+    view.rerender(
+      <QuizShell
+        {...shellProps([answer('Ty', 0), answer('Honza', QUESTION.answer)], 0)}
+      />,
+    );
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes zero imperative calls on android across the same transitions', () => {
+    Platform.OS = 'android';
+    const view = render(<QuizShell {...shellProps([], 0)} />);
+    view.rerender(<QuizShell {...shellProps([answer('Ty', 0)], 0)} />);
+    view.rerender(
+      <QuizShell
+        {...shellProps([answer('Ty', 0), answer('Honza', QUESTION.answer)], 0)}
+      />,
+    );
+    expect(announce).not.toHaveBeenCalled();
   });
 });
 

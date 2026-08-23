@@ -11,7 +11,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -103,6 +103,12 @@ export function PickShell({
   const effectiveRevision = controlled ? pickRevision : localPickRevision;
   const pickedPlayer =
     players.find((player) => player.id === effectivePickedId) ?? null;
+  const verdictText = pickedPlayer ? verdict(pickedPlayer.name) : null;
+  // The pick's spoken identity: same player at a new revision is a new result.
+  const resultKey =
+    pickedPlayer && verdictText
+      ? `${pickedPlayer.id}:${effectiveRevision}`
+      : null;
   React.useEffect(() => {
     interactionLocked.current = false;
     if (fallbackUnlock.current) {
@@ -110,6 +116,17 @@ export function PickShell({
       fallbackUnlock.current = null;
     }
   }, [effectivePickedId, effectiveRevision]);
+  const announcedResult = React.useRef<string | null>(resultKey);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (!resultKey || !verdictText) {
+      announcedResult.current = null;
+      return;
+    }
+    if (announcedResult.current === resultKey) return;
+    announcedResult.current = resultKey;
+    AccessibilityInfo.announceForAccessibility?.(verdictText);
+  }, [resultKey, verdictText]);
   React.useEffect(
     () => () => {
       if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
@@ -244,7 +261,7 @@ export function PickShell({
             pointerEvents="none"
             accessible
             accessibilityLiveRegion="polite"
-            accessibilityLabel={verdict(pickedPlayer.name)}
+            accessibilityLabel={verdictText ?? undefined}
           >
             <PersonAvatar
               name={pickedPlayer.name}
@@ -255,7 +272,7 @@ export function PickShell({
               style={styles.verdictText}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {verdict(pickedPlayer.name)}
+              {verdictText}
             </Text>
           </Animated.View>
         ) : null}

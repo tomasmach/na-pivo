@@ -1,5 +1,12 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 
 import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
@@ -41,6 +48,9 @@ export function RoundDrumShell({
   );
   const [cursor, setCursor] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
+  // Bumped on every local publish, so a repeat pick of the same player is
+  // still a fresh result worth announcing.
+  const [localResultRevision, setLocalResultRevision] = React.useState(0);
   const locked = React.useRef(false);
   const timers = React.useRef<ReturnType<typeof setTimeout>[]>([]);
   const effectiveId = pickedId ?? localPickedId;
@@ -65,10 +75,31 @@ export function RoundDrumShell({
   });
   const selected = players.find((player) => player.id === effectiveId);
   const selectedName = displayName(selected, selectedIndex);
+  const settled = Boolean(effectiveId) && !spinning;
+  const drumLabel = settled ? `Platí ${selectedName}` : "Buben se jmény hráčů";
+  // Keyed by the stable id plus publish revision, not the label: two players
+  // may share a name, and the canonical pick arriving for an already-published
+  // local result keeps this key unchanged (no duplicate announcement).
+  const resultKey =
+    settled && effectiveId ? `${effectiveId}#${localResultRevision}` : null;
+  const announcedResult = React.useRef<string | null>(resultKey);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (!settled) {
+      // While the drum moves there is no result; the next one to settle is
+      // worth saying even if it lands on the same player again.
+      announcedResult.current = null;
+      return;
+    }
+    if (!resultKey || announcedResult.current === resultKey) return;
+    announcedResult.current = resultKey;
+    AccessibilityInfo.announceForAccessibility?.(drumLabel);
+  }, [settled, resultKey, drumLabel]);
 
   const publish = (playerId: string) => {
     if (spectator) return;
     setLocalPickedId(playerId);
+    setLocalResultRevision((value) => value + 1);
     setSpinning(false);
     onPicked?.(playerId);
     const unlock = setTimeout(
@@ -119,12 +150,10 @@ export function RoundDrumShell({
           style={styles.drum}
           accessible
           accessibilityRole="text"
-          accessibilityLiveRegion="polite"
-          accessibilityLabel={
-            effectiveId && !spinning
-              ? `Platí ${selectedName}`
-              : "Buben se jmény hráčů"
-          }
+          // Only a settled result may raise itself; the decorative spinning
+          // drum stays silent for VoiceOver-style live regions (Android).
+          accessibilityLiveRegion={settled ? "polite" : "none"}
+          accessibilityLabel={drumLabel}
         >
           {slots.map(({ player, index, offset }, slot) => {
             const on = offset === 0 && Boolean(effectiveId) && !spinning;

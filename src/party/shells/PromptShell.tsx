@@ -16,7 +16,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -118,6 +118,19 @@ export function PromptShell({
   // A single-card deck is a rule, not a round — no counter, no "další".
   const single = prompts.length <= 1;
 
+  // iOS has no accessibilityLiveRegion, so each new card is announced
+  // imperatively — exactly the text on the card, nothing invented. The ref
+  // starts at the current step: mounting never announces, only real advances.
+  const announcedStep = React.useRef(currentStep);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (announcedStep.current === currentStep) return;
+    const prompt = deck[index];
+    if (!prompt) return;
+    announcedStep.current = currentStep;
+    AccessibilityInfo.announceForAccessibility?.(prompt);
+  }, [currentStep, deck, index]);
+
   const next = () => {
     if (spectator || single || pendingStep.current === currentStep) return;
     pendingStep.current = currentStep;
@@ -179,6 +192,7 @@ export function PromptShell({
         style={styles.wrap}
         accessibilityRole="text"
         accessibilityLabel={deck[index]}
+        accessibilityLiveRegion="polite"
       >
         {card}
       </View>
@@ -190,6 +204,7 @@ export function PromptShell({
       onPress={next}
       style={styles.wrap}
       accessibilityRole={single ? "text" : "button"}
+      accessibilityLiveRegion="polite"
       accessibilityLabel={
         single ? deck[index] : `${deck[index] ?? ""} Ťukni pro další.`
       }

@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 
 const mockCommand = jest.fn();
 let mockReducedMotion = false;
@@ -287,4 +288,60 @@ it('hides the stale bottle verdict and re-announces the same player on a new rev
     />,
   );
   expect(screen.getByText('Honza je na řadě')).toBeTruthy();
+});
+
+describe('result announcements (iOS imperative)', () => {
+  const originalOS = Platform.OS;
+  let announce: jest.Mock;
+
+  beforeEach(() => {
+    announce = jest.fn();
+    (
+      AccessibilityInfo as { announceForAccessibility?: unknown }
+    ).announceForAccessibility = announce;
+    (Platform as unknown as { OS: string }).OS = 'ios';
+  });
+
+  afterEach(() => {
+    delete (AccessibilityInfo as { announceForAccessibility?: unknown })
+      .announceForAccessibility;
+    (Platform as unknown as { OS: string }).OS = originalOS;
+  });
+
+  const base = {
+    game: 'bottle',
+    players: PLAYERS,
+    action: 'Roztoč',
+    verdict: (name: string) => `${name} je na řadě`,
+  };
+
+  it('announces a fresh controlled pick once, then again only on a new revision', () => {
+    const view = render(<PickShell {...base} pickedId={null} pickRevision={0} />);
+    expect(announce).not.toHaveBeenCalled();
+
+    view.rerender(<PickShell {...base} pickedId="honza" pickRevision={1} />);
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith('Honza je na řadě');
+
+    view.rerender(<PickShell {...base} pickedId="honza" pickRevision={1} />);
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    view.rerender(<PickShell {...base} pickedId="honza" pickRevision={2} />);
+    expect(announce).toHaveBeenCalledTimes(2);
+    expect(announce).toHaveBeenLastCalledWith('Honza je na řadě');
+  });
+
+  it('does not announce when mounted with an already settled pick', () => {
+    render(<PickShell {...base} pickedId="honza" pickRevision={3} />);
+    expect(announce).not.toHaveBeenCalled();
+    expect(screen.getByText('Honza je na řadě')).toBeTruthy();
+  });
+
+  it('makes zero imperative announcements on Android', () => {
+    (Platform as unknown as { OS: string }).OS = 'android';
+    const view = render(<PickShell {...base} pickedId={null} pickRevision={0} />);
+    view.rerender(<PickShell {...base} pickedId="honza" pickRevision={1} />);
+    view.rerender(<PickShell {...base} pickedId="honza" pickRevision={2} />);
+    expect(announce).not.toHaveBeenCalled();
+  });
 });

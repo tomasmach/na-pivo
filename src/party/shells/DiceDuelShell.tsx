@@ -25,7 +25,15 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -255,6 +263,62 @@ export function DiceDuelShell({
     playerOf(playerId)?.name ?? "Hráč";
   const winners = roundWinners(state);
   const loser = roundLoser(state);
+  // Derived once, read twice: the screen shows the pieces, VoiceOver hears
+  // them joined into a single round announcement.
+  const verdictLine =
+    winners.length > 1
+      ? `${winners.map(nameOf).join(" a ")} berou kolo`
+      : `${nameOf(winners[0] ?? null)} bere kolo`;
+  const loserLine =
+    loser && !winners.includes(loser)
+      ? `Nejmíň hodil ${nameOf(loser)}.`
+      : null;
+  const roundAnnouncement = loserLine
+    ? `${verdictLine} ${loserLine}`
+    : verdictLine;
+  const turnLine =
+    playerOf(turn)?.name === "Ty" ? "Házíš ty" : `${nameOf(turn)} hází`;
+
+  const announcedTurn = React.useRef(turn);
+  React.useEffect(() => {
+    if (!turn || roundDone || over) {
+      announcedTurn.current = turn;
+      return;
+    }
+    if (announcedTurn.current === turn) return;
+    announcedTurn.current = turn;
+    if (Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility?.(turnLine);
+    }
+  }, [turn, turnLine, roundDone, over]);
+
+  const announcedRound = React.useRef<number | null>(
+    roundDone ? state.roundNumber : null,
+  );
+  React.useEffect(() => {
+    if (!roundDone) {
+      announcedRound.current = null;
+      return;
+    }
+    if (announcedRound.current === state.roundNumber) return;
+    announcedRound.current = state.roundNumber;
+    if (Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility?.(roundAnnouncement);
+    }
+  }, [roundDone, state.roundNumber, roundAnnouncement]);
+
+  const announcedCheer = React.useRef<string | null>(cheer);
+  React.useEffect(() => {
+    if (!cheer) {
+      announcedCheer.current = null;
+      return;
+    }
+    if (announcedCheer.current === cheer) return;
+    announcedCheer.current = cheer;
+    if (Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility?.(cheer);
+    }
+  }, [cheer]);
 
   if (over) {
     // The shared ending — the same screen every game lands on, chosen from the
@@ -314,17 +378,19 @@ export function DiceDuelShell({
           <Text
             style={styles.verdict}
             maxFontSizeMultiplier={FontScaleCap.heading}
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={roundAnnouncement}
           >
-            {winners.length > 1
-              ? `${winners.map(nameOf).join(" a ")} berou kolo`
-              : `${nameOf(winners[0] ?? null)} bere kolo`}
+            {verdictLine}
           </Text>
-          {loser && !winners.includes(loser) ? (
+          {loserLine ? (
             <Text
               style={styles.verdictSub}
               maxFontSizeMultiplier={FontScaleCap.body}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
             >
-              Nejmíň hodil {nameOf(loser)}.
+              {loserLine}
             </Text>
           ) : null}
 
@@ -388,8 +454,10 @@ export function DiceDuelShell({
             style={styles.turnName}
             numberOfLines={2}
             maxFontSizeMultiplier={FontScaleCap.heading}
+            accessibilityRole="header"
+            accessibilityLiveRegion="polite"
           >
-            {playerOf(turn)?.name === "Ty" ? "Házíš ty" : `${nameOf(turn)} hází`}
+            {turnLine}
           </Text>
         </View>
       )}
@@ -444,6 +512,7 @@ export function DiceDuelShell({
             <Text
               style={styles.cheerText}
               maxFontSizeMultiplier={FontScaleCap.heading}
+              accessibilityLiveRegion="polite"
             >
               {cheer}
             </Text>

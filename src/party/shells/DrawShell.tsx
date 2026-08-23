@@ -14,7 +14,14 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Animated, {
   Easing,
   FadeIn,
@@ -103,6 +110,25 @@ export function DrawShell({
   const shownCard =
     KINGS_DECK.find((card) => card.id === shown?.cardId) ??
     KINGS_CARDS.find((card) => card.card === shown?.cardId);
+  // One announcement per settled draw: the visible rank, title and rule.
+  const cardLabel = shownCard
+    ? `${
+        "card" in shownCard ? shownCard.card : shownCard.rank
+      } ${shownCard.title} ${shownCard.rule}`
+    : undefined;
+  // Seeded with the result already on screen, so a remount never re-announces.
+  const announcedNonce = React.useRef(shown?.nonce);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    // Rolling names are decoration over an unsettled draw; wait for rest.
+    if (rolling) return;
+    const nonce = shown?.nonce;
+    if (!nonce || announcedNonce.current === nonce) return;
+    const label = shownPlayer?.name ?? cardLabel;
+    if (!label) return;
+    announcedNonce.current = nonce;
+    AccessibilityInfo.announceForAccessibility?.(label);
+  }, [rolling, shown?.nonce, shownPlayer?.name, cardLabel]);
   React.useEffect(() => {
     interactionLocked.current = false;
     if (fallbackUnlock.current) {
@@ -220,6 +246,8 @@ export function DrawShell({
                 style={styles.person}
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.heading}
+                accessibilityLabel={shownPlayer?.name}
+                accessibilityLiveRegion="polite"
               >
                 {shownPlayer?.name ?? "…"}
               </Text>
@@ -230,11 +258,23 @@ export function DrawShell({
         {kind === "card" ? (
           <Animated.View style={[styles.card, settleStyle]}>
             {rolling || !shownCard ? (
-              <Text style={styles.cardBack} allowFontScaling={false}>
+              <Text
+                style={styles.cardBack}
+                allowFontScaling={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
                 ?
               </Text>
             ) : (
-              <Animated.View key={shown?.nonce} entering={FadeIn.duration(200)}>
+              <Animated.View
+                key={shown?.nonce}
+                entering={FadeIn.duration(200)}
+                accessible
+                accessibilityRole="text"
+                accessibilityLiveRegion="polite"
+                accessibilityLabel={cardLabel}
+              >
                 <Text style={styles.cardRank} allowFontScaling={false}>
                   {"card" in shownCard ? shownCard.card : shownCard.rank}
                 </Text>
@@ -295,6 +335,8 @@ function RollingNames({ players }: { players: DrawPlayer[] }) {
       style={[styles.person, styles.personRolling]}
       numberOfLines={1}
       allowFontScaling={false}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
     >
       {players[index % players.length]?.name ?? "…"}
     </Text>

@@ -67,7 +67,11 @@ export function GameLobby({
           </View>
         ) : null}
 
-        <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+        <Text
+          style={styles.title}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+          accessibilityRole="header"
+        >
           {def?.name ?? 'Hra'}
         </Text>
         {def ? (
@@ -76,7 +80,11 @@ export function GameLobby({
           </Text>
         ) : null}
 
-        <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text
+          style={styles.section}
+          maxFontSizeMultiplier={FontScaleCap.body}
+          accessibilityRole="header"
+        >
           Kdo hraje
         </Text>
 
@@ -127,6 +135,7 @@ export function GameLobby({
           style={({ pressed }) => [styles.start, !enough && styles.startOff, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={enough ? `Začít, hraje ${playing.length}` : 'Potřebuješ aspoň dva hráče'}
+          accessibilityState={{ disabled: !enough }}
         >
           <Text
             style={[styles.startText, !enough && styles.startTextOff]}

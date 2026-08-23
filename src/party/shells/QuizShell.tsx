@@ -27,7 +27,7 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -137,6 +137,49 @@ export function QuizShell({
     });
   }, [state.finished, state.standings, onFinished, spectator]);
 
+  /** Teams still thinking. Named, because "3 čekají" makes nobody hurry. */
+  const waiting = state.standings
+    .filter((row) => !state.answered.includes(row.teamId))
+    .map((row) => row.teamName);
+  const waitingLine = question
+    ? `Zamknuto. Chybí ${waiting.join(", ")}`
+    : null;
+  const shownWaitingLine = locked && !revealed ? waitingLine : null;
+  const correctLabel =
+    question && revealed
+      ? `${question.options[question.answer]} — správně`
+      : null;
+
+  // accessibilityLiveRegion never fires on iOS, so the same beats are announced
+  // imperatively there — keyed by what is already audible, so a mount or a
+  // reconnect never repeats a line that has not changed.
+  const announcedQuestion = React.useRef(question?.id ?? null);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios" || !question) return;
+    if (announcedQuestion.current === question.id) return;
+    announcedQuestion.current = question.id;
+    AccessibilityInfo.announceForAccessibility?.(question.text);
+  }, [question]);
+
+  const announcedWaiting = React.useRef(shownWaitingLine);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (announcedWaiting.current === shownWaitingLine) return;
+    announcedWaiting.current = shownWaitingLine;
+    if (shownWaitingLine)
+      AccessibilityInfo.announceForAccessibility?.(shownWaitingLine);
+  }, [shownWaitingLine]);
+
+  const revealedForQuestion = question && revealed ? question.id : null;
+  const announcedReveal = React.useRef(revealedForQuestion);
+  React.useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    if (announcedReveal.current === revealedForQuestion) return;
+    announcedReveal.current = revealedForQuestion;
+    if (revealedForQuestion && correctLabel)
+      AccessibilityInfo.announceForAccessibility?.(correctLabel);
+  }, [revealedForQuestion, correctLabel]);
+
   if (state.finished) {
     return (
       <GameResult
@@ -160,11 +203,6 @@ export function QuizShell({
   }
   if (!question) return null;
 
-  /** Teams still thinking. Named, because "3 čekají" makes nobody hurry. */
-  const waiting = state.standings
-    .filter((row) => !state.answered.includes(row.teamId))
-    .map((row) => row.teamName);
-
   return (
     <ScrollView
       contentContainerStyle={styles.body}
@@ -181,6 +219,8 @@ export function QuizShell({
         entering={reduceMotion ? undefined : FadeIn.duration(220)}
         style={styles.question}
         maxFontSizeMultiplier={FontScaleCap.heading}
+        accessibilityRole="header"
+        accessibilityLiveRegion="polite"
       >
         {question.text}
       </Animated.Text>
@@ -216,8 +256,13 @@ export function QuizShell({
               ]}
               accessibilityRole="button"
               accessibilityState={{ disabled: !canAnswer, selected: picked }}
+              accessibilityLiveRegion={
+                revealed && right ? "assertive" : undefined
+              }
               accessibilityLabel={
-                revealed && right ? `${option} — správně` : option
+                revealed && right
+                  ? (correctLabel ?? undefined)
+                  : option
               }
             >
               <Text
@@ -245,11 +290,12 @@ export function QuizShell({
           <Text
             style={styles.waitingTitle}
             maxFontSizeMultiplier={FontScaleCap.body}
+            accessibilityLiveRegion="polite"
           >
             {/* Nominative, so it reads right however the table is named —
                 "čeká se na Honza" is the kind of Czech an app writes and a
                 person never does. */}
-            Zamknuto. Chybí {waiting.join(", ")}
+            {waitingLine}
           </Text>
           {/* Somebody is at the bar, or their phone died. A quiz that can only
               be unblocked by a person who left is a quiz that ends there. */}
@@ -296,7 +342,13 @@ export function QuizShell({
       {visibleStandings.length > 1 ? (
         <View style={styles.board}>
           {visibleStandings.map((row) => (
-            <View key={row.teamId} style={styles.boardRow}>
+            <View
+              key={row.teamId}
+              style={styles.boardRow}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={`${row.teamName} ${row.score}`}
+            >
               <PersonAvatar
                 name={row.teamName}
                 tint={tintOf(row.teamName)}
@@ -306,10 +358,17 @@ export function QuizShell({
                 style={styles.boardName}
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               >
                 {row.teamName}
               </Text>
-              <Text style={styles.boardScore} allowFontScaling={false}>
+              <Text
+                style={styles.boardScore}
+                allowFontScaling={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
                 {row.score}
               </Text>
             </View>

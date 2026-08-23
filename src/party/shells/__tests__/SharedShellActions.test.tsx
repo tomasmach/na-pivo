@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
@@ -19,7 +19,10 @@ jest.mock('react-native-reanimated', () => {
     FadeIn: { duration: () => undefined },
     FadeOut: { duration: () => undefined },
     useAnimatedStyle: (factory: () => unknown) => factory(),
-    useReducedMotion: () => true,
+    // Flip via globalThis.__napivoReduceMotion in tests to exercise the
+    // animated (rolling) draw path; default true keeps other tests static.
+    useReducedMotion: () =>
+      (globalThis as { __napivoReduceMotion?: boolean }).__napivoReduceMotion ?? true,
     useSharedValue: (value: unknown) => ({ value }),
     withSequence: (...values: unknown[]) => values.at(-1),
     withTiming: (value: unknown) => value,
@@ -37,12 +40,30 @@ const { DiceDuelShell } = jest.requireActual('@/party/shells/DiceDuelShell') as 
 const { PickShell } = jest.requireActual('@/party/shells/PickShell') as typeof import('@/party/shells/PickShell');
 const { PromptShell } = jest.requireActual('@/party/shells/PromptShell') as typeof import('@/party/shells/PromptShell');
 const { promptDeck } = jest.requireActual('@/party/shells/PromptShell') as typeof import('@/party/shells/PromptShell');
-const { KINGS_DECK } = jest.requireActual('@/party/gameContent') as typeof import('@/party/gameContent');
+const { KINGS_DECK, KINGS_CARDS } = jest.requireActual('@/party/gameContent') as typeof import('@/party/gameContent');
 
 const PLAYERS = [
   { id: 'me', name: 'Ty', tint: '#111' },
   { id: 'honza', name: 'Honza', tint: '#222' },
 ];
+
+// The repo RN jest mock leaves announceForAccessibility unset at runtime;
+// attach a stable spy so shell effects have something real to call on iOS.
+const announceSpy = (() => {
+  const holder = AccessibilityInfo as unknown as {
+    announceForAccessibility?: unknown;
+  };
+  if (jest.isMockFunction(holder.announceForAccessibility)) {
+    return holder.announceForAccessibility;
+  }
+  const spy = jest.fn();
+  holder.announceForAccessibility = spy;
+  return spy;
+})();
+
+beforeEach(() => {
+  announceSpy.mockClear();
+});
 
 it('renders a prompt from the folded step and emits only an append action intent', () => {
   const onNext = jest.fn();
@@ -314,6 +335,80 @@ it('keeps a draw spectator from drawing or finishing the deck', () => {
   expect(onDeckFinished).not.toHaveBeenCalled();
 });
 
+it('exposes the current prompt as a polite live region on both the button and the spectator view', () => {
+  const onNext = jest.fn();
+  const prompts = ['První', 'Druhá', 'Třetí'];
+  const view = render(
+    <PromptShell prompts={prompts} seed={17} step={0} onNext={onNext} />,
+  );
+  expect(
+    screen.getByLabelText(/Ťukni pro další/).props.accessibilityLiveRegion,
+  ).toBe('polite');
+
+  view.rerender(
+    <PromptShell prompts={prompts} seed={17} step={1} onNext={onNext} />,
+  );
+  expect(
+    screen.getByLabelText(/Ťukni pro další/).props.accessibilityLiveRegion,
+  ).toBe('polite');
+
+  const spectatorFirst = promptDeck(prompts, 17, 0)[0];
+  view.rerender(
+    <PromptShell prompts={prompts} seed={17} step={0} onNext={onNext} spectator />,
+  );
+  expect(
+    screen.getByLabelText(spectatorFirst).props.accessibilityLiveRegion,
+  ).toBe('polite');
+});
+
+it('announces a settled person once, with the label exactly the visible name', () => {
+  render(
+    <DrawShell
+      kind="person"
+      players={PLAYERS}
+      action="Roztoč"
+      result={{ nonce: 'n1', personId: 'honza' }}
+    />,
+  );
+
+  const name = screen.getByText('Honza');
+  expect(name.props.accessibilityLabel).toBe('Honza');
+  expect(name.props.accessibilityLiveRegion).toBe('polite');
+});
+
+it('announces a settled card as one node from the visible rank, title and rule', () => {
+  const king = KINGS_CARDS.find((card) => card.card === 'K')!;
+  render(
+    <DrawShell
+      kind="card"
+      players={PLAYERS}
+      action="Táhni kartu"
+      result={{ nonce: 'n2', cardId: 'K' }}
+    />,
+  );
+
+  const cardNode = screen.getByLabelText(`K ${king.title} ${king.rule}`);
+  expect(cardNode.props.accessible).toBe(true);
+  expect(cardNode.props.accessibilityLiveRegion).toBe('polite');
+});
+
+it('keeps the unturned card back decorative', () => {
+  render(
+    <DrawShell
+      kind="card"
+      players={PLAYERS}
+      action="Táhni kartu"
+      result={null}
+      drawnCardIds={[]}
+      onDraw={jest.fn()}
+    />,
+  );
+
+  const back = screen.getByText('?', { includeHiddenElements: true });
+  expect(back.props.importantForAccessibility).toBe('no-hide-descendants');
+  expect(back.props.accessibilityElementsHidden).toBe(true);
+});
+
 it('shows a prompt spectator plain text without hint or advance', () => {
   const onNext = jest.fn();
   const prompts = ['První', 'Druhá', 'Třetí'];
@@ -334,4 +429,164 @@ it('shows a prompt spectator plain text without hint or advance', () => {
 
   fireEvent.press(screen.getByText(expectedFirst));
   expect(onNext).not.toHaveBeenCalled();
+});
+
+it('announces the new prompt once on a controlled step change and never on unrelated rerenders', () => {
+  const onNext = jest.fn();
+  const prompts = ['První', 'Druhá', 'Třetí'];
+  const view = render(
+    <PromptShell prompts={prompts} seed={17} step={0} onNext={onNext} />,
+  );
+  expect(announceSpy).not.toHaveBeenCalled();
+
+  view.rerender(
+    <PromptShell prompts={prompts} seed={17} step={1} onNext={onNext} />,
+  );
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+  expect(announceSpy).toHaveBeenCalledWith(promptDeck(prompts, 17, 0)[1]);
+
+  view.rerender(
+    <PromptShell prompts={prompts} seed={17} step={1} onNext={jest.fn()} />,
+  );
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+});
+
+it('announces a remotely advanced prompt once for a spectator and not on mount', () => {
+  const prompts = ['První', 'Druhá', 'Třetí'];
+  const view = render(
+    <PromptShell prompts={prompts} seed={17} step={0} spectator />,
+  );
+  expect(announceSpy).not.toHaveBeenCalled();
+
+  view.rerender(<PromptShell prompts={prompts} seed={17} step={2} spectator />);
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+  expect(announceSpy).toHaveBeenCalledWith(promptDeck(prompts, 17, 0)[2]);
+
+  view.rerender(<PromptShell prompts={prompts} seed={17} step={2} spectator />);
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+});
+
+it('announces a newly settled person once by the exact visible name and never repeats a nonce', () => {
+  const result = { nonce: 'p1', personId: 'honza' };
+  const view = render(
+    <DrawShell kind="person" players={PLAYERS} action="Roztoč" result={null} />,
+  );
+  expect(announceSpy).not.toHaveBeenCalled();
+
+  view.rerender(
+    <DrawShell kind="person" players={PLAYERS} action="Roztoč" result={result} />,
+  );
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+  expect(announceSpy).toHaveBeenCalledWith('Honza');
+
+  view.rerender(
+    <DrawShell kind="person" players={PLAYERS} action="Roztoč" result={result} />,
+  );
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+});
+
+it('announces a newly settled card once by the exact rendered label and never repeats a nonce', () => {
+  const king = KINGS_CARDS.find((card) => card.card === 'K')!;
+  const label = `K ${king.title} ${king.rule}`;
+  const result = { nonce: 'c1', cardId: 'K' };
+  const view = render(
+    <DrawShell
+      kind="card"
+      players={PLAYERS}
+      action="Táhni kartu"
+      result={null}
+      drawnCardIds={[]}
+    />,
+  );
+  expect(announceSpy).not.toHaveBeenCalled();
+
+  view.rerender(
+    <DrawShell
+      kind="card"
+      players={PLAYERS}
+      action="Táhni kartu"
+      result={result}
+      drawnCardIds={['K']}
+    />,
+  );
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+  expect(announceSpy).toHaveBeenCalledWith(label);
+
+  view.rerender(
+    <DrawShell
+      kind="card"
+      players={PLAYERS}
+      action="Táhni kartu"
+      result={result}
+      drawnCardIds={['K']}
+    />,
+  );
+  expect(announceSpy).toHaveBeenCalledTimes(1);
+});
+
+it('waits for the roll to finish before announcing a local draw once', () => {
+  jest.useFakeTimers();
+  (globalThis as { __napivoReduceMotion?: boolean }).__napivoReduceMotion = false;
+  try {
+    render(<DrawShell kind="person" players={PLAYERS} action="Roztoč" />);
+    fireEvent.press(screen.getByLabelText('Roztoč'));
+    expect(announceSpy).not.toHaveBeenCalled();
+
+    act(() => {
+      jest.advanceTimersByTime(900);
+    });
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+    expect(['Ty', 'Honza']).toContain(announceSpy.mock.calls[0][0]);
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(announceSpy).toHaveBeenCalledTimes(1);
+  } finally {
+    (globalThis as { __napivoReduceMotion?: boolean }).__napivoReduceMotion = true;
+    jest.useRealTimers();
+  }
+});
+
+it('never announces imperatively on Android and leaves it to the live region', () => {
+  const originalOS = Platform.OS;
+  Platform.OS = 'android';
+  try {
+    const prompts = ['První', 'Druhá', 'Třetí'];
+    const promptView = render(
+      <PromptShell prompts={prompts} seed={17} step={0} onNext={jest.fn()} />,
+    );
+    promptView.rerender(
+      <PromptShell prompts={prompts} seed={17} step={1} onNext={jest.fn()} />,
+    );
+    promptView.unmount();
+    expect(announceSpy).not.toHaveBeenCalled();
+
+    // A real null -> valid transition: Android must leave the reveal entirely
+    // to the polite live region, never to announceForAccessibility.
+    const drawView = render(
+      <DrawShell
+        kind="card"
+        players={PLAYERS}
+        action="Táhni kartu"
+        result={null}
+        drawnCardIds={[]}
+      />,
+    );
+    expect(screen.getByText('?', { includeHiddenElements: true })).toBeTruthy();
+
+    drawView.rerender(
+      <DrawShell
+        kind="card"
+        players={PLAYERS}
+        action="Táhni kartu"
+        result={{ nonce: 'android-1', cardId: 'K' }}
+        drawnCardIds={['K']}
+      />,
+    );
+    expect(screen.getByText('Král')).toBeTruthy();
+    expect(announceSpy).not.toHaveBeenCalled();
+  } finally {
+    Platform.OS = originalOS;
+  }
 });

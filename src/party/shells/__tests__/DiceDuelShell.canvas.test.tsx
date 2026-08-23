@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 
 import type { DiceState } from '@/games/web/dice/rules';
 
@@ -12,6 +12,21 @@ let mockGameHostProps: {
 const mockHostMounts = { mount: 0, unmount: 0 };
 type MockOutcome = { scores: { playerId: string; score: number }[]; winnerId: null; payingId: string | null };
 let mockLastOutcome: MockOutcome | null = null;
+
+const mockAnnounce = jest.fn();
+
+jest.mock('react-native', () => {
+  const actual = jest.requireActual('react-native');
+  return {
+    ...actual,
+    Platform: { ...actual.Platform, OS: 'ios' },
+    AccessibilityInfo: {
+      ...actual.AccessibilityInfo,
+      announceForAccessibility:
+        (...args: unknown[]) => mockAnnounce(...args),
+    },
+  };
+});
 
 jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -61,11 +76,16 @@ beforeEach(() => {
   mockHostMounts.mount = 0;
   mockHostMounts.unmount = 0;
   mockLastOutcome = null;
+  mockAnnounce.mockClear();
+  RN.Platform.OS = 'ios';
 });
 afterEach(() => {
   jest.useRealTimers();
+  RN.Platform.OS = 'ios';
 });
 const { DiceDuelShell } = jest.requireActual('@/party/shells/DiceDuelShell') as typeof import('@/party/shells/DiceDuelShell');
+
+const RN = jest.requireMock('react-native') as { Platform: { OS: string } };
 
 const PLAYERS = [
   { id: 'me', name: 'Ty', tint: '#111' },
@@ -183,4 +203,156 @@ it('a malformed over state with an unknown payer contains itself instead of publ
 
   expect(onFinished).not.toHaveBeenCalled();
   expect(mockLastOutcome?.payingId).toBeNull();
+});
+
+it('the active turn is one polite live header saying exactly who throws', () => {
+  render(
+    <DiceDuelShell
+      players={PLAYERS}
+      onFinished={jest.fn()}
+      onDone={jest.fn()}
+      state={startDice(PLAYERS)}
+    />,
+  );
+
+  const turn = screen.getByText('Házíš ty');
+  expect(turn.props.accessibilityRole).toBe('header');
+  expect(turn.props.accessibilityLiveRegion).toBe('polite');
+  expect(turn.props.accessibilityLabel).toBeUndefined();
+});
+
+it('a completed round announces the visible verdict with the loser folded into one node', () => {
+  const afterMe = recordRoll(startDice(PLAYERS), 'me', [6, 4]);
+  const complete = recordRoll(afterMe, 'honza', [2, 3]);
+  render(
+    <DiceDuelShell
+      players={PLAYERS}
+      onFinished={jest.fn()}
+      onDone={jest.fn()}
+      state={complete}
+    />,
+  );
+
+  const verdict = screen.getByLabelText('Ty bere kolo Nejmíň hodil Honza.');
+  expect(['assertive', 'polite']).toContain(
+    verdict.props.accessibilityLiveRegion,
+  );
+
+  const sub = screen.getByText('Nejmíň hodil Honza.', {
+    includeHiddenElements: true,
+  });
+  expect(sub.props.importantForAccessibility).toBe('no');
+  expect(sub.props.accessibilityElementsHidden).toBe(true);
+});
+
+it('a transient cheer is a polite live text node', () => {
+  jest.useFakeTimers();
+  render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+  );
+
+  act(() =>
+    mockGameHostProps?.onEvent?.('settled', { dice: [6, 6], playerId: 'honza' }),
+  );
+  expect(
+    screen.getByText('Honza má dvanáct!').props.accessibilityLiveRegion,
+  ).toBe('polite');
+});
+
+it('a new turn is announced imperatively once and never repeated', () => {
+  const initial = startDice(PLAYERS);
+  const afterMe = recordRoll(initial, 'me', [6, 4]);
+
+  const { rerender } = render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={initial} />,
+  );
+  expect(mockAnnounce).not.toHaveBeenCalled();
+
+  rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={afterMe} />,
+  );
+  expect(mockAnnounce).toHaveBeenCalledTimes(1);
+  expect(mockAnnounce).toHaveBeenLastCalledWith('Honza hází');
+
+  rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={afterMe} />,
+  );
+  expect(mockAnnounce).toHaveBeenCalledTimes(1);
+});
+
+it('a completed round verdict is announced imperatively once and never repeated', () => {
+  const initial = startDice(PLAYERS);
+  const afterMe = recordRoll(initial, 'me', [6, 4]);
+  const complete = recordRoll(afterMe, 'honza', [2, 3]);
+
+  const { rerender } = render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={initial} />,
+  );
+  rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={complete} />,
+  );
+  expect(mockAnnounce).toHaveBeenCalledTimes(1);
+  expect(mockAnnounce).toHaveBeenLastCalledWith('Ty bere kolo Nejmíň hodil Honza.');
+
+  rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={complete} />,
+  );
+  expect(mockAnnounce).toHaveBeenCalledTimes(1);
+});
+
+it('a transient cheer is announced imperatively once and never repeated', () => {
+  jest.useFakeTimers();
+  const view = render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+  );
+
+  act(() =>
+    mockGameHostProps?.onEvent?.('settled', { dice: [6, 6], playerId: 'honza' }),
+  );
+  expect(mockAnnounce).toHaveBeenCalledTimes(1);
+  expect(mockAnnounce).toHaveBeenLastCalledWith('Honza má dvanáct!');
+
+  view.rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+  );
+  expect(mockAnnounce).toHaveBeenCalledTimes(1);
+
+  act(() => jest.advanceTimersByTime(1700));
+});
+
+it('stays silent on Android across turns, verdicts and cheers', () => {
+  RN.Platform.OS = 'android';
+  try {
+    jest.useFakeTimers();
+    const initial = startDice(PLAYERS);
+    const afterMe = recordRoll(initial, 'me', [6, 4]);
+    const complete = recordRoll(afterMe, 'honza', [2, 3]);
+
+    const { rerender } = render(
+      <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={initial} />,
+    );
+    rerender(
+      <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={afterMe} />,
+    );
+    rerender(
+      <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={complete} />,
+    );
+
+    const uncontrolled = render(
+      <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+    );
+    act(() =>
+      mockGameHostProps?.onEvent?.('settled', { dice: [6, 6], playerId: 'honza' }),
+    );
+    act(() => jest.advanceTimersByTime(1700));
+    act(() =>
+      mockGameHostProps?.onEvent?.('settled', { dice: [1, 1], playerId: 'honza' }),
+    );
+    act(() => jest.advanceTimersByTime(1700));
+    uncontrolled.unmount();
+
+    expect(mockAnnounce).not.toHaveBeenCalled();
+  } finally {
+    RN.Platform.OS = 'ios';
+  }
 });

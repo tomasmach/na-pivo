@@ -25,6 +25,56 @@ it('tracks and keys same-name players by stable account id', () => {
   expect(onStart).toHaveBeenCalledWith([table[1], table[2]]);
 });
 
+it('exposes headings and start button disabled state for accessibility', () => {
+  render(
+    <GameLobby
+      def={undefined}
+      table={[{ id: 'me', name: 'Ty', tint: '#111' }]}
+      onStart={jest.fn()}
+    />,
+  );
+
+  expect(screen.getByText('Hra')).toHaveProp('accessibilityRole', 'header');
+  expect(screen.getByText('Kdo hraje')).toHaveProp('accessibilityRole', 'header');
+
+  const start = screen.getByLabelText('Potřebuješ aspoň dva hráče');
+  expect(start).toHaveProp('accessibilityState', expect.objectContaining({ disabled: true }));
+});
+
+it('enables the start button once at least two players are in', () => {
+  const table: LobbyPlayer[] = [
+    { id: 'a', name: 'Honza', tint: '#111' },
+    { id: 'b', name: 'Petra', tint: '#222' },
+  ];
+  render(<GameLobby def={undefined} table={table} onStart={jest.fn()} />);
+
+  const start = screen.getByLabelText('Začít, hraje 2');
+  expect(start).toHaveProp('accessibilityState', expect.objectContaining({ disabled: false }));
+});
+
+it('keeps roster checkbox state and invite button queryable', () => {
+  const table: LobbyPlayer[] = [
+    { id: 'a', name: 'Honza', tint: '#111' },
+    { id: 'b', name: 'Petra', tint: '#222' },
+  ];
+  render(
+    <GameLobby def={undefined} table={table} onStart={jest.fn()} onInvite={jest.fn()} />,
+  );
+
+  expect(screen.getAllByLabelText('Honza')[0]).toHaveProp(
+    'accessibilityState',
+    expect.objectContaining({ checked: true }),
+  );
+  fireEvent.press(screen.getAllByLabelText('Honza')[0]);
+  expect(screen.getAllByLabelText('Honza')[0]).toHaveProp(
+    'accessibilityState',
+    expect.objectContaining({ checked: false }),
+  );
+  fireEvent.press(screen.getAllByLabelText('Honza')[0]);
+
+  expect(screen.getByLabelText('Přizvat ke stolu')).toBeTruthy();
+});
+
 it('can invite a missing second player without leaving the lobby', () => {
   const onInvite = jest.fn();
   render(
