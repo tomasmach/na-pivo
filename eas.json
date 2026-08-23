@@ -7,6 +7,7 @@
         "development": {
             "developmentClient": true,
             "distribution": "internal",
+            "environment": "development",
             "ios": {
                 "simulator": false,
                 "resourceClass": "m-medium"
@@ -19,12 +20,7 @@
                 "resourceClass": "m-medium"
             },
             "channel": "preview",
-            "env": {
-                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz",
-                "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "861192856487-pf6vcnrer282mb4peaqfdnmdru2181d2.apps.googleusercontent.com",
-                "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e.apps.googleusercontent.com",
-                "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e"
-            }
+            "environment": "preview"
         },
         "production": {
             "autoIncrement": true,
@@ -38,6 +34,7 @@
                 "autoIncrement": "versionCode"
             },
             "channel": "production",
+            "environment": "production",
             "env": {
                 "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz",
                 "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "861192856487-pf6vcnrer282mb4peaqfdnmdru2181d2.apps.googleusercontent.com",
@@ -54,7 +51,7 @@
                 "appleTeamId": "T5W2WM23A6"
             },
             "android": {
-                "track": "alpha"
+                "track": "production"
             }
         }
     }

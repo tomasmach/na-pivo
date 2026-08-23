@@ -194,6 +194,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       {
         ios: {
           useFrameworks: 'static',
+          deploymentTarget: '16.4',
+        },
+        android: {
+          minSdkVersion: 24,
+          targetSdkVersion: 36,
         },
       },
     ],
@@ -228,6 +233,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     owner: 'tomasmachs-organization',
     scheme: 'napivo',
     version: '3.0.0',
+    runtimeVersion: { policy: 'appVersion' },
+    updates: {
+      url: 'https://u.expo.dev/1f785cbf-d168-4396-937a-463e1c3de2e8',
+    },
     icon: './assets/images/icon.png',
     orientation: 'portrait',
     // DESIGN.md intentionally postpones light mode. Keep native surfaces such
@@ -407,8 +416,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       permissions: [
-        // Geofencing (Android Geofencing API) wakes the app via a foreground
-        // service while the app is closed — required since Android 14.
+        // Geofence reminders run through the Play Services Geofencing API with
+        // callbacks delivered while the app is in the background — there is no
+        // Android foreground service (see blockedPermissions below).
         'android.permission.ACCESS_COARSE_LOCATION',
         'android.permission.ACCESS_FINE_LOCATION',
         'android.permission.ACCESS_BACKGROUND_LOCATION',
@@ -422,10 +432,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // keeps transitive config plugins (expo-location) from re-adding them.
       // RECORD_AUDIO is blocked for the same reason: no plugin (expo-camera,
       // expo-image-picker, transitive deps) may re-add microphone access.
+      // SYSTEM_ALERT_WINDOW ("draw over other apps") is blocked so no
+      // transitive dependency can silently request an overlay prompt.
       blockedPermissions: [
         'android.permission.FOREGROUND_SERVICE',
         'android.permission.FOREGROUND_SERVICE_LOCATION',
         'android.permission.RECORD_AUDIO',
+        'android.permission.SYSTEM_ALERT_WINDOW',
       ],
       adaptiveIcon: {
         foregroundImage: './assets/images/icon.png',

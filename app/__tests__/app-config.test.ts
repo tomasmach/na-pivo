@@ -164,6 +164,41 @@ describe('app.config store-policy surface', () => {
   });
 });
 
+describe('release config surface (app.json vs app.config.ts)', () => {
+  const appJsonPath = path.join(__dirname, '..', '..', 'app.json');
+  const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8')) as Record<string, unknown>;
+
+  const buildPropertiesOptions = findPluginOptions('expo-build-properties');
+
+  it('declares OTA updates in the final config under the appVersion policy', () => {
+    expect(config.runtimeVersion).toEqual({ policy: 'appVersion' });
+    expect(config.updates?.url).toBe(
+      'https://u.expo.dev/1f785cbf-d168-4396-937a-463e1c3de2e8',
+    );
+  });
+
+  it('keeps app.json minimal so runtime/updates live only in app.config.ts', () => {
+    expect(appJson).toEqual({ expo: {} });
+  });
+
+  it('pins native deployment targets through expo-build-properties', () => {
+    const ios = buildPropertiesOptions?.ios as Record<string, unknown> | undefined;
+    const android = buildPropertiesOptions?.android as Record<string, unknown> | undefined;
+    expect(ios?.deploymentTarget).toBe('16.4');
+    expect(android?.minSdkVersion).toBe(24);
+    expect(android?.targetSdkVersion).toBe(36);
+  });
+
+  it('blocks SYSTEM_ALERT_WINDOW so no transitive dependency can request overlays', () => {
+    expect(config.android?.blockedPermissions ?? []).toContain(
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    );
+    expect(config.android?.permissions ?? []).not.toContain(
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    );
+  });
+});
+
 describe('app.config native Czech localization', () => {
   const csLocalePath = path.join(__dirname, '..', '..', 'locales', 'cs.json');
   const csLocale: {
