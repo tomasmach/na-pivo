@@ -19,7 +19,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { accountXpProgress } from '@/data/accountXp';
@@ -151,6 +151,9 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
   const load = useCallback(async () => {
     const currentRequest = ++requestId.current;
     setLoading(true);
+    // A stale load-more landing under this refresh would merge into the wrong
+    // generation and leave its spinner disabled over a replaced list.
+    setLoadingMore(false);
     setError(null);
 
     const network = fetchMyNights();
@@ -183,9 +186,16 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
   }, [load]);
 
   const loadMore = useCallback(async () => {
-    if (!cursor || loadingMore) return;
+    // A refresh in flight resets loadingMore and will replace the list, so a
+    // page started now could only race it — belt over braces on top of the
+    // disabled prop.
+    if (!cursor || loading || loadingMore) return;
+    const currentRequest = requestId.current;
     setLoadingMore(true);
     const result = await fetchMyNights(cursor);
+    // A refresh, account swap or unmount bumped the request in between; this
+    // page belongs to a replaced generation and must touch nothing.
+    if (currentRequest !== requestId.current) return;
     setLoadingMore(false);
     if (!result.ok) {
       setError(result.detail);
@@ -196,7 +206,7 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
     setCursor(result.nextCursor);
     setError(null);
     persist(merged, result.nextCursor);
-  }, [cursor, loadingMore, nights, persist]);
+  }, [cursor, loading, loadingMore, nights, persist]);
 
   const openNight = useCallback((night: PublishedNight) => {
     router.push(`/night/${encodeURIComponent(night.id)}` as Href);
@@ -254,7 +264,7 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
       {cursor ? (
         <Pressable
           onPress={() => void loadMore()}
-          disabled={loadingMore}
+          disabled={loading || loadingMore}
           style={({ pressed }) => [styles.more, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Načíst starší večery"
@@ -315,17 +325,49 @@ export default function ProfileMockScreen() {
   );
 
   // The locally cached party snapshot: a count on the door without a request,
-  // so it survives a table with no signal.
-  const [partaCount, setPartaCount] = useState<number | null>(null);
-  useEffect(() => {
-    let alive = true;
-    void loadFriendsDashboardSnapshot().then((snapshot) => {
-      if (alive && snapshot) setPartaCount(snapshot.dashboard.friends.length);
+  // so it survives a table with no signal. The count carries the owner it was
+  // read for — tabs stay mounted across a credential replacement, so a stale
+  // count must disappear synchronously with the account it belonged to.
+  const ownerId = signedIn && profile?.id ? profile.id : null;
+  const [partaCount, setPartaCount] = useState<{ ownerId: string; count: number } | null>(null);
+  const partaRequestId = useRef(0);
+  // Raw-snapshot hydration is owner-bound (same invariant as usePartaDashboard):
+  // a null owner never reads the raw blob, only the first non-null owner of
+  // this mount may, and once a different non-null owner shows up in-process
+  // the read locks permanently — the raw storage is a single global blob, so
+  // any further read would hand back the previous account's data.
+  const partaSnapshotOwnerRef = useRef<string | null>(null);
+  const partaSnapshotLockedRef = useRef(false);
+
+  const loadPartaCount = useCallback(async () => {
+    if (!ownerId) return;
+    if (
+      partaSnapshotLockedRef.current ||
+      (partaSnapshotOwnerRef.current != null && partaSnapshotOwnerRef.current !== ownerId)
+    ) {
+      partaSnapshotLockedRef.current = true;
+      return;
+    }
+    partaSnapshotOwnerRef.current = ownerId;
+    const requestId = ++partaRequestId.current;
+    const snapshot = await loadFriendsDashboardSnapshot();
+    if (requestId !== partaRequestId.current || !snapshot) return;
+    setPartaCount({
+      ownerId,
+      count:
+        snapshot.dashboard.relationshipPage?.friendsCount ??
+        snapshot.dashboard.friends.length,
     });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  }, [ownerId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadPartaCount();
+      return () => {
+        partaRequestId.current += 1;
+      };
+    }, [loadPartaCount]),
+  );
 
   return (
     <ScrollView
@@ -386,7 +428,11 @@ export default function ProfileMockScreen() {
       <ProfileDoor
         icon={<UsersIcon size={20} color={Colors.amber} />}
         label={cs.profile.moreParta}
-        value={partaCount === null ? undefined : cs.profile.partaCount(partaCount)}
+        value={
+          partaCount && partaCount.ownerId === ownerId
+            ? cs.profile.partaCount(partaCount.count)
+            : undefined
+        }
         accessibilityLabel={cs.a11y.profileParta}
         onPress={() => {
           trackUiInteraction('profile_friends_manage_open');

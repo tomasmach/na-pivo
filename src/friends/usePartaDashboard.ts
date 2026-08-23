@@ -47,34 +47,46 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
   const boundaryEpochRef = useRef(0);
   const generationRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const snapshotAccountRef = useRef<string | null>(null);
+  const snapshotHydrationLockedRef = useRef(false);
   const pollGenerationRef = useRef(0);
   const pollAbortRef = useRef<AbortController | null>(null);
   const pageAbortRef = useRef<AbortController | null>(null);
   const pagePromiseRef = useRef<Promise<void> | null>(null);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
       abortRef.current?.abort();
       pollAbortRef.current?.abort();
       pageAbortRef.current?.abort();
-    },
-    [],
-  );
+    };
+  }, []);
 
-  // Snapshot hydration is account-bound: the read captures the accountId and
-  // boundary epoch it started under, and a result that outlives either one
-  // never touches state — so a blob persisted by the previous account cannot
-  // leak into the next one.
+  // Snapshot hydration is account-bound (same invariant as usePubVisits):
+  // a null accountId never reads the raw snapshot, only the first distinct
+  // account of this mount may, and once a different account shows up
+  // in-process the read locks permanently — the focused network flow keeps
+  // serving every account. A result that outlives its owner or boundary
+  // epoch never touches state.
   useEffect(() => {
+    if (accountId == null) return undefined;
+    if (
+      snapshotHydrationLockedRef.current ||
+      (snapshotAccountRef.current != null && snapshotAccountRef.current !== accountId)
+    ) {
+      snapshotHydrationLockedRef.current = true;
+      return undefined;
+    }
+    snapshotAccountRef.current = accountId;
     let alive = true;
-    const ownerAccount = accountId;
     const epoch = boundaryEpochRef.current;
     void loadFriendsDashboardSnapshot().then((snapshot) => {
       if (
         !alive ||
         !snapshot ||
-        ownerAccount !== ownerAccountRef.current ||
+        accountId !== ownerAccountRef.current ||
         epoch !== boundaryEpochRef.current
       ) {
         return;
@@ -95,6 +107,7 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
       pageAbortRef.current = null;
       pagePromiseRef.current = null;
       setLoadingMore(false);
+      pollGenerationRef.current += 1;
       pollAbortRef.current?.abort();
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -206,7 +219,12 @@ export function usePartaDashboard({ markRead = false }: { markRead?: boolean } =
       const forced = usePartaSignalStore.getState().consumeRefresh() != null;
       void load(forced ? 'refresh' : 'initial');
       void ensureFriendPushRegisteredIfGranted();
-      return () => setFocused(false);
+      return () => {
+        setFocused(false);
+        pollGenerationRef.current += 1;
+        pollAbortRef.current?.abort();
+        pollAbortRef.current = null;
+      };
     }, [load]),
   );
 

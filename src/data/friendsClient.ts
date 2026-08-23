@@ -15,6 +15,39 @@ import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcCon
 
 const REQUEST_TIMEOUT_MS = 9000;
 
+/**
+ * Monotonic ids handed to every dashboard request that persists a snapshot
+ * (full or page). Ids are assigned at start, but the snapshot winner is the
+ * most recent SUCCESSFULLY PARSED request — a newer request that fails must not
+ * strip an older success of its write, and a slow older success that finishes
+ * writing after a newer one must not leave stale data on disk. Return values
+ * stay untouched — callers own their own races.
+ */
+let latestSnapshotRequestId = 0;
+let latestSuccessfulSnapshotRequestId = 0;
+
+/**
+ * All snapshot writes serialize through this single promise chain, so an older
+ * slow write always lands on disk before a newer successful write and the final
+ * persisted state is the freshest data. The chain survives rejections: a failed
+ * write is swallowed and the next enqueued write still runs.
+ */
+let snapshotWriteChain: Promise<void> = Promise.resolve();
+
+function enqueueSnapshotWrite(
+  requestId: number,
+  generation: number,
+  dashboard: FriendsDashboard,
+): void {
+  const write = snapshotWriteChain.then(async () => {
+    // Re-checked at run time: a newer successful response may have claimed the
+    // snapshot while this write waited in the queue — skip it as stale.
+    if (requestId !== latestSuccessfulSnapshotRequestId) return;
+    await saveFriendsDashboardSnapshot(dashboard, generation);
+  });
+  snapshotWriteChain = write.catch(() => undefined);
+}
+
 export interface FriendProfile {
   id: string;
   nickname: string | null;
@@ -942,15 +975,21 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
   // the snapshot while this fetch is in flight, the write below is dropped instead
   // of re-persisting the previous account's graph under the next account.
   const generation = snapshotGeneration();
+  const requestId = ++latestSnapshotRequestId;
   const res = await requestJson('/v1/friends?limit=100', { signal });
   // Fail closed: if the account boundary moved while this fetch was in flight,
   // the response belongs to the previous account — never parse or return it.
   if (!res.ok || snapshotGeneration() !== generation) return null;
   const dashboard = parseFriendsDashboard(res.data);
+  if (requestId > latestSuccessfulSnapshotRequestId) {
+    latestSuccessfulSnapshotRequestId = requestId;
+  }
   // Persist the freshly-loaded graph so an offline cold start can hydrate it
-  // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
-  // generation guard drops the write if an account boundary was crossed mid-fetch.
-  void saveFriendsDashboardSnapshot(dashboard, generation);
+  // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return.
+  // The generation guard drops a write across an account boundary; the id guard
+  // drops a write that lost the race against a newer successful request, and
+  // the write queue keeps an older slow success from finishing last.
+  enqueueSnapshotWrite(requestId, generation, dashboard);
   return dashboard;
 }
 
@@ -1052,11 +1091,18 @@ export async function fetchNextFriendsDashboardPage(
     path += `&following_cursor=${meta.followingNextCursor}`;
   }
   const generation = snapshotGeneration();
+  const requestId = ++latestSnapshotRequestId;
   const res = await requestJson(path, { signal });
   if (!res.ok) return null;
   if (snapshotGeneration() !== generation) return null;
   const merged = mergeFriendsDashboardPage(current, parseFriendsDashboard(res.data));
-  void saveFriendsDashboardSnapshot(merged, generation);
+  // Same winner rule as the full dashboard: only the newest successfully
+  // parsed request (full or page) owns the snapshot write, and the write queue
+  // serializes it behind any older in-flight success.
+  if (requestId > latestSuccessfulSnapshotRequestId) {
+    latestSuccessfulSnapshotRequestId = requestId;
+  }
+  enqueueSnapshotWrite(requestId, generation, merged);
   return merged;
 }
 
@@ -1099,7 +1145,9 @@ export async function fetchAllFriendsDashboard(signal?: AbortSignal): Promise<Fr
     if (!cursorChanged && !grew && !completed) return null;
     dashboard = next;
   }
-  void saveFriendsDashboardSnapshot(dashboard, generation);
+  // No final save here: every step's request already persisted its result as
+  // the newest snapshot producer, and a redundant write could only race a
+  // newer request started mid-walk.
   return dashboard;
 }
 

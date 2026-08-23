@@ -2,6 +2,7 @@ import {
   fetchAllFriendsDashboard,
   fetchFriendsDashboard,
   fetchFriendsLive,
+  fetchNextFriendsDashboardPage,
   mergeFriendsDashboardPage,
   type FriendsDashboard,
 } from '../friendsClient';
@@ -291,6 +292,102 @@ it('drops a dashboard response that resolves after the account boundary moved', 
   expect(mockedSaveSnapshot).not.toHaveBeenCalled();
 });
 
+it('keeps an out-of-order older dashboard response from overwriting a newer snapshot', async () => {
+  const friend = (id: string) => ({ id, nickname: id, display_name: id, avatar_url: null, is_public: true });
+  const olderGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  const newerGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest
+    .fn()
+    .mockImplementationOnce(() => olderGate.promise)
+    .mockImplementationOnce(() => newerGate.promise) as jest.Mock;
+
+  const older = fetchFriendsDashboard();
+  const newer = fetchFriendsDashboard();
+  await pump();
+
+  newerGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('new')] }),
+  });
+  const newerDashboard = await newer;
+
+  expect(newerDashboard?.friends.map((f) => f.id)).toEqual(['new']);
+  expect(mockedSaveSnapshot).toHaveBeenCalledTimes(1);
+  expect(
+    (mockedSaveSnapshot.mock.calls[0]?.[0] as FriendsDashboard).friends.map((f) => f.id),
+  ).toEqual(['new']);
+
+  olderGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('old')] }),
+  });
+  const olderDashboard = await older;
+
+  expect(olderDashboard?.friends.map((f) => f.id)).toEqual(['old']);
+  const savedFriendIds = mockedSaveSnapshot.mock.calls.map(
+    (call) => (call[0] as FriendsDashboard).friends.map((f) => f.id),
+  );
+  expect(savedFriendIds).not.toContainEqual(['old']);
+});
+
+it('keeps a stale page response from overwriting a newer full-dashboard snapshot', async () => {
+  const friend = (id: string) => ({ id, nickname: id, display_name: id, avatar_url: null, is_public: true });
+  const pageGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  const fullGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest
+    .fn()
+    .mockImplementationOnce(() => pageGate.promise)
+    .mockImplementationOnce(() => fullGate.promise) as jest.Mock;
+
+  const current = {
+    friends: [friend('f1')],
+    following: [],
+    friendStats: {},
+    incomingRequests: [],
+    outgoingRequests: [],
+    relationshipPage: {
+      friendsCount: 2,
+      followingCount: 0,
+      nextCursor: 100,
+      followingNextCursor: null,
+      friendsTruncated: true,
+      followingTruncated: false,
+    },
+  } as unknown as FriendsDashboard;
+
+  // The page request starts first (older); the full dashboard starts second
+  // and becomes the newest snapshot producer.
+  const pendingPage = fetchNextFriendsDashboardPage(current);
+  const pendingFull = fetchFriendsDashboard();
+  await pump();
+
+  fullGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('full')] }),
+  });
+  const fullDashboard = await pendingFull;
+
+  expect(fullDashboard?.friends.map((f) => f.id)).toEqual(['full']);
+  expect(mockedSaveSnapshot).toHaveBeenCalledTimes(1);
+  expect(
+    (mockedSaveSnapshot.mock.calls[0]?.[0] as FriendsDashboard).friends.map((f) => f.id),
+  ).toEqual(['full']);
+
+  pageGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('page')] }),
+  });
+  const pageResult = await pendingPage;
+
+  // Caller still gets the merged result; only the snapshot save is suppressed.
+  expect(pageResult?.friends.map((f) => f.id)).toEqual(['f1', 'page']);
+  expect(mockedSaveSnapshot).toHaveBeenCalledTimes(1);
+});
+
 it('parses and saves the dashboard when the generation holds', async () => {
   global.fetch = jest.fn(async () => ({
     ok: true,
@@ -351,4 +448,96 @@ it('drops the live slice when the boundary moves during the 404 fallback', async
 
   expect(result).toBeNull();
   expect(mockedSaveSnapshot).not.toHaveBeenCalled();
+});
+
+it('persists the newest dashboard as the final snapshot even when the older write completes last', async () => {
+  const friend = (id: string) => ({ id, nickname: id, display_name: id, avatar_url: null, is_public: true });
+  const oldWriteGate = deferred<void>();
+  // Completion-state log: entries appear only once a write actually finished.
+  const persistedFriendIds: string[][] = [];
+  mockedSaveSnapshot.mockImplementation(async (dashboard: FriendsDashboard) => {
+    if (dashboard.friends[0]?.id === 'old') await oldWriteGate.promise;
+    persistedFriendIds.push(dashboard.friends.map((f) => f.id));
+  });
+  const olderGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  const newerGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest
+    .fn()
+    .mockImplementationOnce(() => olderGate.promise)
+    .mockImplementationOnce(() => newerGate.promise) as jest.Mock;
+
+  // The older request must START and RESOLVE success BEFORE the newer one even
+  // begins, so today's start-based guard lets the older save physically begin
+  // and park inside storage. Only then does the newer request start and succeed.
+  const older = fetchFriendsDashboard();
+  await pump();
+  olderGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('old')] }),
+  });
+  const olderDashboard = await older;
+
+  expect(olderDashboard?.friends.map((f) => f.id)).toEqual(['old']);
+  expect(mockedSaveSnapshot).toHaveBeenCalledTimes(1);
+  expect(
+    (mockedSaveSnapshot.mock.calls[0]?.[0] as FriendsDashboard).friends.map((f) => f.id),
+  ).toEqual(['old']);
+  expect(persistedFriendIds).toEqual([]);
+
+  const newer = fetchFriendsDashboard();
+  await pump();
+  newerGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('new')] }),
+  });
+  const newerDashboard = await newer;
+  await pump();
+
+  expect(newerDashboard?.friends.map((f) => f.id)).toEqual(['new']);
+
+  // Release the parked older write and drain the write queue. Whatever order
+  // the writes complete in, the final persisted state must be the newer data.
+  oldWriteGate.resolve();
+  await pump();
+
+  expect(persistedFriendIds[persistedFriendIds.length - 1]).toEqual(['new']);
+});
+
+it('saves the older dashboard as the only valid cache result when the newer request fails', async () => {
+  const friend = (id: string) => ({ id, nickname: id, display_name: id, avatar_url: null, is_public: true });
+  const persistedFriendIds: string[][] = [];
+  mockedSaveSnapshot.mockImplementation(async (dashboard: FriendsDashboard) => {
+    persistedFriendIds.push(dashboard.friends.map((f) => f.id));
+  });
+  const olderGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  const newerGate = deferred<{ ok: boolean; status: number; text: () => Promise<string> }>();
+  global.fetch = jest
+    .fn()
+    .mockImplementationOnce(() => olderGate.promise)
+    .mockImplementationOnce(() => newerGate.promise) as jest.Mock;
+
+  const older = fetchFriendsDashboard();
+  const newer = fetchFriendsDashboard();
+  await pump();
+
+  newerGate.resolve({ ok: false, status: 503, text: async () => '' });
+  expect(await newer).toBeNull();
+  expect(mockedSaveSnapshot).not.toHaveBeenCalled();
+
+  olderGate.resolve({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ friends: [friend('old')] }),
+  });
+  const olderDashboard = await older;
+  await pump();
+
+  expect(olderDashboard?.friends.map((f) => f.id)).toEqual(['old']);
+  expect(mockedSaveSnapshot).toHaveBeenCalledTimes(1);
+  expect(
+    (mockedSaveSnapshot.mock.calls[0]?.[0] as FriendsDashboard).friends.map((f) => f.id),
+  ).toEqual(['old']);
+  expect(persistedFriendIds).toEqual([['old']]);
 });

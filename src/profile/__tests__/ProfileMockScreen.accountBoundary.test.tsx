@@ -113,6 +113,18 @@ async function settleEffects(): Promise<void> {
   await Promise.resolve();
 }
 
+type FetchMyNightsResult =
+  | { ok: true; nights: PublishedNight[]; nextCursor: string | null }
+  | { ok: false; code: string; detail: string };
+
+function deferredFetch() {
+  let resolve!: (result: FetchMyNightsResult) => void;
+  const promise = new Promise<FetchMyNightsResult>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe('ProfileActivity account boundary', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -157,6 +169,84 @@ describe('ProfileActivity account boundary', () => {
     expect(renderedNights(renderer!)).toEqual([]);
     expect(mockLoadNightFeedCache).toHaveBeenNthCalledWith(1, 'account-a', 'mine');
     expect(mockLoadNightFeedCache).toHaveBeenNthCalledWith(2, 'account-b', 'mine');
+  });
+
+  it('keeps the fresh refresh result when a stale load-more page lands late', async () => {
+    const cachedNight = night('cached-n1');
+    const freshNight = night('fresh-n2');
+    const stalePageNight = night('stale-page');
+    const initialFailure = deferredFetch();
+    const olderPage = deferredFetch();
+    const refresh = deferredFetch();
+
+    mockLoadNightFeedCache.mockResolvedValueOnce({
+      nights: [cachedNight],
+      nextCursor: 'C1',
+      savedAt: Date.now(),
+    });
+    mockFetchMyNights.mockReturnValueOnce(initialFailure.promise);
+    mockFetchMyNights.mockReturnValueOnce(olderPage.promise);
+    mockFetchMyNights.mockReturnValueOnce(refresh.promise);
+
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <ProfileActivity accountId="account-a" reduceMotion />,
+      );
+    });
+    await act(settleEffects);
+    expect(renderedNights(renderer!)).toEqual([cachedNight]);
+
+    await act(async () => {
+      initialFailure.resolve({ ok: false, code: 'network', detail: 'Bez signálu.' });
+    });
+    await act(settleEffects);
+    const refreshButton = renderer!.root.findByProps({
+      accessibilityLabel: 'Obnovit svoje večery',
+    });
+    act(() => {
+      renderer!
+        .root.findAllByProps({ accessibilityLabel: 'Načíst starší večery' })[0]
+        .props.onPress();
+    });
+    act(() => {
+      refreshButton.props.onPress();
+    });
+
+    expect(mockFetchMyNights).toHaveBeenNthCalledWith(2, 'C1');
+
+    // While the refresh is pending, the load-more button is disabled — a page
+    // started now would share the refresh's requestId and both could publish.
+    expect(
+      renderer!
+        .root.findAllByProps({ accessibilityLabel: 'Načíst starší večery' })[0]
+        .props.disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      refresh.resolve({ ok: true, nights: [freshNight], nextCursor: null });
+    });
+    await act(settleEffects);
+    expect(renderedNights(renderer!)).toEqual([freshNight]);
+
+    await act(async () => {
+      olderPage.resolve({
+        ok: true,
+        nights: [stalePageNight],
+        nextCursor: null,
+      });
+    });
+    await act(settleEffects);
+
+    expect(renderedNights(renderer!)).toEqual([freshNight]);
+    const lastSave =
+      mockSaveNightFeedCache.mock.calls[mockSaveNightFeedCache.mock.calls.length - 1];
+    expect(lastSave[0]).toBe('account-a');
+    expect(lastSave[1]).toBe('mine');
+    expect(lastSave[2]).toMatchObject({
+      nights: [freshNight],
+      nextCursor: null,
+    });
   });
 
   it('keeps a same-account cached activity feed when its refresh is offline', async () => {
