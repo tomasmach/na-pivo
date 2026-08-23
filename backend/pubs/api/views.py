@@ -2280,6 +2280,12 @@ def _party_evening_for_drink(
     return _party_evening_for_entry(account, code, occurred_at=drank_at)
 
 
+# Stable explicit reason for a drink that hit the anti-abuse daily hard cap.
+# The row is still persisted as the account's private diary entry; only public
+# side effects (XP, community menu, shared evening) are withheld.
+_DAILY_HARD_CAP_REASON = "daily_hard_cap"
+
+
 class DrinksView(APIView):
     """
     GET    /v1/drinks
@@ -2292,6 +2298,15 @@ class DrinksView(APIView):
     and shots are stored privately without touching beer menus or catalogues.
     GET returns the calling account's private rows for cross-device/offline
     reconciliation; it never exposes another account's diary.
+
+    The daily hard cap (settings.DRINK_DAILY_HARD_CAP) is an anti-abuse and
+    public-fairness limit, not a private-diary limit: a candidate beyond it is
+    still persisted idempotently as ``is_suspect=True`` with reason
+    "daily_hard_cap", but with zero XP, no community merge, and no shared
+    party evening. It answers 201 with ``limited: true`` so released offline
+    queues drop the item as delivered instead of discarding the record on a
+    permanent 422. Responses carry additive ``limited`` for both accepted and
+    duplicate outcomes.
 
     Auth: Bearer token (per-account). Idempotent on (account, client_id): a
     replayed client_id returns 200 ``duplicate: true`` with NO repeated side
@@ -2403,6 +2418,7 @@ class DrinksView(APIView):
                         {
                             "accepted": True,
                             "duplicate": True,
+                            "limited": drink.suspect_reason == _DAILY_HARD_CAP_REASON,
                             "cache_key": drink.cache_key,
                             "place_context": drink.place_context,
                             "serving_type": drink.serving_type,
@@ -2418,43 +2434,10 @@ class DrinksView(APIView):
                     dj_timezone.now(),
                     drink_type,
                 )
-                if flags.hard_limited:
-                    logger.warning(
-                        "daily drink limit reached",
-                        extra={
-                            "event": "drink_limited",
-                            "observability": {
-                                "account_id": account.id,
-                                "drink_count": flags.daily_count,
-                            },
-                        },
-                    )
-                    return Response(
-                        {
-                            "code": "drink_limited",
-                            "detail": "daily drink limit reached",
-                        },
-                        status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    )
-
                 beer_brand = brand_match.brand if brand_match else None
-                xp_awarded = _drink_pivar_award(
-                    account=account,
-                    drank_at=flags.drank_at,
-                    is_suspect=flags.is_suspect,
-                    drink_type=drink_type,
-                    cache_key=cache_key,
-                    beer_brand=beer_brand,
-                    place_context=data["place_context"],
-                )
-                drink = DrinkLog.objects.create(
+                row_kwargs = dict(
                     account=account,
                     client_id=data["client_id"],
-                    party_evening=_party_evening_for_drink(
-                        account,
-                        data.get("party_code"),
-                        drank_at=flags.drank_at,
-                    ),
                     cache_key=cache_key,
                     name=data.get("name") or "",
                     lat=data.get("lat") if is_pub else None,
@@ -2477,6 +2460,58 @@ class DrinksView(APIView):
                     ),
                     price_czk=beer.get("price_czk"),
                     volume_ml=beer.get("volume_ml"),
+                )
+                if flags.hard_limited:
+                    # The daily hard cap is an anti-abuse/fairness limit, not a
+                    # private-diary one. Persist the entry as suspect so the
+                    # released client's offline queue can drop it as delivered
+                    # (201) without losing the record, while every public side
+                    # effect stays off: no XP, no community menu merge, no
+                    # shared party evening.
+                    logger.warning(
+                        "daily drink hard cap reached; private diary entry preserved as suspect",
+                        extra={
+                            "event": "drink_daily_hard_cap_preserved",
+                            "observability": {"drink_count": flags.daily_count},
+                        },
+                    )
+                    DrinkLog.objects.create(
+                        **row_kwargs,
+                        party_evening=None,
+                        drank_at=flags.drank_at,
+                        is_suspect=True,
+                        suspect_reason=_DAILY_HARD_CAP_REASON,
+                    )
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": False,
+                            "limited": True,
+                            "cache_key": cache_key,
+                            "place_context": data["place_context"],
+                            "serving_type": beer["serving_type"],
+                            "menu_updated": False,
+                            "pivar": _pivar_envelope(account, 0),
+                        },
+                        status=status.HTTP_201_CREATED,
+                    )
+
+                xp_awarded = _drink_pivar_award(
+                    account=account,
+                    drank_at=flags.drank_at,
+                    is_suspect=flags.is_suspect,
+                    drink_type=drink_type,
+                    cache_key=cache_key,
+                    beer_brand=beer_brand,
+                    place_context=data["place_context"],
+                )
+                drink = DrinkLog.objects.create(
+                    **row_kwargs,
+                    party_evening=_party_evening_for_drink(
+                        account,
+                        data.get("party_code"),
+                        drank_at=flags.drank_at,
+                    ),
                     drank_at=flags.drank_at,
                     is_suspect=flags.is_suspect,
                     suspect_reason=flags.suspect_reason,
@@ -2516,6 +2551,7 @@ class DrinksView(APIView):
             {
                 "accepted": True,
                 "duplicate": False,
+                "limited": False,
                 "cache_key": cache_key,
                 "place_context": data["place_context"],
                 "serving_type": beer["serving_type"],

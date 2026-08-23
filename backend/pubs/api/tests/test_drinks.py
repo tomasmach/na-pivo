@@ -302,6 +302,7 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
     assert body == {
         "accepted": True,
         "duplicate": False,
+        "limited": False,
         "cache_key": _KEY,
         "place_context": "pub",
         "serving_type": "unknown",
@@ -715,6 +716,7 @@ def test_log_idempotent_replay_returns_duplicate_and_no_double_merge(client):
     assert second.json() == {
         "accepted": True,
         "duplicate": True,
+        "limited": False,
         "cache_key": _KEY,
         "place_context": "pub",
         "serving_type": "unknown",
@@ -748,6 +750,7 @@ def test_non_pub_drink_without_pub_identity_or_price_is_private(client):
     assert response.json() == {
         "accepted": True,
         "duplicate": False,
+        "limited": False,
         "cache_key": None,
         "place_context": "private",
         "serving_type": "bottle",

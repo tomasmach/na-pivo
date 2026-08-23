@@ -9,7 +9,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.models import Account, DrinkLog
+from pubs.models import (
+    Account,
+    AccountUsageStats,
+    DrinkLog,
+    PartyEvening,
+    PartyEveningMember,
+    PubCommunityData,
+)
 
 
 @pytest.fixture
@@ -38,8 +45,8 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
-def _payload(*, drank_at, client_id=None) -> dict:
-    return {
+def _payload(*, drank_at, client_id=None, party_code=None) -> dict:
+    payload = {
         "client_id": str(client_id or uuid.uuid4()),
         "name": "U Zlatého tygra",
         "lat": 50.0876,
@@ -48,6 +55,9 @@ def _payload(*, drank_at, client_id=None) -> dict:
         "beer": {"name": "Pilsner Urquell", "price_czk": 65, "volume_ml": 500},
         "drank_at": drank_at.isoformat(),
     }
+    if party_code is not None:
+        payload["party_code"] = party_code
+    return payload
 
 
 def _drink(
@@ -138,6 +148,9 @@ def test_twenty_first_beer_is_daily_cap_but_twentieth_is_not(client):
 
     assert twentieth.status_code == status.HTTP_201_CREATED
     assert twenty_first.status_code == status.HTTP_201_CREATED
+    # Additive contract: non-hard-limited responses stay limited=False.
+    assert twentieth.json()["limited"] is False
+    assert twenty_first.json()["limited"] is False
     newest = list(DrinkLog.objects.order_by("drank_at"))[19:]
     assert [(row.is_suspect, row.suspect_reason) for row in newest] == [
         (False, ""),
@@ -210,25 +223,132 @@ def test_ninth_beer_in_burst_is_flagged_but_spread_beers_are_not(client):
 
 
 @pytest.mark.django_db
-def test_forty_first_drink_is_hard_limited_and_existing_rows_remain(client):
+def test_forty_first_drink_is_preserved_privately_and_hard_limited(client):
     token, account = _register(client)
     start = _yesterday_noon()
     for index in range(40):
         _drink(account, start + timedelta(minutes=20 * index))
+    stats, _ = AccountUsageStats.objects.get_or_create(account=account)
+    stats.pivar_xp = 123
+    stats.save(update_fields=["pivar_xp"])
+    client_id = uuid.uuid4()
 
     response = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=start + timedelta(minutes=20 * 40)),
+        data=_payload(drank_at=start + timedelta(minutes=20 * 40), client_id=client_id),
         format="json",
         **_auth(token),
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    assert response.json() == {
-        "code": "drink_limited",
-        "detail": "daily drink limit reached",
-    }
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["accepted"] is True
+    assert body["duplicate"] is False
+    assert body["limited"] is True
+    assert body["menu_updated"] is False
+    assert body["pivar"]["xp_awarded"] == 0
+    # No Pivař XP moved.
+    assert AccountUsageStats.objects.get(account=account).pivar_xp == 123
+    # No community menu merge: the private record never touched shared data.
+    assert PubCommunityData.objects.count() == 0
+
+    # The private diary keeps the row, flagged with the stable hard-cap reason.
+    assert DrinkLog.objects.filter(account=account).count() == 41
+    last = DrinkLog.objects.get(account=account, client_id=client_id)
+    assert last.is_suspect is True
+    assert last.suspect_reason == "daily_hard_cap"
+
+    # The account export / offline reconciliation read returns it too.
+    listed = client.get("/v1/drinks", **_auth(token))
+    assert listed.status_code == status.HTTP_200_OK
+    ids = {item["client_id"] for item in listed.json()["drinks"]}
+    assert str(client_id) in ids
+
+    # Duplicate retry of the same hard-limited client_id changes nothing.
+    xp_after_first = AccountUsageStats.objects.get(account=account).pivar_xp
+    retry = client.post(
+        "/v1/drinks",
+        data=_payload(drank_at=start + timedelta(minutes=20 * 40), client_id=client_id),
+        format="json",
+        **_auth(token),
+    )
+    assert retry.status_code == status.HTTP_200_OK
+    retry_body = retry.json()
+    assert retry_body["duplicate"] is True
+    assert retry_body["limited"] is True
+    assert retry_body["menu_updated"] is False
+    assert retry_body["pivar"]["xp_awarded"] == 0
+    assert DrinkLog.objects.filter(account=account).count() == 41
+    last.refresh_from_db()
+    assert last.is_suspect is True
+    assert last.suspect_reason == "daily_hard_cap"
+    assert AccountUsageStats.objects.get(account=account).pivar_xp == xp_after_first
+    assert PubCommunityData.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_hard_limited_drink_never_links_to_party_evening(client):
+    token, account = _register(client)
+    start = _yesterday_noon()
+    # 39 private rows leave the account exactly one drink below the hard cap.
+    for index in range(39):
+        _drink(account, start + timedelta(minutes=20 * index))
+    assert DrinkLog.objects.filter(account=account).count() == 39
+
+    # One open evening spanning BOTH requests below: its 24h entry window
+    # covers every drank_at used here, so any non-link is caused by the cap,
+    # not by an expired join code.
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="PRAH24",
+        pub_name="U Zlatého tygra",
+        pub_city="Praha",
+        started_at=start,
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account)
+
+    # Control: the 40th drink inside the open evening links normally.
+    control_client_id = uuid.uuid4()
+    control = client.post(
+        "/v1/drinks",
+        data=_payload(
+            drank_at=start + timedelta(minutes=20 * 39),
+            client_id=control_client_id,
+            party_code="PRAH24",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert control.status_code == status.HTTP_201_CREATED
+    assert control.json()["limited"] is False
     assert DrinkLog.objects.filter(account=account).count() == 40
+    control_row = DrinkLog.objects.get(account=account, client_id=control_client_id)
+    assert control_row.party_evening_id == evening.pk
+
+    xp_before = AccountUsageStats.objects.get(account=account).pivar_xp
+    limited_client_id = uuid.uuid4()
+
+    # The 41st drink hits the hard cap even though the same table is open:
+    # it stays private and never joins the shared evening.
+    limited = client.post(
+        "/v1/drinks",
+        data=_payload(
+            drank_at=start + timedelta(minutes=20 * 40),
+            client_id=limited_client_id,
+            party_code="PRAH24",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert limited.status_code == status.HTTP_201_CREATED
+    assert limited.json()["limited"] is True
+    row = DrinkLog.objects.get(account=account, client_id=limited_client_id)
+    assert row.is_suspect is True
+    assert row.suspect_reason == "daily_hard_cap"
+    assert row.party_evening_id is None
+    assert AccountUsageStats.objects.get(account=account).pivar_xp == xp_before
 
 
 @pytest.mark.django_db
@@ -269,9 +389,11 @@ def test_pub_and_non_pub_beers_share_daily_flag_and_hard_cap(client):
         format="json",
         **_auth(token),
     )
-    assert forty_first.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    assert forty_first.json()["code"] == "drink_limited"
-    assert DrinkLog.objects.filter(account=account).count() == 40
+    assert forty_first.status_code == status.HTTP_201_CREATED
+    assert forty_first.json()["limited"] is True
+    assert forty_first.json()["menu_updated"] is False
+    assert DrinkLog.objects.filter(account=account).count() == 41
+    assert DrinkLog.objects.latest("drank_at").suspect_reason == "daily_hard_cap"
 
 
 @pytest.mark.django_db
@@ -341,6 +463,8 @@ def test_duplicate_retry_does_not_recompute_or_change_flags(client):
 
     assert retry.status_code == status.HTTP_200_OK
     assert retry.json()["duplicate"] is True
+    # A normal duplicate stays limited=False in the additive contract.
+    assert retry.json()["limited"] is False
     assert DrinkLog.objects.filter(account=account).count() == 1
     drink = DrinkLog.objects.get(account=account)
     assert drink.is_suspect is True
