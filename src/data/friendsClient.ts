@@ -11,6 +11,7 @@ import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnaps
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 import { parseStatsTimeline, type RemoteStatsTimeline } from './statsClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
@@ -783,14 +784,25 @@ function extractError(data: unknown, status: number): FriendActionError {
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    /** Authoring shared UGC (pub name, city, message, recipients) → consent-gated. */
+    gatedUgc?: boolean;
+  } = {},
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
   }
 
-  const session = await ensureAccount(options.signal);
+  let session: AccountSession | null = null;
+  try {
+    session = await ensureAccount(options.signal);
+  } catch {
+    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
+  }
   if (!session || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
@@ -802,17 +814,27 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
     });
+    // The body is consumed exactly once. On a successful response an unparseable
+    // or rejected read must flow to the outer catch (network) instead of
+    // degrading to a false success; only non-ok bodies tolerate garbage JSON.
     let data: Record<string, unknown> = {};
-    try {
+    if (resp.ok) {
       const text = await resp.text();
       data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    } catch {
-      data = {};
+    } else {
+      try {
+        const text = await resp.text();
+        data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      } catch {
+        data = {};
+      }
     }
+    if (!resp.ok && options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
@@ -1223,6 +1245,7 @@ export async function createFriendPlan(
       scheduled_for: scheduledForISO,
       ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
+    gatedUgc: true,
   });
   return res.ok ? { ok: true } : res.result;
 }
@@ -1341,6 +1364,7 @@ export async function shareFriendPubActivity(
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
+    gatedUgc: true,
   });
   return res.ok ? { ok: true } : res.result;
 }

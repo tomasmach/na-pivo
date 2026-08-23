@@ -7,6 +7,7 @@ import {
   isRetriableFriendError,
   type FriendQueueItem,
 } from '../friendsQueue';
+import type { FriendActionResult } from '../friendsClient';
 import type { Pub } from '../pubs';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -14,14 +15,14 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-const respondToActivity = jest.fn(async () => ({ ok: true }));
-const clearActivityResponse = jest.fn(async () => ({ ok: true }));
-const reactToActivity = jest.fn(async () => ({ ok: true }));
-const clearActivityReaction = jest.fn(async () => ({ ok: true }));
-const shareFriendPubActivity = jest.fn(async () => ({ ok: true }));
-const createFriendPlan = jest.fn(async () => ({ ok: true }));
-const endFriendPubActivity = jest.fn(async () => ({ ok: true }));
-const sendFriendRequest = jest.fn(async () => ({ ok: true }));
+const respondToActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const clearActivityResponse = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const reactToActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const clearActivityReaction = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const shareFriendPubActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const createFriendPlan = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const endFriendPubActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const sendFriendRequest = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
 
 jest.mock('../friendsClient', () => ({
   respondToActivity: (...a: unknown[]) => respondToActivity(...(a as [])),
@@ -176,7 +177,7 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
   });
 
   it('does not deliver remaining items after clear runs during an in-flight flush', async () => {
-    let resolveFirst!: (value: { ok: boolean }) => void;
+    let resolveFirst!: (value: FriendActionResult) => void;
     respondToActivity.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveFirst = resolve;
@@ -215,5 +216,41 @@ describe('isRetriableFriendError', () => {
     for (const code of ['http_400', 'http_403', 'http_404', 'not_friends', 'blocked', 'self_reaction', 'invite_expired']) {
       expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
     }
+  });
+
+  it('treats semantic UGC consent codes as retriable so a queued activity survives', () => {
+    for (const code of ['ugc_consent_required', 'ugc_policy_update_required']) {
+      expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(true);
+    }
+  });
+
+  it('treats a bare http_428 as retriable', () => {
+    expect(isRetriableFriendError({ ok: false, code: 'http_428', detail: 'x' })).toBe(true);
+  });
+
+  it('keeps http_400 and http_422 permanent for an activity op', () => {
+    for (const code of ['http_400', 'http_422'] as const) {
+      expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
+    }
+  });
+
+  it.each([
+    ['semantic ugc_consent_required', { ok: false as const, code: 'ugc_consent_required', detail: 'x' }],
+    ['bare http_428', { ok: false as const, code: 'http_428', detail: 'x' }],
+  ])('a background flush retains a queued activity on %s', async (_name, failure) => {
+    shareFriendPubActivity.mockResolvedValue(failure);
+    await enqueueFriendOp({ op: 'activity', clientId: 'live-ugc', payload: { pub: PUB } });
+    const queue = await readQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ op: 'activity', clientId: 'live-ugc' });
+  });
+
+  it.each([
+    ['http_400', 'http_400'],
+    ['http_422', 'http_422'],
+  ] as const)('a poisoned activity op (%s) is dropped instead of looping forever', async (_name, code) => {
+    shareFriendPubActivity.mockResolvedValue({ ok: false, code, detail: 'x' });
+    await enqueueFriendOp({ op: 'activity', clientId: 'poison', payload: { pub: PUB } });
+    expect(await readQueue()).toEqual([]);
   });
 });

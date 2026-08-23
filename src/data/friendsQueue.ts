@@ -150,6 +150,15 @@ function classify(result: FriendActionResult): QueueSyncResult {
   if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth') {
     return 'retry';
   }
+  // UGC-consent gating (428) is a transient server state: the user can accept the
+  // new policy, so an authored activity must survive to a later flush.
+  if (
+    code === 'ugc_consent_required'
+    || code === 'ugc_policy_update_required'
+    || code === 'http_428'
+  ) {
+    return 'retry';
+  }
   const httpMatch = /^http_(\d{3})$/.exec(code);
   if (httpMatch) {
     const status = Number(httpMatch[1]);
