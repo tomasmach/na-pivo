@@ -1,5 +1,6 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { Platform } from 'react-native';
 
 import { cs } from '@/i18n/cs';
 
@@ -16,7 +17,8 @@ export type AccountExportResult =
   | { ok: false; code: string; detail: string };
 
 const EXPORT_ENDPOINT = '/v1/account/export';
-const REQUEST_TIMEOUT_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 45_000;
+const EXPORT_FILE_NAME = 'na-pivo-export.json';
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -76,6 +78,9 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
         const code = record && isNonEmptyString(record.code)
           ? record.code
           : `http_${response.status}`;
+        if (response.status === 429) {
+          return { ok: false, code, detail: cs.account.exportRateLimited };
+        }
         const detail = record && isNonEmptyString(record.detail)
           ? record.detail
           : cs.account.exportServerError;
@@ -94,7 +99,21 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
         return { ok: false, code: 'sharing_unavailable', detail: cs.account.exportServerError };
       }
 
-      const file = new File(Paths.cache, 'na-pivo-export.json');
+      // On Android a resolved share chooser does not guarantee the receiving
+      // app finished reading the FileProvider stream, so the previous export
+      // file is only cleaned here, right before writing the new one.
+      if (Platform.OS === 'android') {
+        try {
+          const stale = new File(Paths.cache, EXPORT_FILE_NAME);
+          if (stale.exists) {
+            stale.delete();
+          }
+        } catch {
+          // Ignore cleanup failures.
+        }
+      }
+
+      const file = new File(Paths.cache, EXPORT_FILE_NAME);
       let shared = false;
       try {
         file.create({ overwrite: true });
@@ -107,15 +126,24 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
         shared = true;
       } catch {
         if (!shared) {
+          try {
+            if (file.exists) {
+              file.delete();
+            }
+          } catch {
+            // Ignore delete failures.
+          }
           return { ok: false, code: 'share_failed', detail: cs.account.exportServerError };
         }
       } finally {
-        try {
-          if (file.exists) {
-            file.delete();
+        if (Platform.OS !== 'android' && shared) {
+          try {
+            if (file.exists) {
+              file.delete();
+            }
+          } catch {
+            // Ignore delete failures.
           }
-        } catch {
-          // Ignore delete failures.
         }
       }
 

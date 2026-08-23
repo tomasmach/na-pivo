@@ -1,4 +1,5 @@
 import { exportMyAccountData } from '../accountExport';
+import { Platform } from 'react-native';
 
 jest.mock('../backendConfig', () => ({
   getBackendEndpoint: jest.fn(
@@ -40,26 +41,30 @@ jest.mock('../privateAccountBoundary', () => {
 
 interface TrackedFakeFile {
   uri: string;
-  exists: boolean;
   create: jest.Mock;
   write: jest.Mock;
   delete: jest.Mock;
 }
 
+// Fake filesystem models existence per absolute path so that separate File
+// instances pointing at the same uri observe the same on-"disk" state.
 jest.mock('expo-file-system', () => {
+  const pathState = new Map<string, boolean>();
   const instances: TrackedFakeFile[] = [];
   class FakeFile {
     uri: string;
-    exists = false;
     create = jest.fn(() => {
-      this.exists = true;
+      pathState.set(this.uri, true);
     });
     write = jest.fn();
     delete = jest.fn(() => {
-      this.exists = false;
+      pathState.set(this.uri, false);
     });
     constructor(...parts: string[]) {
       this.uri = parts.join('/');
+      Object.defineProperty(this, 'exists', {
+        get: () => pathState.get(this.uri) ?? false,
+      });
       instances.push(this);
     }
   }
@@ -67,14 +72,29 @@ jest.mock('expo-file-system', () => {
     File: FakeFile,
     Paths: { cache: '/cache' },
     __fileInstances: instances,
+    __pathState: pathState,
   };
 });
 
 const {
   __fileInstances: fileInstances,
+  __pathState: pathState,
 } = jest.requireMock('expo-file-system') as {
   __fileInstances: TrackedFakeFile[];
+  __pathState: Map<string, boolean>;
 };
+
+const EXPORT_URI = '/cache/na-pivo-export.json';
+const RATE_LIMIT_DETAIL =
+  'Dnešní limit exportů je vyčerpaný. Zkus to znovu zítra.';
+
+function existsAt(uri: string): boolean {
+  return pathState.get(uri) ?? false;
+}
+
+function setPlatform(os: 'ios' | 'android'): void {
+  (Platform as unknown as { OS: string }).OS = os;
+}
 
 const isAvailableMock = jest.fn(() => Promise.resolve(true));
 const shareAsyncMock = jest.fn(
@@ -92,6 +112,8 @@ describe('exportMyAccountData', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fileInstances.length = 0;
+    pathState.clear();
+    setPlatform('ios');
     runMutationImpl.mockImplementation(
       (task: (scope: { signal: AbortSignal }) => Promise<unknown>) =>
         task({ signal: new AbortController().signal }),
@@ -99,22 +121,22 @@ describe('exportMyAccountData', () => {
     isAvailableMock.mockResolvedValue(true);
     shareAsyncMock.mockResolvedValue(undefined);
     global.fetch = fetchMock as unknown as typeof fetch;
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ drinks: [] }), { status: 200 }),
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ drinks: [] }), { status: 200 }),
     );
-  });
-
-  async function expectSuccess(sessionOverrides: object) {
     ensureAccountMock.mockResolvedValue({
       deviceId: 'device',
       accountId: 'acct-1',
       token: 'tok-1',
-      ...sessionOverrides,
     });
+  });
 
-    const result = await exportMyAccountData();
+  afterEach(() => {
+    setPlatform('ios');
+  });
 
-    expect(result).toEqual({ ok: true });
+  function expectSharedThroughExactPath(): void {
     expect(fetchMock).toHaveBeenCalledWith(
       'https://backend.test/v1/account/export',
       expect.objectContaining({
@@ -125,39 +147,199 @@ describe('exportMyAccountData', () => {
         }),
       }),
     );
-    expect(fileInstances).toHaveLength(1);
-    const file = fileInstances[0];
-    expect(file.uri).toBe('/cache/na-pivo-export.json');
-    expect(file.create).toHaveBeenCalledWith({ overwrite: true });
-    expect(file.write).toHaveBeenCalledWith('{\n  "drinks": []\n}');
+    const file = fileInstances.at(-1);
+    expect(file?.uri).toBe(EXPORT_URI);
+    expect(file?.create).toHaveBeenCalledWith({ overwrite: true });
+    expect(file?.write).toHaveBeenCalledWith('{\n  "drinks": []\n}');
     expect(shareAsyncMock).toHaveBeenCalledWith(
-      '/cache/na-pivo-export.json',
+      EXPORT_URI,
       expect.objectContaining({
         mimeType: 'application/json',
         UTI: 'public.json',
       }),
     );
-    expect(file.delete).toHaveBeenCalled();
   }
 
-  it('succeeds for an anonymous session', async () => {
-    await expectSuccess({});
+  it('iOS: successful share resolves and deletes the file immediately', async () => {
+    const result = await exportMyAccountData();
+
+    expect(result).toEqual({ ok: true });
+    expectSharedThroughExactPath();
+    expect(fileInstances.at(-1)?.delete).toHaveBeenCalled();
+    expect(existsAt(EXPORT_URI)).toBe(false);
   });
 
-  it('succeeds for a social-only session through the same direct path', async () => {
-    await expectSuccess({ provider: 'google' });
+  it('Android: successful share resolves and retains the export file', async () => {
+    setPlatform('android');
+
+    const result = await exportMyAccountData();
+
+    expect(result).toEqual({ ok: true });
+    expectSharedThroughExactPath();
+    expect(fileInstances.at(-1)?.delete).not.toHaveBeenCalled();
+    expect(existsAt(EXPORT_URI)).toBe(true);
   });
 
-  it('succeeds for a verified email session through the same direct path', async () => {
-    await expectSuccess({ provider: 'password', emailVerified: true });
+  it('Android: second export cleans the previous exact export path before recreating and keeps the new file', async () => {
+    setPlatform('android');
+    await exportMyAccountData();
+    expect(existsAt(EXPORT_URI)).toBe(true);
+    expect(fileInstances).toHaveLength(2);
+
+    const result = await exportMyAccountData();
+
+    expect(result).toEqual({ ok: true });
+    expect(fileInstances).toHaveLength(4);
+    const [, firstFile, secondStaleCheck, secondFile] = fileInstances;
+    expect(firstFile?.uri).toBe(EXPORT_URI);
+    expect(secondStaleCheck?.uri).toBe(EXPORT_URI);
+    expect(secondStaleCheck?.create).not.toHaveBeenCalled();
+    expect(secondStaleCheck?.delete).toHaveBeenCalledTimes(1);
+    // Stale cleanup targets only the exact export path and happens before
+    // the new file is recreated.
+    expect(
+      secondStaleCheck.delete.mock.invocationCallOrder[0],
+    ).toBeLessThan(secondFile.create.mock.invocationCallOrder[0]);
+    expect(secondFile?.uri).toBe(EXPORT_URI);
+    expect(secondFile?.delete).not.toHaveBeenCalled();
+    expect(existsAt(EXPORT_URI)).toBe(true);
+  });
+
+  it('never constructs or deletes any foreign cache filename', async () => {
+    await exportMyAccountData();
+
+    setPlatform('android');
+    await exportMyAccountData();
+    await exportMyAccountData();
+
+    setPlatform('ios');
+    shareAsyncMock.mockRejectedValue(new Error('cancelled'));
+    await exportMyAccountData();
+
+    expect(new Set(fileInstances.map((f) => f.uri))).toEqual(
+      new Set([EXPORT_URI]),
+    );
+  });
+
+  it.each(['ios', 'android'] as const)(
+    '%s: write failure cleans up the file and returns share_failed',
+    async (os) => {
+      setPlatform(os);
+      fileInstances.length = 0;
+      let leaked: TrackedFakeFile | undefined;
+      const { File } = jest.requireMock('expo-file-system') as {
+        File: new (...parts: string[]) => TrackedFakeFile;
+      };
+      const original = File;
+      // Capture the instance the source creates so write can reject.
+      class SpyingFile extends original {
+        constructor(...parts: string[]) {
+          super(...parts);
+          leaked = this;
+          this.write.mockImplementation(() => {
+            throw new Error('disk full');
+          });
+        }
+      }
+      (jest.requireMock('expo-file-system') as { File: unknown }).File =
+        SpyingFile;
+
+      const result = await exportMyAccountData();
+
+      (jest.requireMock('expo-file-system') as { File: unknown }).File =
+        original;
+
+      expect(result).toEqual({
+        ok: false,
+        code: 'share_failed',
+        detail: expect.any(String),
+      });
+      expect(leaked?.delete).toHaveBeenCalled();
+      expect(existsAt(EXPORT_URI)).toBe(false);
+      expect(shareAsyncMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['ios', 'android'] as const)(
+    '%s: share rejection deletes the file because no recipient needs it',
+    async (os) => {
+      setPlatform(os);
+      shareAsyncMock.mockRejectedValue(new Error('user cancelled'));
+
+      const result = await exportMyAccountData();
+
+      expect(result).toEqual({
+        ok: false,
+        code: 'share_failed',
+        detail: expect.any(String),
+      });
+      expect(fileInstances.at(-1)?.delete).toHaveBeenCalled();
+      expect(existsAt(EXPORT_URI)).toBe(false);
+    },
+  );
+
+  it.each(['ios', 'android'] as const)(
+    '%s: cleanup delete failure never turns a successful export into failure',
+    async (os) => {
+      setPlatform(os);
+      const { File } = jest.requireMock('expo-file-system') as {
+        File: new (...parts: string[]) => TrackedFakeFile;
+      };
+      class ThrowingDeleteFile extends File {
+        constructor(...parts: string[]) {
+          super(...parts);
+          this.delete.mockImplementation(() => {
+            throw new Error('delete failed');
+          });
+        }
+      }
+      const saved = (
+        jest.requireMock('expo-file-system') as { File: unknown }
+      ).File;
+      (jest.requireMock('expo-file-system') as { File: unknown }).File =
+        ThrowingDeleteFile;
+      try {
+        const result = await exportMyAccountData();
+        expect(result).toEqual({ ok: true });
+        expect(shareAsyncMock).toHaveBeenCalled();
+      } finally {
+        (jest.requireMock('expo-file-system') as { File: unknown }).File =
+          saved;
+      }
+    },
+  );
+
+  it('passes a 45s timeout to chainAbortSignal and its signal to fetch; abort yields network error and creates no file', async () => {
+    const scopedSignal = new AbortController().signal;
+    chainAbortSignalMock.mockReturnValueOnce({
+      signal: scopedSignal,
+      cleanup: jest.fn(),
+    });
+
+    await exportMyAccountData();
+
+    expect(chainAbortSignalMock).toHaveBeenCalledWith(
+      expect.anything(),
+      45_000,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(scopedSignal);
+
+    const abortError = new Error('aborted');
+    abortError.name = 'AbortError';
+    fetchMock.mockRejectedValue(abortError);
+
+    const failed = await exportMyAccountData();
+
+    expect(failed).toEqual({
+      ok: false,
+      code: 'network',
+      detail: expect.any(String),
+    });
+    expect(fileInstances).toHaveLength(1);
+    expect(shareAsyncMock).not.toHaveBeenCalledTimes(2);
   });
 
   it('returns network failure and creates nothing when fetch fails', async () => {
-    ensureAccountMock.mockResolvedValue({
-      deviceId: 'device',
-      accountId: 'acct-1',
-      token: 'tok-1',
-    });
     fetchMock.mockRejectedValue(new Error('offline'));
 
     const result = await exportMyAccountData();
@@ -172,11 +354,6 @@ describe('exportMyAccountData', () => {
   });
 
   it('returns sharing_unavailable and creates nothing', async () => {
-    ensureAccountMock.mockResolvedValue({
-      deviceId: 'device',
-      accountId: 'acct-1',
-      token: 'tok-1',
-    });
     isAvailableMock.mockResolvedValue(false);
 
     const result = await exportMyAccountData();
@@ -190,36 +367,78 @@ describe('exportMyAccountData', () => {
     expect(shareAsyncMock).not.toHaveBeenCalled();
   });
 
-  it('returns share_failed and deletes the file when sharing rejects', async () => {
-    ensureAccountMock.mockResolvedValue({
-      deviceId: 'device',
-      accountId: 'acct-1',
-      token: 'tok-1',
-    });
-    shareAsyncMock.mockRejectedValue(new Error('user cancelled'));
+  it('maps HTTP 429 to the exact rate-limit copy even when the server sends an English default detail', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({ detail: 'Request was throttled.' }),
+        { status: 429 },
+      ),
+    );
 
     const result = await exportMyAccountData();
 
     expect(result).toEqual({
       ok: false,
-      code: 'share_failed',
-      detail: expect.any(String),
+      code: 'http_429',
+      detail: RATE_LIMIT_DETAIL,
     });
-    expect(fileInstances[0]?.delete).toHaveBeenCalled();
+    expect(fileInstances).toHaveLength(0);
+    expect(shareAsyncMock).not.toHaveBeenCalled();
   });
 
-  it('treats resolved dismissal as success and deletes the file', async () => {
+  it('preserves parsed server detail for other non-2xx responses', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: 'Server má momentálně problém.',
+          code: 'server_rozbity',
+        }),
+        { status: 500 },
+      ),
+    );
+
+    const result = await exportMyAccountData();
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'server_rozbity',
+      detail: 'Server má momentálně problém.',
+    });
+  });
+
+  it('succeeds for an anonymous session', async () => {
+    const result = await exportMyAccountData();
+    expect(result).toEqual({ ok: true });
+    expectSharedThroughExactPath();
+  });
+
+  it('succeeds for a social-only session through the same direct path', async () => {
     ensureAccountMock.mockResolvedValue({
       deviceId: 'device',
       accountId: 'acct-1',
       token: 'tok-1',
+      provider: 'google',
     });
-    shareAsyncMock.mockResolvedValue(undefined);
 
     const result = await exportMyAccountData();
 
     expect(result).toEqual({ ok: true });
-    expect(fileInstances[0]?.delete).toHaveBeenCalled();
+    expectSharedThroughExactPath();
+  });
+
+  it('succeeds for a verified email session through the same direct path', async () => {
+    ensureAccountMock.mockResolvedValue({
+      deviceId: 'device',
+      accountId: 'acct-1',
+      token: 'tok-1',
+      provider: 'password',
+      emailVerified: true,
+    });
+
+    const result = await exportMyAccountData();
+
+    expect(result).toEqual({ ok: true });
+    expectSharedThroughExactPath();
   });
 
   it('maps boundary rejection to account_transition before any IO', async () => {

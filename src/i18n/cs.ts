@@ -1031,6 +1031,8 @@ export const cs = {
     exportNetworkError:
       'Export se nepodařilo stáhnout. Zkus to znovu, až budeš mít síť.',
     exportServerError: 'Export teď nejde připravit. Zkus to za chvíli.',
+    exportRateLimited:
+      'Dnešní limit exportů je vyčerpaný. Zkus to znovu zítra.',
     exportAccountTransitionError:
       'Účet se právě mění. Zkus export spustit znovu.',
     subscriptionTitle: 'Na Pivo+',
