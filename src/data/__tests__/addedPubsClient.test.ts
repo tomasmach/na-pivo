@@ -1,5 +1,16 @@
-import { buildAddedPubEntry, submitAddedPub } from '../addedPubsClient';
+import {
+  buildAddedPubEntry,
+  fetchOwnAddedPubs,
+  submitAddedPub,
+  submitAddedPubEdit,
+} from '../addedPubsClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
+import {
+  UGC_POLICY_HEADER,
+  clearUgcConsentStateForTests,
+  rememberUgcConsent,
+  subscribeUgcConsentRequired,
+} from '../ugcConsent';
 
 jest.mock('../account', () => ({
   ensureAccount: jest.fn(),
@@ -133,6 +144,7 @@ describe('submitAddedPub', () => {
     expect(init.headers).toEqual({
       'Content-Type': 'application/json',
       Authorization: 'Bearer t',
+      [UGC_POLICY_HEADER]: '2026-08-22',
     });
     expect(JSON.parse(init.body as string)).toEqual(entry);
   });
@@ -181,5 +193,147 @@ describe('submitAddedPub', () => {
     }) as unknown as typeof fetch;
 
     await expect(submitAddedPub(entry)).resolves.toBe('retry');
+  });
+});
+
+describe('UGC policy contract', () => {
+  const consentSnapshot = {
+    policyVersion: '2026-08-22',
+    accepted: true,
+    acceptedVersion: '2026-08-22',
+    acceptedAt: null,
+  };
+
+  const entry = buildAddedPubEntry(
+    {
+      name: 'U Testu',
+      lat: 50.0812,
+      lng: 14.4182,
+      city: 'Praha',
+    },
+    'client-1',
+  );
+
+  const okBody = {
+    client_id: 'client-1',
+    cache_key: 'u2fkbnhz',
+    name: 'U Testu',
+    lat: 50.0813,
+    lng: 14.4183,
+  };
+
+  function fetchReturning(status: number, body?: unknown): jest.Mock {
+    const spy = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    global.fetch = spy as unknown as typeof fetch;
+    return spy;
+  }
+
+  function firstFetchInit(spy: jest.Mock): RequestInit {
+    return (spy.mock.calls[0] as unknown as [string, RequestInit])[1];
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+    (ensureAccount as jest.Mock).mockResolvedValue({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 't',
+    });
+  });
+
+  it('submitAddedPub POST carries the canonical UGC policy header', async () => {
+    setBackend('https://api.example.com');
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchReturning(201, okBody);
+
+    await submitAddedPub(entry);
+
+    const init = firstFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer t',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it('submitAddedPubEdit PATCH carries the canonical UGC policy header', async () => {
+    setBackend('https://api.example.com');
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchReturning(200, okBody);
+
+    await submitAddedPubEdit({ client_id: 'client-1', name: 'U Testu jinak' });
+
+    const init = firstFetchInit(spy);
+    expect(init.method).toBe('PATCH');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer t',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it('fetchOwnAddedPubs GET must NOT carry the UGC policy header', async () => {
+    setBackend('https://api.example.com');
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchReturning(200, []);
+
+    await fetchOwnAddedPubs();
+
+    const init = firstFetchInit(spy);
+    expect(init.headers).toEqual({ Authorization: 'Bearer t' });
+    expect((init.headers as Record<string, string>)[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'submitAddedPub on 428 %s remains retry and emits exactly one consent signal',
+    async (code) => {
+      setBackend('https://api.example.com');
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      await expect(submitAddedPub(entry)).resolves.toBe('retry');
+      expect(signals).toEqual([code]);
+    },
+  );
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'submitAddedPubEdit on 428 %s remains retry and emits exactly one consent signal',
+    async (code) => {
+      setBackend('https://api.example.com');
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      await expect(submitAddedPubEdit({ client_id: 'client-1', name: 'U Testu jinak' })).resolves.toBe('retry');
+      expect(signals).toEqual([code]);
+    },
+  );
+
+  it.each([400, 422])('submitAddedPub keeps %s permanent-error without a consent signal', async (status) => {
+    setBackend('https://api.example.com');
+    const signals: string[] = [];
+    subscribeUgcConsentRequired((event) => signals.push(event.code));
+    fetchReturning(status);
+
+    await expect(submitAddedPub(entry)).resolves.toBe('permanent-error');
+    expect(signals).toEqual([]);
+  });
+
+  it.each([400, 422])('submitAddedPubEdit keeps %s permanent-error without a consent signal', async (status) => {
+    setBackend('https://api.example.com');
+    const signals: string[] = [];
+    subscribeUgcConsentRequired((event) => signals.push(event.code));
+    fetchReturning(status);
+
+    await expect(submitAddedPubEdit({ client_id: 'client-1' })).resolves.toBe('permanent-error');
+    expect(signals).toEqual([]);
   });
 });

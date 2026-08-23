@@ -29,6 +29,7 @@
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 import { trackClientEvent } from './telemetryClient';
 
 /** Taxonomy item from GET /v1/pub-amenities/kinds (canonical wire names). */
@@ -186,6 +187,15 @@ export type SubmitAmenityResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
+/** Parse the non-ok response body once; null when unparseable. Never throws. */
+async function parseNonOkPayload(resp: Response): Promise<unknown> {
+  try {
+    return (await resp.json()) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 type AmenityOperation = 'submit_votes' | 'fetch_votes' | 'fetch_aggregates' | 'fetch_kinds';
 
 function trackAmenitySynced(operation: 'submit_votes'): void {
@@ -247,12 +257,14 @@ export async function submitAmenityVotes(
   }
 
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  const isPublicContribution = votes.some((v) => v.value !== null);
   try {
     const resp = await fetch(endpoint, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(isPublicContribution ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: JSON.stringify({ votes }),
       signal: abort.signal,
@@ -261,6 +273,9 @@ export async function submitAmenityVotes(
     if (resp.ok) {
       trackAmenitySynced('submit_votes');
       return 'ok';
+    }
+    if (isPublicContribution) {
+      notifyUgcConsentRequiredFromResponse(resp.status, await parseNonOkPayload(resp));
     }
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'amenity_votes_submit',
@@ -363,12 +378,14 @@ export async function submitAmenityVotesDetailed(
   }
 
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  const isPublicContribution = votes.some((v) => v.value !== null);
   try {
     const resp = await fetch(endpoint, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(isPublicContribution ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: JSON.stringify({ votes }),
       signal: abort.signal,
@@ -383,6 +400,9 @@ export async function submitAmenityVotesDetailed(
         body = null; // a 2xx with an unparseable body is still 'ok' for the queue.
       }
       return { status: 'ok', body };
+    }
+    if (isPublicContribution) {
+      notifyUgcConsentRequiredFromResponse(resp.status, await parseNonOkPayload(resp));
     }
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'amenity_votes_submit',

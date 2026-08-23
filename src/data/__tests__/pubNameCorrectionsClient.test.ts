@@ -3,6 +3,12 @@ import {
   submitPubNameCorrection,
 } from '../pubNameCorrectionsClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
+import {
+  UGC_POLICY_HEADER,
+  clearUgcConsentStateForTests,
+  rememberUgcConsent,
+  subscribeUgcConsentRequired,
+} from '../ugcConsent';
 import type { Pub } from '../pubs';
 
 jest.mock('../account', () => ({
@@ -88,6 +94,7 @@ describe('submitPubNameCorrection', () => {
     expect(init.headers).toEqual({
       'Content-Type': 'application/json',
       Authorization: 'Bearer secret-token',
+      [UGC_POLICY_HEADER]: '2026-08-22',
     });
     expect(JSON.parse(init.body as string)).toEqual(entry);
   });
@@ -142,5 +149,79 @@ describe('submitPubNameCorrection', () => {
     }) as unknown as typeof fetch;
 
     await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
+  });
+});
+
+describe('UGC policy contract', () => {
+  const consentSnapshot = {
+    policyVersion: '2026-08-22',
+    accepted: true,
+    acceptedVersion: '2026-08-22',
+    acceptedAt: null,
+  };
+
+  const entry = buildPubNameCorrectionEntry(PUB, 'U Testu po novém', 'client-1');
+
+  function fetchReturning(status: number, body?: unknown): jest.Mock {
+    const spy = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    }));
+    global.fetch = spy as unknown as typeof fetch;
+    return spy;
+  }
+
+  function firstFetchInit(spy: jest.Mock): RequestInit {
+    return (spy.mock.calls[0] as unknown as [string, RequestInit])[1];
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+    (ensureAccount as jest.Mock).mockResolvedValue({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 't',
+    });
+  });
+
+  it('submitPubNameCorrection POST carries the canonical UGC policy header', async () => {
+    setBackend('https://api.example.com');
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchReturning(201, {});
+
+    await submitPubNameCorrection(entry);
+
+    const init = firstFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer t',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'submitPubNameCorrection on 428 %s remains retry and emits exactly one consent signal',
+    async (code) => {
+      setBackend('https://api.example.com');
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
+      expect(signals).toEqual([code]);
+    },
+  );
+
+  it.each([400, 422])('submitPubNameCorrection keeps %s permanent-error without a consent signal', async (status) => {
+    setBackend('https://api.example.com');
+    const signals: string[] = [];
+    subscribeUgcConsentRequired((event) => signals.push(event.code));
+    fetchReturning(status);
+
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('permanent-error');
+    expect(signals).toEqual([]);
   });
 });

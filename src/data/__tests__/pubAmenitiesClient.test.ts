@@ -14,6 +14,11 @@ import {
 } from '../pubAmenitiesClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 import { getBackendEndpoint } from '../backendConfig';
+import {
+  UGC_POLICY_HEADER,
+  clearUgcConsentStateForTests,
+  subscribeUgcConsentRequired,
+} from '../ugcConsent';
 
 jest.mock('../backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
@@ -350,6 +355,112 @@ describe('submitAmenityVotesDetailed — live XP envelope', () => {
     expect(res.status).toBe('ok');
     expect(res.body?.results).toHaveLength(1);
     expect(res.body?.results[0].aggregate).toBeNull();
+  });
+});
+
+describe('UGC policy contract', () => {
+  const UGC_428_CODES = ['ugc_consent_required', 'ugc_policy_update_required'] as const;
+
+  const liveVote = vote();
+  /** Pure retraction: every row tombstones (value null). */
+  const retractionVotes = [vote({ value: null }), vote({ amenity_key: 'practical_wifi', value: null })];
+
+  function fetchReturning(status: number, body?: unknown): jest.Mock {
+    return installFetch(fetchResolving(status, body));
+  }
+
+  function firstFetchInit(spy: jest.Mock): RequestInit {
+    return spy.mock.calls[0][1] as RequestInit;
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  it('submitAmenityVotes PUT with a live vote carries the canonical UGC policy header', async () => {
+    const spy = fetchReturning(200, { results: [], mapper: null });
+
+    await submitAmenityVotes([liveVote]);
+
+    expect(firstFetchInit(spy).headers).toEqual(
+      expect.objectContaining({ [UGC_POLICY_HEADER]: '2026-08-22' }),
+    );
+  });
+
+  it('submitAmenityVotesDetailed PUT with a live vote carries the canonical UGC policy header', async () => {
+    const spy = fetchReturning(200, { results: [], mapper: null });
+
+    await submitAmenityVotesDetailed([liveVote]);
+
+    expect(firstFetchInit(spy).headers).toEqual(
+      expect.objectContaining({ [UGC_POLICY_HEADER]: '2026-08-22' }),
+    );
+  });
+
+  it('submitAmenityVotes with all-null votes (pure retraction) carries NO UGC policy header', async () => {
+    const spy = fetchReturning(200, { results: [], mapper: null });
+
+    await submitAmenityVotes(retractionVotes);
+
+    expect((firstFetchInit(spy).headers as Record<string, string>)[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it('submitAmenityVotesDetailed with all-null votes (pure retraction) carries NO UGC policy header', async () => {
+    const spy = fetchReturning(200, { results: [], mapper: null });
+
+    await submitAmenityVotesDetailed(retractionVotes);
+
+    expect((firstFetchInit(spy).headers as Record<string, string>)[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it('reads carry no UGC policy header', async () => {
+    fetchReturning(200, { votes: [] });
+    await fetchMyAmenityVotes();
+
+    fetchReturning(200, { pubs: [] });
+    await fetchPubAmenities(['aaaaaaaa']);
+
+    fetchReturning(200, { kinds: [] });
+    await getAmenityKinds();
+
+    for (const call of (global.fetch as jest.Mock).mock.calls) {
+      expect((call[1]?.headers as Record<string, string> | undefined)?.[UGC_POLICY_HEADER]).toBeUndefined();
+    }
+  });
+
+  it.each(UGC_428_CODES)(
+    'submitAmenityVotes on 428 %s remains retry and emits exactly one consent signal',
+    async (code) => {
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      await expect(submitAmenityVotes([liveVote])).resolves.toBe('retry');
+      expect(signals).toEqual([code]);
+    },
+  );
+
+  it.each(UGC_428_CODES)(
+    'submitAmenityVotesDetailed on 428 %s remains retry and emits exactly one consent signal',
+    async (code) => {
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      const res = await submitAmenityVotesDetailed([liveVote]);
+      expect(res.status).toBe('retry');
+      expect(res.body).toBeNull();
+      expect(signals).toEqual([code]);
+    },
+  );
+
+  it.each([400, 422])('submitAmenityVotes keeps %s permanent-error without a consent signal', async (status) => {
+    const signals: string[] = [];
+    subscribeUgcConsentRequired((event) => signals.push(event.code));
+    fetchReturning(status);
+
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('permanent-error');
+    expect(signals).toEqual([]);
   });
 });
 

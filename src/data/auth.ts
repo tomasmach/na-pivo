@@ -72,6 +72,11 @@ import {
 } from './pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
+import {
+  parseUgcConsentSnapshot,
+  rememberUgcConsent,
+  type UgcConsentSnapshot,
+} from './ugcConsent';
 import { refreshPartyGamesAfterAccountMerge } from '@/stores/partyGamesStore';
 
 const REQUEST_TIMEOUT_MS = 12000;
@@ -182,6 +187,8 @@ export interface AccountProfile {
   mapper?: AccountMapper;
   /** Pivař gamification snapshot — attached only when the backend returns it. */
   pivar?: AccountPivar;
+  /** UGC consent snapshot — attached only when the backend returns it. */
+  ugcConsent?: UgcConsentSnapshot;
 }
 
 /** Success carries the fresh account state; failure carries a code + message. */
@@ -264,6 +271,7 @@ interface RawAccount {
     xp_for_next_level?: number | null;
     levels?: { level?: number; title?: string; xp?: number }[];
   };
+  ugc_consent?: unknown;
   email?: string;
   email_verified?: boolean;
   providers?: string[];
@@ -451,6 +459,12 @@ function parseProfile(data: RawAccount): AccountProfile {
   if (usage) profile.usage = usage;
   if (mapper) profile.mapper = mapper;
   if (pivar) profile.pivar = pivar;
+  const ugcConsent = parseUgcConsentSnapshot(data.ugc_consent);
+  if (ugcConsent) {
+    profile.ugcConsent = ugcConsent;
+    // Prime the per-account policy header cache only for a real owner.
+    if (profile.id) rememberUgcConsent(profile.id, ugcConsent);
+  }
   return profile;
 }
 
@@ -1828,6 +1842,42 @@ export async function fetchAccountProfile(): Promise<AccountProfile | null> {
   const res = await authFetch('/v1/account/me', { method: 'GET', bearer: 'current' });
   if ('networkError' in res || !res.ok) return null;
   return parseProfile(res.data);
+}
+
+/** Result of accepting a UGC policy version (PUT /v1/account/me/ugc-consent). */
+export type UgcConsentAcceptResult =
+  | { ok: true; ugcConsent: UgcConsentSnapshot }
+  | { ok: false; code: string; detail: string };
+
+/**
+ * Accept a UGC policy version for the current durable account. The exact
+ * session is captured once so the account id we cache the snapshot under and
+ * the bearer on the wire cannot race a credential transition. A missing or
+ * malformed `ugc_consent` in the response fails closed without caching.
+ */
+export async function acceptUgcConsent(version: string): Promise<UgcConsentAcceptResult> {
+  let session: AccountSession | null;
+  try {
+    session = await ensureAccount();
+  } catch (error) {
+    trackApiFailure('auth_ugc_consent', { reason: 'session_capture_failed', error });
+    return NETWORK_ERROR;
+  }
+  if (!session) return NETWORK_ERROR;
+
+  const res = await authFetch('/v1/account/me/ugc-consent', {
+    method: 'PUT',
+    bearer: 'current',
+    session,
+    body: { version },
+  });
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+
+  const snapshot = parseUgcConsentSnapshot(res.data.ugc_consent);
+  if (!snapshot) return NETWORK_ERROR;
+  rememberUgcConsent(session.accountId, snapshot);
+  return { ok: true, ugcConsent: snapshot };
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   type AuthActionResult,
   type AccountExportActionResult,
   type AuthProvider,
+  type UgcConsentAcceptResult,
   type AuthResult,
   type ContentReportReason,
   type NicknameAvailability,
@@ -200,6 +201,8 @@ interface AccountState {
     displayName?: string;
     isPublic?: boolean;
   }) => Promise<AuthResult>;
+  /** Accept a UGC policy version; on success patch only profile.ugcConsent. */
+  acceptUgcConsent: (version: string) => Promise<UgcConsentAcceptResult>;
   checkNicknameAvailable: (nickname: string) => Promise<NicknameAvailability>;
   uploadAvatar: (localUri: string) => Promise<AuthResult>;
   removeAvatar: () => Promise<AuthResult>;
@@ -508,6 +511,16 @@ export const useAccountStore = create<AccountState>((set, get) => {
     setPassword: (params) => runProfileAction(() => auth.setPassword(params)),
 
     updateProfile: (params) => runProfileAction(() => auth.updateProfile(params)),
+    acceptUgcConsent: async (version) => {
+      const requestScope = captureAccountBoundary(get().session);
+      const result = await auth.acceptUgcConsent(version);
+      if (result.ok && isAccountBoundaryCurrent(requestScope, get().session)) {
+        set((state) =>
+          state.profile ? { profile: { ...state.profile, ugcConsent: result.ugcConsent } } : state,
+        );
+      }
+      return result;
+    },
     // Thin pass-through: advisory check, never writes store state.
     checkNicknameAvailable: (nickname) => auth.checkNicknameAvailable(nickname),
     uploadAvatar: (localUri) => runProfileAction(() => auth.uploadAvatar(localUri)),

@@ -21,6 +21,11 @@ import {
 } from '@/data/photoContestClient';
 import { ensureAccount } from '@/data/account';
 import { getBackendEndpoint } from '@/data/backendConfig';
+import {
+  clearUgcConsentStateForTests,
+  subscribeUgcConsentRequired,
+  UGC_POLICY_HEADER,
+} from '@/data/ugcConsent';
 
 jest.mock('@/data/backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
@@ -429,4 +434,64 @@ describe('clearPhotoContestVote', () => {
       detail: 'Kolo skončilo.',
     });
   });
+});
+
+describe('UGC consent gate — photo contest requests', () => {
+  function lastFetchInit(spy: jest.Mock): { method?: string; headers?: Record<string, string> } {
+    const call = spy.mock.calls[spy.mock.calls.length - 1] as unknown as [
+      string,
+      { method?: string; headers?: Record<string, string> },
+    ];
+    return call[1];
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  it('enterPhotoContest POST carries the canonical UGC policy header (2026-08-22)', async () => {
+    const spy = fetchResolving(201, { entry: WIRE_ENTRY });
+
+    await enterPhotoContest('p1');
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer cur-tok',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it.each([
+    ['withdrawPhotoContestEntry DELETE', () => withdrawPhotoContestEntry(), 204],
+    ['votePhotoContest POST', () => votePhotoContest('e1'), 200],
+  ])('%s has NO UGC policy header (not a gated write)', async (_name, call, status) => {
+    const spy = fetchResolving(status as number, {});
+
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.headers?.Authorization).toBe('Bearer cur-tok');
+    expect(init.headers?.[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'enter on 428 %s returns the exact existing coded error and emits exactly one consent signal',
+    async (code) => {
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchResolving(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      // The direct result contract/copy must not change.
+      expect(await enterPhotoContest('p1')).toEqual({
+        ok: false,
+        code,
+        detail: 'Potřebujeme aktuální souhlas.',
+      });
+      expect(signals).toEqual([code]);
+    },
+  );
 });

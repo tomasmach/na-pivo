@@ -22,6 +22,7 @@ import { getBackendEndpoint } from './backendConfig';
 import { resolveBeerPhotoUrl } from './beerPhotosClient';
 import type { FriendActionError, FriendActionResult, FriendProfile } from './friendsClient';
 import { trackApiFailure } from './telemetryClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
@@ -245,6 +246,7 @@ async function requestJson(
     body?: unknown;
     signal?: AbortSignal;
     session?: AccountSession;
+    gatedUgc?: boolean;
   } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
@@ -264,6 +266,7 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
@@ -275,6 +278,7 @@ async function requestJson(
     } catch {
       data = {};
     }
+    if (options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
@@ -448,6 +452,7 @@ export async function enterPhotoContest(
     method: 'POST',
     body: { photo_id: photoId },
     signal,
+    gatedUgc: true,
   });
   if (!res.ok) return res.result;
   return { ok: true, entry: parsePhotoContestEntry((res.data.entry ?? {}) as RawEntry) };

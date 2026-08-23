@@ -1,6 +1,7 @@
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { chainAbortSignal } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 export interface PubEvent {
   id: string;
@@ -107,6 +108,7 @@ export async function submitPubEventSuggestion(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...ugcPolicyHeaders(session.accountId),
       },
       body: JSON.stringify({
         client_id: suggestion.clientId,
@@ -123,6 +125,13 @@ export async function submitPubEventSuggestion(
       signal: abort.signal,
     });
     if (response.ok) return 'ok';
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    notifyUgcConsentRequiredFromResponse(response.status, payload);
     if (response.status === 401 || response.status === 403) {
       if (response.status === 401) {
         await clearCachedAnonymousAccount(session, {

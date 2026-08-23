@@ -20,6 +20,7 @@ import {
   type AccountProfile,
   type AuthActionResult,
   type AuthResult,
+  type UgcConsentAcceptResult,
 } from '@/data/auth';
 import {
   ensureAccount,
@@ -540,6 +541,99 @@ describe('account boundary races', () => {
     loginRequest.resolve(okResult(profileB));
     await loginPromise;
     expect(useAccountStore.getState()).toMatchObject({ session: sessionB, profile: profileB });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// acceptUgcConsent — session-scoped profile mutation (UGC policy acceptance)
+// ---------------------------------------------------------------------------
+describe('acceptUgcConsent', () => {
+  const consentSessionA = {
+    deviceId: 'device-a',
+    accountId: 'a',
+    token: 'token-a',
+    authenticated: true,
+  };
+  const consentSessionB = {
+    deviceId: 'device-b',
+    accountId: 'b',
+    token: 'token-b',
+    authenticated: true,
+  };
+  const snapshotA = {
+    policyVersion: '2026-09-01',
+    accepted: true,
+    acceptedVersion: '2026-09-01',
+    acceptedAt: '2026-08-23T10:00:00Z',
+  };
+
+  it('delegates the exact version and patches only profile.ugcConsent while the session is current', async () => {
+    const profileA = signedInProfile();
+    useAccountStore.setState({
+      session: consentSessionA,
+      status: 'ready',
+      profile: profileA,
+    });
+    mockedAuth.acceptUgcConsent.mockResolvedValueOnce({
+      ok: true,
+      ugcConsent: snapshotA,
+    });
+
+    const result: UgcConsentAcceptResult = await useAccountStore
+      .getState()
+      .acceptUgcConsent('2026-09-01');
+
+    expect(mockedAuth.acceptUgcConsent).toHaveBeenCalledTimes(1);
+    expect(mockedAuth.acceptUgcConsent).toHaveBeenCalledWith('2026-09-01');
+    expect(result).toEqual({ ok: true, ugcConsent: snapshotA });
+    const patched = useAccountStore.getState().profile;
+    expect(patched?.ugcConsent).toEqual(snapshotA);
+    // Every pre-existing profile field survives the patch untouched.
+    expect(patched).toEqual({ ...profileA, ugcConsent: snapshotA });
+  });
+
+  it('never mutates account B when a delayed A consent resolves after a session switch', async () => {
+    const request = deferred<UgcConsentAcceptResult>();
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    useAccountStore.setState({
+      session: consentSessionA,
+      status: 'ready',
+      profile: signedInProfile({ displayName: 'Účet A' }),
+    });
+    mockedAuth.acceptUgcConsent.mockReturnValueOnce(request.promise);
+
+    const promise = useAccountStore.getState().acceptUgcConsent('2026-09-01');
+    useAccountStore.setState({ session: consentSessionB, profile: profileB });
+    request.resolve({ ok: true, ugcConsent: snapshotA });
+    await promise;
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: consentSessionB,
+      profile: profileB,
+    });
+    expect(useAccountStore.getState().profile?.ugcConsent).toBeUndefined();
+  });
+
+  it('returns a coded failure unchanged and leaves the profile untouched', async () => {
+    const existing = signedInProfile();
+    useAccountStore.setState({
+      session: consentSessionA,
+      status: 'ready',
+      profile: existing,
+    });
+    mockedAuth.acceptUgcConsent.mockResolvedValueOnce({
+      ok: false,
+      code: 'ugc_policy_update_required',
+      detail: 'Nejnovější pravidla vyžadují potvrzení.',
+    });
+
+    await expect(useAccountStore.getState().acceptUgcConsent('2026-09-01')).resolves.toEqual({
+      ok: false,
+      code: 'ugc_policy_update_required',
+      detail: 'Nejnovější pravidla vyžadují potvrzení.',
+    });
+
+    expect(useAccountStore.getState().profile).toEqual(existing);
   });
 });
 

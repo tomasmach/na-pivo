@@ -26,6 +26,11 @@ import {
 } from '@/data/beerPhotosClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '@/data/account';
 import { getBackendEndpoint, getBackendUrl } from '@/data/backendConfig';
+import {
+  clearUgcConsentStateForTests,
+  subscribeUgcConsentRequired,
+  UGC_POLICY_HEADER,
+} from '@/data/ugcConsent';
 import * as efs from 'expo-file-system';
 
 jest.mock('@/data/backendConfig', () => ({
@@ -284,31 +289,92 @@ describe('uploadBeerPhoto', () => {
   });
 });
 
+describe('UGC policy header gating for uploads', () => {
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  it('a friends native upload carries the canonical UGC policy header (2026-08-22)', async () => {
+    uploadResolving(201, { photo: WIRE_PHOTO });
+
+    await uploadBeerPhoto('file:///tmp/beer.jpg', FIELDS);
+
+    const [, opts] = mockFileUpload.mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer cur-tok',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it('a private native upload has NO UGC policy header (private path stays private)', async () => {
+    uploadResolving(201, { photo: WIRE_PHOTO });
+
+    await uploadBeerPhoto('file:///tmp/beer.jpg', { ...FIELDS, visibility: 'private' });
+
+    const [, opts] = mockFileUpload.mock.calls[0] as [string, Record<string, unknown>];
+    expect(opts.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer cur-tok' }));
+    expect((opts.headers as Record<string, string>)[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it('GET my photos stays header-free', async () => {
+    const spy = fetchResolving(200, { photos: [] });
+
+    await fetchMyBeerPhotos();
+
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer cur-tok' }));
+    expect((init.headers as Record<string, string>)[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it('DELETE photo stays header-free', async () => {
+    const spy = fetchResolving(204, undefined);
+
+    await deleteBeerPhoto('p1');
+
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer cur-tok');
+    expect((init.headers as Record<string, string>)[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+});
+
 describe('UGC consent retry contract for uploads (HTTP 428)', () => {
-  const ugc428Bodies = [
-    { name: 'bare 428 without a semantic body code', body: {} as Record<string, unknown> },
-    {
-      name: '428 with ugc_consent_required',
-      body: { code: 'ugc_consent_required', detail: 'Potřebujeme souhlas.' },
-    },
-    {
-      name: '428 with ugc_policy_update_required',
-      body: { code: 'ugc_policy_update_required', detail: 'Pravidla se změnila.' },
-    },
-  ];
+  const ugc428Bodies: { name: string; body: Record<string, unknown>; expectedSignal: string | null }[] =
+    [
+      { name: 'bare 428 without a semantic body code', body: {}, expectedSignal: null },
+      {
+        name: '428 with ugc_consent_required',
+        body: { code: 'ugc_consent_required', detail: 'Potřebujeme souhlas.' },
+        expectedSignal: 'ugc_consent_required',
+      },
+      {
+        name: '428 with ugc_policy_update_required',
+        body: { code: 'ugc_policy_update_required', detail: 'Pravidla se změnila.' },
+        expectedSignal: 'ugc_policy_update_required',
+      },
+    ];
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
 
   it.each(ugc428Bodies)(
     'classifies a friends upload rejected with $name as retry, never permanent-error',
-    async ({ body }) => {
+    async ({ body, expectedSignal }) => {
       // Pins the REAL HTTP parser: the native upload resolves a bare HTTP
       // response and classifyQueueHttpFailure must map any 428 to 'retry' —
       // a consent/policy gate is transient, so a queued photo is kept.
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
       uploadResolving(428, body);
 
       const result = await uploadBeerPhoto('file:///tmp/beer.jpg', FIELDS);
 
       expect(result).toEqual({ status: 'retry' });
       expect(result).not.toEqual({ status: 'permanent-error', code: expect.anything() });
+      // A semantic gate emits exactly one consent signal; bare/malformed none.
+      expect(signals).toEqual(expectedSignal === null ? [] : [expectedSignal]);
     },
   );
 });

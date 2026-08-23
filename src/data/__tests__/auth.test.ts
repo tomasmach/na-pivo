@@ -62,6 +62,11 @@ import {
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from '@/data/socialAuth';
 import { refreshPartyGamesAfterAccountMerge } from '@/stores/partyGamesStore';
 import { trackApiFailure } from '@/data/telemetryClient';
+import {
+  clearUgcConsentStateForTests,
+  UGC_POLICY_HEADER,
+  ugcPolicyHeaders,
+} from '@/data/ugcConsent';
 import * as efs from 'expo-file-system';
 
 jest.mock('@/data/backendConfig', () => ({
@@ -4203,5 +4208,149 @@ describe('uploadAvatar', () => {
     if (result.ok) throw new Error('expected failure');
     expect(result.code).toBe('network');
     expect(mockFileUpload).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UGC consent — profile snapshot + planned acceptUgcConsent
+// ---------------------------------------------------------------------------
+describe('UGC consent', () => {
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  describe('fetchAccountProfile', () => {
+    it('parses a valid ugc_consent snapshot into camelCase and primes the policy header cache', async () => {
+      const spy = installFetch(
+        fetchResolving(200, {
+          id: 'acc-ugc',
+          is_anonymous: false,
+          ugc_consent: {
+            policy_version: '2026-08-01',
+            accepted: true,
+            accepted_version: '2026-08-01',
+            accepted_at: '2026-08-20T18:30:00Z',
+          },
+        }),
+      );
+
+      const profile = await auth.fetchAccountProfile();
+
+      expect(profile?.id).toBe('acc-ugc');
+      const consent = (profile as unknown as { ugcConsent?: unknown }).ugcConsent;
+      expect(consent).toEqual({
+        policyVersion: '2026-08-01',
+        accepted: true,
+        acceptedVersion: '2026-08-01',
+        acceptedAt: '2026-08-20T18:30:00Z',
+      });
+      // The fresh snapshot feeds ugcPolicyHeaders for this exact account,
+      // but an older learned version never downgrades the baked policy header.
+      expect(ugcPolicyHeaders('acc-ugc')).toEqual({
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      });
+
+      const { url, init } = firstCall(spy);
+      expect(url).toBe('https://api.test/v1/account/me');
+      expect(init.method).toBe('GET');
+      expect(authHeader(init)).toBe('Bearer cur-tok');
+    });
+
+    it('keeps an old response without ugc_consent usable and caches no header', async () => {
+      installFetch(fetchResolving(200, { id: 'acc-old', is_anonymous: false }));
+
+      const profile = await auth.fetchAccountProfile();
+
+      expect(profile?.id).toBe('acc-old');
+      expect((profile as unknown as { ugcConsent?: unknown }).ugcConsent).toBeUndefined();
+      expect(ugcPolicyHeaders('acc-old')).toEqual({ [UGC_POLICY_HEADER]: '2026-08-22' });
+    });
+
+    it('ignores a malformed ugc_consent block and never crashes', async () => {
+      installFetch(
+        fetchResolving(200, {
+          id: 'acc-bad',
+          is_anonymous: false,
+          ugc_consent: { policy_version: 123, accepted: 'yes' },
+        }),
+      );
+
+      const profile = await auth.fetchAccountProfile();
+
+      expect(profile?.id).toBe('acc-bad');
+      expect((profile as unknown as { ugcConsent?: unknown }).ugcConsent).toBeFalsy();
+      expect(ugcPolicyHeaders('acc-bad')).toEqual({ [UGC_POLICY_HEADER]: '2026-08-22' });
+    });
+  });
+
+  describe('acceptUgcConsent', () => {
+    type UgcConsentSnapshotShape = {
+      policyVersion: string;
+      accepted: boolean;
+      acceptedVersion: string;
+      acceptedAt: string | null;
+    };
+    type AcceptUgcConsentFn = (
+      version: string,
+    ) =>
+      | Promise<{ ok: true; ugcConsent: UgcConsentSnapshotShape }>
+      | Promise<{ ok: false; code: string; detail: string }>;
+
+    function requireAcceptUgcConsent(): AcceptUgcConsentFn {
+      const fn = (auth as unknown as { acceptUgcConsent?: AcceptUgcConsentFn }).acceptUgcConsent;
+      if (typeof fn !== 'function') {
+        throw new Error('auth.acceptUgcConsent is not implemented yet');
+      }
+      return fn;
+    }
+
+    it('PUTs {version} to /v1/account/me/ugc-consent with the current bearer and caches the returned snapshot', async () => {
+      const spy = installFetch(
+        fetchResolving(200, {
+          ugc_consent: {
+            policy_version: '2026-09-01',
+            accepted: true,
+            accepted_version: '2026-09-01',
+            accepted_at: '2026-08-22T19:00:00Z',
+          },
+        }),
+      );
+
+      const result = await requireAcceptUgcConsent()('2026-09-01');
+
+      expect(result).toEqual({
+        ok: true,
+        ugcConsent: {
+          policyVersion: '2026-09-01',
+          accepted: true,
+          acceptedVersion: '2026-09-01',
+          acceptedAt: '2026-08-22T19:00:00Z',
+        },
+      });
+
+      const { url, init } = firstCall(spy);
+      expect(url).toBe('https://api.test/v1/account/me/ugc-consent');
+      expect(init.method).toBe('PUT');
+      // bearer: 'ensure' — the implementation captures the durable account session.
+      expect(authHeader(init)).toBe('Bearer anon-tok');
+      expect(bodyOf(init)).toEqual({ version: '2026-09-01' });
+
+      // The 200 snapshot updates the header cache for the durable account.
+      expect(ugcPolicyHeaders('a')).toEqual({ [UGC_POLICY_HEADER]: '2026-09-01' });
+    });
+
+    it.each([
+      ['409 conflict', 409, { detail: 'Nejnovější verzi už máš.', code: 'ugc_consent_conflict' }],
+      ['428 precondition', 428, { detail: 'Potřebujeme souhlas.', code: 'ugc_consent_required' }],
+    ] as const)(
+      'returns the existing auth-style {ok:false, code, detail} on a coded %s',
+      async (_label, status, body) => {
+        installFetch(fetchResolving(status, body));
+
+        const result = await requireAcceptUgcConsent()('2026-09-01');
+
+        expect(result).toEqual({ ok: false, code: body.code, detail: body.detail });
+      },
+    );
   });
 });

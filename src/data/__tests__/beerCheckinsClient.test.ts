@@ -15,15 +15,24 @@
 import {
   BEER_TAGS,
   beerCheckInWire,
+  createBeerCheckIn,
   fetchBeerDetail,
   fetchBeerMemory,
   isBeerTag,
   parseBeerCheckIn,
   parseBeerTagCounts,
   parseBeerTags,
+  reactToBeerCheckIn,
+  submitBeerCheckIn,
   type BeerCheckInInput,
 } from '@/data/beerCheckinsClient';
 import { getBackendEndpoint } from '@/data/backendConfig';
+import {
+  UGC_POLICY_HEADER,
+  clearUgcConsentStateForTests,
+  rememberUgcConsent,
+  subscribeUgcConsentRequired,
+} from '@/data/ugcConsent';
 
 jest.mock('@/data/backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
@@ -279,4 +288,101 @@ describe('fetchBeerDetail my_tags', () => {
     const detail = await fetchBeerDetail('X');
     expect(detail?.myTags).toEqual({});
   });
+});
+
+describe('UGC consent gate — check-in requests', () => {
+  const consentSnapshot = {
+    policyVersion: '2026-08-22',
+    accepted: true,
+    acceptedVersion: '2026-08-22',
+    acceptedAt: null,
+  };
+
+  function lastFetchInit(spy: jest.Mock): { method?: string; headers?: Record<string, string> } {
+    const call = spy.mock.calls[spy.mock.calls.length - 1] as unknown as [
+      string,
+      { method?: string; headers?: Record<string, string> },
+    ];
+    return call[1];
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  it.each([
+    ['submitBeerCheckIn', () => submitBeerCheckIn(baseInput)],
+    ['createBeerCheckIn', () => createBeerCheckIn(baseInput)],
+  ])('%s friends POST carries the canonical UGC policy header for account a', async (_name, call) => {
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchResolving(201, { id: 'x1', beer_name: 'Radegast 12' });
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer cur-tok',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it.each([
+    ['submitBeerCheckIn', () => submitBeerCheckIn(baseInput)],
+  ])('%s friends POST on cold start (no remembered consent) carries the current UGC policy header', async (_name, call) => {
+    // Cold start: clearUgcConsentStateForTests already ran, rememberUgcConsent
+    // is deliberately NOT called — the client must still advertise the current
+    // policy version so the server can gate unconsented public writes.
+    const spy = fetchResolving(201, { id: 'x3', beer_name: 'Radegast 12' });
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer cur-tok',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it.each([
+    ['submitBeerCheckIn', () => submitBeerCheckIn({ ...baseInput, visibility: 'private' })],
+    ['createBeerCheckIn', () => createBeerCheckIn({ ...baseInput, visibility: 'private' })],
+  ])('%s private POST has NO UGC policy header (private path stays private)', async (_name, call) => {
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchResolving(201, { id: 'x2', beer_name: 'Radegast 12' });
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({ Authorization: 'Bearer cur-tok' }),
+    );
+    expect(init.headers?.[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it('reaction POST has NO UGC policy header', async () => {
+    rememberUgcConsent('a', consentSnapshot);
+    const spy = fetchResolving(200, {});
+    await reactToBeerCheckIn('checkin-1');
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers?.[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'submit on 428 %s remains retry and emits exactly one consent signal',
+    async (code) => {
+      rememberUgcConsent('a', consentSnapshot);
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchResolving(428, { code, detail: 'Potřebujeme aktuální souhlas.' }, false);
+
+      await expect(submitBeerCheckIn(baseInput)).resolves.toBe('retry');
+      expect(signals).toEqual([code]);
+    },
+  );
 });

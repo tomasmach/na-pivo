@@ -42,6 +42,16 @@ import {
   flushNightsQueue,
   type NightQueueItem,
 } from '../nightsQueue';
+import {
+  UGC_POLICY_HEADER,
+  clearUgcConsentStateForTests,
+  rememberUgcConsent,
+  subscribeUgcConsentRequired,
+} from '../ugcConsent';
+
+// Direct-client tests below bypass the queue-level mocks on purpose: they pin
+// the wire contract of the real request builders via jest.requireActual.
+const actualNightsClient = jest.requireActual('../nightsClient') as typeof import('../nightsClient');
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
 
@@ -380,4 +390,103 @@ describe('isRetriableNightError', () => {
       expect(isRetriableNightError({ ok: false, code, detail: 'x' })).toBe(false);
     }
   });
+});
+
+describe('UGC consent gate — direct actual client requests', () => {
+  const consentSnapshot = {
+    policyVersion: '2026-08-22',
+    accepted: true,
+    acceptedVersion: '2026-08-22',
+    acceptedAt: null,
+  };
+
+  function fetchReturning(status: number, body: unknown): jest.Mock {
+    const spy = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+    }));
+    global.fetch = spy as unknown as typeof fetch;
+    return spy;
+  }
+
+  function lastFetchInit(spy: jest.Mock): { method?: string; headers?: Record<string, string> } {
+    const call = spy.mock.calls[spy.mock.calls.length - 1] as unknown as [
+      string,
+      { method?: string; headers?: Record<string, string> },
+    ];
+    return call[1];
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  it.each([
+    ['publishNight', () => actualNightsClient.publishNight(payload)],
+    ['createNightComment', () => actualNightsClient.createNightComment('night-1', 'Na zdraví')],
+  ])('actual %s POST carries the canonical UGC policy header for account me', async (_name, call) => {
+    rememberUgcConsent('me', consentSnapshot);
+    const spy = fetchReturning(200, {});
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer token',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it('actual publishNight POST on cold start (no remembered consent) carries the current UGC policy header', async () => {
+    // Cold start: clearUgcConsentStateForTests already ran, rememberUgcConsent
+    // is deliberately NOT called — the client must still advertise the current
+    // policy version so the server can gate unconsented public writes.
+    const spy = fetchReturning(200, {});
+    await actualNightsClient.publishNight(payload);
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer token',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it.each([
+    ['unpublishNight DELETE', () => actualNightsClient.unpublishNight(payload.clientId), 'DELETE'],
+    ['reactToNight POST', () => actualNightsClient.reactToNight('night-1'), 'POST'],
+  ])('%s must NOT carry the UGC policy header', async (_name, call, method) => {
+    rememberUgcConsent('me', consentSnapshot);
+    const spy = fetchReturning(200, {});
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe(method);
+    expect(init.headers).toEqual(
+      expect.objectContaining({ Authorization: 'Bearer token' }),
+    );
+    expect(init.headers?.[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'direct publish on 428 %s returns that exact coded result and emits exactly one consent signal',
+    async (code) => {
+      rememberUgcConsent('me', consentSnapshot);
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      await expect(actualNightsClient.publishNight(payload)).resolves.toEqual({
+        ok: false,
+        code,
+        detail: 'Potřebujeme aktuální souhlas.',
+      });
+      expect(signals).toEqual([code]);
+    },
+  );
 });

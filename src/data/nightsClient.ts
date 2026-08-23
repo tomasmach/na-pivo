@@ -1,6 +1,7 @@
 import { ensureAccount, generateUuidV4, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 import { trackApiFailure } from './telemetryClient';
 
 const REQUEST_TIMEOUT_MS = 9000;
@@ -309,7 +310,12 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    gatedUgc?: boolean;
+  } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
@@ -328,6 +334,7 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
@@ -339,6 +346,7 @@ async function requestJson(
     } catch {
       data = {};
     }
+    if (options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, endpoint);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
@@ -380,6 +388,7 @@ export async function publishNight(payload: NightPublishPayload): Promise<NightP
   const res = await requestJson('/v1/nights', {
     method: 'POST',
     body: nightPublishWire(payload),
+    gatedUgc: true,
   });
   return res.ok
     ? { ok: true, night: parsePublishedNight(rawObject(res.data.night)) }
@@ -470,7 +479,7 @@ export async function createNightComment(
 ): Promise<NightCommentResult> {
   const res = await requestJson(
     `/v1/nights/${encodeURIComponent(nightId)}/comments`,
-    { method: 'POST', body: { client_id: clientId, body } },
+    { method: 'POST', body: { client_id: clientId, body }, gatedUgc: true },
   );
   if (!res.ok) return res.result;
   const comment = parseNightComment(res.data.comment);

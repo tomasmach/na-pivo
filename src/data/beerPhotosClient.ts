@@ -21,6 +21,7 @@ import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint, getBackendUrl } from './backendConfig';
 import type { FriendActionError, FriendActionResult } from './friendsClient';
 import { trackApiFailure } from './telemetryClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 /** Upload budget — wider than the shared API timeout (uploads are slower). */
@@ -141,7 +142,10 @@ export async function uploadBeerPhoto(
       uploadType: UploadType.MULTIPART,
       fieldName: 'image',
       mimeType: 'image/jpeg',
-      headers: { Authorization: `Bearer ${session.token}` },
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        ...(fields.visibility === 'friends' ? ugcPolicyHeaders(session.accountId) : {}),
+      },
       parameters: {
         client_id: fields.clientId,
         caption: fields.caption,
@@ -164,6 +168,9 @@ export async function uploadBeerPhoto(
 
     if (resp.status >= 200 && resp.status < 300) {
       return { status: 'ok', photo: beerPhotoFromWire((data.photo ?? {}) as RawBeerPhoto) };
+    }
+    if (fields.visibility === 'friends') {
+      notifyUgcConsentRequiredFromResponse(resp.status, data);
     }
     const classified = await classifyQueueHttpFailure(resp.status, session, {
       source: 'beer_photos_upload',
