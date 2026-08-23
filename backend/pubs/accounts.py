@@ -54,7 +54,7 @@ from django.utils import timezone
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
-from pubs import emailer, oauth
+from pubs import community_trust, emailer, oauth
 from pubs.beer_catalog import BeerCatalogMatchCache, sync_pub_beer_indexes_for_menu
 from pubs.beer_photo_deletions import (
     enqueue_account_avatar_file_deletion,
@@ -1813,6 +1813,16 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     target = locked_accounts[target.pk]
     if source.is_claimed:
         return
+    # Trust is earned only through claim proofs, so an UNCLAIMED source must
+    # never carry a stamp. If one somehow does (restored row, corruption),
+    # refuse the whole merge before any data moves; the surrounding auth
+    # transaction rolls everything back.
+    if source.quorum_trusted_at is not None:
+        raise AccountError(
+            "Původní účet nejde bezpečně sloučit. Zkus přihlášení znovu.",
+            code="merge_source_suspicious_trust",
+            http_status=409,
+        )
 
     source_id = source.id
     target_id = target.id
@@ -2173,6 +2183,12 @@ def resolve_social(
             if updated:
                 existing.save(update_fields=updated)
             _maybe_set_display_name(account, full_name or claims.get("name", ""))
+            # The provider token was cryptographically verified before we got
+            # here, so the proven SUBJECT itself is the quorum-trust proof;
+            # stamp inside this transaction whether or not the claims carried
+            # an email or flagged it verified (never advances an existing
+            # stamp).
+            community_trust.mark_quorum_trusted(account.pk)
             current_account = _bind_account_merge_operation(
                 merge_operation_id,
                 source_account=current_account,
@@ -2256,6 +2272,10 @@ def resolve_social(
                 apple_refresh_token=apple_refresh_token,
             )
             _maybe_set_display_name(account, full_name or claims.get("name", ""))
+            # The verified provider subject is the proof, not the email: stamp
+            # in the same transaction as the identity row itself, whether or
+            # not the claims carried an email or flagged it verified.
+            community_trust.mark_quorum_trusted(account.pk)
             _merge_anonymous_account(current_account, account)
             token = issue_token(account)
     except IntegrityError:
@@ -2278,6 +2298,9 @@ def resolve_social(
                 target_public_id=account.public_id,
             )
             _reactivate_if_pending(account)
+            # Concurrent re-resolve still went through a cryptographically
+            # verified provider subject, so it stamps like any other proof.
+            community_trust.mark_quorum_trusted(account.pk)
             _merge_anonymous_account(current_account, account)
             token = issue_token(account)
         return account, token, False
@@ -2326,6 +2349,9 @@ def link_social(
                         code="apple_refresh_required",
                         http_status=400,
                     )
+            # Idempotent relink of the same verified subject still proves
+            # identity; stamp once (never advances an existing stamp).
+            community_trust.mark_quorum_trusted(account.pk)
             return existing  # already linked to this account — idempotent
         raise AccountError(
             "Tento účet u poskytovatele je už propojený s jiným účtem.",
@@ -2346,13 +2372,18 @@ def link_social(
             http_status=400,
         )
 
-    identity = AuthIdentity.objects.create(
-        account=account,
-        provider=provider,
-        subject=subject,
-        email=email,
-        apple_refresh_token=apple_refresh_token,
-    )
+    # The verified provider link and its trust stamp commit together.
+    with transaction.atomic():
+        identity = AuthIdentity.objects.create(
+            account=account,
+            provider=provider,
+            subject=subject,
+            email=email,
+            apple_refresh_token=apple_refresh_token,
+        )
+        # The verified provider subject is the proof, not the email: stamp in
+        # the same transaction as the identity row itself.
+        community_trust.mark_quorum_trusted(account.pk)
     _maybe_set_display_name(account, full_name or claims.get("name", ""))
     _maybe_capture_social_avatar(account, claims, provider)
     return identity
@@ -2463,8 +2494,21 @@ def request_email_verification(account: Account, *, link_base: str | None = None
 
 
 def verify_email(raw_token: str) -> Account:
-    account = _consume_one_time_token(raw_token, purpose=OneTimeToken.Purpose.VERIFY_EMAIL)
-    EmailCredential.objects.filter(account=account).update(email_verified=True)
+    """Consume a verification token, verify the email, and stamp quorum trust.
+
+    Token consumption, the credential flip and the trust stamp commit or roll
+    back as one unit: a replayed/burned token raises before anything changes,
+    so it can never advance an existing stamp.
+    """
+    with transaction.atomic():
+        account = _consume_one_time_token(
+            raw_token, purpose=OneTimeToken.Purpose.VERIFY_EMAIL
+        )
+        proven_at = timezone.now()
+        EmailCredential.objects.filter(account=account).update(email_verified=True)
+        # Inbox control is a quorum-trust proof; stamped in the same transaction
+        # so a rollback removes both the verification and the stamp.
+        community_trust.mark_quorum_trusted(account.pk, proven_at=proven_at)
     return account
 
 
@@ -2557,6 +2601,9 @@ def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
         credential.password = make_password(new_password)
         credential.email_verified = True  # proving inbox control verifies it
         credential.save(update_fields=["password", "email_verified", "updated_at"])
+        # The completed reset is a quorum-trust proof; same transaction, so a
+        # failure anywhere above leaves no stamp behind.
+        community_trust.mark_quorum_trusted(account.pk, proven_at=timezone.now())
         revoke_all_tokens(account)  # force every existing session out after reset
         _reactivate_if_pending(account)
         fresh_token = issue_token(account)

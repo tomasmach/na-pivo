@@ -715,6 +715,18 @@ class Account(models.Model):
         "recorded in ugc_terms_version; null means never accepted.",
     )
 
+    # ---------- community quorum trust ----------
+    quorum_trusted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this account proved its identity through a channel the "
+        "community quorum trusts (verified email consumption, password-reset "
+        "proof, or a cryptographically verified Google/Apple sign-in/link). "
+        "Stamped once in the same transaction as the proof and never advanced; "
+        "null means no proof yet. Server-only: omitted from normal session and "
+        "profile payloads, included only in the user's own data export.",
+    )
+
     # ---------- social / "parta" preferences ----------
     # Ghost mode hides the user's own broadcast: a ghost still keeps their own
     # FriendPubActivity row, but it is never fanned out (no notification, no push)

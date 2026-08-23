@@ -103,6 +103,7 @@ from pubs.beer_photo_deletions import (
     retry_beer_photo_file_deletions,
     schedule_beer_photo_file_deletions,
 )
+from pubs.community_trust import trusted_account_q
 from pubs.enrichment import (
     GoogleGeocodingSource,
     GoogleGeocodingUnavailableError,
@@ -8054,8 +8055,8 @@ def _globally_reported_pub_cache_keys(cache_keys: set[str]) -> set[str]:
     )
     return set(
         PubReport.objects.filter(
+            trusted_account_q("account__"),
             active=True,
-            account__status=Account.Status.ACTIVE,
             cache_key__in=cache_keys,
         )
         .values("cache_key")
@@ -8109,8 +8110,8 @@ class BlockedPubReportsView(APIView):
 
         nearby_reports = (
             PubReport.objects.filter(
+                trusted_account_q("account__"),
                 active=True,
-                account__status=Account.Status.ACTIVE,
                 lat__gte=lat - lat_delta,
                 lat__lte=lat + lat_delta,
                 lng__gte=lng - lng_delta,
@@ -8128,8 +8129,8 @@ class BlockedPubReportsView(APIView):
         )
         qualified_cache_keys = (
             PubReport.objects.filter(
+                trusted_account_q("account__"),
                 active=True,
-                account__status=Account.Status.ACTIVE,
                 cache_key__in=Subquery(nearby_reports.values("cache_key")),
             )
             .values("cache_key")
@@ -9974,6 +9975,7 @@ def _export_account_data(account: Account) -> dict:
             "providers": identity["providers"],
             "identities": identity["identities"],
             "status": account.status,
+            "quorum_trusted_at": _iso(account.quorum_trusted_at),
             "created_at": _iso(account.created_at),
             "last_seen_at": _iso(account.last_seen_at),
             "ugc_terms_version": account.ugc_terms_version,
