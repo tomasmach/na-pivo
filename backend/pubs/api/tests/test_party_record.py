@@ -362,7 +362,8 @@ def test_record_derives_full_private_night_and_deletes_disappear(client, tmp_med
     exported = client.get("/v1/account/export", **_auth(guest_token)).json()
     assert exported["drinks"][0]["party_evening_id"] == record["id"]
     assert exported["beer_photos"][0]["party_evening_id"] == record["id"]
-    assert exported["visits"][0]["party_code"] == code
+    assert exported["visits"][0]["party_evening_id"] == record["id"]
+    assert "party_code" not in exported["visits"][0]
 
     assert client.delete(f"/v1/drinks/{drink_id}", **_auth(guest_token)).status_code == 200
     assert client.delete(f"/v1/beer-photos/{photo_id}", **_auth(guest_token)).status_code == 204

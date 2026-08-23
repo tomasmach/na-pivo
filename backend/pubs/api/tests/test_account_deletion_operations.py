@@ -94,7 +94,7 @@ def test_legacy_delete_without_operation_id_stays_compatible(client: APIClient):
 
 
 @pytest.mark.django_db
-def test_legacy_delete_without_operation_id_ignores_the_new_epoch_guard(
+def test_legacy_delete_without_operation_id_rejects_stale_epoch(
     client: APIClient,
 ):
     account, legacy_token = _bootstrap(client)
@@ -116,12 +116,13 @@ def test_legacy_delete_without_operation_id_ignores_the_new_epoch_guard(
     account.refresh_from_db()
     assert account.deletion_epoch > 0
 
-    # Released clients neither persist nor send an operation capability. Keep
-    # their historical DELETE contract until those app versions age out.
+    # A credential login advanced the epoch, so the pre-login bearer must no
+    # longer be able to delete — even through the legacy no-operation-id path.
     deleted = client.delete("/v1/account/me", **_auth(legacy_token))
-    assert deleted.status_code == status.HTTP_204_NO_CONTENT
+    assert deleted.status_code == status.HTTP_409_CONFLICT, deleted.content
+    assert deleted.json()["code"] == "deletion_epoch_cancelled"
     account.refresh_from_db()
-    assert account.status == Account.Status.PENDING_DELETION
+    assert account.status == Account.Status.ACTIVE
     assert AccountDeletionOperation.objects.count() == 0
 
 

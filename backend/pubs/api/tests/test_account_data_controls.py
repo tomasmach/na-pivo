@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
+from datetime import timedelta
 
 import pytest
 from django.core.cache import cache
@@ -21,9 +22,11 @@ from pubs.models import (
     AccountUsageStats,
     AmenityXpLedger,
     AuthIdentity,
+    AuthToken,
     BeerBrand,
     BeerCheckIn,
     BeerPhoto,
+    BeerPhotoDeletionTombstone,
     BeerProduct,
     CommunityEvent,
     CommunityEventMembership,
@@ -34,6 +37,10 @@ from pubs.models import (
     EmailCredential,
     FeedbackReport,
     Follow,
+    FriendBlock,
+    FriendInviteCode,
+    FriendPubActivity,
+    FriendPubActivityRecipient,
     Friendship,
     PartyEvening,
     PartyEveningDrink,
@@ -54,6 +61,7 @@ from pubs.models import (
     PublishedNightComment,
     PubNameCorrection,
     PubReport,
+    PubVisit,
     PushDevice,
     UserAddedPub,
 )
@@ -1561,3 +1569,254 @@ def test_content_report_rejects_non_public_stranger(client):
     assert resp.status_code == status.HTTP_404_NOT_FOUND
     assert resp.json()["code"] == "profile_not_found"
     assert ContentReport.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_account_export_social_blocks_include_only_outgoing_direction(client):
+    token, owner_id = _bootstrap(client)
+    owner = Account.objects.get(public_id=owner_id)
+    blocked_peer = Account.objects.create(device_id=str(uuid.uuid4()), nickname="blocked-peer")
+    blocker = Account.objects.create(device_id=str(uuid.uuid4()), nickname="secret-blocker")
+
+    FriendBlock.objects.create(blocker=owner, blocked=blocked_peer)
+    # Reverse direction: another account blocked the owner. The export must not
+    # reveal that the owner is blocked, nor expose the blocker's public id.
+    FriendBlock.objects.create(blocker=blocker, blocked=owner)
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    blocks = body["social"]["blocks"]
+    assert blocks == [
+        {
+            "direction": "made",
+            "account_id": str(blocked_peer.public_id),
+            "created_at": blocks[0]["created_at"],
+        }
+    ]
+    serialized = str(body)
+    assert str(blocker.public_id) not in serialized
+    assert "received" not in [entry["direction"] for entry in blocks]
+
+
+@pytest.mark.django_db
+def test_account_export_omits_active_invite_and_party_capabilities(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    now = timezone.now()
+    invite = FriendInviteCode.objects.create(
+        account=account,
+        code="RAWINVITESECRET",
+        expires_at=now + timedelta(days=1),
+    )
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="RAWJOIN1",
+        pub_name="U exportu",
+        started_at=now,
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account)
+    PubVisit.objects.create(
+        account=account,
+        party_evening=evening,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U exportu",
+        lat=50.0,
+        lng=14.0,
+        city="Praha",
+        external_id="",
+        started_at=now,
+        client_updated_at=now,
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    serialized = json.dumps(body)
+    assert invite.code not in serialized
+    assert evening.join_code not in serialized
+    assert len(body["social"]["invite_codes"]) == 1
+    assert set(body["social"]["invite_codes"][0].keys()) == {"created_at", "expires_at", "revoked"}
+    hosted = body["party_evenings"]["hosted"][0]
+    assert hosted["id"] == str(evening.public_id)
+    assert "join_code" not in hosted
+    visits = body["visits"]
+    assert len(visits) == 1
+    assert visits[0]["party_evening_id"] == str(evening.public_id)
+    assert "party_code" not in visits[0]
+
+
+@pytest.mark.django_db
+def test_account_export_includes_drink_abuse_decision(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Ležák",
+        price_czk=59,
+        volume_ml=500,
+        drank_at=timezone.now(),
+        is_suspect=True,
+        suspect_reason="manual",
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["drinks"][0]["is_suspect"] is True
+    assert body["drinks"][0]["suspect_reason"] == "manual"
+
+
+@pytest.mark.django_db
+def test_account_export_includes_safe_sessions_and_targeting_metadata(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-sessions")
+    now = timezone.now().replace(microsecond=0)
+
+    AuthToken.objects.create(
+        account=account,
+        token_hash="f" * 64,
+        kind=AuthToken.Kind.SESSION,
+        device_label="iPhone 16 / app 1.2",
+        expires_at=now + timedelta(days=30),
+    )
+    credential = EmailCredential.objects.create(
+        account=account,
+        email="sessions@example.com",
+        password="!",
+        email_verified=True,
+    )
+    authored_activity = FriendPubActivity.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        kind=FriendPubActivity.Kind.PLAN,
+        scheduled_for=now + timedelta(hours=5),
+        reminder_sent_at=now - timedelta(hours=1),
+        started_at=now + timedelta(hours=5),
+        expires_at=now + timedelta(hours=9),
+    )
+    other_activity = FriendPubActivity.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="CIZÍ aktivita",
+        lat=49.20,
+        lng=16.60,
+        city="Brno",
+        started_at=now,
+        expires_at=now + timedelta(hours=4),
+    )
+    recipient = FriendPubActivityRecipient.objects.create(
+        activity=other_activity,
+        account=account,
+    )
+    tombstone = BeerPhotoDeletionTombstone.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+    )
+    checked_in_at = now
+    ended_at = now + timedelta(hours=2)
+    BeerCheckIn.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        beer_name="Exportní ležák",
+        beer_key="exportni-lezak",
+        brewery_name="Pivovar Export",
+        brewery_key="pivovar-export",
+        quantity=1,
+        price_czk=55,
+        pub_name="U Exportu",
+        visibility=BeerCheckIn.Visibility.PRIVATE,
+        checked_in_at=checked_in_at,
+        ended_at=ended_at,
+    )
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Ležák",
+        beer_brand_key="export-brand",
+        beer_brand_name="Exportní značka",
+        beer_product_key="export-brand-lezak",
+        beer_product_name="Exportní ležák 10°",
+        price_czk=59,
+        volume_ml=500,
+        drank_at=now,
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+
+    sessions = body["auth_sessions"]
+    session_item = next(s for s in sessions if s["device_label"] == "iPhone 16 / app 1.2")
+    assert set(session_item.keys()) == {
+        "kind",
+        "device_label",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+    }
+    assert session_item["kind"] == AuthToken.Kind.SESSION
+    assert session_item["expires_at"] == (now + timedelta(days=30)).isoformat()
+
+    assert set(body["email_credential"].keys()) == {"created_at", "updated_at"}
+    assert body["email_credential"]["created_at"] == credential.created_at.isoformat()
+    assert body["email_credential"]["updated_at"] == credential.updated_at.isoformat()
+
+    assert body["social"]["targeted_friend_activities"] == [
+        {
+            "activity_id": str(other_activity.public_id),
+            "created_at": recipient.created_at.isoformat(),
+        }
+    ]
+
+    assert body["beer_photo_deletion_tombstones"] == [
+        {
+            "client_id": str(tombstone.client_id),
+            "created_at": tombstone.created_at.isoformat(),
+        }
+    ]
+
+    authored_export = next(
+        item
+        for item in body["social"]["friend_activities"]
+        if item["id"] == str(authored_activity.public_id)
+    )
+    assert authored_export["reminder_sent_at"] == (now - timedelta(hours=1)).isoformat()
+
+    checkin_export = body["beer_checkins"][0]
+    assert checkin_export["beer_key"] == "exportni-lezak"
+    assert checkin_export["brewery_key"] == "pivovar-export"
+
+    drink_export = body["drinks"][0]
+    assert drink_export["beer_brand_key"] == "export-brand"
+    assert drink_export["beer_brand_name"] == "Exportní značka"
+    assert drink_export["beer_product_key"] == "export-brand-lezak"
+    assert drink_export["beer_product_name"] == "Exportní ležák 10°"
+
+    serialized = str(body)
+    assert "token_hash" not in serialized
+    assert "deletion_epoch" not in serialized
+    assert "password" not in serialized
+    assert "CIZÍ aktivita" not in serialized

@@ -2894,6 +2894,9 @@ def _hard_delete_locked(account: Account) -> None:
 
     ContentReport.objects.filter(target_account=account).update(target_snapshot={})
     ContentReport.objects.filter(reporter=account).update(comment="")
+    # Game events authored by the deleted account keep their audit row, kind and
+    # delta, but lose their gameplay payload; events authored by others stay.
+    PartyGameEvent.objects.filter(account=account).update(payload={})
     account.delete()
 
     for cache_key in sorted(affected_community_keys):

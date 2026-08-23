@@ -93,7 +93,8 @@ def test_hard_delete_nulls_shared_ownership_fields():
     assert game_event.account_id is None
     assert game_event.subject_id is None
     assert game_event.kind == PartyGameEvent.Kind.SCORE
-    assert game_event.payload == {"question": 3, "choice": "B"}
+    assert game_event.delta == 2
+    assert game_event.payload == {}
 
     assert PartyEvening.objects.filter(id=evening_id).exists()
     assert PartyGame.objects.filter(id=game_id).exists()

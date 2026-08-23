@@ -3303,6 +3303,17 @@ def _visit_item(visit: PubVisit) -> dict:
     }
 
 
+def _export_visit_item(visit: PubVisit) -> dict:
+    """Account-export variant of :func:`_visit_item`: no join code, only the
+    linked evening's stable public id."""
+    item = _visit_item(visit)
+    del item["party_code"]
+    item["party_evening_id"] = (
+        str(visit.party_evening.public_id) if visit.party_evening_id else None
+    )
+    return item
+
+
 class PubVisitView(APIView):
     """
     POST   /v1/pub-visits              → push one explicit visit (upsert)
@@ -9571,6 +9582,13 @@ def _load_export_account(account: Account) -> Account:
             has_community_data=Exists(PubCommunityData.objects.filter(account=OuterRef("pk"))),
             has_pub_beer_brands=Exists(PubBeerBrand.objects.filter(account=OuterRef("pk"))),
             has_pub_beer_products=Exists(PubBeerProduct.objects.filter(account=OuterRef("pk"))),
+            has_auth_tokens=Exists(AuthToken.objects.filter(account=OuterRef("pk"))),
+            has_targeted_friend_activities=Exists(
+                FriendPubActivityRecipient.objects.filter(account=OuterRef("pk"))
+            ),
+            has_beer_photo_deletion_tombstones=Exists(
+                BeerPhotoDeletionTombstone.objects.filter(account=OuterRef("pk"))
+            ),
         )
         .prefetch_related(
             "identities",
@@ -9643,10 +9661,6 @@ def _load_export_account(account: Account) -> Account:
             Prefetch(
                 "blocks_made",
                 queryset=FriendBlock.objects.select_related("blocked"),
-            ),
-            Prefetch(
-                "blocks_received",
-                queryset=FriendBlock.objects.select_related("blocker"),
             ),
             "invite_codes",
             Prefetch(
@@ -9766,6 +9780,20 @@ def _load_export_account(account: Account) -> Account:
         ("community_data", "has_community_data", None),
         ("pub_beer_brands", "has_pub_beer_brands", None),
         ("pub_beer_products", "has_pub_beer_products", None),
+        ("auth_tokens", "has_auth_tokens", None),
+        (
+            "targeted_friend_pub_activities",
+            "has_targeted_friend_activities",
+            Prefetch(
+                "targeted_friend_pub_activities",
+                queryset=FriendPubActivityRecipient.objects.select_related("activity"),
+            ),
+        ),
+        (
+            "beer_photo_deletion_tombstones",
+            "has_beer_photo_deletion_tombstones",
+            None,
+        ),
     ]
     for relation_name, flag_name, custom_prefetch in conditional_prefetches:
         if getattr(loaded_account, flag_name):
@@ -9887,6 +9915,7 @@ def _export_account_data(account: Account) -> dict:
     """Return a GDPR-style JSON export for one account, excluding secrets."""
 
     usage = getattr(account, "usage_stats", None)
+    credential = getattr(account, "email_credential", None)
     identity = _export_account_identity(account)
     return {
         "exported_at": dj_timezone.now().isoformat(),
@@ -9924,6 +9953,31 @@ def _export_account_data(account: Account) -> dict:
             "quiet_hours_end": account.quiet_hours_end,
             "excluded_from_leaderboards": account.excluded_from_leaderboards,
         },
+        "auth_sessions": [
+            {
+                "kind": row.kind,
+                "device_label": row.device_label,
+                "created_at": _iso(row.created_at),
+                "last_used_at": _iso(row.last_used_at),
+                "expires_at": _iso(row.expires_at),
+            }
+            for row in account.auth_tokens.all()
+        ],
+        "email_credential": (
+            {
+                "created_at": _iso(credential.created_at),
+                "updated_at": _iso(credential.updated_at),
+            }
+            if credential is not None
+            else None
+        ),
+        "beer_photo_deletion_tombstones": [
+            {
+                "client_id": str(row.client_id),
+                "created_at": _iso(row.created_at),
+            }
+            for row in account.beer_photo_deletion_tombstones.all()
+        ],
         "subscription": {
             "tier": account.subscription_tier,
             "status": account.subscription_status,
@@ -9993,6 +10047,12 @@ def _export_account_data(account: Account) -> dict:
                 "beer_name": drink.beer_name,
                 "price_czk": drink.price_czk,
                 "volume_ml": drink.volume_ml,
+                "is_suspect": drink.is_suspect,
+                "suspect_reason": drink.suspect_reason,
+                "beer_brand_key": drink.beer_brand_key,
+                "beer_brand_name": drink.beer_brand_name,
+                "beer_product_key": drink.beer_product_key,
+                "beer_product_name": drink.beer_product_name,
                 "party_evening_id": (
                     str(drink.party_evening.public_id) if drink.party_evening_id else None
                 ),
@@ -10006,6 +10066,8 @@ def _export_account_data(account: Account) -> dict:
                 "id": str(checkin.public_id),
                 "client_id": str(checkin.client_id),
                 "beer_name": checkin.beer_name,
+                "beer_key": checkin.beer_key,
+                "brewery_key": checkin.brewery_key,
                 "brewery_name": checkin.brewery_name,
                 "beer_style": checkin.beer_style,
                 "abv": str(checkin.abv) if checkin.abv is not None else None,
@@ -10112,6 +10174,7 @@ def _export_account_data(account: Account) -> dict:
                     "message": activity.message,
                     "kind": activity.kind,
                     "scheduled_for": _iso(activity.scheduled_for),
+                    "reminder_sent_at": _iso(activity.reminder_sent_at),
                     "started_at": _iso(activity.started_at),
                     "expires_at": _iso(activity.expires_at),
                     "active": activity.active,
@@ -10119,6 +10182,13 @@ def _export_account_data(account: Account) -> dict:
                     "updated_at": _iso(activity.updated_at),
                 }
                 for activity in account.friend_pub_activities.all()
+            ],
+            "targeted_friend_activities": [
+                {
+                    "activity_id": str(row.activity.public_id),
+                    "created_at": _iso(row.created_at),
+                }
+                for row in account.targeted_friend_pub_activities.all()
             ],
             "rsvp": [
                 {
@@ -10181,18 +10251,9 @@ def _export_account_data(account: Account) -> dict:
                     "created_at": _iso(row.created_at),
                 }
                 for row in account.blocks_made.all()
-            ]
-            + [
-                {
-                    "direction": "received",
-                    "account_id": str(row.blocker.public_id),
-                    "created_at": _iso(row.created_at),
-                }
-                for row in account.blocks_received.all()
             ],
             "invite_codes": [
                 {
-                    "code": row.code,
                     "created_at": _iso(row.created_at),
                     "expires_at": _iso(row.expires_at),
                     "revoked": row.revoked,
@@ -10205,7 +10266,6 @@ def _export_account_data(account: Account) -> dict:
                 {
                     "id": str(evening.public_id),
                     "client_id": str(evening.client_id),
-                    "join_code": evening.join_code,
                     "pub_name": evening.pub_name,
                     "pub_city": evening.pub_city,
                     "active": evening.active,
@@ -10315,7 +10375,7 @@ def _export_account_data(account: Account) -> dict:
                 for membership in account.community_event_team_memberships.all()
             ],
         },
-        "visits": [_visit_item(visit) for visit in account.pub_visits.all()],
+        "visits": [_export_visit_item(visit) for visit in account.pub_visits.all()],
         "ratings": [_rating_item(rating) for rating in account.pub_ratings.all()],
         "community_contributions": [
             {
@@ -10996,10 +11056,7 @@ class AccountMeView(APIView):
                     "na_pivo_deletion_epoch",
                     None,
                 )
-                if (
-                    operation_id is not None
-                    and authenticated_deletion_epoch != account.deletion_epoch
-                ):
+                if authenticated_deletion_epoch != account.deletion_epoch:
                     return Response(
                         {
                             "detail": (
