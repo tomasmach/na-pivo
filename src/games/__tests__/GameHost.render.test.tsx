@@ -1,6 +1,10 @@
 /* eslint-disable import/first */
 
 import React from 'react';
+import {
+  AccessibilityInfo,
+  Platform,
+} from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 const mockDownload = jest.fn(async () => ({ localUri: 'file:///dice.html' }));
@@ -215,21 +219,115 @@ it('announces loading politely and errors assertively while Retry stays reachabl
   const onError = jest.fn();
   render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
 
-  // The live region sits on the status container above the message text.
-  const liveRegionOf = (text: string) => {
-    let node = screen.getByText(text);
-    while (node && node.props.accessibilityLiveRegion === undefined) {
-      node = node.parent as typeof node;
-    }
-    return node?.props.accessibilityLiveRegion;
-  };
-  expect(liveRegionOf('Načítám hru…')).toBe('polite');
+  // The live region sits on the message Text itself, never on a parent with
+  // an alert role — Retry has to stay a separately reachable sibling.
+  expect(screen.getByText('Načítám hru…').props.accessibilityLiveRegion).toBe('polite');
 
   await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
   act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
 
-  expect(liveRegionOf('Hru se nepodařilo načíst.')).toBe('assertive');
+  const errorText = screen.getByText('Hru se nepodařilo načíst.');
+  expect(errorText.props.accessibilityLiveRegion).toBe('assertive');
+  expect((errorText.parent as { props: Record<string, unknown> }).props.accessibilityRole)
+    .toBeUndefined();
   expect(screen.getByLabelText('Zkusit znovu').props.accessibilityRole).toBe('button');
+});
+
+describe('GameHost status announcements', () => {
+  // The repo RN mock is partial: announceForAccessibility is attached here and
+  // removed again so other suites sharing the mock stay untouched.
+  const announce = jest.fn();
+  const realOS = Platform.OS;
+
+  beforeEach(() => {
+    (AccessibilityInfo as unknown as Record<string, unknown> &
+      typeof AccessibilityInfo).announceForAccessibility = announce;
+    Platform.OS = 'ios';
+    announce.mockClear();
+  });
+
+  afterEach(() => {
+    Platform.OS = realOS;
+  });
+
+  afterAll(() => {
+    delete (AccessibilityInfo as unknown as Record<string, unknown>).announceForAccessibility;
+    Platform.OS = realOS;
+  });
+
+  const send = (data: unknown) =>
+    act(() =>
+      (mockWebProps?.onMessage as ((event: unknown) => void) | undefined)?.({
+        nativeEvent: { data: JSON.stringify(data) },
+      }),
+    );
+  const sendReady = () => send({ v: 1, type: 'ready' });
+
+  it('keeps initial loading silent and announces each visible status change exactly once', async () => {
+    const onError = jest.fn();
+    const view = render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
+    await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
+
+    // Silent iOS baseline: the first loading state is never announced.
+    expect(announce).not.toHaveBeenCalled();
+
+    act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenLastCalledWith('Hru se nepodařilo načíst.');
+
+    // The same error callback firing again must not duplicate.
+    act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    // Unrelated rerenders with identical props change nothing.
+    view.rerender(<GameHost game="dice" players={PLAYERS} onError={onError} />);
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByLabelText('Zkusit znovu'));
+    await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
+    expect(announce).toHaveBeenCalledTimes(2);
+    expect(announce).toHaveBeenLastCalledWith('Načítám hru…');
+  });
+
+  it('resets at ready so a later failure with the same message announces again', async () => {
+    render(<GameHost game="dice" players={PLAYERS} />);
+    await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
+    sendReady();
+    expect(screen.queryByText('Načítám hru…')).toBeNull();
+    expect(announce).not.toHaveBeenCalled();
+
+    act(() => (mockWebProps?.onRenderProcessGone as (() => void) | undefined)?.());
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenLastCalledWith('Hra se zastavila.');
+
+    fireEvent.press(screen.getByLabelText('Zkusit znovu'));
+    await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
+    expect(announce).toHaveBeenCalledTimes(2);
+    expect(announce).toHaveBeenLastCalledWith('Načítám hru…');
+
+    // Reconnect-like ready then the same failure again: the reset at ready
+    // means the repeated message is announced once more, not swallowed.
+    sendReady();
+    expect(screen.queryByText('Načítám hru…')).toBeNull();
+    act(() => (mockWebProps?.onRenderProcessGone as (() => void) | undefined)?.());
+    expect(announce).toHaveBeenCalledTimes(3);
+    expect(announce).toHaveBeenLastCalledWith('Hra se zastavila.');
+  });
+
+  it('keeps Android fully declarative: polite loading, assertive error, zero imperative calls', async () => {
+    Platform.OS = 'android';
+    const onError = jest.fn();
+    render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
+
+    expect(screen.getByText('Načítám hru…').props.accessibilityLiveRegion).toBe('polite');
+
+    await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
+    act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
+
+    expect(screen.getByText('Hru se nepodařilo načíst.').props.accessibilityLiveRegion)
+      .toBe('assertive');
+    expect(announce).not.toHaveBeenCalled();
+  });
 });
 
 it('delivers a stranded command when a slow cold load becomes ready after the timeout', async () => {

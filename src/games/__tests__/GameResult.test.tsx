@@ -1,7 +1,7 @@
 /* eslint-disable import/first */
 
 import React from 'react';
-import { ScrollView } from 'react-native';
+import { AccessibilityInfo, Platform, ScrollView } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 
 jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
@@ -133,4 +133,110 @@ it('includes the displayed suffix verbatim in the ranking row label', () => {
   );
 
   expect(screen.getByLabelText('1. Kája 3× trefa')).toBeTruthy();
+});
+
+describe('GameResult screen-reader announcements', () => {
+  // The repo RN mock is partial: announceForAccessibility is attached here and
+  // removed again so other suites sharing the mock stay untouched.
+  const announce = jest.fn();
+  const realOS = Platform.OS;
+
+  beforeEach(() => {
+    (AccessibilityInfo as unknown as Record<string, unknown> &
+      typeof AccessibilityInfo).announceForAccessibility = announce;
+    Platform.OS = 'ios';
+    announce.mockClear();
+  });
+
+  afterEach(() => {
+    Platform.OS = realOS;
+  });
+
+  afterAll(() => {
+    delete (AccessibilityInfo as unknown as Record<string, unknown>).announceForAccessibility;
+    Platform.OS = realOS;
+  });
+
+  it('announces the exact grouped summary label once when the result screen appears', () => {
+    render(
+      <GameResult
+        players={[{ id: 'p1', name: 'Hráč 1', tint: '#E8A317' }]}
+        outcome={{ scores: [], winnerId: 'p1' }}
+        onDone={jest.fn()}
+      />,
+    );
+
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith('Vyhrává Hráč 1. Nejvíc bodů u stolu.');
+    expect(screen.getByLabelText('Konec').props.accessibilityRole).toBe('button');
+  });
+
+  it('does not announce again for identical rerenders, fresh equivalent data or a reconnect-like repeat', () => {
+    const players = [{ id: 'p1', name: 'Hráč 1', tint: '#E8A317' }];
+    const outcome = { scores: [], winnerId: 'p1' };
+    const view = render(<GameResult players={players} outcome={outcome} onDone={jest.fn()} />);
+    announce.mockClear();
+
+    view.rerender(<GameResult players={players} outcome={outcome} onDone={jest.fn()} />);
+    view.rerender(
+      <GameResult
+        players={[...players]}
+        outcome={{ ...outcome }}
+        onDone={jest.fn()}
+      />,
+    );
+    view.rerender(
+      <GameResult
+        players={players.map((player) => ({ ...player }))}
+        outcome={{ scores: [], winnerId: 'p1' }}
+        onDone={jest.fn()}
+      />,
+    );
+
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it('announces a genuinely changed result label exactly once', () => {
+    const players = [
+      { id: 'p1', name: 'Hráč 1', tint: '#E8A317' },
+      { id: 'p2', name: 'Hráč 2', tint: '#E8A317' },
+    ];
+    const view = render(
+      <GameResult
+        players={players}
+        outcome={{ scores: [], winnerId: 'p1' }}
+        onDone={jest.fn()}
+      />,
+    );
+    announce.mockClear();
+
+    view.rerender(
+      <GameResult
+        players={players}
+        outcome={{ scores: [], winnerId: null, payingId: 'p2' }}
+        onDone={jest.fn()}
+      />,
+    );
+
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith('Platí Hráč 2. Další runda je jasná.');
+  });
+
+  it('keeps Android fully declarative with zero imperative calls', () => {
+    Platform.OS = 'android';
+    render(
+      <GameResult
+        players={[{ id: 'p1', name: 'Hráč 1', tint: '#E8A317' }]}
+        outcome={{ scores: [], winnerId: 'p1' }}
+        onDone={jest.fn()}
+      />,
+    );
+
+    expect(announce).not.toHaveBeenCalled();
+    const summary = screen.getByLabelText('Vyhrává Hráč 1. Nejvíc bodů u stolu.');
+    expect(summary.props.accessible).toBe(true);
+    expect(summary.props.accessibilityRole).toBe('header');
+    expect(summary.props.accessibilityLiveRegion).toBe('assertive');
+    expect(screen.getByLabelText('Konec').props.accessibilityRole).toBe('button');
+  });
 });

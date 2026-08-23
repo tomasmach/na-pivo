@@ -18,7 +18,14 @@
  */
 
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import type { WebView as WebViewType, WebViewMessageEvent } from 'react-native-webview';
 import { Asset } from 'expo-asset';
 
@@ -115,6 +122,21 @@ export const GameHost = React.forwardRef<
     setMessage(next);
     errorRef.current?.(next);
   }, []);
+
+  // The initial loading state is a silent baseline; every later transition to
+  // a visible non-ready message is announced imperatively on iOS exactly once
+  // per genuinely new message. The ref resets at ready, so a repeated failure
+  // after a reconnect announces again. Android stays declarative only.
+  const announcedRef = React.useRef<string | null>(cs.gameHost.loading);
+  React.useEffect(() => {
+    if (status === 'ready') {
+      announcedRef.current = null;
+      return;
+    }
+    if (announcedRef.current === message) return;
+    announcedRef.current = message;
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility?.(message);
+  }, [message, status]);
 
   React.useEffect(() => {
     let alive = true;
@@ -298,12 +320,14 @@ export const GameHost = React.forwardRef<
         />
       ) : null}
       {status !== 'ready' ? (
-        <View
-          style={styles.status}
-          accessibilityLiveRegion={status === 'error' ? 'assertive' : 'polite'}
-          accessibilityRole={status === 'error' ? 'alert' : undefined}
-        >
-          <Text style={styles.statusText} maxFontSizeMultiplier={FontScaleCap.body}>
+        <View style={styles.status}>
+          {/* The live region lives on the message Text itself, never on a
+              parent with an alert role: Retry must stay separately reachable. */}
+          <Text
+            style={styles.statusText}
+            maxFontSizeMultiplier={FontScaleCap.body}
+            accessibilityLiveRegion={status === 'error' ? 'assertive' : 'polite'}
+          >
             {message}
           </Text>
           {status === 'error' ? (

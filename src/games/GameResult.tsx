@@ -28,7 +28,15 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -109,6 +117,16 @@ export function GameResult({
   const star = starId ? (playerOf(starId)?.name ?? starId) : null;
   const tintOf = (name: string) => playerOf(name)?.tint ?? Colors.amber;
 
+  // iOS reads the whole grouped summary imperatively, once per genuinely new
+  // label; Android gets the declarative assertive live region on the node.
+  const summaryLabel = `${title}. ${note}`;
+  const announcedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (announcedRef.current === summaryLabel) return;
+    announcedRef.current = summaryLabel;
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility?.(summaryLabel);
+  }, [summaryLabel]);
+
   return (
     <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(260)} style={styles.body}>
       <ScrollView
@@ -129,7 +147,7 @@ export function GameResult({
           accessible
           accessibilityRole="header"
           accessibilityLiveRegion="assertive"
-          accessibilityLabel={`${title}. ${note}`}
+          accessibilityLabel={summaryLabel}
         >
           {star ? <PersonAvatar name={star} tint={tintOf(star)} size={72} /> : null}
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
