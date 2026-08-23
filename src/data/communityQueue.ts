@@ -17,7 +17,11 @@
  * since its content differs and we want it stored as a distinct contribution.
  */
 
-import { submitPubCommunity, type CommunityEntry, type CommunityResponse } from './communityClient';
+import {
+  submitPubCommunityForQueue,
+  type CommunityEntry,
+  type CommunityResponse,
+} from './communityClient';
 import { isAllowedBeerVolume, isWeeklyHours, MAX_MENU_BEERS } from './communityHours';
 import { geohash8 } from './geohash';
 import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
@@ -74,25 +78,28 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<CommunityEntry>(
  *  read-modify-write the same AsyncStorage snapshot and lose entries. */
 const runMutation = createQueueLock();
 
-/** Attempts to send every queued entry, keeping only the ones that failed.
- *  Returns the delivered responses keyed by client_id so a caller can read the
- *  backend envelope (the Mapér XP snapshot) for the entry it just enqueued. */
+/** Attempts to send every queued entry, keeping only the ones that failed with
+ *  a retryable outcome — 'ok' and 'permanent-error' (400/422 poison) are both
+ *  terminal and remove the row. */
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const delivered = new Map<string, string>();
+  const poisoned = new Set<string>();
   for (const entry of queue) {
     if (signal.aborted) break;
-    const result = await submitPubCommunity(entry, signal);
-    if (result) delivered.set(entryCell(entry), entry.client_id);
+    const result = await submitPubCommunityForQueue(entry, signal);
+    if (result.status === 'ok') delivered.set(entryCell(entry), entry.client_id);
+    else if (result.status === 'permanent-error') poisoned.add(entry.client_id);
   }
-  if (delivered.size === 0) return;
+  if (delivered.size === 0 && poisoned.size === 0) return;
 
   await runMutation(async () => {
     const current = await loadQueue();
     await saveQueue(current.filter((entry) =>
-      delivered.get(entryCell(entry)) !== entry.client_id,
+      delivered.get(entryCell(entry)) !== entry.client_id &&
+      !poisoned.has(entry.client_id),
     ));
   });
 }
@@ -120,15 +127,20 @@ export async function enqueuePubCommunity(entry: CommunityEntry): Promise<Commun
       });
       if (!persisted || !isPrivateAccountMutationScopeCurrent(scope)) return null;
 
-      const delivered = await submitPubCommunity(entry, scope.signal);
-      if (!delivered || !isPrivateAccountMutationScopeCurrent(scope)) return null;
+      const result = await submitPubCommunityForQueue(entry, scope.signal);
+      if (result.status === 'retry' || !isPrivateAccountMutationScopeCurrent(scope)) return null;
+
+      // 'ok' and 'permanent-error' are both terminal: the row leaves the queue,
+      // but only 'ok' resolves the backend response to the enqueue caller.
       await runMutation(async () => {
         const current = await loadQueue();
         await saveQueue(current.filter((queued) =>
           entryCell(queued) !== entryCell(entry) || queued.client_id !== entry.client_id,
         ));
       });
-      return isPrivateAccountMutationScopeCurrent(scope) ? delivered : null;
+      return result.status === 'ok' && isPrivateAccountMutationScopeCurrent(scope)
+        ? result.response
+        : null;
     });
   } catch {
     // A credential transition owns the queue now; the durable row is either
