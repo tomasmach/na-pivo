@@ -139,6 +139,9 @@ export function connect(definition: GameDefinition): void {
   let currentId: string | null = null;
   let handle: CommandHandler | null = null;
   let finished = false;
+  // One init per page lifetime: a second init frame would re-run `start` and
+  // stack a second canvas/context. Retry remounts the page, which starts fresh.
+  let started = false;
 
   const session: GameSession = {
     get players() {
@@ -168,6 +171,8 @@ export function connect(definition: GameDefinition): void {
   const apply = (message: ToGame): void => {
     if (message.v !== GAME_PROTOCOL_VERSION) return;
     if (message.type === 'init') {
+      if (started) return;
+      started = true;
       finished = false;
       players = message.players;
       theme = message.theme;

@@ -170,10 +170,13 @@ export function parseFromGame(raw: string): FromGame | null {
       value.scores.every((row) => {
         if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
         const score = row as Record<string, unknown>;
-        return typeof score.playerId === 'string' && Number.isFinite(score.score);
+        return typeof score.playerId === 'string' && score.playerId.length > 0 &&
+          Number.isFinite(score.score);
       }) &&
-      (typeof value.winnerId === 'string' || value.winnerId === null) &&
-      (value.payingId === undefined || typeof value.payingId === 'string' || value.payingId === null)
+      ((typeof value.winnerId === 'string' && value.winnerId.length > 0) ||
+        value.winnerId === null) &&
+      (value.payingId === undefined || value.payingId === null ||
+        (typeof value.payingId === 'string' && value.payingId.length > 0))
     ) {
       return {
         v: GAME_PROTOCOL_VERSION,

@@ -101,6 +101,14 @@ export const GameHost = React.forwardRef<
   const [message, setMessage] = React.useState<string>(cs.gameHost.loading);
   const errorRef = React.useRef(onError);
   errorRef.current = onError;
+  // One init per page attempt: a duplicate ready must not inject init twice
+  // into the same page. Reset when the game or attempt changes.
+  const readyRef = React.useRef(false);
+  // The WebView keeps the roster from its init frame even if the parent's
+  // live `players` prop later changes mid-game, so results are validated
+  // against exactly the players the game was initialized with. An immutable
+  // id snapshot: a parent reusing or mutating its array must not leak in.
+  const rosterRef = React.useRef<Set<string>>(new Set());
 
   const fail = React.useCallback((next: string) => {
     setStatus('error');
@@ -110,6 +118,9 @@ export const GameHost = React.forwardRef<
 
   React.useEffect(() => {
     let alive = true;
+    // New page (or retry) means a new handshake is expected.
+    readyRef.current = false;
+    rosterRef.current = new Set();
     setUri(null);
     setStatus('loading');
     setMessage(cs.gameHost.loading);
@@ -201,8 +212,11 @@ export const GameHost = React.forwardRef<
     if (!message) return;
     switch (message.type) {
       case 'ready':
+        if (readyRef.current) break;
+        readyRef.current = true;
         // Init only after the page says it is listening: sent earlier it lands
         // before the SDK has hooked itself up and is silently lost.
+        rosterRef.current = new Set(players.map((player) => player.id));
         post({
           v: GAME_PROTOCOL_VERSION,
           type: 'init',
@@ -227,13 +241,27 @@ export const GameHost = React.forwardRef<
       case 'event':
         onEvent?.(message.name, message.payload);
         break;
-      case 'result':
+      case 'result': {
+        // A result naming someone who is not at the table would degrade into a
+        // neutral 'nobody' outcome downstream — surface it as a recoverable
+        // game error instead of forwarding it.
+        const known = rosterRef.current;
+        const identitiesKnown =
+          (message.winnerId === null || known.has(message.winnerId)) &&
+          (message.payingId === undefined || message.payingId === null ||
+            known.has(message.payingId)) &&
+          message.scores.every((score) => known.has(score.playerId));
+        if (!identitiesKnown) {
+          fail(cs.gameHost.stopped);
+          break;
+        }
         onResult?.({
           scores: message.scores,
           winnerId: message.winnerId,
           payingId: message.payingId,
         });
         break;
+      }
       case 'error':
         fail(message.message);
         break;
@@ -260,6 +288,7 @@ export const GameHost = React.forwardRef<
           onMessage={handleMessage}
           onError={() => fail(cs.gameHost.loadFailed)}
           onContentProcessDidTerminate={() => fail(cs.gameHost.stopped)}
+          onRenderProcessGone={() => fail(cs.gameHost.stopped)}
           androidLayerType="hardware"
         />
       ) : null}

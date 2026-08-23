@@ -59,6 +59,135 @@ it('shows loading, exposes a recoverable error, and clears it after the ready ha
   expect(screen.queryByText('Hru se nepodařilo načíst.')).toBeNull();
 });
 
+it('recovers through the fail path when the Android renderer process is gone', async () => {
+  const onError = jest.fn();
+  render(<GameHost game="dice" players={PLAYERS} onError={onError} />);
+  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+
+  act(() => (mockWebProps?.onRenderProcessGone as (() => void) | undefined)?.());
+
+  expect(screen.getByText('Hra se zastavila.')).toBeTruthy();
+  expect(screen.getByLabelText('Zkusit znovu')).toBeTruthy();
+  expect(onError).toHaveBeenCalledWith('Hra se zastavila.');
+
+  fireEvent.press(screen.getByLabelText('Zkusit znovu'));
+  await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('web-game')).toBeTruthy();
+});
+
+it('injects init once per attempt and resets the guard on retry', async () => {
+  const countInits = () =>
+    mockInject.mock.calls.filter(([script]) => {
+      const match = /window\.napivoGame\((.*)\);true;$/.exec(script as string);
+      return match !== null && JSON.parse(JSON.parse(match[1] as string)).type === 'init';
+    }).length;
+
+  render(<GameHost game="dice" players={PLAYERS} />);
+  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+  mockInject.mockClear();
+
+  const sendReady = () =>
+    act(() =>
+      (mockWebProps?.onMessage as ((event: unknown) => void) | undefined)?.({
+        nativeEvent: { data: JSON.stringify({ v: 1, type: 'ready' }) },
+      }),
+    );
+
+  sendReady();
+  sendReady();
+  expect(countInits()).toBe(1);
+
+  act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
+  fireEvent.press(screen.getByLabelText('Zkusit znovu'));
+  await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
+  mockInject.mockClear();
+
+  sendReady();
+  sendReady();
+  expect(countInits()).toBe(1);
+});
+
+it('drops results with unknown roster identities and exposes the recoverable fail path', async () => {
+  const onResult = jest.fn();
+  const onError = jest.fn();
+  render(
+    <GameHost game="dice" players={PLAYERS} onResult={onResult} onError={onError} />,
+  );
+  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+
+  const send = (data: unknown) =>
+    act(() =>
+      (mockWebProps?.onMessage as ((event: unknown) => void) | undefined)?.({
+        nativeEvent: { data: JSON.stringify(data) },
+      }),
+    );
+
+  send({ v: 1, type: 'ready' });
+  send({
+    v: 1,
+    type: 'result',
+    scores: [{ playerId: 'me', score: 3 }, { playerId: 'ghost', score: 1 }],
+    winnerId: null,
+    payingId: null,
+  });
+
+  expect(onResult).not.toHaveBeenCalled();
+  expect(onError).toHaveBeenCalledWith('Hra se zastavila.');
+  expect(screen.getByLabelText('Zkusit znovu')).toBeTruthy();
+
+  fireEvent.press(screen.getByLabelText('Zkusit znovu'));
+  await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
+  send({ v: 1, type: 'ready' });
+  send({
+    v: 1,
+    type: 'result',
+    scores: [{ playerId: 'me', score: 3 }],
+    winnerId: 'me',
+    payingId: 'me',
+  });
+
+  expect(onResult).toHaveBeenCalledTimes(1);
+});
+
+it('accepts a result naming the init roster when the parent reuses and mutates its players array', async () => {
+  const onResult = jest.fn();
+  const onError = jest.fn();
+  const mutableRoster = [...PLAYERS];
+  const { rerender } = render(
+    <GameHost game="dice" players={mutableRoster} onResult={onResult} onError={onError} />,
+  );
+  await waitFor(() => expect(screen.getByLabelText('web-game')).toBeTruthy());
+
+  const send = (data: unknown) =>
+    act(() =>
+      (mockWebProps?.onMessage as ((event: unknown) => void) | undefined)?.({
+        nativeEvent: { data: JSON.stringify(data) },
+      }),
+    );
+
+  send({ v: 1, type: 'ready' });
+
+  mutableRoster.splice(0, mutableRoster.length, {
+    id: 'someone-else',
+    colour: '#333333',
+    label: 'Ostatní',
+  });
+  rerender(
+    <GameHost game="dice" players={mutableRoster} onResult={onResult} onError={onError} />,
+  );
+
+  send({
+    v: 1,
+    type: 'result',
+    scores: [{ playerId: 'me', score: 3 }],
+    winnerId: 'me',
+    payingId: null,
+  });
+
+  expect(onResult).toHaveBeenCalledTimes(1);
+  expect(onError).not.toHaveBeenCalled();
+});
+
 it('times out while the bundled game asset is still downloading', () => {
   jest.useFakeTimers();
   mockDownload.mockImplementationOnce(() => new Promise(() => undefined));

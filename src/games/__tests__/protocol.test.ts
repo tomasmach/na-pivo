@@ -8,6 +8,25 @@ describe('parseFromGame', () => {
     expect(parseFromGame('{"v":1,"type":"event","name":9}')).toBeNull();
     expect(parseFromGame('{"v":1,"type":"state"}')).toBeNull();
   });
+
+  it('rejects result frames with empty identity strings but keeps null and empty scores valid', () => {
+    expect(
+      parseFromGame('{"v":1,"type":"result","scores":[{"playerId":"a","score":1}],"winnerId":""}'),
+    ).toBeNull();
+    expect(
+      parseFromGame(
+        '{"v":1,"type":"result","scores":[{"playerId":"a","score":1}],"winnerId":null,"payingId":""}',
+      ),
+    ).toBeNull();
+    expect(
+      parseFromGame('{"v":1,"type":"result","scores":[{"playerId":"","score":1}],"winnerId":null}'),
+    ).toBeNull();
+    expect(
+      parseFromGame(
+        '{"v":1,"type":"result","scores":[],"winnerId":null,"payingId":null}',
+      ),
+    ).toEqual({ v: 1, type: 'result', scores: [], winnerId: null, payingId: null });
+  });
 });
 
 describe('parseToGame', () => {
