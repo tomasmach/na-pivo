@@ -2291,6 +2291,139 @@ def test_logout_all_cannot_recover_claimed_account_from_public_device_id(
     assert not AuthToken.objects.filter(account=account).exists()
 
 
+# --- Logout must also disable push devices (defense-in-depth privacy) ------
+#
+# PushDevice rows carry no session/token reference, so a single-token logout
+# cannot tell WHICH device presented the token. Per the accepted trade-off,
+# single-token logout disables ALL of the account's push devices rather than
+# risk a logged-out phone keep receiving party pushes. The mobile app
+# re-registers its token via PUT /v1/push-device on the next launch.
+
+
+def _push_device(account: Account, push_token: str) -> PushDevice:
+    return PushDevice.objects.create(
+        account=account,
+        push_token=push_token,
+        platform=PushDevice.Platform.IOS,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+        enabled=True,
+    )
+
+
+def _deliverable_push_tokens(account: Account) -> list[str]:
+    # Mirrors the party-push fan-out selection (enabled + permission granted),
+    # proving disabled devices are no longer selected for delivery.
+    return list(
+        PushDevice.objects.filter(
+            account=account,
+            enabled=True,
+            permission_status=PushDevice.PermissionStatus.GRANTED,
+        ).values_list("push_token", flat=True)
+    )
+
+
+@pytest.mark.django_db
+def test_logout_disables_all_account_push_devices_because_no_safe_session_correlation_exists(
+    client, sent_emails
+):
+    email = "logout-push@x.cz"
+    _, token = _register_and_token(client, email)
+    account = EmailCredential.objects.get(email=email).account
+    _push_device(account, "ExpoToken[logout-a]")
+    _push_device(account, "ExpoToken[logout-b]")
+
+    resp = client.post("/v1/auth/logout", data={}, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"ok": True}
+    assert not account.push_devices.filter(enabled=True).exists()
+    assert account.push_devices.filter(enabled=False).count() == 2
+
+
+@pytest.mark.django_db
+def test_logout_all_disables_all_account_push_devices(client, sent_emails):
+    email = "logout-all-push@x.cz"
+    _, token = _register_and_token(client, email)
+    account = EmailCredential.objects.get(email=email).account
+    _push_device(account, "ExpoToken[all-a]")
+    _push_device(account, "ExpoToken[all-b]")
+
+    resp = client.post("/v1/auth/logout", data={"all": True}, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"ok": True}
+    assert not account.push_devices.filter(enabled=True).exists()
+
+
+@pytest.mark.django_db
+def test_logout_is_idempotent_for_push_devices_and_safe_with_none_registered(client, sent_emails):
+    email = "logout-idem@x.cz"
+    _, token = _register_and_token(client, email)
+    account = EmailCredential.objects.get(email=email).account
+    device = _push_device(account, "ExpoToken[idem-a]")
+
+    first = client.post("/v1/auth/logout", data={}, format="json", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+    device.refresh_from_db()
+    assert device.enabled is False
+
+    # A repeat logout attempt can no longer authenticate (token revoked) and a
+    # second call with no enabled devices would be a no-op update.
+    assert client.get("/v1/account/me", **_auth(token)).status_code == status.HTTP_401_UNAUTHORIZED
+
+    _, token2 = _register_and_token(client, "logout-nopush@x.cz")
+    empty = client.post("/v1/auth/logout", data={}, format="json", **_auth(token2))
+    assert empty.status_code == status.HTTP_200_OK
+    assert empty.json() == {"ok": True}
+
+
+@pytest.mark.django_db
+def test_logout_disabling_push_devices_rolls_back_together_with_token_revocation_on_failure(
+    client, sent_emails, monkeypatch
+):
+    from pubs.api import auth_views
+
+    email = "logout-rollback@x.cz"
+    _, token = _register_and_token(client, email)
+    account = EmailCredential.objects.get(email=email).account
+    device = _push_device(account, "ExpoToken[rollback-a]")
+
+    def boom(_account):
+        raise RuntimeError("simulated db failure")
+
+    monkeypatch.setattr(auth_views, "_disable_account_push_devices", boom)
+    resp = client.post("/v1/auth/logout", data={}, format="json", **_auth(token))
+
+    # Atomic operation: the failed push-device disable rolls the token
+    # revocation back too — either both happen or neither does.
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert client.get("/v1/account/me", **_auth(token)).status_code == status.HTTP_200_OK
+    device.refresh_from_db()
+    assert device.enabled is True
+
+
+@pytest.mark.django_db
+def test_push_fanout_no_longer_selects_disabled_devices_after_logout_but_other_accounts_untouched(
+    client, sent_emails
+):
+    email = "logout-fanout@x.cz"
+    _, token = _register_and_token(client, email)
+    account = EmailCredential.objects.get(email=email).account
+    other_email = "logout-fanout-other@x.cz"
+    _, other_token = _register_and_token(client, other_email)
+    other_account = EmailCredential.objects.get(email=other_email).account
+
+    _push_device(account, "ExpoToken[fanout-mine]")
+    _push_device(other_account, "ExpoToken[fanout-other]")
+
+    client.post("/v1/auth/logout", data={}, format="json", **_auth(token))
+
+    assert _deliverable_push_tokens(account) == []
+    # Other accounts' devices stay deliverable; logout never touches them.
+    assert _deliverable_push_tokens(other_account) == ["ExpoToken[fanout-other]"]
+    assert client.get("/v1/account/me", **_auth(other_token)).status_code == status.HTTP_200_OK
+
+
 # ===========================================================================
 # 10. Password reset (request + consume)
 # ===========================================================================

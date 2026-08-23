@@ -32,8 +32,10 @@ import uuid
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.db import transaction as dj_transaction
 from django.http import HttpResponse
 from django.urls import reverse
+from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -44,7 +46,7 @@ from rest_framework.views import APIView
 from pubs import accounts
 from pubs.accounts import AccountError
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
-from pubs.models import Account, AuthIdentity
+from pubs.models import Account, AuthIdentity, PushDevice
 
 from . import auth_serializers as s
 from .authentication import AccountTokenAuthentication
@@ -511,14 +513,33 @@ class LogoutView(_AuthView):
         ser.is_valid(raise_exception=True)
 
         def run() -> Response:
-            if ser.validated_data.get("all"):
-                accounts.revoke_all_tokens(request.user)
-            else:
-                # request.auth is the raw presented token (see authentication.py).
-                accounts.revoke_token(request.auth)
+            with dj_transaction.atomic():
+                if ser.validated_data.get("all"):
+                    accounts.revoke_all_tokens(request.user)
+                else:
+                    # request.auth is the raw presented token (see authentication.py).
+                    accounts.revoke_token(request.auth)
+                _disable_account_push_devices(request.user)
             return Response({"ok": True}, status=status.HTTP_200_OK)
 
         return self._safe(run)
+
+
+def _disable_account_push_devices(account: Account) -> int:
+    """Disable every push device registered for the account as part of logout.
+
+    PushDevice rows carry no session/token reference, so a presented bearer
+    token cannot be safely correlated with a single device — picking one would
+    be a guess. The narrowest correct behavior is to disable all of the
+    account's devices: a logged-out phone must not keep receiving party pushes,
+    even at the cost of also silencing pushes on the user's other still
+    signed-in devices until they re-register.
+    """
+    return PushDevice.objects.filter(account=account, enabled=True).update(
+        enabled=False,
+        permission_status=PushDevice.PermissionStatus.DENIED,
+        updated_at=dj_timezone.now(),
+    )
 
 
 # ---------------------------------------------------------------------------
