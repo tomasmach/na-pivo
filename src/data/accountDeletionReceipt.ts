@@ -11,6 +11,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const ACCOUNT_DELETION_RECEIPT_KEY = 'na-pivo-account-deletion-intent-v2';
 export const ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY =
   'na-pivo-account-deletion-intent-quarantine-v1';
+// Self-heal ledgers for the case where the primary quarantine ledger itself
+// is malformed: the primary raw is backed up verbatim,
+// then the corrupt main raw is recovered into its own append-only ledger.
+const QUARANTINE_BACKUP_KEY = 'na-pivo-account-deletion-intent-quarantine-backup-v1';
+const QUARANTINE_RECOVERED_KEY = 'na-pivo-account-deletion-intent-quarantine-recovered-v1';
 
 export interface AccountDeletionIntent {
   accountId: string;
@@ -215,16 +220,18 @@ function parseQuarantineLedger(serialized: string): QuarantineLedgerEntry[] | nu
 }
 
 /**
- * Copy unsalvageable raw verbatim into the durable quarantine ledger. The
- * ledger never auto-deletes or caps: entries are the only surviving copy of
- * bytes we could not parse.
+ * Append one raw verbatim to an append-only [{id,raw}] ledger at `key`.
+ * Exact duplicate raws are idempotent (existing id returned, no rewrite);
+ * ids are deterministic with a collision-safe suffix. Every write is verified
+ * by a byte-for-byte readback. The ledger never auto-deletes or caps.
  */
-async function quarantineRaw(
+async function appendRawToLedger(
+  key: string,
   raw: string,
 ): Promise<{ ok: true; id: string } | { ok: false }> {
   let ledger: QuarantineLedgerEntry[];
   try {
-    const existingRaw = await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY);
+    const existingRaw = await AsyncStorage.getItem(key);
     if (existingRaw === null) {
       ledger = [];
     } else {
@@ -247,14 +254,43 @@ async function quarantineRaw(
   }
   const serialized = JSON.stringify([...ledger, { id, raw }]);
   try {
-    await AsyncStorage.setItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY, serialized);
-    if ((await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY)) !== serialized) {
+    await AsyncStorage.setItem(key, serialized);
+    if ((await AsyncStorage.getItem(key)) !== serialized) {
       return { ok: false };
     }
   } catch {
     return { ok: false };
   }
   return { ok: true, id };
+}
+
+// A malformed primary ledger (anything parseQuarantineLedger rejects) is
+// unsalvageable in place and qualifies for lossless self-heal: its raw is
+// evidence worth copying verbatim.
+/**
+ * Copy unsalvageable raw verbatim into the durable quarantine ledger. When
+ * the primary ledger itself is malformed, self-heal losslessly: first back
+ * the malformed bytes up verbatim, then recover this raw into the separate
+ * recovered ledger. The malformed primary is never rewritten or removed, and
+ * a failed backup leaves the recovered key untouched.
+ */
+async function quarantineRaw(
+  raw: string,
+): Promise<{ ok: true; id: string } | { ok: false }> {
+  let primaryRaw: string | null;
+  try {
+    primaryRaw = await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY);
+  } catch {
+    return { ok: false };
+  }
+  if (primaryRaw !== null && parseQuarantineLedger(primaryRaw) === null) {
+    const backup = await appendRawToLedger(QUARANTINE_BACKUP_KEY, primaryRaw);
+    if (!backup.ok) return { ok: false };
+    const recovered = await appendRawToLedger(QUARANTINE_RECOVERED_KEY, raw);
+    if (!recovered.ok) return { ok: false };
+    return { ok: true, id: recovered.id };
+  }
+  return appendRawToLedger(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY, raw);
 }
 
 type RawClassification =
@@ -548,8 +584,10 @@ export async function retireAccountDeletionOrphan(
 
 /**
  * Clear the main slot only when it still holds the exact quarantined bytes.
- * The ledger entry itself is never removed: it is the last copy of raw we
- * could not parse, so retirement is idempotent and lossless.
+ * Ledger entries are never removed: they are the last copy of raw we could
+ * not parse, so retirement is idempotent and lossless. When the primary
+ * ledger is malformed, retirement only proceeds with a verified backup proof
+ * and looks the id up in the recovered ledger instead.
  */
 export async function retireQuarantinedAccountDeletionReceipt(
   quarantineId: string,
@@ -564,9 +602,25 @@ export async function retireQuarantinedAccountDeletionReceipt(
         ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY,
       );
       if (serialized === null) return { ok: false, storageError: true };
-      const ledger = parseQuarantineLedger(serialized);
-      if (!ledger) return { ok: false, storageError: true };
-      entry = ledger.find((candidate) => candidate.id === quarantineId);
+      const primaryLedger = parseQuarantineLedger(serialized);
+      if (primaryLedger) {
+        entry = primaryLedger.find((candidate) => candidate.id === quarantineId);
+      } else {
+        // Fail closed unless the backup proves these exact primary bytes
+        // were durably copied before consulting the recovered ledger. The
+        // malformed primary itself stays untouched forever.
+        const backupRaw = await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY);
+        if (backupRaw === null) return { ok: false, storageError: true };
+        const backupLedger = parseQuarantineLedger(backupRaw);
+        if (!backupLedger || !backupLedger.some((e) => e.raw === serialized)) {
+          return { ok: false, storageError: true };
+        }
+        const recoveredRaw = await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY);
+        if (recoveredRaw === null) return { ok: false, storageError: true };
+        const recoveredLedger = parseQuarantineLedger(recoveredRaw);
+        if (!recoveredLedger) return { ok: false, storageError: true };
+        entry = recoveredLedger.find((candidate) => candidate.id === quarantineId);
+      }
     } catch {
       return { ok: false, storageError: true };
     }

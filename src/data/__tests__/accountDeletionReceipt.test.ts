@@ -10,6 +10,7 @@ import {
   retireAccountDeletionOrphan,
   retireQuarantinedAccountDeletionReceipt,
   writeAccountDeletionReceipt,
+  type AccountDeletionReceiptReadResult,
 } from '../accountDeletionReceipt';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -387,7 +388,7 @@ it('keeps both updates when retire and archive act on the same snapshot concurre
   });
   const gatedSetItem = jest.fn(async (key: string, value: string) => {
     if (key === ACCOUNT_DELETION_RECEIPT_KEY) writeObserved = true;
-    return baseSetItem(key, value);
+    await baseSetItem(key, value);
   });
   (AsyncStorage.getItem as unknown as jest.Mock).mockImplementation(gatedGetItem);
   (AsyncStorage.setItem as unknown as jest.Mock).mockImplementation(gatedSetItem);
@@ -1068,13 +1069,22 @@ describe('quarantine io failures', () => {
   it('reports io and leaves main intact when the quarantine copy fails its readback', async () => {
     await AsyncStorage.setItem(ACCOUNT_DELETION_RECEIPT_KEY, corruptRaw);
     const quarantine = ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY;
+    let primaryWriteObserved = false;
     const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    // Key-aware state: primary reads hit real storage until the writer commits
+    // its quarantine copy; only the post-write readback sees tampered bytes.
     getItem.mockImplementation(async (key: string) =>
-      key === quarantine ? '{"tampered":true}' : baseGetItem(key),
+      key === quarantine && primaryWriteObserved ? '{"tampered":true}' : baseGetItem(key),
     );
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === quarantine) primaryWriteObserved = true;
+      await baseSetItem(key, value);
+    });
 
     await expect(readAccountDeletionReceipt()).resolves.toEqual(IO_READ_FAILURE);
 
+    expect(setItem).toHaveBeenCalledWith(quarantine, expect.any(String));
     expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBe(corruptRaw);
   });
 });
@@ -1206,5 +1216,431 @@ describe('salvageable partial current ledgers', () => {
 
     expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBe(raw);
     await expectSingleQuarantineEntry(raw);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Malformed quarantine-ledger self-heal. When the primary quarantine ledger
+// itself holds unreadable bytes, the read path must stay lossless: the
+// malformed primary raw is backed up verbatim, the corrupt main raw is
+// recovered into a separate ledger keyed by the returned quarantine id, and
+// no original byte is ever rewritten or deleted. The current source does not
+// implement this contract yet — these tests are the RED stage 1 definition.
+// ---------------------------------------------------------------------------
+
+const QUARANTINE_BACKUP_KEY = 'na-pivo-account-deletion-intent-quarantine-backup-v1';
+const QUARANTINE_RECOVERED_KEY = 'na-pivo-account-deletion-intent-quarantine-recovered-v1';
+const SELF_HEAL_CORRUPT_MAIN_RAW = '{broken-main-self-heal';
+const SELF_HEAL_MALFORMED_PRIMARY_RAW = '{broken-primary-quarantine-ledger';
+
+type TestLedgerEntry = { id: string; raw: string };
+
+/** Strict shape check of a persisted [{id,raw}] append-only ledger. */
+function parseTestLedger(serialized: string | null): TestLedgerEntry[] {
+  if (serialized === null) throw new Error('expected a persisted ledger, got null');
+  const parsed: unknown = JSON.parse(serialized);
+  if (!Array.isArray(parsed)) throw new Error('ledger is not an array');
+  return parsed.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('ledger entry is not an object');
+    }
+    const { id, raw } = entry as Record<string, unknown>;
+    if (typeof id !== 'string' || id.length === 0 || typeof raw !== 'string') {
+      throw new Error('ledger entry shape invalid');
+    }
+    return { id, raw };
+  });
+}
+
+function writtenValueFor(key: string): string | undefined {
+  const calls = (AsyncStorage.setItem as unknown as jest.Mock).mock.calls as [
+    string,
+    string,
+  ][];
+  return calls.find(([calledKey]) => calledKey === key)?.[1];
+}
+
+function expectCorruptWithId(read: AccountDeletionReceiptReadResult): string {
+  if (read.ok || read.failureKind !== 'corrupt' || typeof read.quarantineId !== 'string') {
+    throw new Error(`expected a corrupt quarantine result, got ${JSON.stringify(read)}`);
+  }
+  expect(read.storageError).toBe(false);
+  return read.quarantineId;
+}
+
+async function seedCorruptMainWithMalformedPrimary(): Promise<void> {
+  await AsyncStorage.setItem(ACCOUNT_DELETION_RECEIPT_KEY, SELF_HEAL_CORRUPT_MAIN_RAW);
+  await AsyncStorage.setItem(
+    ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY,
+    SELF_HEAL_MALFORMED_PRIMARY_RAW,
+  );
+}
+
+async function expectOriginalSlotsExact(): Promise<void> {
+  expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBe(
+    SELF_HEAL_CORRUPT_MAIN_RAW,
+  );
+  expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY)).toBe(
+    SELF_HEAL_MALFORMED_PRIMARY_RAW,
+  );
+}
+
+function expectNoRemovalOfOriginals(): void {
+  const removeItem = AsyncStorage.removeItem as jest.MockedFunction<
+    typeof AsyncStorage.removeItem
+  >;
+  expect(removeItem).not.toHaveBeenCalledWith(ACCOUNT_DELETION_RECEIPT_KEY);
+  expect(removeItem).not.toHaveBeenCalledWith(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY);
+}
+
+async function expectIoPreservingOriginals(): Promise<void> {
+  await expect(readAccountDeletionReceipt()).resolves.toEqual(IO_READ_FAILURE);
+  await expectOriginalSlotsExact();
+  expectNoRemovalOfOriginals();
+}
+
+function expectAttemptedLedgerWrite(key: string, raw: string): void {
+  const written = writtenValueFor(key);
+  expect(written).toBeDefined();
+  expect(parseTestLedger(written ?? null).some((entry) => entry.raw === raw)).toBe(true);
+}
+
+async function expectLedgerStoredWithRaw(key: string, raw: string): Promise<void> {
+  const ledger = parseTestLedger(await AsyncStorage.getItem(key));
+  expect(ledger.some((entry) => entry.raw === raw)).toBe(true);
+}
+
+describe('malformed quarantine-ledger self-heal', () => {
+  it('backs up a malformed primary ledger and recovers corrupt main raw losslessly', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+
+    const quarantineId = expectCorruptWithId(await readAccountDeletionReceipt());
+
+    await expectOriginalSlotsExact();
+    expectNoRemovalOfOriginals();
+
+    expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY))).toEqual([
+      { id: expect.any(String), raw: SELF_HEAL_MALFORMED_PRIMARY_RAW },
+    ]);
+    expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY))).toEqual([
+      { id: quarantineId, raw: SELF_HEAL_CORRUPT_MAIN_RAW },
+    ]);
+
+    // Restart/idempotence: a repeated read keeps the same id and leaves both
+    // self-heal ledgers byte-for-byte stable, without duplicating entries.
+    const backupBytes = await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY);
+    const recoveredBytes = await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY);
+    await expect(readAccountDeletionReceipt()).resolves.toEqual({
+      ok: false,
+      storageError: false,
+      failureKind: 'corrupt',
+      quarantineId,
+    });
+    expect(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY)).toBe(backupBytes);
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBe(recoveredBytes);
+
+    // Retire path: the auth/startup cleanup for an id stored in the recovered
+    // ledger must clear only the main slot and never touch any evidence bytes.
+    const removeItem = AsyncStorage.removeItem as jest.MockedFunction<
+      typeof AsyncStorage.removeItem
+    >;
+    removeItem.mockClear();
+    await expect(
+      retireQuarantinedAccountDeletionReceipt(quarantineId),
+    ).resolves.toEqual({ ok: true });
+    expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY)).toBe(
+      SELF_HEAL_MALFORMED_PRIMARY_RAW,
+    );
+    expect(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY)).toBe(backupBytes);
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBe(recoveredBytes);
+    expect(removeItem).not.toHaveBeenCalledWith(
+      ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY,
+    );
+    expect(removeItem).not.toHaveBeenCalledWith(QUARANTINE_BACKUP_KEY);
+    expect(removeItem).not.toHaveBeenCalledWith(QUARANTINE_RECOVERED_KEY);
+
+    // Retiring again stays idempotent and keeps every evidence byte intact.
+    await expect(
+      retireQuarantinedAccountDeletionReceipt(quarantineId),
+    ).resolves.toEqual({ ok: true });
+    expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY)).toBe(
+      SELF_HEAL_MALFORMED_PRIMARY_RAW,
+    );
+    expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY))).toEqual([
+      { id: expect.any(String), raw: SELF_HEAL_MALFORMED_PRIMARY_RAW },
+    ]);
+    expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY))).toEqual([
+      { id: quarantineId, raw: SELF_HEAL_CORRUPT_MAIN_RAW },
+    ]);
+  });
+
+  // Readable JSON that is not a valid primary ledger must self-heal exactly
+  // like unreadable bytes: the wrongly shaped raw is evidence worth copying
+  // verbatim before recovery. The current source's isUnreadableBytes only
+  // accepts JSON.parse failures — these rows are the RED stage 2 signal.
+  const READABLE_INVALID_PRIMARY_CASES: [string, string][] = [
+    ['an empty object', '{}'],
+    [
+      'duplicate entry ids',
+      JSON.stringify([
+        { id: 'qd-duplicated-id-1', raw: 'first-entry-bytes' },
+        { id: 'qd-duplicated-id-1', raw: 'second-entry-bytes' },
+      ]),
+    ],
+    ['an entry missing its raw', JSON.stringify([{ id: 'qd-entry-without-raw' }])],
+  ];
+
+  it.each(READABLE_INVALID_PRIMARY_CASES)(
+    'self-heals losslessly when the primary ledger holds %s',
+    async (_label, invalidPrimaryRaw) => {
+      await AsyncStorage.setItem(ACCOUNT_DELETION_RECEIPT_KEY, SELF_HEAL_CORRUPT_MAIN_RAW);
+      await AsyncStorage.setItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY, invalidPrimaryRaw);
+
+      const quarantineId = expectCorruptWithId(await readAccountDeletionReceipt());
+
+      expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBe(
+        SELF_HEAL_CORRUPT_MAIN_RAW,
+      );
+      expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY)).toBe(
+        invalidPrimaryRaw,
+      );
+      expectNoRemovalOfOriginals();
+
+      expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY))).toEqual([
+        { id: expect.any(String), raw: invalidPrimaryRaw },
+      ]);
+      expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY))).toEqual([
+        { id: quarantineId, raw: SELF_HEAL_CORRUPT_MAIN_RAW },
+      ]);
+    },
+  );
+
+  // Concurrency contract for self-heal: two reads racing on distinct corrupt
+  // main raws behind one malformed primary must both quarantine losslessly.
+  // The module mutex currently serializes them (so this is likely green), but
+  // the harness stays deadlock-free either way: if both entrants arrive in one
+  // round both are released; otherwise the first settles before draining the
+  // second, and every gate is released in `finally`.
+  it('keeps both corrupt raws when two concurrent reads self-heal one malformed primary', async () => {
+    const rawFirst = '{broken-concurrent-heal-first';
+    const rawSecond = '{broken-concurrent-heal-second';
+    await seedCorruptMainWithMalformedPrimary();
+
+    const heldMainReads: ((value: string | null) => void)[] = [];
+    const entrantRaws = [rawFirst, rawSecond];
+    const gatedGetItem = jest.fn(async (key: string) => {
+      if (key !== ACCOUNT_DELETION_RECEIPT_KEY) return baseGetItem(key);
+      return new Promise<string | null>((resolve) => {
+        heldMainReads.push(resolve);
+      });
+    });
+    (AsyncStorage.getItem as unknown as jest.Mock).mockImplementation(gatedGetItem);
+
+    const firstPromise = readAccountDeletionReceipt();
+    const secondPromise = readAccountDeletionReceipt();
+
+    const drainEntrants = async (): Promise<number> => {
+      for (let turn = 0; heldMainReads.length < 1 && turn < 50; turn += 1) {
+        await Promise.resolve();
+      }
+      const entrants = heldMainReads.splice(0);
+      entrants.forEach((resolve) => resolve(entrantRaws.shift() ?? null));
+      return entrants.length;
+    };
+
+    try {
+      if ((await drainEntrants()) < 2) {
+        await firstPromise;
+        await drainEntrants();
+      }
+    } finally {
+      for (const resolve of heldMainReads.splice(0)) resolve(null);
+    }
+    (AsyncStorage.getItem as unknown as jest.Mock).mockImplementation(baseGetItem);
+
+    const firstId = expectCorruptWithId(await firstPromise);
+    const secondId = expectCorruptWithId(await secondPromise);
+    expect(secondId).not.toBe(firstId);
+
+    await expectOriginalSlotsExact();
+    expectNoRemovalOfOriginals();
+
+    // Idempotence by exact raw: two backup attempts collapse into one entry.
+    expect(parseTestLedger(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY))).toEqual([
+      { id: expect.any(String), raw: SELF_HEAL_MALFORMED_PRIMARY_RAW },
+    ]);
+    const recovered = parseTestLedger(
+      await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY),
+    );
+    expect(recovered).toHaveLength(2);
+    expect(recovered).toContainEqual({ id: firstId, raw: rawFirst });
+    expect(recovered).toContainEqual({ id: secondId, raw: rawSecond });
+  });
+
+  it('reports io when backing up the malformed primary rejects', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUARANTINE_BACKUP_KEY) throw new Error('disk full');
+      await baseSetItem(key, value);
+    });
+
+    await expectIoPreservingOriginals();
+
+    expectAttemptedLedgerWrite(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expect(setItem).not.toHaveBeenCalledWith(QUARANTINE_RECOVERED_KEY, expect.any(String));
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  it('reports io when the backup copy fails its readback', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    let backupWritten = false;
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    getItem.mockImplementation(async (key: string) =>
+      key === QUARANTINE_BACKUP_KEY && backupWritten ? '{"tampered":true}' : baseGetItem(key),
+    );
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUARANTINE_BACKUP_KEY) backupWritten = true;
+      await baseSetItem(key, value);
+    });
+
+    await expectIoPreservingOriginals();
+
+    expectAttemptedLedgerWrite(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expect(setItem).not.toHaveBeenCalledWith(QUARANTINE_RECOVERED_KEY, expect.any(String));
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  it('reports io and keeps the verified backup when the recovered-ledger write rejects', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUARANTINE_RECOVERED_KEY) throw new Error('disk full');
+      await baseSetItem(key, value);
+    });
+
+    await expectIoPreservingOriginals();
+
+    await expectLedgerStoredWithRaw(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expectAttemptedLedgerWrite(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expectAttemptedLedgerWrite(QUARANTINE_RECOVERED_KEY, SELF_HEAL_CORRUPT_MAIN_RAW);
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  it('reports io and keeps the verified backup when the recovered ledger fails its readback', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    let recoveredWritten = false;
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    getItem.mockImplementation(async (key: string) =>
+      key === QUARANTINE_RECOVERED_KEY && recoveredWritten
+        ? '{"tampered":true}'
+        : baseGetItem(key),
+    );
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === QUARANTINE_RECOVERED_KEY) recoveredWritten = true;
+      await baseSetItem(key, value);
+    });
+
+    await expectIoPreservingOriginals();
+
+    await expectLedgerStoredWithRaw(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expectAttemptedLedgerWrite(QUARANTINE_RECOVERED_KEY, SELF_HEAL_CORRUPT_MAIN_RAW);
+  });
+
+  it('stays io without overwriting anything when the backup slot is itself malformed', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const invalidBackupRaw = '{}';
+    await AsyncStorage.setItem(QUARANTINE_BACKUP_KEY, invalidBackupRaw);
+
+    await expect(readAccountDeletionReceipt()).resolves.toEqual(IO_READ_FAILURE);
+
+    // The self-heal decision must consult the backup slot; the current source
+    // never reads it, so this assertion carries the RED signal for this case.
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    expect(getItem).toHaveBeenCalledWith(QUARANTINE_BACKUP_KEY);
+
+    expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_KEY)).toBe(
+      SELF_HEAL_CORRUPT_MAIN_RAW,
+    );
+    expect(await AsyncStorage.getItem(ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY)).toBe(
+      SELF_HEAL_MALFORMED_PRIMARY_RAW,
+    );
+    expect(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY)).toBe(invalidBackupRaw);
+
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    expect(setItem).not.toHaveBeenCalledWith(QUARANTINE_RECOVERED_KEY, expect.any(String));
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  // Get-level I/O seams of the self-heal path: every ledger key must survive
+  // a rejecting read losslessly, without further copies being written.
+
+  it('reports io when reading the malformed primary ledger itself rejects', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === ACCOUNT_DELETION_RECEIPT_QUARANTINE_KEY) {
+        throw new Error('storage unavailable');
+      }
+      return baseGetItem(key);
+    });
+
+    await expect(readAccountDeletionReceipt()).resolves.toEqual(IO_READ_FAILURE);
+    (AsyncStorage.getItem as unknown as jest.Mock).mockImplementation(baseGetItem);
+
+    await expectOriginalSlotsExact();
+    expectNoRemovalOfOriginals();
+    expect(await AsyncStorage.getItem(QUARANTINE_BACKUP_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  it('reports io when reading the backup ledger rejects', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === QUARANTINE_BACKUP_KEY) throw new Error('storage unavailable');
+      return baseGetItem(key);
+    });
+
+    await expectIoPreservingOriginals();
+
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    expect(setItem).not.toHaveBeenCalledWith(QUARANTINE_RECOVERED_KEY, expect.any(String));
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  it('reports io when reading the recovered ledger rejects after a verified backup', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const getItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;
+    getItem.mockImplementation(async (key: string) => {
+      if (key === QUARANTINE_RECOVERED_KEY) throw new Error('storage unavailable');
+      return baseGetItem(key);
+    });
+
+    await expect(readAccountDeletionReceipt()).resolves.toEqual(IO_READ_FAILURE);
+    (AsyncStorage.getItem as unknown as jest.Mock).mockImplementation(baseGetItem);
+
+    await expectOriginalSlotsExact();
+    expectNoRemovalOfOriginals();
+    await expectLedgerStoredWithRaw(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBeNull();
+  });
+
+  it('reports io without overwriting a recovered ledger holding readable-invalid bytes', async () => {
+    await seedCorruptMainWithMalformedPrimary();
+    const invalidRecoveredRaw = '{}';
+    await AsyncStorage.setItem(QUARANTINE_RECOVERED_KEY, invalidRecoveredRaw);
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    setItem.mockClear();
+
+    await expectIoPreservingOriginals();
+
+    await expectLedgerStoredWithRaw(QUARANTINE_BACKUP_KEY, SELF_HEAL_MALFORMED_PRIMARY_RAW);
+    expect(setItem).not.toHaveBeenCalledWith(QUARANTINE_RECOVERED_KEY, expect.any(String));
+    expect(await AsyncStorage.getItem(QUARANTINE_RECOVERED_KEY)).toBe(invalidRecoveredRaw);
   });
 });
