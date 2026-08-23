@@ -6,7 +6,12 @@ import type { DiceState } from '@/games/web/dice/rules';
 let mockGameHostProps: {
   options?: Record<string, unknown>;
   onState?: (state: unknown) => void;
+  onEvent?: (name: string, payload: unknown) => void;
 } | null = null;
+
+const mockHostMounts = { mount: 0, unmount: 0 };
+type MockOutcome = { scores: { playerId: string; score: number }[]; winnerId: null; payingId: string | null };
+let mockLastOutcome: MockOutcome | null = null;
 
 jest.mock('@/components/shared/PersonAvatar', () => ({ PersonAvatar: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -32,13 +37,34 @@ jest.mock('@/games/GameHost', () => {
     GAME_HOST_AVAILABLE: true,
     GameHost: ReactModule.forwardRef((props: typeof mockGameHostProps, _ref) => {
       mockGameHostProps = props;
+      ReactModule.useEffect(() => {
+        mockHostMounts.mount += 1;
+        return () => {
+          mockHostMounts.unmount += 1;
+        };
+      }, []);
       return null;
     }),
   };
 });
-jest.mock('@/games/GameResult', () => ({ GameResult: () => null }));
+jest.mock('@/games/GameResult', () => ({
+  GameResult: ({ outcome }: { outcome: MockOutcome }) => {
+    mockLastOutcome = outcome;
+    return null;
+  },
+}));
 
-const { startDice, recordRoll } = jest.requireActual('@/games/web/dice/rules') as typeof import('@/games/web/dice/rules');
+const { startDice, recordRoll, settleRound, whoseTurn, isOver } = jest.requireActual('@/games/web/dice/rules') as typeof import('@/games/web/dice/rules');
+
+beforeEach(() => {
+  mockGameHostProps = null;
+  mockHostMounts.mount = 0;
+  mockHostMounts.unmount = 0;
+  mockLastOutcome = null;
+});
+afterEach(() => {
+  jest.useRealTimers();
+});
 const { DiceDuelShell } = jest.requireActual('@/party/shells/DiceDuelShell') as typeof import('@/party/shells/DiceDuelShell');
 
 const PLAYERS = [
@@ -57,4 +83,104 @@ it('keeps the latest local state in GameHost options so a WebView retry can resu
   act(() => mockGameHostProps?.onState?.(afterFirstRoll));
 
   expect(mockGameHostProps?.options).toEqual({ count: 2, state: afterFirstRoll });
+});
+
+it('mounts GameHost exactly once across active -> roundDone -> next active round', () => {
+  const initial = startDice(PLAYERS);
+  const afterMe = recordRoll(initial, 'me', [6, 4]);
+  const afterHonza = recordRoll(afterMe, 'honza', [2, 3]);
+  expect(whoseTurn(afterHonza)).toBeNull();
+  expect(isOver(afterHonza)).toBe(false);
+  const nextRound = settleRound(afterHonza);
+
+  const { rerender } = render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={initial} />,
+  );
+  rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={afterHonza} />,
+  );
+  rerender(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} state={nextRound} />,
+  );
+
+  expect(mockHostMounts).toEqual({ mount: 1, unmount: 0 });
+  expect(mockGameHostProps?.options).toEqual({ count: 2, state: nextRound });
+});
+
+it('uncontrolled play drives rounds through the same mounted host', () => {
+  const initial = startDice(PLAYERS);
+  const afterMe = recordRoll(initial, 'me', [6, 4]);
+  const afterHonza = recordRoll(afterMe, 'honza', [2, 3]);
+  expect(whoseTurn(afterHonza)).toBeNull();
+  const nextRound = settleRound(afterHonza);
+
+  render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+  );
+  act(() => mockGameHostProps?.onState?.(afterHonza));
+  act(() => mockGameHostProps?.onState?.(nextRound));
+
+  expect(mockHostMounts).toEqual({ mount: 1, unmount: 0 });
+  expect(mockGameHostProps?.options).toEqual({ count: 2, state: nextRound });
+});
+
+it('a fresh settled cheer survives the previous cheer timer', () => {
+  jest.useFakeTimers();
+  const { getByText, queryByText } = render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+  );
+
+  act(() =>
+    mockGameHostProps?.onEvent?.('settled', { dice: [6, 6], playerId: 'honza' }),
+  );
+  expect(getByText('Honza má dvanáct!')).toBeTruthy();
+
+  act(() => jest.advanceTimersByTime(1000));
+  act(() =>
+    mockGameHostProps?.onEvent?.('settled', { dice: [1, 1], playerId: 'honza' }),
+  );
+  act(() => jest.advanceTimersByTime(1000));
+
+  expect(getByText('Honza… dvě. Au.')).toBeTruthy();
+  act(() => jest.advanceTimersByTime(600));
+  expect(queryByText('Honza… dvě. Au.')).toBeNull();
+});
+
+it('unmount cancels the pending cheer timer', () => {
+  jest.useFakeTimers();
+  const view = render(
+    <DiceDuelShell players={PLAYERS} onFinished={jest.fn()} onDone={jest.fn()} />,
+  );
+  act(() =>
+    mockGameHostProps?.onEvent?.('settled', { dice: [6, 6], playerId: 'me' }),
+  );
+  expect(jest.getTimerCount()).toBe(1);
+
+  view.unmount();
+
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('a malformed over state with an unknown payer contains itself instead of publishing a stranger', () => {
+  const onFinished = jest.fn();
+  const corrupted: DiceState = {
+    ...startDice(PLAYERS),
+    live: ['ghost'],
+    safe: ['me', 'honza'],
+    round: [],
+    roundNumber: 7,
+    payingId: 'ghost',
+  };
+
+  render(
+    <DiceDuelShell
+      players={PLAYERS}
+      onFinished={onFinished}
+      onDone={jest.fn()}
+      state={corrupted}
+    />,
+  );
+
+  expect(onFinished).not.toHaveBeenCalled();
+  expect(mockLastOutcome?.payingId).toBeNull();
 });

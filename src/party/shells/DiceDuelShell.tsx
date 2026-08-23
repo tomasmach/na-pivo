@@ -124,6 +124,8 @@ export function DiceDuelShell({
   const fallbackUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  /** The current cheer's timeout; a new settled beat replaces, not stacks. */
+  const cheerTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const reported = React.useRef(false);
 
   const turn = whoseTurn(state);
@@ -140,6 +142,7 @@ export function DiceDuelShell({
   React.useEffect(
     () => () => {
       if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+      if (cheerTimer.current) clearTimeout(cheerTimer.current);
     },
     [],
   );
@@ -221,6 +224,7 @@ export function DiceDuelShell({
     const player = players.find(
       (candidate) => candidate.id === payload.playerId,
     );
+    if (cheerTimer.current) clearTimeout(cheerTimer.current);
     setCheer(callFor(player?.name ?? "Hráč", sum));
     if (controlled && payload.dice.length === 2) {
       const left = payload.dice[0];
@@ -237,7 +241,10 @@ export function DiceDuelShell({
         onRoll?.({ playerId: player.id, dice: [left, right] });
       }
     }
-    setTimeout(() => setCheer(null), 1600);
+    cheerTimer.current = setTimeout(() => {
+      cheerTimer.current = null;
+      setCheer(null);
+    }, 1600);
   };
 
   const last = state.round[state.round.length - 1];
@@ -246,6 +253,8 @@ export function DiceDuelShell({
   const tintOf = (playerId: string) => playerOf(playerId)?.tint ?? Colors.amber;
   const nameOf = (playerId: string | null) =>
     playerOf(playerId)?.name ?? "Hráč";
+  const winners = roundWinners(state);
+  const loser = roundLoser(state);
 
   if (over) {
     // The shared ending — the same screen every game lands on, chosen from the
@@ -259,7 +268,13 @@ export function DiceDuelShell({
             score: row.score,
           })),
           winnerId: null,
-          payingId: state.payingId,
+          // Corrupt-state containment, not the normal game path: a restored
+          // payingId outside the roster names nobody, so pass null rather
+          // than dress a stranger up as the payer. The finish effect above
+          // already refuses to publish such a payer.
+          payingId: players.some((player) => player.id === state.payingId)
+            ? state.payingId
+            : null,
         }}
         // Who got out, in the order they managed it. The ladder is the story of
         // this game, not the raw win counts.
@@ -273,89 +288,9 @@ export function DiceDuelShell({
     );
   }
 
-  if (roundDone) {
-    const winners = roundWinners(state);
-    const loser = roundLoser(state);
-    return (
-      <ScrollView
-        contentContainerStyle={[
-          styles.body,
-          { paddingBottom: insets.bottom + 88 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
-          {state.roundNumber}. kolo
-        </Text>
-        <Text
-          style={styles.verdict}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {winners.length > 1
-            ? `${winners.map(nameOf).join(" a ")} berou kolo`
-            : `${nameOf(winners[0] ?? null)} bere kolo`}
-        </Text>
-        {loser && !winners.includes(loser) ? (
-          <Text
-            style={styles.verdictSub}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            Nejmíň hodil {nameOf(loser)}.
-          </Text>
-        ) : null}
-
-        <View style={styles.rolls}>
-          {[...state.round]
-            .sort((a, b) => total(b) - total(a))
-            .map((entry) => (
-              <View
-                key={entry.playerId}
-                style={[
-                  styles.rollRow,
-                  winners.includes(entry.playerId) && styles.rollRowWin,
-                ]}
-              >
-                <PersonAvatar
-                  name={nameOf(entry.playerId)}
-                  tint={tintOf(entry.playerId)}
-                  size={30}
-                />
-                <Text style={styles.rollName} numberOfLines={1}>
-                  {nameOf(entry.playerId)}
-                </Text>
-                <Text style={styles.rollDice} allowFontScaling={false}>
-                  {entry.dice[0]} + {entry.dice[1]}
-                </Text>
-                <Text style={styles.rollTotal} allowFontScaling={false}>
-                  {total(entry)}
-                </Text>
-              </View>
-            ))}
-        </View>
-
-        <Pressable
-          onPress={nextRound}
-          disabled={spectator}
-          style={({ pressed }) => [
-            styles.action,
-            pressed && !spectator && styles.pressed,
-            spectator && styles.muted,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Další kolo"
-          accessibilityState={{ disabled: spectator }}
-        >
-          <Text
-            style={styles.actionText}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-          >
-            Další kolo
-          </Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
-
+  // One screen, one table. The round summary swaps in around a GameHost that
+  // stays mounted — remounting the WebView between rounds costs far more than
+  // hiding it for a beat, so the host only ever unmounts when the game ends.
   return (
     <ScrollView
       contentContainerStyle={[
@@ -364,26 +299,106 @@ export function DiceDuelShell({
       ]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
-        {state.roundNumber}. kolo · {TARGET_WINS}× a jsi z obliga
+      <Text
+        key="kicker"
+        style={styles.kicker}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {roundDone
+          ? `${state.roundNumber}. kolo`
+          : `${state.roundNumber}. kolo · ${TARGET_WINS}× a jsi z obliga`}
       </Text>
 
-      <View style={styles.turn}>
-        <PersonAvatar name={nameOf(turn)} tint={tintOf(turn ?? "")} size={64} />
-        <Text
-          style={styles.turnName}
-          numberOfLines={2}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {playerOf(turn)?.name === "Ty" ? "Házíš ty" : `${nameOf(turn)} hází`}
-        </Text>
-      </View>
+      {roundDone ? (
+        <React.Fragment key="summary">
+          <Text
+            style={styles.verdict}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {winners.length > 1
+              ? `${winners.map(nameOf).join(" a ")} berou kolo`
+              : `${nameOf(winners[0] ?? null)} bere kolo`}
+          </Text>
+          {loser && !winners.includes(loser) ? (
+            <Text
+              style={styles.verdictSub}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              Nejmíň hodil {nameOf(loser)}.
+            </Text>
+          ) : null}
+
+          <View style={styles.rolls}>
+            {[...state.round]
+              .sort((a, b) => total(b) - total(a))
+              .map((entry) => (
+                <View
+                  key={entry.playerId}
+                  style={[
+                    styles.rollRow,
+                    winners.includes(entry.playerId) && styles.rollRowWin,
+                  ]}
+                >
+                  <PersonAvatar
+                    name={nameOf(entry.playerId)}
+                    tint={tintOf(entry.playerId)}
+                    size={30}
+                  />
+                  <Text style={styles.rollName} numberOfLines={1}>
+                    {nameOf(entry.playerId)}
+                  </Text>
+                  <Text style={styles.rollDice} allowFontScaling={false}>
+                    {entry.dice[0]} + {entry.dice[1]}
+                  </Text>
+                  <Text style={styles.rollTotal} allowFontScaling={false}>
+                    {total(entry)}
+                  </Text>
+                </View>
+              ))}
+          </View>
+
+          <Pressable
+            onPress={nextRound}
+            disabled={spectator}
+            style={({ pressed }) => [
+              styles.action,
+              pressed && !spectator && styles.pressed,
+              spectator && styles.muted,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Další kolo"
+            accessibilityState={{ disabled: spectator }}
+          >
+            <Text
+              style={styles.actionText}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              Další kolo
+            </Text>
+          </Pressable>
+        </React.Fragment>
+      ) : (
+        <View key="turn" style={styles.turn}>
+          <PersonAvatar
+            name={nameOf(turn)}
+            tint={tintOf(turn ?? "")}
+            size={64}
+          />
+          <Text
+            style={styles.turnName}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {playerOf(turn)?.name === "Ty" ? "Házíš ty" : `${nameOf(turn)} hází`}
+          </Text>
+        </View>
+      )}
 
       {/* A real table: the dice fall, bounce off the rails and come to rest
           crooked, and whatever is on top is the answer. They stay where they
           landed while the next thrower decides — dice do not vanish between
-          throws. */}
-      <View style={styles.dice}>
+          throws. Hidden, not gone, while the round summary shows. */}
+      <View key="dice" style={[styles.dice, roundDone && styles.diceHidden]}>
         {!localOnly ? (
           <GameHost
             ref={canvas}
@@ -436,30 +451,34 @@ export function DiceDuelShell({
         ) : null}
       </View>
 
-      {/* Smaller than the dice, because the dice ARE the screen. A full-width
-          amber bar under them made the button the loudest thing in a game whose
-          whole point is what just landed. */}
-      <Pressable
-        onPress={roll}
-        disabled={rolling || spectator}
-        style={({ pressed }) => [
-          styles.roll,
-          (pressed || rolling) && !spectator && styles.pressed,
-          spectator && styles.muted,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={`Hodit za ${nameOf(turn)}`}
-        accessibilityState={{ disabled: Boolean(rolling || spectator) }}
-      >
-        <Text
-          style={styles.actionText}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {rolling ? "…" : "Hoď"}
-        </Text>
-      </Pressable>
+      {!roundDone ? (
+        <React.Fragment key="play">
+          {/* Smaller than the dice, because the dice ARE the screen. A full-width
+              amber bar under them made the button the loudest thing in a game whose
+              whole point is what just landed. */}
+          <Pressable
+            onPress={roll}
+            disabled={rolling || spectator}
+            style={({ pressed }) => [
+              styles.roll,
+              (pressed || rolling) && !spectator && styles.pressed,
+              spectator && styles.muted,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Hodit za ${nameOf(turn)}`}
+            accessibilityState={{ disabled: Boolean(rolling || spectator) }}
+          >
+            <Text
+              style={styles.actionText}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              {rolling ? "…" : "Hoď"}
+            </Text>
+          </Pressable>
 
-      <Ladder state={state} tintOf={tintOf} nameOf={nameOf} />
+          <Ladder state={state} tintOf={tintOf} nameOf={nameOf} />
+        </React.Fragment>
+      ) : null}
     </ScrollView>
   );
 }
@@ -544,6 +563,7 @@ const styles = StyleSheet.create({
   },
 
   dice: { alignSelf: "stretch", height: 260, marginTop: Spacing.md },
+  diceHidden: { display: "none" },
   roll: {
     height: 54,
     paddingHorizontal: 44,

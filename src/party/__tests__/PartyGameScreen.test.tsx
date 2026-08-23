@@ -581,6 +581,7 @@ describe("PartyGameScreen result wiring", () => {
     mockNight = createMockNight();
     mockLoadPendingPartyGameRuntime.mockResolvedValue(null);
     mockLoadQueuedPartyGameEvents.mockResolvedValue([]);
+    mockSendGameEvent.mockResolvedValue(undefined);
     mockStartSharedGame.mockImplementation(
       async (input: { rosterIds?: string[] }) => ({
         gameId: "game-1",
@@ -637,8 +638,19 @@ describe("PartyGameScreen result wiring", () => {
     fireEvent.press(spin);
     fireEvent.press(spin);
 
-    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
-    expect(mockSendGameEvent).toHaveBeenCalledWith("game-1", {
+    await waitFor(() => expect(mockFinishGame).toHaveBeenCalledTimes(1));
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(
+      1,
+      "game-1",
+      {
+        kind: "action",
+        payload: { type: "pick", playerId: "honza", fromRevision: 0 },
+        createdAt: expect.any(String),
+      },
+      expect.any(String),
+    );
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(2, "game-1", {
       kind: "finish",
       payload: {
         winner: null,
@@ -651,6 +663,315 @@ describe("PartyGameScreen result wiring", () => {
     expect(mockFinishGame).toHaveBeenCalledTimes(1);
     expect(mockBack).not.toHaveBeenCalled();
     expect(screen.getByLabelText("canonical-done")).toBeTruthy();
+  });
+
+  it("enqueues exactly one durable round pick before the finish can be reported", async () => {
+    mockRouteKey = "round";
+    let resolvePickSend: (() => void) | null = null;
+    mockSendGameEvent.mockImplementation(
+      (_gameId: string, event: { kind: string }) =>
+        event.kind === "action"
+          ? new Promise<void>((resolve) => {
+              resolvePickSend = resolve;
+            })
+          : Promise.resolve(),
+    );
+
+    render(<PartyGameScreen />);
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("pick-action")).toBeTruthy(),
+    );
+    const spin = screen.getByLabelText("pick-action");
+    fireEvent.press(spin);
+    fireEvent.press(spin);
+
+    // The pick send is still unresolved: no second action and no finish yet.
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+    expect(mockSendGameEvent).toHaveBeenCalledWith(
+      "game-1",
+      expect.objectContaining({
+        kind: "action",
+        payload: { type: "pick", playerId: "honza", fromRevision: 0 },
+      }),
+      expect.any(String),
+    );
+    expect(mockFinishGame).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("canonical-done")).toBeNull();
+
+    await act(async () => {
+      resolvePickSend?.();
+    });
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(2, "game-1", {
+      kind: "finish",
+      payload: {
+        winner: null,
+        winnerId: null,
+        scores: [],
+        paying: "Honza",
+        payingId: "honza",
+      },
+    });
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves the round payer from the current canonical pick when the local send lands late", async () => {
+    mockRouteKey = "round";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+      { id: "petra", nickname: "petra", displayName: "Petra", avatarUrl: null },
+    ];
+    let resolvePickSend: (() => void) | null = null;
+    mockSendGameEvent.mockImplementation(
+      (_gameId: string, event: { kind: string }) =>
+        event.kind === "action"
+          ? new Promise<void>((resolve) => {
+              resolvePickSend = resolve;
+            })
+          : Promise.resolve(),
+    );
+
+    const view = render(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    fireEvent.press(screen.getByLabelText("pick-action"));
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+    expect(mockFinishGame).not.toHaveBeenCalled();
+
+    // A lower-cursor remote pick becomes canonical while our send is still
+    // unresolved: the late finish must name THAT payer, not our stale spin.
+    mockGameEvents = [
+      actionEvent(1, "phone-a-pick", {
+        type: "pick",
+        playerId: "petra",
+        fromRevision: 0,
+      }),
+    ];
+    view.rerender(<PartyGameScreen />);
+
+    await act(async () => {
+      resolvePickSend?.();
+    });
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(2, "game-1", {
+      kind: "finish",
+      payload: {
+        winner: null,
+        winnerId: null,
+        scores: [],
+        paying: "petra",
+        payingId: "petra",
+      },
+    });
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+    expect(mockFinishGame).toHaveBeenCalledWith(
+      "round",
+      expect.objectContaining({ paying: "petra", payingId: "petra" }),
+    );
+  });
+
+  it("does not duplicate the round finish when a remote finish lands during the pick send", async () => {
+    mockRouteKey = "round";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    let resolvePickSend: (() => void) | null = null;
+    mockSendGameEvent.mockImplementation(
+      (_gameId: string, event: { kind: string }) =>
+        event.kind === "action"
+          ? new Promise<void>((resolve) => {
+              resolvePickSend = resolve;
+            })
+          : Promise.resolve(),
+    );
+
+    const view = render(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    fireEvent.press(screen.getByLabelText("pick-action"));
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+
+    const remoteFinish = actionEvent(2, "phone-a-finish", {});
+    remoteFinish.kind = "finish";
+    remoteFinish.payload = {
+      winner: null,
+      winnerId: null,
+      scores: [],
+      paying: "Honza",
+      payingId: "honza",
+    };
+    mockGameEvents = [...mockGameEvents, remoteFinish];
+    view.rerender(<PartyGameScreen />);
+    expect(screen.getByLabelText("canonical-done")).toBeTruthy();
+
+    await act(async () => {
+      resolvePickSend?.();
+    });
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+    expect(mockSendGameEvent).not.toHaveBeenCalledWith(
+      "game-1",
+      expect.objectContaining({ kind: "finish" }),
+    );
+    expect(mockFinishGame).not.toHaveBeenCalled();
+  });
+
+  it("drops the pending round finish when the screen unmounts mid-send", async () => {
+    mockRouteKey = "round";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    let resolvePickSend: (() => void) | null = null;
+    mockSendGameEvent.mockImplementation(
+      (_gameId: string, event: { kind: string }) =>
+        event.kind === "action"
+          ? new Promise<void>((resolve) => {
+              resolvePickSend = resolve;
+            })
+          : Promise.resolve(),
+    );
+
+    const view = render(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    fireEvent.press(screen.getByLabelText("pick-action"));
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    await act(async () => {
+      resolvePickSend?.();
+    });
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+    expect(mockSendGameEvent).not.toHaveBeenCalledWith(
+      "game-1",
+      expect.objectContaining({ kind: "finish" }),
+    );
+    expect(mockFinishGame).not.toHaveBeenCalled();
+  });
+
+  it("publishes exactly one stable-id pick action before the round finish on a two-player roster", async () => {
+    mockRouteKey = "round";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: null, displayName: "Honza", avatarUrl: null },
+    ];
+
+    render(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    const spin = screen.getByLabelText("pick-action");
+    fireEvent.press(spin);
+    fireEvent.press(spin);
+
+    await waitFor(() =>
+      expect(mockSendGameEvent).toHaveBeenCalledWith(
+        "game-1",
+        expect.objectContaining({ kind: "finish" }),
+      ),
+    );
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(2);
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(
+      1,
+      "game-1",
+      {
+        kind: "action",
+        payload: { type: "pick", playerId: "honza", fromRevision: 0 },
+        createdAt: expect.any(String),
+      },
+      expect.any(String),
+    );
+    expect(mockSendGameEvent).toHaveBeenNthCalledWith(2, "game-1", {
+      kind: "finish",
+      payload: {
+        winner: null,
+        winnerId: null,
+        scores: [],
+        paying: "Honza",
+        payingId: "honza",
+      },
+    });
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a staged remote round pick on another phone and the canonical result after finish", () => {
+    mockRouteKey = "round";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockGameEvents = [
+      actionEvent(1, "phone-a-pick", {
+        type: "pick",
+        playerId: "honza",
+        fromRevision: 0,
+      }),
+    ];
+
+    const view = render(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    expect(screen.getByLabelText("picked-honza")).toBeTruthy();
+
+    const finish = actionEvent(2, "phone-a-finish", {});
+    finish.kind = "finish";
+    finish.payload = {
+      winner: null,
+      winnerId: null,
+      scores: [],
+      paying: "Honza",
+      payingId: "honza",
+    };
+    mockGameEvents = [...mockGameEvents, finish];
+    view.rerender(<PartyGameScreen />);
+
+    expect(screen.getByLabelText("canonical-done")).toBeTruthy();
+  });
+
+  it("reports the canonical staged pick when a late spin lands a different player", () => {
+    mockRouteKey = "round";
+    mockSharedRoster = [
+      { id: "me", nickname: "ty", displayName: "Ty", avatarUrl: null },
+      { id: "honza", nickname: "honza", displayName: "Honza", avatarUrl: null },
+    ];
+    mockGameEvents = [
+      actionEvent(1, "phone-a-pick", {
+        type: "pick",
+        playerId: "me",
+        fromRevision: 0,
+      }),
+    ];
+
+    render(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    expect(screen.getByLabelText("picked-me")).toBeTruthy();
+
+    // The drum spins again on this phone, but the table already has a
+    // canonical pick: the finish must name THAT payer, not the new spin.
+    fireEvent.press(screen.getByLabelText("pick-action"));
+
+    expect(mockSendGameEvent).not.toHaveBeenCalledWith(
+      "game-1",
+      expect.objectContaining({
+        kind: "finish",
+        payload: expect.objectContaining({ payingId: "honza" }),
+      }),
+    );
+    expect(mockSendGameEvent).toHaveBeenCalledWith("game-1", {
+      kind: "finish",
+      payload: {
+        winner: null,
+        winnerId: null,
+        scores: [],
+        paying: "ty",
+        payingId: "me",
+      },
+    });
+    expect(mockFinishGame).toHaveBeenCalledTimes(1);
   });
 
   it("passes only active players selected in the lobby to Pub quiz", async () => {
@@ -1311,6 +1632,7 @@ describe("PartyGameScreen spectator mode", () => {
     mockNight = createMockNight();
     mockLoadPendingPartyGameRuntime.mockResolvedValue(null);
     mockLoadQueuedPartyGameEvents.mockResolvedValue([]);
+    mockSendGameEvent.mockResolvedValue(undefined);
     mockStartSharedGame.mockImplementation(
       async (input: { rosterIds?: string[] }) => ({
         gameId: "game-1",

@@ -475,8 +475,8 @@ export default function PartyGameScreen() {
     [roster],
   );
   const appendAction = React.useCallback(
-    (payload: SharedGameActionPayload) => {
-      if (spectator || !gameId) return;
+    (payload: SharedGameActionPayload): Promise<void> => {
+      if (spectator || !gameId) return Promise.resolve();
       const clientId = generateUuidV4();
       const event: PartyGameEventInput = {
         clientId,
@@ -485,7 +485,7 @@ export default function PartyGameScreen() {
         createdAt: new Date(stamp()).toISOString(),
       };
       setLocalActionEvents((current) => [...current, event]);
-      void sendGameEvent(
+      return sendGameEvent(
         gameId,
         { kind: "action", payload, createdAt: event.createdAt },
         clientId,
@@ -542,6 +542,26 @@ export default function PartyGameScreen() {
     React.useState<typeof remoteFinish>(null);
   const canonicalFinish = remoteFinish ?? localFinish;
   const finishLocked = React.useRef(false);
+  // Latest-canonical mirrors: a round pick send can resolve long after the
+  // table moved on, and its continuation must read the table as it is NOW,
+  // not as the tap captured it.
+  const sharedPickRef = React.useRef(sharedPick);
+  const canonicalFinishRef = React.useRef(canonicalFinish);
+  React.useLayoutEffect(() => {
+    sharedPickRef.current = sharedPick;
+    canonicalFinishRef.current = canonicalFinish;
+  });
+  // Holds the game scope while this phone's round pick send is still in
+  // flight; a stale scope never matches, so a new game starts unguarded.
+  // Cleanup also invalidates on unmount, so a late resolution can neither
+  // clear nor finish a game this screen no longer shows.
+  const roundPickPending = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    roundPickPending.current = null;
+    return () => {
+      roundPickPending.current = null;
+    };
+  }, [gameScope]);
   const remoteAnswers = React.useMemo<QuizAnswer[]>(
     () =>
       eventsOfGame(gameEvents, gameId)
@@ -704,7 +724,8 @@ export default function PartyGameScreen() {
       winnerId?: string | null;
       payingId?: string | null;
     }) => {
-      if (spectator || canonicalFinish || finishLocked.current) return;
+      if (spectator || canonicalFinishRef.current || finishLocked.current)
+        return;
       finishLocked.current = true;
       const payload = {
         winner: result.winner,
@@ -728,7 +749,7 @@ export default function PartyGameScreen() {
       }
       if (key) finishGame(key, { game: name, ...result });
     },
-    [canonicalFinish, finishGame, gameId, key, name, sendGameEvent, spectator],
+    [finishGame, gameId, key, name, sendGameEvent, spectator],
   );
 
   React.useEffect(() => {
@@ -946,21 +967,69 @@ export default function PartyGameScreen() {
         <RoundDrumShell
           spectator={spectator}
           players={roster}
-          pickedId={null}
+          pickedId={sharedPick?.playerId ?? null}
           bottomInset={insets.bottom}
           // Variant B: a native slowing drum, then the platform result. The
           // stable id is published with the name so duplicate display names
           // can never turn into an empty or wrong payer.
           onPicked={(payingId) => {
-            const payer = roster.find((player) => player.id === payingId);
+            // The canonical pick on the table wins: a second spin after
+            // another phone's pick landed must never rename the payer.
+            const resolvedId = sharedPick?.playerId ?? payingId;
+            const payer = roster.find((player) => player.id === resolvedId);
             if (!payer) return;
-            report({
+            const result = {
               winner: null,
               winnerId: null,
               scores: [],
               paying: payer.name,
               payingId: payer.id,
-            });
+            };
+            // Local-only round finishes synchronously, as it always did.
+            if (!gameId) {
+              report(result);
+              return;
+            }
+            // One spin per round: a double tap while the pick send is still
+            // in flight can neither bypass the wait nor enqueue twice.
+            if (roundPickPending.current === gameScope) return;
+            if (sharedPick) {
+              report(result);
+              return;
+            }
+            const scope = gameScope;
+            roundPickPending.current = scope;
+            void appendAction({
+              type: "pick",
+              playerId: payer.id,
+              fromRevision: sharedPickRevision,
+            })
+              .then(() => {
+                // The canonical pick is durably enqueued; only now may the
+                // finish follow, so another phone sees the payer first.
+                if (roundPickPending.current !== scope) return;
+                roundPickPending.current = null;
+                // The table moved on while the send was in flight: a remote
+                // finish wins outright, and a canonical remote pick names the
+                // payer — this phone's spin was too late either way.
+                if (canonicalFinishRef.current) return;
+                const canonicalId = sharedPickRef.current?.playerId;
+                const resolvedPayer = canonicalId
+                  ? (roster.find((player) => player.id === canonicalId) ??
+                    payer)
+                  : payer;
+                report({
+                  winner: null,
+                  winnerId: null,
+                  scores: [],
+                  paying: resolvedPayer.name,
+                  payingId: resolvedPayer.id,
+                });
+              })
+              .catch(() => {
+                if (roundPickPending.current === scope)
+                  roundPickPending.current = null;
+              });
           }}
         />
       ) : null}

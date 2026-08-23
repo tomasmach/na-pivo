@@ -77,6 +77,13 @@ export function PickShell({
   const [localPickRevision, setLocalPickRevision] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
   const interactionLocked = React.useRef(false);
+  /**
+   * True from a spin until its messages are accounted for. `spinning` state is
+   * stale for messages that land in the same tick, and `interactionLocked` is
+   * deliberately released by the valid `picked` event before the wheel's
+   * result arrives — so this ref is the only honest "a spin is in flight".
+   */
+  const spinPending = React.useRef(false);
   const fallbackUnlock = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -106,6 +113,7 @@ export function PickShell({
   React.useEffect(
     () => () => {
       if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
+      spinPending.current = false;
     },
     [],
   );
@@ -126,10 +134,16 @@ export function PickShell({
       // No object to watch, so no spin to wait for. Same answer, no theatre.
       const playerId = pickOne(players);
       const player = players.find((candidate) => candidate.id === playerId);
+      if (!player) {
+        // Nothing to point at (empty roster): no pick to record, and the lock
+        // must not survive a spin that never happened.
+        interactionLocked.current = false;
+        return;
+      }
       recordPick(playerId);
-      if (player) onFinished?.(player.name, player.id);
-      if (onDone && player)
-        setOutcome({ scores: [], winnerId: null, payingId: player.name });
+      onFinished?.(player.name, player.id);
+      if (onDone)
+        setOutcome({ scores: [], winnerId: null, payingId: player.id });
       // Controlled mode waits for canonical props; bound the lock in case
       // they never advance.
       if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
@@ -139,6 +153,7 @@ export function PickShell({
       return;
     }
     setSpinning(true);
+    spinPending.current = true;
     if (!controlled) setLocalPickedId(null);
     host.current?.command("spin");
   };
@@ -147,7 +162,7 @@ export function PickShell({
   // dice land on.
   const foldedOutcome =
     controlled && pickedPlayer && onDone
-      ? { scores: [], winnerId: null, payingId: pickedPlayer.name }
+      ? { scores: [], winnerId: null, payingId: pickedPlayer.id }
       : null;
   if ((outcome || foldedOutcome) && onDone) {
     return (
@@ -175,34 +190,45 @@ export function PickShell({
             }))}
             onEvent={(name, payload) => {
               if (spectator || name !== "picked") return;
+              // A picked message belongs to a spin; stray messages before the
+              // user spun do nothing.
+              if (!spinPending.current) return;
               const playerId = (payload as { playerId?: unknown } | undefined)
                 ?.playerId;
               if (
                 typeof playerId !== "string" ||
                 !players.some((player) => player.id === playerId)
               ) {
+                spinPending.current = false;
                 interactionLocked.current = false;
                 setSpinning(false);
                 return;
               }
+              // Ending games keep the session pending through picked, until a
+              // valid result consumes it. Repeatable games (Flaška) are done
+              // at picked — nothing further is coming.
+              if (!onDone) spinPending.current = false;
               interactionLocked.current = false;
               setSpinning(false);
               recordPick(playerId);
             }}
             onResult={(result) => {
               if (spectator) return;
-              interactionLocked.current = false;
+              if (!spinPending.current) return;
               const payer = players.find(
                 (player) => player.id === result.payingId,
               );
-              const named = {
-                ...result,
-                payingId: payer?.name ?? null,
-              };
-              setOutcome(named);
-              if (payer) onFinished?.(payer.name, payer.id);
+              spinPending.current = false;
+              interactionLocked.current = false;
+              setSpinning(false);
+              // Only a payer on the roster may end the game — never a neutral
+              // "nobody" outcome from an unknown or missing id.
+              if (!payer) return;
+              setOutcome({ ...result, payingId: payer.id });
+              onFinished?.(payer.name, payer.id);
             }}
             onError={() => {
+              spinPending.current = false;
               interactionLocked.current = false;
               setSpinning(false);
             }}
