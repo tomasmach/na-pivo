@@ -1,9 +1,6 @@
 import React, { type ComponentType, useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Modal,
   PanResponder,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,14 +8,10 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import {
   AccessibilityIcon,
   BeerIcon,
@@ -60,9 +53,11 @@ import {
 } from '@/data/beerSuggestionsClient';
 import { cs } from '@/i18n/cs';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 
 type Glyph = ComponentType<{ size?: number; color: string }>;
 
@@ -81,11 +76,7 @@ const AMENITY_ICONS: Record<AmenityKey, Glyph> = {
 };
 
 const SECTION_ORDER = ['fun', 'practical', 'seating'] as const;
-const SECTION_LABELS = {
-  fun: 'ZÁBAVA',
-  practical: 'PRAKTICKÉ',
-  seating: 'POSEZENÍ',
-} as const;
+const SECTION_LABELS = cs.compass.amenityFilterSections;
 
 const FILTERABLE_AMENITIES = AMENITIES.filter((amenity) => amenity.mapFilterable);
 
@@ -112,21 +103,6 @@ export function PubFilterSheet({
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [suggestionsQuery, setSuggestionsQuery] = useState('');
   const [limitReached, setLimitReached] = useState(false);
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    if (visible) {
-      progress.value = 0;
-      progress.value = withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: 140 });
-    }
-  }, [progress, value, visible]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
   const searching = query.trim().length >= 2;
   const normalizedQuery = query.trim();
   const visibleSuggestions = suggestionsQuery === normalizedQuery ? suggestions : [];
@@ -136,20 +112,25 @@ export function PubFilterSheet({
     if (!searching) return;
     const controller = new AbortController();
     const requestedQuery = normalizedQuery;
-    suggestBeerBrands(query, controller.signal, 8)
-      .then((items) => {
-        if (!controller.signal.aborted) {
-          setSuggestions(items);
-          setSuggestionsQuery(requestedQuery);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setSuggestions([]);
-          setSuggestionsQuery(requestedQuery);
-        }
-      });
-    return () => controller.abort();
+    const timeout = setTimeout(() => {
+      suggestBeerBrands(query, controller.signal, 8)
+        .then((items) => {
+          if (!controller.signal.aborted) {
+            setSuggestions(items);
+            setSuggestionsQuery(requestedQuery);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSuggestions([]);
+            setSuggestionsQuery(requestedQuery);
+          }
+        });
+    }, 220);
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
   }, [normalizedQuery, query, searching]);
 
   const groupedAmenities = useMemo(
@@ -228,58 +209,26 @@ export function PubFilterSheet({
     draft.priceMaxCzk !== null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      statusBarTranslucent
-      navigationBarTranslucent
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
-      >
-        {/* Keep the dismiss target behind the sheet. A Pressable ancestor competes
-            with the ScrollView's pan gesture and makes scrolling feel sticky. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessible={false}
-        />
-        <Animated.View style={[styles.card, cardAnim]}>
-          <View style={styles.handle} />
+    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.grabber} />
           <View style={styles.titleRow}>
-            <View style={styles.titleTextWrap}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.compass.pubFilterTitle}
-              </Text>
-              <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.compass.pubFilterSubtitle}
-              </Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              hitSlop={12}
-              style={styles.closeBtn}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.closePubFilters}
-            >
-              <XIcon size={18} color={Colors.foamMuted} />
-            </Pressable>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.compass.pubFilterTitle}
+            </Text>
+            <CloseButton onPress={onClose} label={cs.a11y.closePubFilters} />
           </View>
 
           <KeyboardAwareScrollView
             style={styles.content}
-            contentContainerStyle={{
-              paddingBottom: Spacing.lg,
-            }}
+            contentContainerStyle={styles.contentContainer}
+            keyboardAvoidedExternally
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              PIVO
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.compass.beerFilterSection}
             </Text>
             <View style={styles.searchRow}>
               <SearchIcon size={16} color={Colors.mutedText} />
@@ -317,11 +266,11 @@ export function PubFilterSheet({
                       : cs.compass.beerFilterNoResults}
                   </Text>
                 ) : (
-                  visibleSuggestions.map((suggestion) => (
+                  visibleSuggestions.map((suggestion, index) => (
                     <Pressable
                       key={suggestion.slug}
                       onPress={() => chooseSuggestion(suggestion)}
-                      style={styles.resultRow}
+                      style={[styles.resultRow, index > 0 && styles.resultRowDivider]}
                       accessibilityRole="button"
                       accessibilityLabel={cs.a11y.beerBrandFilterSuggestion(suggestion.name)}
                     >
@@ -371,7 +320,7 @@ export function PubFilterSheet({
               onChange={setPriceRange}
             />
 
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
               {cs.compass.otherPlacesSection}
             </Text>
             <View style={styles.chipsWrap}>
@@ -388,13 +337,9 @@ export function PubFilterSheet({
                 accessibilityLabel={cs.a11y.toggleOtherTapPlaces}
               />
             </View>
-            <Text style={styles.otherPlacesHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.compass.otherPlacesHint}
-            </Text>
-
             {groupedAmenities.map(({ section, items }) => (
               <View key={section}>
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {SECTION_LABELS[section]}
                 </Text>
                 <View style={styles.amenityGrid}>
@@ -421,12 +366,7 @@ export function PubFilterSheet({
             </Text>
           </KeyboardAwareScrollView>
 
-          <View
-            style={[
-              styles.actions,
-              { paddingBottom: Math.max(insets.bottom, Spacing.md) },
-            ]}
-          >
+          <View style={styles.actions}>
             {hasDraftFilters ? (
               <Pressable
                 onPress={clear}
@@ -456,9 +396,9 @@ export function PubFilterSheet({
               </Text>
             </Pressable>
           </View>
-        </Animated.View>
-      </KeyboardAvoidingView>
-    </Modal>
+        </View>
+      </View>
+    </BottomSheetModal>
   );
 }
 
@@ -609,7 +549,7 @@ function PriceFilterSection({
   if (nearbyPrices.length === 0 && priceMinCzk === null && priceMaxCzk === null) {
     return (
       <View>
-        <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
           {cs.compass.priceFilterLabel}
         </Text>
         <Text style={styles.priceNoData} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -627,7 +567,7 @@ function PriceFilterSection({
   return (
     <View>
       <View style={styles.priceHeaderRow}>
-        <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
           {cs.compass.priceFilterLabel}
         </Text>
         {rangeActive && (
@@ -636,10 +576,6 @@ function PriceFilterSection({
           </Text>
         )}
       </View>
-      <Text style={styles.priceSubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.compass.priceFilterSubtitle}
-      </Text>
-
       <View
         style={styles.priceSliderArea}
         {...panResponder.panHandlers}
@@ -664,7 +600,9 @@ function PriceFilterSection({
                       ]}
                     />
                   </View>
-                  <Text style={styles.priceAxisLabel}>{PRICE_AXIS_LABELS[index]}</Text>
+                  <Text style={styles.priceAxisLabel} allowFontScaling={false}>
+                    {PRICE_AXIS_LABELS[index]}
+                  </Text>
                 </View>
               );
             })}
@@ -706,7 +644,10 @@ function PriceFilterSection({
         <Text style={styles.priceValue} maxFontSizeMultiplier={FontScaleCap.body}>
           {minValueLabel}
         </Text>
-        <Text style={styles.priceValue} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text
+          style={[styles.priceValue, styles.priceValueEnd]}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
           {maxValueLabel}
         </Text>
       </View>
@@ -741,7 +682,7 @@ function FilterChip({
       accessibilityLabel={accessibilityLabel}
     >
       {active ? (
-        <CheckIcon size={14} color={Colors.stout} />
+        <CheckIcon size={14} color={Colors.amber} />
       ) : (
         <Icon size={15} color={Colors.foamMuted} />
       )}
@@ -778,51 +719,41 @@ function AmenityChip({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: withAlpha(Colors.black, 0.64), justifyContent: 'flex-end' },
+  cardWrap: { width: '100%', maxHeight: '92%' },
   card: {
-    height: '88%',
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
+    ...softDrop(),
   },
-  handle: {
-    alignSelf: 'center', width: 40, height: 4, borderRadius: Radius.pill,
-    backgroundColor: Colors.border, marginBottom: Spacing.md,
+  grabber: {
+    alignSelf: 'center', width: 44, height: 4, borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.foam, 0.22), marginBottom: Spacing.md,
   },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
-  titleTextWrap: { flex: 1 },
-  title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
-  subtitle: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.mutedText },
-  otherPlacesHint: {
-    marginTop: Spacing.xs,
-    marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: Colors.mutedText,
-  },
-  closeBtn: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center', marginTop: -Spacing.xs },
-  content: { flex: 1, marginTop: Spacing.sm },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  title: { flex: 1, ...MockType.titleS, color: Colors.foam },
+  content: { flexGrow: 0, flexShrink: 1, marginTop: MockLayout.controlGap },
+  contentContainer: { paddingBottom: Spacing.lg },
   sectionLabel: {
-    marginTop: Spacing.md, marginBottom: Spacing.sm, fontFamily: Fonts.ui.semibold,
-    fontSize: 11, letterSpacing: 1.1, color: Colors.mutedText,
+    marginTop: Spacing.md, marginBottom: MockLayout.controlGap,
+    ...MockType.titleS, color: Colors.foam,
   },
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 46,
     paddingHorizontal: 12, borderRadius: Radius.medium, borderWidth: 1,
     borderColor: Colors.border, backgroundColor: Colors.stout3,
   },
-  searchInput: { flex: 1, minWidth: 0, paddingVertical: 0, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
+  searchInput: { flex: 1, minWidth: 0, paddingVertical: 0, fontWeight: '600', fontSize: 15, color: Colors.foam },
   searchClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   results: { marginTop: Spacing.xs },
-  resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, borderBottomWidth: 1, borderBottomColor: withAlpha(Colors.border, 0.6) },
-  resultText: { flex: 1, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
-  noResults: { paddingVertical: Spacing.md, textAlign: 'center', fontFamily: Fonts.ui.regular, fontSize: 14, color: Colors.mutedText },
-  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: Spacing.md },
+  resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60 },
+  resultRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.1) },
+  resultText: { flex: 1, fontWeight: '600', fontSize: 15, color: Colors.foam },
+  noResults: { paddingVertical: Spacing.md, textAlign: 'center', fontWeight: '400', fontSize: 14, color: Colors.mutedText },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   rotatingFilterHint: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -837,24 +768,23 @@ const styles = StyleSheet.create({
   },
   rotatingFilterHintText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.foamMuted,
   },
   amenityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: HitArea.min,
-    paddingHorizontal: 14, borderRadius: Radius.pill, borderWidth: 1,
-    borderColor: Colors.border, backgroundColor: Colors.stout3,
+    flexDirection: 'row', alignItems: 'center', gap: 7, height: MockLayout.pillHeight,
+    paddingHorizontal: 12, borderRadius: Radius.pill, borderWidth: 1,
+    borderColor: 'transparent', backgroundColor: Colors.stout2,
   },
-  chipActive: { borderColor: Colors.amber, backgroundColor: Colors.amber },
-  chipText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foam },
-  chipTextActive: { color: Colors.stout },
+  chipActive: { borderColor: withAlpha(Colors.amber, 0.5) },
+  chipText: { fontWeight: '600', fontSize: 13, color: Colors.mutedText },
+  chipTextActive: { color: Colors.amber },
   pressed: { opacity: 0.76, transform: [{ scale: 0.97 }] },
   priceHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  priceCount: { fontFamily: Fonts.ui.semibold, fontSize: 12, color: Colors.amber },
-  priceSubtitle: { fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 16, color: Colors.mutedText, marginBottom: Spacing.sm },
+  priceCount: { flexShrink: 1, textAlign: 'right', fontWeight: '600', fontSize: 12, color: Colors.amber },
   priceSliderArea: { paddingTop: Spacing.xs },
   priceHistogram: {
     flexDirection: 'row', gap: 3,
@@ -865,7 +795,7 @@ const styles = StyleSheet.create({
   priceBar: { width: '100%', borderRadius: 3, backgroundColor: Colors.amber },
   priceBarExcluded: { backgroundColor: Colors.border },
   priceAxisLabel: {
-    marginTop: 5, height: 15, textAlign: 'center', fontFamily: Fonts.ui.medium,
+    marginTop: 5, height: 15, textAlign: 'center', fontWeight: '500',
     fontSize: 9, color: Colors.mutedText,
   },
   priceTrack: {
@@ -883,17 +813,18 @@ const styles = StyleSheet.create({
     width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.foam,
     borderWidth: 2, borderColor: Colors.amber,
   },
-  priceValueRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  priceValue: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foam },
-  priceHint: { marginTop: 4, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 16, color: Colors.mutedText },
-  priceNoData: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.mutedText },
-  matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },
+  priceValueRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: 6 },
+  priceValue: { flex: 1, minWidth: 0, fontWeight: '600', fontSize: 14, color: Colors.foam },
+  priceValueEnd: { textAlign: 'right' },
+  priceHint: { marginTop: 4, fontWeight: '400', fontSize: 12, lineHeight: 16, color: Colors.mutedText },
+  priceNoData: { fontWeight: '400', fontSize: 13, lineHeight: 18, color: Colors.mutedText },
+  matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontWeight: '400', fontSize: 12, lineHeight: 17, color: Colors.mutedText },
   limitHint: { color: Colors.amberLight },
   actions: {
-    flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm,
+    flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.md,
   },
-  secondaryButton: { minHeight: 50, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2 },
-  secondaryButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foamMuted },
-  primaryButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, backgroundColor: Colors.amber },
-  primaryButtonText: { fontFamily: Fonts.ui.bold, fontSize: 15, color: Colors.stout },
+  secondaryButton: { minHeight: 56, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.pill, backgroundColor: Colors.stout3 },
+  secondaryButtonText: { fontWeight: '700', fontSize: 14, color: Colors.foam },
+  primaryButton: { flex: 1, minHeight: 56, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.pill, backgroundColor: Colors.amber },
+  primaryButtonText: { fontWeight: '700', fontSize: 16, color: Colors.stout },
 });

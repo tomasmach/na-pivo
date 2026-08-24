@@ -1,7 +1,7 @@
 import React, { memo, ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 
@@ -74,9 +74,14 @@ export const GlowButton = memo(function GlowButton({
           ) : icon != null ? (
             <View style={styles.iconSlot}>{icon}</View>
           ) : null}
+          {/* Shrink before truncating (§3.3): at the largest Dynamic Type sizes
+              "Dopiš večer" came out as "Dopiš v…", which turns the one label
+              that says what the tap does into a guess. */}
           <Text
             style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}
             numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
             {label}
@@ -127,7 +132,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.36),
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     letterSpacing: 0.3,
   },
@@ -145,7 +150,7 @@ const styles = StyleSheet.create({
   },
   subLabel: {
     marginTop: 2,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     includeFontPadding: false,
   },

@@ -21,14 +21,17 @@
 
 import { deleteDrink } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
-/** Hard cap — matches drinksQueue; an unbounded backlog means the backend has
- *  been unreachable for a very long time, so dropping the oldest beats growth. */
+/** Historical queue limit retained as migration context; durable deletes are never dropped. */
 const MAX_QUEUE_LENGTH = 200;
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+export type DeleteDrinkEnqueueResult = 'queued' | 'storage-error';
 
 function isClientId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0;
+  return typeof value === 'string' && UUID_PATTERN.test(value);
 }
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<string>(
@@ -73,15 +76,16 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * deletion queue. Never throws. Deduped: enqueuing the same client_id twice is
  * a no-op (the DELETE is idempotent, but there is no point queueing it twice).
  */
-export async function enqueueDelete(clientId: string): Promise<void> {
-  await runMutation(async () => {
+export async function enqueueDelete(clientId: string): Promise<DeleteDrinkEnqueueResult> {
+  const persisted = await runMutation(async () => {
     const queue = await loadQueue();
-    if (!queue.includes(clientId)) {
-      queue.push(clientId);
-      await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
-    }
+    if (queue.includes(clientId)) return true;
+    queue.push(clientId);
+    return saveQueue(preserveDurableQueue(queue, MAX_QUEUE_LENGTH));
   });
+  if (!persisted) return 'storage-error';
   await flushDeleteDrinksQueue();
+  return 'queued';
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -94,7 +98,7 @@ export function clearDeleteDrinksQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

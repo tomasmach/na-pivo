@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 
+import { exportMyAccountData } from '@/data/accountExport';
+
 import {
   ensureAccount,
   fetchAccountPreferences,
+  readDurableAccountSession,
   setAnonymousSessionEvictionListener,
   type AccountSession,
 } from '@/data/account';
@@ -18,6 +21,7 @@ import {
   type AuthActionResult,
   type AccountExportActionResult,
   type AuthProvider,
+  type UgcConsentAcceptResult,
   type AuthResult,
   type ContentReportReason,
   type NicknameAvailability,
@@ -25,6 +29,12 @@ import {
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { readPrivateAccountMergeIntent } from '@/data/privateAccountBoundary';
+import { rekeyAccountPreferencesQueueOwner } from '@/data/accountPreferencesQueue';
+import { rekeyPartyEveningIdentityOwner } from '@/data/partyEveningIdentityCache';
+import { recoverPartyGameQueuesForAccount } from '@/data/partyGameQueueBoundary';
+import { rehydratePrivateStoresAfterBoundary } from '@/data/privateAccountData';
+import { setPivarSnapshotListener } from '@/data/pivarXp';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'reauth-required' | 'error';
 export type SessionResumeResult = 'valid' | 'invalid' | 'unavailable' | 'anonymous';
@@ -53,6 +63,35 @@ export interface PivarSnapshotPatch {
   title: string;
   xpIntoLevel: number;
   xpForNextLevel?: number | null;
+}
+
+interface AccountBoundaryScope {
+  epoch: number;
+  sessionKey: string | null;
+}
+
+let accountBoundaryEpoch = 0;
+
+function sessionKey(session: AccountSession | null): string | null {
+  if (!session) return null;
+  return `${session.deviceId}\u0000${session.accountId}\u0000${session.token}\u0000${
+    session.authenticated ? '1' : '0'
+  }`;
+}
+
+function captureAccountBoundary(session: AccountSession | null): AccountBoundaryScope {
+  return { epoch: accountBoundaryEpoch, sessionKey: sessionKey(session) };
+}
+
+function bumpAccountBoundary(): void {
+  accountBoundaryEpoch += 1;
+}
+
+function isAccountBoundaryCurrent(
+  scope: AccountBoundaryScope,
+  session: AccountSession | null,
+): boolean {
+  return scope.epoch === accountBoundaryEpoch && scope.sessionKey === sessionKey(session);
 }
 
 function mapperFromSnapshot(
@@ -116,6 +155,8 @@ function achievementsFromMapper(
 interface AccountState {
   session: AccountSession | null;
   status: AccountStatus;
+  /** Startup deletion receipt was resolved before any cached owner is exposed. */
+  startupBoundaryReady: boolean;
   /** Full account state once known (anonymous or signed in). */
   profile: AccountProfile | null;
   /** Owner-only drink + visit snapshot used to reconcile offline diary totals. */
@@ -161,12 +202,14 @@ interface AccountState {
     displayName?: string;
     isPublic?: boolean;
   }) => Promise<AuthResult>;
+  /** Accept a UGC policy version; on success patch only profile.ugcConsent. */
+  acceptUgcConsent: (version: string) => Promise<UgcConsentAcceptResult>;
   checkNicknameAvailable: (nickname: string) => Promise<NicknameAvailability>;
   uploadAvatar: (localUri: string) => Promise<AuthResult>;
   removeAvatar: () => Promise<AuthResult>;
 
   // --- lifecycle ---
-  logout: (options?: { all?: boolean }) => Promise<void>;
+  logout: (options?: { all?: boolean }) => Promise<AuthActionResult>;
   deleteAccount: () => Promise<AuthActionResult>;
   exportAccountData: () => Promise<AccountExportActionResult>;
   restorePurchases: (params: {
@@ -187,60 +230,105 @@ interface AccountState {
 }
 
 export const useAccountStore = create<AccountState>((set, get) => {
-  const applyAccountSettings = (settings?: AccountSettings | null) => {
-    if (!settings) return;
-    const store = useSettingsStore.getState();
-    if (settings.mode) store.setMode(settings.mode);
-    if (settings.maxDistanceKm !== undefined) store.setMaxDistanceKm(settings.maxDistanceKm);
-    if (settings.priceCurrency) store.setPriceCurrency(settings.priceCurrency);
-    if (typeof settings.hapticEnabled === 'boolean') store.setHapticEnabled(settings.hapticEnabled);
-    if (typeof settings.soundEnabled === 'boolean') store.setSoundEnabled(settings.soundEnabled);
-    if (typeof settings.hideClosedPubs === 'boolean') store.setHideClosedPubs(settings.hideClosedPubs);
-    if (typeof settings.hidePubNames === 'boolean') store.setHidePubNames(settings.hidePubNames);
-    if (typeof settings.marketingEmailsEnabled === 'boolean') {
-      store.setMarketingEmailsEnabled(settings.marketingEmailsEnabled);
-    }
+  let credentialTransitionChain: Promise<void> = Promise.resolve();
+  let deleteAccountInFlight: Promise<AuthActionResult> | null = null;
+
+  const serializeCredentialTransition = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = credentialTransitionChain.then(operation, operation);
+    credentialTransitionChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   };
 
-  /** Re-read the (possibly rotated) session token into the store. */
-  const syncSession = async () => {
-    const session = await ensureAccount();
+  const accountPreferencesRevision = (): number =>
+    useSettingsStore.getState().accountPreferencesRevision;
+
+  const applyAccountSettings = (
+    settings?: AccountSettings | null,
+    expectedRevision?: number,
+  ) => {
+    if (!settings) return;
+    useSettingsStore.getState().applyAccountPreferencesFromServer(
+      settings,
+      get().session?.accountId ?? null,
+      expectedRevision,
+    );
+  };
+
+  const installSession = (session: AccountSession | null): AccountBoundaryScope => {
+    const previous = get().session;
+    if (sessionKey(previous) !== sessionKey(session)) bumpAccountBoundary();
+
     setTelemetrySession(session);
     set((state) => ({
       session,
       status: session ? 'ready' : 'idle',
+      profile:
+        previous && session && previous.accountId === session.accountId ? state.profile : null,
       diarySnapshot:
         state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
     }));
+    return captureAccountBoundary(session);
+  };
+
+  /** Re-read the (possibly rotated) session token into the store. */
+  const syncSession = async (): Promise<{
+    session: AccountSession | null;
+    scope: AccountBoundaryScope;
+  } | null> => {
+    const requestScope = captureAccountBoundary(get().session);
+    const session = await ensureAccount();
+    if (!isAccountBoundaryCurrent(requestScope, get().session)) return null;
+    return { session, scope: installSession(session) };
   };
 
   const refreshDiarySnapshot = async () => {
+    const requestScope = captureAccountBoundary(get().session);
     const accountId = get().session?.accountId;
     if (!accountId) return;
     const data = await reconcileDiarySnapshot();
-    if (data && get().session?.accountId === accountId) {
+    if (data && isAccountBoundaryCurrent(requestScope, get().session)) {
       set({ diarySnapshot: { accountId, data } });
     }
   };
 
   /** After a session-changing auth call: persist the new token + profile. */
   const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
-    if (result.ok) {
-      set({ profile: result.profile });
-      applyAccountSettings(result.profile.settings);
-      await syncSession();
-      await refreshDiarySnapshot();
+    const committedProfile = result.ok ? result.profile : result.committedProfile;
+    if (committedProfile) {
+      const synced = await syncSession();
+      if (!synced?.session || synced.session.accountId !== committedProfile.id) return result;
+      if (!isAccountBoundaryCurrent(synced.scope, get().session)) return result;
+      set({ profile: committedProfile });
+      if (result.ok) {
+        applyAccountSettings(committedProfile.settings);
+        await refreshDiarySnapshot();
+      }
     }
     return result;
   };
 
+  const runSessionAuthAction = (action: () => Promise<AuthResult>): Promise<AuthResult> =>
+    serializeCredentialTransition(async () => {
+      // Invalidate responses started under A before auth can durably install B.
+      // A failed auth attempt keeps the same session; later A requests capture
+      // the new epoch normally.
+      bumpAccountBoundary();
+      return applyAuthResult(await action());
+    });
+
   /** After a profile-changing auth call that leaves the session token intact
    *  (link / unlink / profile / avatar / purchases): persist the updated profile
    *  + settings. Mirrors applyAuthResult without the session re-sync. */
-  const applyProfileResult = (result: AuthResult): AuthResult => {
-    if (result.ok) {
+  const runProfileAction = async (action: () => Promise<AuthResult>): Promise<AuthResult> => {
+    const requestScope = captureAccountBoundary(get().session);
+    const preferencesRevision = accountPreferencesRevision();
+    const result = await action();
+    if (result.ok && isAccountBoundaryCurrent(requestScope, get().session)) {
       set({ profile: result.profile });
-      applyAccountSettings(result.profile.settings);
+      applyAccountSettings(result.profile.settings, preferencesRevision);
     }
     return result;
   };
@@ -248,36 +336,97 @@ export const useAccountStore = create<AccountState>((set, get) => {
   return {
     session: null,
     status: 'idle',
+    startupBoundaryReady: false,
     profile: null,
     diarySnapshot: null,
 
     initAccount: async () => {
-      if (get().status === 'loading') return;
+      const current = get();
+      if (
+        current.status === 'loading' ||
+        (current.startupBoundaryReady && current.session !== null)
+      ) return;
+      const requestScope = captureAccountBoundary(get().session);
+      let activeScope = requestScope;
       set({ status: 'loading' });
       try {
+        // Resolve a crash-lost anonymous merge before deletion recovery or any
+        // private store can publish. Only exact durable B may auto-finalize;
+        // durable A stays available for an explicit idempotent auth retry.
+        const [durableSession, mergeIntent] = await Promise.all([
+          readDurableAccountSession(),
+          readPrivateAccountMergeIntent(),
+        ]);
+        if (!mergeIntent.ok || !durableSession.available) {
+          set({ status: 'error', startupBoundaryReady: false });
+          return;
+        }
+        if (mergeIntent.intent) {
+          const durable = durableSession.session;
+          if (
+            durable &&
+            mergeIntent.intent.toAccountId === durable.accountId
+          ) {
+            if (!(await recoverPartyGameQueuesForAccount(
+              durable.accountId,
+              async (intent) => {
+                if (!(await rekeyAccountPreferencesQueueOwner(
+                  intent.fromAccountId,
+                  durable.accountId,
+                  { allowDuringPrivateTransition: true },
+                ))) return false;
+                if (!(await rekeyPartyEveningIdentityOwner(
+                  intent.fromAccountId,
+                  durable.accountId,
+                ))) return false;
+                return rehydratePrivateStoresAfterBoundary();
+              },
+            ))) {
+              set({ status: 'error', startupBoundaryReady: false });
+              return;
+            }
+          } else if (
+            durable &&
+            durable.accountId === mergeIntent.intent.fromAccountId
+          ) {
+            activeScope = installSession(durable);
+            set({ status: 'reauth-required', startupBoundaryReady: true });
+            return;
+          } else {
+            set({ status: 'error', startupBoundaryReady: false });
+            return;
+          }
+        }
+
+        const deletionRecovery = await auth.recoverPendingAccountDeletionAtStartup();
+        if (!isAccountBoundaryCurrent(requestScope, get().session)) return;
+        if (deletionRecovery === 'blocked' || deletionRecovery === 'deferred') {
+          set({ status: 'error', startupBoundaryReady: false });
+          return;
+        }
+        set({ startupBoundaryReady: true });
+
         const session = await ensureAccount();
-        setTelemetrySession(session);
-        set((state) => ({
-          session,
-          status: session ? 'ready' : 'idle',
-          diarySnapshot:
-            state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
-        }));
+        if (!isAccountBoundaryCurrent(requestScope, get().session)) return;
+        activeScope = installSession(session);
         if (session) {
+          const preferencesRevision = accountPreferencesRevision();
           const [preferences, profile] = await Promise.all([
             fetchAccountPreferences(),
             auth.fetchAccountProfile(),
             refreshDiarySnapshot(),
           ]);
+          if (!isAccountBoundaryCurrent(activeScope, get().session)) return;
           if (preferences) {
-            applyAccountSettings(preferences);
+            applyAccountSettings(preferences, preferencesRevision);
           }
           if (profile) {
             set({ profile });
-            applyAccountSettings(profile.settings);
+            applyAccountSettings(profile.settings, preferencesRevision);
           }
         }
       } catch (error) {
+        if (!isAccountBoundaryCurrent(activeScope, get().session)) return;
         trackApiFailure('account_init_exception', {
           reason: 'exception',
           errorName: error instanceof Error ? error.name : typeof error,
@@ -295,10 +444,12 @@ export const useAccountStore = create<AccountState>((set, get) => {
       if (!session) return 'unavailable';
       if (!session.authenticated) return 'anonymous';
 
+      const requestScope = captureAccountBoundary(session);
+      const preferencesRevision = accountPreferencesRevision();
       const validation = await auth.validateAccountSession(session);
       // Ignore a response for a session that was replaced while validation was
       // in flight (for example by a manual login opened from another screen).
-      if (get().session?.token !== session.token) return 'unavailable';
+      if (!isAccountBoundaryCurrent(requestScope, get().session)) return 'unavailable';
 
       if (validation.status === 'invalid') {
         // Keep the credential and all account-local state intact. The auth
@@ -312,15 +463,17 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
       set({ profile: validation.profile, status: 'ready' });
       setTelemetrySession(session);
-      applyAccountSettings(validation.profile.settings);
+      applyAccountSettings(validation.profile.settings, preferencesRevision);
       return 'valid';
     },
 
     refreshProfile: async () => {
+      const requestScope = captureAccountBoundary(get().session);
+      const preferencesRevision = accountPreferencesRevision();
       const profile = await auth.fetchAccountProfile();
-      if (profile) {
+      if (profile && isAccountBoundaryCurrent(requestScope, get().session)) {
         set({ profile });
-        applyAccountSettings(profile.settings);
+        applyAccountSettings(profile.settings, preferencesRevision);
       }
     },
 
@@ -351,53 +504,102 @@ export const useAccountStore = create<AccountState>((set, get) => {
       });
     },
 
-    register: (params) => auth.registerEmail(params).then(applyAuthResult),
-    login: (params) => auth.loginEmail(params).then(applyAuthResult),
-    signInGoogle: () => auth.signInWithGoogle().then(applyAuthResult),
-    signInApple: () => auth.signInWithApple().then(applyAuthResult),
-    resetPassword: (params) => auth.resetPassword(params).then(applyAuthResult),
+    register: (params) => runSessionAuthAction(() => auth.registerEmail(params)),
+    login: (params) => runSessionAuthAction(() => auth.loginEmail(params)),
+    signInGoogle: () => runSessionAuthAction(() => auth.signInWithGoogle()),
+    signInApple: () => runSessionAuthAction(() => auth.signInWithApple()),
+    resetPassword: (params) => runSessionAuthAction(() => auth.resetPassword(params)),
 
-    linkGoogle: () => auth.linkGoogle().then(applyProfileResult),
-    linkApple: () => auth.linkApple().then(applyProfileResult),
-    unlink: (provider) => auth.unlinkProvider(provider).then(applyProfileResult),
-    setPassword: (params) => auth.setPassword(params).then(applyProfileResult),
+    linkGoogle: () => runProfileAction(() => auth.linkGoogle()),
+    linkApple: () => runProfileAction(() => auth.linkApple()),
+    unlink: (provider) => runProfileAction(() => auth.unlinkProvider(provider)),
+    setPassword: (params) => runProfileAction(() => auth.setPassword(params)),
 
-    updateProfile: (params) => auth.updateProfile(params).then(applyProfileResult),
-    // Thin pass-through: advisory check, never writes store state.
-    checkNicknameAvailable: (nickname) => auth.checkNicknameAvailable(nickname),
-    uploadAvatar: (localUri) => auth.uploadAvatar(localUri).then(applyProfileResult),
-    removeAvatar: () => auth.removeAvatar().then(applyProfileResult),
-
-    logout: async (options) => {
-      await auth.logout(options);
-      set({ profile: null, diarySnapshot: null });
-      await syncSession();
-      await get().refreshProfile();
-    },
-    deleteAccount: async () => {
-      const result = await auth.deleteAccount();
-      if (result.ok) {
-        set({ profile: null, diarySnapshot: null });
-        await syncSession();
-        await get().refreshProfile();
+    updateProfile: (params) => runProfileAction(() => auth.updateProfile(params)),
+    acceptUgcConsent: async (version) => {
+      const requestScope = captureAccountBoundary(get().session);
+      const result = await auth.acceptUgcConsent(version);
+      if (result.ok && isAccountBoundaryCurrent(requestScope, get().session)) {
+        set((state) =>
+          state.profile ? { profile: { ...state.profile, ugcConsent: result.ugcConsent } } : state,
+        );
       }
       return result;
     },
-    exportAccountData: () => auth.exportAccountData(),
-    restorePurchases: (params) => auth.restorePurchases(params).then(applyProfileResult),
+    // Thin pass-through: advisory check, never writes store state.
+    checkNicknameAvailable: (nickname) => auth.checkNicknameAvailable(nickname),
+    uploadAvatar: (localUri) => runProfileAction(() => auth.uploadAvatar(localUri)),
+    removeAvatar: () => runProfileAction(() => auth.removeAvatar()),
+
+    logout: (options) =>
+      serializeCredentialTransition(async () => {
+        bumpAccountBoundary();
+        const result = await auth.logout(options);
+        if (!result.ok) return result;
+        bumpAccountBoundary();
+        setTelemetrySession(null);
+        set({ session: null, status: 'idle', profile: null, diarySnapshot: null });
+        await syncSession();
+        await get().refreshProfile();
+        return result;
+      }),
+    deleteAccount: () => {
+      if (deleteAccountInFlight) return deleteAccountInFlight;
+      const confirmedOwner = sessionKey(get().session);
+      const operation = serializeCredentialTransition(async () => {
+        if (sessionKey(get().session) !== confirmedOwner) {
+          return {
+            ok: false as const,
+            code: 'account_changed',
+            detail: 'Účet se mezitím změnil. Smazání potvrď znovu.',
+          };
+        }
+        bumpAccountBoundary();
+        const result = await auth.deleteAccount();
+        if (result.ok) {
+          bumpAccountBoundary();
+          setTelemetrySession(null);
+          set({ session: null, status: 'idle', profile: null, diarySnapshot: null });
+          await syncSession();
+          await get().refreshProfile();
+        }
+        return result;
+      });
+      const tracked = operation.finally(() => {
+        if (deleteAccountInFlight === tracked) deleteAccountInFlight = null;
+      });
+      deleteAccountInFlight = tracked;
+      return tracked;
+    },
+    exportAccountData: () => exportMyAccountData(),
+    restorePurchases: (params) => runProfileAction(() => auth.restorePurchases(params)),
     reportProfileContent: (params) => auth.reportProfileContent(params),
     requestPasswordReset: (email) => auth.requestPasswordReset(email),
     requestEmailVerification: () => auth.requestEmailVerification(),
     verifyEmail: async (token) => {
+      const requestScope = captureAccountBoundary(get().session);
       const result = await auth.verifyEmail(token);
-      if (result.ok) await get().refreshProfile();
+      if (result.ok && isAccountBoundaryCurrent(requestScope, get().session)) {
+        await get().refreshProfile();
+      }
       return result;
     },
   };
 });
 
+setPivarSnapshotListener((snapshot) => {
+  useAccountStore.getState().applyPivarSnapshot(snapshot);
+});
+
 setAnonymousSessionEvictionListener(async () => {
-  useAccountStore.setState({ session: null, status: 'idle' });
+  bumpAccountBoundary();
+  setTelemetrySession(null);
+  useAccountStore.setState({
+    session: null,
+    status: 'idle',
+    profile: null,
+    diarySnapshot: null,
+  });
   await useAccountStore.getState().initAccount();
 });
 

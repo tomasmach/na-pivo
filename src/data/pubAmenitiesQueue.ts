@@ -37,11 +37,11 @@ import {
   type SubmitAmenityResult,
   type WireAmenityVote,
 } from './pubAmenitiesClient';
-import { createQueueStorage, createQueueLock } from './createQueue';
+import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
-/** Hard cap — one item per (pub, amenity). A realistic offline crawl (~10 pubs ×
- *  16 ≈ 160) is far under this; dropping the oldest beats unbounded growth. */
+/** Historical queue limit retained as migration context; durable writes are never dropped. */
 const MAX_QUEUE_LENGTH = 500;
 /** Debounce window for the post-enqueue flush. */
 const FLUSH_DEBOUNCE_MS = 250;
@@ -85,10 +85,13 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<AmenityQueueItem
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
 const runLocked = createQueueLock();
 
-async function deliver(item: AmenityQueueItem): Promise<SubmitAmenityResult> {
+async function deliver(
+  item: AmenityQueueItem,
+  signal?: AbortSignal,
+): Promise<SubmitAmenityResult> {
   // Both ops are PUTs of the snapshot payload (a delete carries a value:null
   // tombstone) so the backend can apply the same last-write-wins rule.
-  return submitAmenityVotes([item.payload]);
+  return submitAmenityVotes([item.payload], signal);
 }
 
 /** Pending tombstones that restore must not hydrate back into local state. Keyed
@@ -107,8 +110,8 @@ function signature(item: AmenityQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  const queue = await runLocked(loadQueue);
   if (queue.length === 0) return;
 
   // Snapshot the exact op (by content) we attempt per (pubKey, amenityKey), plus
@@ -118,22 +121,27 @@ async function flushLocked(): Promise<void> {
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
   for (const item of queue) {
+    if (signal.aborted) break;
     const key = dedupKey(item);
     attempted.set(key, signature(item));
-    const result = await deliver(item);
+    const result = await deliver(item, signal);
     if (result !== 'retry') settled.add(key);
   }
 
-  const current = await loadQueue();
-  const remaining = current.filter((item) => {
-    const key = dedupKey(item);
-    const sig = attempted.get(key);
-    // A different/newer op for this pair arrived during the flush → keep it.
-    if (sig === undefined || sig !== signature(item)) return true;
-    return !settled.has(key);
+  await runLocked(async () => {
+    const current = await loadQueue();
+    const remaining = current.filter((item) => {
+      const key = dedupKey(item);
+      const sig = attempted.get(key);
+      // A different/newer op for this pair arrived during the flush → keep it.
+      if (sig === undefined || sig !== signature(item)) return true;
+      return !settled.has(key);
+    });
+    await saveQueue(remaining);
   });
-  await saveQueue(remaining);
 }
+
+const amenityDelivery = createCoalescingFlush(flushUnlocked);
 
 /** Pending debounced-flush timer, so rapid enqueues coalesce into one flush. */
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,7 +151,7 @@ function scheduleFlush(): void {
   if (_flushTimer) return;
   _flushTimer = setTimeout(() => {
     _flushTimer = null;
-    void runLocked(flushLocked);
+    void flushPubAmenitiesQueue();
   }, FLUSH_DEBOUNCE_MS);
 }
 
@@ -159,16 +167,18 @@ export function enqueueAmenityOp(item: AmenityQueueItem): Promise<void> {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
-    scheduleFlush();
+    return saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+  }).then((persisted) => {
+    if (persisted) scheduleFlush();
   });
 }
 
 /** Drop all pending amenity sync operations without attempting delivery. */
 export function clearPubAmenitiesQueue(): Promise<void> {
+  amenityDelivery.abortInFlight();
   return runLocked(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**
@@ -181,5 +191,5 @@ export function flushPubAmenitiesQueue(): Promise<void> {
     clearTimeout(_flushTimer);
     _flushTimer = null;
   }
-  return runLocked(flushLocked);
+  return amenityDelivery.flush();
 }

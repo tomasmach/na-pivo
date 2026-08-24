@@ -50,6 +50,11 @@ export function chainAbortSignal(
 /** Three-state outcome the persisted-queue clients use to decide keep/drop. */
 export type QueueSyncResult = 'ok' | 'permanent-error' | 'retry';
 
+/** Released-client queue contract: only payload validation failures are terminal. */
+export function classifyQueueHttpStatus(status: number): Exclude<QueueSyncResult, 'ok'> {
+  return status === 400 || status === 422 ? 'permanent-error' : 'retry';
+}
+
 /**
  * Classify a non-2xx response for a persisted-queue submit/delete (drinks,
  * ratings, amenities, visits — all share this exact policy):
@@ -69,8 +74,5 @@ export async function classifyQueueHttpFailure(
     await clearCachedAnonymousAccount(session, context);
     return 'retry';
   }
-  if (status === 400 || status === 422) {
-    return 'permanent-error';
-  }
-  return 'retry';
+  return classifyQueueHttpStatus(status);
 }

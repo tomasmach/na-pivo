@@ -8,8 +8,22 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
+jest.mock('@/components/shared/BottomSheetModal', () => {
+  const ReactModule: typeof import('react') = jest.requireActual('react');
+  return {
+    BottomSheetModal: (props: { children?: React.ReactNode }) =>
+      ReactModule.createElement('BottomSheetModal', props, props.children),
+  };
+});
+jest.mock('@/components/shared/CloseButton', () => {
+  const ReactModule: typeof import('react') = jest.requireActual('react');
+  return {
+    CloseButton: (props: Record<string, unknown>) => ReactModule.createElement('CloseButton', props),
+  };
+});
+
 jest.mock('react-native-reanimated', () => {
-  const ReactModule = require('react');
+  const ReactModule = jest.requireActual('react');
   return {
     __esModule: true,
     default: {
@@ -24,7 +38,7 @@ jest.mock('react-native-reanimated', () => {
 });
 
 jest.mock('@/components/shared/IconGlyph', () => {
-  const ReactModule = require('react');
+  const ReactModule = jest.requireActual('react');
   const icon = () => ReactModule.createElement('Icon');
   return {
     AccessibilityIcon: icon,
@@ -63,7 +77,7 @@ jest.mock('@/data/beerSuggestionsClient', () => ({
   suggestBeerBrands: jest.fn(async () => []),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: number[] = []) {
@@ -83,6 +97,14 @@ function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: num
 }
 
 describe('PubFilterSheet', () => {
+  it('uses the shared keyboard-lifted intent sheet', () => {
+    const { renderer } = renderSheet();
+    expect(renderer.root.findByType('BottomSheetModal').props).toMatchObject({
+      visible: true,
+      keyboardLift: true,
+    });
+  });
+
   it('keeps other tap places off by default and applies the explicit opt-in', () => {
     const { renderer, onApply } = renderSheet();
 
@@ -204,5 +226,24 @@ describe('PubFilterSheet', () => {
       priceMaxCzk: 70,
       includeOtherPlaces: false,
     });
+  });
+
+  it('keeps section labels in sentence case and every text Dynamic Type-safe', () => {
+    const { renderer } = renderSheet(jest.fn(), jest.fn(), [35, 42, 48, 55, 69]);
+    const texts = renderer.root.findAllByType('Text');
+
+    expect(texts.map((node: any) => node.props.children)).toEqual(
+      expect.arrayContaining([
+        cs.compass.beerFilterSection,
+        cs.compass.priceFilterLabel,
+        cs.compass.otherPlacesSection,
+        cs.compass.amenityFilterSections.fun,
+      ]),
+    );
+    for (const node of texts) {
+      expect(
+        node.props.maxFontSizeMultiplier !== undefined || node.props.allowFontScaling === false,
+      ).toBe(true);
+    }
   });
 });

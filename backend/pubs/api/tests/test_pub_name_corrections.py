@@ -5,9 +5,11 @@ Tests for POST /v1/pub-name-corrections.
 from __future__ import annotations
 
 import pytest
+from django.conf import settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.enrichment import geohash8
 from pubs.models import Account, PubNameCorrection
 
@@ -136,4 +138,32 @@ def test_name_correction_validation(client):
 
     assert blank_name.status_code == status.HTTP_400_BAD_REQUEST
     assert bad_lat.status_code == status.HTTP_400_BAD_REQUEST
+    assert PubNameCorrection.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+@pytest.mark.django_db
+def test_name_correction_with_current_header_and_no_acceptance_returns_428(client):
+    token = _register(client)
+
+    denied = client.post(
+        "/v1/pub-name-corrections",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
     assert PubNameCorrection.objects.count() == 0

@@ -1,7 +1,3 @@
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import {
   sessionDurationMs,
   sessionGapsMs,
@@ -14,6 +10,10 @@ import {
   computeTopPubs,
 } from '../statsModel';
 import type { TallySession } from '@/stores/tallyStore';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 /** Local-time ISO so drinking-day bucketing is deterministic across test
  *  runners regardless of the machine timezone (drinkingDayKey reads local

@@ -30,7 +30,7 @@ The Expo mobile app is in the monorepo root (`..`).
 | DB (dev) | SQLite |
 | DB (prod) | PostgreSQL via `psycopg[binary]` + `dj-database-url` |
 | Package management | `uv` |
-| WSGI (prod) | `gunicorn` |
+| ASGI (prod) | `gunicorn` + `uvicorn` worker |
 | Scraping/enrichment | `requests`, Firmy.cz parsing, Mapy.cz integration |
 | Opening-hours eval | `opening-hours-py` (Rust-backed OSM grammar) |
 | Name/geo matching | `rapidfuzz` + haversine |
@@ -56,8 +56,8 @@ uv run python manage.py migrate
 # 5. Optional: create a superuser
 uv run python manage.py createsuperuser
 
-# 6. Start the dev server
-uv run python manage.py runserver
+# 6. Start the ASGI dev server
+uv run --extra prod uvicorn config.asgi:application --reload --no-access-log --port 8000
 ```
 
 Useful local URLs:
@@ -71,7 +71,7 @@ Useful local URLs:
 For local Expo testing on a physical device, bind the backend to the LAN interface:
 
 ```bash
-uv run python manage.py runserver 0.0.0.0:8000
+uv run --extra prod uvicorn config.asgi:application --reload --no-access-log --host 0.0.0.0 --port 8000
 ```
 
 Then start Expo from the repository root:
@@ -113,6 +113,34 @@ Do not store raw GPS history or routes unless there is an explicit product decis
 Server logs are JSON on stdout and should stay privacy-safe. They must not include request bodies, bearer tokens, cookies, proxy credentials, feedback contact data, emails or raw GPS points.
 
 Bearer tokens are server-issued secrets and are stored as hashes. Per-user data should relate to the account model, not to token values.
+
+### Linear feedback sync
+
+Feedback reports are mirrored to a Linear team. The sync is disabled only when **both** `LINEAR_API_KEY` and `LINEAR_TEAM_ID` are unset; anything partial fails the deploy check with `pubs.E005`.
+
+When enabled, account hard purge permanently deletes the synced feedback issues via Linear's official GraphQL `issueDelete` mutation. That requires an admin-capable API key. `python manage.py check --deploy` also requires `LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED=true` — this is only an operator assertion that the key was verified in Linear, not a live permission probe (`pubs.E006` if missing).
+
+If Linear is down or an issue delete fails, purge is fail-closed: the whole transaction rolls back and the account stays pending for retry. Never assume external deletion succeeded just because local data is gone.
+
+**Unsetting both env vars stops new sync, but it is not a safe off-switch while any synced issue remains.** Hard purge of an account with a remaining `FeedbackReport.linear_issue_id` fails closed without a working admin key, so those accounts pile up pending forever. Until the backlog clears (and a durable cleanup-progress design exists), keep the verified admin key configured.
+
+Check the backlog at any time — read-only, loads no secrets into memory beyond Django settings defaults:
+
+```bash
+uv run python manage.py shell -c "from pubs.models import FeedbackReport; print(FeedbackReport.objects.exclude(linear_issue_id='').count())"
+```
+
+If this prints anything above `0`, Linear cleanup is still owed to real accounts; do not treat sync as safely retired.
+
+#### Before setting `LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED=true`
+
+Run this manual smoke once with the **production admin key**, against a sacrificial throwaway issue in the synced team:
+
+1. Call the permanent `issueDelete` mutation (`permanentlyDelete: true`) on the sacrificial issue → the response must contain `data.issueDelete.success: true`.
+2. Call the exact same delete again → the response must contain `errors[].extensions.code` equal to exactly `ENTITY_NOT_FOUND` (the only already-gone code the purge accepts).
+3. If either step returns anything else (different success shape, different error code), do **not** set the flag and do **not** deploy; fix the key's scope first and repeat.
+
+Never paste or log the API key or raw GraphQL response bodies anywhere.
 
 ---
 
@@ -176,13 +204,15 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
 | `ALLOWED_HOSTS` | `*` in dev, env value in prod | Comma-separated allowed hosts |
 | `PUBLIC_WEB_ORIGIN` | `https://na-pivo.cz` | Canonical origin for invite links and Open Graph metadata |
+| `PUBLIC_API_ORIGIN` | `http://localhost:8012` (dev), `https://api.na-pivo.cz` (prod) | Bare API origin (`scheme://host`, no path/query) used when the backend links to itself |
+| `ANDROID_APP_LINK_CERT_FINGERPRINTS` | _(unset)_ | Comma-separated SHA-256 fingerprints served via `/.well-known/assetlinks.json`; production value is the Play App Signing cert from Google Play Console > App integrity > App signing key certificate (EAS/local `keytool` show the upload cert and may differ). Extra entries cover preview/internal/direct-distribution builds. Unset/malformed serves no association (fail closed) and the production deploy check refuses to pass |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |
-| `FIRMY_DAILY_CAP` | `2000` | Hard daily request cap |
+| `FIRMY_DAILY_CAP` | `2000` | Shared DB-backed daily request cap across web and worker processes |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
-| `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call; `0` makes cold lookups pending-only and leaves enrichment to the worker |
+| `SYNC_ENRICH_BUDGET` | `3` in dev, forced `0` in production | Max pubs enriched synchronously per API call; production cache misses always return pending and leave enrichment to the worker |
 | `GOOGLE_MAPS_SERVER_API_KEY` | _(unset)_ | Backend-only, IP/API-restricted key for Geocoding API v4 and Places API (New); never ship it in Expo |
 | `GOOGLE_MAPS_TIMEOUT` | `8` | Timeout in seconds for an explicit Google lookup |
 | `GOOGLE_MAPS_DAILY_CAP` | `250` | Shared DB-backed request cap across Google geocoding/autocomplete entry points and workers |
@@ -198,6 +228,10 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
 | `PUB_REPORT_GLOBAL_HIDE_THRESHOLD` | `3` | Distinct active reporting accounts required before a pub is hidden globally |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
+| `PUBLIC_READS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for public changelog and report-filter reads |
+| `API_RATE_LIMIT_RETENTION_DAYS` | `2` | Retention for expired shared throttle buckets |
+| `ACCOUNT_EXPORT_JOB_RETENTION_DAYS` | `30` | Retention for delivered and terminally failed durable export jobs |
+| `ACCOUNT_EXPORT_JOB_MAX_ATTEMPTS` | `8` | Maximum delivery attempts before an export job fails permanently |
 | `DRINKS_THROTTLE_RATE` | `30/min` | Per-account rate limit for `POST /v1/drinks` |
 | `DRINK_FUTURE_GRACE_MINUTES` | `10` | Future timestamp grace before clamping to server time |
 | `DRINK_BACKDATE_FLAG_DAYS` | `60` | Age at which a drink is flagged as backdated |
@@ -222,13 +256,13 @@ Every install currently gets an anonymous, device-bound account automatically. T
 
 The bearer token is returned once at registration and stored only as a SHA-256 hash (`token_hash`). Re-registration for an existing `device_id` rotates it only when the request already presents the valid Bearer token for that same account.
 
-The `account` and other DRF throttles should be backed by a shared cache such as Redis or Memcached for exact global limits in production. The default `LocMemCache` is per-process, so under multiple gunicorn workers the effective limit is `rate x workers`.
+The `account` and other scoped throttles use atomic PostgreSQL counters. Their limits stay exact when gunicorn adds workers; the maintenance worker removes expired buckets.
 
 ---
 
 ## Observability and stats
 
-Server logs include a privacy-safe request id, path, status, duration, app version headers and a hashed client IP.
+Structured Django logs include a privacy-safe request id, redacted path, status, duration, app version headers and a hashed client IP. Gunicorn logs only method, status and latency, so sensitive URL segments and query parameters never reach the raw access log.
 
 The Expo app sends a small event whitelist to:
 
@@ -257,10 +291,12 @@ Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner V
 Services:
 
 - `napivo-web` - gunicorn web process;
-- `worker` - background opening-hours refresh;
+- `worker` - background enrichment, durable account-export delivery and retention cleanup;
 - `db` - PostgreSQL 17.
 
-`docker-entrypoint.sh` applies migrations and collects static files on every start, so a deploy is pull + rebuild.
+`docker-entrypoint.sh` runs `manage.py check --deploy` before applying migrations
+or collecting static files. Invalid production configuration therefore stops the
+new container before it changes the database. A deploy is pull + rebuild.
 
 ### Prerequisites
 
@@ -338,9 +374,29 @@ Always pass `-p na-pivo`: the compose project name is pinned in
 `docker-compose.yml`, but the explicit flag keeps a stray invocation from a
 different directory from ever creating a parallel project with empty volumes.
 
+Never deploy from `/opt/na-pivo.pre-monorepo-2026-07-17` — it is an archived
+checkout of the old backend-only repo, and deploying it would roll production
+back.
+
 Migrations run inside the container on start. `set -e` means a failed migration stops `napivo-web` before gunicorn; check `docker compose logs napivo-web` if it will not go healthy.
 
 Tests run on SQLite, which does not create PostgreSQL `varchar_pattern_ops` `_like` indexes, so verify migrations that depend on PostgreSQL behavior before deploying.
+
+---
+
+## Release checklist
+
+Before any release that touches account deletion or Apple sign-in:
+
+### Manual Apple revoke-twice smoke
+
+Run once per release with a **disposable test Apple account** (never a real user's identity) and its `refresh_token`, against the production Apple revoke endpoint — the same call `oauth.revoke_apple_token` makes:
+
+1. POST to `https://appleid.apple.com/auth/revoke` with the app's `client_id`, a fresh client-secret JWT, the disposable `refresh_token` and `token_type_hint=refresh_token` → response must be **HTTP 200**.
+2. Call the exact same revoke a second time → it must also return **HTTP 200**. The helper accepts only 200 as success; there is no "already revoked" error state it tolerates.
+3. If the second call is non-200, do **not** release: deletion of an account that has already had its token revoked would fail at purge time with no durable cleanup-progress design to fall back on. Fix the flow first.
+
+Never paste or log the refresh token, the client secret or raw response bodies anywhere.
 
 ---
 

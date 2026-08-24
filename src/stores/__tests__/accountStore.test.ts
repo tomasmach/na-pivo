@@ -14,21 +14,80 @@ import {
   selectNeedsNickname,
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
-import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
-import { ensureAccount, setAnonymousSessionEvictionListener } from '@/data/account';
+import {
+  EMPTY_ACHIEVEMENTS,
+  type AccountMapper,
+  type AccountProfile,
+  type AuthActionResult,
+  type AuthResult,
+  type UgcConsentAcceptResult,
+} from '@/data/auth';
+import {
+  ensureAccount,
+  fetchAccountPreferences,
+  readDurableAccountSession,
+  setAnonymousSessionEvictionListener,
+} from '@/data/account';
+import { rehydratePrivateStoresAfterBoundary } from '@/data/privateAccountData';
+import { readPrivateAccountMergeIntent } from '@/data/privateAccountBoundary';
+import { rekeyAccountPreferencesQueueOwner } from '@/data/accountPreferencesQueue';
+import { rekeyPartyEveningIdentityOwner } from '@/data/partyEveningIdentityCache';
+import { recoverPartyGameQueuesForAccount } from '@/data/partyGameQueueBoundary';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot } from '@/data/diarySync';
 
+const mockSettingsActions = {
+  accountPreferencesRevision: 0,
+  setMode: jest.fn(),
+  setMaxDistanceKm: jest.fn(),
+  setPriceCurrency: jest.fn(),
+  setHapticEnabled: jest.fn(),
+  setSoundEnabled: jest.fn(),
+  setHideClosedPubs: jest.fn(),
+  setHidePubNames: jest.fn(),
+  setMarketingEmailsEnabled: jest.fn(),
+  applyAccountPreferencesFromServer: jest.fn(),
+};
+
 jest.mock('@/data/auth');
-jest.mock('@/data/account', () => ({
-  ensureAccount: jest.fn(async () => ({
+jest.mock('@/data/account', () => {
+  const ensureAccount = jest.fn(async () => ({
     deviceId: 'd',
     accountId: 'a',
     token: 'tok',
     authenticated: true,
-  })),
-  fetchAccountPreferences: jest.fn(async () => null),
-  setAnonymousSessionEvictionListener: jest.fn(),
+  }));
+  return {
+    ensureAccount,
+    readDurableAccountSession: jest.fn(async () => ({
+      available: true,
+      session: {
+        deviceId: 'd',
+        accountId: 'a',
+        token: 'tok',
+        authenticated: true,
+      },
+    })),
+    fetchAccountPreferences: jest.fn(async () => null),
+    setAnonymousSessionEvictionListener: jest.fn(),
+  };
+});
+jest.mock('@/data/privateAccountBoundary', () => ({
+  readPrivateAccountMergeIntent: jest.fn(async () => ({ ok: true, intent: null })),
+  registerPrivateAccountFreezeListener: jest.fn(() => () => undefined),
+  registerPrivateAccountThawListener: jest.fn(() => () => undefined),
+}));
+jest.mock('@/data/accountPreferencesQueue', () => ({
+  rekeyAccountPreferencesQueueOwner: jest.fn(async () => true),
+}));
+jest.mock('@/data/partyEveningIdentityCache', () => ({
+  rekeyPartyEveningIdentityOwner: jest.fn(async () => true),
+}));
+jest.mock('@/data/partyGameQueueBoundary', () => ({
+  recoverPartyGameQueuesForAccount: jest.fn(async () => true),
+}));
+jest.mock('@/data/privateAccountData', () => ({
+  rehydratePrivateStoresAfterBoundary: jest.fn(async () => true),
 }));
 jest.mock('@/data/telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
@@ -39,12 +98,18 @@ jest.mock('@/data/diarySync', () => ({
 }));
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ setHidePubNames: jest.fn() }),
+    getState: () => mockSettingsActions,
   },
 }));
 
 const mockedAuth = auth as jest.Mocked<typeof auth>;
 const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
+const mockReadDurableAccountSession = readDurableAccountSession as jest.MockedFunction<
+  typeof readDurableAccountSession
+>;
+const mockFetchAccountPreferences = fetchAccountPreferences as jest.MockedFunction<
+  typeof fetchAccountPreferences
+>;
 const registeredAnonymousSessionEvictionListener = jest.mocked(setAnonymousSessionEvictionListener)
   .mock.calls[0]?.[0] as (() => Promise<void>) | undefined;
 const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
@@ -52,10 +117,30 @@ const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackA
 const mockReconcileDiarySnapshot = reconcileDiarySnapshot as jest.MockedFunction<
   typeof reconcileDiarySnapshot
 >;
+const mockRehydratePrivateStoresAfterBoundary =
+  rehydratePrivateStoresAfterBoundary as jest.MockedFunction<
+    typeof rehydratePrivateStoresAfterBoundary
+  >;
+const mockReadPrivateAccountMergeIntent =
+  readPrivateAccountMergeIntent as jest.MockedFunction<
+    typeof readPrivateAccountMergeIntent
+  >;
+const mockRekeyAccountPreferencesQueueOwner =
+  rekeyAccountPreferencesQueueOwner as jest.MockedFunction<
+    typeof rekeyAccountPreferencesQueueOwner
+  >;
+const mockRekeyPartyEveningIdentityOwner =
+  rekeyPartyEveningIdentityOwner as jest.MockedFunction<
+    typeof rekeyPartyEveningIdentityOwner
+  >;
+const mockRecoverPartyGameQueuesForAccount =
+  recoverPartyGameQueuesForAccount as jest.MockedFunction<
+    typeof recoverPartyGameQueuesForAccount
+  >;
 
 function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
   return {
-    id: 'acc-1',
+    id: 'a',
     deviceId: 'dev-1',
     nickname: 'jan',
     displayName: 'Jan',
@@ -101,27 +186,256 @@ function errResult(code = 'invalid_credentials', detail = 'nope'): AuthResult {
   return { ok: false, code, detail };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   // Reset the singleton store back to a clean slate between tests.
-  useAccountStore.setState({ session: null, status: 'idle', profile: null, diarySnapshot: null });
+  useAccountStore.setState({
+    session: null,
+    status: 'idle',
+    startupBoundaryReady: false,
+    profile: null,
+    diarySnapshot: null,
+  });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
     accountId: 'a',
     token: 'tok',
     authenticated: true,
   });
+  mockReadDurableAccountSession.mockResolvedValue({
+    available: true,
+    session: {
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    },
+  });
   // fetchAccountProfile is used by refreshProfile (e.g. inside logout); default
   // it to null so it doesn't accidentally re-populate the profile.
   mockedAuth.fetchAccountProfile.mockResolvedValue(null);
+  mockedAuth.recoverPendingAccountDeletionAtStartup.mockResolvedValue('none');
   mockedAuth.validateAccountSession.mockResolvedValue({
     status: 'valid',
     profile: signedInProfile(),
   });
+  mockFetchAccountPreferences.mockResolvedValue(null);
   mockReconcileDiarySnapshot.mockResolvedValue(null);
+  mockReadPrivateAccountMergeIntent.mockResolvedValue({ ok: true, intent: null });
+  mockRekeyAccountPreferencesQueueOwner.mockResolvedValue(true);
+  mockRekeyPartyEveningIdentityOwner.mockResolvedValue(true);
+  mockRecoverPartyGameQueuesForAccount.mockResolvedValue(true);
+  mockRehydratePrivateStoresAfterBoundary.mockResolvedValue(true);
 });
 
 describe('initAccount', () => {
+  it('does not reopen account recovery after startup already published a session', async () => {
+    const session = {
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    };
+    useAccountStore.setState({
+      session,
+      status: 'ready',
+      startupBoundaryReady: true,
+      profile: signedInProfile(),
+    });
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockedAuth.recoverPendingAccountDeletionAtStartup).not.toHaveBeenCalled();
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(useAccountStore.getState()).toMatchObject({
+      session,
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('recovers the account when startup is marked ready but the session is missing', async () => {
+    useAccountStore.setState({
+      session: null,
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockedAuth.recoverPendingAccountDeletionAtStartup).toHaveBeenCalledTimes(1);
+    expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState()).toMatchObject({
+      session: expect.objectContaining({ accountId: 'a' }),
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('fails closed on a locked session read and succeeds on explicit retry', async () => {
+    mockReadDurableAccountSession.mockResolvedValueOnce({
+      available: false,
+      session: null,
+    });
+
+    await useAccountStore.getState().initAccount();
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: null,
+      status: 'error',
+      startupBoundaryReady: false,
+    });
+    expect(mockedAuth.recoverPendingAccountDeletionAtStartup).not.toHaveBeenCalled();
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(mockRehydratePrivateStoresAfterBoundary).not.toHaveBeenCalled();
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockedAuth.recoverPendingAccountDeletionAtStartup).toHaveBeenCalledTimes(1);
+    expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState()).toMatchObject({
+      session: expect.objectContaining({ accountId: 'a' }),
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('keeps a recovered A to B marker until the explicit private rehydrate succeeds', async () => {
+    const sessionB = {
+      deviceId: 'device-b',
+      accountId: 'account-b',
+      token: 'token-b',
+      authenticated: true,
+    };
+    mockReadDurableAccountSession.mockResolvedValue({
+      available: true,
+      session: sessionB,
+    });
+    mockEnsureAccount.mockResolvedValue(sessionB);
+    const mergeIntent = {
+      version: 1 as const,
+      operationId: 'merge-1',
+      fromAccountId: 'account-a',
+      toAccountId: 'account-b',
+      preparedAt: 1,
+    };
+    mockReadPrivateAccountMergeIntent.mockResolvedValue({
+      ok: true,
+      intent: mergeIntent,
+    });
+    let markerRemovals = 0;
+    mockRehydratePrivateStoresAfterBoundary
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockRecoverPartyGameQueuesForAccount.mockImplementation(
+      async (_accountId, finalizeAdditionalLocalData) => {
+        const finalized = await (finalizeAdditionalLocalData?.(mergeIntent) ?? true);
+        if (finalized) markerRemovals += 1;
+        return finalized;
+      },
+    );
+
+    await useAccountStore.getState().initAccount();
+
+    expect(useAccountStore.getState()).toMatchObject({
+      status: 'error',
+      startupBoundaryReady: false,
+    });
+    expect(markerRemovals).toBe(0);
+    expect(mockRecoverPartyGameQueuesForAccount).toHaveBeenCalledTimes(1);
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockRekeyAccountPreferencesQueueOwner).toHaveBeenLastCalledWith(
+      'account-a',
+      'account-b',
+      { allowDuringPrivateTransition: true },
+    );
+    expect(mockRekeyPartyEveningIdentityOwner).toHaveBeenLastCalledWith(
+      'account-a',
+      'account-b',
+    );
+    expect(mockRecoverPartyGameQueuesForAccount).toHaveBeenLastCalledWith(
+      'account-b',
+      expect.any(Function),
+    );
+    expect(markerRemovals).toBe(1);
+    expect(useAccountStore.getState()).toMatchObject({
+      session: sessionB,
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('does not publish or hydrate a cached owner until deletion recovery settles', async () => {
+    const recovery = deferred<'none' | 'deferred' | 'recovered' | 'blocked'>();
+    mockedAuth.recoverPendingAccountDeletionAtStartup.mockReturnValueOnce(recovery.promise);
+
+    const initialization = useAccountStore.getState().initAccount();
+    await Promise.resolve();
+
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(useAccountStore.getState()).toMatchObject({
+      session: null,
+      status: 'loading',
+      startupBoundaryReady: false,
+    });
+
+    recovery.resolve('recovered');
+    await initialization;
+
+    expect(mockEnsureAccount).toHaveBeenCalled();
+    expect(useAccountStore.getState()).toMatchObject({
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('fails closed without reading the cached owner when deletion recovery is blocked', async () => {
+    mockedAuth.recoverPendingAccountDeletionAtStartup.mockResolvedValueOnce('blocked');
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(useAccountStore.getState()).toMatchObject({
+      session: null,
+      status: 'error',
+      startupBoundaryReady: false,
+    });
+  });
+
+  it('stays fail-closed without publishing or hydrating when deletion recovery is deferred', async () => {
+    mockedAuth.recoverPendingAccountDeletionAtStartup.mockResolvedValueOnce('deferred');
+
+    await useAccountStore.getState().initAccount();
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: null,
+      status: 'error',
+      startupBoundaryReady: false,
+    });
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(mockSetTelemetrySession).not.toHaveBeenCalled();
+    expect(mockedAuth.fetchAccountProfile).not.toHaveBeenCalled();
+    expect(mockFetchAccountPreferences).not.toHaveBeenCalled();
+    expect(mockReconcileDiarySnapshot).not.toHaveBeenCalled();
+    expect(mockRehydratePrivateStoresAfterBoundary).not.toHaveBeenCalled();
+  });
+
   it('keeps a durable signed-in session signed in when the profile fetch is unavailable', async () => {
     await useAccountStore.getState().initAccount();
 
@@ -173,7 +487,10 @@ describe('initAccount', () => {
 describe('resumeSession', () => {
   it('validates an existing credential and refreshes its profile', async () => {
     const previous = signedInProfile({ displayName: 'Starý profil' });
-    const refreshed = signedInProfile({ displayName: 'Čerstvý profil' });
+    const refreshed = signedInProfile({
+      displayName: 'Čerstvý profil',
+      settings: { hidePubNames: true },
+    });
     useAccountStore.setState({
       session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
       status: 'ready',
@@ -190,6 +507,11 @@ describe('resumeSession', () => {
       authenticated: true,
     });
     expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: refreshed });
+    expect(mockSettingsActions.applyAccountPreferencesFromServer).toHaveBeenCalledWith(
+      refreshed.settings,
+      'a',
+      0,
+    );
   });
 
   it('rehydrates credentials that became available again before validating them', async () => {
@@ -234,6 +556,222 @@ describe('resumeSession', () => {
     await expect(useAccountStore.getState().resumeSession()).resolves.toBe('unavailable');
 
     expect(useAccountStore.getState()).toMatchObject({ session, profile, status: 'ready' });
+  });
+});
+
+describe('account boundary races', () => {
+  const sessionA = {
+    deviceId: 'device-a',
+    accountId: 'a',
+    token: 'token-a',
+    authenticated: true,
+  };
+  const sessionB = {
+    deviceId: 'device-b',
+    accountId: 'b',
+    token: 'token-b',
+    authenticated: true,
+  };
+
+  it('ignores delayed init profile and preferences after another account is installed', async () => {
+    const preferencesRequest = deferred<{ hidePubNames: boolean } | null>();
+    const profileRequest = deferred<AccountProfile | null>();
+    mockEnsureAccount.mockResolvedValueOnce(sessionA);
+    mockFetchAccountPreferences.mockReturnValueOnce(preferencesRequest.promise);
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(profileRequest.promise);
+
+    const initPromise = useAccountStore.getState().initAccount();
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    expect(mockedAuth.fetchAccountProfile).toHaveBeenCalledTimes(1);
+
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    useAccountStore.setState({ session: sessionB, status: 'ready', profile: profileB });
+    preferencesRequest.resolve({ hidePubNames: true });
+    profileRequest.resolve(signedInProfile({ displayName: 'Pozdní účet A' }));
+    await initPromise;
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: sessionB,
+      status: 'ready',
+      profile: profileB,
+    });
+    expect(mockSettingsActions.applyAccountPreferencesFromServer).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed profile refresh from account A after switching to B', async () => {
+    const profileRequest = deferred<AccountProfile | null>();
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    useAccountStore.setState({
+      session: sessionA,
+      status: 'ready',
+      profile: signedInProfile({ displayName: 'Účet A' }),
+    });
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(profileRequest.promise);
+
+    const refreshPromise = useAccountStore.getState().refreshProfile();
+    useAccountStore.setState({ session: sessionB, profile: profileB });
+    profileRequest.resolve(signedInProfile({ displayName: 'Pozdní účet A' }));
+    await refreshPromise;
+
+    expect(useAccountStore.getState().profile).toEqual(profileB);
+  });
+
+  it('ignores a delayed profile mutation from account A after switching to B', async () => {
+    const updateRequest = deferred<AuthResult>();
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    useAccountStore.setState({
+      session: sessionA,
+      status: 'ready',
+      profile: signedInProfile({ displayName: 'Účet A' }),
+    });
+    mockedAuth.updateProfile.mockReturnValueOnce(updateRequest.promise);
+
+    const updatePromise = useAccountStore.getState().updateProfile({ displayName: 'Nové A' });
+    useAccountStore.setState({ session: sessionB, profile: profileB });
+    updateRequest.resolve(okResult(signedInProfile({ displayName: 'Nové A' })));
+    await updatePromise;
+
+    expect(useAccountStore.getState().profile).toEqual(profileB);
+  });
+
+  it('applies a profile mutation while the exact session remains current', async () => {
+    const updated = signedInProfile({ displayName: 'Nové A' });
+    useAccountStore.setState({ session: sessionA, status: 'ready', profile: signedInProfile() });
+    mockedAuth.updateProfile.mockResolvedValueOnce(okResult(updated));
+
+    await useAccountStore.getState().updateProfile({ displayName: 'Nové A' });
+
+    expect(useAccountStore.getState().profile).toEqual(updated);
+  });
+
+  it('does not publish an auth result whose profile differs from the durable session', async () => {
+    useAccountStore.setState({ session: sessionA, status: 'ready', profile: signedInProfile() });
+    mockedAuth.loginEmail.mockResolvedValueOnce(okResult(signedInProfile()));
+    mockEnsureAccount.mockResolvedValueOnce(sessionB);
+
+    await useAccountStore.getState().login({ email: 'a@example.com', password: 'pw' });
+
+    expect(useAccountStore.getState()).toMatchObject({ session: sessionB, profile: null });
+  });
+
+  it('invalidates account A responses before auth can durably install account B', async () => {
+    const refreshRequest = deferred<AccountProfile | null>();
+    const loginRequest = deferred<AuthResult>();
+    const originalA = signedInProfile({ displayName: 'Původní A' });
+    const staleA = signedInProfile({ displayName: 'Pozdní A' });
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    useAccountStore.setState({ session: sessionA, status: 'ready', profile: originalA });
+    mockedAuth.fetchAccountProfile.mockReturnValueOnce(refreshRequest.promise);
+    mockedAuth.loginEmail.mockReturnValueOnce(loginRequest.promise);
+    mockEnsureAccount.mockResolvedValueOnce(sessionB);
+
+    const refreshPromise = useAccountStore.getState().refreshProfile();
+    const loginPromise = useAccountStore
+      .getState()
+      .login({ email: 'b@example.com', password: 'pw' });
+    await Promise.resolve();
+    expect(mockedAuth.loginEmail).toHaveBeenCalledTimes(1);
+
+    refreshRequest.resolve(staleA);
+    await refreshPromise;
+    expect(useAccountStore.getState().profile).toEqual(originalA);
+
+    loginRequest.resolve(okResult(profileB));
+    await loginPromise;
+    expect(useAccountStore.getState()).toMatchObject({ session: sessionB, profile: profileB });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// acceptUgcConsent — session-scoped profile mutation (UGC policy acceptance)
+// ---------------------------------------------------------------------------
+describe('acceptUgcConsent', () => {
+  const consentSessionA = {
+    deviceId: 'device-a',
+    accountId: 'a',
+    token: 'token-a',
+    authenticated: true,
+  };
+  const consentSessionB = {
+    deviceId: 'device-b',
+    accountId: 'b',
+    token: 'token-b',
+    authenticated: true,
+  };
+  const snapshotA = {
+    policyVersion: '2026-09-01',
+    accepted: true,
+    acceptedVersion: '2026-09-01',
+    acceptedAt: '2026-08-23T10:00:00Z',
+  };
+
+  it('delegates the exact version and patches only profile.ugcConsent while the session is current', async () => {
+    const profileA = signedInProfile();
+    useAccountStore.setState({
+      session: consentSessionA,
+      status: 'ready',
+      profile: profileA,
+    });
+    mockedAuth.acceptUgcConsent.mockResolvedValueOnce({
+      ok: true,
+      ugcConsent: snapshotA,
+    });
+
+    const result: UgcConsentAcceptResult = await useAccountStore
+      .getState()
+      .acceptUgcConsent('2026-09-01');
+
+    expect(mockedAuth.acceptUgcConsent).toHaveBeenCalledTimes(1);
+    expect(mockedAuth.acceptUgcConsent).toHaveBeenCalledWith('2026-09-01');
+    expect(result).toEqual({ ok: true, ugcConsent: snapshotA });
+    const patched = useAccountStore.getState().profile;
+    expect(patched?.ugcConsent).toEqual(snapshotA);
+    // Every pre-existing profile field survives the patch untouched.
+    expect(patched).toEqual({ ...profileA, ugcConsent: snapshotA });
+  });
+
+  it('never mutates account B when a delayed A consent resolves after a session switch', async () => {
+    const request = deferred<UgcConsentAcceptResult>();
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    useAccountStore.setState({
+      session: consentSessionA,
+      status: 'ready',
+      profile: signedInProfile({ displayName: 'Účet A' }),
+    });
+    mockedAuth.acceptUgcConsent.mockReturnValueOnce(request.promise);
+
+    const promise = useAccountStore.getState().acceptUgcConsent('2026-09-01');
+    useAccountStore.setState({ session: consentSessionB, profile: profileB });
+    request.resolve({ ok: true, ugcConsent: snapshotA });
+    await promise;
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: consentSessionB,
+      profile: profileB,
+    });
+    expect(useAccountStore.getState().profile?.ugcConsent).toBeUndefined();
+  });
+
+  it('returns a coded failure unchanged and leaves the profile untouched', async () => {
+    const existing = signedInProfile();
+    useAccountStore.setState({
+      session: consentSessionA,
+      status: 'ready',
+      profile: existing,
+    });
+    mockedAuth.acceptUgcConsent.mockResolvedValueOnce({
+      ok: false,
+      code: 'ugc_policy_update_required',
+      detail: 'Nejnovější pravidla vyžadují potvrzení.',
+    });
+
+    await expect(useAccountStore.getState().acceptUgcConsent('2026-09-01')).resolves.toEqual({
+      ok: false,
+      code: 'ugc_policy_update_required',
+      detail: 'Nejnovější pravidla vyžadují potvrzení.',
+    });
+
+    expect(useAccountStore.getState().profile).toEqual(existing);
   });
 });
 
@@ -302,6 +840,45 @@ describe('login', () => {
 
     expect(useAccountStore.getState().profile).toBeNull();
     expect(mockEnsureAccount).not.toHaveBeenCalled();
+  });
+
+  it('publishes durable B while returning a failed post-commit rehydrate', async () => {
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    const sessionA = {
+      deviceId: 'device-a',
+      accountId: 'a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    const sessionB = {
+      deviceId: 'device-b',
+      accountId: 'b',
+      token: 'token-b',
+      authenticated: true,
+    };
+    useAccountStore.setState({
+      session: sessionA,
+      status: 'ready',
+      profile: signedInProfile({ displayName: 'Účet A' }),
+    });
+    mockedAuth.loginEmail.mockResolvedValueOnce({
+      ok: false,
+      code: 'session_storage',
+      detail: 'Soukromá data se nepodařilo načíst.',
+      committedProfile: profileB,
+    });
+    mockEnsureAccount.mockResolvedValueOnce(sessionB);
+
+    const result = await useAccountStore
+      .getState()
+      .login({ email: 'b@example.com', password: 'pw' });
+
+    expect(result).toEqual(expect.objectContaining({ ok: false }));
+    expect(useAccountStore.getState()).toMatchObject({
+      session: sessionB,
+      profile: profileB,
+    });
+    expect(mockReconcileDiarySnapshot).not.toHaveBeenCalled();
   });
 
   it('returns a session waiting for recovery to ready after successful login', async () => {
@@ -387,7 +964,7 @@ describe('logout', () => {
       authenticated: false,
     });
 
-    await useAccountStore.getState().logout();
+    await expect(useAccountStore.getState().logout()).resolves.toEqual({ ok: true });
 
     expect(mockedAuth.logout).toHaveBeenCalledTimes(1);
     expect(useAccountStore.getState().profile).toBeNull();
@@ -412,12 +989,104 @@ describe('logout', () => {
     await useAccountStore.getState().logout({ all: true });
     expect(mockedAuth.logout).toHaveBeenCalledWith({ all: true });
   });
+
+  it('keeps A intact when auth blocks logout on pending photo deletions', async () => {
+    const profile = signedInProfile();
+    const session = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: true,
+    };
+    useAccountStore.setState({ profile, session, status: 'ready' });
+    mockedAuth.logout.mockResolvedValue({
+      ok: false,
+      code: 'photo_deletions_pending',
+      detail: 'Připoj se k internetu.',
+    });
+
+    await expect(useAccountStore.getState().logout()).resolves.toEqual({
+      ok: false,
+      code: 'photo_deletions_pending',
+      detail: 'Připoj se k internetu.',
+    });
+
+    expect(useAccountStore.getState()).toMatchObject({ profile, session, status: 'ready' });
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(mockedAuth.fetchAccountProfile).not.toHaveBeenCalled();
+  });
+
+  it('does not republish or clear A when the local logout boundary fails', async () => {
+    const profile = signedInProfile();
+    const session = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: true,
+    };
+    const diarySnapshot = { accountId: 'account-a', data: { drinks: [], visits: [] } };
+    useAccountStore.setState({ profile, session, diarySnapshot, status: 'ready' });
+    mockedAuth.logout.mockResolvedValue({
+      ok: false,
+      code: 'session_storage',
+      detail: 'Keychain není dostupný.',
+    });
+
+    await expect(useAccountStore.getState().logout()).resolves.toEqual({
+      ok: false,
+      code: 'session_storage',
+      detail: 'Keychain není dostupný.',
+    });
+
+    expect(useAccountStore.getState()).toMatchObject({
+      profile,
+      session,
+      diarySnapshot,
+      status: 'ready',
+    });
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(mockedAuth.fetchAccountProfile).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
 // deleteAccount
 // ---------------------------------------------------------------------------
 describe('deleteAccount', () => {
+  it('coalesces a double confirmation so the replacement anonymous account survives', async () => {
+    const pendingDelete = deferred<AuthActionResult>();
+    const accountA = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: true,
+    };
+    const anonymousC = {
+      deviceId: 'device-c',
+      accountId: 'account-c',
+      token: 'token-c',
+      authenticated: false,
+    };
+    useAccountStore.setState({
+      session: accountA,
+      profile: signedInProfile({ id: accountA.accountId }),
+      status: 'ready',
+    });
+    mockedAuth.deleteAccount.mockReturnValueOnce(pendingDelete.promise);
+    mockEnsureAccount.mockResolvedValueOnce(anonymousC);
+
+    const first = useAccountStore.getState().deleteAccount();
+    const second = useAccountStore.getState().deleteAccount();
+    expect(second).toBe(first);
+    await Promise.resolve();
+    expect(mockedAuth.deleteAccount).toHaveBeenCalledTimes(1);
+
+    pendingDelete.resolve({ ok: true });
+    await expect(Promise.all([first, second])).resolves.toEqual([{ ok: true }, { ok: true }]);
+    expect(mockedAuth.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().session).toEqual(anonymousC);
+  });
+
   it('clears the profile on success', async () => {
     useAccountStore.setState({ profile: signedInProfile() });
     mockedAuth.deleteAccount.mockResolvedValue({ ok: true });
@@ -437,6 +1106,34 @@ describe('deleteAccount', () => {
 
     expect(result.ok).toBe(false);
     expect(useAccountStore.getState().profile).toEqual(existing);
+  });
+
+  it('keeps the full A snapshot when account deletion cannot finish its local boundary', async () => {
+    const profile = signedInProfile();
+    const session = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: true,
+    };
+    const diarySnapshot = { accountId: 'account-a', data: { drinks: [], visits: [] } };
+    useAccountStore.setState({ profile, session, diarySnapshot, status: 'ready' });
+    mockedAuth.deleteAccount.mockResolvedValue({
+      ok: false,
+      code: 'session_storage',
+      detail: 'Keychain není dostupný.',
+    });
+
+    await expect(useAccountStore.getState().deleteAccount()).resolves.toEqual(
+      expect.objectContaining({ ok: false, code: 'session_storage' }),
+    );
+    expect(useAccountStore.getState()).toMatchObject({
+      profile,
+      session,
+      diarySnapshot,
+      status: 'ready',
+    });
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
   });
 });
 

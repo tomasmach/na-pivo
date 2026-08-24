@@ -5,14 +5,26 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-from pubs.web_views import apple_app_site_association, invite_asset, invite_landing
+from pubs.web_views import (
+    android_asset_statements,
+    apple_app_site_association,
+    invite_asset,
+    invite_landing,
+    party_invite_landing,
+)
 
 urlpatterns = [
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
+    path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),
     path(
         ".well-known/apple-app-site-association",
         apple_app_site_association,
         name="apple-app-site-association",
+    ),
+    path(
+        ".well-known/assetlinks.json",
+        android_asset_statements,
+        name="android-app-links-assetlinks",
     ),
     path("favicon.ico", invite_asset, {"filename": "favicon.ico"}, name="favicon"),
     path(

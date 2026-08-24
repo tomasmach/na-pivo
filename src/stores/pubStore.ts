@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 import type { Pub } from '@/data/pubs';
+import { persistedArray, persistedObject } from '@/stores/persistedSchemas';
 
 interface PubState {
   revealedPub: Pub | null;
@@ -19,7 +21,7 @@ interface PubState {
 
 export const usePubStore = create<PubState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       revealedPub: null,
       reportedPubIds: [],
       reportedCacheKeys: [],
@@ -41,7 +43,7 @@ export const usePubStore = create<PubState>()(
         }),
       setIsDataLoaded: (v) => set({ isDataLoaded: v }),
       bumpCatalogRevision: () => set((state) => ({ catalogRevision: state.catalogRevision + 1 })),
-    }),
+    })),
     {
       name: 'na-pivo-pub',
       storage: createJSONStorage(() => AsyncStorage),
@@ -50,6 +52,18 @@ export const usePubStore = create<PubState>()(
         reportedPubIds: state.reportedPubIds,
         reportedCacheKeys: state.reportedCacheKeys,
       }),
+      merge: (persisted, current) => {
+        const state = persistedObject(persisted);
+        return {
+          ...current,
+          revealedPub:
+            state.revealedPub && typeof state.revealedPub === 'object'
+              ? state.revealedPub as Pub
+              : null,
+          reportedPubIds: persistedArray<string>(state.reportedPubIds),
+          reportedCacheKeys: persistedArray<string>(state.reportedCacheKeys),
+        };
+      },
     }
   )
 );

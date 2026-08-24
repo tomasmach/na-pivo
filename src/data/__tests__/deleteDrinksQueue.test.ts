@@ -4,7 +4,7 @@ import { deleteDrink } from '../drinksClient';
 import type { SubmitDrinkResult } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 // drinksClient → account → expo-secure-store; mock so requireActual loads.
@@ -20,6 +20,8 @@ jest.mock('../drinksClient', () => ({
 }));
 
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
 
 async function readQueue(): Promise<string[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -34,7 +36,10 @@ async function waitForExpectation(assertion: () => void | Promise<void>): Promis
       return;
     } catch (error) {
       lastError = error;
-      await Promise.resolve();
+      // Queue delivery acquires the process-wide private-account lease before
+      // entering the queue-local lock. Yield the event loop instead of relying
+      // on a fixed number of promise turns inside that implementation.
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
   throw lastError;
@@ -47,38 +52,55 @@ beforeEach(async () => {
 });
 
 describe('enqueueDelete', () => {
+  it('reports a storage failure and never sends a non-durable deletion', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(enqueueDelete(UUID_A)).resolves.toBe('storage-error');
+
+    expect(deleteDrink).not.toHaveBeenCalled();
+  });
+
   it('sends the deletion and drops it from the queue on success', async () => {
-    await enqueueDelete('a');
-    expect(deleteDrink).toHaveBeenCalledWith('a');
+    await enqueueDelete(UUID_A);
+    expect(deleteDrink).toHaveBeenCalledWith(UUID_A);
     expect(await readQueue()).toEqual([]);
   });
 
   it('keeps the id queued when the deletion must retry', async () => {
     (deleteDrink as jest.Mock).mockResolvedValue('retry');
-    await enqueueDelete('a');
-    expect(await readQueue()).toEqual(['a']);
+    await enqueueDelete(UUID_A);
+    expect(await readQueue()).toEqual([UUID_A]);
   });
 
   it('drops a permanently-rejected deletion from the queue', async () => {
     (deleteDrink as jest.Mock).mockResolvedValue('permanent-error');
-    await enqueueDelete('a');
+    await enqueueDelete(UUID_A);
     expect(await readQueue()).toEqual([]);
   });
 
   it('dedupes the same client_id (no double queueing)', async () => {
     (deleteDrink as jest.Mock).mockResolvedValue('retry');
-    await enqueueDelete('a');
-    await enqueueDelete('a');
-    expect(await readQueue()).toEqual(['a']);
+    await enqueueDelete(UUID_A);
+    await enqueueDelete(UUID_A);
+    expect(await readQueue()).toEqual([UUID_A]);
   });
 });
 
 describe('flushDeleteDrinksQueue', () => {
+  it('drops malformed persisted client IDs instead of retrying them forever', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(['not-a-uuid', UUID_A]));
+
+    await flushDeleteDrinksQueue();
+
+    expect(deleteDrink).toHaveBeenCalledTimes(1);
+    expect(deleteDrink).toHaveBeenCalledWith(UUID_A);
+  });
+
   it('retries every queued deletion and removes the ones that succeed', async () => {
     (deleteDrink as jest.Mock).mockResolvedValue('retry');
-    await enqueueDelete('a');
-    await enqueueDelete('b');
-    expect(await readQueue()).toEqual(['a', 'b']);
+    await enqueueDelete(UUID_A);
+    await enqueueDelete(UUID_B);
+    expect(await readQueue()).toEqual([UUID_A, UUID_B]);
 
     // Now the backend is reachable again → both delete and the queue empties.
     (deleteDrink as jest.Mock).mockResolvedValue('ok');
@@ -102,18 +124,18 @@ describe('flushDeleteDrinksQueue', () => {
       }),
     );
 
-    const first = enqueueDelete('a');
+    const first = enqueueDelete(UUID_A);
     await waitForExpectation(() => expect(deleteDrink).toHaveBeenCalledTimes(1));
 
-    const second = enqueueDelete('b');
+    const second = enqueueDelete(UUID_B);
     await waitForExpectation(async () => {
-      expect(await readQueue()).toContain('b');
+      expect(await readQueue()).toContain(UUID_B);
     });
 
     resolveDelete('retry');
     await first;
     await second;
-    expect(await readQueue()).toEqual(['a', 'b']);
+    expect(await readQueue()).toEqual([UUID_A, UUID_B]);
   });
 
   it('keeps the queue cleared when clear runs during an in-flight flush', async () => {
@@ -123,7 +145,7 @@ describe('flushDeleteDrinksQueue', () => {
         resolveDelete = resolve;
       }),
     );
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(['a']));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([UUID_A]));
 
     const flushing = flushDeleteDrinksQueue();
     await waitForExpectation(() => expect(deleteDrink).toHaveBeenCalledTimes(1));
@@ -144,7 +166,7 @@ describe('flushDeleteDrinksQueue', () => {
         }),
       )
       .mockResolvedValue('retry');
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(['a']));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([UUID_A]));
 
     const first = flushDeleteDrinksQueue();
     const second = flushDeleteDrinksQueue();
@@ -158,6 +180,6 @@ describe('flushDeleteDrinksQueue', () => {
     // The mid-flight caller scheduled exactly one trailing pass — not zero (so a
     // mid-flush enqueue is retried) and not more than one (no busy loop).
     expect(deleteDrink).toHaveBeenCalledTimes(2);
-    expect(await readQueue()).toEqual(['a']);
+    expect(await readQueue()).toEqual([UUID_A]);
   });
 });

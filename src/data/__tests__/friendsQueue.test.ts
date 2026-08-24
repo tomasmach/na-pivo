@@ -1,18 +1,34 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  clearFriendsQueue,
+  endFriendActivityDurably,
+  enqueueFriendOp,
+  flushFriendsQueue,
+  isRetriableFriendError,
+  type FriendQueueItem,
+} from '../friendsQueue';
+import {
+  beginPrivateAccountTransition,
+  PrivateAccountMutationFrozenError,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
+import type { FriendActionResult } from '../friendsClient';
+import type { Pub } from '../pubs';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-const respondToActivity = jest.fn(async () => ({ ok: true }));
-const clearActivityResponse = jest.fn(async () => ({ ok: true }));
-const reactToActivity = jest.fn(async () => ({ ok: true }));
-const clearActivityReaction = jest.fn(async () => ({ ok: true }));
-const shareFriendPubActivity = jest.fn(async () => ({ ok: true }));
-const createFriendPlan = jest.fn(async () => ({ ok: true }));
-const endFriendPubActivity = jest.fn(async () => ({ ok: true }));
-const sendFriendRequest = jest.fn(async () => ({ ok: true }));
+const respondToActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const clearActivityResponse = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const reactToActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const clearActivityReaction = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const shareFriendPubActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const createFriendPlan = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const endFriendPubActivity = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
+const sendFriendRequest = jest.fn(async (): Promise<FriendActionResult> => ({ ok: true }));
 
 jest.mock('../friendsClient', () => ({
   respondToActivity: (...a: unknown[]) => respondToActivity(...(a as [])),
@@ -24,15 +40,6 @@ jest.mock('../friendsClient', () => ({
   endFriendPubActivity: (...a: unknown[]) => endFriendPubActivity(...(a as [])),
   sendFriendRequest: (...a: unknown[]) => sendFriendRequest(...(a as [])),
 }));
-
-import {
-  clearFriendsQueue,
-  enqueueFriendOp,
-  flushFriendsQueue,
-  isRetriableFriendError,
-  type FriendQueueItem,
-} from '../friendsQueue';
-import type { Pub } from '../pubs';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
 
@@ -59,7 +66,42 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
+it('does not enqueue or resolve UI success after an A→B transition starts mid-delete', async () => {
+  resetPrivateAccountBoundaryForTests();
+  let resolveDelete!: (result: FriendActionResult) => void;
+  endFriendPubActivity.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveDelete = resolve;
+    }),
+  );
+  const ending = endFriendActivityDurably('activity-a');
+  for (let i = 0; i < 20 && endFriendPubActivity.mock.calls.length === 0; i += 1) {
+    await Promise.resolve();
+  }
+
+  const transition = beginPrivateAccountTransition('account-switch', 'A');
+  expect(transition).not.toBeNull();
+  resolveDelete(retry());
+  await expect(ending).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+  await transition!.drain();
+
+  expect(await readQueue()).toEqual([]);
+  expect(endFriendPubActivity).toHaveBeenCalledTimes(1);
+  transition!.release();
+  resetPrivateAccountBoundaryForTests();
+});
+
 describe('enqueueFriendOp — composite dedup keys', () => {
+  it('reports storage failure and never sends a non-durable action', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(
+      enqueueFriendOp({ op: 'cheer', activityId: 'a1' }),
+    ).resolves.toBe('storage-error');
+
+    expect(reactToActivity).not.toHaveBeenCalled();
+  });
+
   it('treats rsvp and cheer on the same activity as distinct keys', async () => {
     respondToActivity.mockResolvedValue(retry());
     reactToActivity.mockResolvedValue(retry());
@@ -158,6 +200,14 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
     expect(await readQueue()).toHaveLength(1); // network → kept
   });
 
+  it.each(['http_408', 'http_409', 'http_425'])('keeps transient %s responses queued', async (code) => {
+    reactToActivity.mockResolvedValue({ ok: false, code, detail: 'zkus znovu' });
+
+    await enqueueFriendOp({ op: 'cheer', activityId: 'slow-gateway' });
+
+    expect(await readQueue()).toEqual([{ op: 'cheer', activityId: 'slow-gateway' }]);
+  });
+
   it('clears the queue once delivery succeeds after a recovery', async () => {
     respondToActivity.mockResolvedValue(retry());
     await enqueueFriendOp({ op: 'rsvp', activityId: 'a1', response: 'going' });
@@ -176,7 +226,7 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
   });
 
   it('does not deliver remaining items after clear runs during an in-flight flush', async () => {
-    let resolveFirst!: (value: { ok: boolean }) => void;
+    let resolveFirst!: (value: FriendActionResult) => void;
     respondToActivity.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveFirst = resolve;
@@ -212,8 +262,50 @@ describe('isRetriableFriendError', () => {
   });
 
   it('treats hard 4xx rejects and server machine-codes as non-retriable', () => {
-    for (const code of ['http_400', 'http_403', 'http_404', 'not_friends', 'blocked', 'self_reaction', 'invite_expired']) {
+    for (const code of ['http_400', 'http_422', 'not_friends', 'blocked', 'self_reaction', 'invite_expired']) {
       expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
     }
+  });
+
+  it('keeps non-terminal HTTP failures retriable', () => {
+    for (const code of ['http_403', 'http_404', 'http_408', 'http_409', 'http_425']) {
+      expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(true);
+    }
+  });
+
+  it('treats semantic UGC consent codes as retriable so a queued activity survives', () => {
+    for (const code of ['ugc_consent_required', 'ugc_policy_update_required']) {
+      expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(true);
+    }
+  });
+
+  it('treats a bare http_428 as retriable', () => {
+    expect(isRetriableFriendError({ ok: false, code: 'http_428', detail: 'x' })).toBe(true);
+  });
+
+  it('keeps http_400 and http_422 permanent for an activity op', () => {
+    for (const code of ['http_400', 'http_422'] as const) {
+      expect(isRetriableFriendError({ ok: false, code, detail: 'x' })).toBe(false);
+    }
+  });
+
+  it.each([
+    ['semantic ugc_consent_required', { ok: false as const, code: 'ugc_consent_required', detail: 'x' }],
+    ['bare http_428', { ok: false as const, code: 'http_428', detail: 'x' }],
+  ])('a background flush retains a queued activity on %s', async (_name, failure) => {
+    shareFriendPubActivity.mockResolvedValue(failure);
+    await enqueueFriendOp({ op: 'activity', clientId: 'live-ugc', payload: { pub: PUB } });
+    const queue = await readQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ op: 'activity', clientId: 'live-ugc' });
+  });
+
+  it.each([
+    ['http_400', 'http_400'],
+    ['http_422', 'http_422'],
+  ] as const)('a poisoned activity op (%s) is dropped instead of looping forever', async (_name, code) => {
+    shareFriendPubActivity.mockResolvedValue({ ok: false, code, detail: 'x' });
+    await enqueueFriendOp({ op: 'activity', clientId: 'poison', payload: { pub: PUB } });
+    expect(await readQueue()).toEqual([]);
   });
 });

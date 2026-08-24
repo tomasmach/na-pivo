@@ -22,8 +22,12 @@ import { getBackendEndpoint } from './backendConfig';
 import { resolveBeerPhotoUrl } from './beerPhotosClient';
 import type { FriendActionError, FriendActionResult, FriendProfile } from './friendsClient';
 import { trackApiFailure } from './telemetryClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
+
+/** Server-side page size for contest entries (additive pagination contract). */
+export const PHOTO_CONTEST_PAGE_SIZE = 20;
 
 /** One contest round. `status` is server-owned ('open', 'closed', …). */
 export interface PhotoContest {
@@ -85,15 +89,26 @@ export interface PhotoContestResults {
 }
 
 /**
- * Everything GET /v1/photo-contest returns, camelCased. The wire also carries
- * `my_entry_photo_id`, which the app derives from the diary store instead —
- * deliberately not parsed until something needs it.
+ * Everything GET /v1/photo-contest returns, camelCased, plus the local viewer
+ * account id that scopes personalized fields. The wire also carries
+ * `my_entry_photo_id`, which the app derives from the diary store instead.
  */
 export interface PhotoContestSnapshot {
+  /** Account whose personalized my_* fields and result this snapshot belongs to. */
+  viewerAccountId: string;
   contest: PhotoContest | null;
   entries: PhotoContestEntry[];
   myEntryId: string | null;
   myVoteEntryId: string | null;
+  /**
+   * My own entry when the wire surfaces it additively (`my_entry`); legacy
+   * backends fall back to the first `isMine` entry, null otherwise.
+   */
+  myEntry: PhotoContestEntry | null;
+  /** Total visible entries server-side; falls back to the parsed page length. */
+  entryCount: number;
+  /** Opaque cursor for the next page; null when there are no more entries. */
+  nextCursor: string | null;
   lastResults: PhotoContestResults | null;
 }
 
@@ -226,14 +241,20 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    session?: AccountSession;
+    gatedUgc?: boolean;
+  } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
   }
 
-  const session = await ensureAccount(options.signal);
+  const session = options.session ?? (await ensureAccount(options.signal));
   if (!session || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
@@ -245,6 +266,7 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
@@ -256,6 +278,7 @@ async function requestJson(
     } catch {
       data = {};
     }
+    if (options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
@@ -280,39 +303,116 @@ async function requestJson(
  * refreshes it, so the teaser is at most TTL-stale.
  */
 const TEASER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
-let teaserCache: { at: number; snapshot: PhotoContestSnapshot } | null = null;
+const teaserCache = new Map<string, { at: number; snapshot: PhotoContestSnapshot }>();
+let accountBoundaryGeneration = 0;
+
+/** Drop every account's in-memory contest view and invalidate in-flight reads. */
+export function clearPhotoContestCache(): void {
+  accountBoundaryGeneration += 1;
+  teaserCache.clear();
+}
 
 /** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
 export async function fetchPhotoContestTeaser(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
-  if (teaserCache && Date.now() - teaserCache.at < TEASER_SNAPSHOT_TTL_MS) {
-    return teaserCache.snapshot;
+  const generation = accountBoundaryGeneration;
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted || generation !== accountBoundaryGeneration) return null;
+
+  const hit = teaserCache.get(session.accountId);
+  if (hit && Date.now() - hit.at < TEASER_SNAPSHOT_TTL_MS) {
+    return hit.snapshot;
   }
-  return fetchPhotoContest(signal);
+  return fetchPhotoContestForSession(session, generation, {
+    limit: 1,
+    cacheTeaser: true,
+    signal,
+  });
 }
 
 /** GET /v1/photo-contest — the whole round snapshot. null on any failure. */
 export async function fetchPhotoContest(
   signal?: AbortSignal,
 ): Promise<PhotoContestSnapshot | null> {
-  const res = await requestJson('/v1/photo-contest', { signal });
+  const generation = accountBoundaryGeneration;
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted || generation !== accountBoundaryGeneration) return null;
+  return fetchPhotoContestForSession(session, generation, {
+    limit: PHOTO_CONTEST_PAGE_SIZE,
+    cacheTeaser: true,
+    signal,
+  });
+}
+
+/**
+ * GET /v1/photo-contest?limit=20&cursor=… — one page of entries beyond the
+ * initial snapshot. Never touches the teaser cache: a partial second page must
+ * not replace the full first-page snapshot cached for teaser surfaces.
+ */
+export async function fetchPhotoContestPage(
+  cursor: string,
+  signal?: AbortSignal,
+): Promise<PhotoContestSnapshot | null> {
+  const generation = accountBoundaryGeneration;
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted || generation !== accountBoundaryGeneration) return null;
+  return fetchPhotoContestForSession(session, generation, {
+    limit: PHOTO_CONTEST_PAGE_SIZE,
+    cursor,
+    cacheTeaser: false,
+    signal,
+  });
+}
+
+interface SnapshotFetchOptions {
+  limit: number;
+  cursor?: string;
+  cacheTeaser: boolean;
+  signal?: AbortSignal;
+}
+
+async function fetchPhotoContestForSession(
+  session: AccountSession,
+  generation: number,
+  options: SnapshotFetchOptions,
+): Promise<PhotoContestSnapshot | null> {
+  const signal = options.signal;
+  let path = `/v1/photo-contest?limit=${options.limit}`;
+  if (options.cursor !== undefined) path += `&cursor=${encodeURIComponent(options.cursor)}`;
+  const res = await requestJson(path, { signal, session });
   if (!res.ok) return null;
   const d = res.data;
   const rawLast = d.last_results as
     | { contest?: RawContest; winners?: RawWinner[]; my_result?: RawMyResult | null }
     | null
     | undefined;
+  // Parse the entry page once; both `entries` and the legacy my-entry fallback
+  // read from the same parsed array.
+  const entries = Array.isArray(d.entries)
+    ? (d.entries as RawEntry[]).map(parsePhotoContestEntry)
+    : [];
+  const rawMyEntry = d.my_entry as RawEntry | null | undefined;
   const snapshot: PhotoContestSnapshot = {
+    viewerAccountId: session.accountId,
     contest:
       d.contest && typeof d.contest === 'object'
         ? parsePhotoContest(d.contest as RawContest)
         : null,
-    entries: Array.isArray(d.entries)
-      ? (d.entries as RawEntry[]).map(parsePhotoContestEntry)
-      : [],
+    entries,
     myEntryId: typeof d.my_entry_id === 'string' ? d.my_entry_id : null,
     myVoteEntryId: typeof d.my_vote_entry_id === 'string' ? d.my_vote_entry_id : null,
+    myEntry:
+      rawMyEntry && typeof rawMyEntry === 'object'
+        ? parsePhotoContestEntry(rawMyEntry)
+        : (entries.find((entry) => entry.isMine) ?? null),
+    entryCount:
+      typeof d.visible_entry_count === 'number' &&
+      Number.isFinite(d.visible_entry_count) &&
+      d.visible_entry_count >= 0
+        ? d.visible_entry_count
+        : entries.length,
+    nextCursor: typeof d.next_cursor === 'string' && d.next_cursor.length > 0 ? d.next_cursor : null,
     lastResults:
       rawLast && typeof rawLast === 'object'
         ? {
@@ -324,7 +424,18 @@ export async function fetchPhotoContest(
           }
         : null,
   };
-  teaserCache = { at: Date.now(), snapshot };
+  const currentSession = await ensureAccount(signal);
+  if (
+    !currentSession ||
+    currentSession.accountId !== session.accountId ||
+    signal?.aborted ||
+    generation !== accountBoundaryGeneration
+  ) {
+    return null;
+  }
+  if (options.cacheTeaser) {
+    teaserCache.set(session.accountId, { at: Date.now(), snapshot });
+  }
   return snapshot;
 }
 
@@ -341,6 +452,7 @@ export async function enterPhotoContest(
     method: 'POST',
     body: { photo_id: photoId },
     signal,
+    gatedUgc: true,
   });
   if (!res.ok) return res.result;
   return { ok: true, entry: parsePhotoContestEntry((res.data.entry ?? {}) as RawEntry) };

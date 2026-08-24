@@ -2,9 +2,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import type * as ExpoNotifications from 'expo-notifications';
 
+import {
+  PrivateAccountMutationFrozenError,
+  capturePrivateAccountMutationScope,
+  isPrivateAccountMutationScopeCurrent,
+  runPrivateAccountMutation,
+  type PrivateAccountMutationScope,
+} from '@/data/privateAccountBoundary';
+import type { ExplicitEntryReservation } from '@/data/inviteNavigation';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import {
+  beginNotificationResponseEvent,
+  claimHandledNotificationResponse,
+  clearNotificationResponseIfStillLast,
+  resetNotificationResponseRuntimeForTests,
+  type NotificationResponseClaim,
+} from './notificationResponseLedger';
 
 const BEER_COUNT_REMINDER_STATE_KEY = 'na-pivo-beer-count-reminder-state';
 const BEER_COUNT_REMINDER_CHANNEL_ID = 'beer-count-reminders';
@@ -36,15 +51,45 @@ const Notifications = loadNotifications();
 let tallySubscriptionInstalled = false;
 let operationQueue: Promise<void> = Promise.resolve();
 let permissionRequest: Promise<BeerCountReminderEnableResult> | null = null;
-const handledTapIds = new Set<string>();
 
-function serialize<T>(operation: () => Promise<T>): Promise<T> {
-  const result = operationQueue.then(operation, operation);
+function assertCurrentScope(scope: PrivateAccountMutationScope): void {
+  if (!isPrivateAccountMutationScopeCurrent(scope)) {
+    throw new PrivateAccountMutationFrozenError();
+  }
+}
+
+/** Capture the global account lease before waiting behind the reminder mutex. */
+function serialize<T>(operation: (scope: PrivateAccountMutationScope) => Promise<T>): Promise<T> {
+  const previous = operationQueue;
+  const result = runPrivateAccountMutation(async (scope) => {
+    await previous;
+    assertCurrentScope(scope);
+    const value = await operation(scope);
+    assertCurrentScope(scope);
+    return value;
+  });
   operationQueue = result.then(
     () => undefined,
     () => undefined,
   );
   return result;
+}
+
+function ignoreFrozen(result: Promise<void>): Promise<void> {
+  return result.catch((error: unknown) => {
+    if (!(error instanceof PrivateAccountMutationFrozenError)) throw error;
+  });
+}
+
+function unavailableWhenFrozen(
+  result: Promise<BeerCountReminderEnableResult>,
+): Promise<BeerCountReminderEnableResult> {
+  return result.catch((error: unknown) => {
+    if (error instanceof PrivateAccountMutationFrozenError) {
+      return { ok: false, reason: 'unavailable' };
+    }
+    throw error;
+  });
 }
 
 function sessionHasBeer(session: TallySession | null | undefined): session is TallySession {
@@ -56,35 +101,48 @@ function activeSessionMatches(sessionId: string): boolean {
   return current?.clientId === sessionId && sessionHasBeer(current);
 }
 
-async function readState(): Promise<BeerCountReminderState | null> {
+function parseState(raw: string | null): BeerCountReminderState | null {
+  if (!raw) return null;
   try {
-    const raw = await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY);
-    if (!raw) return null;
     const value = JSON.parse(raw) as Partial<BeerCountReminderState>;
-    if (
-      typeof value.notificationId !== 'string' ||
-      typeof value.sessionId !== 'string' ||
-      typeof value.fireAtMs !== 'number' ||
-      !Number.isFinite(value.fireAtMs)
-    ) {
-      return null;
-    }
-    return value as BeerCountReminderState;
+    return typeof value.notificationId === 'string' &&
+      typeof value.sessionId === 'string' &&
+      typeof value.fireAtMs === 'number' &&
+      Number.isFinite(value.fireAtMs)
+      ? (value as BeerCountReminderState)
+      : null;
   } catch {
     return null;
   }
 }
 
-async function writeState(state: BeerCountReminderState | null): Promise<void> {
-  try {
-    if (state) {
-      await AsyncStorage.setItem(BEER_COUNT_REMINDER_STATE_KEY, JSON.stringify(state));
-    } else {
-      await AsyncStorage.removeItem(BEER_COUNT_REMINDER_STATE_KEY);
+async function readState(scope: PrivateAccountMutationScope): Promise<BeerCountReminderState | null> {
+  assertCurrentScope(scope);
+  const raw = await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY);
+  assertCurrentScope(scope);
+  return parseState(raw);
+}
+
+async function writeState(
+  scope: PrivateAccountMutationScope,
+  state: BeerCountReminderState | null,
+): Promise<void> {
+  assertCurrentScope(scope);
+  if (state) {
+    const serialized = JSON.stringify(state);
+    await AsyncStorage.setItem(BEER_COUNT_REMINDER_STATE_KEY, serialized);
+    assertCurrentScope(scope);
+    if ((await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY)) !== serialized) {
+      throw new Error('Could not persist the beer-count reminder state.');
     }
-  } catch {
-    // Best effort: a missing bookkeeping row can only stop the reminder chain.
+  } else {
+    await AsyncStorage.removeItem(BEER_COUNT_REMINDER_STATE_KEY);
+    assertCurrentScope(scope);
+    if ((await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY)) !== null) {
+      throw new Error('Could not clear the beer-count reminder state.');
+    }
   }
+  assertCurrentScope(scope);
 }
 
 async function setAndroidChannel(): Promise<void> {
@@ -129,43 +187,75 @@ async function ensurePermissionInternal(): Promise<BeerCountReminderEnableResult
 export function ensureNotificationPermissionForBeerFeatures(): Promise<
   BeerCountReminderEnableResult
 > {
-  if (permissionRequest) return permissionRequest;
-  permissionRequest = ensurePermissionInternal().finally(() => {
-    permissionRequest = null;
-  });
-  return permissionRequest;
+  return unavailableWhenFrozen(
+    runPrivateAccountMutation(async (scope) => {
+      if (!permissionRequest) {
+        permissionRequest = ensurePermissionInternal().finally(() => {
+          permissionRequest = null;
+        });
+      }
+      const result = await permissionRequest;
+      assertCurrentScope(scope);
+      return result;
+    }),
+  );
 }
 
-async function cancelInternal(expectedSessionId?: string): Promise<void> {
-  const state = await readState();
+async function cancelScheduledNotificationBestEffort(notificationId: string): Promise<void> {
+  if (!Notifications) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+  } catch {
+    // It may already have fired or been removed by strict boundary cleanup.
+  }
+}
+
+async function removeLateState(notificationId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY);
+    if (parseState(raw)?.notificationId !== notificationId) return;
+    await AsyncStorage.removeItem(BEER_COUNT_REMINDER_STATE_KEY);
+  } catch {
+    // The strict cleanup performs a verified remove after this lease drains.
+  }
+}
+
+async function cancelInternal(
+  scope: PrivateAccountMutationScope,
+  expectedSessionId?: string,
+): Promise<void> {
+  const state = await readState(scope);
   if (!state || (expectedSessionId && state.sessionId !== expectedSessionId)) return;
 
-  if (Notifications) {
-    try {
-      await Notifications.cancelScheduledNotificationAsync(state.notificationId);
-    } catch {
-      // The notification may already have fired. State still needs clearing.
-    }
-  }
-  await writeState(null);
+  await cancelScheduledNotificationBestEffort(state.notificationId);
+  assertCurrentScope(scope);
+  await writeState(scope, null);
 }
 
 async function scheduleInternal(
+  scope: PrivateAccountMutationScope,
   sessionId: string,
   options: { replaceExisting: boolean },
 ): Promise<BeerCountReminderEnableResult> {
   await waitForSettingsHydration();
+  assertCurrentScope(scope);
   const settings = useSettingsStore.getState();
   if (!settings.beerCountReminderEnabled) return { ok: true };
   if (!activeSessionMatches(sessionId)) return { ok: true };
 
-  const existing = await readState();
+  const existing = await readState(scope);
   if (existing && existing.sessionId === sessionId && !options.replaceExisting) {
     return { ok: true };
   }
-  if (existing) await cancelInternal();
+  if (existing) await cancelInternal(scope);
 
-  const permission = await ensureNotificationPermissionForBeerFeatures();
+  if (!permissionRequest) {
+    permissionRequest = ensurePermissionInternal().finally(() => {
+      permissionRequest = null;
+    });
+  }
+  const permission = await permissionRequest;
+  assertCurrentScope(scope);
   if (!permission.ok) {
     useSettingsStore.getState().setBeerCountReminderEnabled(false);
     return permission;
@@ -175,11 +265,12 @@ async function scheduleInternal(
   const intervalMinutes = useSettingsStore.getState().beerCountReminderIntervalMinutes;
   const seconds = intervalMinutes * 60;
   const fireAtMs = Date.now() + seconds * 1000;
+  let notificationId: string | null = null;
   try {
-    const notificationId = await Notifications.scheduleNotificationAsync({
+    notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Nezapomněl sis zapsat pivko?',
-        body: 'Klepni a přidej další čárku do počítadla.',
+        title: 'Mrkni na svůj deníček',
+        body: 'Klepni a zkontroluj dnešní zápis.',
         data: {
           kind: BEER_COUNT_REMINDER_KIND,
           sessionId,
@@ -194,9 +285,23 @@ async function scheduleInternal(
       },
     });
 
-    await writeState({ notificationId, sessionId, fireAtMs });
+    if (!isPrivateAccountMutationScopeCurrent(scope)) {
+      await cancelScheduledNotificationBestEffort(notificationId);
+      throw new PrivateAccountMutationFrozenError();
+    }
+    await writeState(scope, { notificationId, sessionId, fireAtMs });
     return { ok: true };
-  } catch {
+  } catch (error) {
+    if (notificationId) {
+      await cancelScheduledNotificationBestEffort(notificationId);
+      await removeLateState(notificationId);
+    }
+    if (
+      error instanceof PrivateAccountMutationFrozenError ||
+      !isPrivateAccountMutationScopeCurrent(scope)
+    ) {
+      throw new PrivateAccountMutationFrozenError();
+    }
     useSettingsStore.getState().setBeerCountReminderEnabled(false);
     return { ok: false, reason: 'unavailable' };
   }
@@ -206,14 +311,22 @@ async function scheduleInternal(
 export function refreshBeerCountReminderAfterBeer(
   sessionId: string,
 ): Promise<BeerCountReminderEnableResult> {
-  return serialize(() => scheduleInternal(sessionId, { replaceExisting: true }));
+  return unavailableWhenFrozen(
+    serialize((scope) => scheduleInternal(scope, sessionId, { replaceExisting: true })),
+  );
 }
 
 /** Enable the preference and start a reminder for an already-active evening. */
 export function enableBeerCountReminderNotifications(): Promise<BeerCountReminderEnableResult> {
-  return serialize(async () => {
+  return unavailableWhenFrozen(serialize(async (scope) => {
     useSettingsStore.getState().setBeerCountReminderEnabled(true);
-    const permission = await ensureNotificationPermissionForBeerFeatures();
+    if (!permissionRequest) {
+      permissionRequest = ensurePermissionInternal().finally(() => {
+        permissionRequest = null;
+      });
+    }
+    const permission = await permissionRequest;
+    assertCurrentScope(scope);
     if (!permission.ok) {
       useSettingsStore.getState().setBeerCountReminderEnabled(false);
       return permission;
@@ -221,31 +334,31 @@ export function enableBeerCountReminderNotifications(): Promise<BeerCountReminde
 
     const current = useTallyStore.getState().current;
     if (sessionHasBeer(current)) {
-      return scheduleInternal(current.clientId, { replaceExisting: false });
+      return scheduleInternal(scope, current.clientId, { replaceExisting: false });
     }
     return { ok: true };
-  });
+  }));
 }
 
 export function disableBeerCountReminderNotifications(): Promise<void> {
-  return serialize(async () => {
+  return ignoreFrozen(serialize(async (scope) => {
     useSettingsStore.getState().setBeerCountReminderEnabled(false);
-    await cancelInternal();
-  });
+    await cancelInternal(scope);
+  }));
 }
 
 /** Apply a changed interval only to a reminder that has not fired yet. */
 export function reschedulePendingBeerCountReminder(): Promise<void> {
-  return serialize(async () => {
-    const state = await readState();
+  return ignoreFrozen(serialize(async (scope) => {
+    const state = await readState(scope);
     if (!state || state.fireAtMs <= Date.now()) return;
     if (!activeSessionMatches(state.sessionId)) {
-      await cancelInternal(state.sessionId);
+      await cancelInternal(scope, state.sessionId);
       return;
     }
-    await cancelInternal(state.sessionId);
-    await scheduleInternal(state.sessionId, { replaceExisting: true });
-  });
+    await cancelInternal(scope, state.sessionId);
+    await scheduleInternal(scope, state.sessionId, { replaceExisting: true });
+  }));
 }
 
 export function isBeerCountReminderResponse(
@@ -254,59 +367,134 @@ export function isBeerCountReminderResponse(
   return response?.notification.request.content.data?.kind === BEER_COUNT_REMINDER_KIND;
 }
 
-function claimTap(response: ExpoNotifications.NotificationResponse): boolean {
-  const id = response.notification.request.identifier;
-  if (handledTapIds.has(id)) return false;
-  if (handledTapIds.size >= 32) handledTapIds.clear();
-  handledTapIds.add(id);
-  return true;
+export function resetBeerCountReminderTapDeduperForTests(): void {
+  resetNotificationResponseRuntimeForTests();
 }
 
 async function rearmFromTap(
   response: ExpoNotifications.NotificationResponse,
+  scope: PrivateAccountMutationScope,
 ): Promise<void> {
   await waitForSettingsHydration();
+  assertCurrentScope(scope);
   if (!useSettingsStore.getState().beerCountReminderEnabled) return;
 
   const tappedNotificationId = response.notification.request.identifier;
-  const state = await readState();
+  const state = await readState(scope);
   // A response can surface through both the cold-start read and the live event.
   // Only the notification currently recorded for this chain may re-arm it.
   if (!state || state.notificationId !== tappedNotificationId) return;
   if (!activeSessionMatches(state.sessionId)) {
-    await cancelInternal(state.sessionId);
+    await cancelInternal(scope, state.sessionId);
     return;
   }
 
-  await cancelInternal(state.sessionId);
-  await scheduleInternal(state.sessionId, { replaceExisting: true });
+  await cancelInternal(scope, state.sessionId);
+  await scheduleInternal(scope, state.sessionId, { replaceExisting: true });
 }
 
 export function subscribeBeerCountReminderTap(
   onTap: () => void,
+  claimNavigation?: (notificationId: string) => ExplicitEntryReservation | null,
 ): ExpoNotifications.Subscription {
   if (!Notifications) return { remove: () => undefined };
   try {
     return Notifications.addNotificationResponseReceivedListener((response) => {
-      if (!isBeerCountReminderResponse(response) || !claimTap(response)) return;
-      onTap();
-      void serialize(() => rearmFromTap(response));
+      const invocationScope = capturePrivateAccountMutationScope();
+      if (!isPrivateAccountMutationScopeCurrent(invocationScope)) return;
+      if (!isBeerCountReminderResponse(response)) return;
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const notificationId = response.notification.request.identifier;
+      const reservation = claimNavigation?.(notificationId) ?? null;
+      if (claimNavigation && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      void (async () => {
+        let tapCommitted = false;
+        try {
+          const claim = await claimHandledNotificationResponse(response);
+          if (
+            claim === 'unavailable' ||
+            !responseEvent.isCurrent() ||
+            !isPrivateAccountMutationScopeCurrent(invocationScope) ||
+            (reservation && !reservation.commit())
+          ) return;
+          tapCommitted = true;
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(invocationScope),
+          );
+        } finally {
+          if (
+            tapCommitted &&
+            responseEvent.isCurrent() &&
+            isPrivateAccountMutationScopeCurrent(invocationScope)
+          ) {
+            await ignoreFrozen(serialize((scope) => rearmFromTap(response, scope)));
+          }
+          reservation?.release();
+          responseEvent.release();
+        }
+      })().catch(() => undefined);
     });
   } catch {
     return { remove: () => undefined };
   }
 }
 
-export async function consumeInitialBeerCountReminderTap(onTap: () => void): Promise<void> {
+export async function consumeInitialBeerCountReminderTap(
+  onTap: () => void,
+  claimNavigation?: (notificationId: string) => ExplicitEntryReservation | null,
+): Promise<void> {
   if (!Notifications) return;
   try {
-    const response = await Notifications.getLastNotificationResponseAsync();
-    if (!isBeerCountReminderResponse(response) || !response) return;
-    if (claimTap(response)) {
-      onTap();
-      await serialize(() => rearmFromTap(response));
-    }
-    await Notifications.clearLastNotificationResponseAsync();
+    await ignoreFrozen(serialize(async (scope) => {
+      const response = await Notifications.getLastNotificationResponseAsync();
+      assertCurrentScope(scope);
+      if (!isBeerCountReminderResponse(response) || !response) return;
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const notificationId = response.notification.request.identifier;
+      const reservation = claimNavigation?.(notificationId) ?? null;
+      if (claimNavigation && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      try {
+        let claim: NotificationResponseClaim = 'unavailable';
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (!responseEvent.isCurrent()) return;
+          if (reservation && !reservation.isCurrent()) return;
+          claim = await claimHandledNotificationResponse(response);
+          assertCurrentScope(scope);
+          if (claim !== 'unavailable') break;
+        }
+        if (claim === 'unavailable') return;
+        if (!responseEvent.isCurrent()) return;
+        if (reservation && !reservation.commit()) return;
+        try {
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          if (responseEvent.isCurrent()) await rearmFromTap(response, scope);
+        }
+      } finally {
+        reservation?.release();
+        responseEvent.release();
+      }
+    }));
   } catch {
     // A missing/old launch response must never block app startup.
   }
@@ -317,19 +505,21 @@ export async function consumeInitialBeerCountReminderTap(onTap: () => void): Pro
  * cancels its still-pending reminder; a delivered ignored reminder stays inert.
  */
 export async function initializeBeerCountReminderNotifications(): Promise<void> {
-  await waitForSettingsHydration();
-  await setAndroidChannel();
+  await ignoreFrozen(serialize(async (scope) => {
+    await waitForSettingsHydration();
+    assertCurrentScope(scope);
+    await setAndroidChannel();
+    assertCurrentScope(scope);
 
-  await serialize(async () => {
-    const state = await readState();
+    const state = await readState(scope);
     if (
       state &&
       (!useSettingsStore.getState().beerCountReminderEnabled ||
         !activeSessionMatches(state.sessionId))
     ) {
-      await cancelInternal(state.sessionId);
+      await cancelInternal(scope, state.sessionId);
     }
-  });
+  }));
 
   if (tallySubscriptionInstalled) return;
   tallySubscriptionInstalled = true;
@@ -338,7 +528,74 @@ export async function initializeBeerCountReminderNotifications(): Promise<void> 
     if (!sessionHasBeer(previous)) return;
     const current = state.current;
     if (current?.clientId !== previous.clientId || !sessionHasBeer(current)) {
-      void serialize(() => cancelInternal(previous.clientId));
+      void ignoreFrozen(
+        serialize((scope) => cancelInternal(scope, previous.clientId)),
+      ).catch(() => undefined);
     }
   });
+}
+
+function isScheduledBeerReminder(request: ExpoNotifications.NotificationRequest): boolean {
+  return request.content.data?.kind === BEER_COUNT_REMINDER_KIND;
+}
+
+/**
+ * Strict account-boundary cleanup. It intentionally leaves the device-level
+ * enable/interval preferences untouched while removing A's scheduled OS work
+ * and the session-bearing bookkeeping row with readback verification.
+ */
+export async function clearBeerCountReminderForAccountBoundary(): Promise<boolean> {
+  await operationQueue;
+
+  let success = true;
+  let rawState: string | null = null;
+  try {
+    rawState = await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY);
+  } catch {
+    success = false;
+  }
+
+  const notificationIds = new Set<string>();
+  const state = parseState(rawState);
+  if (state) notificationIds.add(state.notificationId);
+
+  if (!Notifications && (Platform.OS === 'ios' || Platform.OS === 'android')) {
+    success = false;
+  } else if (Notifications) {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const request of scheduled) {
+        if (isScheduledBeerReminder(request)) notificationIds.add(request.identifier);
+      }
+    } catch {
+      // The final enumeration below is authoritative. The recorded ID can
+      // still be cancelled when an initial listing is briefly unavailable.
+    }
+
+    for (const notificationId of notificationIds) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(notificationId);
+      } catch {
+        // Already-fired/absent IDs can reject; final readback decides safety.
+      }
+    }
+
+    try {
+      const remaining = await Notifications.getAllScheduledNotificationsAsync();
+      if (remaining.some(isScheduledBeerReminder)) success = false;
+    } catch {
+      success = false;
+    }
+  }
+
+  try {
+    await AsyncStorage.removeItem(BEER_COUNT_REMINDER_STATE_KEY);
+    if ((await AsyncStorage.getItem(BEER_COUNT_REMINDER_STATE_KEY)) !== null) {
+      success = false;
+    }
+  } catch {
+    success = false;
+  }
+
+  return success;
 }

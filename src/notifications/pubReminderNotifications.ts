@@ -5,6 +5,20 @@ import type * as ExpoNotifications from 'expo-notifications';
 import type * as ExpoTaskManager from 'expo-task-manager';
 
 import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
+import {
+  capturePrivateAccountMutationScope,
+  isPrivateAccountMutationFrozen,
+  isPrivateAccountMutationScopeCurrent,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
+import type { ExplicitEntryReservation } from '@/data/inviteNavigation';
+import {
+  beginNotificationResponseEvent,
+  claimHandledNotificationResponse,
+  clearNotificationResponseIfStillLast,
+  resetNotificationResponseRuntimeForTests,
+  type NotificationResponseClaim,
+} from './notificationResponseLedger';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
@@ -22,6 +36,8 @@ const PUB_REMINDER_CHANNEL_ID = 'pub-reminders';
 const PUB_REMINDER_ENABLED_KEY = 'na-pivo-pub-reminders-enabled';
 const PUB_REMINDER_STATE_KEY = 'na-pivo-pub-reminder-state';
 const PUB_REMINDER_GEOFENCES_KEY = 'na-pivo-pub-reminder-geofences';
+const PUB_REMINDER_BOUNDARY_KEY = 'na-pivo-pub-reminder-boundary';
+const PUB_REMINDER_BOUNDARY_FIELD = '__account_boundary_token';
 const TALLY_STORE_KEY = 'na-pivo-tally';
 
 const PUB_REMINDER_NOTIFICATION_KIND = 'pub_reminder';
@@ -48,6 +64,30 @@ const STARTUP_GEOFENCE_REFRESH_DELAY_MS = 8_000;
 const PUB_REMINDER_DWELL_SECONDS = PUB_REMINDER_DWELL_MS / 1000;
 
 let startupGeofenceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function readPubReminderBoundaryToken(): Promise<string | null> {
+  try {
+    return (await AsyncStorage.getItem(PUB_REMINDER_BOUNDARY_KEY)) ?? '0';
+  } catch {
+    return null;
+  }
+}
+
+async function pubReminderBoundaryIsCurrent(token: string): Promise<boolean> {
+  return (await readPubReminderBoundaryToken()) === token;
+}
+
+async function advancePubReminderBoundary(): Promise<string | null> {
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    await AsyncStorage.setItem(PUB_REMINDER_BOUNDARY_KEY, token);
+    return (await AsyncStorage.getItem(PUB_REMINDER_BOUNDARY_KEY)) === token
+      ? token
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export type PubReminderEnableResult =
   | { ok: true }
@@ -179,36 +219,65 @@ async function cancelScheduledPubReminder(notificationId: string | undefined): P
 }
 
 async function readPubReminderState(nowMs: number): Promise<PubReminderState> {
-  const state = await readJson<PubReminderState>(PUB_REMINDER_STATE_KEY, {});
+  const raw = await readJson<unknown>(PUB_REMINDER_STATE_KEY, {});
+  const state = raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+    ? raw as PubReminderState
+    : {};
   return normalizePubReminderState(state, nowMs);
 }
 
-async function writePubReminderState(state: PubReminderState): Promise<void> {
-  await writeJson(PUB_REMINDER_STATE_KEY, state);
+async function writePubReminderStateForBoundary(
+  state: PubReminderState,
+  token: string,
+): Promise<boolean> {
+  const serialized = JSON.stringify({
+    ...state,
+    [PUB_REMINDER_BOUNDARY_FIELD]: token,
+  });
+  try {
+    await AsyncStorage.setItem(PUB_REMINDER_STATE_KEY, serialized);
+    if (await pubReminderBoundaryIsCurrent(token)) return true;
+    // Remove only our stale write; never delete a newer account's state.
+    if ((await AsyncStorage.getItem(PUB_REMINDER_STATE_KEY)) === serialized) {
+      await AsyncStorage.removeItem(PUB_REMINDER_STATE_KEY);
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 export async function cancelPendingPubReminder(): Promise<void> {
+  const boundaryToken = await readPubReminderBoundaryToken();
+  if (!boundaryToken) return;
   const nowMs = Date.now();
   const state = await readPubReminderState(nowMs);
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
   const pending = state.pendingReminder;
   if (!pending) {
-    await writePubReminderState(state);
+    await writePubReminderStateForBoundary(state, boundaryToken);
     return;
   }
   await cancelScheduledPubReminder(pending.notificationId);
-  await writePubReminderState(clearPendingPubReminder(state, nowMs));
+  await writePubReminderStateForBoundary(clearPendingPubReminder(state, nowMs), boundaryToken);
 }
 
-async function cancelPendingPubReminderForPub(pubId: string): Promise<void> {
+async function cancelPendingPubReminderForPub(
+  pubId: string,
+  capturedBoundaryToken?: string,
+): Promise<void> {
+  const boundaryToken = capturedBoundaryToken ?? await readPubReminderBoundaryToken();
+  if (!boundaryToken) return;
   const nowMs = Date.now();
   const state = await readPubReminderState(nowMs);
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
   const pending = state.pendingReminder;
   if (!pending || pending.pubId !== pubId) {
-    await writePubReminderState(state);
+    await writePubReminderStateForBoundary(state, boundaryToken);
     return;
   }
   await cancelScheduledPubReminder(pending.notificationId);
-  await writePubReminderState(clearPendingPubReminder(state, nowMs));
+  await writePubReminderStateForBoundary(clearPendingPubReminder(state, nowMs), boundaryToken);
 }
 
 function locationCoords(position: Location.LocationObject | null): { lat: number; lng: number } | null {
@@ -285,9 +354,14 @@ export function isPubReminderEligible(
  * design we never keep a live background location stream. Worst case is a missed
  * nudge, never a wrong one.
  */
-async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<void> {
+async function refreshGeofences(
+  coords?: { lat: number; lng: number },
+  capturedBoundaryToken?: string,
+): Promise<void> {
+  const boundaryToken = capturedBoundaryToken ?? await readPubReminderBoundaryToken();
+  if (!boundaryToken) return;
   const center = coords ?? (await resolveCoords());
-  if (!center) return;
+  if (!center || !(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
 
   try {
     await fetchPubsNear(center.lat, center.lng, undefined, { radiusKm: GEOFENCE_FETCH_RADIUS_KM });
@@ -305,8 +379,13 @@ async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<
     .slice(0, MAX_GEOFENCES);
 
   if (nearby.length === 0) {
+    if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
     await stopGeofencing();
-    await writeJson(PUB_REMINDER_GEOFENCES_KEY, {});
+    if (await pubReminderBoundaryIsCurrent(boundaryToken)) {
+      await writeJson(PUB_REMINDER_GEOFENCES_KEY, {
+        [PUB_REMINDER_BOUNDARY_FIELD]: boundaryToken,
+      });
+    }
     return;
   }
 
@@ -323,15 +402,38 @@ async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<
     };
   });
 
-  await writeJson(PUB_REMINDER_GEOFENCES_KEY, nameById);
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
+  const taggedNames = {
+    ...nameById,
+    [PUB_REMINDER_BOUNDARY_FIELD]: boundaryToken,
+  };
+  await writeJson(PUB_REMINDER_GEOFENCES_KEY, taggedNames);
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) {
+    const current = await readJson<Record<string, string>>(PUB_REMINDER_GEOFENCES_KEY, {});
+    if (current[PUB_REMINDER_BOUNDARY_FIELD] === boundaryToken) {
+      await AsyncStorage.removeItem(PUB_REMINDER_GEOFENCES_KEY).catch(() => undefined);
+    }
+    return;
+  }
   try {
     await Location.startGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK, regions);
   } catch {
     // Permissions revoked between the gate and here — leave geofencing stopped.
+    return;
+  }
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) {
+    const current = await readJson<Record<string, string>>(PUB_REMINDER_GEOFENCES_KEY, {});
+    // This callback just completed a stale native start. Stop it regardless of
+    // whether strict clear already removed its tagged map.
+    await stopGeofencing();
+    if (current[PUB_REMINDER_BOUNDARY_FIELD] === boundaryToken) {
+      await AsyncStorage.removeItem(PUB_REMINDER_GEOFENCES_KEY).catch(() => undefined);
+    }
   }
 }
 
-async function handleGeofenceEnter(pubId: string): Promise<void> {
+async function handleGeofenceEnter(pubId: string, boundaryToken: string): Promise<void> {
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
   if (!(await isReminderEnabled())) return;
 
   const now = new Date();
@@ -343,9 +445,17 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
 
   const state = await readPubReminderState(now.getTime());
   const hasCounterSession = await hasActiveCounterSession();
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
   if (hasCounterSession) {
-    if (state.pendingReminder) await cancelPendingPubReminder();
-    else await writePubReminderState(state);
+    if (state.pendingReminder) {
+      await cancelScheduledPubReminder(state.pendingReminder.notificationId);
+      await writePubReminderStateForBoundary(
+        clearPendingPubReminder(state, now.getTime()),
+        boundaryToken,
+      );
+    } else {
+      await writePubReminderStateForBoundary(state, boundaryToken);
+    }
     return;
   }
 
@@ -361,7 +471,7 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
     await cancelScheduledPubReminder(decision.cancelPendingNotificationId);
     const pending = decision.nextState.pendingReminder;
     if (!pending) {
-      await writePubReminderState(decision.nextState);
+      await writePubReminderStateForBoundary(decision.nextState, boundaryToken);
       return;
     }
     const notificationId = await schedulePubReminder(
@@ -369,30 +479,37 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
       decision.notificationPub.id,
       pending.fireAtMs,
     );
-    await writePubReminderState({
+    if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) {
+      await cancelScheduledPubReminder(notificationId ?? undefined);
+      return;
+    }
+    await writePubReminderStateForBoundary({
       ...decision.nextState,
       pendingReminder: notificationId ? { ...pending, notificationId } : undefined,
-    });
+    }, boundaryToken);
     return;
   }
 
-  await writePubReminderState(decision.nextState);
+  await writePubReminderStateForBoundary(decision.nextState, boundaryToken);
 }
 
-async function handleGeofenceExit(pubId: string): Promise<void> {
+async function handleGeofenceExit(pubId: string, boundaryToken: string): Promise<void> {
+  if (!(await pubReminderBoundaryIsCurrent(boundaryToken))) return;
   if (!(await isReminderEnabled())) return;
-  await cancelPendingPubReminderForPub(pubId);
+  await cancelPendingPubReminderForPub(pubId, boundaryToken);
 }
 
 TaskManager?.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
   if (error) return;
+  const boundaryToken = await readPubReminderBoundaryToken();
+  if (!boundaryToken) return;
   const { eventType, region } = (data as GeofenceTaskData | undefined) ?? {};
   const pubId = region?.identifier;
   if (!pubId) return;
   if (eventType === Location.GeofencingEventType.Enter) {
-    await handleGeofenceEnter(pubId);
+    await handleGeofenceEnter(pubId, boundaryToken);
   } else if (eventType === Location.GeofencingEventType.Exit) {
-    await handleGeofenceExit(pubId);
+    await handleGeofenceExit(pubId, boundaryToken);
   }
 });
 
@@ -483,6 +600,94 @@ export async function refreshPubReminderGeofences(): Promise<void> {
   await refreshGeofences();
 }
 
+function isScheduledPubReminder(
+  notification: ExpoNotifications.NotificationRequest,
+): boolean {
+  return notification.content.data?.kind === PUB_REMINDER_NOTIFICATION_KIND;
+}
+
+/** Strict account-boundary cleanup; the enabled device preference is preserved. */
+export async function clearPubReminderAccountData(): Promise<boolean> {
+  if (startupGeofenceRefreshTimer) {
+    clearTimeout(startupGeofenceRefreshTimer);
+    startupGeofenceRefreshTimer = null;
+  }
+
+  // Persisted first: a headless bridge that already captured the previous token
+  // must cancel its late notification/geofence instead of recreating A state.
+  const boundaryToken = await advancePubReminderBoundary();
+  if (!boundaryToken) return false;
+
+  let notificationsClear = false;
+  if (Notifications) {
+    try {
+      // Capture A before any cleanup await. Expo clears the last response
+      // without an identifier, so the shared identity guard must re-read it
+      // immediately before clearing and leave a newer B untouched.
+      const outgoingLastResponse = await Notifications.getLastNotificationResponseAsync();
+      // The persisted blob is background-written and can be truncated by an OS
+      // kill. Treat malformed JSON as empty instead of letting it prevent the
+      // rest of strict account cleanup.
+      const state = await readPubReminderState(Date.now());
+      await cancelScheduledPubReminder(state.pendingReminder?.notificationId);
+
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      await Promise.all(
+        scheduled
+          .filter(isScheduledPubReminder)
+          .map((request) =>
+            Notifications.cancelScheduledNotificationAsync(request.identifier)
+              .catch(() => undefined),
+          ),
+      );
+      // Already-delivered A content (including friend pushes) is private too.
+      await Notifications.dismissAllNotificationsAsync();
+      if (outgoingLastResponse) {
+        await clearNotificationResponseIfStillLast(Notifications, outgoingLastResponse);
+      }
+      const remainingLastResponse = await Notifications.getLastNotificationResponseAsync();
+      const lastResponseClear =
+        !outgoingLastResponse ||
+        remainingLastResponse?.notification.request.identifier !==
+          outgoingLastResponse.notification.request.identifier;
+      const [remainingScheduled, remainingPresented] = await Promise.all([
+        Notifications.getAllScheduledNotificationsAsync(),
+        Notifications.getPresentedNotificationsAsync(),
+      ]);
+      notificationsClear =
+        !remainingScheduled.some(isScheduledPubReminder) &&
+        remainingPresented.length === 0 &&
+        lastResponseClear;
+    } catch {
+      notificationsClear = false;
+    }
+  }
+
+  let geofencesClear = false;
+  try {
+    if (await Location.hasStartedGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK)) {
+      await Location.stopGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK);
+    }
+    geofencesClear = !(await Location.hasStartedGeofencingAsync(
+      PUB_REMINDER_GEOFENCE_TASK,
+    ));
+  } catch {
+    geofencesClear = false;
+  }
+
+  let storageClear = true;
+  for (const key of [PUB_REMINDER_STATE_KEY, PUB_REMINDER_GEOFENCES_KEY]) {
+    try {
+      await AsyncStorage.removeItem(key);
+      if ((await AsyncStorage.getItem(key)) !== null) storageClear = false;
+    } catch {
+      storageClear = false;
+    }
+  }
+
+  return notificationsClear && geofencesClear && storageClear;
+}
+
 export async function disablePubReminderNotifications(): Promise<void> {
   await setReminderEnabled(false);
   await cancelPendingPubReminder();
@@ -502,28 +707,56 @@ function isPubReminderResponse(response: ExpoNotifications.NotificationResponse 
 
 /** Deep-link payload a friend push carries so Parta can scroll to the row (§F3). */
 export interface FriendTapPayload {
+  kind: string | null;
   activityId: string | null;
   friendshipId: string | null;
+  notificationId?: string | null;
+}
+
+export interface InitialPubReminderNavigationLease {
+  claimPubReminder(notificationId: string | null): ExplicitEntryReservation | null;
+  claimFriend(payload: FriendTapPayload): ExplicitEntryReservation | null;
+}
+
+export function resetNotificationResponseDeduperForTests(): void {
+  resetNotificationResponseRuntimeForTests();
+}
+
+async function claimInitialNotificationResponse(
+  response: ExpoNotifications.NotificationResponse,
+  reservation: ExplicitEntryReservation | null,
+  isCurrent: () => boolean,
+): Promise<NotificationResponseClaim | null> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (!isCurrent() || (reservation && !reservation.isCurrent())) {
+      reservation?.release();
+      return null;
+    }
+    const claim = await claimHandledNotificationResponse(response);
+    if (claim === 'unavailable') continue;
+    if (!isCurrent() || (reservation && !reservation.commit())) {
+      reservation?.release();
+      return null;
+    }
+    return claim;
+  }
+  reservation?.release();
+  return null;
 }
 
 function isFriendResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
   const kind = response?.notification.request.content.data?.kind;
-  return (
-    kind === 'friend_request' ||
-    kind === 'friend_accepted' ||
-    kind === 'friend_at_pub' ||
-    kind === 'friend_rsvp' ||
-    kind === 'friend_cheers' ||
-    kind === 'friend_plan'
-  );
+  return typeof kind === 'string' && kind.startsWith('friend_');
 }
 
 /** Extract the activity/friendship ids a friend push carries, when present. */
 function friendTapPayload(response: ExpoNotifications.NotificationResponse | null): FriendTapPayload {
   const data = response?.notification.request.content.data;
   return {
+    kind: typeof data?.kind === 'string' ? data.kind : null,
     activityId: typeof data?.activity_id === 'string' ? data.activity_id : null,
     friendshipId: typeof data?.friendship_id === 'string' ? data.friendship_id : null,
+    notificationId: response?.notification.request.identifier ?? null,
   };
 }
 
@@ -539,6 +772,7 @@ export function subscribeFriendPushReceived(
     return { remove: () => undefined };
   }
   return Notifications.addNotificationReceivedListener((notification) => {
+    if (isPrivateAccountMutationFrozen()) return;
     const kind = notification.request.content.data?.kind;
     if (typeof kind === 'string' && kind.startsWith('friend_')) onReceived(kind);
   });
@@ -548,13 +782,77 @@ export function subscribeFriendPushReceived(
 export function subscribePubReminderTap(
   onTap: () => void,
   onFriendTap?: (payload: FriendTapPayload) => void,
+  navigationLease?: InitialPubReminderNavigationLease,
 ): ExpoNotifications.Subscription {
   if (!Notifications) {
     return { remove: () => undefined };
   }
   return Notifications.addNotificationResponseReceivedListener((response) => {
-    if (isPubReminderResponse(response)) onTap();
-    else if (onFriendTap && isFriendResponse(response)) onFriendTap(friendTapPayload(response));
+    const scope = capturePrivateAccountMutationScope();
+    if (!isPrivateAccountMutationScopeCurrent(scope)) return;
+    if (isPubReminderResponse(response)) {
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const notificationId = response.notification.request.identifier;
+      const reservation = navigationLease?.claimPubReminder(notificationId) ?? null;
+      if (navigationLease && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      void (async () => {
+        try {
+          const claim = await claimHandledNotificationResponse(response);
+          if (
+            claim === 'unavailable' ||
+            !responseEvent.isCurrent() ||
+            !isPrivateAccountMutationScopeCurrent(scope) ||
+            (reservation && !reservation.commit())
+          ) return;
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          reservation?.release();
+          responseEvent.release();
+        }
+      })().catch(() => undefined);
+    } else if (onFriendTap && isFriendResponse(response)) {
+      const responseEvent = beginNotificationResponseEvent(response);
+      if (!responseEvent) return;
+      const payload = friendTapPayload(response);
+      const reservation = navigationLease?.claimFriend(payload) ?? null;
+      if (navigationLease && !reservation) {
+        responseEvent.release();
+        return;
+      }
+      void (async () => {
+        try {
+          const claim = await claimHandledNotificationResponse(response);
+          if (
+            claim === 'unavailable' ||
+            !responseEvent.isCurrent() ||
+            !isPrivateAccountMutationScopeCurrent(scope) ||
+            (reservation && !reservation.commit())
+          ) return;
+          if (claim === 'claimed') onFriendTap(payload);
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          reservation?.release();
+          responseEvent.release();
+        }
+      })().catch(() => undefined);
+    }
   });
 }
 
@@ -562,17 +860,77 @@ export function subscribePubReminderTap(
 export async function consumeInitialPubReminderTap(
   onTap: () => void,
   onFriendTap?: (payload: FriendTapPayload) => void,
+  navigationLease?: InitialPubReminderNavigationLease,
 ): Promise<void> {
   if (!Notifications) return;
   try {
-    const response = await Notifications.getLastNotificationResponseAsync();
-    if (isPubReminderResponse(response)) {
-      onTap();
-      await Notifications.clearLastNotificationResponseAsync();
-    } else if (onFriendTap && isFriendResponse(response)) {
-      onFriendTap(friendTapPayload(response));
-      await Notifications.clearLastNotificationResponseAsync();
-    }
+    await runPrivateAccountMutation(async (scope) => {
+      const response = await Notifications.getLastNotificationResponseAsync();
+      // The native read can outlive account A. Validate its captured lease
+      // before touching the process deduper, routing, or native response state.
+      if (!isPrivateAccountMutationScopeCurrent(scope)) return;
+      if (isPubReminderResponse(response)) {
+        if (!response) return;
+        const responseEvent = beginNotificationResponseEvent(response);
+        if (!responseEvent) return;
+        const notificationId = response?.notification.request.identifier ?? null;
+        const reservation = navigationLease?.claimPubReminder(notificationId) ?? null;
+        if (navigationLease && !reservation) {
+          responseEvent.release();
+          return;
+        }
+        try {
+          const claim = await claimInitialNotificationResponse(
+            response,
+            reservation,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+          if (!claim) return;
+          if (claim === 'claimed') onTap();
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          responseEvent.release();
+        }
+      } else if (onFriendTap && isFriendResponse(response)) {
+        if (!response) return;
+        const responseEvent = beginNotificationResponseEvent(response);
+        if (!responseEvent) return;
+        const payload = friendTapPayload(response);
+        const reservation = navigationLease?.claimFriend(payload) ?? null;
+        if (navigationLease && !reservation) {
+          responseEvent.release();
+          return;
+        }
+        try {
+          const claim = await claimInitialNotificationResponse(
+            response,
+            reservation,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+          if (!claim) return;
+          if (claim === 'claimed') onFriendTap(payload);
+          await clearNotificationResponseIfStillLast(
+            Notifications,
+            response,
+            () =>
+              responseEvent.isCurrent() &&
+              isPrivateAccountMutationScopeCurrent(scope),
+          );
+        } finally {
+          responseEvent.release();
+        }
+      }
+    });
   } catch {
     // No launch notification, or the API is unavailable — nothing to route to.
   }

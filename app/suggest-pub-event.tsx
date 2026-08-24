@@ -16,8 +16,9 @@ import { ChevronLeftIcon, ClockIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { submitPubEventSuggestion } from '@/data/pubEventsClient';
 import { useToastStore } from '@/stores/toastStore';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 function stringParam(value: string | string[] | undefined): string {
@@ -124,7 +125,7 @@ export default function SuggestPubEventScreen() {
     setSubmitting(false);
     if (result === 'ok') {
       showToast('Návrh je u výčepu na kontrole.');
-      router.back();
+      leaveRoute(router);
       return;
     }
     if (result === 'auth-required') {
@@ -142,7 +143,7 @@ export default function SuggestPubEventScreen() {
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Zpět"
@@ -272,7 +273,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', color: Colors.foam, fontFamily: Fonts.display.bold, fontSize: 20 },
+  headerTitle: { flex: 1, textAlign: 'center', color: Colors.foam, fontWeight: '700', fontSize: 20 },
   headerSpacer: { width: HitArea.min },
   content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl, gap: Spacing.lg },
   introRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
@@ -286,10 +287,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  pubName: { color: Colors.foam, fontFamily: Fonts.display.bold, fontSize: 22, lineHeight: 27 },
-  intro: { marginTop: 3, color: Colors.foamMuted, fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20 },
+  pubName: { color: Colors.foam, fontWeight: '700', fontSize: 22, lineHeight: 27 },
+  intro: { marginTop: 3, color: Colors.foamMuted, fontWeight: '400', fontSize: 14, lineHeight: 20 },
   field: { gap: Spacing.sm },
-  label: { color: Colors.foamMuted, fontFamily: Fonts.ui.semibold, fontSize: 13 },
+  label: { color: Colors.foamMuted, fontWeight: '600', fontSize: 13 },
   input: {
     minHeight: 50,
     borderRadius: Radius.medium,
@@ -299,14 +300,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: 12,
     color: Colors.foam,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
   },
   multiline: { minHeight: 106 },
   timeRow: { flexDirection: 'row', gap: Spacing.md },
   timeField: { flex: 1 },
-  moderation: { color: Colors.mutedText, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 19 },
-  error: { color: Colors.amberLight, fontFamily: Fonts.ui.medium, fontSize: 13, lineHeight: 19 },
+  moderation: { color: Colors.mutedText, fontWeight: '400', fontSize: 13, lineHeight: 19 },
+  error: { color: Colors.amberLight, fontWeight: '500', fontSize: 13, lineHeight: 19 },
   submitButton: {
     minHeight: 52,
     alignItems: 'center',
@@ -315,6 +316,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   submitDisabled: { opacity: 0.42 },
-  submitText: { color: Colors.stout, fontFamily: Fonts.display.bold, fontSize: 17 },
+  submitText: { color: Colors.stout, fontWeight: '700', fontSize: 17 },
   pressed: { opacity: 0.72 },
 });

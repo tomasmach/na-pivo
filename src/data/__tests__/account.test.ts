@@ -5,17 +5,26 @@ import {
   clearCachedAccount,
   clearCachedAnonymousAccount,
   ensureAccount,
+  ensureCredentialBindingForSession,
   fetchAccountPreferences,
   getCachedAuthenticationState,
   getOrCreateDeviceId,
+  readDurableAccountSession,
+  revertToAnonymous,
   setSession,
   setAnonymousSessionEvictionListener,
   updateAccountPreferences,
 } from '../account';
+import {
+  beginPrivateAccountTransition,
+  PRIVATE_ACCOUNT_MERGE_STORAGE_KEY,
+  preflightPrivateAccountMerge,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 // In-memory expo-secure-store mock. The account blob (which holds the bearer
@@ -88,6 +97,7 @@ beforeEach(async () => {
   // Clear the in-memory AsyncStorage + SecureStore mocks so persisted
   // ids/accounts don't bleed across tests.
   (AsyncStorage as any).__INTERNAL_MOCK_STORAGE__ = {};
+  resetPrivateAccountBoundaryForTests();
   secureStoreMock.__setStore({});
   setAnonymousSessionEvictionListener(null);
   await clearCachedAccount();
@@ -177,6 +187,23 @@ describe('ensureAccount — dormant feature', () => {
 });
 
 describe('ensureAccount — registration (no cache yet)', () => {
+  it('does not mint unrelated C while an anonymous merge is unresolved', async () => {
+    setBackend('https://api.example.test');
+    await AsyncStorage.setItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      fromAccountId: 'account-a',
+      toAccountId: null,
+      preparedAt: Date.now(),
+    }));
+    resetPrivateAccountBoundaryForTests();
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(ensureAccount()).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('does not mint an anonymous account when SecureStore is temporarily unavailable', async () => {
     setBackend('https://api.example.com');
     const fetchSpy = jest.fn();
@@ -189,7 +216,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 
-  it('uses the last-known session when a later SecureStore read temporarily fails', async () => {
+  it('serves later calls from the in-memory session without re-reading SecureStore', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({
       deviceId: 'dev-1',
@@ -199,12 +226,15 @@ describe('ensureAccount — registration (no cache yet)', () => {
     });
     await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', authenticated: true });
 
-    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+    // Later Keychain flakiness cannot break an established session: the read
+    // happened once on the cold path and every later call is memory-only.
+    const readsAfterFirstCall = jest.mocked(SecureStore.getItemAsync).mock.calls.length;
     await expect(ensureAccount()).resolves.toMatchObject({
       accountId: 'acc-1',
       token: 'signed-token',
       authenticated: true,
     });
+    expect(jest.mocked(SecureStore.getItemAsync).mock.calls.length).toBe(readsAfterFirstCall);
   });
 
   it('throws when an authenticated session cannot be persisted securely', async () => {
@@ -246,6 +276,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       accountId: 'acc-123',
       token: 'secret-token',
       authenticated: false,
+      credentialBindingId: expect.stringMatching(UUID_RE),
     });
 
     // The token-bearing blob lands in SecureStore, NOT AsyncStorage.
@@ -256,6 +287,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       accountId: 'acc-123',
       token: 'secret-token',
       authenticated: false,
+      credentialBindingId: expect.stringMatching(UUID_RE),
     });
   });
 
@@ -285,6 +317,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       accountId: 'acc-123',
       token: 'secret-token',
       authenticated: false,
+      credentialBindingId: expect.stringMatching(UUID_RE),
     });
   });
 
@@ -336,6 +369,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       accountId: 'acc-2',
       token: 'tok-2',
       authenticated: false,
+      credentialBindingId: expect.stringMatching(UUID_RE),
     });
     expect(mockTrackApiFailure).not.toHaveBeenCalledWith(
       'account_register',
@@ -398,9 +432,11 @@ describe('ensureAccount — registration (no cache yet)', () => {
       jest.advanceTimersByTime(30_001);
       await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-2' });
 
-      // Remove only the persisted blob so this test can prove the successful
-      // bootstrap reset the exponential failure counter itself.
-      await SecureStore.deleteItemAsync(ACCOUNT_KEY);
+      // Remove the cached account (keeping backoff state untouched) so this
+      // test can prove the successful bootstrap reset the exponential failure
+      // counter itself. Goes through the module so the in-memory session
+      // mirror is dropped too — production deletes always take this path.
+      await clearCachedAccount({ resetBootstrapBackoff: false });
       await expect(ensureAccount()).resolves.toBeNull();
       expect(fetchSpy).toHaveBeenCalledTimes(5);
 
@@ -518,6 +554,7 @@ describe('ensureAccount — cache desync guard', () => {
       accountId: 'acc-2',
       token: 'tok-2',
       authenticated: false,
+      credentialBindingId: expect.stringMatching(UUID_RE),
     });
   });
 });
@@ -622,7 +659,168 @@ describe('clearCachedAccount', () => {
   });
 });
 
+describe('revertToAnonymous', () => {
+  it('keeps A bearer and private data while its anonymous merge is unresolved', async () => {
+    const oldSession = {
+      deviceId: 'dev-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    await seedAccount(oldSession);
+    await AsyncStorage.setItem('private-a', 'still-owned-by-a');
+    await AsyncStorage.setItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      fromAccountId: oldSession.accountId,
+      toAccountId: null,
+      preparedAt: Date.now(),
+    }));
+    resetPrivateAccountBoundaryForTests();
+    const clearPrivateData = jest.fn(async () => {
+      await AsyncStorage.removeItem('private-a');
+    });
+
+    await expect(revertToAnonymous(undefined, clearPrivateData)).rejects.toThrow(
+      'Anonymous account merge is unresolved',
+    );
+
+    expect(clearPrivateData).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem('private-a')).toBe('still-owned-by-a');
+    expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).not.toBeNull();
+    await expect(ensureAccount()).resolves.toMatchObject(oldSession);
+  });
+
+  it('clears A data before credential removal, keeps A on failure, and succeeds on retry', async () => {
+    const oldSession = {
+      deviceId: 'dev-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: true,
+    };
+    await AsyncStorage.setItem(DEVICE_ID_KEY, oldSession.deviceId);
+    await seedAccount(oldSession);
+    await AsyncStorage.setItem('private-a', 'kept-until-boundary');
+    const clearPrivateData = jest.fn(async () => {
+      // The outgoing credential must still be durable while private data is
+      // invalidated. A process kill anywhere in this callback therefore boots
+      // back into A, never a replacement account over stale A storage.
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached).toMatchObject(oldSession);
+      await AsyncStorage.removeItem('private-a');
+    });
+    jest
+      .mocked(SecureStore.deleteItemAsync)
+      .mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(
+      revertToAnonymous(undefined, clearPrivateData),
+    ).rejects.toThrow('Secure session removal failed');
+    expect(clearPrivateData).toHaveBeenCalledTimes(1);
+    expect(await AsyncStorage.getItem('private-a')).toBeNull();
+    await expect(ensureAccount()).resolves.toMatchObject(oldSession);
+
+    setBackend('https://api.example.com');
+    global.fetch = mockFetchOk({ id: 'anonymous-b', token: 'token-b' }) as unknown as typeof fetch;
+
+    await expect(revertToAnonymous(undefined, clearPrivateData)).resolves.toMatchObject({
+      accountId: 'anonymous-b',
+      token: 'token-b',
+      authenticated: false,
+    });
+    expect(clearPrivateData).toHaveBeenCalledTimes(2);
+    expect(await AsyncStorage.getItem('private-a')).toBeNull();
+    await expect(ensureAccount()).resolves.toMatchObject({
+      accountId: 'anonymous-b',
+      token: 'token-b',
+      authenticated: false,
+    });
+  });
+});
+
 describe('clearCachedAnonymousAccount', () => {
+  it('loses the eviction race to a credential boundary before deleting A', async () => {
+    const oldSession = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    await seedAccount(oldSession);
+
+    let releaseSecureRead!: (value: string) => void;
+    let markSecureReadStarted!: () => void;
+    const pausedSecureRead = new Promise<string>((resolve) => {
+      releaseSecureRead = resolve;
+    });
+    const secureReadStarted = new Promise<void>((resolve) => {
+      markSecureReadStarted = resolve;
+    });
+    jest.mocked(SecureStore.getItemAsync).mockImplementationOnce(async () => {
+      markSecureReadStarted();
+      return pausedSecureRead;
+    });
+
+    const eviction = clearCachedAnonymousAccount(oldSession, {
+      source: 'test_race',
+      endpoint: '/v1/test',
+    });
+    await secureReadStarted;
+
+    const transition = beginPrivateAccountTransition('test-auth', oldSession.accountId);
+    expect(transition).not.toBeNull();
+    const drained = transition!.drain();
+    releaseSecureRead(JSON.stringify(oldSession));
+
+    await expect(eviction).resolves.toBe(false);
+    await drained;
+    await expect(
+      preflightPrivateAccountMerge(
+        transition!,
+        oldSession.accountId,
+        async () => true,
+        () => '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      ),
+    ).resolves.toMatchObject({
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+    });
+
+    expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).not.toBeNull();
+    expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).not.toBeNull();
+    transition!.release();
+  });
+
+  it('keeps A credential after a 401 while its merge operation is unresolved', async () => {
+    const oldSession = {
+      deviceId: 'device-a',
+      accountId: 'account-a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    await seedAccount(oldSession);
+    await AsyncStorage.setItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      operationId: '9e0c0d0e-e194-4cf8-9399-e966a7c14f00',
+      fromAccountId: 'account-a',
+      toAccountId: null,
+      preparedAt: Date.now(),
+    }));
+    resetPrivateAccountBoundaryForTests();
+    const listener = jest.fn();
+    setAnonymousSessionEvictionListener(listener);
+
+    await expect(clearCachedAnonymousAccount(oldSession, {
+      source: 'test',
+      endpoint: '/v1/test',
+    })).resolves.toBe(false);
+    await expect(ensureAccount()).resolves.toMatchObject(oldSession);
+    expect(listener).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith(
+      'anonymous_session_eviction',
+      expect.objectContaining({ reason: 'anonymous_401_merge_unresolved' }),
+    );
+  });
+
   const requestContext = {
     source: 'account_preferences_fetch',
     endpoint: '/v1/account/me',
@@ -761,6 +959,23 @@ describe('account preferences', () => {
     expect(JSON.parse(init.body as string)).toEqual({ hide_pub_names: false });
   });
 
+  it('refuses to PATCH queued preferences under a different account', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({ id: 'acc-1', device_id: 'dev-1' });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(
+      updateAccountPreferences(
+        { marketingEmailsEnabled: false },
+        undefined,
+        'another-account',
+      ),
+    ).resolves.toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('PATCHes expanded preferences using the backend field names', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
@@ -842,5 +1057,233 @@ describe('account preferences', () => {
 
     await expect(fetchAccountPreferences()).resolves.toBeNull();
     expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).not.toBeNull();
+  });
+});
+
+describe('credential binding', () => {
+  it('setSession persists a fresh binding for an authenticated session', async () => {
+    await setSession({ accountId: 'acc-1', token: 'tok-a', authenticated: true });
+
+    const read = await readDurableAccountSession();
+    expect(read.available).toBe(true);
+    expect(read.session?.authenticated).toBe(true);
+    expect(read.session?.credentialBindingId).toMatch(UUID_RE);
+
+    const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+    expect(cached.credentialBindingId).toBe(read.session?.credentialBindingId);
+  });
+
+  it('rotates the binding on every new authenticated setSession, including same-account re-login', async () => {
+    await setSession({ accountId: 'acc-1', token: 'tok-a', authenticated: true });
+    const first = (await readDurableAccountSession()).session?.credentialBindingId;
+    expect(first).toMatch(UUID_RE);
+
+    await setSession({ accountId: 'acc-1', token: 'tok-b', authenticated: true });
+    const second = (await readDurableAccountSession()).session?.credentialBindingId;
+    expect(second).toMatch(UUID_RE);
+    expect(second).not.toBe(first);
+
+    // The durable record carries only the latest binding.
+    const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+    expect(cached.credentialBindingId).toBe(second);
+  });
+
+  it('persists a fresh valid binding for an anonymous setSession too', async () => {
+    await setSession({ accountId: 'acc-1', token: 'anon-tok', authenticated: false });
+
+    const read = await readDurableAccountSession();
+    expect(read.available).toBe(true);
+    expect(read.session?.authenticated).toBe(false);
+    expect(read.session?.credentialBindingId).toMatch(UUID_RE);
+    const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+    expect(cached.credentialBindingId).toBe(read.session?.credentialBindingId);
+  });
+
+  it('mints a new binding for every new anonymous identity/token', async () => {
+    await setSession({ accountId: 'acc-1', token: 'anon-tok-a', authenticated: false });
+    const first = (await readDurableAccountSession()).session?.credentialBindingId;
+    expect(first).toMatch(UUID_RE);
+
+    await setSession({ accountId: 'acc-2', token: 'anon-tok-b', authenticated: false });
+    const second = (await readDurableAccountSession()).session?.credentialBindingId;
+    expect(second).toMatch(UUID_RE);
+    expect(second).not.toBe(first);
+
+    // The durable record carries only the latest binding.
+    const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+    expect(cached.credentialBindingId).toBe(second);
+  });
+
+  it('preserves the binding across a cold durable read, restart, and ensureAccount', async () => {
+    await setSession({ accountId: 'acc-1', token: 'tok-a', authenticated: true });
+    const written = (await readDurableAccountSession()).session?.credentialBindingId;
+    expect(written).toMatch(UUID_RE);
+
+    // Simulate a process restart: only the durable record exists, no mirror.
+    const cachedRaw = (await SecureStore.getItemAsync(ACCOUNT_KEY)) as string;
+    secureStoreMock.__setStore({ [ACCOUNT_KEY]: cachedRaw });
+
+    // Cold path: parsed straight from SecureStore.
+    const durable = await readDurableAccountSession();
+    expect(durable.available).toBe(true);
+    expect(durable.session?.credentialBindingId).toBe(written);
+
+    const session = await ensureAccount();
+    expect(session?.credentialBindingId).toBe(written);
+
+    // Warm in-memory mirror keeps it too.
+    const warm = await ensureAccount();
+    expect(warm?.credentialBindingId).toBe(written);
+  });
+
+  describe('ensureCredentialBindingForSession', () => {
+    it('reuses the existing binding of the exact durable session without rewriting', async () => {
+      await setSession({ accountId: 'acc-1', token: 'tok-a', authenticated: true });
+      const stored = (await readDurableAccountSession()).session!;
+      const writesBefore = jest.mocked(SecureStore.setItemAsync).mock.calls.length;
+
+      const result = await ensureCredentialBindingForSession(stored);
+
+      expect(result).toEqual(stored);
+      expect(jest.mocked(SecureStore.setItemAsync).mock.calls.length).toBe(writesBefore);
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.credentialBindingId).toBe(stored.credentialBindingId);
+    });
+
+    it('upgrades a legacy record without a binding and persists the new one', async () => {
+      await seedAccount({
+        deviceId: 'dev-1',
+        accountId: 'acc-legacy',
+        token: 'legacy-tok',
+        authenticated: true,
+      });
+      const legacy = (await readDurableAccountSession()).session!;
+      expect(legacy.credentialBindingId).toBeUndefined();
+
+      const result = await ensureCredentialBindingForSession(legacy);
+
+      expect(result?.accountId).toBe('acc-legacy');
+      expect(result?.token).toBe('legacy-tok');
+      expect(result?.credentialBindingId).toMatch(UUID_RE);
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.credentialBindingId).toBe(result?.credentialBindingId);
+    });
+
+    it('omits an invalid stored binding on durable read and upgrades it to a fresh valid one', async () => {
+      const invalidBinding = 'binding-from-an-older-format';
+      await SecureStore.setItemAsync(
+        ACCOUNT_KEY,
+        JSON.stringify({
+          deviceId: 'dev-1',
+          accountId: 'acc-legacy',
+          token: 'legacy-tok',
+          authenticated: true,
+          credentialBindingId: invalidBinding,
+        }),
+      );
+
+      // A malformed durable binding is treated as absent legacy data, never
+      // as exact-credential proof.
+      const durable = await readDurableAccountSession();
+      expect(durable.available).toBe(true);
+      expect(durable.session?.credentialBindingId).toBeUndefined();
+
+      const upgraded = await ensureCredentialBindingForSession(durable.session!);
+
+      // The upgrade mints a NEW valid UUID instead of reusing the junk value.
+      expect(upgraded?.credentialBindingId).toMatch(UUID_RE);
+      expect(upgraded?.credentialBindingId).not.toBe(invalidBinding);
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.credentialBindingId).toBe(upgraded?.credentialBindingId);
+    });
+
+    it('fails closed when the durable token or account no longer matches', async () => {
+      await setSession({ accountId: 'acc-1', token: 'tok-a', authenticated: true });
+      const current = (await readDurableAccountSession()).session!;
+
+      // Rotated token under the same account.
+      await setSession({ accountId: 'acc-1', token: 'tok-b', authenticated: true });
+      await expect(ensureCredentialBindingForSession(current)).resolves.toBeNull();
+
+      // Replacement account entirely — never attach A's identity to B.
+      await expect(
+        ensureCredentialBindingForSession({ ...current, accountId: 'account-b' }),
+      ).resolves.toBeNull();
+
+      // Nothing was rewritten by the refused attempts.
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.token).toBe('tok-b');
+      expect(cached.accountId).toBe('acc-1');
+    });
+
+    it('fails closed when SecureStore is unavailable', async () => {
+      await setSession({ accountId: 'acc-1', token: 'tok-a', authenticated: true });
+      const session = (await readDurableAccountSession()).session!;
+      jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+      await expect(ensureCredentialBindingForSession(session)).resolves.toBeNull();
+    });
+
+    it('fails closed when persisting an upgrade fails', async () => {
+      await seedAccount({
+        deviceId: 'dev-1',
+        accountId: 'acc-legacy',
+        token: 'legacy-tok',
+        authenticated: true,
+      });
+      const legacy = (await readDurableAccountSession()).session!;
+      jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+      await expect(ensureCredentialBindingForSession(legacy)).resolves.toBeNull();
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.credentialBindingId).toBeUndefined();
+    });
+
+    it('atomically upgrades a legacy anonymous record without a binding and reuses it', async () => {
+      await seedAccount({
+        deviceId: 'dev-1',
+        accountId: 'acc-anon',
+        token: 'anon-tok',
+        authenticated: false,
+      });
+      // A legacy cached anonymous record without a binding stays readable as-is.
+      const legacy = (await readDurableAccountSession()).session!;
+      expect(legacy.accountId).toBe('acc-anon');
+      expect(legacy.credentialBindingId).toBeUndefined();
+
+      const result = await ensureCredentialBindingForSession(legacy);
+
+      expect(result?.accountId).toBe('acc-anon');
+      expect(result?.token).toBe('anon-tok');
+      expect(result?.authenticated).toBe(false);
+      expect(result?.credentialBindingId).toMatch(UUID_RE);
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.credentialBindingId).toBe(result?.credentialBindingId);
+
+      // A second call reuses the persisted binding without rewriting.
+      const writesBefore = jest.mocked(SecureStore.setItemAsync).mock.calls.length;
+      const again = await ensureCredentialBindingForSession(result!);
+      expect(again?.credentialBindingId).toBe(result?.credentialBindingId);
+      expect(jest.mocked(SecureStore.setItemAsync).mock.calls.length).toBe(writesBefore);
+    });
+
+    it('still fails closed for an anonymous session whose token or account was replaced', async () => {
+      await setSession({ accountId: 'acc-anon', token: 'anon-tok-a', authenticated: false });
+      const current = (await readDurableAccountSession()).session!;
+
+      // Rotated anonymous token under the same account.
+      await setSession({ accountId: 'acc-anon', token: 'anon-tok-b', authenticated: false });
+      await expect(ensureCredentialBindingForSession(current)).resolves.toBeNull();
+
+      // Replacement account entirely — never attach A's identity to B.
+      await expect(
+        ensureCredentialBindingForSession({ ...current, accountId: 'acc-other' }),
+      ).resolves.toBeNull();
+
+      // Nothing was rewritten by the refused attempts.
+      const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
+      expect(cached.token).toBe('anon-tok-b');
+      expect(cached.accountId).toBe('acc-anon');
+    });
   });
 });

@@ -8,8 +8,10 @@ full list of available variables.
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
@@ -29,6 +31,34 @@ SECRET_KEY = os.environ.get(
 )
 
 DEBUG = os.environ.get("DEBUG", "True").lower() in ("1", "true", "yes")
+
+
+def _validate_production_secret_key(secret_key: str) -> None:
+    markers = (
+        "django-insecure",
+        "change-me",
+        "changeme",
+        "replace-me",
+        "replace_me",
+        "placeholder",
+        "example-secret",
+        "your-secret",
+        "dev-only",
+    )
+    lowered = secret_key.lower()
+    if len(secret_key) < 50 or any(m in lowered for m in markers) or len(set(secret_key)) < 8:
+        raise ImproperlyConfigured(
+            "SECRET_KEY is not secure enough for production. "
+            "Set a strong, unique SECRET_KEY environment variable."
+        )
+    for size in range(1, 17):
+        prefix = secret_key[:size]
+        repeated = (prefix * (len(secret_key) // size + 1))[: len(secret_key)]
+        if secret_key == repeated:
+            raise ImproperlyConfigured(
+                "SECRET_KEY is not secure enough for production. "
+                "Set a strong, unique SECRET_KEY environment variable."
+            )
 
 ENABLE_DJANGO_ADMIN = os.environ.get(
     "ENABLE_DJANGO_ADMIN",
@@ -111,6 +141,16 @@ DATABASES = {
         conn_max_age=600,
     )
 }
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    # Local Expo starts an evening, visit and first drink concurrently. SQLite
+    # DEFERRED transactions can read first and then fail immediately while
+    # upgrading to a write lock. Acquire the write reservation at atomic-block
+    # entry instead, then wait briefly for the other local request to commit.
+    DATABASES["default"]["OPTIONS"] = {
+        **DATABASES["default"].get("OPTIONS", {}),
+        "timeout": 20,
+        "transaction_mode": "IMMEDIATE",
+    }
 
 # ---------------------------------------------------------------------------
 # Password validation
@@ -149,6 +189,34 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Keep this separate from the API origin: production serves both hostnames through
 # the same reverse proxy, while the mobile app talks only to api.na-pivo.cz.
 PUBLIC_WEB_ORIGIN: str = os.environ.get("PUBLIC_WEB_ORIGIN", "https://na-pivo.cz").rstrip("/")
+
+
+def _normalize_origin(env_var: str, default: str) -> str:
+    parts = urlsplit(os.environ.get(env_var, default))
+    if parts.scheme not in ("http", "https"):
+        raise ValueError(f"{env_var} must use http or https scheme")
+    if not parts.hostname:
+        raise ValueError(f"{env_var} must include a hostname")
+    if parts.username or parts.password:
+        raise ValueError(f"{env_var} must not include credentials")
+    if parts.path not in ("", "/"):
+        raise ValueError(f"{env_var} must be a bare origin without a path")
+    if parts.query or parts.fragment:
+        raise ValueError(f"{env_var} must not include query or fragment")
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def _resolve_public_api_origin() -> str:
+    if "PUBLIC_API_ORIGIN" not in os.environ:
+        if not DEBUG:
+            raise ImproperlyConfigured(
+                "PUBLIC_API_ORIGIN must be set in the environment when DEBUG is false"
+            )
+        return _normalize_origin("PUBLIC_API_ORIGIN", "http://localhost:8012")
+    return _normalize_origin("PUBLIC_API_ORIGIN", "")
+
+
+PUBLIC_API_ORIGIN: str = _resolve_public_api_origin()
 
 # ---------------------------------------------------------------------------
 # Media files (user-uploaded avatars)
@@ -195,6 +263,25 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # legitimate once-per-install call untouched. Format: DRF throttle rate string.
 ACCOUNT_REGISTER_THROTTLE_RATE: str = os.environ.get(
     "ACCOUNT_REGISTER_THROTTLE_RATE", "120/min"
+)
+ACCOUNT_EXPORT_THROTTLE_RATE: str = os.environ.get(
+    "ACCOUNT_EXPORT_THROTTLE_RATE", "4/day"
+)
+ACCOUNT_EXPORT_ASYNC: bool = os.environ.get("ACCOUNT_EXPORT_ASYNC", "1") == "1"
+ACCOUNT_EXPORT_JOB_RETENTION_DAYS: int = int(
+    os.environ.get("ACCOUNT_EXPORT_JOB_RETENTION_DAYS", "30")
+)
+ACCOUNT_EXPORT_JOB_MAX_ATTEMPTS: int = int(
+    os.environ.get("ACCOUNT_EXPORT_JOB_MAX_ATTEMPTS", "8")
+)
+ACCOUNT_OPERATION_PROOF_RETENTION_DAYS: int = int(
+    os.environ.get("ACCOUNT_OPERATION_PROOF_RETENTION_DAYS", "400")
+)
+# ContentReport / FeedbackReport rows (and feedback attachments on disk) older
+# than this many days are pruned by prune_operational_data.
+UGC_REPORT_RETENTION_DAYS: int = int(os.environ.get("UGC_REPORT_RETENTION_DAYS", "400"))
+API_RATE_LIMIT_RETENTION_DAYS: int = int(
+    os.environ.get("API_RATE_LIMIT_RETENTION_DAYS", "2")
 )
 
 # Per-IP rate limit for the authenticated in-app feedback endpoint
@@ -289,7 +376,6 @@ PUB_REPORTS_THROTTLE_RATE: str = os.environ.get("PUB_REPORTS_THROTTLE_RATE", "30
 PUB_REPORT_GLOBAL_HIDE_THRESHOLD: int = int(
     os.environ.get("PUB_REPORT_GLOBAL_HIDE_THRESHOLD", "3")
 )
-
 # Per-IP rate limit for privacy-safe client telemetry events. The client sends a
 # small lifecycle/error/distance whitelist only; this cap protects the endpoint
 # from noisy loops and scripted spam.
@@ -297,6 +383,9 @@ CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE",
 # Raw telemetry is useful for short product funnels and diagnostics only. Keep
 # long-term account counters separately and automatically prune event-level rows.
 CLIENT_EVENT_RETENTION_DAYS: int = int(os.environ.get("CLIENT_EVENT_RETENTION_DAYS", "90"))
+PUBLIC_READS_THROTTLE_RATE: str = os.environ.get(
+    "PUBLIC_READS_THROTTLE_RATE", "120/min"
+)
 
 # Per-IP rate limit for authenticated push-token registration
 # (PUT/DELETE /v1/push-device). DB-only, but can be retried on app start and
@@ -307,6 +396,21 @@ PUSH_DEVICES_THROTTLE_RATE: str = os.environ.get("PUSH_DEVICES_THROTTLE_RATE", "
 # activity can fan out notifications, so writes stay bounded while dashboard
 # reads (the friends_dashboard scope below) get their own, larger budget.
 FRIENDS_THROTTLE_RATE: str = os.environ.get("FRIENDS_THROTTLE_RATE", "120/min")
+FOLLOWS_THROTTLE_RATE: str = os.environ.get("FOLLOWS_THROTTLE_RATE", "120/min")
+NIGHT_COMMENTS_THROTTLE_RATE: str = os.environ.get(
+    "NIGHT_COMMENTS_THROTTLE_RATE", "30/hour"
+)
+
+# Personal diary aggregates are read-only but can scan a meaningful amount of
+# history. Give them dedicated per-account budgets so a polling bug does not
+# contend with social writes or repeatedly rebuild the same charts.
+STATS_THROTTLE_RATE: str = os.environ.get("STATS_THROTTLE_RATE", "30/min")
+CHALLENGES_THROTTLE_RATE: str = os.environ.get("CHALLENGES_THROTTLE_RATE", "60/min")
+# Na Pivo has no data older than this product horizon. Keeping the detailed
+# aggregation window explicit bounds Python work and response period arrays
+# even if malformed imports insert arbitrarily old timestamps.
+STATS_HISTORY_YEARS: int = int(os.environ.get("STATS_HISTORY_YEARS", "20"))
+STATS_MAX_DRINK_ROWS: int = int(os.environ.get("STATS_MAX_DRINK_ROWS", "50000"))
 
 # --- Parta 3.0 (dashboard reads, invites, plans, reactions, push, retention) ---
 # Separate, larger budget for the two friend READ paths (GET /v1/friends and
@@ -403,6 +507,10 @@ AMENITY_READ_MAX_KEYS: int = int(os.environ.get("AMENITY_READ_MAX_KEYS", "60"))
 PUBS_NEAR_MAX_AMENITY_FILTERS: int = int(
     os.environ.get("PUBS_NEAR_MAX_AMENITY_FILTERS", "5")
 )
+# The redesigned pub list offers multi-select brands. Keep the OR query and
+# response bounded just like amenity filters; five is already more than the
+# sheet can usefully scan at a pub table.
+PUBS_NEAR_MAX_BEER_FILTERS: int = int(os.environ.get("PUBS_NEAR_MAX_BEER_FILTERS", "5"))
 MAP_AMENITY_CONFIDENCE_FLOOR: float = float(
     os.environ.get("MAP_AMENITY_CONFIDENCE_FLOOR", "0.5")
 )
@@ -488,14 +596,11 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
-    # Scoped throttle rates. Views opt in with throttle_classes =
-    # [ScopedRateThrottle] and throttle_scope.
-    # NOTE: DRF throttling uses the Django cache. The default LocMemCache is
-    # per-process, so under multiple gunicorn workers the effective limit is
-    # rate × workers — configure a shared cache (Redis/Memcached) for an exact
-    # global limit in production.
+    # Scoped throttle rates. SharedScopedRateThrottle stores its counters in
+    # the database, so adding gunicorn workers does not multiply the limits.
     "DEFAULT_THROTTLE_RATES": {
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
+        "account_export": ACCOUNT_EXPORT_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,
         "community": COMMUNITY_THROTTLE_RATE,
         "added_pubs": ADDED_PUBS_THROTTLE_RATE,
@@ -510,6 +615,10 @@ REST_FRAMEWORK = {
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,
+        "follows": FOLLOWS_THROTTLE_RATE,
+        "night_comments": NIGHT_COMMENTS_THROTTLE_RATE,
+        "stats": STATS_THROTTLE_RATE,
+        "challenges": CHALLENGES_THROTTLE_RATE,
         "friends_dashboard": FRIENDS_DASHBOARD_THROTTLE_RATE,
         "auth": AUTH_THROTTLE_RATE,
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,
@@ -521,6 +630,7 @@ REST_FRAMEWORK = {
         "menu_scan": MENU_SCAN_THROTTLE_RATE,
         "beer_photo_upload": BEER_PHOTO_UPLOAD_THROTTLE_RATE,
         "photo_contest": PHOTO_CONTEST_THROTTLE_RATE,
+        "public_reads": PUBLIC_READS_THROTTLE_RATE,
     },
 }
 
@@ -543,6 +653,11 @@ _auth_token_ttl_days = os.environ.get("AUTH_TOKEN_TTL_DAYS", "").strip()
 AUTH_TOKEN_TTL_DAYS: int | None = int(_auth_token_ttl_days) if _auth_token_ttl_days else None
 # Soft-delete grace window before a pending-deletion account is hard-purged.
 ACCOUNT_DELETION_GRACE_DAYS: int = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "14"))
+# Version of the community-content (UGC) terms. Intentionally code-versioned,
+# not env-configurable: it changes only with a release that changes the rules.
+# Accounts store the version they accepted (ugc_terms_version / accepted_at) so
+# the server can prove which rules a user agreed to.
+UGC_POLICY_VERSION = "2026-08-22"
 
 # --- Deep links / web fallback (used in transactional emails) ---
 # Custom URL scheme of the mobile app (app.config.ts `scheme`). Password reset
@@ -584,6 +699,14 @@ APPLE_TEAM_ID: str = os.environ.get("APPLE_TEAM_ID", "")
 APPLE_KEY_ID: str = os.environ.get("APPLE_KEY_ID", "")
 APPLE_PRIVATE_KEY: str = os.environ.get("APPLE_PRIVATE_KEY", "")
 
+# Android App Links (/.well-known/assetlinks.json). Comma-separated SHA-256
+# fingerprints of the Android signing certificate(s) — from EAS credentials or
+# `keytool -list -v`. Never invented by the server: unset or malformed values
+# serve no association (fail closed) and the deploy check refuses to pass.
+ANDROID_APP_LINK_CERT_FINGERPRINTS: str = os.environ.get(
+    "ANDROID_APP_LINK_CERT_FINGERPRINTS", ""
+)
+
 # --- Resend transactional email ---
 RESEND_API_KEY: str = os.environ.get("RESEND_API_KEY", "")
 EMAIL_FROM: str = os.environ.get("EMAIL_FROM", "Na Pivo <noreply@napivo.cz>")
@@ -619,6 +742,11 @@ LOGGING = {
         "level": LOG_LEVEL,
     },
     "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
         "django.server": {
             "handlers": ["console"],
             "level": LOG_LEVEL,
@@ -639,6 +767,12 @@ LOGGING = {
 # command is a no-op, so leaving them unset disables the sync entirely.
 LINEAR_API_KEY: str = os.environ.get("LINEAR_API_KEY", "")
 LINEAR_TEAM_ID: str = os.environ.get("LINEAR_TEAM_ID", "")
+# Operator assertion, not a live permission probe: the deploy check trusts
+# this env flag as confirmation that the Linear key may perform permanent
+# issueDelete during account purge.
+LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED: bool = os.environ.get(
+    "LINEAR_FEEDBACK_DELETE_ADMIN_CONFIRMED", ""
+).strip().lower() in ("1", "true", "yes", "on")
 
 # ---------------------------------------------------------------------------
 # CORS (django-cors-headers)
@@ -674,7 +808,7 @@ FIRMY_USER_AGENT: str = os.environ.get(
 # Minimum seconds between consecutive Firmy.cz HTTP requests (rate limiting).
 FIRMY_MIN_INTERVAL_SEC: float = float(os.environ.get("FIRMY_MIN_INTERVAL_SEC", "3"))
 
-# Hard daily cap on Firmy.cz requests across the whole process.
+# Hard database-backed daily cap shared by every Firmy.cz process.
 FIRMY_DAILY_CAP: int = int(os.environ.get("FIRMY_DAILY_CAP", "2000"))
 
 # ---------------------------------------------------------------------------
@@ -712,8 +846,8 @@ OPENROUTER_MODEL: str = os.environ.get(
 )
 # Per-request HTTP timeout in seconds (vision is slow).
 OPENROUTER_TIMEOUT: int = int(os.environ.get("OPENROUTER_TIMEOUT", "30"))
-# Hard process-wide daily cap on OpenRouter chat requests (cost guard; counts
-# individual requests and resets at UTC midnight).
+# Hard database-backed daily cap shared by every OpenRouter process. It counts
+# individual requests and resets at UTC midnight.
 OPENROUTER_DAILY_CAP: int = int(os.environ.get("OPENROUTER_DAILY_CAP", "5000"))
 
 # Menu-scan image pipeline limits (mirror the avatar guards).
@@ -750,8 +884,10 @@ FIRMY_ERROR_RETRY_COOLDOWN_MINUTES: int = int(
 )
 
 # Maximum number of pubs to enrich synchronously (in-request) per POST /v1/pub-hours.
-# Pubs beyond this budget get an EnrichTask and return status "pending".
-SYNC_ENRICH_BUDGET: int = int(os.environ.get("SYNC_ENRICH_BUDGET", "3"))
+# Local/dev keeps the configurable budget for diagnostics. Production always
+# queues cache misses so a user request never waits on Firmy.cz.
+_configured_sync_enrich_budget = int(os.environ.get("SYNC_ENRICH_BUDGET", "3"))
+SYNC_ENRICH_BUDGET: int = _configured_sync_enrich_budget if DEBUG else 0
 
 # ---------------------------------------------------------------------------
 # Production hardening (only when DEBUG is False)
@@ -760,13 +896,7 @@ SYNC_ENRICH_BUDGET: int = int(os.environ.get("SYNC_ENRICH_BUDGET", "3"))
 # and local `runserver` keep working without TLS or a proxy. In production we
 # fail fast on insecure configuration and force TLS / secure-cookie defaults.
 if not DEBUG:
-    from django.core.exceptions import ImproperlyConfigured
-
-    if SECRET_KEY.startswith("django-insecure"):
-        raise ImproperlyConfigured(
-            "SECRET_KEY is still the insecure development default. "
-            "Set a strong, unique SECRET_KEY environment variable in production."
-        )
+    _validate_production_secret_key(SECRET_KEY)
 
     if not FIRMY_PROXY_URL:
         raise ImproperlyConfigured(
@@ -775,7 +905,7 @@ if not DEBUG:
             "be configured. Set FIRMY_PROXY_URL (see README)."
         )
 
-    if SYNC_ENRICH_BUDGET < 0:
+    if _configured_sync_enrich_budget < 0:
         raise ImproperlyConfigured(
             "SYNC_ENRICH_BUDGET must be >= 0. With 0, cold lookups return "
             "status 'pending' and refresh_hours performs enrichment in the "
@@ -796,6 +926,7 @@ if not DEBUG:
     # HSTS — 1 year, including subdomains.
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
     # Cookies only over TLS.
     SESSION_COOKIE_SECURE = True

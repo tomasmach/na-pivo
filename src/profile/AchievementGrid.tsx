@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { BADGE_CATALOG } from '@/profile/badgeCatalog';
@@ -26,16 +26,21 @@ function resolvedAchievements(
 export function AchievementGrid({
   mapper,
   achievements,
+  limit,
 }: {
   mapper: AccountMapper | undefined;
   achievements: AccountAchievements;
+  /** Show only the first N badges — the profile teaser behind "Zobrazit vše".
+   *  Unset renders the whole cabinet (the /profile/badges screen). */
+  limit?: number;
 }) {
   const effective = useMemo(() => resolvedAchievements(mapper, achievements), [mapper, achievements]);
   const rows = useMemo(() => {
+    const catalog = limit === undefined ? BADGE_CATALOG : BADGE_CATALOG.slice(0, limit);
     const result: (typeof BADGE_CATALOG)[number][][] = [];
-    for (let i = 0; i < BADGE_CATALOG.length; i += 3) result.push(BADGE_CATALOG.slice(i, i + 3));
+    for (let i = 0; i < catalog.length; i += 3) result.push(catalog.slice(i, i + 3));
     return result;
-  }, []);
+  }, [limit]);
 
   return (
     <View style={styles.grid}>
@@ -78,7 +83,7 @@ const styles = StyleSheet.create({
   medallion: { width: 52, height: 52, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   medallionOn: { backgroundColor: withAlpha(Colors.amber, 0.18), borderWidth: 1, borderColor: withAlpha(Colors.amber, 0.5) },
   medallionOff: { backgroundColor: Colors.stout3, borderWidth: 1, borderColor: Colors.border },
-  title: { fontFamily: Fonts.display.bold, fontSize: 13, color: Colors.foam, textAlign: 'center' },
+  title: { fontWeight: '700', fontSize: 13, color: Colors.foam, textAlign: 'center' },
   titleLocked: { color: Colors.mutedText },
-  hint: { fontFamily: Fonts.ui.regular, fontSize: 11, lineHeight: 15, color: Colors.mutedText, textAlign: 'center' },
+  hint: { fontWeight: '400', fontSize: 11, lineHeight: 15, color: Colors.mutedText, textAlign: 'center' },
 });

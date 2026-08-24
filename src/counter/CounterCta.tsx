@@ -9,7 +9,7 @@
 import React, { memo, useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
 
@@ -31,6 +31,7 @@ export interface CounterSecondaryProps {
   label: string;
   onPress: () => void;
   accessibilityLabel?: string;
+  disabled?: boolean;
 }
 
 /** The quiet twin under the CTA: "Něco jiného" — a different beer, a shot, a
@@ -41,13 +42,23 @@ export const CounterSecondary = memo(function CounterSecondary({
   label,
   onPress,
   accessibilityLabel,
+  disabled = false,
 }: CounterSecondaryProps) {
+  const handlePress = useCallback(() => {
+    if (!disabled) onPress();
+  }, [disabled, onPress]);
+
   return (
     <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.secondary, pressed && styles.secondaryPressed]}
+      onPress={handlePress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.secondary,
+        pressed && !disabled && styles.secondaryPressed,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled }}
     >
       <Text style={styles.secondaryLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
@@ -150,7 +161,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.stout,
     textAlign: 'center',
@@ -160,7 +171,7 @@ const styles = StyleSheet.create({
     color: withAlpha(Colors.stout, 0.55),
   },
   subLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: withAlpha(Colors.stout, 0.72),
     marginTop: 2,
@@ -185,7 +196,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   secondaryLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
     includeFontPadding: false,

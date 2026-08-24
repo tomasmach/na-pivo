@@ -34,11 +34,15 @@ import {
   type FriendPubActivity,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import {
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
@@ -49,7 +53,11 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 const SLIDE_MS = 180;
 
 const ORDER: readonly ActivityResponseKind[] = ['going', 'maybe', 'cant'];
-const INDEX: Record<ActivityResponseKind, number> = { going: 0, maybe: 1, cant: 2 };
+const INDEX: Record<ActivityResponseKind, number> = {
+  going: 0,
+  maybe: 1,
+  cant: 2,
+};
 
 const TRACK_PADDING = 3;
 const THUMB_INPUT = [0, 1, 2];
@@ -91,6 +99,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
 
   const [selected, setSelected] = useState<ActivityResponseKind | null>(myResponse);
   const [trackWidth, setTrackWidth] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
 
   const segW = trackWidth > 0 ? (trackWidth - TRACK_PADDING * 2) / 3 : 0;
   const measured = segW > 0;
@@ -164,55 +173,51 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
 
   const handlePress = useCallback(
     (kind: ActivityResponseKind) => {
+      if (pendingRef.current) return;
       const prev = selected;
+      pendingRef.current = true;
+      setSubmitting(true);
+      const seq = ++seqRef.current;
+      const clearing = prev === kind;
+      if (clearing) fireLight();
+      else if (kind === 'going') fireSuccess();
+      else fireLight();
+      setSelected(clearing ? null : kind);
 
-      // Tapping the selected segment clears the response.
-      if (prev === kind) {
-        fireLight();
-        setSelected(null);
-        showToast(cs.friends.rsvpClearedToast);
-        pendingRef.current = true;
-        const seq = ++seqRef.current;
-        void clearActivityResponse(activityId).then((res) => {
+      void runPrivateAccountMutation(async () => {
+        const response = clearing
+          ? await clearActivityResponse(activityId)
+          : await respondToActivity(activityId, kind);
+        if (response.ok) return 'delivered' as const;
+        if (!isRetriableFriendError(response)) return 'rejected' as const;
+        const queued = await enqueueFriendOp(
+          clearing ? { op: 'rsvp-clear', activityId } : { op: 'rsvp', activityId, response: kind },
+        );
+        return queued === 'storage-error' ? ('storage-error' as const) : ('queued' as const);
+      })
+        .then((result) => {
           if (seq !== seqRef.current) return;
-          pendingRef.current = false;
-          if (res.ok) {
-            onResponded();
-          } else {
-            if (isRetriableFriendError(res)) {
-              void enqueueFriendOp({ op: 'rsvp-clear', activityId });
-              showToast(cs.friends.rsvpQueued);
-              return;
-            }
+          if (result === 'rejected' || result === 'storage-error') {
             setSelected(prev);
             showToast(cs.friends.rsvpError);
-          }
-        });
-        return;
-      }
-
-      // Exactly one haptic per tap: 'going' is the warm success cue, the cooler
-      // 'maybe'/'cant' answers get a light impact instead.
-      if (kind === 'going') fireSuccess();
-      else fireLight();
-      setSelected(kind);
-      pendingRef.current = true;
-      const seq = ++seqRef.current;
-      void respondToActivity(activityId, kind).then((res) => {
-        if (seq !== seqRef.current) return;
-        pendingRef.current = false;
-        if (res.ok) {
-          onResponded();
-        } else {
-          if (isRetriableFriendError(res)) {
-            void enqueueFriendOp({ op: 'rsvp', activityId, response: kind });
-            showToast(cs.friends.rsvpQueued);
             return;
           }
+          if (result === 'queued') showToast(cs.friends.rsvpQueued);
+          else if (clearing) showToast(cs.friends.rsvpClearedToast);
+          if (result === 'delivered') onResponded();
+        })
+        .catch((error) => {
+          if (seq !== seqRef.current) return;
           setSelected(prev);
-          showToast(cs.friends.rsvpError);
-        }
-      });
+          if (!(error instanceof PrivateAccountMutationFrozenError)) {
+            showToast(cs.friends.rsvpError);
+          }
+        })
+        .finally(() => {
+          if (seq !== seqRef.current) return;
+          pendingRef.current = false;
+          setSubmitting(false);
+        });
     },
     [activityId, selected, onResponded, showToast],
   );
@@ -238,10 +243,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
       accessibilityRole="radiogroup"
       accessibilityLabel={cs.a11y.rsvpGroup}
     >
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.thumb, { width: segW }, thumbStyle]}
-      />
+      <Animated.View pointerEvents="none" style={[styles.thumb, { width: segW }, thumbStyle]} />
 
       {measured && selected === null
         ? [1, 2].map((i) => (
@@ -260,9 +262,10 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
           <Pressable
             key={kind}
             onPress={() => handlePress(kind)}
+            disabled={submitting}
             style={({ pressed }) => [styles.segment, pressed && styles.segmentPressed]}
             accessibilityRole="radio"
-            accessibilityState={{ selected: isSelected }}
+            accessibilityState={{ selected: isSelected, disabled: submitting }}
             accessibilityLabel={label}
             accessibilityHint={isSelected ? cs.mapPub.clearHint : undefined}
           >
@@ -320,7 +323,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   segmentText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     textAlign: 'center',
   },

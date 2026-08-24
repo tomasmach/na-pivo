@@ -18,12 +18,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { AppState } from 'react-native';
 
-import { useDevicePosition } from '@/compass/useDevicePosition';
+import { useDevicePosition, type DevicePosition } from '@/compass/useDevicePosition';
 import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
-import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useTallyStore } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
 
@@ -58,6 +57,8 @@ function sessionStandInPub(pubKey: string, name: string): Pub {
 export interface UseNearbyPubResult {
   candidates: NearbyCandidate[];
   selected: Pub | null;
+  /** Latest fix from this hook's single GPS watcher (null before focus/fix). */
+  position: DevicePosition | null;
   /** Pin a specific candidate as the active pub (manual override). */
   selectPub: (pub: Pub) => void;
   permissionState: PermissionState;
@@ -124,9 +125,8 @@ export function useNearbyPub(): UseNearbyPubResult {
 
   const { position } = useDevicePosition(focused && permissionState === 'granted');
 
-  useEffect(() => {
-    if (position) recordWalkingSample(position);
-  }, [position]);
+  // Walking telemetry is fed from the raw watcher stream inside
+  // useDevicePosition; published positions are deduped and would under-sample.
 
   const positionLat = position?.lat;
   const positionLng = position?.lng;
@@ -233,12 +233,13 @@ export function useNearbyPub(): UseNearbyPubResult {
     () => ({
       candidates,
       selected,
+      position,
       selectPub,
       permissionState,
       requestPermission,
       loading,
       retry,
     }),
-    [candidates, selected, selectPub, permissionState, requestPermission, loading, retry],
+    [candidates, selected, position, selectPub, permissionState, requestPermission, loading, retry],
   );
 }

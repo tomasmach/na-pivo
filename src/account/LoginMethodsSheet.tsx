@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,13 +10,16 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
-import { CheckIcon, KeyRoundIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CloseButton } from '@/components/shared/CloseButton';
+import { CheckIcon, KeyRoundIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import type { AuthProvider } from '@/data/auth';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 
 interface LoginMethodsSheetProps {
   visible: boolean;
@@ -38,6 +40,7 @@ interface MethodRowProps {
   canUnlink: boolean;
   busy: boolean;
   blocked: boolean;
+  first?: boolean;
   onPress: () => void;
 }
 
@@ -49,6 +52,7 @@ function MethodRow({
   canUnlink,
   busy,
   blocked,
+  first = false,
   onPress,
 }: MethodRowProps) {
   const disabled = blocked || (linked && !canUnlink);
@@ -64,7 +68,7 @@ function MethodRow({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
@@ -134,126 +138,88 @@ export function LoginMethodsSheet({
   const hasApple = providers.includes('apple');
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+        <View
+          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+        >
+          <View style={styles.grabber} />
 
-        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
+          <View style={styles.header}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.account.ctaMethods}
+            </Text>
+            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+          </View>
+
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.grabber} />
-
-            <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.account.ctaMethods}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [
-                  styles.closeButton,
-                  pressed && styles.rowPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-            >
+            <MethodRow
+              provider="email"
+              name={cs.account.methodEmail}
+              icon={KeyRoundIcon}
+              linked={hasEmail}
+              canUnlink={canUnlink}
+              busy={busy === 'unlink_email' || busy === 'setPassword'}
+              blocked={busy !== null}
+              first
+              onPress={hasEmail ? () => onUnlink('email') : onSetPassword}
+            />
+            <MethodRow
+              provider="google"
+              name={cs.account.methodGoogle}
+              icon={GoogleIcon}
+              linked={hasGoogle}
+              canUnlink={canUnlink}
+              busy={busy === 'link_google' || busy === 'unlink_google'}
+              blocked={busy !== null}
+              onPress={
+                hasGoogle ? () => onUnlink('google') : () => onLink('google')
+              }
+            />
+            {appleSupported ? (
               <MethodRow
-                provider="email"
-                name={cs.account.methodEmail}
-                icon={KeyRoundIcon}
-                linked={hasEmail}
+                provider="apple"
+                name={cs.account.methodApple}
+                icon={AppleIcon}
+                linked={hasApple}
                 canUnlink={canUnlink}
-                busy={busy === 'unlink_email' || busy === 'setPassword'}
-                blocked={busy !== null}
-                onPress={hasEmail ? () => onUnlink('email') : onSetPassword}
-              />
-              <View style={styles.divider} />
-              <MethodRow
-                provider="google"
-                name={cs.account.methodGoogle}
-                icon={GoogleIcon}
-                linked={hasGoogle}
-                canUnlink={canUnlink}
-                busy={busy === 'link_google' || busy === 'unlink_google'}
+                busy={busy === 'link_apple' || busy === 'unlink_apple'}
                 blocked={busy !== null}
                 onPress={
-                  hasGoogle ? () => onUnlink('google') : () => onLink('google')
+                  hasApple ? () => onUnlink('apple') : () => onLink('apple')
                 }
               />
-              {appleSupported ? (
-                <>
-                  <View style={styles.divider} />
-                  <MethodRow
-                    provider="apple"
-                    name={cs.account.methodApple}
-                    icon={AppleIcon}
-                    linked={hasApple}
-                    canUnlink={canUnlink}
-                    busy={busy === 'link_apple' || busy === 'unlink_apple'}
-                    blocked={busy !== null}
-                    onPress={
-                      hasApple ? () => onUnlink('apple') : () => onLink('apple')
-                    }
-                  />
-                </>
-              ) : null}
-            </ScrollView>
-          </Pressable>
+            ) : null}
+          </ScrollView>
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   cardWrap: {
     width: '100%',
-    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    flex: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -265,23 +231,13 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
     includeFontPadding: false,
   },
-  closeButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   list: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -291,12 +247,13 @@ const styles = StyleSheet.create({
     minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: Spacing.sm,
     paddingVertical: Spacing.sm,
-  },
-  divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.border, 0.4),
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  rowFirst: {
+    borderTopWidth: 0,
   },
   rowPressed: {
     opacity: 0.6,
@@ -314,15 +271,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowName: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
+    ...MockType.bodySemibold,
     color: Colors.foam,
     includeFontPadding: false,
   },
   rowMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
+    ...MockType.bodySmall,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
@@ -338,14 +293,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,

@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
 from django.utils import timezone
@@ -11,6 +12,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.accounts import issue_token
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import Account, EmailCredential
 from pubs.pub_events import PubEvent
 
@@ -165,3 +167,62 @@ def test_suggestion_rejects_invalid_or_unbounded_time_window():
     assert invalid_response.status_code == status.HTTP_400_BAD_REQUEST
     assert long_response.status_code == status.HTTP_400_BAD_REQUEST
     assert PubEvent.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+def test_suggestion_with_current_header_and_no_acceptance_returns_428():
+    _, token = _claimed_account()
+    client = APIClient()
+
+    denied = client.post(
+        "/v1/pub-events",
+        _payload(timezone.now()),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert PubEvent.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_accepted_account_suggests_with_current_header_and_public_read_unblocked():
+    account, token = _claimed_account()
+    client = APIClient()
+    _accept_ugc(client, token)
+
+    created = client.post(
+        "/v1/pub-events",
+        _payload(timezone.now()),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert created.status_code == status.HTTP_201_CREATED, created.content
+    assert PubEvent.objects.filter(account=account).count() == 1
+
+    read = client.get("/v1/pub-events?cache_key=u2fkbnhz", **_policy_header())
+    assert read.status_code == status.HTTP_200_OK

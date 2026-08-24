@@ -1,9 +1,8 @@
 /**
  * "Zmapuj hospodu" — the community pub-amenities bottom sheet (spec §3).
  *
- * Uses the same scaffold as PubFilterSheet: a transparent fade Modal with
- * a Reanimated spring slide-up over a dimmed scrim, a drag handle, safe-area
- * bottom pad, and reduce-motion gating. On top of that scaffold it renders the
+ * Uses the shared intent-sheet scaffold with a dimmed scrim, spring slide-up,
+ * grabber, safe-area padding and reduced-motion gating. On top of it renders the
  * amenity taxonomy grouped under the five section labels; each row is an
  * icon + label + the live community signal + a SEGMENTED two-button ANO|NE
  * control (explicit buttons, not a blind 3-state cycle — tapping the active half
@@ -25,26 +24,18 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
-  KeyboardAvoidingView,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -63,6 +54,10 @@ import {
   PlusIcon,
   FlagIcon,
 } from '@/components/shared/IconGlyph';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { useAfterModalDismiss } from '@/components/shared/useAfterModalDismiss';
+import { CloseButton } from '@/components/shared/CloseButton';
+import { RenamePromptSheet } from '@/components/shared/RenamePromptSheet';
 import { CompletenessRing } from '@/components/amenities/CompletenessRing';
 import { Toast } from '@/components/shared/Toast';
 import { renderAmenityIcon } from '@/components/amenities/amenityIcons';
@@ -179,11 +174,11 @@ export function MapPubSheet({
   const facts = usePubInfoFacts(info);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
 
-  // The sheet is an RN Modal (a native window above everything), so opening the
+  // The sheet lives in a native modal window, so opening the
   // contribute editor needs it to step aside — otherwise it would cover the
   // editor. Tie its visibility to screen focus instead of hard-closing it:
-  // pushing /contribute blurs this screen → the Modal hides → the editor shows;
-  // popping back refocuses → the Modal returns. The host's `visible` flag never
+  // pushing /contribute blurs this screen → the sheet hides → the editor shows;
+  // popping back refocuses → the sheet returns. The host's `visible` flag never
   // changes, so the user lands back ON the hub (not the bare tab) after editing.
   const [screenFocused, setScreenFocused] = useState(true);
   useFocusEffect(
@@ -211,9 +206,15 @@ export function MapPubSheet({
   // still passes the old pubName until its own detection catches up).
   const [renamedName, setRenamedName] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [renameVisible, setRenameVisible] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
   const bodyRef = useRef<ScrollView>(null);
+  const afterModalDismiss = useAfterModalDismiss();
+
+  const runAfterSheetClose = useCallback((action: () => void) => {
+    afterModalDismiss(action);
+  }, [afterModalDismiss]);
 
   // Reset to "loading" during render when the pub changes, so a previous pub's
   // data never bleeds into a new open (the React-recommended alternative to a
@@ -228,9 +229,6 @@ export function MapPubSheet({
 
   const displayName = renamedName ?? pubName;
 
-  // The Modal keeps this component mounted between openings, which also keeps
-  // the native ScrollView's last offset. A previously scrolled detail could
-  // therefore reopen beyond its content and show only the brown card surface.
   // Always start a newly shown pub detail at its first row. The body itself has
   // no editable fields, so it intentionally stays independent of keyboard
   // insets; the rename editor handles the keyboard in its own overlay below.
@@ -486,26 +484,8 @@ export function MapPubSheet({
     ],
   );
 
-  // ── Shared sheet slide-up animation. ──
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    if (showSheet) {
-      progress.value = 0;
-      progress.value = reduceMotion
-        ? withTiming(1, { duration: 0 })
-        : withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
-    } else {
-      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
-    }
-  }, [showSheet, reduceMotion, progress]);
-
-  const cardAnim = useAnimatedStyle(() => ({
-    opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * 48 }],
-  }));
-
   // ── Otevíračka / piva: deep-link into the contribute editor ──
-  // Don't close the sheet — focus-gated visibility (showSheet) hides the Modal
+  // Don't close the sheet — focus-gated visibility (showSheet) hides the sheet
   // while the editor is up and restores it on return, so the user comes back to
   // the hub. Route with the current data pre-filled + a `focus` so the editor
   // lands on the tapped section.
@@ -528,7 +508,8 @@ export function MapPubSheet({
     if (!info) return;
     setRenameDraft(displayName);
     setRenameOpen(true);
-  }, [info, displayName, setRenameDraft, setRenameOpen]);
+    runAfterSheetClose(() => setRenameVisible(true));
+  }, [info, displayName, runAfterSheetClose]);
 
   const handleEditAddedPub = useCallback(() => {
     if (!info?.userAddedClientId) return;
@@ -547,8 +528,9 @@ export function MapPubSheet({
 
   const handleRenameCancel = useCallback(() => {
     if (renameSubmitting) return;
-    setRenameOpen(false);
-  }, [renameSubmitting]);
+    setRenameVisible(false);
+    runAfterSheetClose(() => setRenameOpen(false));
+  }, [renameSubmitting, runAfterSheetClose]);
 
   const handleRenameSubmit = useCallback(() => {
     if (!info || renameSubmitting) return;
@@ -579,43 +561,34 @@ export function MapPubSheet({
     const entry = buildPubNameCorrectionEntry(pubForCorrection, trimmed);
     enqueuePubNameCorrection(entry)
       .then((synced) => {
-        setRenameOpen(false);
-        showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
+        setRenameVisible(false);
+        runAfterSheetClose(() => {
+          setRenameOpen(false);
+          showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
+        });
+      })
+      .catch(() => {
+        renameLocalPub(pubForCorrection.id, displayName);
+        usePubStore.getState().bumpCatalogRevision();
+        setRenamedName(displayName);
+        onRenamed?.(displayName);
+        showToast(cs.pubDetail.saveFailed);
       })
       .finally(() => setRenameSubmitting(false));
-  }, [info, renameSubmitting, renameDraft, displayName, showToast, onRenamed]);
+  }, [info, renameSubmitting, renameDraft, displayName, showToast, onRenamed, runAfterSheetClose]);
 
   const renameTrimmed = renameDraft.trim();
   const canRename = renameTrimmed.length > 0 && renameTrimmed !== displayName.trim() && !renameSubmitting;
 
   return (
-    <Modal
-      visible={showSheet}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={renameOpen ? handleRenameCancel : onClose}
-    >
-      <View style={styles.backdrop}>
-        {/* Backdrop sits BEHIND the card as an absolute-fill sibling, so tapping
-            outside dismisses while taps on the card are absorbed by its own views.
-            The card must NOT be wrapped in a Pressable — a Pressable ancestor would
-            steal the vertical pan gesture and the amenity ScrollView could not scroll. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={cs.mapPub.closeA11y}
-        />
-        <Animated.View
-            style={[
-              styles.card,
-              softDrop(),
-              { paddingBottom: Math.max(insets.bottom, Spacing.md) },
-              cardAnim,
-            ]}
-          >
-            <View style={styles.handle} />
+    <>
+      <BottomSheetModal
+        visible={showSheet && !renameOpen}
+        onClose={onClose}
+      >
+        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+            <View style={styles.grabber} />
 
             {/* Header: title block + completeness ring + absolute close. */}
             <View style={styles.headerRow}>
@@ -656,17 +629,8 @@ export function MapPubSheet({
                 ) : null}
               </View>
               <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
+              <CloseButton onPress={onClose} label={cs.mapPub.closeA11y} />
             </View>
-
-            <Pressable
-              onPress={onClose}
-              hitSlop={12}
-              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.mapPub.closeA11y}
-            >
-              <XIcon size={18} color={Colors.foamMuted} />
-            </Pressable>
 
             <ScrollView
               ref={bodyRef}
@@ -737,7 +701,7 @@ export function MapPubSheet({
                   mapping intro collapsed into the ring (progress) + one public
                   chip; each row carries its own confidence, not a poll ratio. */}
               <View style={styles.sectionHead}>
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {cs.mapPub.amenitiesSection}
                 </Text>
                 <View style={styles.publicPill}>
@@ -751,10 +715,11 @@ export function MapPubSheet({
                 </View>
               </View>
 
-              {rows.map((row) => (
+              {rows.map((row, index) => (
                 <AmenityRowView
                   key={row.amenityKey}
                   row={row}
+                  first={index === 0}
                   aggregatesResolved={aggregatesResolved}
                   onVote={onVote}
                 />
@@ -771,72 +736,8 @@ export function MapPubSheet({
                 />
               )}
             </ScrollView>
-          </Animated.View>
-
-        {/* Rename editor as an in-modal overlay, NOT a second sibling <Modal>:
-            iOS can only present one modal view controller at a time, so a second
-            Modal opened while this one is up never appears (the tap on "Název
-            hospody" looked like a no-op). */}
-        {renameOpen && (
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={styles.renameOverlay}
-          >
-            <Pressable style={styles.renameScrim} onPress={handleRenameCancel} />
-            <View style={styles.renamePanel}>
-              <View style={styles.renameIconWell}>
-                <PencilIcon size={19} color={Colors.amber} />
-              </View>
-              <Text style={styles.renameTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.compass.renameTitle}
-              </Text>
-              <Text style={styles.renameBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.compass.renameBody(displayName)}
-              </Text>
-              <TextInput
-                value={renameDraft}
-                onChangeText={setRenameDraft}
-                style={styles.renameInput}
-                placeholder={cs.compass.renamePlaceholder}
-                placeholderTextColor={Colors.mutedText}
-                maxLength={200}
-                autoFocus
-                autoCorrect={false}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  if (canRename) handleRenameSubmit();
-                }}
-              />
-              <View style={styles.renameActions}>
-                <Pressable
-                  onPress={handleRenameCancel}
-                  style={({ pressed }) => [styles.renameSecondaryButton, pressed && { opacity: 0.72 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.common.cancel}
-                >
-                  <Text style={styles.renameSecondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.common.cancel}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleRenameSubmit}
-                  disabled={!canRename}
-                  style={({ pressed }) => [
-                    styles.renamePrimaryButton,
-                    !canRename && styles.renamePrimaryDisabled,
-                    pressed && canRename && { opacity: 0.86, transform: [{ scale: 0.98 }] },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.compass.renameSave}
-                >
-                  <Text style={styles.renamePrimaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {renameSubmitting ? cs.compass.renameSaving : cs.compass.renameSave}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-            )}
+          </View>
+        </View>
 
         {/* Toast host INSIDE the modal. The root <Toast> in _layout sits below
             this Modal's native window on iOS, so XP/level-up toasts fired from
@@ -844,8 +745,24 @@ export function MapPubSheet({
             same store and renders above the card (box-none, so it never blocks
             taps). The root instance keeps serving every other screen. */}
         <Toast />
-      </View>
-    </Modal>
+      </BottomSheetModal>
+
+      <RenamePromptSheet
+        visible={renameVisible}
+        title={cs.compass.renameTitle}
+        value={renameDraft}
+        placeholder={cs.compass.renamePlaceholder}
+        inputLabel={cs.a11y.renamePubInput}
+        cancelLabel={cs.common.cancel}
+        saveLabel={cs.compass.renameSave}
+        savingLabel={cs.compass.renameSaving}
+        submitting={renameSubmitting}
+        canSubmit={canRename}
+        onChange={setRenameDraft}
+        onCancel={handleRenameCancel}
+        onSubmit={handleRenameSubmit}
+      />
+    </>
   );
 }
 
@@ -853,12 +770,14 @@ export function MapPubSheet({
 
 interface AmenityRowViewProps {
   row: AmenityRow;
+  first: boolean;
   aggregatesResolved: boolean;
   onVote: (row: AmenityRow, half: AmenityVote) => void;
 }
 
 const AmenityRowView = React.memo(function AmenityRowView({
   row,
+  first,
   aggregatesResolved,
   onVote,
 }: AmenityRowViewProps) {
@@ -868,7 +787,7 @@ const AmenityRowView = React.memo(function AmenityRowView({
   const iconColor = isYes ? Colors.amber : Colors.mutedText;
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, first && styles.rowFirst]}>
       {renderAmenityIcon(row.icon, { size: 24, color: iconColor })}
       <View style={styles.rowTextWrap}>
         <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1232,27 +1151,22 @@ function mergeAggregate(
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
+  cardWrap: { width: '100%', maxHeight: '92%' },
   card: {
-    maxHeight: '90%',
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
+    ...softDrop(),
   },
-  handle: {
+  grabber: {
     alignSelf: 'center',
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     marginBottom: Spacing.md,
   },
   headerRow: {
@@ -1260,14 +1174,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    paddingRight: HitArea.min, // leave room for the absolute close button
   },
   titleWrap: {
     flex: 1,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
   },
   hoursRow: {
@@ -1283,42 +1195,31 @@ const styles = StyleSheet.create({
   },
   hours: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
   },
   subtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
   },
-  closeBtn: {
-    position: 'absolute',
-    top: Spacing.sm,
-    right: Spacing.sm,
-    width: HitArea.min,
-    height: HitArea.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   body: {
+    flexGrow: 0,
     flexShrink: 1,
-    marginTop: Spacing.xs,
+    marginTop: MockLayout.controlGap,
   },
   sectionHead: {
     marginTop: Spacing.lg,
-    marginBottom: Spacing.xs,
+    marginBottom: MockLayout.controlGap,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   sectionLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: Colors.mutedText,
+    ...MockType.titleS,
+    color: Colors.foam,
   },
   publicPill: {
     flexDirection: 'row',
@@ -1330,7 +1231,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amberLight, 0.09),
   },
   publicPillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     color: Colors.amberLight,
   },
@@ -1370,14 +1271,14 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.mutedText, 0.14),
   },
   tileLabel: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   tileValue: {
     marginTop: 3,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12.5,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1388,7 +1289,7 @@ const styles = StyleSheet.create({
   },
   tileRecency: {
     marginTop: 9,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1411,17 +1312,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    minHeight: 56,
-    paddingVertical: Spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: withAlpha(Colors.border, 0.5),
+    minHeight: 68,
+    paddingVertical: Spacing.sm + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
+  rowFirst: { borderTopWidth: 0 },
   rowTextWrap: {
     flex: 1,
     minWidth: 0,
   },
   rowLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -1434,13 +1336,13 @@ const styles = StyleSheet.create({
   },
   confText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11.5,
     color: Colors.mutedText,
   },
   confFirst: {
     color: Colors.amberLight,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
   },
   confDisputed: {
     color: Colors.amberLight,
@@ -1489,7 +1391,7 @@ const styles = StyleSheet.create({
   detailActionLabel: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -1523,7 +1425,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   halfText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1533,97 +1435,9 @@ const styles = StyleSheet.create({
   footerHint: {
     marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
   },
 
-  // ── Rename overlay (mirrors the compass ReportPubModal rename) ──
-  renameOverlay: {
-    ...StyleSheet.absoluteFill,
-    justifyContent: 'flex-end',
-  },
-  renameScrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: withAlpha(Colors.black, 0.58),
-  },
-  renamePanel: {
-    marginHorizontal: 14,
-    marginBottom: 14,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.32),
-    backgroundColor: Colors.stout2,
-    padding: 20,
-    gap: 14,
-  },
-  renameIconWell: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-  },
-  renameTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    lineHeight: 30,
-    color: Colors.foam,
-  },
-  renameBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-  },
-  renameInput: {
-    minHeight: 54,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.38),
-    backgroundColor: Colors.stout3,
-    paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 17,
-    color: Colors.foam,
-  },
-  renameActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 2,
-  },
-  renameSecondaryButton: {
-    flex: 1,
-    minHeight: 50,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: withAlpha(Colors.stout, 0.42),
-  },
-  renameSecondaryText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 15,
-    color: Colors.foamMuted,
-  },
-  renamePrimaryButton: {
-    flex: 1.35,
-    minHeight: 50,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  renamePrimaryDisabled: {
-    opacity: 0.42,
-  },
-  renamePrimaryText: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 16,
-    color: Colors.stout,
-  },
 });

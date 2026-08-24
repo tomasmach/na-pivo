@@ -38,7 +38,7 @@ export class Directory {
   }
 
   delete(): void {
-    // no-op
+    this.exists = false;
   }
 }
 
@@ -63,7 +63,7 @@ export class File {
   }
 
   delete(): void {
-    // no-op
+    this.exists = false;
   }
 
   async upload(_url: string, _options?: unknown): Promise<UploadResult> {

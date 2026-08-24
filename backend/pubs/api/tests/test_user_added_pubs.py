@@ -7,10 +7,12 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.enrichment import GoogleGeocodingUnavailableError, geohash8
 from pubs.models import Account, PubReport, UserAddedPub
 from pubs.user_added_pub_geocoding import ResolvedPubLocation
@@ -631,3 +633,93 @@ def test_add_pub_validation(client):
     assert bad_lat.status_code == status.HTTP_400_BAD_REQUEST
     assert missing_location.status_code == status.HTTP_400_BAD_REQUEST
     assert UserAddedPub.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+def test_add_pub_with_current_header_and_no_acceptance_returns_428(client):
+    token = _register(client)
+
+    denied = client.post(
+        "/v1/pubs",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert UserAddedPub.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_edit_pub_with_current_header_and_no_acceptance_returns_428(client):
+    token = _register(client)
+    created = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+
+    denied = client.patch(
+        f"/v1/pubs/{_CLIENT_ID}",
+        data={"name": "Nový název hospody"},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert UserAddedPub.objects.get().name == _NAME
+
+
+@pytest.mark.django_db
+def test_accepted_account_adds_pub_with_current_header(client):
+    token = _register(client)
+    _accept_ugc(client, token)
+
+    resp = client.post(
+        "/v1/pubs",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert UserAddedPub.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_list_and_report_are_not_blocked_by_consent_gate(client):
+    token = _register(client)
+
+    listed = client.get("/v1/pubs", **_auth(token), **_policy_header())
+    assert listed.status_code == status.HTTP_200_OK
+
+    reported = client.post(
+        "/v1/pub-reports",
+        data=_payload(reason="not_pub"),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert reported.status_code == status.HTTP_201_CREATED

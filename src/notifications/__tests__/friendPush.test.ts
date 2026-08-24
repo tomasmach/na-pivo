@@ -1,11 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  disableFriendPush,
+  ensureFriendPushRegisteredIfGranted,
+  registerFriendPush,
+} from '../friendPush';
+import { useSettingsStore } from '@/stores/settingsStore';
+
 const mockEnsurePushTokenRegistered = jest.fn(async () => 'ExponentPushToken[test]');
 const mockDisablePushDevice = jest.fn(async () => true);
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 jest.mock('expo-notifications', () => ({
@@ -21,13 +28,6 @@ jest.mock('@/data/pushDeviceClient', () => ({
   PUSH_TOKEN_KEY: 'na-pivo-expo-push-token',
   disablePushDevice: (...a: unknown[]) => mockDisablePushDevice(...(a as [])),
 }));
-
-import {
-  disableFriendPush,
-  ensureFriendPushRegisteredIfGranted,
-  registerFriendPush,
-} from '../friendPush';
-import { useSettingsStore } from '@/stores/settingsStore';
 
 beforeEach(async () => {
   jest.clearAllMocks();

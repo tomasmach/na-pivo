@@ -2,7 +2,7 @@ import React, { memo, type ReactNode } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { BeerIcon } from './IconGlyph';
 import { cs } from '@/i18n/cs';
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   titleText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     letterSpacing: 0.2,

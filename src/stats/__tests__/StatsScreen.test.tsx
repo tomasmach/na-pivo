@@ -7,7 +7,7 @@ import StatsScreenDefault from '../StatsScreen';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -17,7 +17,7 @@ jest.mock('react-native-safe-area-context', () => ({
 // Keep the screen purely local — no backend overlay, no network.
 jest.mock('@/data/statsClient', () => ({ fetchMyStats: jest.fn(async () => null) }));
 
-// fonts.ts require()s .ttf assets jest can't transform — stub the font tokens.
+// fonts.ts requires .ttf assets jest can't transform — stub the font tokens.
 jest.mock('@/theme/fonts', () => ({
   Fonts: {
     display: {
@@ -42,10 +42,12 @@ jest.mock('@/components/shared/IconGlyph', () => {
 const StatsScreen = StatsScreenDefault as React.ComponentType<{ embedded?: boolean }>;
 const fetchMyStatsMock = fetchMyStats as jest.MockedFunction<typeof fetchMyStats>;
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 let idSeq = 0;
+let renderer: ReturnType<typeof TestRenderer.create> | undefined;
+
 function drink(minutesAgo: number, priceCzk = 50) {
   idSeq += 1;
   return {
@@ -86,17 +88,22 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  act(() => renderer?.unmount());
+  renderer = undefined;
+});
+
 describe('StatsScreen', () => {
-  it('shows the empty state with no drinks', () => {
-    let renderer: ReturnType<typeof TestRenderer.create>;
-    act(() => {
+  it('shows the empty state with no drinks', async () => {
+    await act(async () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      await Promise.resolve();
     });
     const texts = flatTexts(renderer!);
     expect(texts).toContain(cs.stats.emptyTitle);
   });
 
-  it('renders the hero, records, totals and top pubs from local sessions', () => {
+  it('renders the hero, records, totals and top pubs from local sessions', async () => {
     act(() => {
       useTallyStore.setState({
         current: session({ pubKey: 'aaaaaaaa', pubName: 'U Zlatého tygra' }, [
@@ -113,9 +120,9 @@ describe('StatsScreen', () => {
       });
     });
 
-    let renderer: ReturnType<typeof TestRenderer.create>;
-    act(() => {
+    await act(async () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      await Promise.resolve();
     });
     const texts = flatTexts(renderer!);
 
@@ -157,7 +164,6 @@ describe('StatsScreen', () => {
       },
     });
 
-    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
       await Promise.resolve();

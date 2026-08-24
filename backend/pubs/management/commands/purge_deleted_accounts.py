@@ -9,8 +9,13 @@ Account deletion is a two-step process (see pubs.accounts):
 2. This command, run on a schedule (cron on the Hetzner box), hard-purges any
    account still pending past ACCOUNT_DELETION_GRACE_DAYS. The delete cascades
    credentials / identities / tokens and the CASCADE-bound personal data
-   (drinks, ratings, visits, usage stats); SET_NULL community contributions are
-   anonymized (account → NULL), which is what GDPR + the store policies want.
+   (drinks, ratings, visits, usage stats). Authored unverified contribution,
+   report, feedback and telemetry rows are removed outright; current community
+   state and its indexes are rebuilt from the surviving contributors;
+   independently verified external pub facts survive without an author link;
+   necessary moderation records keep their content but have reporter/target
+   identity scrubbed. Remotely synced feedback deletion is fail-closed before
+   any local purge runs.
 
 Usage:
     python manage.py purge_deleted_accounts            # purge expired
@@ -31,6 +36,8 @@ from pubs import accounts
 from pubs.models import Account
 
 logger = logging.getLogger("pubs.accounts")
+
+PURGE_BATCH_SIZE = 100
 
 
 class Command(BaseCommand):
@@ -69,15 +76,40 @@ class Command(BaseCommand):
             return
 
         purged = 0
-        for account in expired.iterator():
-            if dry_run:
-                self.stdout.write(f"  would purge {account.public_id} (deleted_at={account.deleted_at})")
-                continue
-            try:
-                accounts.hard_delete(account)
-                purged += 1
-            except Exception as exc:  # noqa: BLE001
-                logger.error("purge: failed to delete account %s: %s", account.public_id, exc)
+        last_pk = 0
+        while True:
+            candidates = list(
+                expired.filter(pk__gt=last_pk)
+                .order_by("pk")
+                .values("pk", "public_id", "deleted_at", "deletion_epoch")[:PURGE_BATCH_SIZE]
+            )
+            if not candidates:
+                break
+            last_pk = candidates[-1]["pk"]
+
+            for candidate in candidates:
+                if dry_run:
+                    self.stdout.write(
+                        "  would purge "
+                        f"{candidate['public_id']} (deleted_at={candidate['deleted_at']})"
+                    )
+                    continue
+                try:
+                    if accounts.hard_delete_expired_account(
+                        candidate["pk"],
+                        cutoff=cutoff,
+                        expected_deletion_epoch=candidate["deletion_epoch"],
+                    ):
+                        purged += 1
+                except Exception as exc:  # noqa: BLE001
+                    # Storage/database errors may echo private values. The
+                    # public account UUID plus exception class is enough to
+                    # operate the retryable batch without logging those values.
+                    logger.error(
+                        "purge: failed to delete account %s (%s)",
+                        candidate["public_id"],
+                        type(exc).__name__,
+                    )
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(f"Purged {purged}/{total} account(s)."))

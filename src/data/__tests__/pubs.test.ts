@@ -3,16 +3,20 @@ import {
   _init,
   _reset,
   clearPubsSnapshot,
+  fetchPubsPageNear,
   fetchPubsNear,
   findNearestPub,
   findNearbyPubs,
   findRandomPubInRadius,
   getPubById,
+  getAllLoadedPubs,
   isLoaded,
   pubIdForCoords,
   removeLocalPub,
+  readPubsSnapshot,
   renameLocalPub,
   upsertLocalPub,
+  upsertLocalPubs,
   type Pub,
 } from "../pubs";
 import { searchPubsNear } from "../mapyClient";
@@ -20,7 +24,7 @@ import { fetchBlockedPubReports } from "../pubReportsClient";
 import { geohash8 } from "../geohash";
 
 jest.mock("@react-native-async-storage/async-storage", () =>
-  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+  jest.requireActual("@react-native-async-storage/async-storage/jest/async-storage-mock"),
 );
 
 jest.mock("../mapyClient", () => ({
@@ -80,6 +84,44 @@ describe("fetchPubsNear", () => {
 
     expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
       beerBrandKey: "pilsner-urquell",
+      amenityKeys: [],
+    });
+  });
+
+  it("passes stable multi-brand filters to the Mapy client", async () => {
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      beerBrandKeys: ["radegast", "pilsner-urquell", "radegast"],
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKeys: ["pilsner-urquell", "radegast"],
+      amenityKeys: [],
+    });
+  });
+
+  it("keeps scalar and multi-brand cache identities distinct", async () => {
+    _reset();
+    (searchPubsNear as jest.Mock).mockResolvedValue([]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      beerBrandKey: "pilsner-urquell",
+    });
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      radiusKm: 25,
+      beerBrandKeys: ["pilsner-urquell"],
+    });
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      radiusKm: 25,
+      beerBrandKeys: ["pilsner-urquell", "pilsner-urquell"],
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(2);
+    expect(searchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKeys: ["pilsner-urquell"],
       amenityKeys: [],
     });
   });
@@ -281,6 +323,24 @@ describe("fetchPubsNear", () => {
   });
 });
 
+describe("fetchPubsPageNear", () => {
+  it("returns a blocked-filtered viewport without replacing the compass catalogue", async () => {
+    const viewportPub = { id: "viewport", name: "Viewport pub", lat: 49.2, lng: 16.61 };
+    const blockedPub = { id: "blocked", name: "Blocked pub", lat: 49.201, lng: 16.611 };
+    (searchPubsNear as jest.Mock).mockResolvedValue([viewportPub, blockedPub]);
+    (fetchBlockedPubReports as jest.Mock).mockResolvedValue([
+      { cacheKey: geohash8(blockedPub.lat, blockedPub.lng), externalId: null, reason: "not_pub" },
+    ]);
+
+    const before = getAllLoadedPubs();
+    const page = await fetchPubsPageNear(49.2, 16.61, undefined, { radiusKm: 5 });
+
+    expect(page.pubs).toEqual([viewportPub]);
+    expect(page.coveredKm).toBe(5);
+    expect(getAllLoadedPubs()).toEqual(before);
+  });
+});
+
 describe("fetchPubsNear — persistent snapshot cache", () => {
   const PRAGUE = { lat: 50.08, lng: 14.42 };
   const SNAPSHOT_PUBS: Pub[] = [
@@ -320,6 +380,35 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
 
     expect(searchPubsNear).not.toHaveBeenCalled();
     expect(getPubById("mapy:cached-1")?.name).toBe("U Cache");
+  });
+
+  it("reads an offline fallback without hydrating the live compass catalogue", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    await expect(readPubsSnapshot()).resolves.toEqual(SNAPSHOT_PUBS);
+    expect(isLoaded()).toBe(false);
+    expect(getAllLoadedPubs()).toEqual([]);
+  });
+
+  it("keeps local offline pubs in the read-only snapshot fallback", async () => {
+    const localPub = { id: "local:1", name: "Moje hospoda", lat: 50.082, lng: 14.422 };
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+    upsertLocalPub(localPub);
+
+    await expect(readPubsSnapshot()).resolves.toEqual([...SNAPSHOT_PUBS, localPub]);
+    expect(getAllLoadedPubs()).toEqual([localPub]);
   });
 
   it("keeps the primary offline snapshot when opt-in discovery cannot refresh", async () => {
@@ -556,6 +645,23 @@ describe("upsertLocalPub", () => {
 
     expect(getPubById("mapy:old")).toBeNull();
     expect(getPubById("mapy:new")?.name).toBe("Nový název");
+  });
+
+  it("applies a batch of local pubs with the same replacement behavior", () => {
+    const first: Pub = { id: "manual:first", name: "První", lat: 50.0812, lng: 14.4182 };
+    const replacement: Pub = {
+      id: "manual:replacement",
+      name: "Náhrada",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    const second: Pub = { id: "manual:second", name: "Druhá", lat: 49.1951, lng: 16.6068 };
+
+    upsertLocalPubs([first, replacement, second]);
+
+    expect(getPubById(first.id)).toBeNull();
+    expect(getPubById(replacement.id)?.name).toBe("Náhrada");
+    expect(getPubById(second.id)?.name).toBe("Druhá");
   });
 
   it("keeps a locally added pub when a fresh backend fetch rebuilds the index", async () => {

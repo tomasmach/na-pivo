@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 // The expo-constants mock reports version '1.1.5' — that is the "current"
@@ -12,12 +12,12 @@ const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 /**
- * `beforeEach` calls `jest.resetModules()`, so each fresh `require('../releaseStore')`
+ * `beforeEach` calls `jest.resetModules()`, so each fresh load of `../releaseStore`
  * binds to a NEW AsyncStorage mock instance. Read/seed via the same freshly
  * required instance the store persists into (mirrors settingsStore.test).
  */
 function currentAsyncStorage() {
-  const mod = require('@react-native-async-storage/async-storage');
+  const mod = jest.requireMock('@react-native-async-storage/async-storage');
   return mod.default ?? mod;
 }
 
@@ -62,7 +62,7 @@ describe('useReleaseStore.checkForUpdate', () => {
     const fetchSpy = jest.fn();
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     const state = useReleaseStore.getState();
@@ -76,7 +76,7 @@ describe('useReleaseStore.checkForUpdate', () => {
     const fetchSpy = jest.fn();
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     expect(useReleaseStore.getState().pendingNote).toBeNull();
@@ -87,7 +87,7 @@ describe('useReleaseStore.checkForUpdate', () => {
     await seedLastSeenVersion('1.0.0');
     global.fetch = jest.fn(noteResponse) as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     const state = useReleaseStore.getState();
@@ -104,7 +104,7 @@ describe('useReleaseStore.checkForUpdate', () => {
     await seedLastSeenVersion('1.0.0');
     global.fetch = jest.fn(noteResponse) as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
     useReleaseStore.getState().dismissNote();
 
@@ -121,7 +121,7 @@ describe('useReleaseStore.checkForUpdate', () => {
       json: async () => ({ detail: 'No release note for this version.' }),
     })) as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     const state = useReleaseStore.getState();
@@ -135,7 +135,7 @@ describe('useReleaseStore.checkForUpdate', () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     const state = useReleaseStore.getState();
@@ -150,7 +150,7 @@ describe('useReleaseStore.checkForUpdate', () => {
       () => new Promise((resolve) => { resolveFetch = resolve; })
     ) as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     const pending = useReleaseStore.getState().checkForUpdate();
     // Give the check time to pass its guards and start the fetch.
     await new Promise((r) => setTimeout(r, 0));
@@ -173,7 +173,7 @@ describe('useReleaseStore.checkForUpdate', () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     expect(useReleaseStore.getState().checkSettled).toBe(true);
@@ -182,7 +182,7 @@ describe('useReleaseStore.checkForUpdate', () => {
   it('flips checkSettled on a fresh install without fetching', async () => {
     global.fetch = jest.fn() as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
 
     expect(useReleaseStore.getState().checkSettled).toBe(true);
@@ -193,7 +193,7 @@ describe('useReleaseStore.checkForUpdate', () => {
     const fetchSpy = jest.fn(noteResponse);
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const { useReleaseStore } = require('../releaseStore');
+    const { useReleaseStore } = jest.requireActual('../releaseStore');
     await useReleaseStore.getState().checkForUpdate();
     await useReleaseStore.getState().checkForUpdate();
 

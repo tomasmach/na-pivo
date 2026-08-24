@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check generated games are fresh
+        run: node scripts/build-games.mjs --check
+
       - name: Audit production dependencies
         run: npm run audit:ci
 

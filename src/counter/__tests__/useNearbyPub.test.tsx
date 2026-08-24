@@ -254,6 +254,24 @@ describe('useNearbyPub', () => {
     hook.unmount();
   });
 
+  it('exposes exactly the DevicePosition published by its single watcher', async () => {
+    const watcherPosition: Position & { timestamp?: number } = {
+      lat: PUB_A.lat,
+      lng: PUB_A.lng,
+      accuracyMeters: 8,
+    };
+    (useDevicePosition as jest.Mock).mockImplementation((enabled: boolean) => ({
+      position: enabled ? watcherPosition : null,
+    }));
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+
+    await waitForExpectation(() => expect(hook.result.selected?.id).toBe(PUB_A.id));
+
+    expect(hook.result.position).toBe(watcherPosition);
+    hook.unmount();
+  });
+
   it('fetches candidates around the current GPS position', async () => {
     setNearby(PUB_A);
     const hook = renderNearbyHook();

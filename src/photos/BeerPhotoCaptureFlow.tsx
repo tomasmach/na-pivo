@@ -36,6 +36,12 @@ interface BeerPhotoCaptureFlowProps {
   initialContestEntry?: boolean;
   /** Fires after an online contest entry has landed. */
   onContestEntered?: () => void;
+  /** Attach the upload to the private shared-evening record. */
+  partyCode?: string | null;
+  /** Reserved code while the table create request is still in flight. */
+  pendingPartyCode?: string | null;
+  /** Keeps a Party photo in the local recap before a server table exists. */
+  partyDrinkingDay?: string | null;
 }
 
 export function BeerPhotoCaptureFlow({
@@ -45,6 +51,9 @@ export function BeerPhotoCaptureFlow({
   directSource,
   initialContestEntry = false,
   onContestEntered,
+  partyCode,
+  pendingPartyCode,
+  partyDrinkingDay,
 }: BeerPhotoCaptureFlowProps) {
   const showToast = useToastStore((s) => s.show);
   const [composeUri, setComposeUri] = useState<string | null>(null);
@@ -114,6 +123,9 @@ export function BeerPhotoCaptureFlow({
         <BeerPhotoComposeSheet
           pickedUri={composeUri}
           initialContestEntry={initialContestEntry}
+          partyCode={partyCode}
+          pendingPartyCode={pendingPartyCode}
+          partyDrinkingDay={partyDrinkingDay}
           onClose={() => setComposeUri(null)}
           onSaved={({ clientId, contestRequested, completion }) => {
             setComposeUri(null);

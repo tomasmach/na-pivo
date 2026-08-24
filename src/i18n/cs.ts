@@ -3,7 +3,7 @@
  * Structured by screen/component so adding a second locale later is trivial.
  */
 
-import { beerCountLabel, beerNoun, czechPlural, peopleCountLabel } from './plural';
+import { beerCountLabel, beerNoun, czechPlural, peopleCountLabel, pubCountLabel } from './plural';
 import type { DrinkType, OutsidePlaceContext, ServingType } from '@/drinks/drinkTypes';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
@@ -82,6 +82,62 @@ export const cs = {
     refresh: 'Načíst znovu',
     closeList: 'Zavřít seznam podniků',
     emptyList: 'V tomhle filtru zatím nic není.',
+  },
+
+  // — Hospody jako výběr místa večera (modal `/pick-pub` nad Pít) —
+  pubPicker: {
+    closeA11y: 'Zavřít výběr hospody',
+    outsideTitle: 'Mimo hospodu',
+    outsideFact: 'Doma, venku, na chatě…',
+  },
+
+  pubDetail: {
+    tabs: ['Info', 'Aktivita'] as const,
+    closeA11y: 'Zavřít detail hospody',
+    moreA11y: 'Další možnosti hospody',
+    navigate: 'Navigovat',
+    startHere: 'Začít tu večer',
+    chooseHere: 'Vybrat tuhle hospodu',
+    beerFallback: 'Pivo',
+    openingTitle: 'Otevíračka',
+    openingClosed: 'Zavřeno',
+    openingAdd: 'Doplnit otevíračku',
+    openingEditA11y: 'Upravit otevíračku',
+    tapsTitle: 'Na čepu',
+    tapsAdd: 'Doplnit piva a ceny',
+    tapsEditA11y: 'Upravit piva a ceny',
+    beerFrom: 'Pivo od',
+    eventsTitle: 'Aktuální akce',
+    eventVerified: 'Ověřeno',
+    eventSuggest: 'Navrhnout akci',
+    eventSuggestSignedOut: 'Přihlas se a navrhni akci',
+    visitsTitle: 'Co se tu dělo',
+    visits: 'Návštěv',
+    lastVisit: 'Naposled',
+    amenitiesTitle: 'Vybavení',
+    moreTitle: 'Co ještě?',
+    renameAction: 'Opravit název',
+    editOwnedAction: 'Upravit vlastní hospodu',
+    reportAction: 'Nahlásit hospodu',
+    reportTitle: 'Co je špatně?',
+    reportClosed: 'Hospoda zavřela',
+    reportNotPub: 'Není to hospoda',
+    reportConfirmTitle: (name: string) => `Nahlásit „${name}“?`,
+    reportConfirmBody: 'Nahlášení může hospodu skrýt i ostatním.',
+    reportConfirmCancel: 'Zpátky',
+    reportConfirmAction: 'Nahlásit',
+    reportSaved: 'Nahlášeno. Mrknu na to.',
+    reportQueued: 'Nahlášení je uložené. Pošlu ho, až bude signál.',
+    saveFailed: 'Teď to nešlo uložit. Zkus to za chvíli.',
+    renameTitle: 'Opravit název',
+    renameLabel: 'Název hospody',
+    renameSave: 'Uložit název',
+    activityLoadError: 'Aktivitu teď nejde načíst.',
+    activityEmpty: 'Zatím sem nikdo nic nezapsal. Buď první.',
+    activityRetry: 'Zkusit znovu',
+    activityLoadMore: 'Načíst další',
+    activityLoadMoreRetry: 'Zkusit další znovu',
+    activityLoadMoreA11y: 'Načíst další aktivitu hospody',
   },
 
   // — "Zmapuj hospodu" (community pub amenities + Mapér) —
@@ -253,7 +309,10 @@ export const cs = {
       `Přidej jinou hospodu, oprav „${pubName}“, nebo nahlas problém.`,
     reportRename: 'Opravit název',
     reportNotPub: 'Není to hospoda',
-    reportClosed: 'Hospoda už nefunguje',
+    reportConfirmTitle: (name: string) => `Nahlásit „${name}“?`,
+    reportConfirmBody: 'Nahlášení může hospodu skrýt i ostatním.',
+    reportConfirmCancel: 'Zpátky',
+    reportConfirmAction: 'Nahlásit',
     reportAddMissing: 'Přidat jinou hospodu',
     renameTitle: 'Jak se jmenuje?',
     renameBody: (pubName: string) =>
@@ -300,11 +359,17 @@ export const cs = {
     pubFilterLimit: (count: number) => `Vyber nejvýš ${count} vlastností, ať má kompas kde hledat.`,
     pubFilterClear: 'Zrušit',
     pubFilterApply: 'Ukázat hospody',
-    otherPlacesSection: 'MÍSTA',
+    beerFilterSection: 'Pivo',
+    otherPlacesSection: 'Místa',
+    amenityFilterSections: {
+      fun: 'Zábava',
+      practical: 'Praktické',
+      seating: 'Posezení',
+    },
     otherPlacesFilter: 'Další místa s výčepem',
     otherPlacesHint: 'Stánky, kempy a sportovní areály jen s potvrzeným pivním signálem.',
     // Price filter (histogram + two-thumb range slider) copy
-    priceFilterLabel: 'CENA PIVA',
+    priceFilterLabel: 'Cena piva',
     priceFilterSubtitle: 'Velké pivo · sloupce po 5 Kč. Ceny do roka, starší ber orientačně.',
     priceFilterFromLowest: 'Od nejlevnějšího',
     priceFilterFrom: (price: string) => `Od ${price}`,
@@ -387,17 +452,39 @@ export const cs = {
   onboarding: {
     skip: 'Přeskočit',
     next: 'Co dál?',
+    // Short lines, not paragraphs. Onboarding is read standing up with a thumb
+    // on "další" — three concrete things beat one well-written block nobody
+    // finishes. Each line is something the app actually does; no promises.
     slide1Title: 'Vítej Na pivu',
-    slide1Body:
-      'Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš. Šipka tě dovede do nejbližší otevřené hospody.',
-    slide2Title: 'Čárkuj si večer',
-    slide2Body:
-      'Piva si čárkuješ jako na tácku, statistiky a odznaky naskakují samy. Přidáš kamarády, uvidíš, kdo zrovna sedí v hospodě, a cinknete si na dálku.',
+    slide1Body: 'Pivní deníček do kapsy.',
+    slide1Bullets: [
+      // The compass leads, because it is the thing this app is still known for
+      // and the one line that says WHERE you are going. The diary comes second:
+      // it is what you do once you are there.
+      'Kompas na mapě tě dovede do nejbližší otevřené',
+      'Zapíšeš pivo dvěma ťuknutími',
+      'Soukromý přehled večerů naskakuje sám',
+    ],
+    slide2Title: 'Večer s partou',
+    slide2Body: 'Ne tabulka, ale večer.',
+    slide2Bullets: [
+      'Vidíš, kdo sedí u stolu',
+      'Hry rozhodnou, kdo platí rundu',
+      'Z večera je post, ne výkaz',
+    ],
     slide3Title: 'Ať o nic nepřijdeš',
-    slide3Body:
-      'Deník se ti neztratí, ani když vyměníš telefon, a parta tě najde. Bez účtu to jde taky, doplníš ho kdykoli.',
-    slide3BodyAndroid:
-      'Deník se ti neztratí, ani když vyměníš telefon. Věk může ověřit Google Play; datum narození ani doklady nevidím.',
+    slide3Body: 'Bez účtu to jde taky.',
+    slide3Bullets: [
+      'Deník přežije výměnu telefonu',
+      'Odznaky a mapérské žebříčky',
+      'Účet doplníš kdykoliv později',
+    ],
+    slide3BodyAndroid: 'Bez účtu to jde taky.',
+    slide3BulletsAndroid: [
+      'Deník přežije výměnu telefonu',
+      'Věk může ověřit Google Play',
+      'Datum narození ani doklady nevidím',
+    ],
     slide3Cta: 'Založit účet',
     slide3Later: 'Zatím bez účtu',
   },
@@ -432,8 +519,15 @@ export const cs = {
 
   settings: {
     title: 'Nastavení',
-    compassSection: 'Co ti kompas najde',
+    // "Co ti kompas najde" named the whole screen after one feature. The
+    // compass is a cell in the pub list now, not the product.
+    compassSection: 'Hledání hospod',
     notificationsSection: 'Kdy se ozvu',
+    privacySection: 'Soukromí',
+    privacyDoor: {
+      title: 'Kdo tě vidí',
+      subtitle: 'Neviditelný režim, sdílení piv s partou a klid v noci',
+    },
     locationPrivacy: 'Domov i trasu nechávám v telefonu. Historii polohy neukládám.',
     // Section group labels — one clear meaning per group.
     sections: {
@@ -442,13 +536,15 @@ export const cs = {
       contribute: 'PŘISPĚJ',
       about: 'O APLIKACI',
     },
-    // Account hub card at the top of settings (drills into /account when signed
-    // in, into /auth when signed out).
+    // Existing anonymous or claimed accounts drill into /account; only a
+    // genuinely missing session opens /auth.
     accountCard: {
       header: 'ÚČET',
       verified: 'E-mail ověřen',
       verifiedInline: 'e-mail ověřen',
       ctaSignedIn: 'Můj účet',
+      ctaManageData: 'Účet a data',
+      manageDataSubtitle: 'Správa dat nebo přihlášení',
       ctaSignedOutSubtitle: 'Piva, odznaky i partu ti přenesu na každý telefon',
       signedOutTitle: 'Přihlásit se',
       signedOutSubtitle: 'Sync piv, hodnocení a odznaků na všech zařízeních',
@@ -493,10 +589,10 @@ export const cs = {
       },
     },
     beerCountReminder: {
-      title: 'Připomenout další pivo',
-      subtitle: 'Po každém pivu posunu jednu upomínku. Sama se neopakuje.',
+      title: 'Kontrola deníčku',
+      subtitle: 'Po zápisu nastavím jednu upomínku ke kontrole deníčku. Sama se neopakuje.',
       intervalLabel: 'Za',
-      intervalOption: (minutes: number) => `Připomenout za ${minutes} minut`,
+      intervalOption: (minutes: number) => `Zkontrolovat deníček za ${minutes} minut`,
       intervalShort: (minutes: number) => `${minutes} min`,
     },
     sound: {
@@ -587,8 +683,12 @@ export const cs = {
     privacyBody: 'Trasy neukládám. Hlídám jen, jestli nejsi kousek od hospody.',
     cta: 'Zapnout připomínky',
     ctaBusy: 'Zapínám…',
-    back: 'Zpět',
     skip: 'Teď ne, nech mě pít v klidu',
+    backgroundDisclosureTitle: 'Připomínky potřebují polohu na pozadí',
+    backgroundDisclosureBody:
+      'Na pivo použije tvoji polohu i tehdy, když je appka zavřená nebo ji zrovna nepoužíváš. Slouží výhradně na připomínky u hospody: kolem nejbližších podniků si v telefonu nastavím zóny a když do některé vejdeš, cinknu ti na zápis piva. Trasu ani GPS body nikam neukládám.',
+    backgroundDisclosureConfirm: 'Chápu, povolit polohu',
+    backgroundDisclosureDeny: 'Teď ne',
   },
 
   nicknameNudge: {
@@ -746,6 +846,11 @@ export const cs = {
       dailyCapToast: 'Dnešní limit skenování je pryč, zkus to zase zítra',
       rateLimitedToast: 'Moc rychle po sobě, dej tomu chvíli',
       badImageToast: 'Z téhle fotky to nepřečtu, zkus ostřejší záběr',
+      permissionCameraDenied: 'Foťák jsem nedostal. Zkus to znovu.',
+      permissionLibraryDenied: 'Do galerie jsem se nedostal. Zkus to znovu.',
+      permissionCameraBlocked: 'Foťák je pro Na pivo vypnutý. Povol ho v Nastavení a zkus to znovu.',
+      permissionLibraryBlocked: 'Galerie je pro Na pivo vypnutá. Povol ji v Nastavení a zkus to znovu.',
+      openSettings: 'Otevřít Nastavení',
       permissionDenied: 'Pusť k tomu foťák nebo galerii v Nastavení a zkus to znovu',
       errorToast: 'Skenování se nepovedlo, zkus to znovu',
     },
@@ -788,6 +893,7 @@ export const cs = {
     locationError: 'Nejdřív potvrď polohu hospody.',
     locationPermissionDenied: 'Bez povolení polohy hospodu neumístím. Povol ji v Nastavení a zkus to znovu.',
     locationUnavailable: 'Polohu se teď nepodařilo zjistit. Zkus to ještě jednou venku nebo blíž k oknu.',
+    retryLocation: 'Zkusit polohu znovu',
     save: 'Přidat hospodu',
     editSave: 'Uložit opravu',
     saving: 'Ukládám…',
@@ -810,23 +916,22 @@ export const cs = {
     pendingCount: (count: number) =>
       count === 1
         ? 'Jedna hospoda čeká na odeslání'
-        : count < 5
+        : count >= 2 && count <= 4
           ? `${count} hospody čekají na odeslání`
           : `${count} hospod čeká na odeslání`,
     failedCount: (count: number) =>
       count === 1
         ? 'Jedna hospoda neprošla'
-        : count < 5
+        : count >= 2 && count <= 4
           ? `${count} hospody neprošly`
           : `${count} hospod neprošlo`,
     needsFixCount: (count: number) =>
       count === 1
         ? '1 potřebuje opravit'
-        : count < 5
+        : count >= 2 && count <= 4
           ? `${count} potřebují opravit`
           : `${count} potřebuje opravit`,
-    totalCount: (count: number) =>
-      count === 1 ? 'Celkem 1 hospoda' : count < 5 ? `Celkem ${count} hospody` : `Celkem ${count} hospod`,
+    totalCount: (count: number) => `Celkem ${pubCountLabel(count)}`,
     retryingAll: 'Zkouším to poslat…',
     loadFailed: 'Teď se mi je nepodařilo načíst.',
     retryAll: 'Znovu poslat neúspěšné hospody',
@@ -848,14 +953,14 @@ export const cs = {
     authTitle: 'Účet',
     tabLogin: 'Přihlásit se',
     tabRegister: 'Registrovat',
-    intro: 'Přihlas se a měj svá piva a hodnocení synchronizovaná na všech zařízeních.',
+    haveAccount: 'Už mám účet.',
+    noAccount: 'Ještě nemáš účet?',
     emailLabel: 'E-mail',
     emailPlaceholder: 'tvuj@email.cz',
     passwordLabel: 'Heslo',
     passwordPlaceholder: 'Alespoň 8 znaků',
     nicknameLabel: 'Přezdívka',
-    nicknameHint: 'Pod @přezdívkou tě najdou kamarádi.',
-    termsNotePrefix: 'Vytvořením účtu souhlasíš s ',
+    termsNotePrefix: 'Pokračováním souhlasíš s ',
     termsNoteTermsLink: 'podmínkami použití',
     termsNoteMiddle: ' a bereš na vědomí ',
     termsNotePrivacyLink: 'zásady soukromí',
@@ -875,6 +980,8 @@ export const cs = {
     errorEmailInvalid: 'Zadej platný e-mail.',
     errorPasswordShort: 'Heslo musí mít alespoň 8 znaků.',
     errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
+    sessionExpired:
+      'Přihlášení vypršelo. Přihlas se znovu, piva uložená v telefonu zůstanou.',
 
     // — Forgot password (inline) —
     resetPrompt: 'Zadej e-mail a pošlu ti odkaz i kód pro obnovu hesla.',
@@ -886,17 +993,20 @@ export const cs = {
 
     // — Account management screen —
     accountTitle: 'Účet',
+    accountLoadError: 'Účet se teď nenačetl.',
+    accountRetry: 'Zkusit znovu',
     emailVerified: 'E-mail ověřen',
     emailUnverified: 'E-mail není ověřen',
     emailMissing: 'E-mail není nastaven',
     verifyEmailRequestedToast: 'Ověřovací e-mail je na cestě.',
-    anonymousName: 'Tvůj účet',
+    anonymousName: 'Anonymní účet',
+    anonymousDataNote: 'Data jsou uložená pod tímhle zařízením',
     ctaMethods: 'Jak se přihlašuješ',
     moreTitle: 'Co ještě?',
     nudgeVerify: 'E-mail ještě není ověřený.',
     nudgeVerifyCta: 'Poslat znovu',
     nudgeSingleMethod: (provider: string) => `Přihlásíš se jen přes ${provider}.`,
-    exportRunning: 'Posílám tvoje data…',
+    exportRunning: 'Připravuju tvoje data…',
 
     // — Sign-in methods sheet —
     methodEmail: 'E-mail a heslo',
@@ -918,8 +1028,16 @@ export const cs = {
     setPasswordToast: 'Heslo nastaveno.',
 
     // — Data export —
-    exportData: 'Poslat moje data e-mailem',
-    exportDataToast: 'Export dat je na cestě.',
+    exportData: 'Stáhnout moje data',
+    exportDialogTitle: 'Export mých dat',
+    exportDataToast: 'Data jsou připravená.',
+    exportNetworkError:
+      'Export se nepodařilo stáhnout. Zkus to znovu, až budeš mít síť.',
+    exportServerError: 'Export teď nejde připravit. Zkus to za chvíli.',
+    exportRateLimited:
+      'Dnešní limit exportů je vyčerpaný. Zkus to znovu zítra.',
+    exportAccountTransitionError:
+      'Účet se právě mění. Zkus export spustit znovu.',
     subscriptionTitle: 'Na Pivo+',
     subscriptionFree: 'Free',
     subscriptionPlus: 'Plus',
@@ -940,10 +1058,12 @@ export const cs = {
     deleteAccount: 'Smazat účet',
     deleteConfirmTitle: 'Smazat účet?',
     deleteConfirmBody:
-      'Tvůj účet a data se po krátké lhůtě nevratně smažou. Tuto akci nelze vzít zpět.',
+      'Účet hned vypnu. Když se do 14 dní znovu přihlásíš, smazání zruším. Potom smažu profil, soukromá data i tvoje příspěvky k hospodám. Zůstat mohou jen nutné záznamy pro moderaci a anonymizovaný kontext společných her.',
+    deleteAnonymousConfirmBody:
+      'Anonymní účet hned vypnu. Za 14 dní smažu profil, soukromá data i tvoje příspěvky k hospodám. Obnovit ho nepůjde. Zůstat mohou jen nutné záznamy pro moderaci a anonymizovaný kontext společných her.',
     deleteConfirmCancel: 'Zrušit',
     deleteConfirmConfirm: 'Smazat',
-    deleteToast: 'Účet bude smazán.',
+    deleteToast: 'Účet je vypnutý. Za 14 dní ho smažu.',
 
     // — Password reset screen (deep link) —
     resetTitle: 'Obnova hesla',
@@ -960,7 +1080,7 @@ export const cs = {
     // — Email verification screen (deep link) —
     verifyTitle: 'Ověření e-mailu',
     verifyLoading: 'Ověřuji e-mail…',
-    verifySuccessTitle: 'E-mail ověřen ✅',
+    verifySuccessTitle: 'E-mail ověřen',
     verifySuccessBody: 'Díky! Tvůj e-mail je teď ověřený.',
     verifyErrorTitle: 'Ověření se nezdařilo',
     verifyErrorBody: 'Odkaz už neplatí nebo je neplatný. Zkus si nechat poslat nový.',
@@ -976,6 +1096,13 @@ export const cs = {
     beer: 'Štamgast',
     friends: 'Parta',
     profile: 'Profil',
+    // — 3.0 navigation (§17.1). The route names stay as they are so the Live
+    // Activity deep link (napivo://beer) and every existing router.replace keep
+    // working; only what the bar SAYS changes.
+    feed: 'Kocoviny',
+    pubs: 'Hospody',
+    party: 'Party',
+    community: 'Komunita',
   },
 
   beerCheckins: {
@@ -1002,7 +1129,7 @@ export const cs = {
       watery: 'Vodový',
       stale: 'Zvětralý',
       overpriced: 'Předražený',
-      one_more: 'Ještě jedno',
+      one_more: 'Chutnalo mi',
       never_again: 'Už nikdy',
     } as Record<string, string>,
     tagAddA11y: (label: string) => `Přidat verdikt ${label}`,
@@ -1012,9 +1139,12 @@ export const cs = {
     visibilityFriends: 'Parta',
     submit: 'Uložit pivo',
     saved: 'Pivo zapsané. Na zdraví.',
+    saveError: 'Pivo se nepodařilo bezpečně uložit. Zkus to znovu.',
     feedHeader: 'Piva party',
     feedEmpty: 'Parta zatím žádné pivo nesdílela.',
     detailHeader: 'Detail piva',
+    detailLoadError: 'Detail piva teď nedotekl.',
+    detailRetry: 'Zkusit znovu',
     lastBeersHeader: 'Poslední piva',
     // Memory strip on the check-in sheet. Known variant is a single low-key line
     // assembled from structured data; missing pieces just drop out.
@@ -1062,7 +1192,10 @@ export const cs = {
       '3_8_km': '3–8 km',
       '8_15_km': '8–15 km',
     },
-    spots: (count: number) => count === 1 ? 'poslední místo' : `${count} volná místa`,
+    spots: (count: number) =>
+      count === 1
+        ? 'poslední místo'
+        : `${count} ${czechPlural(count, { one: 'volné místo', few: 'volná místa', many: 'volných míst' })}`,
     host: (name: string) => `Pořádá ${name}`,
     addressHidden: 'Přesná adresa až po schválení',
     addressApproved: 'Adresa pro schválené',
@@ -1074,9 +1207,16 @@ export const cs = {
     cancelRequest: 'Stáhnout žádost',
     report: 'Nahlásit setkání',
     reportTitle: 'Nahlásit setkání?',
+    reportCancel: 'Nechat být',
     reported: 'Díky. Mrkneme na to.',
     cancelEvent: 'Zrušit setkání',
+    cancelConfirmTitle: 'Zrušit setkání?',
+    cancelConfirmBack: 'Nechat ho',
     cancelled: 'Setkání je zrušené.',
+    statusCancelled: 'Zrušeno',
+    statusEnded: 'Skončilo',
+    statusLive: 'Právě teď',
+    statusAdults: '18+',
     approve: 'Schválit',
     reject: 'Odmítnout',
     requestMessage: 'Vzkaz pro pořadatele',
@@ -1104,9 +1244,15 @@ export const cs = {
     adultsConfirm: 'Je mi 18+ a setkání je jen pro dospělé.',
     publish: 'Otevřít stůl',
     created: 'Stůl je otevřený. Přesná adresa zůstává skrytá.',
-    privacyError: 'Bez potvrzené polohy a přesné adresy nejde setkání bezpečně založit.',
+    titleRequired: 'Napiš název setkání.',
+    cityRequired: 'Doplň město.',
+    addressRequired: 'Doplň přesnou adresu.',
+    locationRequired: 'Potvrď polohu setkání.',
+    adultsRequired: 'Potvrď, že je setkání jen pro dospělé.',
+    startPastError: 'Vyber čas, který teprve přijde.',
     authError: 'Pro domácí setkání se nejdřív přihlas.',
     loadError: 'Setkání se teď nepodařilo načíst.',
+    actionError: 'Tohle se teď nepovedlo. Zkus to znovu.',
     retry: 'Zkusit znovu',
     open: 'Pivo u někoho',
     openHint: 'Objev malé domácí posezení poblíž. Adresa až po schválení.',
@@ -1118,10 +1264,13 @@ export const cs = {
     title: 'Pivní fotky',
     empty: 'Zatím tu nic není. Vyfoť svoje pivo a začni si plnit album.',
     emptyTitle: 'Zvedni pivo, cvakni fotku',
+    emptyProfile: 'Zatím tu nemáš cvaknuté ani jedno pivo.',
     addPhoto: 'Přidat fotku',
     takePhoto: 'Vyfotit pivo',
     pickFromLibrary: 'Vybrat z galerie',
     contestLink: 'FotoPivař',
+    /** Link beside the profile heading, opens the whole album. */
+    viewAll: 'Zobrazit vše',
     photoCount: (n: number) =>
       n === 1 ? '1 fotka' : n >= 2 && n <= 4 ? `${n} fotky` : `${n} fotek`,
 
@@ -1149,6 +1298,7 @@ export const cs = {
     savedForContest: 'Fotka je v deníčku a míří do soutěže.',
     contestEntryFailed: 'Fotka je uložená, ale do soutěže se nepřihlásila. Zkus to z jejího detailu.',
     errorPick: 'Fotku se nepodařilo načíst. Zkus to znovu.',
+    errorSave: 'Fotku se nepodařilo bezpečně uložit. Zkus to znovu.',
 
     // — Sync states on a diary tile —
     pendingBadge: 'Čeká na nahrání',
@@ -1161,6 +1311,8 @@ export const cs = {
     // — Photo detail —
     detailTitle: 'Fotka piva',
     detailMissing: 'Tahle fotka už tu není.',
+    viewerLoadError: 'Fotka se nedotáhla.',
+    viewerRetry: 'Zkusit znovu',
     enterContestCta: 'Přihlásit do soutěže',
     enterContestHint: 'Nahranou fotku můžeš poslat do soutěže o FotoPivaře.',
     inContestNote: 'Tahle fotka právě bojuje o FotoPivaře.',
@@ -1172,7 +1324,7 @@ export const cs = {
     deleteConfirmBody: 'Zmizí z alba i ze soutěže. Tohle vrátit neumím.',
     deleteConfirm: 'Smazat',
     deleteCancel: 'Nechat',
-    deletedToast: 'Fotka smazaná.',
+    deletedToast: 'Fotka je schovaná. Ze serveru zmizí, jakmile bude síť.',
     deleteError: 'Fotku se nepodařilo smazat. Zkus to znovu.',
 
     // — Failed-upload messages (codes off POST /v1/beer-photos, persisted by
@@ -1295,6 +1447,42 @@ export const cs = {
 
   friends: {
     title: 'Parta',
+    hubTitle: 'Parta',
+    peopleTitle: 'Parta',
+    addPeopleTitle: 'Přidat do party',
+    // — "S kým chodíš na pivo" (nahradilo sekce žádostí a odeslaných pozvánek) —
+    togetherHeader: 'S kým chodíš na pivo',
+    togetherEmpty: 'Zatím nikdo. Objeví se tu každý, s kým si sedneš k jednomu stolu.',
+    lastSeenTogether: (when: string) => `naposled ${when}`,
+    // Backend counts shared pub+day pairs, so this is evenings, never beers.
+    sharedEvenings: (n: number) =>
+      n === 0
+        ? 'zatím žádný společný večer'
+        : n === 1
+          ? '1 společný večer'
+          : n >= 2 && n <= 4
+            ? `${n} společné večery`
+            : `${n} společných večerů`,
+    notTogetherYet: 'ještě jste spolu neseděli',
+    addPersonCta: 'Přidat člověka',
+    // — jednosměrné sledování —
+    followingHeader: 'Sleduješ',
+    followingLastDrink: (beer: string) => `dal si ${beer}`,
+    followingQuiet: 'zatím nic nového',
+    follow: 'Sledovat',
+    unfollow: 'Nesledovat',
+    followed: 'Sleduješ, co pije.',
+    unfollowed: 'Sledování je pryč.',
+    followError: 'Sledování se nepovedlo. Zkus to znovu.',
+    requestsSummary: (n: number) => {
+      if (n === 0) return 'Žádné nové žádosti';
+      if (n === 1) return '1 žádost čeká';
+      if (n >= 2 && n <= 4) return `${n} žádosti čekají`;
+      return `${n} žádostí čeká`;
+    },
+    requestsEmpty: 'Nikdo nový teď nečeká.',
+    outgoingEmpty: 'Žádná pozvánka teď nečeká na potvrzení.',
+    plansEmpty: 'Na dnešek zatím nic není.',
     heroTitle: 'Kdo jde dneska na jedno?',
     heroBody:
       'Kámoše přidáš kódem nebo pozvánkou. Pak hned vidíš, kdo zrovna sedí na pivu.',
@@ -1320,12 +1508,14 @@ export const cs = {
     requestSent: 'Pozvánka letí ke stolu.',
     requestAccepted: 'Je v partě.',
     requestDeclined: 'Pozvánka je pryč.',
+    requestActionError: 'Žádost se teď nepovedla vyřídit. Zkus to znovu.',
     friendRemoved: 'Už není v partě.',
     // One-tap quick broadcast from the counter (rich compose lives on Parta).
     shareHereShort: 'Cinknout partě',
     // "signál" is reserved for connectivity; the broadcast is a "cinknutí".
     shareSuccess: 'Cinknuto!',
     shareError: 'Nepodařilo se dát vědět partě.',
+    queueSaveError: 'Akci se nepodařilo bezpečně uložit. Zkus to znovu.',
     // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
     counterAlreadyLive: 'Už svítíš partě',
     sharedCount: (n: number) =>
@@ -1363,7 +1553,7 @@ export const cs = {
 
     // — My active activity card ("Cinkl jsi partě") —
     // Present tense keeps it genderless (retired the masculine "Cinkl jsi").
-    myActiveTitle: 'SVÍTÍŠ PARTĚ',
+    myActiveTitle: 'Svítíš partě',
     nobodyYet: 'Čekáš na první kývnutí.',
     whoComing: 'Kdo dorazí?',
     // "Zabalit" = pub slang for calling it a night; one verb family across
@@ -1609,6 +1799,7 @@ export const cs = {
     // Infinitive like every other button in the app ("Přijmout", "Zapnout…").
     composeOpen: 'Cinknout partě',
     composeTitle: 'Cinknout partě',
+    planComposeTitle: 'Domluvit pivo',
     composeAudienceLabel: 'KOMU',
     recipientAll: 'Celá parta',
     recipientCustom: 'Vybrat',
@@ -1653,7 +1844,7 @@ export const cs = {
 
     // — Plans (§B3) —
     plansHeader: 'Plán na dnes',
-    planMineTitle: 'TVŮJ PLÁN',
+    planMineTitle: 'Tvůj plán',
     planAt: (t: string) => `Dnes v ${t}`,
     planCreated: 'Plán letí partě. Když poběží připomínky, ještě tě odpoledne cinknu.',
     planCancel: 'Zrušit plán',
@@ -1700,6 +1891,7 @@ export const cs = {
     // — Friend profile (§F1) —
     statSharedBeers: 'společná piva',
     statNightsTogether: 'večerů spolu',
+    statRitualsTogether: 'společných milníků',
     statStreakTogether: 'týdnů v sérii',
     profileNoHistory: 'Ještě jste spolu nikde nebyli. Tak cinkni.',
     profileRecentHeader: 'NAPOSLEDY SPOLU',
@@ -1713,6 +1905,9 @@ export const cs = {
     blockConfirm: 'Zablokovat',
     blockAction: 'Zablokovat',
     blocked: 'Zablokováno.',
+    unblockAction: 'Odblokovat',
+    unblocked: 'Odblokováno.',
+    profileBlocked: 'Profil je zablokovaný.',
     reportAction: 'Nahlásit',
     reportDone: 'Díky, mrknu na to.',
     // Row long-press action sheet title.
@@ -1945,18 +2140,25 @@ export const cs = {
     running: 'pořád běží',
     // Shown small under the big numeral when the night had no drink at all.
     emptyNoun: 'ZATÍM NIC',
-    breakdownLink: 'Rozpis',
     noPub: 'Bez hospody',
+    // Three facts about the night that the big number cannot hold.
+    factSpent: 'Utraceno',
+    factSpan: 'Délka',
+    factPace: 'Tempo',
+    // Shown when a night has no price, no span or too few drinks to have a pace.
+    factEmpty: '—',
 
     // — Chronology under the card —
     olderHeader: 'Starší večery',
-    pending: 'čeká na odeslání',
+    manualHeader: 'Dopsaná piva',
+    /** Discreet markers on a row, and what a screen reader says about it. */
+    privateTag: 'Jen pro tebe',
+    queuedTag: 'Čeká na odeslání',
     // "12. 6. · 5 piv · 320 Kč"
     nightMeta: (parts: string[]) => parts.filter(Boolean).join(' · '),
-    nightSheetTitle: 'Co teklo',
 
     // — Nudge slot —
-    loadFailed: 'Deníček se mi nepovedlo načíst.',
+    loadFailed: 'Deníček se mi nenačetl.',
     retry: 'Zkusit znovu',
     queued: (count: number) =>
       count === 1
@@ -1969,7 +2171,7 @@ export const cs = {
     cta: 'Dopiš večer',
 
     // — Empty state —
-    emptyTitle: 'Zatím prázdná stopa',
+    emptyTitle: 'Prázdný deníček',
     emptyBody: 'Ťukni pivo v Počítadle, nebo dopiš večer, na který si vzpomeneš.',
 
     // — "Kolik jich už bylo?" sheet: every lifetime number, one tap deep —
@@ -1979,26 +2181,30 @@ export const cs = {
     statsPubs: 'Hospod',
     statsSpent: 'Utraceno',
     statsThisMonth: 'Tenhle měsíc',
+    statsMonthBeers: 'Piv',
+    statsMonthAvgLabel: 'Průměr na večer',
     // Moved here from the profile's stats grid — numbers have one home now.
     statsRatings: 'Hodnocení',
     statsWalked: 'Nachozeno',
-    statsMonthAvg: (avg: string) => `průměr ${avg} na večer`,
-    statsRecordsCaption: 'REKORDY',
+    statsRecordsTitle: 'Rekordy',
     statsRecordMost: 'Nejvíc za večer',
     statsRecordFastest: 'Nejrychlejší pivo',
     statsRecordLongest: 'Nejdelší večer',
     statsEmptyValue: 'Zatím nic',
-    statsPubsCaption: 'NEJVÍC JSI VYPIL',
-    statsYearsCaption: 'ROKY',
-    // "210 piv · průměr 3,4 na večer"
-    statsYearValue: (beers: string, avg: string) => `${beers} · průměr ${avg} na večer`,
+    statsPubsTitle: 'Tvoje hospody',
+    statsYearsTitle: 'Roky',
+    // Second line under a year: "průměr 3,4 na večer"
+    statsYearAvg: (avg: string) => `průměr ${avg} na večer`,
     statsFooter:
-      'Počítám jen piva, útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
+      'Počítám jen piva, ale útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
   },
 
   profile: {
     // — Tab header —
     title: 'Profil',
+    diaryTitle: 'Pivní deník',
+    privateDiary: 'Soukromý pivní deník',
+    historyFactsHeader: 'Údaje večerů',
 
     // — Tácek rebuild: one card, one amber button, the rest behind "…" —
 
@@ -2010,6 +2216,8 @@ export const cs = {
     lifetimeCaptionEmpty: 'ČISTEJ ŠTOS',
     /** Amber door in the card footer. */
     badgesLink: 'Odznaky',
+    /** Link beside the Odznaky heading, opens the full badge cabinet. */
+    badgesAll: 'Zobrazit vše',
     /** Footer facts. */
     levelLine: (level: number, title: string) => `Úroveň ${level} · ${title}`,
     levelToNext: (xp: number) => `ještě ${xp} XP do dalšího levelu`,
@@ -2023,6 +2231,10 @@ export const cs = {
     cardStatEvenings: 'VEČERY',
     cardStatSpent: 'UTRACENO',
     cardStatDailyAverage: 'PIV DENNĚ',
+    streakUnit: (count: number) =>
+      `${czechPlural(count, { one: 'týden', few: 'týdny', many: 'týdnů' })} v řadě`,
+    streakBest: (count: number) =>
+      `Nejlepší ${count} ${czechPlural(count, { one: 'týden', few: 'týdny', many: 'týdnů' })}`,
 
     // — The one button —
     ctaCode: 'Ukaž svůj kód',
@@ -2195,6 +2407,10 @@ export const cs = {
       avatarHeader: 'FOTKA',
       changePhoto: 'Změnit fotku',
       removePhoto: 'Odebrat fotku',
+      removePhotoConfirmTitle: 'Odebrat profilovku?',
+      removePhotoConfirmBody: 'Profil se vrátí k iniciále.',
+      removePhotoConfirmCancel: 'Nechat ji',
+      removePhotoConfirmAction: 'Odebrat',
       nicknameHeader: 'PŘEZDÍVKA',
       displayNameHeader: 'JMÉNO',
       displayNameLabel: 'Jméno (nepovinné)',
@@ -2212,7 +2428,32 @@ export const cs = {
     },
   },
 
+  gameResult: {
+    payingSelf: 'Platíš ty',
+    payingOther: (name: string) => `Platí ${name}`,
+    payingNote: 'Další runda je jasná.',
+    winningSelf: 'Vyhráváš',
+    winningOther: (name: string) => `Vyhrává ${name}`,
+    winningNote: 'Nejvíc bodů u stolu.',
+    done: 'Dohráno',
+    doneNote: 'Výsledek zůstal u večera.',
+  },
+
+  gameHost: {
+    loading: 'Načítám hru…',
+    unavailable: 'Hra v téhle verzi nejde spustit.',
+    loadFailed: 'Hru se nepodařilo načíst.',
+    stopped: 'Hra se zastavila.',
+    timeout: 'Hra se nespustila včas.',
+    retry: 'Zkusit znovu',
+    spectator: 'Tuhle hru jen sleduješ.',
+    savingResult: 'Ukládám výsledek…',
+    waitingForResult: 'Čekám na výsledek…',
+    resultSaveFailed: 'Výsledek se nepodařilo uložit.',
+  },
+
   counter: {
+    partyTotalBeersLabel: 'celkem piv',
     // — Permission gate —
     permTitle: 'Potřebuju tvoji polohu',
     // Same Google Play prominent-disclosure wording rules as `permissions.body`.
@@ -2271,7 +2512,7 @@ export const cs = {
     ctaPick: 'Co si dáš?',
     ctaFirstBeer: 'Zapiš první pivo',
     ctaLogBeer: 'Zapiš pivo',
-    repeatCta: 'Ještě jedno',
+    repeatCta: 'Zapsat stejné pivo',
     // The quiet twin of "Ještě jedno" — a different beer, a shot, a Kofola. Lives
     // in the card as a chip, on screen the whole time the CTA is repeating.
     quickOtherBeer: 'Jiné pivo',
@@ -2287,9 +2528,9 @@ export const cs = {
     undo: 'Vrátit',
     // The rapid-drink guard is inline now: the tap does NOT count until this is
     // confirmed, and letting it time out means "no".
-    rapidInline: (minutes: number) => `Poslední pivo před ${minutes} min. Ještě jedno?`,
-    rapidInlineJustNow: 'Pivo máš zapsané před chvilkou. Ještě jedno?',
-    rapidInlineConfirm: 'Jo, dej to tam',
+    rapidInline: (minutes: number) => `Poslední pivo před ${minutes} min. Je zápis správně?`,
+    rapidInlineJustNow: 'Pivo máš zapsané před chvilkou. Je zápis správně?',
+    rapidInlineConfirm: 'Ano, zapsat',
     checkinNudge: 'Stálo za to?',
     checkinNudgeCta: 'Ohodnotit',
     dopitoNudge: 'Dopito?',
@@ -2346,8 +2587,8 @@ export const cs = {
     cameraBeer: 'Pivo do deníčku',
     cameraMenu: 'Menu hospody',
     cameraMenuNeedsPub: 'Vyber hospodu a pak klepni na foťák znovu',
-    // — Backdate (zapsat pivo zpětně) —
-    backdateLink: 'Zapsat pivo zpětně',
+    // — Backdate (zapsat nápoj zpětně) —
+    backdateLink: 'Zapsat nápoj zpětně',
     backdateTitle: 'Kdy jsi ho měl?',
     backdateHourAgo: 'Před hodinou',
     backdateTwoHoursAgo: 'Před dvěma hodinami',
@@ -2426,13 +2667,16 @@ export const cs = {
     level: (n: number, title: string) => `Úroveň ${n} · ${title}`,
   },
 
-  // "Výčep" — the public feed of finished nights (the beer-diary take on a
-  // Strava feed). A night shows up here only when its owner explicitly hangs
-  // it up; the copy keeps repeating what is shown (counts, pubs, date, length)
-  // and what never leaves the diary (money, location, individual beers). The
-  // one-tap reaction is a "runda" — a symbolic round bought for the author.
+  // "Výčep" — finished nights from the automatic Parta history and explicitly
+  // public stories in Svět. Prices and raw location history never leave the
+  // diary. The one-tap reaction is a "runda" — a symbolic round bought for the
+  // author of a published story.
   vycep: {
     title: 'Výčep',
+    deleteCommentTitle: 'Smazat komentář?',
+    deleteCommentBody: 'Komentář zmizí všem.',
+    deleteCommentCancel: 'Nechat ho',
+    deleteCommentConfirm: 'Smazat',
     scopeParta: 'Parta',
     scopeWorld: 'Svět',
 
@@ -2441,11 +2685,14 @@ export const cs = {
 
     // — Feed —
     emptyPartaTitle: 'Ve Výčepu je zatím prázdno',
-    emptyPartaBody: 'Až někdo z party vyvěsí svou noc, uvidíš ji tady. Klidně začni ty.',
+    emptyPartaBody: 'Až někdo z party zapíše večer, objeví se tady.',
     emptyWorldTitle: 'Svět zatím mlčí',
     emptyWorldBody: 'Nikdo teď nemá vyvěšenou noc. Vyvěs tu svoji a rozjeď to.',
     loadError: 'Výčep se nenačetl.',
     retry: 'Zkusit znovu',
+    loadMore: 'Načíst další večery',
+    loadMoreError: 'Další večery se nedotáhly · Zkusit znovu',
+    loadMoreRetryA11y: 'Zkusit načíst další večery',
     publishLatestCta: 'Vyvěs svoji noc',
     logBeerCta: 'Zapiš si pivo',
     anonymousAuthor: 'Pivař',
@@ -2477,8 +2724,11 @@ export const cs = {
     updateCta: 'Vyvěsit znovu',
     publishedToast: 'Noc visí ve Výčepu.',
     publishQueuedToast: 'Vyvěsím ji, až budeš online.',
+    publishErrorToast: 'Noc se nepodařilo bezpečně uložit. Zkus to znovu.',
     unpublishCta: 'Stáhnout z Výčepu',
+    unpublishConfirmBody: 'Večer zmizí z Výčepu i profilů. V deníčku ti zůstane.',
     unpublishedToast: 'Noc už ve Výčepu nevisí.',
+    unpublishErrorToast: 'Stažení se nepodařilo uložit. Zkus to znovu.',
     nicknameNeededTitle: 'Chybí ti přezdívka',
     nicknameNeededBody:
       'Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v profilu za minutku.',
@@ -2497,6 +2747,7 @@ export const cs = {
     storyStickerHint: 'Vyfoť si vlastní story a tuhle nálepku na ni nalep.',
     storyShareCta: 'Sdílet jinam',
     storyCopyCta: 'Kopírovat nálepku',
+    storyPreparing: 'Připravuju…',
     storyCopied: 'Zkopírováno. Otevři Instagram a vlož do story.',
     storyShareError: 'Nálepku se nepovedlo připravit. Zkus to znovu.',
     shareNightCta: 'Sdílet noc',
@@ -2518,6 +2769,7 @@ export const cs = {
     },
 
     // — Evening detail entry —
+    sectionTitle: 'Výčep',
     sectionHeader: 'VÝČEP',
     publishEntryTitle: 'Vyvěsit na Výčep',
     publishEntryBody: 'Pochlub se partě nebo celému světu, jak šla noc.',
@@ -2538,6 +2790,8 @@ export const cs = {
 
     // — Empty state —
     emptyTitle: 'Zatím žádná pivní stopa',
+    // Shown when the detail is opened for an evening that is no longer there.
+    eveningGoneTitle: 'Tenhle večer už v deníčku není.',
     emptyBody:
       'Ťukni na pivo v Počítadle a večer se uloží sem. Uvidíš, kde to bylo, co teklo a kolik to dalo.',
 
@@ -2548,8 +2802,6 @@ export const cs = {
     historicalCta: 'Zapsat zpětně',
     historicalCtaBody: 'Dopiš piva, hospodu, čas a cenu.',
     historicalTitle: 'Dopsat piva',
-    historicalSubtitle: 'Stejný zápis, jen dopitý zpětně.',
-    historicalRequiredHint: 'Piva po řádcích, hospoda a čas společně.',
     historicalBeersLabel: 'Piva',
     historicalAddBeer: 'Přidat pivo',
     historicalNextBeerPlaceholder: 'Další pivo',
@@ -2569,10 +2821,11 @@ export const cs = {
     historicalCityLabel: 'Město',
     historicalVisibilityHint: 'Starší zápisy jsou nejdřív jen pro tebe.',
     historicalVisibilityFriendsHint: 'Parta uvidí piva, hospodu, čas a poznámku.',
-    historicalVisibilityPrivateHint: 'Uloží se jen do tvého deníčku.',
+    historicalVisibilityPrivateHint: 'Nechám si to jen v tvém deníčku.',
     historicalSubmit: 'Uložit vzpomínku',
     historicalSaved: (count: number) =>
-      count === 1 ? 'Vzpomínka zapsaná.' : count < 5 ? `${count} piva zapsaná.` : `${count} piv zapsáno.`,
+      count === 1 ? 'Vzpomínka zapsaná.' : count >= 2 && count <= 4 ? `${count} piva zapsaná.` : `${count} piv zapsáno.`,
+    historicalSaveError: 'Vzpomínku se nepodařilo bezpečně uložit. Zkus to znovu.',
     historicalNoPub: 'Bez hospody',
 
     // — Date labels —
@@ -2591,11 +2844,13 @@ export const cs = {
       })}`,
 
     // — Detail —
-    breakdownHeader: 'CO PADLO',
+    breakdownTitle: 'Co padlo',
+    // Hero stats above the breakdown.
+    statBeers: 'Piv',
+    statOther: 'Ostatní',
     // Meta shown to the right of a beer name, e.g. "2× · 124 Kč" (count × subtotal).
     // The volume is appended to the name separately in EveningBreakdown.
     breakdownLine: (count: number, price: string) => `${count}× · ${price}`,
-    drinkActionsHeader: 'ZAPSANÉ NÁPOJE',
     drinkGroupTotal: (price: string) => `Celkem ${price}`,
     addDrinkToEvening: 'Dopsat pivo',
     addDrinkToEveningTitle: 'Co ještě padlo?',
@@ -2617,7 +2872,7 @@ export const cs = {
     totalLabel: 'Celkem',
 
     // — Personal pub rating ("Stálo to za návrat?") —
-    ratingHeader: 'STÁLO TO ZA TO?',
+    ratingTitle: 'Stálo to za to?',
     ratingHint: 'Jen pro tebe. Soukromě se synchronizuje mezi tvými zařízeními.',
     verdictLike: 'Dobrý',
     verdictDislike: 'Slabý',
@@ -2639,7 +2894,7 @@ export const cs = {
   stats: {
     // — Empty state —
     emptyTitle: 'Zatím není co měřit',
-    emptyBody: 'Začni počítat piva a ráno tu najdeš svůj výkon: kolik jich padlo, jak rychle a kde.',
+    emptyBody: 'Až si zapíšeš večer, najdeš tu soukromý přehled.',
 
     // — Hero: last performance ("ráno koukni na výkon") —
     heroToday: 'DNEŠNÍ VÝKON',
@@ -2676,7 +2931,7 @@ export const cs = {
     totalSpent: 'UTRACENO',
 
     // — Monthly and yearly trend —
-    periodsHeader: 'PIVNÍ TEMPO',
+    periodsHeader: 'PŘEHLED PO OBDOBÍ',
     monthsHeader: 'POSLEDNÍCH 12 MĚSÍCŮ',
     yearsHeader: 'ROKY',
     periodBeers: 'PIV TENTO MĚSÍC',
@@ -2685,13 +2940,13 @@ export const cs = {
     periodAverage: (average: number) =>
       average > 0 ? `Průměrně ${average.toLocaleString('cs-CZ')} piva na večer` : 'Tenhle měsíc zatím na suchu',
     yearSummary: (beers: number, average: number) =>
-      `${beers} piv, průměr ${average.toLocaleString('cs-CZ')} na večer`,
+      `${beerCountLabel(beers)}, průměr ${average.toLocaleString('cs-CZ')} na večer`,
     monthsA11y: 'Počet piv za posledních dvanáct měsíců',
     monthA11y: (period: string, beers: number) => `${period}: ${beerCountLabel(beers)}`,
 
     // — Top pubs ("kolik jsem kde vypil") —
     pubsHeader: 'TVOJE HOSPODY',
-    pubsSubtitle: 'Kde ti to teklo nejvíc',
+    pubsSubtitle: 'Hospody podle počtu zápisů',
 
     // — Time formatting (Czech units) —
     // Evening length: "4 h 12 min" / "47 min" / "do minuty".
@@ -2757,6 +3012,7 @@ export const cs = {
     ],
     contactLabel: 'Kontakt',
     contactEmail: 'tomades1@gmail.com',
+    fullPolicyLink: 'Kompletní zásady ochrany osobních údajů',
   },
 
   // — Social rail in the evening card: three doors to the community half of the
@@ -2784,7 +3040,21 @@ export const cs = {
     toggleOff: 'vypnuto',
     settingsButton: 'Otevřít nastavení',
     // — Parta 3.0 —
-    tabFriendsBadge: (n: number) => `Parta, ${n} nových`,
+    tabFeedBadge: (requests: number, unread: boolean, live: boolean) => {
+      const base = 'Záložka Kocoviny';
+      if (requests === 1) return `${base}, 1 nová žádost`;
+      if (requests >= 2 && requests <= 4) return `${base}, ${requests} nové žádosti`;
+      if (requests >= 5) return `${base}, ${requests} nových žádostí`;
+      if (live) return `${base}, kamarád právě sedí v hospodě`;
+      if (unread) return `${base}, nové dění`;
+      return base;
+    },
+    openParta: 'Otevřít Partu',
+    openPartaWithRequests: (n: number) => {
+      if (n === 1) return 'Otevřít Partu, čeká 1 žádost';
+      if (n >= 2 && n <= 4) return `Otevřít Partu, čekají ${n} žádosti`;
+      return `Otevřít Partu, čeká ${n} žádostí`;
+    },
     // Back chevron on the Profile → Správa party screen.
     manageBack: 'Zpět na profil',
     rsvpGroup: 'Jdeš?',
@@ -2819,6 +3089,10 @@ export const cs = {
     feedbackContactInput: 'Kontakt pro odpověď',
     feedbackSubmitButton: 'Odeslat zpětnou vazbu',
     backButton: 'Zpět',
+    communityChallenge: (title: string, done: number, goal: number) =>
+      `${title}. Splněno ${done} z ${goal}. Otevřít výzvu`,
+    communityEvent: (title: string, when: string, place: string) =>
+      `${title}. ${when}. ${place}. Otevřít akci`,
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',
     beerBrandFilterInput: 'Filtrovat hospody podle značky piva ze záznamů',
@@ -2882,6 +3156,11 @@ export const cs = {
     tabCompass: 'Záložka Kompas',
     tabBeer: 'Záložka Štamgast',
     tabFriends: 'Záložka Parta',
+    // — 3.0 navigation (§17.1) —
+    tabFeed: 'Záložka Kocoviny',
+    tabPubs: 'Záložka Hospody',
+    tabParty: 'Záložka Party',
+    tabCommunity: 'Záložka Komunita',
     beerSegmentCount: 'Přepnout na počítání piv',
     beerSegmentStats: 'Přepnout na statistiky výkonu',
     beerSegmentHistory: 'Přepnout na historii večerů',
@@ -2902,7 +3181,7 @@ export const cs = {
     counterAddBeer: 'Přidat nové pivo',
     counterRequestLocation: 'Povolit polohu',
     counterRetry: 'Hledat hospodu znovu',
-    counterRepeat: (name: string) => `Připsat další ${name}`,
+    counterRepeat: (name: string) => `Zapsat stejné pivo: ${name}`,
     counterMore: 'Další možnosti k tomuhle večeru',
     // — Tácek surface —
     counterCoaster: (countLabel: string, spent?: string) =>
@@ -2910,7 +3189,7 @@ export const cs = {
     counterCoasterEmpty: 'Čistej tácek, zatím nic nepadlo',
     counterPlaceChip: (place: string) => `Změnit místo. Teď ${place}.`,
     counterUndoStrip: 'Vrátit poslední pivo',
-    counterRapidConfirm: 'Jo, připsat další pivo',
+    counterRapidConfirm: 'Ano, zapsat',
     counterCheckinDismiss: 'Zavřít nabídku hodnocení',
     counterReceiptChip: 'Otevřít tvůj účet',
     counterQuickOtherBeer: 'Vybrat jiné pivo nebo drink',
@@ -2936,6 +3215,8 @@ export const cs = {
       `${beers} za život. ${level}. Ťukni pro odznaky.`,
     profileBadges: 'Otevřít odznaky',
     profileIdentity: 'Upravit profil',
+    profileDiary: 'Otevřít soukromý pivní deník',
+    profileParta: 'Otevřít partu',
 
     // — Parta —
     partaMore: 'Co ještě? Nastavení, žebříčky a další',
@@ -2948,6 +3229,8 @@ export const cs = {
     presenceCompass: (pub: string) => `Ukázat ${pub} na kompasu`,
     sittingRow: (name: string, what: string, where: string, when: string) =>
       `${name}, ${what}, ${where}${when ? `, ${when}` : ''}. Ťukni pro profil.`,
+    partyGameBeerCounter: (count: string) =>
+      `Máš ${count}. Přidat další.`,
 
     // — Kompas —
     compassMore: 'Co ještě? Mapa, filtry a další',
@@ -2965,7 +3248,6 @@ export const cs = {
     diaryCard: (count: string, pub: string, when: string) =>
       `Poslední večer: ${count} v hospodě ${pub}, ${when}. Ťukni pro rozpis.`,
     diaryCardEmpty: 'Zatím žádný zapsaný večer',
-    diaryBreakdown: 'Otevřít rozpis večera',
     diaryNight: (pub: string, meta: string) => `Večer ${pub}, ${meta}. Ťukni pro detail.`,
     diaryStats: 'Ukázat čísla za celou dobu',
     diaryStatsClose: 'Zavřít čísla',
@@ -2987,7 +3269,7 @@ export const cs = {
     accountLinkProvider: (provider: string) => `Propojit ${provider}`,
     accountUnlinkProvider: (provider: string) => `Odpojit ${provider}`,
     accountSetPassword: 'Nastavit heslo',
-    accountExportData: 'Stáhnout moje data',
+    accountExportData: 'Sdílet export mých dat',
     accountMethods: 'Otevřít způsoby přihlášení',
     accountMore: 'Otevřít další možnosti účtu',
     accountIdentity: (name: string, email: string, methods: string) =>
@@ -2995,12 +3277,14 @@ export const cs = {
     accountRestorePurchases: 'Obnovit nákupy',
     accountReportProfile: 'Nahlásit profil',
     accountLogout: 'Odhlásit se',
+    accountRetry: 'Znovu načíst účet',
     accountDelete: 'Smazat účet',
 
     // — Profil —
     profileEdit: 'Upravit profil',
     profileVisibility: 'Změnit viditelnost profilu',
     profileManageAccount: 'Spravovat účet',
+    accountManageData: 'Spravovat účet a moje data',
     profileSettings: 'Otevřít nastavení',
     profileSignUp: 'Vytvořit účet',
     profileNicknameInput: 'Přezdívka',
@@ -3014,6 +3298,7 @@ export const cs = {
     photoAddTile: 'Přidat fotku piva',
     photoTile: (label: string) => `Fotka piva${label ? `, ${label}` : ''}. Ťukni pro detail.`,
     photoContestLink: 'Otevřít soutěž FotoPivař',
+    photoAlbumLink: 'Otevřít album pivních fotek',
     leaderboardsLink: 'Otevřít žebříček pivařů',
     partyLeaderboardMetric: 'Metrika žebříčku party',
     photoCaptionInput: 'Popisek fotky',
@@ -3034,6 +3319,7 @@ export const cs = {
     friendPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
     partaPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
     photoViewerClose: 'Zavřít fotku',
+    photoViewerRetry: 'Znovu načíst fotku',
   },
 } as const;
 

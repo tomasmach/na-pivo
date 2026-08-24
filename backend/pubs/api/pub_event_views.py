@@ -8,10 +8,11 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from pubs.api.authentication import AccountTokenAuthentication
+from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
+from pubs.api.ugc_consent import ugc_consent_precondition
 from pubs.enrichment import geohash8
 from pubs.pub_events import PubEvent
 
@@ -97,6 +98,9 @@ class PubEventView(APIView):
 
         serializer = PubEventSuggestionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        precondition = ugc_consent_precondition(request)
+        if precondition is not None:
+            return precondition
         data = serializer.validated_data
         event, created = PubEvent.objects.get_or_create(
             account=account,

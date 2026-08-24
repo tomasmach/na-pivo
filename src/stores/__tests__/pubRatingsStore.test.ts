@@ -1,14 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import {
   usePubRatingsStore,
   selectPubRating,
   migratePubRatings,
 } from '../pubRatingsStore';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 /** Local non-reactive read for assertions (mirrors the store snapshot). */
 const getPubRating = (pubKey: string) => usePubRatingsStore.getState().ratings[pubKey];
@@ -107,36 +107,55 @@ describe('setRating — free-text note', () => {
 describe('migratePubRatings — v0 → v1', () => {
   it('moves a legacy preset note into the tag field', () => {
     const migrated = migratePubRatings(
-      { ratings: { [PUB]: { verdict: 'like', note: 'Sem se vrátit', updatedAt: 't' } } },
+      { ratings: { [PUB]: { verdict: 'like', note: 'Sem se vrátit', updatedAt: '2026-06-14T10:00:00.000Z' } } },
       0,
     );
     expect(migrated.ratings[PUB]).toEqual({
       verdict: 'like',
       tag: 'Sem se vrátit',
-      updatedAt: 't',
+      updatedAt: '2026-06-14T10:00:00.000Z',
     });
   });
 
   it('keeps a non-preset legacy note as a free-text note', () => {
     const migrated = migratePubRatings(
-      { ratings: { [PUB]: { note: 'vlastní text', updatedAt: 't' } } },
+      { ratings: { [PUB]: { note: 'vlastní text', updatedAt: '2026-06-14T10:00:00.000Z' } } },
       0,
     );
-    expect(migrated.ratings[PUB]).toEqual({ note: 'vlastní text', updatedAt: 't' });
+    expect(migrated.ratings[PUB]).toEqual({ note: 'vlastní text', updatedAt: '2026-06-14T10:00:00.000Z' });
   });
 
   it('drops legacy entries that carry no signal', () => {
     const migrated = migratePubRatings(
-      { ratings: { [PUB]: { updatedAt: 't' }, [OTHER]: { verdict: 'dislike', updatedAt: 't' } } },
+      { ratings: { [PUB]: { updatedAt: '2026-06-14T10:00:00.000Z' }, [OTHER]: { verdict: 'dislike', updatedAt: '2026-06-14T10:00:00.000Z' } } },
       0,
     );
     expect(migrated.ratings[PUB]).toBeUndefined();
     expect(migrated.ratings[OTHER]?.verdict).toBe('dislike');
   });
 
-  it('passes already-current state through untouched', () => {
-    const current = { ratings: { [PUB]: { verdict: 'like', tag: 'Nic moc', updatedAt: 't' } } };
-    expect(migratePubRatings(current, 1)).toBe(current);
+  it('sanitizes already-current state instead of trusting its shape', () => {
+    const current = {
+      ratings: {
+        [PUB]: { verdict: 'like', tag: ' Nic moc ', updatedAt: '2026-06-14T10:00:00.000Z' },
+        [OTHER]: { verdict: 'maybe', note: 42, updatedAt: null },
+      },
+    };
+    expect(migratePubRatings(current, 1).ratings).toEqual({
+      [PUB]: { verdict: 'like', tag: 'Nic moc', updatedAt: '2026-06-14T10:00:00.000Z' },
+    });
+  });
+
+  it('sanitizes malformed v1 ratings during real Zustand rehydration', async () => {
+    await AsyncStorage.setItem('na-pivo-pub-ratings', JSON.stringify({
+      version: 1,
+      state: { ratings: { [PUB]: { verdict: 'maybe', note: 42 }, [OTHER]: null } },
+    }));
+
+    await usePubRatingsStore.persist.rehydrate();
+
+    expect(usePubRatingsStore.getState().ratings).toEqual({});
+    expect(typeof usePubRatingsStore.getState().setRating).toBe('function');
   });
 
   it('tolerates missing or malformed input', () => {

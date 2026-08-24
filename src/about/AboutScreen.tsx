@@ -28,9 +28,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
@@ -75,7 +76,7 @@ export default function AboutScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -262,7 +263,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   playStoreButtonText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -283,13 +284,13 @@ const styles = StyleSheet.create({
     lineHeight: 52,
   },
   appName: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 34,
     lineHeight: 40,
     color: Colors.foam,
   },
   tagline: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -306,7 +307,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   versionText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     letterSpacing: 0.3,
     color: Colors.amberLight,
@@ -317,7 +318,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   sectionHeader: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -331,7 +332,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   statusText: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -353,12 +354,12 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     flex: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 18,
     color: Colors.foam,
   },
   noteVersion: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     letterSpacing: 0.4,
     fontVariant: ['tabular-nums'],
@@ -391,7 +392,7 @@ const styles = StyleSheet.create({
   },
   itemText: {
     flex: 1,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -407,7 +408,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   emptyText: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -416,7 +417,7 @@ const styles = StyleSheet.create({
 
   // ── Footer ──
   footer: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,

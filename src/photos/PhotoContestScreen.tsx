@@ -18,8 +18,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -56,6 +59,7 @@ import {
   clearPhotoContestVote,
   enterPhotoContest,
   fetchPhotoContest,
+  fetchPhotoContestPage,
   votePhotoContest,
   withdrawPhotoContestEntry,
   type PhotoContestEntry,
@@ -71,16 +75,27 @@ import { ScalePressable } from '@/photos/ScalePressable';
 import { Avatar } from '@/profile/Avatar';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
+import { useLaunchModalMutex, useModalPresentation } from '@/stores/launchModalMutex';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 type LoadState = 'loading' | 'loaded' | 'error';
+
+/** Entries per masonry chunk handed to the FlatList. */
+const ENTRY_CHUNK_SIZE = 4;
+
+/** One FlatList row: a left/right column pair covering ENTRY_CHUNK_SIZE entries. */
+interface EntryChunk {
+  key: number;
+  left: { entry: PhotoContestEntry; index: number }[];
+  right: { entry: PhotoContestEntry; index: number }[];
+}
 
 /** Cap the stagger so a long gallery never keeps late tiles invisible. */
 const REVEAL_STEP_MS = 60;
@@ -238,6 +253,7 @@ function EntryTile({
           source={{ uri: entry.imageUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
+          resizeMethod="resize"
           accessibilityIgnoresInvertColors
         />
         {entry.isMine ? (
@@ -338,11 +354,18 @@ export default function PhotoContestScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [snapshot, setSnapshot] = useState<PhotoContestSnapshot | null>(null);
   const [viewerEntry, setViewerEntry] = useState<PhotoContestEntry | null>(null);
+  const pendingProfileEntry = useRef<PhotoContestEntry | null>(null);
+  const modalHolder = useLaunchModalMutex((state) => state.holder);
+  const viewerPresentation = useModalPresentation(viewerEntry !== null);
   const [captureOpen, setCaptureOpen] = useState(false);
   // Measured w/h of the viewer photo, so the frame window can match it exactly.
   const [viewerPhotoRatio, setViewerPhotoRatio] = useState<number | null>(null);
+  const [viewerLoadFailed, setViewerLoadFailed] = useState(false);
+  const [viewerReloadKey, setViewerReloadKey] = useState(0);
   const openViewer = useCallback((entry: PhotoContestEntry) => {
     setViewerPhotoRatio(null);
+    setViewerLoadFailed(false);
+    setViewerReloadKey(0);
     setViewerEntry(entry);
   }, []);
   // Size the stage so the artwork's transparent window matches the real photo.
@@ -353,6 +376,10 @@ export default function PhotoContestScreen() {
   const stageHeight = stageWidth / stageAspect;
   // Optimistic working copy of the entries (votes flip here before the server).
   const [entries, setEntries] = useState<PhotoContestEntry[]>([]);
+  // Cursor for the next gallery page; null once every page is loaded.
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreBusyRef = useRef(false);
   // Bumped whenever a fresh server snapshot replaces `entries`; a vote revert
   // captured against an older generation must not clobber the newer truth.
   const entriesGenRef = useRef(0);
@@ -387,6 +414,7 @@ export default function PhotoContestScreen() {
       return;
     }
     setSnapshot(snap);
+    setNextCursor(snap.nextCursor);
     setEntries(snap.entries);
     entriesGenRef.current += 1;
     setState('loaded');
@@ -401,6 +429,34 @@ export default function PhotoContestScreen() {
       if (lastId) results.markResultsSeen(lastId);
     })();
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadMoreBusyRef.current || refreshing) return;
+    loadMoreBusyRef.current = true;
+    setLoadingMore(true);
+    const cursor = nextCursor;
+    const generation = entriesGenRef.current;
+    try {
+      const page = await fetchPhotoContestPage(cursor);
+      if (!mountedRef.current || generation !== entriesGenRef.current) return;
+      if (page) {
+        setEntries((prev) => {
+          const seen = new Set(prev.map((e) => e.id));
+          const merged = [...prev];
+          for (const entry of page.entries) {
+            if (seen.has(entry.id)) continue;
+            seen.add(entry.id);
+            merged.push(entry);
+          }
+          return merged;
+        });
+        setNextCursor(page.nextCursor);
+      }
+    } finally {
+      loadMoreBusyRef.current = false;
+      if (mountedRef.current) setLoadingMore(false);
+    }
+  }, [nextCursor, refreshing]);
 
   useEffect(() => {
     // Deferred kickoff (FriendsScreen idiom) — keeps the effect body free of
@@ -584,6 +640,13 @@ export default function PhotoContestScreen() {
     [router],
   );
 
+  useEffect(() => {
+    const entry = pendingProfileEntry.current;
+    if (!entry || modalHolder === viewerPresentation.id) return;
+    pendingProfileEntry.current = null;
+    openProfile(entry);
+  }, [modalHolder, openProfile, viewerPresentation.id]);
+
   const confirmReport = useCallback(
     (entry: PhotoContestEntry) => {
       showAppDialog({
@@ -617,7 +680,7 @@ export default function PhotoContestScreen() {
   // ── Derived ───────────────────────────────────────────────────────────────
 
   const contest = snapshot?.contest ?? null;
-  const myEntry = useMemo(() => entries.find((e) => e.isMine) ?? null, [entries]);
+  const myEntry = snapshot?.myEntry ?? entries.find((e) => e.isMine) ?? null;
   const countdown = contest ? contestCountdownLabel(contest.periodEnd) : '';
   const lastResults = snapshot?.lastResults ?? null;
   const winners = useMemo(() => {
@@ -633,14 +696,18 @@ export default function PhotoContestScreen() {
     );
   }, [winners]);
 
-  // Two staggered columns; the right one starts lower for the masonry feel.
-  const columns = useMemo(() => {
-    const left: { entry: PhotoContestEntry; index: number }[] = [];
-    const right: { entry: PhotoContestEntry; index: number }[] = [];
-    entries.forEach((entry, index) => {
-      (index % 2 === 0 ? left : right).push({ entry, index });
-    });
-    return { left, right };
+  const entryChunks = useMemo<EntryChunk[]>(() => {
+    const chunks: EntryChunk[] = [];
+    for (let offset = 0; offset < entries.length; offset += ENTRY_CHUNK_SIZE) {
+      const slice = entries.slice(offset, offset + ENTRY_CHUNK_SIZE);
+      const left: { entry: PhotoContestEntry; index: number }[] = [];
+      const right: { entry: PhotoContestEntry; index: number }[] = [];
+      slice.forEach((entry, localIndex) => {
+        (localIndex % 2 === 0 ? left : right).push({ entry, index: offset + localIndex });
+      });
+      chunks.push({ key: offset, left, right });
+    }
+    return chunks;
   }, [entries]);
 
   const enterablePhotos = useMemo(
@@ -650,15 +717,16 @@ export default function PhotoContestScreen() {
 
   const renderColumn = (
     column: { entry: PhotoContestEntry; index: number }[],
-    columnOffset: boolean,
+    isRight: boolean,
+    topOffset: boolean,
   ) => (
-    <View style={[styles.galleryColumn, columnOffset && styles.galleryColumnOffset]}>
+    <View style={[styles.galleryColumn, topOffset && styles.galleryColumnOffset]}>
       {column.map(({ entry, index }, i) => (
         <Reveal key={entry.id} index={index} reduceMotion={reduceMotion}>
           <EntryTile
             entry={entry}
             // Alternate tall/short per column position for the layout variance.
-            tall={(i + (columnOffset ? 1 : 0)) % 2 === 0}
+            tall={(i + (isRight ? 1 : 0)) % 2 === 0}
             onVote={() => handleVote(entry)}
             onActions={() => openEntryActions(entry)}
             onOpenPhoto={() => openViewer(entry)}
@@ -666,6 +734,13 @@ export default function PhotoContestScreen() {
           />
         </Reveal>
       ))}
+    </View>
+  );
+
+  const renderChunk = ({ item, index }: { item: EntryChunk; index: number }) => (
+    <View style={styles.gallery}>
+      {renderColumn(item.left, false, false)}
+      {renderColumn(item.right, true, index === 0)}
     </View>
   );
 
@@ -721,7 +796,16 @@ export default function PhotoContestScreen() {
           </View>
         </View>
       ) : (
-        <ScrollView
+        <FlatList<EntryChunk>
+          data={entryChunks}
+          keyExtractor={(item) => String(item.key)}
+          renderItem={renderChunk}
+          initialNumToRender={1}
+          maxToRenderPerBatch={1}
+          windowSize={3}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -734,8 +818,9 @@ export default function PhotoContestScreen() {
               tintColor={Colors.amber}
             />
           }
-        >
-          {/* Round hero */}
+          ItemSeparatorComponent={() => <View style={{ height: Spacing.sm + 2 }} />}
+          ListHeaderComponent={
+            <>
           {countdown ? (
             <Text style={styles.countdown} maxFontSizeMultiplier={FontScaleCap.heading}>
               {countdown}
@@ -886,38 +971,44 @@ export default function PhotoContestScreen() {
                     {cs.photoContest.emptyEntries}
                   </Text>
                 </View>
-              ) : (
-                <View style={styles.gallery}>
-                  {renderColumn(columns.left, false)}
-                  {renderColumn(columns.right, true)}
-                </View>
-              )}
+              ) : null}
             </>
           )}
-
-          {/* ── Last round podium ── */}
-          {lastResults && podium.length > 0 ? (
+          </>
+          }
+          ListFooterComponent={
             <>
-              <Text style={styles.sectionHeader}>{cs.photoContest.winnersHeader}</Text>
-              <View style={styles.podiumRow}>
-                {podium.map((winner) => (
-                  <WinnerTile key={winner.rank} winner={winner} lead={winner.rank === 1} />
-                ))}
-              </View>
-              <Text style={styles.winnerNote} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.photoContest.winnerBadgeNote}
-              </Text>
+              {loadingMore ? (
+                <View style={styles.loadingMore}>
+                  <ActivityIndicator size="small" color={Colors.amber} />
+                </View>
+              ) : null}
+              {/* ── Last round podium ── */}
+              {lastResults && podium.length > 0 ? (
+                <>
+                  <Text style={styles.sectionHeader}>{cs.photoContest.winnersHeader}</Text>
+                  <View style={styles.podiumRow}>
+                    {podium.map((winner) => (
+                      <WinnerTile key={winner.rank} winner={winner} lead={winner.rank === 1} />
+                    ))}
+                  </View>
+                  <Text style={styles.winnerNote} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.photoContest.winnerBadgeNote}
+                  </Text>
+                </>
+              ) : null}
             </>
-          ) : null}
-        </ScrollView>
+          }
+        />
       )}
 
       <Modal
-        visible={viewerEntry != null}
+        visible={viewerPresentation.visible}
         transparent
         animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setViewerEntry(null)}
+        onDismiss={viewerPresentation.onDismiss}
       >
         <View style={styles.viewerBackdrop}>
           <Pressable
@@ -957,6 +1048,7 @@ export default function PhotoContestScreen() {
                   ]}
                 >
                   <Image
+                    key={`${viewerEntry.id}:${viewerReloadKey}`}
                     source={{ uri: viewerEntry.imageUrl }}
                     style={StyleSheet.absoluteFill}
                     resizeMode="cover"
@@ -965,7 +1057,37 @@ export default function PhotoContestScreen() {
                       const { width, height } = event.nativeEvent.source;
                       if (width > 0 && height > 0) setViewerPhotoRatio(width / height);
                     }}
+                    onError={() => setViewerLoadFailed(true)}
                   />
+                  {viewerLoadFailed ? (
+                    <View style={styles.viewerLoadError} accessibilityLiveRegion="polite">
+                      <Text
+                        style={styles.viewerLoadErrorText}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {cs.photoDiary.viewerLoadError}
+                      </Text>
+                      <Pressable
+                        onPress={() => {
+                          setViewerLoadFailed(false);
+                          setViewerReloadKey((value) => value + 1);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={cs.a11y.photoViewerRetry}
+                        style={({ pressed }) => [
+                          styles.viewerRetry,
+                          pressed && styles.pressedDim,
+                        ]}
+                      >
+                        <Text
+                          style={styles.viewerRetryText}
+                          maxFontSizeMultiplier={FontScaleCap.heading}
+                        >
+                          {cs.photoDiary.viewerRetry}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
                 <View
                   style={styles.viewerFrameOverlay}
@@ -983,9 +1105,8 @@ export default function PhotoContestScreen() {
               <View style={[styles.viewerMeta, { paddingBottom: insets.bottom + Spacing.lg }]}>
                 <Pressable
                   onPress={() => {
-                    const entry = viewerEntry;
+                    pendingProfileEntry.current = viewerEntry;
                     setViewerEntry(null);
-                    setTimeout(() => openProfile(entry), 0);
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={cs.a11y.contestOpenProfile(nameOf(viewerEntry))}
@@ -1068,7 +1189,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.foam,
   },
@@ -1090,7 +1211,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,
@@ -1105,13 +1226,13 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
   },
   countdown: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.amber,
   },
   subtitle: {
     marginTop: 4,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -1144,7 +1265,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   reigningTitle: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10.5,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
@@ -1152,18 +1273,18 @@ const styles = StyleSheet.create({
   },
   reigningName: {
     marginTop: 2,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },
   reigningVotes: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.foamMuted,
   },
   sectionHeader: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -1197,13 +1318,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   myEntryVotes: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   myEntryCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
@@ -1220,7 +1341,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   withdrawPillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1249,12 +1370,12 @@ const styles = StyleSheet.create({
   },
   enterTitle: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
   enterHint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -1271,13 +1392,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
   },
   enterDividerText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 9,
     letterSpacing: 1,
     color: Colors.mutedText,
   },
   enterEmptyHint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.foamMuted,
@@ -1301,6 +1422,12 @@ const styles = StyleSheet.create({
   gallery: {
     flexDirection: 'row',
     gap: Spacing.sm + 2,
+  },
+  loadingMore: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: HitArea.min,
+    paddingVertical: Spacing.sm,
   },
   galleryColumn: {
     flex: 1,
@@ -1338,7 +1465,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.5),
   },
   mineChipText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 9,
     letterSpacing: 0.4,
     color: Colors.amber,
@@ -1370,7 +1497,7 @@ const styles = StyleSheet.create({
   },
   entryAuthor: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.foam,
   },
@@ -1381,7 +1508,7 @@ const styles = StyleSheet.create({
   },
   entryPub: {
     flex: 1,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 11,
     color: Colors.mutedText,
   },
@@ -1413,6 +1540,36 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     backgroundColor: Colors.stout2,
   },
+  viewerLoadError: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.stout2,
+  },
+  viewerLoadErrorText: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.foamMuted,
+  },
+  viewerRetry: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  viewerRetryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.foam,
+  },
   viewerFrameOverlay: {
     position: 'absolute',
     top: 0,
@@ -1438,12 +1595,12 @@ const styles = StyleSheet.create({
   },
   viewerAuthor: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   viewerCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -1455,7 +1612,7 @@ const styles = StyleSheet.create({
   },
   viewerPub: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1481,7 +1638,7 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   votePillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1500,7 +1657,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   emptyText: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -1549,14 +1706,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   winnerCrownText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 0.4,
     color: Colors.stout,
     textTransform: 'uppercase',
   },
   winnerRank: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 0.6,
     color: Colors.mutedText,
@@ -1564,20 +1721,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   winnerName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.foam,
     maxWidth: '100%',
   },
   winnerVotes: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
   },
   winnerNote: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     textAlign: 'center',

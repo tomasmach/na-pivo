@@ -20,7 +20,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { decodeGeohash8 } from './geohash';
-import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
+import { runPrivateAccountMutation } from './privateAccountBoundary';
+import {
+  enqueueVisitOp,
+  flushVisitsQueue,
+  type VisitEnqueueResult,
+} from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
@@ -48,7 +53,11 @@ function lastDrinkAt(session: TallySession): string | null {
  *  an outside evening — a `ctx:*` session is not a pub visit: decoding its key
  *  would fabricate coordinates, and drinking at home must never become a
  *  PubVisit (pub stats, párty rituals) server-side. */
-export function buildVisitEntry(session: TallySession, updatedAt?: string): VisitEntry | null {
+export function buildVisitEntry(
+  session: TallySession,
+  updatedAt?: string,
+  partyCode?: string | null,
+): VisitEntry | null {
   if (!session.clientId) return null;
   if (isContextPubKey(session.pubKey)) return null;
   const { lat, lng } = decodeGeohash8(session.pubKey);
@@ -60,6 +69,7 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
     lng,
     ...(session.pubCity ? { city: session.pubCity } : {}),
     ...(session.pubExternalId ? { external_id: session.pubExternalId } : {}),
+    ...(partyCode ? { party_code: partyCode } : {}),
     started_at: session.startedAt,
     ended_at: endedAt,
     closed_at: session.closedAt ?? null,
@@ -70,20 +80,30 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
 
 /**
  * Enqueue an upsert for one session. Call after each beer is counted (the
- * current session) so the backend tracks the evening as it grows. Fire-and-
- * forget, never throws.
+ * current session) so the backend tracks the evening as it grows. Resolves to
+ * `storage-error` when the operation was not durably accepted; never throws.
  */
-export function syncVisit(session: TallySession | null, updatedAt?: string): void {
-  if (!session) return;
-  const entry = buildVisitEntry(session, updatedAt);
-  if (!entry) return;
-  void enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry });
+export type VisitSyncResult = VisitEnqueueResult | 'skipped';
+
+export function syncVisit(
+  session: TallySession | null,
+  updatedAt?: string,
+  partyCode?: string | null,
+  options?: { deliver?: boolean },
+): Promise<VisitSyncResult> {
+  if (!session) return Promise.resolve('skipped');
+  const entry = buildVisitEntry(session, updatedAt, partyCode);
+  if (!entry) return Promise.resolve('skipped');
+  const item = { op: 'upsert' as const, clientId: entry.client_id, entry };
+  return (options ? enqueueVisitOp(item, options) : enqueueVisitOp(item)).catch(
+    () => 'storage-error',
+  );
 }
 
-/** Enqueue a delete for a removed evening. Fire-and-forget, never throws. */
-export function deleteVisitByClientId(clientId: string): void {
-  if (!clientId) return;
-  void enqueueVisitOp({ op: 'delete', clientId });
+/** Enqueue a delete for a removed evening. The result exposes storage failure and never throws. */
+export function deleteVisitByClientId(clientId: string): Promise<VisitSyncResult> {
+  if (!clientId) return Promise.resolve('skipped');
+  return enqueueVisitOp({ op: 'delete', clientId }).catch(() => 'storage-error');
 }
 
 /**
@@ -94,7 +114,7 @@ export function deleteVisitByClientId(clientId: string): void {
  * client_id, so even if the guard is lost this only re-sends, never duplicates.
  * Best-effort, never throws.
  */
-export async function seedVisitsFromHistory(): Promise<void> {
+async function seedVisitsFromHistoryWithinBoundary(): Promise<void> {
   try {
     const already = await AsyncStorage.getItem(SEEDED_KEY);
     if (already) return;
@@ -107,14 +127,15 @@ export async function seedVisitsFromHistory(): Promise<void> {
   if (current && current.drinks.length > 0) sessions.push(current);
   sessions.push(...history);
 
-  const enqueueOps: Promise<void>[] = [];
+  const enqueueOps: ReturnType<typeof enqueueVisitOp>[] = [];
   for (const session of sessions) {
     const entry = buildVisitEntry(session);
     if (entry) enqueueOps.push(enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry }));
   }
 
   try {
-    await Promise.all(enqueueOps);
+    const results = await Promise.all(enqueueOps);
+    if (results.some((result) => result === 'storage-error')) return;
   } catch {
     // Do not mark the seed as complete unless the visit ops were durably queued.
     return;
@@ -126,5 +147,14 @@ export async function seedVisitsFromHistory(): Promise<void> {
     // Guard persist failed — worst case we re-seed next launch (idempotent).
   }
 
-  await flushVisitsQueue();
+}
+
+export async function seedVisitsFromHistory(): Promise<void> {
+  try {
+    await runPrivateAccountMutation(async () => seedVisitsFromHistoryWithinBoundary());
+  } catch {
+    // An account transition owns the seed marker/queues; its next-account
+    // hydration can retry after the boundary reopens.
+  }
+  await flushVisitsQueue().catch(() => undefined);
 }

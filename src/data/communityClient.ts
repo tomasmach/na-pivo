@@ -14,10 +14,11 @@
 
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
-import { chainAbortSignal } from './apiFetch';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
 import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
 import type { WireMapperSnapshot } from './pubAmenitiesClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 export type { CommunityBeer, WeeklyHours };
 export { beerFromWire, beerToWire };
@@ -102,6 +103,96 @@ export function buildCommunityEntry(input: CommunityInput, clientId: string): Co
   return entry;
 }
 
+function parseCommunityResponse(data: WireResponse | null): CommunityResponse | null {
+  if (!data?.cache_key) return null;
+  return {
+    cacheKey: data.cache_key,
+    hours: data.hours ?? null,
+    beers: Array.isArray(data.beers) ? data.beers.map(beerFromWire) : [],
+    historicalBeers: Array.isArray(data.historical_beers)
+      ? data.historical_beers.map(beerFromWire)
+      : [],
+    beersUpdatedAt: typeof data.beers_updated_at === 'string' ? data.beers_updated_at : null,
+    beerMenuRotates: data.beer_menu_rotates === true,
+    xpAwarded: typeof data.xp_awarded === 'number' ? data.xp_awarded : 0,
+    mapper: data.mapper ?? null,
+  };
+}
+
+/**
+ * Queue-aware outcome: only 'ok' carries the parsed backend response;
+ * 'permanent-error' (400/422 poison) and 'retry' never do.
+ */
+export type CommunitySubmitResult =
+  | { status: 'ok'; response: CommunityResponse }
+  | { status: 'permanent-error' }
+  | { status: 'retry' };
+
+/**
+ * Queue-aware submit used by communityQueue. Every community submission is
+ * public UGC, so the canonical UGC policy header is baked in on every attempt.
+ * The response body is read at most once; on non-2xx the payload is only used
+ * to surface a UGC-consent prompt before the shared keep/drop classification.
+ * Never throws.
+ */
+export async function submitPubCommunityForQueue(
+  entry: CommunityEntry,
+  signal?: AbortSignal,
+): Promise<CommunitySubmitResult> {
+  if (signal?.aborted) return { status: 'retry' };
+
+  const endpoint = getBackendEndpoint('/v1/pub-community');
+  if (!endpoint) return { status: 'retry' };
+
+  let session;
+  try {
+    session = await ensureAccount(signal);
+  } catch {
+    return { status: 'retry' };
+  }
+  if (!session || signal?.aborted) return { status: 'retry' };
+
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+        ...ugcPolicyHeaders(session.accountId),
+      },
+      body: JSON.stringify(entry),
+      signal: abort.signal,
+    });
+
+    let data: WireResponse | null = null;
+    try {
+      data = (await resp.json()) as WireResponse;
+    } catch {
+      data = null;
+    }
+
+    if (resp.ok) {
+      const response = parseCommunityResponse(data);
+      // A malformed 2xx envelope is a backend hiccup, not a bad payload — retry.
+      return response ? { status: 'ok', response } : { status: 'retry' };
+    }
+
+    notifyUgcConsentRequiredFromResponse(resp.status, data);
+    const classified = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'pub_community_submit',
+      endpoint: '/v1/pub-community',
+    });
+    return classified === 'permanent-error'
+      ? { status: 'permanent-error' }
+      : { status: 'retry' };
+  } catch {
+    return { status: 'retry' };
+  } finally {
+    abort.cleanup();
+  }
+}
+
 /**
  * POST one community submission. Returns the parsed backend response on success
  * (so the caller can refresh local state with the canonical stored data), or
@@ -111,47 +202,8 @@ export async function submitPubCommunity(
   entry: CommunityEntry,
   signal?: AbortSignal,
 ): Promise<CommunityResponse | null> {
-  if (signal?.aborted) return null;
-
-  const endpoint = getBackendEndpoint('/v1/pub-community');
-  if (!endpoint) return null;
-
-  const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return null;
-
-  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
-  try {
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.token}`,
-      },
-      body: JSON.stringify(entry),
-      signal: abort.signal,
-    });
-
-    if (!resp.ok) return null;
-
-    const data = (await resp.json()) as WireResponse;
-    if (!data?.cache_key) return null;
-    return {
-      cacheKey: data.cache_key,
-      hours: data.hours ?? null,
-      beers: Array.isArray(data.beers) ? data.beers.map(beerFromWire) : [],
-      historicalBeers: Array.isArray(data.historical_beers)
-        ? data.historical_beers.map(beerFromWire)
-        : [],
-      beersUpdatedAt: typeof data.beers_updated_at === 'string' ? data.beers_updated_at : null,
-      beerMenuRotates: data.beer_menu_rotates === true,
-      xpAwarded: typeof data.xp_awarded === 'number' ? data.xp_awarded : 0,
-      mapper: data.mapper ?? null,
-    };
-  } catch {
-    return null;
-  } finally {
-    abort.cleanup();
-  }
+  const result = await submitPubCommunityForQueue(entry, signal);
+  return result.status === 'ok' ? result.response : null;
 }
 
 /** Re-export so consumers have one import site for the structured day keys. */

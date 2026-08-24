@@ -49,6 +49,7 @@ from pubs.enrichment import (
     names_match,
     next_change,
 )
+from pubs.external_api_budget import reserve_external_api_request
 from pubs.identity import normalize_pub_name, resolve_pub_identities
 from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
 
@@ -764,6 +765,12 @@ def get_or_enrich(
                     proxy_url=proxy_url,
                     min_interval=min_interval,
                     daily_cap=daily_cap,
+                    request_budget=lambda cap: reserve_external_api_request(
+                        provider="firmy",
+                        operation="http",
+                        cap=cap,
+                        reset_timezone="UTC",
+                    ),
                 )
             row = _enrich_sync(source, key, name, lat, lng, city)
             budget_remaining -= 1

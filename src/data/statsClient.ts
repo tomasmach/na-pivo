@@ -37,6 +37,21 @@ export interface RemoteRecords {
   mostBeersDate: string | null;
   fastestBeerSeconds: number | null;
   longestEveningSeconds: number | null;
+  /** Added in 3.0; absent when talking to an older compatible backend. */
+  longestEveningPubName?: string | null;
+  longestEveningDate?: string | null;
+}
+
+/** Whole drinking-day bests used by the 3.0 recap record callout. */
+export interface RemoteNightRecords {
+  mostBeers: number;
+  longestSeconds: number;
+  mostStops: number;
+  /** Additive context from API 3.0; absent against an older backend. */
+  mostBeersDate?: string | null;
+  mostBeersPubNames?: string[];
+  longestDate?: string | null;
+  longestPubNames?: string[];
 }
 
 export interface RemotePeriodStat {
@@ -53,16 +68,50 @@ export interface RemotePeriodStats {
   years: RemotePeriodStat[];
 }
 
+/** Fixed-width, privacy-safe chart bucket returned additively for the 3.0 profile. */
+export interface RemoteTimelineStat {
+  period: string;
+  beers: number;
+  evenings: number;
+  distinctPubs: number;
+  longestEveningSeconds: number | null;
+}
+
+export interface RemoteStatsTimeline {
+  days: RemoteTimelineStat[];
+  weeks: RemoteTimelineStat[];
+  months: RemoteTimelineStat[];
+  streak: {
+    currentWeeks: number;
+    bestWeeks: number;
+  };
+  windows: {
+    week: RemoteTimelineWindow;
+    month: RemoteTimelineWindow;
+    year: RemoteTimelineWindow;
+  } | null;
+}
+
+export type RemoteTimelineWindow = Omit<RemoteTimelineStat, 'period'>;
+
 /** The account's durable beer stats. */
 export interface RemoteStats {
   totalBeers: number;
   totalEvenings: number;
+  /** One count per 04:00 drinking day, even when the night changed pubs. */
+  totalNights?: number;
   distinctPubs: number;
   totalSpentCzk: number;
   firstDrinkAt: string | null;
   topPubs: RemotePubTally[];
   records: RemoteRecords;
+  /** Added in 3.0; absent when talking to an older compatible backend. */
+  nightRecords?: RemoteNightRecords;
   periods: RemotePeriodStats;
+  /** Added in API 3.0; absent against an older compatible backend. */
+  timeline?: RemoteStatsTimeline;
+  /** Drinking-day counterpart to legacy per-pub `timeline`. */
+  nightTimeline?: RemoteStatsTimeline;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -79,6 +128,12 @@ function str(value: unknown): string {
 
 function nullableStr(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string =>
+    typeof item === 'string' && item.length > 0))];
 }
 
 function parsePub(raw: unknown): RemotePubTally | null {
@@ -105,10 +160,61 @@ function parsePeriod(raw: unknown): RemotePeriodStat | null {
   };
 }
 
+function parseTimelineStat(raw: unknown): RemoteTimelineStat | null {
+  const period = raw as Record<string, unknown>;
+  if (!period || typeof period.period !== 'string') return null;
+  return {
+    period: period.period,
+    beers: num(period.beers),
+    evenings: num(period.evenings),
+    distinctPubs: num(period.distinct_pubs),
+    longestEveningSeconds: nullableNum(period.longest_evening_seconds),
+  };
+}
+
+function parseTimelineWindow(raw: unknown): RemoteTimelineWindow {
+  const value = (raw ?? {}) as Record<string, unknown>;
+  return {
+    beers: num(value.beers),
+    evenings: num(value.evenings),
+    distinctPubs: num(value.distinct_pubs),
+    longestEveningSeconds: nullableNum(value.longest_evening_seconds),
+  };
+}
+
+export function parseStatsTimeline(raw: unknown): RemoteStatsTimeline | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const timeline = raw as Record<string, unknown>;
+  const timelineStreak = (timeline.streak ?? {}) as Record<string, unknown>;
+  const timelineWindows = (timeline.windows ?? {}) as Record<string, unknown>;
+  const parseTimeline = (value: unknown): RemoteTimelineStat[] =>
+    Array.isArray(value)
+      ? value.map(parseTimelineStat).filter((p): p is RemoteTimelineStat => p != null)
+      : [];
+  return {
+    days: parseTimeline(timeline.days),
+    weeks: parseTimeline(timeline.weeks),
+    months: parseTimeline(timeline.months),
+    streak: {
+      currentWeeks: num(timelineStreak.current_weeks),
+      bestWeeks: num(timelineStreak.best_weeks),
+    },
+    windows:
+      timelineWindows.week || timelineWindows.month || timelineWindows.year
+        ? {
+            week: parseTimelineWindow(timelineWindows.week),
+            month: parseTimelineWindow(timelineWindows.month),
+            year: parseTimelineWindow(timelineWindows.year),
+          }
+        : null,
+  };
+}
+
 function parseStats(body: unknown): RemoteStats | null {
   const b = body as Record<string, unknown>;
   if (!b || typeof b !== 'object') return null;
   const records = (b.records ?? {}) as Record<string, unknown>;
+  const nightRecords = (b.night_records ?? {}) as Record<string, unknown>;
   const topPubs = Array.isArray(b.top_pubs)
     ? b.top_pubs.map(parsePub).filter((p): p is RemotePubTally => p != null)
     : [];
@@ -119,10 +225,15 @@ function parseStats(body: unknown): RemoteStats | null {
   const years = Array.isArray(periods.years)
     ? periods.years.map(parsePeriod).filter((p): p is RemotePeriodStat => p != null)
     : [];
+  const timeline = parseStatsTimeline(b.timeline);
+  const nightTimeline = parseStatsTimeline(b.night_timeline);
 
   return {
     totalBeers: num(b.total_beers),
     totalEvenings: num(b.total_evenings),
+    ...(typeof b.total_nights === 'number' && Number.isFinite(b.total_nights)
+      ? { totalNights: b.total_nights }
+      : {}),
     distinctPubs: num(b.distinct_pubs),
     totalSpentCzk: num(b.total_spent_czk),
     firstDrinkAt: nullableStr(b.first_drink_at),
@@ -133,12 +244,35 @@ function parseStats(body: unknown): RemoteStats | null {
       mostBeersDate: nullableStr(records.most_beers_date),
       fastestBeerSeconds: nullableNum(records.fastest_beer_seconds),
       longestEveningSeconds: nullableNum(records.longest_evening_seconds),
+      longestEveningPubName: nullableStr(records.longest_evening_pub_name),
+      longestEveningDate: nullableStr(records.longest_evening_date),
     },
+    ...(b.night_records && typeof b.night_records === 'object'
+      ? {
+          nightRecords: {
+            mostBeers: num(nightRecords.most_beers),
+            longestSeconds: num(nightRecords.longest_seconds),
+            mostStops: num(nightRecords.most_stops),
+            mostBeersDate: nullableStr(nightRecords.most_beers_date),
+            mostBeersPubNames: stringList(nightRecords.most_beers_pub_names),
+            longestDate: nullableStr(nightRecords.longest_date),
+            longestPubNames: stringList(nightRecords.longest_pub_names),
+          },
+        }
+      : {}),
     periods: {
       timezone: str(periods.timezone),
       months,
       years,
     },
+    timeline: timeline ?? {
+      days: [],
+      weeks: [],
+      months: [],
+      streak: { currentWeeks: 0, bestWeeks: 0 },
+      windows: null,
+    },
+    ...(nightTimeline ? { nightTimeline } : {}),
   };
 }
 
@@ -154,14 +288,23 @@ function deviceTimezone(): string | null {
 /**
  * GET the account's durable beer stats, or null on any failure. Never throws.
  */
-export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | null> {
+export async function fetchMyStats(
+  signal?: AbortSignal,
+  excludeDrinkingDay?: string,
+): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
   const baseEndpoint = getBackendEndpoint('/v1/me/stats');
   if (!baseEndpoint) return null;
   const timezone = deviceTimezone();
-  const endpoint = timezone
-    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}timezone=${encodeURIComponent(timezone)}`
+  const query = [
+    ...(timezone ? [`timezone=${encodeURIComponent(timezone)}`] : []),
+    ...(excludeDrinkingDay
+      ? [`exclude_drinking_day=${encodeURIComponent(excludeDrinkingDay)}`]
+      : []),
+  ].join('&');
+  const endpoint = query
+    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}${query}`
     : baseEndpoint;
 
   const session = await ensureAccount(signal);

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -34,6 +33,7 @@ import {
   type UiInteractionTarget,
 } from '@/data/uxTelemetry';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -46,13 +46,31 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 type Mode = 'nearby' | 'mine' | 'create';
 type Coords = { lat: number; lng: number };
+
+function defaultEventStart(now = new Date()): { dayOffset: 0 | 1; hour: number } {
+  const start = new Date(now);
+  start.setMinutes(0, 0, 0);
+  start.setHours(start.getHours() + 2);
+  return {
+    dayOffset: start.toDateString() === now.toDateString() ? 0 : 1,
+    hour: start.getHours(),
+  };
+}
+
+function eventStatusLabel(event: CommunityEvent): string {
+  if (event.status === 'cancelled') return cs.communityEvents.statusCancelled;
+  if (event.status === 'ended') return cs.communityEvents.statusEnded;
+  if (event.status === 'live') return cs.communityEvents.statusLive;
+  return cs.communityEvents.statusAdults;
+}
 
 function hostName(event: CommunityEvent): string {
   return event.host.nickname ? `@${event.host.nickname}` : event.host.displayName || 'Pořadatel';
@@ -88,6 +106,7 @@ function Button({
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
       style={({ pressed }) => [
         styles.button,
         secondary && styles.buttonSecondary,
@@ -95,19 +114,40 @@ function Button({
       ]}
     >
       {icon}
-      <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary]}>{label}</Text>
+      <Text
+        style={[styles.buttonText, secondary && styles.buttonTextSecondary]}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 function Stepper({ value, onChange, min, max }: { value: number; onChange: (value: number) => void; min: number; max: number }) {
+  const atMin = value <= min;
+  const atMax = value >= max;
   return (
     <View style={styles.stepper}>
-      <Pressable onPress={() => onChange(Math.max(min, value - 1))} style={styles.stepButton}>
+      <Pressable
+        onPress={() => onChange(Math.max(min, value - 1))}
+        disabled={atMin}
+        style={[styles.stepButton, atMin && styles.controlDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel="Snížit"
+        accessibilityState={{ disabled: atMin }}
+      >
         <MinusIcon size={18} color={Colors.foam} />
       </Pressable>
-      <Text style={styles.stepValue}>{value}</Text>
-      <Pressable onPress={() => onChange(Math.min(max, value + 1))} style={styles.stepButton}>
+      <Text style={styles.stepValue} maxFontSizeMultiplier={FontScaleCap.body}>{value}</Text>
+      <Pressable
+        onPress={() => onChange(Math.min(max, value + 1))}
+        disabled={atMax}
+        style={[styles.stepButton, atMax && styles.controlDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel="Zvýšit"
+        accessibilityState={{ disabled: atMax }}
+      >
         <PlusIcon size={18} color={Colors.foam} />
       </Pressable>
     </View>
@@ -125,6 +165,7 @@ function EventCard({
 }) {
   const showToast = useToastStore((state) => state.show);
   const [acting, setActing] = useState(false);
+  const actionInFlightRef = useRef(false);
   const [joinMessage, setJoinMessage] = useState('');
   const run = useCallback(async (
     action: () => Promise<{ ok: boolean; detail?: string }>,
@@ -132,18 +173,54 @@ function EventCard({
     target: UiInteractionTarget,
     interactionAction: UiInteractionAction = 'submit',
   ) => {
+    if (busy || actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     trackUiInteraction(target, interactionAction);
     setActing(true);
-    const result = await action();
-    trackUiInteraction(target, result.ok ? 'success' : 'failure');
-    showToast(result.ok ? success : result.detail || cs.communityEvents.loadError);
-    if (result.ok) await reload();
-    setActing(false);
-  }, [reload, showToast]);
+    try {
+      const result = await action();
+      trackUiInteraction(target, result.ok ? 'success' : 'failure');
+      showToast(result.ok ? success : result.detail || cs.communityEvents.loadError);
+      if (result.ok) await reload();
+    } catch {
+      trackUiInteraction(target, 'failure');
+      showToast(cs.communityEvents.loadError);
+    } finally {
+      actionInFlightRef.current = false;
+      setActing(false);
+    }
+  }, [busy, reload, showToast]);
+  const disabled = busy || acting;
+  const isOpen = event.status === 'upcoming' || event.status === 'live';
+
+  const cancel = () => {
+    if (disabled) return;
+    showAppDialog({
+      title: cs.communityEvents.cancelConfirmTitle,
+      message: event.title,
+      buttons: [
+        { text: cs.communityEvents.cancelConfirmBack, style: 'cancel' },
+        {
+          text: cs.communityEvents.cancelEvent,
+          style: 'destructive',
+          onPress: () => void run(
+            () => cancelCommunityEvent(event.id),
+            cs.communityEvents.cancelled,
+            'community_cancel_event',
+            'cancel',
+          ),
+        },
+      ],
+    });
+  };
 
   const report = () => {
-    Alert.alert(cs.communityEvents.reportTitle, event.title, [
-      { text: 'Nechat být', style: 'cancel' },
+    if (disabled) return;
+    showAppDialog({
+      title: cs.communityEvents.reportTitle,
+      message: event.title,
+      buttons: [
+      { text: cs.communityEvents.reportCancel, style: 'cancel' },
       {
         text: cs.communityEvents.report,
         style: 'destructive',
@@ -153,39 +230,41 @@ function EventCard({
           'community_report',
         ),
       },
-    ]);
+      ],
+    });
   };
-  const disabled = busy || acting;
   return (
     <View style={styles.eventCard}>
       <View style={styles.eventTop}>
         <View style={styles.eventCopy}>
-          <Text style={styles.eventTitle}>{event.title}</Text>
-          <Text style={styles.eventMeta}>{formatTime(event)}</Text>
+          <Text style={styles.eventTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{event.title}</Text>
+          <Text style={styles.eventMeta} maxFontSizeMultiplier={FontScaleCap.body}>{formatTime(event)}</Text>
         </View>
-        <Text style={styles.status}>{event.status === 'live' ? 'PRÁVĚ TEĎ' : '18+'}</Text>
+        <Text style={styles.status} maxFontSizeMultiplier={FontScaleCap.body}>
+          {eventStatusLabel(event)}
+        </Text>
       </View>
-      {event.description ? <Text style={styles.eventDescription}>{event.description}</Text> : null}
+      {event.description ? <Text style={styles.eventDescription} maxFontSizeMultiplier={FontScaleCap.body}>{event.description}</Text> : null}
       <View style={styles.metaRow}>
         <MapPinIcon size={15} color={Colors.amber} />
-        <Text style={styles.metaText}>
+        <Text style={styles.metaText} maxFontSizeMultiplier={FontScaleCap.body}>
           {[event.areaLabel, event.city, distanceLabel(event.distanceBand)].filter(Boolean).join(' · ')}
         </Text>
       </View>
       <View style={styles.metaRow}>
         <UsersIcon size={15} color={Colors.mutedText} />
-        <Text style={styles.metaText}>{cs.communityEvents.spots(event.availableSpots)} · {cs.communityEvents.host(hostName(event))}</Text>
+        <Text style={styles.metaText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.spots(event.availableSpots)} · {cs.communityEvents.host(hostName(event))}</Text>
       </View>
       {event.exactAddress ? (
         <View style={styles.addressStrip}>
-          <Text style={styles.addressLabel}>{cs.communityEvents.addressApproved}</Text>
-          <Text style={styles.addressText}>{event.exactAddress}</Text>
+          <Text style={styles.addressLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.addressApproved}</Text>
+          <Text style={styles.addressText} maxFontSizeMultiplier={FontScaleCap.body}>{event.exactAddress}</Text>
         </View>
       ) : (
-        <Text style={styles.hiddenAddress}>{cs.communityEvents.addressHidden}</Text>
+        <Text style={styles.hiddenAddress} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.addressHidden}</Text>
       )}
 
-      {!event.isHost && event.status !== 'cancelled' ? (
+      {!event.isHost && isOpen ? (
         event.membershipStatus === 'approved' ? (
           <Button label={cs.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.leave, 'community_leave')} />
         ) : event.membershipStatus === 'pending' ? (
@@ -199,6 +278,7 @@ function EventCard({
               placeholderTextColor={Colors.mutedText}
               style={styles.input}
               maxLength={240}
+              maxFontSizeMultiplier={FontScaleCap.body}
             />
             <Button label={cs.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), cs.communityEvents.joinSent, 'community_join_request')} />
           </>
@@ -207,37 +287,64 @@ function EventCard({
 
       {event.isHost && event.joinRequests.length > 0 ? (
         <View style={styles.requests}>
-          <Text style={styles.sectionLabel}>{cs.communityEvents.requests}</Text>
+          <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.requests}</Text>
           {event.joinRequests.map((request) => (
             <View key={request.id} style={styles.requestRow}>
               <View style={styles.requestCopy}>
-                <Text style={styles.requestName}>{request.account.nickname ? `@${request.account.nickname}` : request.account.displayName || 'Návštěvník'}</Text>
-                {request.message ? <Text style={styles.requestMessage}>{request.message}</Text> : null}
+                <Text style={styles.requestName} maxFontSizeMultiplier={FontScaleCap.body}>{request.account.nickname ? `@${request.account.nickname}` : request.account.displayName || 'Návštěvník'}</Text>
+                {request.message ? <Text style={styles.requestMessage} maxFontSizeMultiplier={FontScaleCap.body}>{request.message}</Text> : null}
               </View>
               {request.status === 'pending' ? (
                 <View style={styles.requestActions}>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), cs.communityEvents.reject, 'community_request_decline', 'decline')} style={styles.iconButton}>
+                  <Pressable
+                    onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), cs.communityEvents.reject, 'community_request_decline', 'decline')}
+                    disabled={disabled}
+                    style={[styles.iconButton, disabled && styles.controlDisabled]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.communityEvents.reject}
+                    accessibilityState={{ disabled, busy: acting }}
+                  >
                     <XIcon size={18} color={Colors.mutedText} />
                   </Pressable>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), cs.communityEvents.approve, 'community_request_accept', 'accept')} style={[styles.iconButton, styles.approveButton]}>
+                  <Pressable
+                    onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), cs.communityEvents.approve, 'community_request_accept', 'accept')}
+                    disabled={disabled}
+                    style={[styles.iconButton, styles.approveButton, disabled && styles.controlDisabled]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.communityEvents.approve}
+                    accessibilityState={{ disabled, busy: acting }}
+                  >
                     <CheckIcon size={18} color={Colors.stout} />
                   </Pressable>
                 </View>
-              ) : <Text style={styles.approvedLabel}>{cs.communityEvents.approved}</Text>}
+              ) : <Text style={styles.approvedLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.approved}</Text>}
             </View>
           ))}
         </View>
       ) : null}
 
       <View style={styles.textActions}>
-        {event.isHost && event.status !== 'cancelled' ? (
-          <Pressable onPress={() => void run(() => cancelCommunityEvent(event.id), cs.communityEvents.cancelled, 'community_cancel_event', 'cancel')}>
-            <Text style={styles.dangerAction}>{cs.communityEvents.cancelEvent}</Text>
+        {event.isHost && isOpen ? (
+          <Pressable
+            onPress={cancel}
+            disabled={disabled}
+            style={styles.textActionTarget}
+            accessibilityRole="button"
+            accessibilityState={{ disabled, busy: acting }}
+          >
+            <Text style={styles.dangerAction} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.cancelEvent}</Text>
           </Pressable>
         ) : !event.isHost ? (
-          <Pressable onPress={report} style={styles.reportAction}>
+          <Pressable
+            onPress={report}
+            disabled={disabled}
+            style={[styles.reportAction, disabled && styles.controlDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.communityEvents.report}
+            accessibilityState={{ disabled, busy: acting }}
+          >
             <FlagIcon size={14} color={Colors.mutedText} />
-            <Text style={styles.reportText}>{cs.communityEvents.report}</Text>
+            <Text style={styles.reportText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.report}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -254,7 +361,9 @@ export default function CommunityEventsScreen() {
   const [location, setLocation] = useState<Coords | null>(null);
   const [eventLocation, setEventLocation] = useState<Coords | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const loadRequestRef = useRef(0);
   const [draftClientId, setDraftClientId] = useState(() => generateUuidV4());
   const [title, setTitle] = useState('');
@@ -262,8 +371,9 @@ export default function CommunityEventsScreen() {
   const [city, setCity] = useState('');
   const [area, setArea] = useState('');
   const [address, setAddress] = useState('');
-  const [dayOffset, setDayOffset] = useState(0);
-  const [hour, setHour] = useState(() => Math.min(23, new Date().getHours() + 2));
+  const [initialStart] = useState(() => defaultEventStart());
+  const [dayOffset, setDayOffset] = useState(initialStart.dayOffset);
+  const [hour, setHour] = useState(initialStart.hour);
   const [duration, setDuration] = useState(4);
   const [capacity, setCapacity] = useState(6);
   const [adultsConfirmed, setAdultsConfirmed] = useState(false);
@@ -271,12 +381,23 @@ export default function CommunityEventsScreen() {
   const load = useCallback(async (coords: Coords | null) => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    const result = await fetchCommunityEvents(coords ?? undefined);
-    if (requestId !== loadRequestRef.current) return;
-    if (result.ok) setDashboard(result.dashboard);
-    else showToast(result.code === 'auth' ? cs.communityEvents.authError : result.detail);
-    setLoading(false);
-  }, [showToast]);
+    setLoadError(null);
+    try {
+      const result = await fetchCommunityEvents(coords ?? undefined);
+      if (requestId !== loadRequestRef.current) return;
+      if (result.ok) {
+        setDashboard(result.dashboard);
+      } else {
+        const message = result.code === 'auth' ? cs.communityEvents.authError : result.detail;
+        setLoadError(message || cs.communityEvents.loadError);
+      }
+    } catch {
+      if (requestId !== loadRequestRef.current) return;
+      setLoadError(cs.communityEvents.loadError);
+    } finally {
+      if (requestId === loadRequestRef.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const kickoff = setTimeout(() => void load(null), 0);
@@ -284,16 +405,17 @@ export default function CommunityEventsScreen() {
   }, [load]);
 
   const locate = useCallback(async (forEvent: boolean) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     trackUiInteraction('community_locate');
     setBusy(true);
-    const permission = await ensureLocationPermission();
-    if (permission !== 'granted') {
-      showToast(cs.addPub.locationPermissionDenied);
-      if (permission === 'denied') await openSystemSettings();
-      setBusy(false);
-      return;
-    }
     try {
+      const permission = await ensureLocationPermission();
+      if (permission !== 'granted') {
+        showToast(cs.addPub.locationPermissionDenied);
+        if (permission === 'denied') await openSystemSettings();
+        return;
+      }
       const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coords = { lat: fix.coords.latitude, lng: fix.coords.longitude };
       if (forEvent) setEventLocation(coords);
@@ -303,47 +425,90 @@ export default function CommunityEventsScreen() {
       }
     } catch {
       showToast(cs.addPub.locationUnavailable);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    setBusy(false);
   }, [load, showToast]);
 
   const create = useCallback(async () => {
-    trackUiInteraction('community_publish', 'submit');
-    if (!eventLocation || !title.trim() || !city.trim() || !address.trim() || !adultsConfirmed || busy) {
+    if (busyRef.current) return;
+    const validationError = !title.trim()
+      ? cs.communityEvents.titleRequired
+      : !city.trim()
+        ? cs.communityEvents.cityRequired
+        : !address.trim()
+          ? cs.communityEvents.addressRequired
+          : !eventLocation
+            ? cs.communityEvents.locationRequired
+            : !adultsConfirmed
+              ? cs.communityEvents.adultsRequired
+              : null;
+    if (validationError) {
+      trackUiInteraction('community_publish', 'submit');
       trackUiInteraction('community_publish', 'failure');
-      showToast(cs.communityEvents.privacyError);
+      showToast(validationError);
       return;
     }
-    setBusy(true);
     const starts = new Date();
     starts.setDate(starts.getDate() + dayOffset);
     starts.setHours(hour, 0, 0, 0);
+    if (starts.getTime() <= Date.now()) {
+      trackUiInteraction('community_publish', 'submit');
+      trackUiInteraction('community_publish', 'failure');
+      showToast(cs.communityEvents.startPastError);
+      return;
+    }
+    const confirmedLocation = eventLocation;
+    if (!confirmedLocation) return;
+    busyRef.current = true;
+    trackUiInteraction('community_publish', 'submit');
+    setBusy(true);
     const ends = new Date(starts.getTime() + duration * 60 * 60 * 1000);
-    const result = await createCommunityEvent({
-      clientId: draftClientId,
-      title: title.trim(),
-      description: description.trim(),
-      city: city.trim(),
-      areaLabel: area.trim(),
-      exactAddress: address.trim(),
-      lat: eventLocation.lat,
-      lng: eventLocation.lng,
-      startsAt: starts.toISOString(),
-      endsAt: ends.toISOString(),
-      capacity,
-    });
-    if (result.ok) {
+    try {
+      const result = await createCommunityEvent({
+        clientId: draftClientId,
+        title: title.trim(),
+        description: description.trim(),
+        city: city.trim(),
+        areaLabel: area.trim(),
+        exactAddress: address.trim(),
+        lat: confirmedLocation.lat,
+        lng: confirmedLocation.lng,
+        startsAt: starts.toISOString(),
+        endsAt: ends.toISOString(),
+        capacity,
+      });
+      if (!result.ok) {
+        trackUiInteraction('community_publish', 'failure');
+        showToast(result.detail);
+        return;
+      }
       trackUiInteraction('community_publish', 'success');
+      const nextStart = defaultEventStart();
       setDraftClientId(generateUuidV4());
+      setTitle('');
+      setDescription('');
+      setCity('');
+      setArea('');
+      setAddress('');
+      setEventLocation(null);
+      setDayOffset(nextStart.dayOffset);
+      setHour(nextStart.hour);
+      setDuration(4);
+      setCapacity(6);
+      setAdultsConfirmed(false);
       showToast(cs.communityEvents.created);
       setMode('mine');
       await load(location);
-    } else {
+    } catch {
       trackUiInteraction('community_publish', 'failure');
-      showToast(result.detail);
+      showToast(cs.communityEvents.loadError);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    setBusy(false);
-  }, [address, adultsConfirmed, area, busy, capacity, city, dayOffset, description, draftClientId, duration, eventLocation, hour, load, location, showToast, title]);
+  }, [address, adultsConfirmed, area, capacity, city, dayOffset, description, draftClientId, duration, eventLocation, hour, load, location, showToast, title]);
 
   const mine = useMemo(() => [...dashboard.hosted, ...dashboard.joined].filter((event, index, all) => all.findIndex((item) => item.id === event.id) === index), [dashboard]);
   const events = mode === 'mine' ? mine : dashboard.nearby;
@@ -351,18 +516,17 @@ export default function CommunityEventsScreen() {
   return (
     <View style={styles.root}>
       <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
-        <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + Spacing.xl }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top, paddingBottom: insets.bottom + Spacing.xl }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={cs.a11y.backButton} style={styles.backButton}>
+            <Pressable onPress={() => leaveRoute(router)} accessibilityRole="button" accessibilityLabel={cs.a11y.backButton} style={styles.backButton}>
               <ChevronLeftIcon size={24} color={Colors.foam} />
             </Pressable>
             <View style={styles.headerCopy}>
-              <Text style={styles.kicker}>{cs.communityEvents.kicker}</Text>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.communityEvents.title}</Text>
             </View>
           </View>
-          <Text style={styles.intro}>{cs.communityEvents.intro}</Text>
-          <View style={styles.safetyStrip}><Text style={styles.safetyText}>{cs.communityEvents.safety}</Text></View>
+          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.communityEvents.intro}</Text>
+          <View style={styles.safetyStrip}><Text style={styles.safetyText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.safety}</Text></View>
 
           <View style={styles.tabs}>
             {(['nearby', 'mine', 'create'] as Mode[]).map((item) => (
@@ -379,50 +543,61 @@ export default function CommunityEventsScreen() {
                   );
                   setMode(item);
                 }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: mode === item }}
+                accessibilityLabel={item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}
                 style={[styles.tab, mode === item && styles.tabActive]}
               >
-                <Text style={[styles.tabText, mode === item && styles.tabTextActive]}>{item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}</Text>
+                <Text style={[styles.tabText, mode === item && styles.tabTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}</Text>
               </Pressable>
             ))}
           </View>
 
           {mode === 'create' ? (
             <View style={styles.form}>
-              <Text style={styles.inputLabel}>{cs.communityEvents.formTitle}</Text>
-              <TextInput value={title} onChangeText={setTitle} placeholder={cs.communityEvents.formTitlePlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.description}</Text>
-              <TextInput value={description} onChangeText={setDescription} placeholder={cs.communityEvents.descriptionPlaceholder} placeholderTextColor={Colors.mutedText} style={[styles.input, styles.multiline]} multiline maxLength={800} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.city}</Text>
-              <TextInput value={city} onChangeText={setCity} placeholder={cs.communityEvents.cityPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.area}</Text>
-              <TextInput value={area} onChangeText={setArea} placeholder={cs.communityEvents.areaPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.exactAddress}</Text>
-              <TextInput value={address} onChangeText={setAddress} placeholder={cs.communityEvents.exactAddressPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={300} />
-              <Text style={styles.hint}>{cs.communityEvents.exactAddressHint}</Text>
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.formTitle}</Text>
+              <TextInput value={title} onChangeText={setTitle} placeholder={cs.communityEvents.formTitlePlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.description}</Text>
+              <TextInput value={description} onChangeText={setDescription} placeholder={cs.communityEvents.descriptionPlaceholder} placeholderTextColor={Colors.mutedText} style={[styles.input, styles.multiline]} multiline maxLength={800} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.city}</Text>
+              <TextInput value={city} onChangeText={setCity} placeholder={cs.communityEvents.cityPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.area}</Text>
+              <TextInput value={area} onChangeText={setArea} placeholder={cs.communityEvents.areaPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.exactAddress}</Text>
+              <TextInput value={address} onChangeText={setAddress} placeholder={cs.communityEvents.exactAddressPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={300} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.exactAddressHint}</Text>
               <Button label={eventLocation ? cs.communityEvents.locationReady : cs.communityEvents.useLocation} secondary onPress={() => void locate(true)} disabled={busy} icon={<MapPinIcon size={18} color={Colors.amber} />} />
 
               <View style={styles.formGroup}>
-                <Text style={styles.sectionLabel}>{cs.communityEvents.start}</Text>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.start}</Text>
                 <View style={styles.choiceRow}>
-                  {[0, 1].map((value) => <Pressable key={value} onPress={() => setDayOffset(value)} style={[styles.choice, dayOffset === value && styles.choiceActive]}><Text style={[styles.choiceText, dayOffset === value && styles.choiceTextActive]}>{value === 0 ? cs.communityEvents.today : cs.communityEvents.tomorrow}</Text></Pressable>)}
+                  {([0, 1] as const).map((value) => <Pressable key={value} onPress={() => setDayOffset(value)} accessibilityRole="tab" accessibilityState={{ selected: dayOffset === value }} style={[styles.choice, dayOffset === value && styles.choiceActive]}><Text style={[styles.choiceText, dayOffset === value && styles.choiceTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{value === 0 ? cs.communityEvents.today : cs.communityEvents.tomorrow}</Text></Pressable>)}
                 </View>
                 <Stepper value={hour} onChange={setHour} min={0} max={23} />
               </View>
               <View style={styles.formGroup}>
-                <Text style={styles.sectionLabel}>{cs.communityEvents.duration}</Text>
-                <View style={styles.choiceRow}>{[2, 4, 6].map((value) => <Pressable key={value} onPress={() => setDuration(value)} style={[styles.choice, duration === value && styles.choiceActive]}><Text style={[styles.choiceText, duration === value && styles.choiceTextActive]}>{cs.communityEvents.durationHours(value)}</Text></Pressable>)}</View>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.duration}</Text>
+                <View style={styles.choiceRow}>{[2, 4, 6].map((value) => <Pressable key={value} onPress={() => setDuration(value)} accessibilityRole="tab" accessibilityState={{ selected: duration === value }} style={[styles.choice, duration === value && styles.choiceActive]}><Text style={[styles.choiceText, duration === value && styles.choiceTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.durationHours(value)}</Text></Pressable>)}</View>
               </View>
-              <View style={styles.formGroup}><Text style={styles.sectionLabel}>{cs.communityEvents.capacity}</Text><Stepper value={capacity} onChange={setCapacity} min={2} max={20} /></View>
-              <Pressable onPress={() => setAdultsConfirmed((value) => !value)} style={styles.confirmRow}>
+              <View style={styles.formGroup}><Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.capacity}</Text><Stepper value={capacity} onChange={setCapacity} min={2} max={20} /></View>
+              <Pressable onPress={() => setAdultsConfirmed((value) => !value)} style={styles.confirmRow} accessibilityRole="checkbox" accessibilityState={{ checked: adultsConfirmed }}>
                 <View style={[styles.checkbox, adultsConfirmed && styles.checkboxActive]}>{adultsConfirmed ? <CheckIcon size={16} color={Colors.stout} /> : null}</View>
-                <Text style={styles.confirmText}>{cs.communityEvents.adultsConfirm}</Text>
+                <Text style={styles.confirmText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.adultsConfirm}</Text>
               </Pressable>
               <Button label={cs.communityEvents.publish} onPress={() => void create()} disabled={busy} icon={<HouseIcon size={18} color={Colors.stout} />} />
             </View>
-          ) : loading ? <ActivityIndicator color={Colors.amber} style={styles.loader} /> : (
+          ) : loading ? <ActivityIndicator color={Colors.amber} style={styles.loader} /> : loadError ? (
+            <View style={styles.errorState}>
+              <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{loadError}</Text>
+              <Button label={cs.communityEvents.retry} onPress={() => {
+                setLoading(true);
+                void load(location);
+              }} />
+            </View>
+          ) : (
             <View style={styles.list}>
               {mode === 'nearby' && !location ? <Button label={busy ? cs.communityEvents.locating : cs.communityEvents.locate} onPress={() => void locate(false)} disabled={busy} secondary icon={<MapPinIcon size={18} color={Colors.amber} />} /> : null}
-              {events.length === 0 ? <Text style={styles.empty}>{mode === 'nearby' ? cs.communityEvents.noNearby : cs.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
+              {events.length === 0 ? <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{mode === 'nearby' ? cs.communityEvents.noNearby : cs.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
             </View>
           )}
         </KeyboardAwareScrollView>
@@ -437,67 +612,69 @@ const styles = StyleSheet.create({
   header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   backButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center', marginLeft: -Spacing.sm },
   headerCopy: { flex: 1 },
-  kicker: { fontFamily: Fonts.ui.semibold, fontSize: 10, letterSpacing: 1.4, color: Colors.amber },
-  title: { fontFamily: Fonts.display.extrabold, fontSize: 30, lineHeight: 34, color: Colors.foam },
-  intro: { fontFamily: Fonts.display.bold, fontSize: 19, lineHeight: 25, color: Colors.foam },
+  title: { fontWeight: '800', fontSize: 30, lineHeight: 34, color: Colors.foam },
+  intro: { fontWeight: '700', fontSize: 19, lineHeight: 25, color: Colors.foam },
   safetyStrip: { borderLeftWidth: 2, borderLeftColor: Colors.amber, paddingLeft: Spacing.md },
-  safetyText: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 19, color: Colors.foamMuted },
+  safetyText: { fontWeight: '400', fontSize: 13, lineHeight: 19, color: Colors.foamMuted },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.border },
   tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.amber },
-  tabText: { fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.mutedText, textAlign: 'center' },
+  tabText: { fontWeight: '500', fontSize: 12, color: Colors.mutedText, textAlign: 'center' },
   tabTextActive: { color: Colors.foam },
   loader: { marginTop: Spacing.xl },
   list: { gap: Spacing.lg },
-  empty: { fontFamily: Fonts.ui.regular, fontSize: 15, lineHeight: 22, color: Colors.mutedText },
+  empty: { fontWeight: '400', fontSize: 15, lineHeight: 22, color: Colors.mutedText },
   eventCard: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.border, paddingVertical: Spacing.lg, gap: Spacing.sm },
   eventTop: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-start' },
   eventCopy: { flex: 1 },
-  eventTitle: { fontFamily: Fonts.display.extrabold, fontSize: 21, lineHeight: 25, color: Colors.foam },
-  eventMeta: { marginTop: 3, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
-  status: { fontFamily: Fonts.ui.semibold, fontSize: 10, letterSpacing: 1, color: Colors.amber },
-  eventDescription: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
+  eventTitle: { fontWeight: '800', fontSize: 21, lineHeight: 25, color: Colors.foam },
+  eventMeta: { marginTop: 3, fontWeight: '500', fontSize: 13, color: Colors.foamMuted },
+  status: { fontWeight: '600', fontSize: 10, letterSpacing: 1, color: Colors.amber },
+  eventDescription: { fontWeight: '400', fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  metaText: { flex: 1, fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
+  metaText: { flex: 1, fontWeight: '400', fontSize: 13, color: Colors.mutedText },
   addressStrip: { marginTop: Spacing.xs, padding: Spacing.md, borderRadius: Radius.small, backgroundColor: withAlpha(Colors.amber, 0.1) },
-  addressLabel: { fontFamily: Fonts.ui.semibold, fontSize: 10, letterSpacing: 1, color: Colors.amber },
-  addressText: { marginTop: 4, fontFamily: Fonts.ui.medium, fontSize: 15, color: Colors.foam },
-  hiddenAddress: { fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.amberLight },
+  addressLabel: { fontWeight: '600', fontSize: 10, letterSpacing: 1, color: Colors.amber },
+  addressText: { marginTop: 4, fontWeight: '500', fontSize: 15, color: Colors.foam },
+  hiddenAddress: { fontWeight: '500', fontSize: 12, color: Colors.amberLight },
   button: { minHeight: 48, marginTop: Spacing.xs, borderRadius: Radius.medium, backgroundColor: Colors.amber, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md },
-  buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.border },
-  buttonText: { fontFamily: Fonts.ui.bold, fontSize: 14, color: Colors.stout },
+  buttonSecondary: { backgroundColor: Colors.stout3 },
+  buttonText: { fontWeight: '700', fontSize: 14, color: Colors.stout },
   buttonTextSecondary: { color: Colors.foam },
   pressed: { opacity: 0.55 },
-  input: { minHeight: 48, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.medium, backgroundColor: Colors.stout2, paddingHorizontal: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 15, letterSpacing: 0, color: Colors.foam },
+  controlDisabled: { opacity: 0.4 },
+  input: { minHeight: 48, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.medium, backgroundColor: Colors.stout2, paddingHorizontal: Spacing.md, fontWeight: '400', fontSize: 15, letterSpacing: 0, color: Colors.foam },
   multiline: { minHeight: 100, paddingTop: Spacing.md, textAlignVertical: 'top' },
-  inputLabel: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
-  hint: { fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },
+  inputLabel: { fontWeight: '500', fontSize: 13, color: Colors.foamMuted },
+  hint: { fontWeight: '400', fontSize: 12, lineHeight: 17, color: Colors.mutedText },
   form: { gap: Spacing.sm },
   formGroup: { gap: Spacing.sm, marginTop: Spacing.sm },
-  sectionLabel: { fontFamily: Fonts.ui.semibold, fontSize: 10, letterSpacing: 1.25, color: Colors.amber },
+  sectionLabel: { fontWeight: '600', fontSize: 10, letterSpacing: 1.25, color: Colors.amber },
   choiceRow: { flexDirection: 'row', gap: Spacing.sm },
-  choice: { flex: 1, minHeight: 40, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.small, alignItems: 'center', justifyContent: 'center' },
+  choice: { flex: 1, minHeight: HitArea.min, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.small, alignItems: 'center', justifyContent: 'center' },
   choiceActive: { borderColor: Colors.amber, backgroundColor: withAlpha(Colors.amber, 0.1) },
-  choiceText: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText },
+  choiceText: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
   choiceTextActive: { color: Colors.foam },
   stepper: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.border },
   stepButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  stepValue: { fontFamily: Fonts.display.bold, fontSize: 20, color: Colors.foam },
+  stepValue: { fontWeight: '700', fontSize: 20, color: Colors.foam },
   confirmRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
   checkboxActive: { borderColor: Colors.amber, backgroundColor: Colors.amber },
-  confirmText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 13, lineHeight: 18, color: Colors.foamMuted },
+  confirmText: { flex: 1, fontWeight: '500', fontSize: 13, lineHeight: 18, color: Colors.foamMuted },
   requests: { marginTop: Spacing.md, gap: Spacing.sm },
   requestRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.sm },
   requestCopy: { flex: 1 },
-  requestName: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foam },
-  requestMessage: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText },
+  requestName: { fontWeight: '600', fontSize: 14, color: Colors.foam },
+  requestMessage: { marginTop: 2, fontWeight: '400', fontSize: 12, color: Colors.mutedText },
   requestActions: { flexDirection: 'row', gap: Spacing.xs },
-  iconButton: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: HitArea.min, height: HitArea.min, borderRadius: HitArea.min / 2, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
   approveButton: { backgroundColor: Colors.amber, borderColor: Colors.amber },
-  approvedLabel: { fontFamily: Fonts.ui.semibold, fontSize: 12, color: Colors.amber },
+  approvedLabel: { fontWeight: '600', fontSize: 12, color: Colors.amber },
   textActions: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
-  dangerAction: { fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.amberLight },
-  reportAction: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  reportText: { fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.mutedText },
+  textActionTarget: { minHeight: HitArea.min, justifyContent: 'center' },
+  errorState: { gap: Spacing.md },
+  dangerAction: { fontWeight: '500', fontSize: 12, color: Colors.amberLight },
+  reportAction: { minHeight: HitArea.min, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  reportText: { fontWeight: '500', fontSize: 12, color: Colors.mutedText },
 });

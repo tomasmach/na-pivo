@@ -142,6 +142,7 @@ def send_email(
     *,
     text: str | None = None,
     attachments: Sequence[EmailAttachment] | None = None,
+    idempotency_key: str | None = None,
 ) -> bool:
     """Send one transactional e-mail via Resend.
 
@@ -168,7 +169,8 @@ def send_email(
         }
         if attachments:
             payload["attachments"] = list(attachments)
-        resend.Emails.send(payload)
+        options = {"idempotency_key": idempotency_key} if idempotency_key else None
+        resend.Emails.send(payload, options)
     except Exception as exc:  # noqa: BLE001 -- email must never propagate into a request
         logger.error(
             "failed to send email; error_type=%s attachments=%d",
@@ -281,7 +283,13 @@ def send_account_deleted_email(to: str) -> bool:
     return send_email(to, subject, html, text=text)
 
 
-def send_account_export_email(to: str, *, filename: str, json_bytes: bytes) -> bool:
+def send_account_export_email(
+    to: str,
+    *,
+    filename: str,
+    json_bytes: bytes,
+    idempotency_key: str | None = None,
+) -> bool:
     """Send a GDPR-style account export as a JSON attachment."""
     subject = "Tvoje data z Na Pivo"
     message = (
@@ -299,4 +307,5 @@ def send_account_export_email(to: str, *, filename: str, json_bytes: bytes) -> b
         "content": base64.b64encode(json_bytes).decode("ascii"),
         "content_type": "application/json",
     }
-    return send_email(to, subject, html, text=text, attachments=[attachment])
+    kwargs = {"idempotency_key": idempotency_key} if idempotency_key else {}
+    return send_email(to, subject, html, text=text, attachments=[attachment], **kwargs)

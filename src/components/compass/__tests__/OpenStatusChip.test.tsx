@@ -6,7 +6,7 @@ import type { HoursStatus } from '../OpenStatusChip';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// @/theme/fonts require()s .ttf assets jest can't parse; stub the family map.
+// @/theme/fonts requires .ttf assets jest can't parse; stub the family map.
 jest.mock('@/theme/fonts', () => ({
   Fonts: {
     display: { extrabold: 'display-extrabold' },
@@ -20,14 +20,14 @@ jest.mock('@/theme/fonts', () => ({
   FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 type Renderer = {
   root: {
-    findAllByType: (type: unknown) => Array<{ props: Record<string, unknown> }>;
+    findAllByType: (type: unknown) => { props: Record<string, unknown> }[];
     findByProps: (props: Record<string, unknown>) => { props: Record<string, unknown> };
-    findAllByProps: (props: Record<string, unknown>) => Array<{ props: Record<string, unknown> }>;
+    findAllByProps: (props: Record<string, unknown>) => { props: Record<string, unknown> }[];
   };
   toJSON: () => unknown;
 };
@@ -48,9 +48,7 @@ function readLabel(renderer: Renderer): { text: string; color: unknown } {
   expect(textNodes).toHaveLength(1);
   const node = textNodes[0];
   const children = node.props.children;
-  const style = (Array.isArray(node.props.style) ? node.props.style : [node.props.style]) as Array<
-    Record<string, unknown> | undefined
-  >;
+  const style = (Array.isArray(node.props.style) ? node.props.style : [node.props.style]) as (Record<string, unknown> | undefined)[];
   const color = style.reduce<unknown>((acc, s) => (s && 'color' in s ? s.color : acc), undefined);
   return { text: String(children), color };
 }
@@ -174,7 +172,7 @@ describe('OpenStatusChip', () => {
   });
 
   it('exposes the label as an accessibility label for each state', () => {
-    const cases: Array<{ isOpenNow: boolean | null; status: HoursStatus; label: string }> = [
+    const cases: { isOpenNow: boolean | null; status: HoursStatus; label: string }[] = [
       { isOpenNow: true, status: 'ok', label: cs.compass.openNow },
       { isOpenNow: false, status: 'ok', label: cs.compass.closedNow },
       { isOpenNow: null, status: 'unknown', label: cs.compass.hoursUnknown },

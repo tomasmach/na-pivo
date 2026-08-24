@@ -12,7 +12,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { BeerIcon, CheckIcon, XIcon, type IconProps } from '@/components/shared/IconGlyph';
@@ -37,6 +37,10 @@ export type Nudge =
       undoLabel: string;
       onUndo: () => void;
       actionAccessibilityLabel?: string;
+      /** Same escape hatch as `rapid`: a check beside "nenačetlo se" is a lie
+       *  about what happened. Defaults to the check, which is right for
+       *  "spočítáno · Vrátit". */
+      icon?: React.ComponentType<IconProps>;
     }
   | { kind: 'dopito'; label: string; onPress: () => void }
   | { kind: 'checkin'; text: string; ctaLabel: string; onPress: () => void; onDismiss: () => void }
@@ -59,9 +63,14 @@ const PILL_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 } as const;
 
 function StripText({ text }: { text: string }) {
   return (
+    // The slot is a fixed 52pt row so the button under it never jumps, which
+    // means the sentence cannot have more room at large Dynamic Type sizes —
+    // it has to get smaller instead of ending in "nenač…" (§3.3).
     <Text
       style={styles.stripText}
       numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.8}
       maxFontSizeMultiplier={FontScaleCap.body}
     >
       {text}
@@ -70,9 +79,10 @@ function StripText({ text }: { text: string }) {
 }
 
 function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> }) {
+  const Icon = nudge.icon ?? CheckIcon;
   return (
     <View style={[styles.strip, styles.stripNeutralBorder]}>
-      <CheckIcon size={ICON_SIZE} color={Colors.amber} />
+      <Icon size={ICON_SIZE} color={Colors.amber} />
       <StripText text={nudge.text} />
       <Pressable
         onPress={nudge.onUndo}
@@ -84,6 +94,8 @@ function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> })
         <Text
           style={styles.ghostPillLabel}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {nudge.undoLabel}
@@ -232,7 +244,7 @@ const styles = StyleSheet.create({
   },
   stripText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foam,
     includeFontPadding: false,
@@ -246,7 +258,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.32),
   },
   ghostPillLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,
@@ -259,7 +271,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   filledPillLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.stout,
     includeFontPadding: false,
@@ -274,7 +286,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.border, 0.6),
   },
   dopitoLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
     includeFontPadding: false,
@@ -285,7 +297,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   textButtonLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,

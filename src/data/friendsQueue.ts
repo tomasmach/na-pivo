@@ -36,12 +36,18 @@ import {
   type FriendActionResult,
 } from './friendsClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
-import type { QueueSyncResult } from './apiFetch';
+import { preserveDurableQueue } from './durableQueuePolicy';
+import { classifyQueueHttpStatus, type QueueSyncResult } from './apiFetch';
+import {
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+  type PrivateAccountMutationScope,
+} from './privateAccountBoundary';
 import type { Pub } from './pubs';
 
 const STORAGE_KEY = 'na-pivo-friends-queue';
-/** Hard cap — only bites with a very long offline backlog, where dropping the
- *  oldest beats unbounded growth. */
+/** Historical queue limit retained as migration context; durable mutations are never dropped. */
 const MAX_QUEUE_LENGTH = 500;
 
 /** Pub subset broadcast to the party (chosen target, not raw device GPS). */
@@ -150,12 +156,18 @@ function classify(result: FriendActionResult): QueueSyncResult {
   if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth') {
     return 'retry';
   }
+  // UGC-consent gating (428) is a transient server state: the user can accept the
+  // new policy, so an authored activity must survive to a later flush.
+  if (
+    code === 'ugc_consent_required'
+    || code === 'ugc_policy_update_required'
+    || code === 'http_428'
+  ) {
+    return 'retry';
+  }
   const httpMatch = /^http_(\d{3})$/.exec(code);
   if (httpMatch) {
-    const status = Number(httpMatch[1]);
-    if (status === 401 || status === 429) return 'retry';
-    if (status >= 400 && status < 500) return 'permanent-error';
-    return 'retry';
+    return classifyQueueHttpStatus(Number(httpMatch[1]));
   }
   // A server machine-code (not_friends, blocked, activity_not_found,
   // self_reaction, invite_expired, …) is a definitive 4xx rejection → drop.
@@ -248,15 +260,49 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * flush the whole queue. A new op for a key REPLACES any pending op for the same
  * key (last write wins). Never throws.
  */
-export async function enqueueFriendOp(item: FriendQueueItem): Promise<void> {
+export type FriendEnqueueResult = 'queued' | 'storage-error';
+
+export async function enqueueFriendOp(item: FriendQueueItem): Promise<FriendEnqueueResult> {
   const key = dedupKey(item);
-  await runMutation(async () => {
+  const persisted = await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    return saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
   });
+  if (!persisted) return 'storage-error';
   await flushFriendsQueue();
+  return 'queued';
+}
+
+export type DurableFriendEndResult =
+  | { state: 'delivered' }
+  | { state: 'queued' }
+  | { state: 'storage-error' }
+  | { state: 'rejected'; error: FriendActionError };
+
+function assertCurrentAccount(scope: PrivateAccountMutationScope): void {
+  if (!isPrivateAccountMutationScopeCurrent(scope)) {
+    throw new PrivateAccountMutationFrozenError();
+  }
+}
+
+/** Keep the direct DELETE, offline fallback and caller's eventual UI commit
+ * under one account lease. A transition that starts while DELETE is in flight
+ * cannot persist the fallback under the account installed afterwards. */
+export function endFriendActivityDurably(
+  activityId: string,
+  clientId = activityId,
+): Promise<DurableFriendEndResult> {
+  return runPrivateAccountMutation(async (scope) => {
+    const direct = await endFriendPubActivity(activityId);
+    assertCurrentAccount(scope);
+    if (direct.ok) return { state: 'delivered' };
+    if (!isRetriableFriendError(direct)) return { state: 'rejected', error: direct };
+    const queued = await enqueueFriendOp({ op: 'end', clientId, activityId });
+    assertCurrentAccount(scope);
+    return { state: queued };
+  });
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -269,7 +315,7 @@ export function clearFriendsQueue(): Promise<void> {
   abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 /**

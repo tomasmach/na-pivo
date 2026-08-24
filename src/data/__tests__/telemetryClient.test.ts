@@ -142,6 +142,43 @@ describe('trackClientEvent', () => {
     });
   });
 
+  it('redacts GPS coordinates but keeps coarse diagnostics', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await trackClientEvent({
+      event: 'unhandled_error',
+      severity: 'error',
+      message:
+        'Geolocation error at lat=50.0875, lng: 14.4208 and {"lat":50.0875111,"longitude":-33.865143}',
+      context: {
+        stack: 'at locate (50.0875111, 14.4208000)\nat map (lat: -33.865143)',
+        error_message: 'position 50.0875111,14.4208000 unavailable',
+        operation: 'locate_pub',
+        status: 503,
+      },
+    });
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    const wire = JSON.stringify(body);
+    for (const raw of [
+      '50.0875',
+      '14.4208',
+      '14.4208000',
+      '-33.865143',
+      '50.0875111',
+    ]) {
+      expect(wire).not.toContain(raw);
+    }
+    expect(body.message).toBe(
+      'Geolocation error at [redacted-coords], [redacted-coords] and {"lat":[redacted-coords],"longitude":[redacted-coords]}',
+    );
+    expect(body.context.error_message).toBe('position [redacted-coords] unavailable');
+    expect(body.context.operation).toBe('locate_pub');
+    expect(body.context.status).toBe(503);
+  });
+
   it('keeps diagnostics alive when product events exhaust their own budget', async () => {
     const fetchSpy = jest.fn(async () => ({ ok: true }));
     global.fetch = fetchSpy as unknown as typeof fetch;

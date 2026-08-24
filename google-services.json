@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "861192856487",
+    "project_id": "na-pivo-499010",
+    "storage_bucket": "na-pivo-499010.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:861192856487:android:f439c41a53ab6aa9750c82",
+        "android_client_info": {
+          "package_name": "com.tomasmach.na_pivo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "861192856487-pf6vcnrer282mb4peaqfdnmdru2181d2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4_aljVx2Y9K53EQYSTxksWempA2CDMGo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "861192856487-pf6vcnrer282mb4peaqfdnmdru2181d2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.tomasmach.na-pivo"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

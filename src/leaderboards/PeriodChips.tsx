@@ -14,7 +14,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LeaderboardPeriod } from '@/data/leaderboardsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   chipText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     letterSpacing: 0.4,
     textTransform: 'uppercase',

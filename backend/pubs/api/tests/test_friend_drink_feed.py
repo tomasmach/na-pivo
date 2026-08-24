@@ -205,6 +205,26 @@ def test_explicitly_closed_visit_disappears_from_presence_immediately(client):
 
 
 @pytest.mark.django_db
+def test_presence_includes_recent_open_visit(client, settings):
+    settings.FRIEND_PRESENCE_WINDOW_MINUTES = 180
+    token_owner, owner = _register(client, "majitel")
+    _token_friend, friend = _register(client, "jarek")
+    _make_friends(owner, friend)
+    _visit(
+        friend,
+        started_at=timezone.now() - timedelta(hours=2, minutes=59),
+        ended_at=None,
+    )
+
+    response = client.get("/v1/friends/live", **_auth(token_owner))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["account"]["nickname"] for row in response.json()["presence"]] == [
+        "jarek"
+    ]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("field", "value"),
     [("ghost_mode", True), ("share_drinks_with_parta", False)],
@@ -345,6 +365,10 @@ def test_drink_feed_groups_session_items_omits_suspect_and_prices(client):
     assert session["pub_city"] == "Trutnov"
     assert session["cache_key"] == _CACHE_KEY
     assert session["total"] == 4
+    assert session["beer_count"] == 3
+    assert session["wine_count"] == 0
+    assert session["soft_drink_count"] == 0
+    assert session["shot_count"] == 1
     assert session["items"] == [
         {
             "drink_type": DrinkLog.DrinkType.BEER,

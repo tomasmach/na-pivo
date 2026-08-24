@@ -21,10 +21,12 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
@@ -141,7 +143,7 @@ export default function ReportScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}
@@ -168,7 +170,7 @@ export default function ReportScreen() {
           <View style={styles.successButton}>
             <GlowButton
               label={cs.report.successClose}
-              onPress={() => router.back()}
+              onPress={() => leaveRoute(router)}
             />
           </View>
         </View>
@@ -221,7 +223,7 @@ export default function ReportScreen() {
             value={message}
             onChangeText={setMessage}
             placeholder={cs.report.messagePlaceholder}
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             multiline
             textAlignVertical="top"
             maxLength={4000}
@@ -304,7 +306,7 @@ export default function ReportScreen() {
             value={contact}
             onChangeText={setContact}
             placeholder={CONTACT_PLACEHOLDERS[contactType]}
-            placeholderTextColor={Colors.mutedText}
+            placeholderTextColor={MockColors.fieldHint}
             keyboardType={contactType === 'email' ? 'email-address' : 'default'}
             autoCapitalize="none"
             autoCorrect={false}
@@ -367,7 +369,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -382,7 +384,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
   },
   intro: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.foamMuted,
     lineHeight: 15 * 1.5,
@@ -411,7 +413,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   segmentLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -426,7 +428,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.medium,
     color: Colors.foam,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 15 * 1.4,
     minHeight: 140,
@@ -436,7 +438,7 @@ const styles = StyleSheet.create({
 
   // ── Attachment ──
   attachmentCaption: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
     marginBottom: Spacing.sm,
@@ -463,7 +465,7 @@ const styles = StyleSheet.create({
   },
   attachmentButtonCopy: { flex: 1, gap: 3 },
   attachmentButtonTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foam,
   },
@@ -486,12 +488,12 @@ const styles = StyleSheet.create({
   },
   attachmentPreviewCopy: { flex: 1, gap: 3 },
   attachmentReady: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amberLight,
   },
   attachmentPrivacy: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 16,
     color: Colors.mutedText,
@@ -508,7 +510,7 @@ const styles = StyleSheet.create({
 
   // ── Contact ──
   contactCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     marginBottom: 8,
@@ -531,7 +533,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   contactPillLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -544,7 +546,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.medium,
     color: Colors.foam,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -562,7 +564,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   versionCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 11,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -578,13 +580,13 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   successTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 40,
     color: Colors.foam,
     textAlign: 'center',
   },
   successBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.foamMuted,
     lineHeight: 15 * 1.5,

@@ -6,9 +6,11 @@ plus the server-side merge of each drunk beer into the pub's community menu
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -17,6 +19,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.api.views import DrinksView, _merge_drink_into_menu
 from pubs.enrichment import geohash8
 from pubs.models import (
@@ -37,6 +40,7 @@ _NAME = "U Zlatého tygra"
 _LAT = 50.0876
 _LNG = 14.4214
 _KEY = geohash8(_LAT, _LNG)
+_DRANK_AT = dj_timezone.now().replace(microsecond=0)
 
 
 @pytest.fixture
@@ -64,6 +68,32 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
+@pytest.mark.django_db
+def test_legacy_snapshot_read_remains_complete_without_pagination(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    DrinkLog.objects.bulk_create(
+        [
+            DrinkLog(
+                account=account,
+                client_id=uuid.uuid4(),
+                cache_key=None,
+                name="",
+                place_context=DrinkLog.PlaceContext.PRIVATE,
+                beer_name="Ležák",
+                drank_at=dj_timezone.now(),
+            )
+            for _ in range(501)
+        ]
+    )
+
+    response = client.get("/v1/drinks", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["drinks"]) == 501
+    assert "truncated" not in response.json()
+
+
 def _payload(**overrides):
     data = {
         "client_id": _CLIENT_ID,
@@ -73,7 +103,7 @@ def _payload(**overrides):
         "city": "Praha",
         "external_id": "mapy:50.08755,14.42141",
         "beer": {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
-        "drank_at": "2026-06-12T19:45:00+02:00",
+        "drank_at": _DRANK_AT.isoformat(),
     }
     data.update(overrides)
     return data
@@ -88,7 +118,7 @@ def _non_pub_payload(**overrides):
             "volume_ml": 500,
             "serving_type": "bottle",
         },
-        "drank_at": "2026-06-12T19:45:00+02:00",
+        "drank_at": _DRANK_AT.isoformat(),
     }
     data.update(overrides)
     return data
@@ -186,7 +216,7 @@ def test_get_returns_only_the_accounts_authoritative_drink_snapshot(client):
                     "volume_ml": 500,
                     "serving_type": "unknown",
                 },
-                "drank_at": "2026-06-12T17:45:00+00:00",
+                "drank_at": _DRANK_AT.isoformat(),
                 "is_suspect": False,
             }
         ]
@@ -203,12 +233,6 @@ def test_get_drinks_requires_account_token(client):
 def test_log_validation_errors(client):
     token = _register(client)
 
-    missing_price = client.post(
-        "/v1/drinks",
-        data=_payload(beer={"name": "Pilsner", "volume_ml": 500}),
-        format="json",
-        **_auth(token),
-    )
     bad_volume = client.post(
         "/v1/drinks",
         data=_payload(beer={"name": "Pilsner", "price_czk": 50, "volume_ml": 250}),
@@ -244,7 +268,6 @@ def test_log_validation_errors(client):
     )
 
     for resp in (
-        missing_price,
         bad_volume,
         price_zero,
         price_too_high,
@@ -255,6 +278,30 @@ def test_log_validation_errors(client):
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert DrinkLog.objects.count() == 0
     assert PubCommunityData.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_pub_quick_add_without_price_preserves_drink_without_publishing_menu(client):
+    token = _register(client)
+
+    response = client.post(
+        "/v1/drinks",
+        data=_payload(beer={"name": "Pilsner", "volume_ml": 500}),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert response.json()["menu_updated"] is False
+    drink = DrinkLog.objects.get()
+    assert drink.name == _NAME
+    assert drink.beer_name == "Pilsner Urquell"
+    assert drink.price_czk is None
+    assert drink.volume_ml == 500
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+    assert PubPriceIndex.objects.count() == 0
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +319,7 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
     assert body == {
         "accepted": True,
         "duplicate": False,
+        "limited": False,
         "cache_key": _KEY,
         "place_context": "pub",
         "serving_type": "unknown",
@@ -296,7 +344,7 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
     assert drink.beer_name == "Pilsner Urquell"
     assert drink.price_czk == 62
     assert drink.volume_ml == 500
-    assert drink.drank_at.isoformat() == "2026-06-12T17:45:00+00:00"
+    assert drink.drank_at == _DRANK_AT
 
     # A community row was created holding just this beer; hours untouched.
     row = PubCommunityData.objects.get()
@@ -685,6 +733,7 @@ def test_log_idempotent_replay_returns_duplicate_and_no_double_merge(client):
     assert second.json() == {
         "accepted": True,
         "duplicate": True,
+        "limited": False,
         "cache_key": _KEY,
         "place_context": "pub",
         "serving_type": "unknown",
@@ -718,6 +767,7 @@ def test_non_pub_drink_without_pub_identity_or_price_is_private(client):
     assert response.json() == {
         "accepted": True,
         "duplicate": False,
+        "limited": False,
         "cache_key": None,
         "place_context": "private",
         "serving_type": "bottle",
@@ -767,7 +817,7 @@ def test_non_pub_drink_rejects_every_pub_identity_field(client, field, value):
 
 
 @pytest.mark.django_db
-def test_pub_accepts_serving_type_but_still_requires_price(client):
+def test_pub_accepts_serving_type_with_or_without_price(client):
     token = _register(client)
     missing_price = client.post(
         "/v1/drinks",
@@ -785,9 +835,11 @@ def test_pub_accepts_serving_type_but_still_requires_price(client):
         **_auth(token),
     )
 
-    assert missing_price.status_code == status.HTTP_400_BAD_REQUEST
+    assert missing_price.status_code == status.HTTP_201_CREATED
+    assert missing_price.json()["menu_updated"] is False
     assert accepted.status_code == status.HTTP_201_CREATED
-    assert DrinkLog.objects.get().serving_type == DrinkLog.ServingType.CAN
+    assert DrinkLog.objects.count() == 2
+    assert not DrinkLog.objects.exclude(serving_type=DrinkLog.ServingType.CAN).exists()
 
 
 @pytest.mark.django_db
@@ -1102,6 +1154,64 @@ def test_patch_updates_logged_drink_beer_name(client):
 
 
 @pytest.mark.django_db
+def test_patch_updates_full_private_drink_details(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={
+            "beer_name": "Ryzlink",
+            "drink_type": "wine",
+            "price_czk": 85,
+            "volume_ml": 200,
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert (drink.beer_name, drink.drink_type, drink.price_czk, drink.volume_ml) == (
+        "Ryzlink", "wine", 85, 200,
+    )
+    assert drink.beer_brand_key == ""
+    assert drink.beer_product_key == ""
+
+
+@pytest.mark.django_db
+def test_patch_can_clear_optional_price_and_volume(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"price_czk": None, "volume_ml": None},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert (drink.price_czk, drink.volume_ml) == (None, None)
+
+
+@pytest.mark.django_db
+def test_patch_rejects_invalid_volume_for_resulting_type(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"drink_type": "shot", "volume_ml": 500},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_patch_reuses_catalog_cache_for_private_and_community_signals(client):
     token = _register(client)
     created = client.post(
@@ -1242,3 +1352,247 @@ def test_patch_does_not_change_community_menu(client):
 
     assert resp.status_code == status.HTTP_200_OK
     assert PubCommunityData.objects.get(cache_key=_KEY).beers == beers_before
+@pytest.mark.django_db
+def test_get_supports_additive_cursor_pagination(client):
+    token = _register(client)
+    for index in range(3):
+        response = client.post(
+            "/v1/drinks",
+            data=_payload(client_id=f"00000000-0000-4000-8000-00000000001{index}"),
+            format="json",
+            **_auth(token),
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    first = client.get("/v1/drinks?limit=2", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+    assert len(first.json()["drinks"]) == 2
+    assert first.json()["truncated"] is True
+
+    second = client.get(
+        f"/v1/drinks?limit=2&cursor={first.json()['next_cursor']}",
+        **_auth(token),
+    )
+    assert second.status_code == status.HTTP_200_OK
+    assert len(second.json()["drinks"]) == 1
+    assert second.json()["truncated"] is False
+
+
+# ---------------------------------------------------------------------------
+# UGC consent — the private drink log is core, public side effects are gated.
+# A current policy header without a matching stored acceptance must never 428
+# (offline drink logging is the product), but it must not publish either.
+# ---------------------------------------------------------------------------
+
+
+def _ugc(version: str | None = settings.UGC_POLICY_VERSION) -> dict[str, str]:
+    if version is None:
+        return {}
+    return {f"HTTP_{UGC_POLICY_HEADER.replace('-', '_').upper()}": version}
+
+
+def _accept_ugc(account: Account) -> None:
+    account.ugc_terms_version = settings.UGC_POLICY_VERSION
+    account.ugc_terms_accepted_at = dj_timezone.now()
+    account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
+
+
+def _seed_indexed_pub_drink(account: Account) -> None:
+    """A pub beer DrinkLog plus its active public brand index, no community row."""
+    brand = BeerBrand.objects.get(key="pilsner-urquell")
+    DrinkLog.objects.create(
+        account=account,
+        client_id=_CLIENT_ID,
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        external_id="mapy:50.08755,14.42141",
+        place_context=DrinkLog.PlaceContext.PUB,
+        drink_type=DrinkLog.DrinkType.BEER,
+        beer_name="Pilsner Urquell",
+        beer_brand=brand,
+        beer_brand_key=brand.key,
+        beer_brand_name=brand.name,
+        price_czk=62,
+        volume_ml=500,
+        drank_at=dj_timezone.now(),
+    )
+    PubBeerBrand.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        external_id="mapy:50.08755,14.42141",
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.DRINK,
+        active=True,
+        account=account,
+    )
+
+
+@pytest.mark.django_db
+def test_log_pub_beer_with_current_header_and_no_acceptance_stays_private(client):
+    token = _register(client)
+    assert Account.objects.get(device_id=_DEVICE_ID).ugc_terms_accepted_at is None
+
+    resp = client.post(
+        "/v1/drinks", data=_payload(), format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    body = resp.json()
+    assert body["accepted"] is True
+    assert body["menu_updated"] is False
+    # The private diary row is core and persists without any acceptance.
+    assert DrinkLog.objects.count() == 1
+    # No public side effect may appear.
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+    assert PubPriceIndex.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_log_pub_beer_without_consent_leaves_existing_community_row_untouched(client):
+    other = Account.objects.create(device_id=_OTHER_DEVICE_ID)
+    row = PubCommunityData.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        account=other,
+        beers=[{"name": "Kozel 11", "price_czk": 45, "volume_ml": 330}],
+        beers_updated_at=dj_timezone.now(),
+    )
+    token = _register(client)
+
+    resp = client.post(
+        "/v1/drinks", data=_payload(), format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["menu_updated"] is False
+    row.refresh_from_db()
+    # Menu and the most-recent-contributor pointer stay with the original author.
+    assert row.beers == [{"name": "Kozel 11", "price_czk": 45, "volume_ml": 330}]
+    assert row.account == other
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+    assert PubPriceIndex.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_accepted_account_with_current_header_still_publishes_pub_beer(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    _accept_ugc(account)
+
+    resp = client.post(
+        "/v1/drinks", data=_payload(), format="json", **_auth(token), **_ugc()
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["menu_updated"] is True
+    assert DrinkLog.objects.count() == 1
+    row = PubCommunityData.objects.get(cache_key=_KEY)
+    assert row.account == account
+    assert PubBeerBrand.objects.get(cache_key=_KEY).brand_key == "pilsner-urquell"
+    assert PubBeerProduct.objects.get(cache_key=_KEY).product_key == "pilsner-urquell"
+    assert PubPriceIndex.objects.filter(cache_key=_KEY).exists()
+
+
+@pytest.mark.django_db
+def test_legacy_log_without_policy_header_still_publishes_pub_beer(client):
+    token = _register(client)
+    assert Account.objects.get(device_id=_DEVICE_ID).ugc_terms_accepted_at is None
+
+    resp = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["menu_updated"] is True
+    assert PubCommunityData.objects.get(cache_key=_KEY).beers != []
+    assert PubBeerBrand.objects.get(cache_key=_KEY).brand_key == "pilsner-urquell"
+    assert PubPriceIndex.objects.filter(cache_key=_KEY).exists()
+
+
+@pytest.mark.django_db
+def test_duplicate_post_without_acceptance_stays_idempotent_and_side_effect_free(client):
+    token = _register(client)
+    first = client.post(
+        "/v1/drinks", data=_payload(), format="json", **_auth(token), **_ugc()
+    )
+    second = client.post(
+        "/v1/drinks", data=_payload(), format="json", **_auth(token), **_ugc()
+    )
+
+    assert first.status_code == status.HTTP_201_CREATED
+    assert second.status_code == status.HTTP_200_OK
+    assert second.json()["duplicate"] is True
+    assert second.json()["menu_updated"] is False
+    assert DrinkLog.objects.count() == 1
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+    assert PubPriceIndex.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_patch_with_current_header_and_no_acceptance_updates_private_fields_only(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    _seed_indexed_pub_drink(account)
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Velkopopovický Kozel 11°"},
+        format="json",
+        **_auth(token),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json() == {"updated": True}
+    # The private row follows the correction…
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert drink.beer_name == "Velkopopovický Kozel 11°"
+    assert drink.beer_brand_key == "velkopopovicky-kozel"
+    # …but neither a new public index nor a deactivation may happen.
+    assert PubBeerBrand.objects.count() == 1
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active is True
+    assert PubBeerProduct.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("scenario", ["accepted_current_header", "legacy_no_header"])
+def test_patch_pub_drink_still_updates_public_indexes(scenario, client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    if scenario == "accepted_current_header":
+        _accept_ugc(account)
+        extra_headers = _ugc()
+    else:
+        extra_headers = {}
+    _seed_indexed_pub_drink(account)
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Velkopopovický Kozel 11°"},
+        format="json",
+        **_auth(token),
+        **extra_headers,
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubBeerBrand.objects.get(
+        cache_key=_KEY, brand_key="velkopopovicky-kozel"
+    ).active is True
+    assert (
+        PubBeerProduct.objects.get(cache_key=_KEY, product_key="velkopopovicky-kozel-11")
+    )
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active is False

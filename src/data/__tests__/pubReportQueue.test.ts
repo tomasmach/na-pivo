@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueuePubReport, flushPubReportQueue } from '../pubReportQueue';
+import { enqueuePubReport, flushPubReportQueue, persistPubReport } from '../pubReportQueue';
 import { reportPubIssue } from '../pubReportsClient';
 import type { Pub } from '../pubs';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 jest.mock('../pubReportsClient', () => ({
@@ -43,7 +43,7 @@ describe('enqueuePubReport', () => {
   it('sends the report and leaves the queue empty on success', async () => {
     await expect(enqueuePubReport(PUB, 'closed')).resolves.toBe(true);
 
-    expect(reportPubIssue).toHaveBeenCalledWith(PUB, 'closed');
+    expect(reportPubIssue).toHaveBeenCalledWith(PUB, 'closed', expect.any(AbortSignal));
     await expect(readQueue()).resolves.toEqual([]);
   });
 
@@ -67,6 +67,31 @@ describe('enqueuePubReport', () => {
   });
 });
 
+describe('persistPubReport', () => {
+  it('returns after durable storage without waiting for the network send', async () => {
+    let resolveSend!: (sent: boolean) => void;
+    (reportPubIssue as jest.Mock).mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        resolveSend = resolve;
+      }),
+    );
+
+    await expect(persistPubReport(PUB, 'closed')).resolves.toBe(true);
+    await expect(readQueue()).resolves.toEqual([{ pub: PUB, reason: 'closed' }]);
+
+    resolveSend(true);
+    await flushPubReportQueue();
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
+  it('does not claim persistence when storage rejects the write', async () => {
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(persistPubReport(PUB, 'closed')).resolves.toBe(false);
+    expect(reportPubIssue).not.toHaveBeenCalled();
+  });
+});
+
 describe('flushPubReportQueue', () => {
   it('re-sends queued reports once the backend recovers and clears the queue', async () => {
     (reportPubIssue as jest.Mock).mockResolvedValue(false);
@@ -77,8 +102,8 @@ describe('flushPubReportQueue', () => {
     (reportPubIssue as jest.Mock).mockResolvedValue(true);
     await flushPubReportQueue();
 
-    expect(reportPubIssue).toHaveBeenCalledWith(PUB, 'closed');
-    expect(reportPubIssue).toHaveBeenCalledWith(OTHER, 'not_pub');
+    expect(reportPubIssue).toHaveBeenCalledWith(PUB, 'closed', expect.any(AbortSignal));
+    expect(reportPubIssue).toHaveBeenCalledWith(OTHER, 'not_pub', expect.any(AbortSignal));
     await expect(readQueue()).resolves.toEqual([]);
   });
 

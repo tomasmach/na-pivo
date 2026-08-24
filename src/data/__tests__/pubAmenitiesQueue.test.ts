@@ -1,7 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  enqueueAmenityOp,
+  flushPubAmenitiesQueue,
+  getQueuedAmenityDeletes,
+  clearPubAmenitiesQueue,
+  type AmenityQueueItem,
+} from '../pubAmenitiesQueue';
+import type { WireAmenityVote } from '../pubAmenitiesClient';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 jest.mock('expo-secure-store', () => ({
@@ -14,15 +23,6 @@ const submitAmenityVotes: jest.Mock = jest.fn(async (_votes?: unknown) => 'ok');
 jest.mock('../pubAmenitiesClient', () => ({
   submitAmenityVotes: (...args: unknown[]) => submitAmenityVotes(...(args as [])),
 }));
-
-import {
-  enqueueAmenityOp,
-  flushPubAmenitiesQueue,
-  getQueuedAmenityDeletes,
-  clearPubAmenitiesQueue,
-  type AmenityQueueItem,
-} from '../pubAmenitiesQueue';
-import type { WireAmenityVote } from '../pubAmenitiesClient';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
 
@@ -147,6 +147,29 @@ describe('getQueuedAmenityDeletes', () => {
 });
 
 describe('flushPubAmenitiesQueue', () => {
+  it('persists a new vote while an older network delivery is still pending', async () => {
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([upsert('aaaaaaaa', 'game_darts')]),
+    );
+    let releaseDelivery!: (result: 'retry') => void;
+    submitAmenityVotes.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseDelivery = resolve; }),
+    );
+
+    const flush = flushPubAmenitiesQueue();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(submitAmenityVotes).toHaveBeenCalledTimes(1);
+    const enqueue = enqueueAmenityOp(upsert('bbbbbbbb', 'practical_wifi'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const persistedBeforeDeliverySettled = (await readQueue())
+      .some((item) => item.pubKey === 'bbbbbbbb');
+
+    releaseDelivery('retry');
+    await Promise.all([flush, enqueue]);
+    expect(persistedBeforeDeliverySettled).toBe(true);
+  });
+
   it('delivers each queued op and clears the queue on success', async () => {
     submitAmenityVotes.mockResolvedValue('ok');
     await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));

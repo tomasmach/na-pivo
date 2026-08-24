@@ -10,8 +10,43 @@ import { chainAbortSignal } from './apiFetch';
 import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
+import { parseStatsTimeline, type RemoteStatsTimeline } from './statsClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
+
+/**
+ * Monotonic ids handed to every dashboard request that persists a snapshot
+ * (full or page). Ids are assigned at start, but the snapshot winner is the
+ * most recent SUCCESSFULLY PARSED request — a newer request that fails must not
+ * strip an older success of its write, and a slow older success that finishes
+ * writing after a newer one must not leave stale data on disk. Return values
+ * stay untouched — callers own their own races.
+ */
+let latestSnapshotRequestId = 0;
+let latestSuccessfulSnapshotRequestId = 0;
+
+/**
+ * All snapshot writes serialize through this single promise chain, so an older
+ * slow write always lands on disk before a newer successful write and the final
+ * persisted state is the freshest data. The chain survives rejections: a failed
+ * write is swallowed and the next enqueued write still runs.
+ */
+let snapshotWriteChain: Promise<void> = Promise.resolve();
+
+function enqueueSnapshotWrite(
+  requestId: number,
+  generation: number,
+  dashboard: FriendsDashboard,
+): void {
+  const write = snapshotWriteChain.then(async () => {
+    // Re-checked at run time: a newer successful response may have claimed the
+    // snapshot while this write waited in the queue — skip it as stale.
+    if (requestId !== latestSuccessfulSnapshotRequestId) return;
+    await saveFriendsDashboardSnapshot(dashboard, generation);
+  });
+  snapshotWriteChain = write.catch(() => undefined);
+}
 
 export interface FriendProfile {
   id: string;
@@ -19,6 +54,24 @@ export interface FriendProfile {
   displayName: string;
   avatarUrl: string | null;
   isPublic: boolean;
+}
+
+export type FriendSuggestionReason =
+  | { kind: 'shared_pubs'; count: number }
+  | { kind: 'mutual_friends'; count: number };
+
+export interface FriendSuggestion extends FriendProfile {
+  suggestionReason: FriendSuggestionReason;
+}
+
+/**
+ * Someone I follow. One-way, so this shape deliberately carries no presence,
+ * geohash or live state — only what they publish. Older backends don't send
+ * the list at all, which reads as "I follow nobody" rather than as an error.
+ */
+export interface FollowedProfile extends FriendProfile {
+  /** Last beer they logged publicly, or null when they've been quiet. */
+  lastDrink: string | null;
 }
 
 export interface Friendship {
@@ -167,8 +220,16 @@ export interface MyPresence extends FriendPresence {
 export interface FriendsDashboard {
   friends: FriendProfile[];
   friendStats: Record<string, FriendStats>;
+  /**
+   * Still parsed because versions in the store depend on them; nothing in the
+   * app creates one any more (a friendship comes from sharing a table).
+   */
   incomingRequests: Friendship[];
   outgoingRequests: Friendship[];
+  /** People I follow one-way. Empty on older backends. */
+  following: FollowedProfile[];
+  /** How many people follow me. 0 on older backends. */
+  followersCount: number;
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
   /** Friends' plans for today (kind=plan). Empty on older backends. */
@@ -186,6 +247,18 @@ export interface FriendsDashboard {
   leaderboard: LeaderboardEntry[];
   notifications: FriendNotification[];
   unreadCount: number;
+  /** Pagination metadata from the dashboard endpoint; absent on older backends. */
+  relationshipPage?: FriendsRelationshipPage;
+}
+
+/** Pagination slice of the friends dashboard payload (additive, older backends omit it). */
+export interface FriendsRelationshipPage {
+  friendsCount: number;
+  followingCount: number;
+  nextCursor: number | null;
+  followingNextCursor: number | null;
+  friendsTruncated: boolean;
+  followingTruncated: boolean;
 }
 
 /**
@@ -275,6 +348,10 @@ export interface FriendProfileDetail {
   publicStats: PublicProfileStats | null;
   /** Null on older backends → hide the badge showcase. */
   achievements: AccountAchievements | null;
+  /** Aggregates over nights this viewer may already see; absent on older backends. */
+  publishedTimeline: RemoteStatsTimeline | null;
+  /** Whether I follow them one-way. False on older backends. */
+  isFollowing: boolean;
 }
 
 /** The failure half of {@link FriendActionResult}. */
@@ -284,7 +361,11 @@ export interface FriendActionError {
   detail: string;
 }
 
-export type FriendActionResult = { ok: true } | FriendActionError;
+/**
+ * Additive success field: an invite redemption can be accepted immediately
+ * (`status: 'accepted'`); every other success stays a plain `{ ok: true }`.
+ */
+export type FriendActionResult = { ok: true; status?: 'accepted' } | FriendActionError;
 
 interface RawFriendProfile {
   id?: string;
@@ -292,6 +373,10 @@ interface RawFriendProfile {
   display_name?: string;
   avatar_url?: string | null;
   is_public?: boolean;
+  suggestion_reason?: {
+    kind?: unknown;
+    count?: unknown;
+  };
 }
 
 interface RawFriendship {
@@ -393,6 +478,10 @@ interface RawFriendStats {
   rituals?: { key?: string; title?: string }[];
 }
 
+interface RawFollowedProfile extends RawFriendProfile {
+  last_drink?: string | null;
+}
+
 interface RawFriendProfileStats {
   shared_pub_count?: number;
   nights_together?: number;
@@ -430,6 +519,8 @@ interface RawFriendProfileDetail {
   incoming_request_id?: string | null;
   public_stats?: RawPublicProfileStats | null;
   achievements?: RawAchievementsBlock | null;
+  published_timeline?: unknown;
+  is_following?: boolean;
 }
 
 interface RawFriendInvite {
@@ -456,6 +547,32 @@ function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
     displayName: raw?.display_name ?? '',
     avatarUrl: raw?.avatar_url ?? null,
     isPublic: raw?.is_public !== false,
+  };
+}
+
+function parseFollowed(raw: RawFollowedProfile | undefined | null): FollowedProfile {
+  return {
+    ...parseProfile(raw),
+    lastDrink: typeof raw?.last_drink === 'string' && raw.last_drink.length > 0 ? raw.last_drink : null,
+  };
+}
+
+function parseSuggestion(raw: RawFriendProfile): FriendSuggestion | null {
+  const reason = raw.suggestion_reason;
+  if (
+    (reason?.kind !== 'shared_pubs' && reason?.kind !== 'mutual_friends')
+    || typeof reason.count !== 'number'
+    || !Number.isFinite(reason.count)
+    || reason.count < 1
+  ) {
+    return null;
+  }
+  return {
+    ...parseProfile(raw),
+    suggestionReason: {
+      kind: reason.kind,
+      count: Math.floor(reason.count),
+    },
   };
 }
 
@@ -679,6 +796,8 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     incomingRequestId: raw.incoming_request_id ?? null,
     publicStats: parsePublicStats(raw.public_stats),
     achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
+    publishedTimeline: parseStatsTimeline(raw.published_timeline),
+    isFollowing: raw.is_following === true,
   };
 }
 
@@ -698,14 +817,25 @@ function extractError(data: unknown, status: number): FriendActionError {
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    /** Authoring shared UGC (pub name, city, message, recipients) → consent-gated. */
+    gatedUgc?: boolean;
+  } = {},
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
   }
 
-  const session = await ensureAccount(options.signal);
+  let session: AccountSession | null = null;
+  try {
+    session = await ensureAccount(options.signal);
+  } catch {
+    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
+  }
   if (!session || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
@@ -717,17 +847,27 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
     });
+    // The body is consumed exactly once. On a successful response an unparseable
+    // or rejected read must flow to the outer catch (network) instead of
+    // degrading to a false success; only non-ok bodies tolerate garbage JSON.
     let data: Record<string, unknown> = {};
-    try {
+    if (resp.ok) {
       const text = await resp.text();
       data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    } catch {
-      data = {};
+    } else {
+      try {
+        const text = await resp.text();
+        data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      } catch {
+        data = {};
+      }
     }
+    if (!resp.ok && options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
@@ -745,59 +885,269 @@ async function requestJson(
   }
 }
 
+function parseNonnegativeInt(value: unknown): number | null {
+  if (
+    typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && Number.isInteger(value)
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function parseRelationshipPage(
+  data: Record<string, unknown>,
+  friends: FriendProfile[],
+  following: FollowedProfile[],
+): FriendsRelationshipPage {
+  const nextCursor = parseNonnegativeInt(data.next_cursor);
+  const followingNextCursor = parseNonnegativeInt(data.following_next_cursor);
+  return {
+    friendsCount: parseNonnegativeInt(data.friends_count) ?? friends.length,
+    followingCount: parseNonnegativeInt(data.following_count) ?? following.length,
+    nextCursor,
+    followingNextCursor,
+    friendsTruncated: typeof data.friends_truncated === 'boolean'
+      ? data.friends_truncated
+      : nextCursor !== null,
+    followingTruncated: typeof data.following_truncated === 'boolean'
+      ? data.following_truncated
+      : followingNextCursor !== null,
+  };
+}
+
+function parseFriendsDashboard(data: Record<string, unknown>): FriendsDashboard {
+  const friends: FriendProfile[] = Array.isArray(data.friends)
+    ? (data.friends as RawFriendProfile[]).map(parseProfile)
+    : [];
+  const following: FollowedProfile[] = Array.isArray(data.following)
+    ? (data.following as RawFollowedProfile[]).map(parseFollowed)
+    : [];
+  const rawStats = (data.friend_stats ?? {}) as Record<string, RawFriendStats>;
+  const friendStats: Record<string, FriendStats> = {};
+  for (const [id, stats] of Object.entries(rawStats)) {
+    friendStats[id] = parseStats(stats);
+  }
+  return {
+    friends,
+    friendStats,
+    incomingRequests: Array.isArray(data.incoming_requests)
+      ? (data.incoming_requests as RawFriendship[]).map(parseFriendship)
+      : [],
+    outgoingRequests: Array.isArray(data.outgoing_requests)
+      ? (data.outgoing_requests as RawFriendship[]).map(parseFriendship)
+      : [],
+    following,
+    followersCount: typeof data.followers_count === 'number' ? data.followers_count : 0,
+    activeFriends: Array.isArray(data.active_friends)
+      ? (data.active_friends as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myActiveActivity: data.my_active_activity
+      ? parseActivity(data.my_active_activity as RawFriendActivity)
+      : null,
+    plans: Array.isArray(data.plans)
+      ? (data.plans as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myPlan: data.my_plan ? parseActivity(data.my_plan as RawFriendActivity) : null,
+    presence: parsePresenceList(data.presence),
+    myPresence: parseMyPresence(data.my_presence),
+    blockedIds: Array.isArray(data.blocked_ids)
+      ? (data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
+      : [],
+    settings: parseSocialSettings(data.settings as RawFriendSocialSettings | undefined),
+    streak: parseStreak(data.streak as RawFriendStreak | undefined),
+    leaderboard: Array.isArray(data.leaderboard)
+      ? (data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
+      : [],
+    notifications: Array.isArray(data.notifications)
+      ? (data.notifications as RawFriendNotification[]).map(parseNotification)
+      : [],
+    unreadCount: typeof data.unread_count === 'number' ? data.unread_count : 0,
+    relationshipPage: parseRelationshipPage(data, friends, following),
+  };
+}
+
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
   // Capture the account-boundary generation BEFORE the request begins (and thus
   // before requestJson captures this account's bearer). If a logout/delete clears
   // the snapshot while this fetch is in flight, the write below is dropped instead
   // of re-persisting the previous account's graph under the next account.
   const generation = snapshotGeneration();
-  const res = await requestJson('/v1/friends', { signal });
-  if (!res.ok) return null;
-  const rawStats = (res.data.friend_stats ?? {}) as Record<string, RawFriendStats>;
-  const friendStats: Record<string, FriendStats> = {};
-  for (const [id, stats] of Object.entries(rawStats)) {
-    friendStats[id] = parseStats(stats);
+  const requestId = ++latestSnapshotRequestId;
+  const res = await requestJson('/v1/friends?limit=100', { signal });
+  // Fail closed: if the account boundary moved while this fetch was in flight,
+  // the response belongs to the previous account — never parse or return it.
+  if (!res.ok || snapshotGeneration() !== generation) return null;
+  const dashboard = parseFriendsDashboard(res.data);
+  if (requestId > latestSuccessfulSnapshotRequestId) {
+    latestSuccessfulSnapshotRequestId = requestId;
   }
-  const dashboard: FriendsDashboard = {
-    friends: Array.isArray(res.data.friends)
-      ? (res.data.friends as RawFriendProfile[]).map(parseProfile)
-      : [],
-    friendStats,
-    incomingRequests: Array.isArray(res.data.incoming_requests)
-      ? (res.data.incoming_requests as RawFriendship[]).map(parseFriendship)
-      : [],
-    outgoingRequests: Array.isArray(res.data.outgoing_requests)
-      ? (res.data.outgoing_requests as RawFriendship[]).map(parseFriendship)
-      : [],
-    activeFriends: Array.isArray(res.data.active_friends)
-      ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
-      : [],
-    myActiveActivity: res.data.my_active_activity
-      ? parseActivity(res.data.my_active_activity as RawFriendActivity)
-      : null,
-    plans: Array.isArray(res.data.plans)
-      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
-      : [],
-    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
-    presence: parsePresenceList(res.data.presence),
-    myPresence: parseMyPresence(res.data.my_presence),
-    blockedIds: Array.isArray(res.data.blocked_ids)
-      ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
-      : [],
-    settings: parseSocialSettings(res.data.settings as RawFriendSocialSettings | undefined),
-    streak: parseStreak(res.data.streak as RawFriendStreak | undefined),
-    leaderboard: Array.isArray(res.data.leaderboard)
-      ? (res.data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
-      : [],
-    notifications: Array.isArray(res.data.notifications)
-      ? (res.data.notifications as RawFriendNotification[]).map(parseNotification)
-      : [],
-    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
-  };
   // Persist the freshly-loaded graph so an offline cold start can hydrate it
-  // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
-  // generation guard drops the write if an account boundary was crossed mid-fetch.
-  void saveFriendsDashboardSnapshot(dashboard, generation);
+  // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return.
+  // The generation guard drops a write across an account boundary; the id guard
+  // drops a write that lost the race against a newer successful request, and
+  // the write queue keeps an older slow success from finishing last.
+  enqueueSnapshotWrite(requestId, generation, dashboard);
+  return dashboard;
+}
+
+/** Append page-only rows after current ones; a repeated id takes the page row. */
+function mergeRowsById<T extends { id: string }>(currentRows: T[], pageRows: T[]): T[] {
+  const pageById = new Map(pageRows.map((row) => [row.id, row]));
+  const known = new Set(currentRows.map((row) => row.id));
+  const merged = currentRows.map((row) => pageById.get(row.id) ?? row);
+  for (const row of pageRows) {
+    if (!known.has(row.id)) {
+      known.add(row.id);
+      merged.push(row);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Fold one paginated slice into the loaded dashboard. Branches the CURRENT
+ * metadata marks complete stay untouched (a backend that resent page 1 must not
+ * shrink them); only still-truncated branches grow. Live surfaces (presence,
+ * activities, settings…) are carried over by reference — pages carry none.
+ */
+export function mergeFriendsDashboardPage(
+  current: FriendsDashboard,
+  page: FriendsDashboard,
+): FriendsDashboard {
+  const currentMeta = current.relationshipPage;
+  const pageMeta = page.relationshipPage;
+  const friendsAdvances = currentMeta?.friendsTruncated ?? false;
+  const followingAdvances = currentMeta?.followingTruncated ?? false;
+  const meta: FriendsRelationshipPage | undefined =
+    !currentMeta || !pageMeta
+      ? pageMeta ?? currentMeta
+      : {
+          friendsCount: friendsAdvances ? pageMeta.friendsCount : currentMeta.friendsCount,
+          followingCount: followingAdvances ? pageMeta.followingCount : currentMeta.followingCount,
+          nextCursor: friendsAdvances ? pageMeta.nextCursor : currentMeta.nextCursor,
+          followingNextCursor: followingAdvances
+            ? pageMeta.followingNextCursor
+            : currentMeta.followingNextCursor,
+          friendsTruncated: friendsAdvances ? pageMeta.friendsTruncated : currentMeta.friendsTruncated,
+          followingTruncated: followingAdvances
+            ? pageMeta.followingTruncated
+            : currentMeta.followingTruncated,
+        };
+  return {
+    friends: friendsAdvances ? mergeRowsById(current.friends, page.friends) : current.friends,
+    following: followingAdvances
+      ? mergeRowsById(current.following, page.following)
+      : current.following,
+    friendStats: friendsAdvances ? { ...current.friendStats, ...page.friendStats } : current.friendStats,
+    incomingRequests: friendsAdvances
+      ? mergeRowsById(current.incomingRequests, page.incomingRequests)
+      : current.incomingRequests,
+    outgoingRequests: friendsAdvances
+      ? mergeRowsById(current.outgoingRequests, page.outgoingRequests)
+      : current.outgoingRequests,
+    followersCount: current.followersCount,
+    activeFriends: current.activeFriends,
+    myActiveActivity: current.myActiveActivity,
+    plans: current.plans,
+    myPlan: current.myPlan,
+    presence: current.presence,
+    myPresence: current.myPresence,
+    blockedIds: current.blockedIds,
+    settings: current.settings,
+    streak: current.streak,
+    leaderboard: current.leaderboard,
+    notifications: current.notifications,
+    unreadCount: current.unreadCount,
+    relationshipPage: meta,
+  };
+}
+
+/**
+ * Load the next page of a truncated relationship graph. Returns `current` as-is
+ * when nothing is truncated, and null when a needed cursor is missing, the
+ * request fails, or the account boundary moved mid-flight (so two accounts can
+ * never merge their graphs).
+ */
+export async function fetchNextFriendsDashboardPage(
+  current: FriendsDashboard,
+  signal?: AbortSignal,
+): Promise<FriendsDashboard | null> {
+  const meta = current.relationshipPage;
+  // Older backends never paginate; nothing to advance.
+  if (!meta) return current;
+  const friendsTruncated = meta.friendsTruncated;
+  const followingTruncated = meta.followingTruncated;
+  if (!friendsTruncated && !followingTruncated) return current;
+  let path = '/v1/friends?limit=100';
+  if (friendsTruncated) {
+    if (meta.nextCursor === null) return null;
+    path += `&cursor=${meta.nextCursor}`;
+  }
+  if (followingTruncated) {
+    if (meta.followingNextCursor === null) return null;
+    path += `&following_cursor=${meta.followingNextCursor}`;
+  }
+  const generation = snapshotGeneration();
+  const requestId = ++latestSnapshotRequestId;
+  const res = await requestJson(path, { signal });
+  if (!res.ok) return null;
+  if (snapshotGeneration() !== generation) return null;
+  const merged = mergeFriendsDashboardPage(current, parseFriendsDashboard(res.data));
+  // Same winner rule as the full dashboard: only the newest successfully
+  // parsed request (full or page) owns the snapshot write, and the write queue
+  // serializes it behind any older in-flight success.
+  if (requestId > latestSuccessfulSnapshotRequestId) {
+    latestSuccessfulSnapshotRequestId = requestId;
+  }
+  enqueueSnapshotWrite(requestId, generation, merged);
+  return merged;
+}
+
+/**
+ * Load the whole relationship graph by walking every truncation flag to
+ * completion. Aborts with null on any failure, missing cursor, stalled progress
+ * or account-boundary move; there is no page cap — the server's own cursors end
+ * the walk.
+ */
+export async function fetchAllFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
+  const generation = snapshotGeneration();
+  let dashboard = await fetchFriendsDashboard(signal);
+  if (!dashboard || snapshotGeneration() !== generation) return null;
+  // Cursor-pair signatures already requested within THIS walk; a repeat means
+  // the server is cycling us (e.g. 100→200→100), so stop before another request.
+  const visitedSignatures = new Set<string>();
+  for (;;) {
+    const previousMeta = dashboard.relationshipPage;
+    if (!previousMeta?.friendsTruncated && !previousMeta?.followingTruncated) break;
+    const signature =
+      `${previousMeta.friendsTruncated ? previousMeta.nextCursor : 'done'}`
+      + `|${previousMeta.followingTruncated ? previousMeta.followingNextCursor : 'done'}`;
+    if (visitedSignatures.has(signature)) return null;
+    visitedSignatures.add(signature);
+    const friendsWasActive = previousMeta.friendsTruncated;
+    const followingWasActive = previousMeta.followingTruncated;
+    const previousSize = dashboard.friends.length + dashboard.following.length;
+    const next = await fetchNextFriendsDashboardPage(dashboard, signal);
+    if (!next || snapshotGeneration() !== generation) return null;
+    // Pages can carry only pending/blocked rows, so loaded friend/following
+    // counts may legitimately stall while the walk still advances.
+    const nextMeta = next.relationshipPage;
+    const cursorChanged =
+      (friendsWasActive && nextMeta?.nextCursor !== previousMeta.nextCursor) ||
+      (followingWasActive && nextMeta?.followingNextCursor !== previousMeta.followingNextCursor);
+    const grew = next.friends.length + next.following.length > previousSize;
+    const completed =
+      (friendsWasActive && !(nextMeta?.friendsTruncated ?? false)) ||
+      (followingWasActive && !(nextMeta?.followingTruncated ?? false));
+    if (!cursorChanged && !grew && !completed) return null;
+    dashboard = next;
+  }
+  // No final save here: every step's request already persisted its result as
+  // the newest snapshot producer, and a redundant write could only race a
+  // newer request started mid-walk.
   return dashboard;
 }
 
@@ -807,11 +1157,15 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
  * full dashboard when the endpoint 404s (older backend that predates §D2).
  */
 export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiveSlice | null> {
+  const generation = snapshotGeneration();
   const res = await requestJson('/v1/friends/live', { signal });
+  // Fail closed before reading the body or falling back: a boundary crossed
+  // mid-request makes this response (and any dashboard fallback) prior-account data.
+  if (snapshotGeneration() !== generation) return null;
   if (!res.ok) {
     if (res.result.code === 'http_404') {
       const dashboard = await fetchFriendsDashboard(signal);
-      if (!dashboard) return null;
+      if (!dashboard || snapshotGeneration() !== generation) return null;
       return {
         activeFriends: dashboard.activeFriends,
         myActiveActivity: dashboard.myActiveActivity,
@@ -855,6 +1209,16 @@ export async function searchFriends(query: string, signal?: AbortSignal): Promis
     : [];
 }
 
+export async function fetchFriendSuggestions(signal?: AbortSignal): Promise<FriendSuggestion[] | null> {
+  const res = await requestJson('/v1/friends/search?suggest=true', { signal });
+  if (!res.ok) return null;
+  return Array.isArray(res.data.results)
+    ? (res.data.results as RawFriendProfile[])
+        .map(parseSuggestion)
+        .filter((profile): profile is FriendSuggestion => profile !== null)
+    : [];
+}
+
 export async function sendFriendRequest(params: {
   accountId?: string;
   nickname?: string;
@@ -868,7 +1232,10 @@ export async function sendFriendRequest(params: {
       ? { target_account_id: params.accountId }
       : { nickname: params.nickname ?? '' };
   const res = await requestJson('/v1/friends/requests', { method: 'POST', body });
-  return res.ok ? { ok: true } : res.result;
+  if (!res.ok) return res.result;
+  // Additive: only an immediate invite acceptance carries a status; legacy and
+  // pending responses stay a plain success so existing callers don't change.
+  return res.data.status === 'accepted' ? { ok: true, status: 'accepted' } : { ok: true };
 }
 
 /** My reusable invite code + deep link, minting one if none is active (§A1). */
@@ -932,6 +1299,7 @@ export async function createFriendPlan(
       scheduled_for: scheduledForISO,
       ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
+    gatedUgc: true,
   });
   return res.ok ? { ok: true } : res.result;
 }
@@ -1010,6 +1378,23 @@ export async function removeFriend(accountId: string): Promise<FriendActionResul
   return res.ok ? { ok: true } : res.result;
 }
 
+/**
+ * Follow someone one-way. Idempotent on the server, so a double tap while the
+ * first request is still in flight is not an error the UI has to explain.
+ */
+export async function followAccount(accountId: string): Promise<FriendActionResult> {
+  const res = await requestJson('/v1/follows', {
+    method: 'POST',
+    body: { account_id: accountId },
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+export async function unfollowAccount(accountId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/follows/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+  return res.ok ? { ok: true } : res.result;
+}
+
 export async function shareFriendPubActivity(
   pub: Pub,
   message?: string,
@@ -1033,6 +1418,7 @@ export async function shareFriendPubActivity(
       expires_at: expires.toISOString(),
       ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
+    gatedUgc: true,
   });
   return res.ok ? { ok: true } : res.result;
 }
@@ -1076,6 +1462,16 @@ export async function updateFriendSettings(
   }
   const res = await requestJson('/v1/friends/settings', { method: 'PATCH', body });
   return res.ok ? { ok: true } : res.result;
+}
+
+/** Load only the current account's social privacy switches. */
+export async function fetchFriendSettings(
+  signal?: AbortSignal,
+): Promise<FriendSocialSettings | null> {
+  const res = await requestJson('/v1/friends/settings', { signal });
+  return res.ok
+    ? parseSocialSettings(res.data as RawFriendSocialSettings)
+    : null;
 }
 
 export async function markFriendNotificationsRead(ids?: string[]): Promise<void> {

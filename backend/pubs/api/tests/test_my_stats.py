@@ -10,13 +10,15 @@ drinking day rolls at 04:00 Europe/Prague.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.models import Account, DrinkLog
 
@@ -93,9 +95,15 @@ def test_empty_stats_returns_zeroes_not_404(client):
     resp = client.get("/v1/me/stats", **_auth(token))
 
     assert resp.status_code == status.HTTP_200_OK, resp.content
-    assert resp.json() == {
+    body = resp.json()
+    assert {
+        key: value
+        for key, value in body.items()
+        if key not in {"timeline", "night_timeline"}
+    } == {
         "total_beers": 0,
         "total_evenings": 0,
+        "total_nights": 0,
         "distinct_pubs": 0,
         "total_spent_czk": 0,
         "first_drink_at": None,
@@ -106,6 +114,17 @@ def test_empty_stats_returns_zeroes_not_404(client):
             "most_beers_date": None,
             "fastest_beer_seconds": None,
             "longest_evening_seconds": None,
+            "longest_evening_pub_name": None,
+            "longest_evening_date": None,
+        },
+        "night_records": {
+            "most_beers": 0,
+            "longest_seconds": 0,
+            "most_stops": 0,
+            "most_beers_date": None,
+            "most_beers_pub_names": [],
+            "longest_date": None,
+            "longest_pub_names": [],
         },
         "periods": {
             "timezone": "Europe/Prague",
@@ -113,6 +132,16 @@ def test_empty_stats_returns_zeroes_not_404(client):
             "years": [],
         },
     }
+    assert len(body["timeline"]["days"]) == 7
+    assert len(body["timeline"]["weeks"]) == 12
+    assert len(body["timeline"]["months"]) == 12
+    assert body["timeline"]["streak"] == {
+        "current_weeks": 0,
+        "best_weeks": 0,
+    }
+    assert all(row["beers"] == 0 for row in body["timeline"]["days"])
+    assert len(body["night_timeline"]["days"]) == 7
+    assert all(row["evenings"] == 0 for row in body["night_timeline"]["days"])
 
 
 @pytest.mark.django_db
@@ -164,6 +193,8 @@ def test_single_evening_one_pub(client):
         "most_beers_date": "2026-06-12",
         "fastest_beer_seconds": 600,
         "longest_evening_seconds": 1500,
+        "longest_evening_pub_name": "U Zlatého tygra",
+        "longest_evening_date": "2026-06-12",
     }
 
 
@@ -404,6 +435,97 @@ def test_monthly_and_yearly_periods_include_zero_safe_averages(client):
 
 
 @pytest.mark.django_db
+def test_profile_timeline_keeps_empty_buckets_and_derives_weekly_streak(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    today = datetime.now(PRAGUE).date()
+    current_monday = today - timedelta(days=today.weekday())
+    current_at = datetime.combine(today, time(hour=19), tzinfo=PRAGUE)
+    previous_at = datetime.combine(
+        current_monday - timedelta(days=2),
+        time(hour=20),
+        tzinfo=PRAGUE,
+    )
+
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=60,
+        drank_at=current_at,
+    )
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=60,
+        drank_at=current_at + timedelta(minutes=45),
+    )
+    _drink(
+        account,
+        cache_key=_KEY_LOKAL,
+        name="Lokál",
+        price_czk=58,
+        drank_at=previous_at,
+    )
+
+    timeline = client.get("/v1/me/stats", **_auth(token)).json()["timeline"]
+
+    assert len(timeline["days"]) == 7
+    assert timeline["days"][-1] == {
+        "period": today.isoformat(),
+        "beers": 2,
+        "evenings": 1,
+        "distinct_pubs": 1,
+        "longest_evening_seconds": 45 * 60,
+    }
+    assert timeline["weeks"][-1]["beers"] == 2
+    assert timeline["weeks"][-1]["evenings"] == 1
+    assert timeline["weeks"][-2]["beers"] == 1
+    assert timeline["streak"] == {"current_weeks": 2, "best_weeks": 2}
+
+
+@pytest.mark.django_db
+def test_night_timeline_counts_a_pub_crawl_as_one_evening(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    today = datetime.now(PRAGUE).date()
+    started_at = datetime.combine(today, time(hour=19), tzinfo=PRAGUE)
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=60,
+        drank_at=started_at,
+    )
+    _drink(
+        account,
+        cache_key=_KEY_LOKAL,
+        name="Lokál",
+        price_czk=58,
+        drank_at=started_at + timedelta(hours=4),
+    )
+
+    body = client.get("/v1/me/stats", **_auth(token)).json()
+
+    assert body["total_evenings"] == 2  # released per-pub contract
+    assert body["total_nights"] == 1
+    assert body["timeline"]["days"][-1]["evenings"] == 2
+    assert body["night_timeline"]["days"][-1] == {
+        "period": today.isoformat(),
+        "beers": 2,
+        "evenings": 1,
+        "distinct_pubs": 2,
+        "longest_evening_seconds": 4 * 60 * 60,
+    }
+    assert body["night_timeline"]["windows"]["week"]["evenings"] == 1
+    assert body["night_records"]["most_beers_pub_names"] == [
+        "U Zlatého tygra",
+        "Lokál",
+    ]
+
+
+@pytest.mark.django_db
 def test_requested_timezone_controls_period_and_drinking_day_buckets(client):
     token = _register(client)
     account = Account.objects.latest("created_at")
@@ -431,6 +553,65 @@ def test_requested_timezone_controls_period_and_drinking_day_buckets(client):
 
 
 @pytest.mark.django_db
+def test_night_records_group_pub_crawl_and_can_exclude_current_drinking_day(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+
+    previous = datetime(2026, 6, 11, 18, 0, tzinfo=PRAGUE)
+    for index in range(2):
+        _drink(
+            account,
+            cache_key=_KEY_TYGR,
+            name="U Zlatého tygra",
+            price_czk=60,
+            drank_at=previous + timedelta(minutes=index * 30),
+        )
+    for index in range(3):
+        _drink(
+            account,
+            cache_key=_KEY_LOKAL,
+            name="Lokál",
+            price_czk=58,
+            drank_at=previous + timedelta(hours=4, minutes=index * 30),
+        )
+
+    current = datetime(2026, 6, 12, 20, 0, tzinfo=PRAGUE)
+    for index in range(6):
+        _drink(
+            account,
+            cache_key=_KEY_TYGR,
+            name="U Zlatého tygra",
+            price_czk=60,
+            drank_at=current + timedelta(minutes=index * 20),
+        )
+
+    lifetime = client.get("/v1/me/stats", **_auth(token)).json()
+    previous_only = client.get(
+        "/v1/me/stats?exclude_drinking_day=2026-06-12",
+        **_auth(token),
+    ).json()
+
+    assert lifetime["night_records"] == {
+        "most_beers": 6,
+        "longest_seconds": 5 * 60 * 60,
+        "most_stops": 2,
+        "most_beers_date": "2026-06-12",
+        "most_beers_pub_names": ["U Zlatého tygra"],
+        "longest_date": "2026-06-11",
+        "longest_pub_names": ["U Zlatého tygra", "Lokál"],
+    }
+    assert previous_only["night_records"] == {
+        "most_beers": 5,
+        "longest_seconds": 5 * 60 * 60,
+        "most_stops": 2,
+        "most_beers_date": "2026-06-11",
+        "most_beers_pub_names": ["U Zlatého tygra", "Lokál"],
+        "longest_date": "2026-06-11",
+        "longest_pub_names": ["U Zlatého tygra", "Lokál"],
+    }
+
+
+@pytest.mark.django_db
 def test_invalid_requested_timezone_falls_back_to_prague(client):
     token = _register(client)
 
@@ -439,3 +620,70 @@ def test_invalid_requested_timezone_falls_back_to_prague(client):
     ).json()
 
     assert body["periods"]["timezone"] == "Europe/Prague"
+
+
+@pytest.mark.django_db
+def test_stats_history_window_ignores_impossibly_old_imports(client, settings):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    settings.STATS_HISTORY_YEARS = 2
+    now = timezone.now()
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=65,
+        drank_at=now - timedelta(days=1),
+    )
+    _drink(
+        account,
+        cache_key=_KEY_LOKAL,
+        name="Lokál",
+        price_czk=55,
+        drank_at=datetime(now.year - 5, 6, 1, 18, tzinfo=UTC),
+    )
+
+    body = client.get("/v1/me/stats", **_auth(token)).json()
+
+    assert body["total_beers"] == 1
+    assert body["top_pubs"][0]["cache_key"] == _KEY_TYGR
+    assert all(
+        int(row["period"][:4]) >= now.year - 1
+        for row in body["periods"]["months"]
+    )
+
+
+@pytest.mark.django_db
+def test_stats_materialization_keeps_a_bounded_recent_row_set(client, settings):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    settings.STATS_MAX_DRINK_ROWS = 2
+    now = timezone.now().replace(microsecond=0)
+    for days_ago in (3, 2, 1):
+        _drink(
+            account,
+            cache_key=_KEY_TYGR,
+            name="U Zlatého tygra",
+            price_czk=60,
+            drank_at=now - timedelta(days=days_ago),
+        )
+
+    body = client.get("/v1/me/stats", **_auth(token)).json()
+
+    assert body["total_beers"] == 2
+    assert body["first_drink_at"] == (now - timedelta(days=2)).isoformat()
+
+
+@pytest.mark.django_db
+def test_stats_endpoint_uses_its_own_scoped_throttle(client, monkeypatch):
+    token = _register(client)
+    rates = dict(ScopedRateThrottle.THROTTLE_RATES)
+    rates["stats"] = "1/min"
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", rates)
+    cache.clear()
+
+    first = client.get("/v1/me/stats", **_auth(token))
+    second = client.get("/v1/me/stats", **_auth(token))
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS

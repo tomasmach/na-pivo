@@ -7,14 +7,14 @@ import { useCompass } from '../useCompass';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 // The compass focus-gates its sensors via expo-router's useFocusEffect; under
 // test the screen is treated as focused, so the effect runs on mount (and its
 // cleanup on unmount) exactly like a focused tab.
 jest.mock('expo-router', () => {
-  const { useEffect } = require('react');
+  const { useEffect } = jest.requireActual('react');
   return {
     useFocusEffect: (cb: () => void | (() => void)) => {
       useEffect(() => cb(), [cb]);
@@ -76,21 +76,21 @@ jest.mock('@/compass/permissions', () => ({
   openSystemSettings: jest.fn(async () => undefined),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
-const hookCleanups: Array<() => void> = [];
+const hookCleanups: (() => void)[] = [];
 
 function renderCompassHook() {
   let latestResult: ReturnType<typeof useCompass> | undefined;
   let renderer: { update: (element: React.ReactElement) => void; unmount: () => void };
   const loadingLog: boolean[] = [];
-  let filters: { beerBrandKey: string | null; amenityKeys: string[] } = {
-    beerBrandKey: null,
+  let filters: { beerBrandFilter: string | readonly string[] | null; amenityKeys: string[] } = {
+    beerBrandFilter: null,
     amenityKeys: [],
   };
 
   function Harness() {
-    const result = useCompass(filters.beerBrandKey, filters.amenityKeys);
+    const result = useCompass(filters.beerBrandFilter, filters.amenityKeys);
     loadingLog.push(result.isLoading);
     latestResult = result;
     return null;
@@ -113,9 +113,14 @@ function renderCompassHook() {
         renderer.update(React.createElement(Harness));
       });
     },
-    setFilters(next: { beerBrandKey?: string | null; amenityKeys?: string[] }) {
+    setFilters(next: {
+      beerBrandKey?: string | null;
+      beerBrandKeys?: readonly string[];
+      amenityKeys?: string[];
+    }) {
       filters = {
-        beerBrandKey: next.beerBrandKey ?? null,
+        beerBrandFilter:
+          next.beerBrandKeys !== undefined ? next.beerBrandKeys : (next.beerBrandKey ?? null),
         amenityKeys: next.amenityKeys ?? [],
       };
       act(() => {
@@ -148,6 +153,7 @@ describe('useCompass', () => {
         lng: 14.42,
         accuracyMeters: 8,
       },
+      retry: jest.fn(async () => undefined),
     });
     useSettingsStore.setState({
       mode: 'surprise',
@@ -165,6 +171,7 @@ describe('useCompass', () => {
     for (const cleanup of hookCleanups.splice(0)) {
       cleanup();
     }
+    jest.restoreAllMocks();
   });
 
   it('keeps surprise mode unlimited when maxDistanceKm is null', async () => {
@@ -321,8 +328,28 @@ describe('useCompass', () => {
     });
   });
 
+  it('restarts the native position watcher when granted location has no fix', async () => {
+    const retryPosition = jest.fn(async () => undefined);
+    (useDevicePosition as jest.Mock).mockReturnValue({
+      position: null,
+      retry: retryPosition,
+    });
+    const hook = renderCompassHook();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await hook.result.requestPermission();
+    });
+
+    expect(retryPosition).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces pub search failures separately from an empty result', async () => {
-    (fetchPubsNear as jest.Mock).mockRejectedValueOnce(new Error('HTTP 403'));
+    const warning = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const searchError = new Error('HTTP 403');
+    (fetchPubsNear as jest.Mock).mockRejectedValueOnce(searchError);
 
     const hook = renderCompassHook();
 
@@ -331,6 +358,7 @@ describe('useCompass', () => {
     });
 
     expect(hook.result.searchFailed).toBe(true);
+    expect(warning).toHaveBeenCalledWith('[useCompass] fetchPubsNear failed:', searchError);
   });
 
   it('hides the previous pub while a new hard filter is pending', async () => {
@@ -369,6 +397,29 @@ describe('useCompass', () => {
 
     expect(hook.result.isLoading).toBe(false);
     expect(hook.result.pub).toBe(pub);
+  });
+
+  it('refetches with stable multi-brand keys and canonical amenity keys', async () => {
+    const hook = renderCompassHook();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    hook.setFilters({
+      beerBrandKeys: ['radegast', 'pilsner-urquell', 'radegast'],
+      amenityKeys: ['seating_garden', 'practical_tank_beer'],
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
+      beerBrandKeys: ['pilsner-urquell', 'radegast'],
+      amenityKeys: ['practical_tank_beer', 'seating_garden'],
+      force: true,
+      includeOtherPlaces: false,
+      radiusKm: 100,
+    });
   });
 
   describe('radius-change debounce', () => {

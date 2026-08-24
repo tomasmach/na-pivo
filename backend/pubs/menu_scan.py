@@ -35,6 +35,7 @@ from pubs.beer_catalog import (
     normalize_beer_payload,
 )
 from pubs.enrichment.openrouter import MAX_DRINKS, OpenRouterVisionSource
+from pubs.external_api_budget import reserve_external_api_request
 from pubs.models import DrinkLog
 
 # Decoded-pixel ceiling so a tiny highly-compressed file cannot blow up memory
@@ -223,6 +224,12 @@ def _build_vision_source() -> OpenRouterVisionSource:
         model=settings.OPENROUTER_MODEL,
         timeout=settings.OPENROUTER_TIMEOUT,
         daily_cap=settings.OPENROUTER_DAILY_CAP,
+        request_budget=lambda cap: reserve_external_api_request(
+            provider="openrouter",
+            operation="chat",
+            cap=cap,
+            reset_timezone="UTC",
+        ),
     )
 
 

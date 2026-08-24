@@ -30,6 +30,7 @@
  * up from current/history, falling back to the normalized name in the identity.
  */
 
+import { ensureAccount } from './account';
 import { CURRENT_TAXONOMY_VERSION, isKnownAmenityKey, type AmenityKey } from './amenities';
 import { decodeGeohash8 } from './geohash';
 import {
@@ -44,6 +45,13 @@ import {
   nameFromPubIdentityKey,
   pubIdentityKey,
 } from './pubIdentity';
+import {
+  combinePrivateAccountMutationSignals,
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+  type PrivateAccountMutationScope,
+} from './privateAccountBoundary';
 import {
   usePubAmenitiesStore,
   type AmenityVoteEntry,
@@ -62,11 +70,11 @@ let suppressSync = false;
 /** Run local-only vote mutations without enqueueing server upsert/delete
  *  operations. Used for account-boundary wipes where local data must disappear
  *  from this device without deleting the signed-in account's server copy. */
-export function runWithoutPubAmenitiesSync(task: () => void): void {
+export function runWithoutPubAmenitiesSync<T>(task: () => T): T {
   const previous = suppressSync;
   suppressSync = true;
   try {
-    task();
+    return task();
   } finally {
     suppressSync = previous;
   }
@@ -159,7 +167,7 @@ function enqueueUpsert(pubKey: string, amenityKey: AmenityKey, entry: AmenityVot
     amenityKey,
     payload: buildUpsertPayload(pubKey, amenityKey, entry),
   };
-  void enqueueAmenityOp(item);
+  void enqueueAmenityOp(item).catch(() => undefined);
 }
 
 /** Enqueue a delete (tombstone) for a removed vote. */
@@ -169,7 +177,7 @@ function enqueueDelete(pubKey: string, amenityKey: AmenityKey): void {
     pubKey,
     amenityKey,
     payload: buildDeletePayload(pubKey, amenityKey),
-  });
+  }).catch(() => undefined);
 }
 
 /** Diff two of a pub's vote maps and enqueue per-amenity upserts/deletes. */
@@ -229,11 +237,48 @@ export function installPubAmenitiesSync(): () => void {
  *   - hydrateVotes does the actual per-(pubKey, amenityKey) LWW; we run it under
  *     suppressSync so the merged-in entries are not echoed back as upserts.
  */
-export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
+/** Same pull gate as pubRatingsSync: local edits push at write time, so the
+ * whole-collection pull is a repair pass that need not run on every foreground.
+ * The queue flush above the gate always runs. */
+const PULL_FRESH_MS = 5 * 60 * 1000;
+let lastPulledAt = 0;
+// Per-account: an account switch (including the anonymous → claim merge, which
+// deliberately does NOT clear private stores) must pull for the new owner.
+let lastPulledAccountId: string | null = null;
+
+/** Account boundaries (logout, login, delete) clear the store — the next
+ * restore must pull immediately for the new owner, not wait out the gate. */
+export function resetPubAmenitiesPullGate(): void {
+  lastPulledAt = 0;
+  lastPulledAccountId = null;
+}
+
+export const resetPubAmenitiesPullGateForTests = resetPubAmenitiesPullGate;
+
+async function restorePubAmenitiesWithinBoundary(
+  scope: PrivateAccountMutationScope,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   await flushPubAmenitiesQueue();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
+  const accountId = (await ensureAccount(signal))?.accountId ?? null;
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
+  if (
+    accountId != null &&
+    accountId === lastPulledAccountId &&
+    Date.now() - lastPulledAt < PULL_FRESH_MS
+  ) {
+    return;
+  }
   const pendingDeletes = await getQueuedAmenityDeletes();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   const serverVotes = await fetchMyAmenityVotes(signal);
-  if (serverVotes === null) {
+  if (
+    serverVotes === null ||
+    signal.aborted ||
+    !isPrivateAccountMutationScopeCurrent(scope)
+  ) {
     return;
   }
 
@@ -261,14 +306,17 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
   }
 
   // Merge server → local (LWW), suppressing the push echo for the write.
+  if (!isPrivateAccountMutationScopeCurrent(scope)) return;
   runWithoutPubAmenitiesSync(() => {
     usePubAmenitiesStore.getState().hydrateVotes(merged);
   });
 
   // Push local votes the server is missing, or where the local copy is newer.
+  if (!isPrivateAccountMutationScopeCurrent(scope)) return;
   const localVotes = usePubAmenitiesStore.getState().votes;
   for (const [pubKey, pubVotes] of Object.entries(localVotes)) {
     for (const [amenityKey, entry] of Object.entries(pubVotes) as [AmenityKey, AmenityVoteEntry][]) {
+      if (!isPrivateAccountMutationScopeCurrent(scope)) return;
       if (!entry) continue;
       const pair = `${pubKey} ${amenityKey}`;
       if (pendingDeletes.has(pair)) continue;
@@ -286,4 +334,24 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
   }
 
   await flushPubAmenitiesQueue();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
+  // Stamp only after the whole pass succeeded, so a failed merge/push retries
+  // on the next foreground instead of waiting out the gate.
+  lastPulledAt = Date.now();
+  lastPulledAccountId = accountId;
+}
+
+export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
+  try {
+    await runPrivateAccountMutation(async (scope) => {
+      const combined = combinePrivateAccountMutationSignals(scope, signal);
+      try {
+        await restorePubAmenitiesWithinBoundary(scope, combined.signal);
+      } finally {
+        combined.cleanup();
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof PrivateAccountMutationFrozenError)) throw error;
+  }
 }

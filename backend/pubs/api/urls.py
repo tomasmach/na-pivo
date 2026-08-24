@@ -35,26 +35,38 @@ from .auth_views import (
     UnlinkView,
     VerifyEmailView,
 )
+from .challenge_views import ChallengeListView
 from .community_event_views import (
     CommunityEventCancelView,
     CommunityEventCollectionView,
+    CommunityEventDetailView,
     CommunityEventDiscoveryView,
     CommunityEventJoinView,
     CommunityEventReportView,
     CommunityEventRequestDecisionView,
+    CommunityEventTeamCollectionView,
+    CommunityEventTeamDetailView,
+    CommunityEventTeamMembershipView,
 )
 from .party_views import (
     PartyEveningCollectionView,
     PartyEveningDetailView,
     PartyEveningDrinkView,
     PartyEveningEndView,
+    PartyEveningHistoryView,
     PartyEveningJoinView,
+    PartyEveningRecordView,
+    PartyGameCollectionView,
+    PartyGameEventView,
+    party_game_stream,
 )
 from .pub_event_views import PubEventView
 from .views import (
     AccountAvatarView,
+    AccountDeletionStatusView,
     AccountExportView,
     AccountMeView,
+    AccountUGCConsentView,
     AccountView,
     BeerBrandSuggestView,
     BeerCheckInFeedView,
@@ -68,6 +80,8 @@ from .views import (
     ContentReportView,
     DrinksView,
     FeedbackView,
+    FollowDetailView,
+    FollowView,
     FriendActivityReactView,
     FriendActivityRespondView,
     FriendActivityView,
@@ -98,6 +112,9 @@ from .views import (
     PubAmenityVoteView,
     PubCommunityView,
     PubHoursView,
+    PublishedNightCommentDeleteView,
+    PublishedNightCommentView,
+    PublishedNightDetailView,
     PublishedNightFeedView,
     PublishedNightReactView,
     PublishedNightView,
@@ -116,6 +133,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("challenges", ChallengeListView.as_view(), name="challenges"),
     path("community-events", CommunityEventCollectionView.as_view(), name="community-events"),
     path(
         "community-events/discover",
@@ -123,9 +141,29 @@ urlpatterns = [
         name="community-events-discover",
     ),
     path(
+        "community-events/<uuid:event_id>",
+        CommunityEventDetailView.as_view(),
+        name="community-event-detail",
+    ),
+    path(
         "community-events/<uuid:event_id>/join",
         CommunityEventJoinView.as_view(),
         name="community-event-join",
+    ),
+    path(
+        "community-events/<uuid:event_id>/teams",
+        CommunityEventTeamCollectionView.as_view(),
+        name="community-event-teams",
+    ),
+    path(
+        "community-events/<uuid:event_id>/teams/<uuid:team_id>",
+        CommunityEventTeamDetailView.as_view(),
+        name="community-event-team-detail",
+    ),
+    path(
+        "community-events/<uuid:event_id>/teams/<uuid:team_id>/join",
+        CommunityEventTeamMembershipView.as_view(),
+        name="community-event-team-join",
     ),
     path(
         "community-events/<uuid:event_id>/requests/<uuid:request_id>/<str:action>",
@@ -144,6 +182,12 @@ urlpatterns = [
     ),
     path("pub-events", PubEventView.as_view(), name="pub-events"),
     path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
+    # Keep this literal route before the catch-all <code> detail route below.
+    path(
+        "party-evenings/history",
+        PartyEveningHistoryView.as_view(),
+        name="party-evening-history",
+    ),
     path(
         "party-evenings/<str:code>/join",
         PartyEveningJoinView.as_view(),
@@ -159,6 +203,28 @@ urlpatterns = [
         PartyEveningDrinkView.as_view(),
         name="party-evening-drinks",
     ),
+    # Games. Additive: released apps do not call these, and the evening detail
+    # they DO call is unchanged.
+    path(
+        "party-evenings/<str:code>/games",
+        PartyGameCollectionView.as_view(),
+        name="party-evening-games",
+    ),
+    path(
+        "party-evenings/<str:code>/games/stream",
+        party_game_stream,
+        name="party-evening-games-stream",
+    ),
+    path(
+        "party-evenings/<str:code>/games/<str:game_id>/events",
+        PartyGameEventView.as_view(),
+        name="party-evening-game-events",
+    ),
+    path(
+        "party-evenings/<str:code>/record",
+        PartyEveningRecordView.as_view(),
+        name="party-evening-record",
+    ),
     path(
         "party-evenings/<str:code>",
         PartyEveningDetailView.as_view(),
@@ -167,29 +233,73 @@ urlpatterns = [
     path("pub-hours", PubHoursView.as_view(), name="pub-hours"),
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
     path("pub-menu-scan", MenuScanView.as_view(), name="pub-menu-scan"),
-    path("drinks", DrinksView.as_view(), name="drinks"),
-    path("drinks/<uuid:client_id>", DrinksView.as_view(), name="drinks-delete"),
-    path("beer-checkins", BeerCheckInView.as_view(), name="beer-checkins"),
+    path("drinks", DrinksView.as_view(http_method_names=["get", "post", "options"]), name="drinks"),
+    path(
+        "drinks/<uuid:client_id>",
+        DrinksView.as_view(http_method_names=["patch", "delete", "options"]),
+        name="drinks-delete",
+    ),
+    path(
+        "beer-checkins",
+        BeerCheckInView.as_view(http_method_names=["get", "post", "options"]),
+        name="beer-checkins",
+    ),
     path("beer-checkins/feed", BeerCheckInFeedView.as_view(), name="beer-checkins-feed"),
-    path("beer-checkins/<uuid:client_id>", BeerCheckInView.as_view(), name="beer-checkins-delete"),
+    path(
+        "beer-checkins/<uuid:client_id>",
+        BeerCheckInView.as_view(http_method_names=["delete", "options"]),
+        name="beer-checkins-delete",
+    ),
     path(
         "beer-checkins/<uuid:checkin_id>/react",
         BeerCheckInReactView.as_view(),
         name="beer-checkins-react",
     ),
-    path("nights", PublishedNightView.as_view(), name="nights"),
+    path("nights", PublishedNightView.as_view(http_method_names=["post", "options"]), name="nights"),
     path("nights/feed", PublishedNightFeedView.as_view(), name="nights-feed"),
+    path(
+        "nights/<uuid:night_id>/detail",
+        PublishedNightDetailView.as_view(),
+        name="night-detail",
+    ),
+    path(
+        "nights/<uuid:night_id>/comments",
+        PublishedNightCommentView.as_view(),
+        name="night-comments",
+    ),
+    path(
+        "nights/<uuid:night_id>/comments/<uuid:comment_id>",
+        PublishedNightCommentDeleteView.as_view(),
+        name="night-comment-delete",
+    ),
     path(
         "nights/<uuid:night_id>/react",
         PublishedNightReactView.as_view(),
         name="nights-react",
     ),
-    path("nights/<str:client_id>", PublishedNightView.as_view(), name="nights-delete"),
+    path(
+        "nights/<str:client_id>",
+        PublishedNightView.as_view(http_method_names=["delete", "options"]),
+        name="nights-delete",
+    ),
     path("beers/memory", BeerMemoryView.as_view(), name="beer-memory"),
     path("beers/detail", BeerDetailView.as_view(), name="beer-detail"),
     # --- photo diary + FotoPivař contest ---
-    path("beer-photos", BeerPhotoView.as_view(), name="beer-photos"),
-    path("beer-photos/<uuid:photo_id>", BeerPhotoView.as_view(), name="beer-photos-delete"),
+    path(
+        "beer-photos",
+        BeerPhotoView.as_view(http_method_names=["get", "post", "options"]),
+        name="beer-photos",
+    ),
+    path(
+        "beer-photos/by-client/<uuid:client_id>",
+        BeerPhotoView.as_view(http_method_names=["delete", "options"]),
+        name="beer-photos-delete-by-client",
+    ),
+    path(
+        "beer-photos/<uuid:photo_id>",
+        BeerPhotoView.as_view(http_method_names=["delete", "options"]),
+        name="beer-photos-delete",
+    ),
     path(
         "friends/beer-photos/feed",
         FriendsBeerPhotosFeedView.as_view(),
@@ -203,24 +313,52 @@ urlpatterns = [
     ),
     path("photo-contest/vote", PhotoContestVoteView.as_view(), name="photo-contest-vote"),
     path("beer-brands/suggest", BeerBrandSuggestView.as_view(), name="beer-brands-suggest"),
-    path("pub-ratings", PubRatingView.as_view(), name="pub-ratings"),
-    path("pub-ratings/<str:cache_key>", PubRatingView.as_view(), name="pub-ratings-delete"),
-    path("pub-visits", PubVisitView.as_view(), name="pub-visits"),
-    path("pub-visits/<uuid:client_id>", PubVisitView.as_view(), name="pub-visits-delete"),
+    path(
+        "pub-ratings",
+        PubRatingView.as_view(http_method_names=["get", "put", "options"]),
+        name="pub-ratings",
+    ),
+    path(
+        "pub-ratings/<str:cache_key>",
+        PubRatingView.as_view(http_method_names=["delete", "options"]),
+        name="pub-ratings-delete",
+    ),
+    path(
+        "pub-visits",
+        PubVisitView.as_view(http_method_names=["get", "post", "options"]),
+        name="pub-visits",
+    ),
+    path(
+        "pub-visits/<uuid:client_id>",
+        PubVisitView.as_view(http_method_names=["delete", "options"]),
+        name="pub-visits-delete",
+    ),
     path("pub-amenities/kinds", PubAmenityKindsView.as_view(), name="pub-amenity-kinds"),
-    path("pub-amenities/votes", PubAmenityVoteView.as_view(), name="pub-amenity-votes"),
+    path(
+        "pub-amenities/votes",
+        PubAmenityVoteView.as_view(http_method_names=["get", "put", "options"]),
+        name="pub-amenity-votes",
+    ),
     # Retraction is the null-value PUT above; this DELETE is an idempotent
     # convenience filtering only by (account, cache_key, amenity_key) with NO
     # AmenityKind existence check, so a vote for a since-deactivated kind can
     # always be cleared. Both segments are URL-encoded.
     path(
         "pub-amenities/votes/<str:cache_key>/<str:amenity_key>",
-        PubAmenityVoteView.as_view(),
+        PubAmenityVoteView.as_view(http_method_names=["delete", "options"]),
         name="pub-amenity-votes-delete",
     ),
     path("pub-amenities", PubAmenityReadView.as_view(), name="pub-amenities-read"),
-    path("pubs/<uuid:client_id>", UserAddedPubView.as_view(), name="user-added-pub-detail"),
-    path("pubs", UserAddedPubView.as_view(), name="user-added-pubs"),
+    path(
+        "pubs/<uuid:client_id>",
+        UserAddedPubView.as_view(http_method_names=["patch", "delete", "options"]),
+        name="user-added-pub-detail",
+    ),
+    path(
+        "pubs",
+        UserAddedPubView.as_view(http_method_names=["get", "post", "options"]),
+        name="user-added-pubs",
+    ),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
@@ -238,6 +376,8 @@ urlpatterns = [
     path("leaderboards", LeaderboardsView.as_view(), name="leaderboards"),
     path("push-device", PushDeviceView.as_view(), name="push-device"),
     path("friends", FriendsView.as_view(), name="friends"),
+    path("follows", FollowView.as_view(), name="follows"),
+    path("follows/<uuid:account_id>", FollowDetailView.as_view(), name="follow-delete"),
     path("friends/live", FriendsLiveView.as_view(), name="friends-live"),
     path("friends/drink-feed", FriendDrinkFeedView.as_view(), name="friends-drink-feed"),
     path("friends/search", FriendSearchView.as_view(), name="friends-search"),
@@ -255,10 +395,14 @@ urlpatterns = [
         name="friends-invite-resolve",
     ),
     # Safety: block (POST + GET list) / unblock (DELETE with account id).
-    path("friends/blocks", FriendBlockView.as_view(), name="friends-blocks"),
+    path(
+        "friends/blocks",
+        FriendBlockView.as_view(http_method_names=["get", "post", "options"]),
+        name="friends-blocks",
+    ),
     path(
         "friends/blocks/<uuid:account_id>",
-        FriendBlockView.as_view(),
+        FriendBlockView.as_view(http_method_names=["delete", "options"]),
         name="friends-block-delete",
     ),
     # RSVP loop + reactions + social settings — placed ABOVE friends/<uuid:account_id>
@@ -280,10 +424,14 @@ urlpatterns = [
         name="friend-beer-photos",
     ),
     path("friends/<uuid:account_id>", FriendDetailView.as_view(), name="friend-detail"),
-    path("friends/pub-activity", FriendActivityView.as_view(), name="friends-pub-activity"),
+    path(
+        "friends/pub-activity",
+        FriendActivityView.as_view(http_method_names=["post", "options"]),
+        name="friends-pub-activity",
+    ),
     path(
         "friends/pub-activity/<uuid:activity_id>",
-        FriendActivityView.as_view(),
+        FriendActivityView.as_view(http_method_names=["delete", "options"]),
         name="friends-pub-activity-end",
     ),
     path(
@@ -295,9 +443,23 @@ urlpatterns = [
     path("release-notes", ReleaseNotesView.as_view(), name="release-notes"),
     path("health", HealthView.as_view(), name="health"),
     path("account", AccountView.as_view(), name="account"),
+    path(
+        "account/deletion-status",
+        AccountDeletionStatusView.as_view(),
+        name="account-deletion-status",
+    ),
     path("account/me", AccountMeView.as_view(), name="account-me"),
+    path(
+        "account/me/ugc-consent",
+        AccountUGCConsentView.as_view(),
+        name="account-ugc-consent",
+    ),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
-    path("account/me/purchases/restore", RestorePurchasesView.as_view(), name="account-restore-purchases"),
+    path(
+        "account/me/purchases/restore",
+        RestorePurchasesView.as_view(),
+        name="account-restore-purchases",
+    ),
     path("account/export", AccountExportView.as_view(), name="account-export"),
     path(
         "account/nickname-available",

@@ -70,11 +70,35 @@ npm run dev
 
 The backend uses SQLite and safe development defaults when `backend/.env` is missing. Copy `backend/.env.example` to `backend/.env` only when you need to change an integration or backend setting. Regular development never needs production credentials.
 
-You can also start each part by hand. First, run Django on the LAN interface:
+On exit it also shuts the simulator down, which is what you want after Ctrl+C and
+not what you want when something else supervises the process — an agent's
+background shell, a detached terminal, tmux. There the runner exits for reasons
+unrelated to you being finished, and the simulator vanishing mid-session looks
+exactly like the app crashing. Set `NAPIVO_KEEP_SIM=1` to leave it running:
+
+```bash
+NAPIVO_KEEP_SIM=1 npm run dev
+```
+
+That keeps the simulator, but **Metro and the backend still die** with the
+runner, because they are its children and the shell's teardown signals the whole
+process group. The app then sits on a booted simulator with no bundler, which
+looks exactly like "Metro stopped working". To survive that, run it in its own
+session:
+
+```bash
+npm run dev:detached   # logs to /tmp/napivo-dev.log
+npm run dev:stop
+```
+
+Interactively, prefer plain `npm run dev` — you want Ctrl+C to tidy up.
+
+
+Start the Django ASGI backend on the LAN interface:
 
 ```bash
 cd backend
-uv run python manage.py runserver 0.0.0.0:8000
+uv run --extra prod uvicorn config.asgi:application --reload --host 0.0.0.0 --port 8000
 ```
 
 Then build the iOS app in local backend mode:
@@ -115,7 +139,7 @@ npm run android:local
 # development build (custom dev client, physical device)
 eas build -p ios --profile development
 
-# internal preview build (Release config, TestFlight)
+# internal preview build (Release config, install link for testers)
 eas build -p ios --profile preview
 
 # production build (auto-increment build number)

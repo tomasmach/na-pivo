@@ -25,21 +25,21 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours } from '@/data/hoursClient';
 import type { PubHoursResult } from '@/data/hoursClient';
-import { enqueuePubReport } from '@/data/pubReportQueue';
+import { persistPubReport } from '@/data/pubReportQueue';
 import { geohash8 } from '@/data/geohash';
 import { useCompass } from '../useCompass';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 // The compass focus-gates its sensors via expo-router's useFocusEffect; under
 // test the screen is treated as focused, so the effect runs on mount (and its
 // cleanup on unmount) exactly like a focused tab.
 jest.mock('expo-router', () => {
-  const { useEffect } = require('react');
+  const { useEffect } = jest.requireActual('react');
   return {
     useFocusEffect: (cb: () => void | (() => void)) => {
       useEffect(() => cb(), [cb]);
@@ -59,7 +59,7 @@ jest.mock('@/data/hoursClient', () => ({
 }));
 
 jest.mock('@/data/pubReportQueue', () => ({
-  enqueuePubReport: jest.fn(async () => true),
+  persistPubReport: jest.fn(async () => true),
   flushPubReportQueue: jest.fn(async () => undefined),
 }));
 
@@ -96,9 +96,9 @@ jest.mock('@/compass/permissions', () => ({
   openSystemSettings: jest.fn(async () => undefined),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
-const hookCleanups: Array<() => void> = [];
+const hookCleanups: (() => void)[] = [];
 
 function renderCompassHook() {
   let latestResult: ReturnType<typeof useCompass> | undefined;
@@ -515,8 +515,24 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
     expect(usePubStore.getState().reportedCacheKeys).toContain(
       geohash8(OPEN.lat, OPEN.lng)
     );
-    expect(enqueuePubReport).toHaveBeenCalledWith(OPEN, 'not_pub');
+    expect(persistPubReport).toHaveBeenCalledWith(OPEN, 'not_pub');
     expect(hook.result.pub?.id).toBe(THIRD.id);
+  });
+
+  it('keeps the pub visible when the report cannot be persisted', async () => {
+    (persistPubReport as jest.Mock).mockResolvedValueOnce(false);
+    wireNearestWalk([OPEN, THIRD]);
+    wireHours({
+      [OPEN.id]: hours({ isOpenNow: true }),
+      [THIRD.id]: hours({ isOpenNow: true }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+
+    await expect(hook.result.reportCurrentPub('closed')).resolves.toBe(false);
+    expect(usePubStore.getState().reportedPubIds).not.toContain(OPEN.id);
+    expect(hook.result.pub?.id).toBe(OPEN.id);
   });
 
   it('a reported pub stays hidden when Mapy.cz returns it under a fresh id', async () => {

@@ -10,11 +10,11 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -33,18 +33,43 @@ export default function VerifyEmailScreen() {
   const verifyEmail = useAccountStore((s) => s.verifyEmail);
 
   const token = firstParam(params.token).trim();
-  const [state, setState] = useState<VerifyState>(token ? 'loading' : 'invalid');
-  // Guard against React 18 double-invoke / re-renders firing the call twice.
-  const ranRef = useRef(false);
+  const [verification, setVerification] = useState<{
+    token: string;
+    state: Exclude<VerifyState, 'invalid'>;
+  } | null>(token ? { token, state: 'loading' } : null);
+  const state: VerifyState = !token
+    ? 'invalid'
+    : verification?.token === token
+      ? verification.state
+      : 'loading';
+  // Reuse one request per active token. A restarted effect can subscribe to
+  // the same promise, while a different deep link starts a fresh request.
+  const verificationRequestRef = useRef<{
+    token: string;
+    promise: ReturnType<typeof verifyEmail>;
+  } | null>(null);
 
   useEffect(() => {
-    if (!token || ranRef.current) return;
-    ranRef.current = true;
+    if (!token) {
+      verificationRequestRef.current = null;
+      return;
+    }
+    if (verificationRequestRef.current?.token !== token) {
+      verificationRequestRef.current = {
+        token,
+        promise: verifyEmail(token),
+      };
+    }
+    const request = verificationRequestRef.current.promise;
     let active = true;
-    void verifyEmail(token).then((result) => {
-      if (!active) return;
-      setState(result.ok ? 'success' : 'error');
-    });
+    void request
+      .then((result) => {
+        if (!active) return;
+        setVerification({ token, state: result.ok ? 'success' : 'error' });
+      })
+      .catch(() => {
+        if (active) setVerification({ token, state: 'error' });
+      });
     return () => {
       active = false;
     };
@@ -54,7 +79,7 @@ export default function VerifyEmailScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)' as Href);
     }
   };
 
@@ -75,7 +100,7 @@ export default function VerifyEmailScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.title}>
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               {state === 'success' ? cs.account.verifySuccessTitle : cs.account.verifyErrorTitle}
             </Text>
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -112,14 +137,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 34,
     lineHeight: 42,
     color: Colors.foam,
     textAlign: 'center',
   },
   body: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,

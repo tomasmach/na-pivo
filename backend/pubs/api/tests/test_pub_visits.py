@@ -11,14 +11,18 @@ account isolation, auth, DELETE idempotence and throttling.
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
-from pubs.models import Account, PubVisit
+from pubs.models import Account, PartyEvening, PartyEveningMember, PubVisit
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11112222-3333-4444-5555-666677778888"
@@ -66,6 +70,18 @@ def _payload(**overrides):
     }
     data.update(overrides)
     return data
+
+
+def _active_party(account: Account, code: str = "PRAH24") -> PartyEvening:
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code=code,
+        pub_name=_NAME,
+        pub_city="Praha",
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account)
+    return evening
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +223,131 @@ def test_post_with_closed_at(client):
     assert PubVisit.objects.get().closed_at.isoformat() == "2026-06-12T21:30:00+00:00"
 
 
+@pytest.mark.django_db
+def test_visit_links_active_party_and_closing_it_later_preserves_the_link(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    evening = _active_party(account)
+    evening.started_at = datetime(2026, 6, 12, 16, 30, tzinfo=UTC)
+    evening.save(update_fields=["started_at"])
+
+    started = client.post(
+        "/v1/pub-visits",
+        data=_payload(party_code="PRAH24"),
+        format="json",
+        **_auth(token),
+    )
+    assert started.status_code == status.HTTP_201_CREATED, started.content
+    assert PubVisit.objects.get().party_evening == evening
+
+    evening.active = False
+    evening.save(update_fields=["active"])
+    closed = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            party_code="PRAH24",
+            ended_at="2026-06-12T23:30:00+02:00",
+            updated_at="2026-06-12T23:30:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert closed.status_code == status.HTTP_200_OK, closed.content
+    assert PubVisit.objects.get().party_evening == evening
+
+    listed = client.get("/v1/pub-visits", **_auth(token)).json()["visits"]
+    assert listed[0]["party_code"] == "PRAH24"
+
+
+@pytest.mark.django_db
+def test_offline_visit_interval_links_to_ended_party(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    evening = _active_party(account)
+    evening.started_at = datetime(2026, 6, 12, 16, 30, tzinfo=UTC)
+    evening.ended_at = datetime(2026, 6, 12, 22, 0, tzinfo=UTC)
+    evening.active = False
+    evening.save(update_fields=["started_at", "ended_at", "active"])
+    membership = PartyEveningMember.objects.get(evening=evening, account=account)
+
+    response = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            party_code="PRAH24",
+            ended_at="2026-06-12T23:30:00+02:00",
+            # The upload itself happens much later; only the visit interval is
+            # allowed to decide the association.
+            updated_at=timezone.now().isoformat(),
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PubVisit.objects.get().party_evening == evening
+    membership.refresh_from_db()
+    assert membership.active is True
+
+
+@pytest.mark.django_db
+def test_overlong_visit_interval_does_not_claim_historical_party(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    evening = _active_party(account)
+    evening.started_at = datetime(2026, 6, 12, 16, 30, tzinfo=UTC)
+    evening.ended_at = datetime(2026, 6, 12, 22, 0, tzinfo=UTC)
+    evening.active = False
+    evening.save(update_fields=["started_at", "ended_at", "active"])
+
+    response = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            party_code="PRAH24",
+            started_at="2026-06-11T23:00:00+02:00",
+            ended_at="2026-06-13T23:30:00+02:00",
+            updated_at=(timezone.now() + timedelta(seconds=1)).isoformat(),
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert PubVisit.objects.get().party_evening is None
+
+
+@pytest.mark.django_db
+def test_foreign_or_stale_party_code_never_rejects_primary_visit(client):
+    host_token = _register(client)
+    host = Account.objects.get(device_id=_DEVICE_ID)
+    evening = _active_party(host)
+    other_token = _register(client, device_id=_OTHER_DEVICE_ID)
+
+    foreign = client.post(
+        "/v1/pub-visits",
+        data=_payload(party_code="PRAH24"),
+        format="json",
+        **_auth(other_token),
+    )
+    assert foreign.status_code == status.HTTP_201_CREATED, foreign.content
+    assert PubVisit.objects.get(account__device_id=_OTHER_DEVICE_ID).party_evening is None
+
+    evening.active = False
+    evening.save(update_fields=["active"])
+    stale = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            client_id="00000000-0000-4000-8000-000000000003",
+            party_code="PRAH24",
+        ),
+        format="json",
+        **_auth(host_token),
+    )
+    assert stale.status_code == status.HTTP_201_CREATED, stale.content
+    assert (
+        PubVisit.objects.get(client_id="00000000-0000-4000-8000-000000000003").party_evening is None
+    )
+
+
 # ---------------------------------------------------------------------------
 # Idempotent upsert
 # ---------------------------------------------------------------------------
@@ -344,6 +485,34 @@ def test_get_lists_all_visits(client):
 
 
 @pytest.mark.django_db
+def test_get_legacy_visit_snapshot_is_complete_without_pagination(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    now = timezone.now()
+    PubVisit.objects.bulk_create(
+        [
+            PubVisit(
+                account=account,
+                client_id=uuid.uuid4(),
+                cache_key=f"{index:012x}",
+                name=f"Hospoda {index}",
+                lat=_LAT,
+                lng=_LNG,
+                started_at=now,
+                client_updated_at=now,
+            )
+            for index in range(501)
+        ]
+    )
+
+    response = client.get("/v1/pub-visits", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["visits"]) == 501
+    assert "truncated" not in response.json()
+
+
+@pytest.mark.django_db
 def test_get_empty_when_no_visits(client):
     token = _register(client)
     resp = client.get("/v1/pub-visits", **_auth(token))
@@ -411,9 +580,12 @@ def test_account_isolation_delete(client):
     resp = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token_b))
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": False}
-    assert PubVisit.objects.filter(
-        account=Account.objects.get(device_id=_DEVICE_ID), client_id=_CLIENT_ID
-    ).count() == 1
+    assert (
+        PubVisit.objects.filter(
+            account=Account.objects.get(device_id=_DEVICE_ID), client_id=_CLIENT_ID
+        ).count()
+        == 1
+    )
 
 
 @pytest.mark.django_db

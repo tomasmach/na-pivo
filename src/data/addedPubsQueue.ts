@@ -18,8 +18,18 @@ import {
   type AddedPubResponse,
   type SubmitAddedPubResult,
 } from './addedPubsClient';
-import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } from './pubs';
-import { createQueueLock } from './createQueue';
+import {
+  clearPubsSnapshot,
+  pubIdForCoords,
+  removeLocalPub,
+  upsertLocalPub,
+  upsertLocalPubs,
+} from './pubs';
+import { createCoalescingFlush, createQueueLock } from './createQueue';
+import {
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+} from './privateAccountBoundary';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
 const MAX_SYNCED_SUBMISSIONS = 30;
@@ -174,16 +184,26 @@ function applySubmittedResult(previous: AddedPubSubmission, next: AddedPubSubmis
   upsertLocalPub(nextPub);
 }
 
-async function flushLocked(): Promise<void> {
-  const registry = await loadRegistry();
-  let changed = false;
+function submissionSignature(submission: AddedPubSubmission): string {
+  return JSON.stringify(submission);
+}
 
-  for (let index = 0; index < registry.length; index += 1) {
-    const submission = registry[index];
+interface SettledSubmission {
+  clientId: string;
+  signature: string;
+  result: SubmitAddedPubResult;
+}
+
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
+  const registry = await registryTask(loadRegistry);
+  const settled: SettledSubmission[] = [];
+
+  for (const submission of registry) {
+    if (signal.aborted) break;
     if (submission.syncState !== 'pending' || !submission.pendingOperation) continue;
 
     const result = submission.pendingOperation === 'create'
-      ? await submitAddedPub(submission)
+      ? await submitAddedPub(submission, signal)
       : await submitAddedPubEdit(submission.pendingEdit ?? {
           // Legacy pending edits predate the partial-payload field and must keep
           // their original full-location retry behavior.
@@ -193,44 +213,64 @@ async function flushLocked(): Promise<void> {
           lng: submission.lng,
           city: submission.city ?? '',
           address: submission.address ?? '',
-        });
-
-    if (isSubmittedPubResponse(result)) {
-      const synced = submissionFromResponse(submission, result);
-      registry[index] = synced;
-      applySubmittedResult(submission, synced);
-      await clearPubsSnapshot();
-      changed = true;
-    } else if (result === 'permanent-error') {
-      registry[index] = {
-        ...submission,
-        syncState: 'failed',
-        pendingOperation: submission.pendingOperation,
-      };
-      if (submission.pendingOperation === 'create') {
-        removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
-      } else if (submission.rollback) {
-        removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
-        upsertLocalPub(pubFromSubmission({
-          ...submission,
-          ...submission.rollback,
-          syncState: 'synced',
-          pendingOperation: null,
-        }));
-      }
-      changed = true;
+        }, signal);
+    if (result !== 'retry') {
+      settled.push({
+        clientId: submission.client_id,
+        signature: submissionSignature(submission),
+        result,
+      });
     }
   }
 
-  if (changed) await saveRegistry(registry);
+  if (settled.length === 0) return;
+  await registryTask(async () => {
+    const current = await loadRegistry();
+    let changed = false;
+    for (const attempt of settled) {
+      const index = current.findIndex((item) => item.client_id === attempt.clientId);
+      if (index < 0) continue;
+      const submission = current[index];
+      if (submissionSignature(submission) !== attempt.signature) continue;
+
+      if (isSubmittedPubResponse(attempt.result)) {
+        const synced = submissionFromResponse(submission, attempt.result);
+        current[index] = synced;
+        applySubmittedResult(submission, synced);
+        await clearPubsSnapshot();
+        changed = true;
+      } else if (attempt.result === 'permanent-error') {
+        current[index] = {
+          ...submission,
+          syncState: 'failed',
+          pendingOperation: submission.pendingOperation,
+        };
+        if (submission.pendingOperation === 'create') {
+          removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
+        } else if (submission.rollback) {
+          removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
+          upsertLocalPub(pubFromSubmission({
+            ...submission,
+            ...submission.rollback,
+            syncState: 'synced',
+            pendingOperation: null,
+          }));
+        }
+        changed = true;
+      }
+    }
+    if (changed) await saveRegistry(current);
+  });
 }
+
+const addedPubDelivery = createCoalescingFlush(flushUnlocked);
 
 export function loadAddedPubSubmissions(): Promise<AddedPubSubmission[]> {
   return registryTask(loadRegistry);
 }
 
-export function enqueueAddedPub(entry: AddedPubEntry): Promise<AddedPubSyncState> {
-  return registryTask(async () => {
+export async function enqueueAddedPub(entry: AddedPubEntry): Promise<AddedPubSyncState> {
+  await registryTask(async () => {
     const registry = await loadRegistry();
     const submission: AddedPubSubmission = {
       ...entry,
@@ -242,16 +282,18 @@ export function enqueueAddedPub(entry: AddedPubEntry): Promise<AddedPubSyncState
     next.push(submission);
     await saveRegistry(next);
     upsertLocalPub(pubFromSubmission(submission));
-    await flushLocked();
-    return (await loadRegistry()).find((item) => item.client_id === entry.client_id)?.syncState ?? 'pending';
   });
+  await flushAddedPubsQueue();
+  return registryTask(async () =>
+    (await loadRegistry()).find((item) => item.client_id === entry.client_id)?.syncState ?? 'pending',
+  );
 }
 
-export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubSyncState> {
-  return registryTask(async () => {
+export async function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubSyncState> {
+  const found = await registryTask(async () => {
     const registry = await loadRegistry();
     const previous = registry.find((item) => item.client_id === entry.client_id);
-    if (!previous) return 'failed';
+    if (!previous) return false;
     const nextName = entry.name?.trim() || previous.name;
     const locationEdit =
       entry.lat !== undefined &&
@@ -300,16 +342,20 @@ export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubS
     removeLocalPub(pubIdForCoords(previous.lat, previous.lng));
     upsertLocalPub(pubFromSubmission(submission));
     await clearPubsSnapshot();
-    await flushLocked();
-    return (await loadRegistry()).find((item) => item.client_id === entry.client_id)?.syncState ?? 'pending';
+    return true;
   });
+  if (!found) return 'failed';
+  await flushAddedPubsQueue();
+  return registryTask(async () =>
+    (await loadRegistry()).find((item) => item.client_id === entry.client_id)?.syncState ?? 'pending',
+  );
 }
 
-export function retryAddedPub(clientId: string): Promise<AddedPubSyncState | null> {
-  return registryTask(async () => {
+export async function retryAddedPub(clientId: string): Promise<AddedPubSyncState | null> {
+  const found = await registryTask(async () => {
     const registry = await loadRegistry();
     const index = registry.findIndex((item) => item.client_id === clientId);
-    if (index < 0) return null;
+    if (index < 0) return false;
     const current = registry[index];
     registry[index] = {
       ...current,
@@ -319,57 +365,79 @@ export function retryAddedPub(clientId: string): Promise<AddedPubSyncState | nul
     };
     await saveRegistry(registry);
     upsertLocalPub(pubFromSubmission(registry[index]));
-    await flushLocked();
-    return (await loadRegistry()).find((item) => item.client_id === clientId)?.syncState ?? null;
+    return true;
   });
+  if (!found) return null;
+  await flushAddedPubsQueue();
+  return registryTask(async () =>
+    (await loadRegistry()).find((item) => item.client_id === clientId)?.syncState ?? null,
+  );
 }
 
 export function flushAddedPubsQueue(): Promise<void> {
-  return registryTask(flushLocked);
+  return addedPubDelivery.flush();
 }
 
-export function syncOwnAddedPubs(): Promise<boolean> {
-  return registryTask(async () => {
-    const remote = await fetchOwnAddedPubs();
+export async function syncOwnAddedPubs(): Promise<boolean> {
+  try {
+    return await runPrivateAccountMutation(async (scope) => {
+    const remote = await fetchOwnAddedPubs(scope.signal);
     if (!remote) return false;
-    const registry = await loadRegistry();
-    const byClientId = new Map(registry.map((item) => [item.client_id, item]));
-    const syncStartedAt = Date.now();
-    for (const [index, result] of remote.entries()) {
-      const previous = byClientId.get(result.clientId);
-      // A GET may succeed while a geocoding-backed PATCH is temporarily down.
-      // Never let the older server row erase an offline edit or its failed state.
-      if (previous && previous.syncState !== 'synced') continue;
-      const synced = submissionFromResponse(
-        previous,
-        result,
-        previous?.updatedAt ?? new Date(syncStartedAt - index).toISOString(),
-      );
-      byClientId.set(result.clientId, synced);
-      if (previous) applySubmittedResult(previous, synced);
-      else upsertLocalPub(pubFromSubmission(synced));
-    }
-    await saveRegistry([...byClientId.values()]);
-    return true;
-  });
+      return registryTask(async () => {
+        const registry = await loadRegistry();
+        const byClientId = new Map(registry.map((item) => [item.client_id, item]));
+        const syncStartedAt = Date.now();
+        const pubsToUpsert: ReturnType<typeof pubFromSubmission>[] = [];
+        for (const [index, result] of remote.entries()) {
+          const previous = byClientId.get(result.clientId);
+          // A GET may succeed while a geocoding-backed PATCH is temporarily down.
+          // Never let the older server row erase an offline edit or its failed state.
+          if (previous && previous.syncState !== 'synced') continue;
+          const synced = submissionFromResponse(
+            previous,
+            result,
+            previous?.updatedAt ?? new Date(syncStartedAt - index).toISOString(),
+          );
+          byClientId.set(result.clientId, synced);
+          if (previous) {
+            const previousId = pubIdForCoords(previous.lat, previous.lng);
+            const nextPub = pubFromSubmission(synced);
+            if (nextPub.id !== previousId) removeLocalPub(previousId);
+            pubsToUpsert.push(nextPub);
+          } else {
+            pubsToUpsert.push(pubFromSubmission(synced));
+          }
+        }
+        upsertLocalPubs(pubsToUpsert);
+        await saveRegistry([...byClientId.values()]);
+        return true;
+      });
+    });
+  } catch (error) {
+    if (error instanceof PrivateAccountMutationFrozenError) return false;
+    throw error;
+  }
 }
 
 export function clearAddedPubsQueue(): Promise<void> {
+  addedPubDelivery.abortInFlight();
   return registryTask(async () => {
     const registry = await loadRegistry();
     for (const submission of registry) {
       removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
     }
     await saveRegistry([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }
 
 export function restoreQueuedAddedPubs(): Promise<number> {
   return registryTask(async () => {
     const registry = await loadRegistry();
-    for (const submission of registry) {
-      if (submission.syncState !== 'failed') upsertLocalPub(pubFromSubmission(submission));
-    }
+    upsertLocalPubs(
+      registry
+        .filter((submission) => submission.syncState !== 'failed')
+        .map(pubFromSubmission),
+    );
     return registry.filter((submission) => submission.syncState === 'pending').length;
   });
 }

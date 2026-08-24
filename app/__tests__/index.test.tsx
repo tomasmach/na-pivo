@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { CompassCard } from '@/compassui/CompassCard';
 import { MoreSheet } from '@/components/shared/MoreSheet';
@@ -24,7 +25,7 @@ jest.mock('react-native', () => {
 });
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 jest.mock('expo-router', () => ({
@@ -69,6 +70,10 @@ jest.mock('@/compassui/CompassCard', () => ({
 
 jest.mock('@/components/shared/MoreSheet', () => ({
   MoreSheet: jest.fn(() => null),
+}));
+
+jest.mock('@/components/shared/RenamePromptSheet', () => ({
+  RenamePromptSheet: jest.fn(() => null),
 }));
 
 jest.mock('@/counter/NudgeSlot', () => ({
@@ -143,24 +148,27 @@ jest.mock('@/hooks/useCompass', () => ({
   useCompass: jest.fn(),
 }));
 
-jest.mock('@/data/account', () => ({
-  updateAccountPreferences: jest.fn(async () => null),
+jest.mock('@/data/accountPreferencesQueue', () => ({
+  enqueueAccountPreferences: jest.fn(async () => true),
 }));
 
-const CompassScreen = require('../(tabs)/index').default;
-const { useCompass } = require('@/hooks/useCompass') as {
+// The real compass lives in src/ now; `app/(tabs)/index.tsx` is a one-line
+// re-export (a design mock on the 3.0 branch). Test the screen, not the route.
+const CompassScreen = jest.requireActual('@/compass/CompassHomeScreen').default;
+const { useCompass } = jest.requireMock('@/hooks/useCompass') as {
   useCompass: jest.Mock;
 };
-const { updateAccountPreferences } = require('@/data/account') as {
-  updateAccountPreferences: jest.Mock;
+const { enqueueAccountPreferences } = jest.requireMock('@/data/accountPreferencesQueue') as {
+  enqueueAccountPreferences: jest.Mock;
 };
 const mockedUseRouter = useRouter as jest.Mock;
 const CompassCardMock = CompassCard as jest.Mock;
 const MoreSheetMock = MoreSheet as jest.Mock;
 const MapPubSheetMock = MapPubSheet as jest.Mock;
 const ReportPubModalMock = ReportPubModal as jest.Mock;
+const PubFilterSheetMock = PubFilterSheet as jest.Mock;
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 function latestProps(mock: jest.Mock) {
@@ -259,10 +267,8 @@ describe('CompassScreen', () => {
       reveal,
     });
 
-    let renderer: any;
-
     act(() => {
-      renderer = TestRenderer.create(React.createElement(CompassScreen));
+      TestRenderer.create(React.createElement(CompassScreen));
     });
 
     const card = latestProps(CompassCardMock);
@@ -338,7 +344,7 @@ describe('CompassScreen', () => {
   });
 
   it('offers destination-only navigation home when a home point is set', () => {
-    const { openHomeInMaps } = require('@/utils/maps') as { openHomeInMaps: jest.Mock };
+    const { openHomeInMaps } = jest.requireMock('@/utils/maps') as { openHomeInMaps: jest.Mock };
     useCompass.mockReturnValue(baseCompassState());
 
     let renderer: any;
@@ -395,10 +401,11 @@ describe('CompassScreen', () => {
     pressMoreRow(renderer, cs.compass.moreModeSurprise);
 
     expect(setMode).toHaveBeenCalledWith('surprise');
-    expect(updateAccountPreferences).toHaveBeenCalledWith({ mode: 'surprise' });
+    expect(enqueueAccountPreferences).toHaveBeenCalledWith({ mode: 'surprise' });
   });
 
-  it('opens the report reason sheet from the more sheet', () => {
+  it('opens the report reason sheet from the more sheet', async () => {
+    jest.useFakeTimers();
     const reportCurrentPub = jest.fn(async () => true);
     useCompass.mockReturnValue({
       ...baseCompassState(),
@@ -413,14 +420,40 @@ describe('CompassScreen', () => {
     });
 
     pressMoreRow(renderer, cs.compass.moreReport);
+    expect(latestProps(ReportPubModalMock).visible).toBe(false);
+    act(() => jest.advanceTimersByTime(259));
+    expect(latestProps(ReportPubModalMock).visible).toBe(false);
+    act(() => jest.advanceTimersByTime(1));
     const reportModal = latestProps(ReportPubModalMock);
     expect(reportModal.visible).toBe(true);
 
-    act(() => {
+    await act(async () => {
       reportModal.onReportReason('not_pub');
+      await Promise.resolve();
     });
 
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
+    jest.useRealTimers();
+  });
+
+  it('waits for the more sheet to dismiss before presenting filters', () => {
+    jest.useFakeTimers();
+    useCompass.mockReturnValue(baseCompassState());
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    pressMoreRow(renderer, cs.compass.moreFilters);
+    expect(latestProps(PubFilterSheetMock).visible).toBe(false);
+
+    act(() => jest.advanceTimersByTime(259));
+    expect(latestProps(PubFilterSheetMock).visible).toBe(false);
+
+    act(() => jest.advanceTimersByTime(1));
+    expect(latestProps(PubFilterSheetMock).visible).toBe(true);
+    jest.useRealTimers();
   });
 
   it('passes Firmy.cz opening hours to the map hub when community hours are absent', () => {
@@ -438,10 +471,8 @@ describe('CompassScreen', () => {
       },
     });
 
-    let renderer: any;
-
     act(() => {
-      renderer = TestRenderer.create(React.createElement(CompassScreen));
+      TestRenderer.create(React.createElement(CompassScreen));
     });
 
     expect(latestProps(MapPubSheetMock).visible).toBe(false);
@@ -493,6 +524,7 @@ describe('CompassScreen', () => {
   });
 
   it('opens add-pub from the report modal reached through the more sheet', () => {
+    jest.useFakeTimers();
     const push = jest.fn();
     mockedUseRouter.mockReturnValue({ push });
     useCompass.mockReturnValue({
@@ -508,6 +540,7 @@ describe('CompassScreen', () => {
     });
 
     pressMoreRow(renderer, cs.compass.moreReport);
+    act(() => jest.advanceTimersByTime(260));
     const reportModal = latestProps(ReportPubModalMock);
     expect(reportModal.visible).toBe(true);
     act(() => {
@@ -521,5 +554,6 @@ describe('CompassScreen', () => {
         lng: '14.4213',
       },
     });
+    jest.useRealTimers();
   });
 });

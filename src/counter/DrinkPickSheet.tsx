@@ -9,11 +9,12 @@
  */
 
 import React from 'react';
-import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -126,32 +127,9 @@ export function DrinkPickSheet({
   const addBeerLabel = isEmpty ? cs.counter.pickFirstBeer : cs.counter.pickAddBeer;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      {/* The backdrop is a dismiss target, not an announced control: the real
-          close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <View style={styles.backdrop}>
-        {/* The backdrop is a dismiss target behind the card, not its parent —
-            wrapping the card would stop it from sitting flush on the bottom
-            edge and would swallow the sheet's own gestures. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
+    <BottomSheetModal visible={visible} onClose={onClose}>
         <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* The card swallows presses so a row tap never falls through to the backdrop. */}
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
+          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -221,37 +199,23 @@ export function DrinkPickSheet({
               {renderActionRow('add-beer', PlusIcon, addBeerLabel, onAddBeer, cs.a11y.counterAddBeer)}
               {renderActionRow('add-other', CupSodaIcon, cs.counter.pickNonBeer, onAddOther, cs.counter.pickNonBeer)}
             </View>
-          </Pressable>
+          </View>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
-  // The height bounds live HERE, not on the card: a percentage resolves
-  // against the parent's height, and the card's parent (this) is auto-height,
-  // so bounds written on the card are silently dropped — the card then grows
-  // past the screen and the ScrollView inside never scrolls. `backdrop` is
-  // flex: 1, so percentages resolve properly one level up. See §7.5.
   cardWrap: {
     width: '100%',
-    minHeight: '56%',
     maxHeight: '92%',
+    flexShrink: 1,
   },
   card: {
-    // Fills whatever cardWrap was clamped to — that is what bounds the scroll.
-    flex: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     ...softDrop(),
@@ -272,7 +236,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -289,7 +253,7 @@ const styles = StyleSheet.create({
   },
   rotatingHintText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.amber,
@@ -306,14 +270,15 @@ const styles = StyleSheet.create({
   },
   // Bounded so a long menu scrolls instead of pushing the pinned actions out.
   list: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
     paddingBottom: Spacing.sm,
   },
   caption: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -334,24 +299,24 @@ const styles = StyleSheet.create({
   rowPressed: { opacity: 0.6 },
   rowText: { flex: 1 },
   rowName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   rowMeta: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 2,
   },
   rowBadge: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,
   },
   emptyCopy: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -386,7 +351,7 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },

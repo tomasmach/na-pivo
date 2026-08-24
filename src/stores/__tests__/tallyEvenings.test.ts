@@ -1,8 +1,8 @@
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import { allSessionsNewestFirst, findSessionByStart, type TallySession } from '../tallyStore';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 function session(startedAt: string, drinkCount: number, over: Partial<TallySession> = {}): TallySession {
   return {

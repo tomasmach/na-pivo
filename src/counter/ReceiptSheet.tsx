@@ -7,16 +7,19 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-import { MinusIcon, XIcon } from '@/components/shared/IconGlyph';
+import { MinusIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 
 export interface ReceiptItem {
   key: string; // identity key
@@ -84,46 +87,21 @@ export function ReceiptSheet({
   const hasItems = beerItems.length > 0 || otherItems.length > 0;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <BottomSheetModal visible={visible} onClose={onClose}>
       {/* The backdrop is a dismiss target, not an announced control: the real
           close button carries the label so VoiceOver hears "Zavřít" once. */}
-      <View style={styles.backdrop}>
         {/* The backdrop is a dismiss target behind the card, not its parent —
             wrapping the card would stop it from sitting flush on the bottom
             edge and would swallow the sheet's own gestures. */}
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
         <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          {/* The card swallows presses so a row tap never falls through to the backdrop. */}
-          <Pressable
-            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
+          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
             <View style={styles.grabber} />
 
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
                 {cs.counter.receiptTitle}
               </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressedDim]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
+              <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
             </View>
 
             {startedAtLabel != null && (
@@ -173,46 +151,31 @@ export function ReceiptSheet({
                 accessibilityLabel={cs.a11y.counterDone}
               />
             </View>
-          </Pressable>
+          </View>
         </View>
-      </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
-  // The height bounds live HERE, not on the card: a percentage resolves
-  // against the parent's height, and the card's parent (this) is auto-height,
-  // so bounds written on the card are silently dropped — the card then grows
-  // past the screen and the ScrollView inside never scrolls. `backdrop` is
-  // flex: 1, so percentages resolve properly one level up. See §7.5.
   cardWrap: {
     width: '100%',
-    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    // Fills whatever cardWrap was clamped to — that is what bounds the scroll.
-    flex: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   grabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -223,22 +186,11 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
   },
-  closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   startedAt: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 2,
@@ -246,7 +198,8 @@ const styles = StyleSheet.create({
   // Bounded so a long evening scrolls inside the sheet instead of pushing the
   // pinned footer off the bottom of the card.
   list: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -265,19 +218,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   rowMeta: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
     marginTop: 2,
   },
   rowTotal: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -306,7 +259,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   totalText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 17,
     color: Colors.foam,
     includeFontPadding: false,

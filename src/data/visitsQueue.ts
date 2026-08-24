@@ -25,38 +25,51 @@
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  */
 
-import {
-  deleteVisit,
-  submitVisit,
-  type SubmitVisitResult,
-  type VisitEntry,
-} from './visitsClient';
+import { deleteVisit, submitVisit, type SubmitVisitResult, type VisitEntry } from './visitsClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
-/** Hard cap — one item per evening; only bites with a very long offline backlog,
- *  where dropping the oldest beats unbounded growth. */
+/** Historical queue limit retained as migration context; durable visits are never dropped. */
 const MAX_QUEUE_LENGTH = 500;
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /** One pending sync operation, keyed (and deduped) by client_id. */
 export type VisitQueueItem =
-  | { op: 'upsert'; clientId: string; entry: VisitEntry }
-  | { op: 'delete'; clientId: string };
+  { op: 'upsert'; clientId: string; entry: VisitEntry } | { op: 'delete'; clientId: string };
+export type VisitEnqueueResult = 'queued' | 'delivered' | 'storage-error';
 
 function isQueueItem(value: unknown): value is VisitQueueItem {
   const i = value as VisitQueueItem;
-  if (!i || typeof i.clientId !== 'string') return false;
+  if (!i || typeof i.clientId !== 'string' || !UUID_PATTERN.test(i.clientId)) return false;
   if (i.op === 'delete') return true;
   if (i.op === 'upsert') {
     const e = (i as { entry?: VisitEntry }).entry;
     return (
       !!e &&
-      typeof e.client_id === 'string' &&
+      e.client_id === i.clientId &&
       typeof e.name === 'string' &&
+      !!e.name.trim() &&
       typeof e.lat === 'number' &&
+      Number.isFinite(e.lat) &&
+      e.lat >= -90 &&
+      e.lat <= 90 &&
       typeof e.lng === 'number' &&
+      Number.isFinite(e.lng) &&
+      e.lng >= -180 &&
+      e.lng <= 180 &&
       typeof e.started_at === 'string' &&
-      typeof e.updated_at === 'string'
+      Number.isFinite(Date.parse(e.started_at)) &&
+      typeof e.updated_at === 'string' &&
+      Number.isFinite(Date.parse(e.updated_at)) &&
+      (e.ended_at === undefined ||
+        e.ended_at === null ||
+        (typeof e.ended_at === 'string' && Number.isFinite(Date.parse(e.ended_at)))) &&
+      (e.city === undefined || typeof e.city === 'string') &&
+      (e.external_id === undefined ||
+        e.external_id === null ||
+        typeof e.external_id === 'string') &&
+      (e.party_code === undefined || typeof e.party_code === 'string')
     );
   }
   return false;
@@ -71,6 +84,10 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<VisitQueueItem>(
  *  outside this lock so a slow/offline flush cannot block a fresh visit update
  *  from being persisted immediately. */
 const runMutation = createQueueLock();
+/** Last-write intents that could not reach AsyncStorage. They stay process-local
+ *  and are folded into the next enqueue/foreground flush instead of vanishing
+ *  behind a successful-looking local tally update. */
+const volatilePending = new Map<string, VisitQueueItem>();
 
 async function deliver(item: VisitQueueItem): Promise<SubmitVisitResult> {
   return item.op === 'upsert' ? submitVisit(item.entry) : deleteVisit(item.clientId);
@@ -84,7 +101,15 @@ function signature(item: VisitQueueItem): string {
 }
 
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
-  const queue = await runMutation(loadQueue);
+  const queue = await runMutation(async () => {
+    const durable = await loadQueue();
+    if (volatilePending.size === 0) return durable;
+    const merged = durable.filter((item) => !volatilePending.has(item.clientId));
+    merged.push(...volatilePending.values());
+    if (!(await saveQueue(preserveDurableQueue(merged, MAX_QUEUE_LENGTH)))) return [];
+    volatilePending.clear();
+    return merged;
+  });
   if (queue.length === 0) return;
 
   // Snapshot the exact op (by content) we attempt per client_id; re-load after
@@ -118,16 +143,36 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 /**
  * Enqueue (and dedup) one visit operation, then immediately try to flush the
  * whole queue. A new operation for a client_id REPLACES any pending operation
- * for the same client_id (last write wins). Never throws.
+ * for the same client_id (last write wins). The result keeps a storage failure
+ * distinct from a durable retry and a settled delivery. Never throws.
  */
-export async function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
-  await runMutation(async () => {
+export async function enqueueVisitOp(
+  item: VisitQueueItem,
+  options?: { deliver?: boolean },
+): Promise<VisitEnqueueResult> {
+  const persisted = await runMutation(async () => {
     const queue = await loadQueue();
-    const deduped = queue.filter((existing) => existing.clientId !== item.clientId);
-    deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    const latest = new Map(queue.map((existing) => [existing.clientId, existing]));
+    for (const pending of volatilePending.values()) latest.set(pending.clientId, pending);
+    latest.set(item.clientId, item);
+    const deduped = [...latest.values()];
+    const saved = await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+    if (saved) volatilePending.clear();
+    else volatilePending.set(item.clientId, item);
+    return saved;
   });
+  if (!persisted) return 'storage-error';
+  if (options?.deliver === false) return 'queued';
   await flushVisitsQueue();
+  return runMutation(async () => {
+    const queued = await loadQueue();
+    const expected = signature(item);
+    return queued.some(
+      (candidate) => candidate.clientId === item.clientId && signature(candidate) === expected,
+    )
+      ? 'queued'
+      : 'delivered';
+  });
 }
 
 const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
@@ -138,9 +183,13 @@ export function clearVisitsQueue(): Promise<void> {
   // so without this it could keep POSTing the previous account's visits under the
   // session that replaces this one.
   abortInFlight();
-  return runMutation(async () => {
-    await saveQueue([]);
-  });
+  return runMutation(
+    async () => {
+      volatilePending.clear();
+      await saveQueue([]);
+    },
+    { allowDuringPrivateTransition: true },
+  );
 }
 
 /**
@@ -151,4 +200,48 @@ export function clearVisitsQueue(): Promise<void> {
  */
 export function flushVisitsQueue(): Promise<void> {
   return _flush();
+}
+
+/**
+ * Resolve visits staged against a locally reserved table code.
+ *
+ * The explicit pub stop is persisted before the table POST so a process kill
+ * cannot lose the move. Delivery is held back until that POST settles. On
+ * success the confirmed code is written into the queued payload; on failure
+ * the visit remains a valid private diary stop and is delivered without a
+ * party association. The PubVisit endpoint is idempotent on client_id, so this
+ * is also safe if a prior attempt reached the server but its response was lost.
+ */
+export async function resolveQueuedVisitPartyAssociation(
+  pendingCode: string,
+  confirmedCode: string | null,
+): Promise<void> {
+  const pending = pendingCode.trim().toUpperCase();
+  const confirmed = confirmedCode?.trim().toUpperCase() || null;
+  if (!pending) return;
+
+  await runMutation(async () => {
+    const queue = await loadQueue();
+    let changed = false;
+    const next = queue.map((item) => {
+      if (item.op !== 'upsert' || item.entry.party_code?.trim().toUpperCase() !== pending) {
+        return item;
+      }
+      changed = true;
+      const entry = { ...item.entry };
+      if (confirmed) entry.party_code = confirmed;
+      else delete entry.party_code;
+      return { ...item, entry };
+    });
+    for (const [clientId, item] of volatilePending) {
+      if (item.op !== 'upsert' || item.entry.party_code?.trim().toUpperCase() !== pending) continue;
+      const entry = { ...item.entry };
+      if (confirmed) entry.party_code = confirmed;
+      else delete entry.party_code;
+      volatilePending.set(clientId, { ...item, entry });
+    }
+    if (changed) await saveQueue(next);
+  });
+
+  await flushVisitsQueue();
 }

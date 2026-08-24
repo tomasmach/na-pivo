@@ -16,6 +16,7 @@ import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View, type StylePr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
+import { useModalPresentation } from '@/stores/launchModalMutex';
 import { fetchPartaPhotoFeed, type PartaFeedPhoto } from '@/data/beerPhotosClient';
 import { cs } from '@/i18n/cs';
 import { Avatar } from '@/profile/Avatar';
@@ -23,7 +24,7 @@ import { ScalePressable } from '@/photos/ScalePressable';
 import { selectAvatarUrl, selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const TILE_WIDTH = 108;
@@ -77,6 +78,9 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
 
   const [feed, setFeed] = useState<PartaFeedPhoto[]>([]);
   const [viewer, setViewer] = useState<StripPhoto | null>(null);
+  const [viewerLoadFailed, setViewerLoadFailed] = useState(false);
+  const [viewerReloadKey, setViewerReloadKey] = useState(0);
+  const viewerPresentation = useModalPresentation(viewer !== null);
   // Snapshotted per fetch (not per render) so the memoized strip stays pure.
   const [freshCutoff, setFreshCutoff] = useState(0);
 
@@ -117,11 +121,13 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
       .slice(0, STRIP_LIMIT);
   }, [ownPhotos, feed, myAvatarUrl, myNickname, freshCutoff]);
 
-  if (strip.length === 0) return null;
+  if (strip.length === 0 && viewer === null) return null;
 
   return (
     <View style={style}>
-      <Text style={styles.sectionHeader}>{cs.partaPhotos.header}</Text>
+      <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {cs.partaPhotos.header}
+      </Text>
       <FlatList
         horizontal
         data={strip}
@@ -131,7 +137,11 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
         contentContainerStyle={styles.stripContent}
         renderItem={({ item: photo }) => (
           <ScalePressable
-            onPress={() => setViewer(photo)}
+            onPress={() => {
+              setViewerLoadFailed(false);
+              setViewerReloadKey(0);
+              setViewer(photo);
+            }}
             style={styles.tile}
             accessibilityRole="button"
             accessibilityLabel={cs.a11y.partaPhotoTile(photo.name)}
@@ -158,11 +168,12 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
 
       {/* Fullscreen read-only viewer (friend-profile gallery idiom). */}
       <Modal
-        visible={viewer != null}
+        visible={viewerPresentation.visible}
         transparent
         animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setViewer(null)}
+        onDismiss={viewerPresentation.onDismiss}
       >
         <View style={styles.viewerBackdrop}>
           <Pressable
@@ -180,12 +191,36 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
           </Pressable>
           {viewer ? (
             <>
-              <Image
-                source={{ uri: viewer.uri }}
-                style={styles.viewerImage}
-                resizeMode="contain"
-                accessibilityIgnoresInvertColors
-              />
+              <View style={styles.viewerImage}>
+                <Image
+                  key={`${viewer.key}:${viewerReloadKey}`}
+                  source={{ uri: viewer.uri }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                  onError={() => setViewerLoadFailed(true)}
+                />
+                {viewerLoadFailed ? (
+                  <View style={styles.viewerError} accessibilityLiveRegion="polite">
+                    <Text style={styles.viewerErrorText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.photoDiary.viewerLoadError}
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        setViewerLoadFailed(false);
+                        setViewerReloadKey((value) => value + 1);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.a11y.photoViewerRetry}
+                      style={({ pressed }) => [styles.viewerRetry, pressed && styles.dim]}
+                    >
+                      <Text style={styles.viewerRetryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                        {cs.photoDiary.viewerRetry}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
               <View style={[styles.viewerMeta, { paddingBottom: insets.bottom + Spacing.lg }]}>
                 <Text style={styles.viewerName} maxFontSizeMultiplier={FontScaleCap.body}>
                   {viewer.name}
@@ -215,7 +250,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
 const styles = StyleSheet.create({
   // Mirrors the FriendsScreen section-header idiom.
   sectionHeader: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -253,7 +288,7 @@ const styles = StyleSheet.create({
   },
   nameChipText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     color: Colors.foam,
   },
@@ -268,9 +303,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: Spacing.lg,
     zIndex: 2,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.foam, 0.12),
     alignItems: 'center',
     justifyContent: 'center',
@@ -278,6 +313,30 @@ const styles = StyleSheet.create({
   viewerImage: {
     width: '100%',
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerError: {
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  viewerErrorText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.foamMuted,
+  },
+  viewerRetry: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  viewerRetryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.foam,
   },
   viewerMeta: {
     paddingHorizontal: Spacing.lg,
@@ -285,12 +344,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   viewerName: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
   },
   viewerCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -301,7 +360,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   viewerPub: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },

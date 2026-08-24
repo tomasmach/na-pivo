@@ -1,8 +1,14 @@
 import { ensureAccount, type AccountSession } from './account';
-import { chainAbortSignal, classifyQueueHttpFailure, type QueueSyncResult } from './apiFetch';
+import {
+  chainAbortSignal,
+  classifyQueueHttpFailure,
+  classifyQueueHttpStatus,
+  type QueueSyncResult,
+} from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import type { FriendActionError, FriendActionResult, FriendProfile } from './friendsClient';
 import { trackApiFailure } from './telemetryClient';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
@@ -246,7 +252,7 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal; gatedUgc?: boolean } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
@@ -265,6 +271,7 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
@@ -276,6 +283,7 @@ async function requestJson(
     } catch {
       data = {};
     }
+    if (options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
@@ -320,15 +328,18 @@ export async function submitBeerCheckIn(input: BeerCheckInInput): Promise<QueueS
   const res = await requestJson('/v1/beer-checkins', {
     method: 'POST',
     body: beerCheckInWire(input),
+    gatedUgc: input.visibility === 'friends',
   });
   if (res.ok) return 'ok';
   if (res.result.code === 'offline' || res.result.code === 'account' || res.result.code === 'network' || res.result.code === 'auth') {
     return 'retry';
   }
+  if (res.result.code === 'ugc_consent_required' || res.result.code === 'ugc_policy_update_required') {
+    return 'retry';
+  }
   const httpMatch = /^http_(\d{3})$/.exec(res.result.code);
   if (httpMatch) {
-    const status = Number(httpMatch[1]);
-    if (status === 401 || status === 429 || status >= 500) return 'retry';
+    return classifyQueueHttpStatus(Number(httpMatch[1]));
   }
   return 'permanent-error';
 }
@@ -337,6 +348,7 @@ export async function createBeerCheckIn(input: BeerCheckInInput): Promise<BeerCh
   const res = await requestJson('/v1/beer-checkins', {
     method: 'POST',
     body: beerCheckInWire(input),
+    gatedUgc: input.visibility === 'friends',
   });
   return res.ok ? parseBeerCheckIn(res.data as RawCheckIn) : null;
 }

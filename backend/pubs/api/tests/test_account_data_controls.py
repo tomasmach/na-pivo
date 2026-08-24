@@ -1,32 +1,73 @@
 from __future__ import annotations
 
 import base64
+import json
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 import pytest
 from django.core.cache import cache
-from django.db import connection
+from django.db import close_old_connections, connection, connections, transaction
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs import emailer
+from pubs import accounts, emailer
+from pubs.api import views as api_views
 from pubs.models import (
     Account,
+    AccountIdentityAlias,
+    AccountMappedPub,
+    AccountPubCompletion,
+    AccountUsageStats,
+    AmenityXpLedger,
     AuthIdentity,
+    AuthToken,
+    BeerBrand,
     BeerCheckIn,
+    BeerPhoto,
+    BeerPhotoDeletionTombstone,
+    BeerProduct,
     CommunityEvent,
     CommunityEventMembership,
+    CommunityEventTeam,
+    CommunityEventTeamMembership,
     ContentReport,
     DrinkLog,
     EmailCredential,
+    FeedbackReport,
+    Follow,
+    FriendBlock,
+    FriendInviteCode,
+    FriendPubActivity,
+    FriendPubActivityRecipient,
     Friendship,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
+    PartyGame,
+    PartyGameEvent,
+    PhotoContest,
+    PhotoContestEntry,
+    PhotoContestVote,
+    PubAmenityVoteTombstone,
+    PubBeerBrand,
+    PubBeerProduct,
+    PubCommunityData,
+    PubCommunityXpLedger,
+    PubContributionLog,
     PubEvent,
+    PublishedNight,
+    PublishedNightComment,
+    PubNameCorrection,
+    PubReport,
+    PubVisit,
     PushDevice,
+    UserAddedPub,
 )
 
 
@@ -36,7 +77,8 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _clear_throttle_cache():
+def _clear_throttle_cache(settings):
+    settings.ACCOUNT_EXPORT_ASYNC = False
     cache.clear()
     yield
     cache.clear()
@@ -120,9 +162,9 @@ def test_verification_email_renders_app_link(monkeypatch):
     assert sent is True
     assert captured["to"] == "person@example.com"
     assert captured["subject"] == "Ověř si e-mail – Na Pivo"
-    assert 'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured[
-        "html"
-    ]
+    assert (
+        'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured["html"]
+    )
     assert "Ověřit e-mail" in captured["html"]
     assert "Kód pro ruční zadání" not in captured["html"]
     assert "https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token" in (
@@ -209,6 +251,7 @@ def test_restore_purchases_stores_pending_subscription_identifiers(client):
 
 
 @pytest.mark.django_db
+@override_settings(PUBLIC_API_ORIGIN="https://api.example.test")
 def test_account_export_includes_diary_data_and_excludes_secrets(client):
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
@@ -246,13 +289,30 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
         enabled=True,
         app_version="1.2.0",
     )
+    account.avatar = "avatars/export.webp"
+    account.ghost_mode = True
+    account.share_drinks_with_parta = False
+    account.quiet_hours_enabled = False
+    account.quiet_hours_start = 22
+    account.quiet_hours_end = 7
+    account.excluded_from_leaderboards = True
+    account.save()
 
     resp = client.get("/v1/account/export", **_auth(token))
 
     assert resp.status_code == status.HTTP_200_OK, resp.content
     assert resp["Content-Disposition"] == 'attachment; filename="na-pivo-export.json"'
+    assert resp["Cache-Control"] == "no-store"
+    assert resp["Pragma"] == "no-cache"
     body = resp.json()
     assert body["account"]["id"] == account_id
+    assert body["account"]["avatar_url"] == "https://api.example.test/media/avatars/export.webp"
+    assert body["settings"]["ghost_mode"] is True
+    assert body["settings"]["share_drinks_with_parta"] is False
+    assert body["settings"]["quiet_hours_enabled"] is False
+    assert body["settings"]["quiet_hours_start"] == 22
+    assert body["settings"]["quiet_hours_end"] == 7
+    assert body["settings"]["excluded_from_leaderboards"] is True
     assert body["drinks"][0]["beer_name"] == "Ležák"
     assert body["drinks"][0]["drink_type"] == "beer"
     assert body["drinks"][0]["place_context"] == "pub"
@@ -278,6 +338,643 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert "password" not in serialized
     assert token not in serialized
     assert "ExponentPushToken[exportDevice]" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_includes_all_account_owned_history_without_auth_secrets(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-export")
+    now = timezone.now().replace(microsecond=0)
+
+    AccountUsageStats.objects.create(
+        account=account,
+        mapper_xp=135,
+        pivar_xp=72,
+        mapped_pubs_count=3,
+        first_mapper_count=2,
+        amenity_votes_count=5,
+        completed_pubs_count=1,
+        photo_contest_wins_count=1,
+    )
+    Follow.objects.create(follower=account, target=other)
+    Follow.objects.create(follower=other, target=account)
+    added_pub = UserAddedPub.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Přidaného exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        address="Exportní 1",
+    )
+    correction = PubNameCorrection.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        original_name="U Starého",
+        suggested_name="U Správného",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        address="Exportní 1",
+    )
+    tombstone = PubAmenityVoteTombstone.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+        amenity_key="wifi",
+        name="U Přidaného exportu",
+        client_updated_at=now,
+    )
+    AmenityXpLedger.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+        amenity_key="wifi",
+    )
+    AccountMappedPub.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+    )
+    AccountPubCompletion.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        pub_identity_key="u2fkbn12:u-pridaneho-exportu",
+    )
+    PubCommunityXpLedger.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        kind=PubCommunityXpLedger.Kind.HOURS,
+    )
+    photo = BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/contest.webp",
+        taken_at=now,
+    )
+    contest = PhotoContest.objects.create(
+        period_start=now,
+        period_end=now + timezone.timedelta(days=14),
+        status=PhotoContest.Status.CLOSED,
+        closed_at=now + timezone.timedelta(days=14),
+    )
+    entry = PhotoContestEntry.objects.create(
+        contest=contest,
+        photo=photo,
+        account=account,
+        final_rank=1,
+        final_votes=7,
+    )
+    other_photo = BeerPhoto.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{other.public_id}/contest.webp",
+        taken_at=now,
+    )
+    other_entry = PhotoContestEntry.objects.create(
+        contest=contest,
+        photo=other_photo,
+        account=other,
+        final_rank=2,
+        final_votes=4,
+    )
+    PhotoContestVote.objects.create(contest=contest, entry=other_entry, voter=account)
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    assert body["usage"]["mapper_xp"] == 135
+    assert body["usage"]["pivar_xp"] == 72
+    assert body["social"]["following"] == [str(other.public_id)]
+    assert body["social"]["followers"] == [str(other.public_id)]
+    assert body["mapping_history"]["added_pubs"][0]["client_id"] == str(
+        added_pub.client_id
+    )
+    assert body["mapping_history"]["name_corrections"][0]["client_id"] == str(
+        correction.client_id
+    )
+    assert body["mapping_history"]["amenity_vote_tombstones"][0]["amenity_key"] == (
+        tombstone.amenity_key
+    )
+    assert body["mapping_history"]["mapped_pubs"][0]["cache_key"] == "u2fkbn12"
+    assert body["mapping_history"]["completed_pubs"][0]["cache_key"] == "u2fkbn12"
+    assert body["mapping_history"]["community_xp_ledger"][0]["kind"] == "hours"
+    assert body["photo_contests"]["entries"][0]["entry_id"] == str(entry.public_id)
+    assert body["photo_contests"]["votes"][0]["entry_id"] == str(other_entry.public_id)
+    serialized = str(body)
+    assert token not in serialized
+    assert "token_hash" not in serialized
+    assert "password" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_includes_only_owned_current_pub_catalog_contributions(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-catalog")
+    now = timezone.now().replace(microsecond=0)
+
+    brand = BeerBrand.objects.create(
+        key="export-brand",
+        name="Exportní značka",
+        aliases=["export"],
+        rank=10,
+    )
+    product = BeerProduct.objects.create(
+        key="export-brand-lezak",
+        brand=brand,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        name="Exportní ležák 10°",
+        rank=11,
+    )
+
+    own_community = PubCommunityData.objects.create(
+        cache_key="ownck001",
+        name="OWNER-COMMUNITY-PUB",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        external_id="owner-external-1",
+        hours_json={
+            "mo": [["11:00", "23:00"]],
+            "tu": [],
+            "we": [["11:00", "23:00"]],
+            "th": [],
+            "fr": [["11:00", "01:00"]],
+            "sa": [["12:00", "01:00"]],
+            "su": [],
+        },
+        opening_hours_raw="Mo,We 11:00-23:00; Fr 11:00-01:00; Sa 12:00-01:00",
+        beers=[
+            {"name": "OWNER-TAP-BEER", "price_czk": 65, "volume_ml": 500},
+        ],
+        historical_beers=[
+            {"name": "OWNER-RETIRED-BEER", "price_czk": 55, "volume_ml": 500},
+        ],
+        beer_menu_rotates=True,
+        account=account,
+        hours_updated_at=now - timezone.timedelta(hours=2),
+        beers_updated_at=now - timezone.timedelta(hours=1),
+        created_at=now - timezone.timedelta(days=1),
+        updated_at=now - timezone.timedelta(hours=1),
+    )
+    PubCommunityData.objects.create(
+        cache_key="othck001",
+        name="OTHER-COMMUNITY-PUB",
+        lat=49.20,
+        lng=16.60,
+        city="Brno",
+        external_id="other-external-1",
+        account=other,
+    )
+
+    own_brand_row = PubBeerBrand.objects.create(
+        cache_key="ownck002",
+        name="OWNER-BRAND-PUB",
+        lat=50.09,
+        lng=14.42,
+        city="Praha",
+        external_id="owner-external-2",
+        brand=brand,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        last_price_czk=62,
+        last_volume_ml=500,
+        source=PubBeerBrand.Source.COMMUNITY,
+        active=True,
+        account=account,
+        last_seen_at=now - timezone.timedelta(hours=3),
+        created_at=now - timezone.timedelta(days=2),
+        updated_at=now - timezone.timedelta(hours=3),
+    )
+    PubBeerBrand.objects.create(
+        cache_key="othck002",
+        name="OTHER-BRAND-PUB",
+        lat=49.21,
+        lng=16.61,
+        city="Brno",
+        external_id="other-external-2",
+        brand=brand,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        source=PubBeerBrand.Source.DRINK,
+        account=other,
+    )
+
+    own_product_row = PubBeerProduct.objects.create(
+        cache_key="ownck003",
+        name="OWNER-PRODUCT-PUB",
+        lat=50.10,
+        lng=14.40,
+        city="Praha",
+        external_id="owner-external-3",
+        brand=brand,
+        product=product,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        product_key="export-brand-lezak",
+        product_name="Exportní ležák 10°",
+        last_price_czk=68,
+        last_volume_ml=500,
+        source=PubBeerProduct.Source.COMMUNITY,
+        active=True,
+        account=account,
+        last_seen_at=now - timezone.timedelta(hours=4),
+        created_at=now - timezone.timedelta(days=3),
+        updated_at=now - timezone.timedelta(hours=4),
+    )
+    PubBeerProduct.objects.create(
+        cache_key="othck003",
+        name="OTHER-PRODUCT-PUB",
+        lat=49.22,
+        lng=16.62,
+        city="Brno",
+        external_id="other-external-3",
+        brand=brand,
+        product=product,
+        brand_key="export-brand",
+        brand_name="Exportní značka",
+        product_key="export-brand-lezak",
+        product_name="Exportní ležák 10°",
+        source=PubBeerProduct.Source.DRINK,
+        account=other,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+
+    community_rows = body["mapping_history"]["community_data"]
+    assert len(community_rows) == 1
+    exported_community = community_rows[0]
+    assert set(exported_community.keys()) == {
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "hours_json",
+        "opening_hours_raw",
+        "beers",
+        "historical_beers",
+        "beer_menu_rotates",
+        "hours_updated_at",
+        "beers_updated_at",
+        "created_at",
+        "updated_at",
+    }
+    assert exported_community["cache_key"] == "ownck001"
+    assert exported_community["name"] == "OWNER-COMMUNITY-PUB"
+    assert exported_community["lat"] == 50.08
+    assert exported_community["lng"] == 14.45
+    assert exported_community["city"] == "Praha"
+    assert exported_community["external_id"] == "owner-external-1"
+    assert exported_community["hours_json"] == own_community.hours_json
+    assert (
+        exported_community["opening_hours_raw"]
+        == "Mo,We 11:00-23:00; Fr 11:00-01:00; Sa 12:00-01:00"
+    )
+    assert exported_community["beers"] == [
+        {"name": "OWNER-TAP-BEER", "price_czk": 65, "volume_ml": 500},
+    ]
+    assert exported_community["historical_beers"] == [
+        {"name": "OWNER-RETIRED-BEER", "price_czk": 55, "volume_ml": 500},
+    ]
+    assert exported_community["beer_menu_rotates"] is True
+    assert exported_community["hours_updated_at"] == (
+        now - timezone.timedelta(hours=2)
+    ).isoformat()
+    assert exported_community["beers_updated_at"] == (
+        now - timezone.timedelta(hours=1)
+    ).isoformat()
+    assert exported_community["created_at"] == own_community.created_at.isoformat()
+    assert exported_community["updated_at"] == own_community.updated_at.isoformat()
+
+    brand_rows = body["mapping_history"]["pub_beer_brands"]
+    assert len(brand_rows) == 1
+    exported_brand = brand_rows[0]
+    assert set(exported_brand.keys()) == {
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "brand_key",
+        "brand_name",
+        "last_price_czk",
+        "last_volume_ml",
+        "source",
+        "active",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    }
+    assert exported_brand["cache_key"] == "ownck002"
+    assert exported_brand["name"] == "OWNER-BRAND-PUB"
+    assert exported_brand["lat"] == 50.09
+    assert exported_brand["lng"] == 14.42
+    assert exported_brand["city"] == "Praha"
+    assert exported_brand["external_id"] == "owner-external-2"
+    assert exported_brand["brand_key"] == "export-brand"
+    assert exported_brand["brand_name"] == "Exportní značka"
+    assert exported_brand["last_price_czk"] == 62
+    assert exported_brand["last_volume_ml"] == 500
+    assert exported_brand["source"] == "community"
+    assert exported_brand["active"] is True
+    assert exported_brand["last_seen_at"] == (
+        now - timezone.timedelta(hours=3)
+    ).isoformat()
+    assert exported_brand["created_at"] == own_brand_row.created_at.isoformat()
+    assert exported_brand["updated_at"] == own_brand_row.updated_at.isoformat()
+
+    product_rows = body["mapping_history"]["pub_beer_products"]
+    assert len(product_rows) == 1
+    exported_product = product_rows[0]
+    assert set(exported_product.keys()) == {
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "brand_key",
+        "brand_name",
+        "product_key",
+        "product_name",
+        "last_price_czk",
+        "last_volume_ml",
+        "source",
+        "active",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    }
+    assert exported_product["cache_key"] == "ownck003"
+    assert exported_product["name"] == "OWNER-PRODUCT-PUB"
+    assert exported_product["lat"] == 50.10
+    assert exported_product["lng"] == 14.40
+    assert exported_product["city"] == "Praha"
+    assert exported_product["external_id"] == "owner-external-3"
+    assert exported_product["brand_key"] == "export-brand"
+    assert exported_product["brand_name"] == "Exportní značka"
+    assert exported_product["product_key"] == "export-brand-lezak"
+    assert exported_product["product_name"] == "Exportní ležák 10°"
+    assert exported_product["last_price_czk"] == 68
+    assert exported_product["last_volume_ml"] == 500
+    assert exported_product["source"] == "community"
+    assert exported_product["active"] is True
+    assert exported_product["last_seen_at"] == (
+        now - timezone.timedelta(hours=4)
+    ).isoformat()
+    assert exported_product["created_at"] == own_product_row.created_at.isoformat()
+    assert exported_product["updated_at"] == own_product_row.updated_at.isoformat()
+
+    for section in (community_rows, brand_rows, product_rows):
+        for row in section:
+            row_keys = set(row.keys())
+            assert not row_keys & {"account_id", "account", "id", "pk"}
+            if row is exported_community:
+                continue
+            assert not row_keys & {"brand_id", "product_id"}
+
+    assert "OTHER-COMMUNITY-PUB" not in str(body)
+    assert "OTHER-BRAND-PUB" not in str(body)
+    assert "OTHER-PRODUCT-PUB" not in str(body)
+    assert "othck001" not in str(body)
+    assert "othck002" not in str(body)
+    assert "othck003" not in str(body)
+
+
+@pytest.mark.django_db
+def test_account_export_includes_owned_reports_and_contributions(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-reports")
+
+    pub_report = PubReport.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        external_id="mapy-export-1",
+        name="U Nahlášeného exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        address="Exportní 5",
+        reason=PubReport.Reason.CLOSED,
+    )
+    FeedbackReport.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.IDEA,
+        message="CIZÍ soukromá zpětná vazba",
+    )
+    feedback = FeedbackReport.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        category=FeedbackReport.Category.BUG,
+        message="Exportní zpětná vazba",
+        contact_type=FeedbackReport.ContactType.EMAIL,
+        contact="export@example.com",
+        app_version="3.0.0",
+        platform="ios",
+        os_version="18.0",
+    )
+    PubContributionLog.objects.create(
+        account=other,
+        cache_key="othck004",
+        name="CIZÍ příspěvek",
+        lat=49.20,
+        lng=16.60,
+        kind=PubContributionLog.Kind.BEERS,
+        payload=[{"name": "CIZÍ pivo"}],
+        client_id=uuid.uuid4(),
+    )
+    contribution = PubContributionLog.objects.create(
+        account=account,
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        kind=PubContributionLog.Kind.HOURS,
+        payload={"mo": [["11:00", "23:00"]]},
+        client_id=uuid.uuid4(),
+    )
+    ContentReport.objects.create(
+        reporter=other,
+        target_account=account,
+        reason=ContentReport.Reason.SPAM,
+        comment="CIZÍ report komentář",
+    )
+    content_report = ContentReport.objects.create(
+        reporter=account,
+        target_account=other,
+        reason=ContentReport.Reason.INAPPROPRIATE_NICKNAME,
+        comment="Sprostá přezdívka.",
+    )
+    PubReport.objects.create(
+        account=other,
+        cache_key="othck004",
+        name="Cizí nahlášená hospoda",
+        lat=49.20,
+        lng=16.60,
+        reason=PubReport.Reason.NOT_PUB,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+
+    assert body["pub_reports"] == [
+        {
+            "cache_key": pub_report.cache_key,
+            "external_id": pub_report.external_id,
+            "name": pub_report.name,
+            "lat": pub_report.lat,
+            "lng": pub_report.lng,
+            "city": pub_report.city,
+            "address": pub_report.address,
+            "reason": PubReport.Reason.CLOSED,
+            "active": True,
+            "created_at": pub_report.created_at.isoformat(),
+        }
+    ]
+    assert len(body["feedback_reports"]) == 1
+    assert body["feedback_reports"][0] == {
+        "client_id": str(feedback.client_id),
+        "category": feedback.category,
+        "message": feedback.message,
+        "contact_type": feedback.contact_type,
+        "contact": feedback.contact,
+        "app_version": feedback.app_version,
+        "platform": feedback.platform,
+        "os_version": feedback.os_version,
+        "attachment_url": "",
+        "status": FeedbackReport.Status.NEW,
+        "created_at": feedback.created_at.isoformat(),
+    }
+    assert len(body["community_contributions"]) == 1
+    assert body["community_contributions"][0] == {
+        "client_id": str(contribution.client_id),
+        "kind": PubContributionLog.Kind.HOURS,
+        "cache_key": contribution.cache_key,
+        "name": contribution.name,
+        "lat": contribution.lat,
+        "lng": contribution.lng,
+        "payload": {"mo": [["11:00", "23:00"]]},
+        "created_at": contribution.created_at.isoformat(),
+    }
+    assert body["content_reports_made"] == [
+        {
+            "target_account_id": str(other.public_id),
+            "reason": ContentReport.Reason.INAPPROPRIATE_NICKNAME,
+            "comment": content_report.comment,
+            "status": ContentReport.Status.NEW,
+            "created_at": content_report.created_at.isoformat(),
+        }
+    ]
+
+    serialized = str(body)
+    assert "Cizí nahlášená hospoda" not in serialized
+    assert "othck004" not in serialized
+    assert "CIZÍ soukromá zpětná vazba" not in serialized
+    assert "CIZÍ příspěvek" not in serialized
+    assert "CIZÍ report komentář" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_includes_owned_night_story_and_only_owned_comments(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    now = timezone.now().replace(microsecond=0)
+    participant_id = str(uuid.uuid4())
+    photo_id = str(uuid.uuid4())
+    game_id = str(uuid.uuid4())
+    own_night = PublishedNight.objects.create(
+        account=account,
+        client_id="recap-client",
+        client_aliases=["recap-client", "vycep-client"],
+        drinking_day=now.date(),
+        started_at=now - timezone.timedelta(hours=4),
+        ended_at=now,
+        beer_count=4,
+        wine_count=0,
+        soft_drink_count=1,
+        shot_count=0,
+        pub_names=["U Exportu"],
+        city="Praha",
+        duration_minutes=240,
+        title="Můj exportní večer",
+        roast_line="Výčep zavíral první",
+        roast_basis="Čtyři piva a jedna limonáda",
+        participant_ids=[participant_id],
+        photo_ids=[photo_id],
+        game_ids=[game_id],
+        visibility=PublishedNight.Visibility.FRIENDS,
+        updated_at=now,
+    )
+    other_night = PublishedNight.objects.create(
+        account=other,
+        client_id="other-night",
+        drinking_day=now.date(),
+        started_at=now - timezone.timedelta(hours=2),
+        ended_at=now,
+        beer_count=1,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=[],
+        city="",
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=now,
+    )
+    own_comment = PublishedNightComment.objects.create(
+        account=account,
+        night=other_night,
+        client_id=uuid.uuid4(),
+        body="Můj komentář k cizímu večeru",
+        is_removed=True,
+    )
+    PublishedNightComment.objects.create(
+        account=other,
+        night=own_night,
+        client_id=uuid.uuid4(),
+        body="Cizí komentář se nesmí exportovat",
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    exported_night = body["published_nights"][0]
+    assert exported_night["client_aliases"] == ["recap-client", "vycep-client"]
+    assert exported_night["title"] == "Můj exportní večer"
+    assert exported_night["roast_line"] == "Výčep zavíral první"
+    assert exported_night["roast_basis"] == "Čtyři piva a jedna limonáda"
+    assert exported_night["participant_ids"] == [participant_id]
+    assert exported_night["photo_ids"] == [photo_id]
+    assert exported_night["game_ids"] == [game_id]
+    assert body["published_night_comments"] == [
+        {
+            "id": str(own_comment.public_id),
+            "client_id": str(own_comment.client_id),
+            "night_id": str(other_night.public_id),
+            "body": "Můj komentář k cizímu večeru",
+            "is_removed": True,
+            "created_at": own_comment.created_at.isoformat(),
+            "updated_at": own_comment.updated_at.isoformat(),
+        }
+    ]
+    assert "Cizí komentář se nesmí exportovat" not in str(body)
 
 
 @pytest.mark.django_db
@@ -346,6 +1043,19 @@ def test_account_export_includes_party_and_community_data(client):
         event=joined_event,
         account=account,
         message="Moje soukromá zpráva",
+        status=CommunityEventMembership.Status.APPROVED,
+    )
+    team = CommunityEventTeam.objects.create(
+        event=joined_event,
+        created_by=account,
+        client_id=uuid.uuid4(),
+        name="Exportní pěna",
+    )
+    team_membership = CommunityEventTeamMembership.objects.create(
+        event=joined_event,
+        team=team,
+        account=account,
+        slot=1,
     )
 
     response = client.get("/v1/account/export", **_auth(token))
@@ -364,13 +1074,145 @@ def test_account_export_includes_party_and_community_data(client):
     assert body["pub_event_suggestions"][0]["id"] == str(suggestion.id)
     assert body["pub_event_suggestions"][0]["lat"] == 50.08
     assert body["community_events"]["hosted"][0]["id"] == str(hosted_event.id)
-    assert (
-        body["community_events"]["hosted"][0]["exact_address"]
-        == "Soukromá 12, zvonek Export"
-    )
+    assert body["community_events"]["hosted"][0]["exact_address"] == "Soukromá 12, zvonek Export"
     assert body["community_events"]["memberships"][0]["event_id"] == str(joined_event.id)
     assert body["community_events"]["memberships"][0]["message"] == membership.message
+    assert body["community_events"]["created_teams"][0]["id"] == str(team.id)
+    assert body["community_events"]["created_teams"][0]["name"] == "Exportní pěna"
+    assert body["community_events"]["team_memberships"][0] == {
+        "id": str(team_membership.id),
+        "event_id": str(joined_event.id),
+        "team_id": str(team.id),
+        "team_name": "Exportní pěna",
+        "slot": 1,
+        "joined_at": team_membership.joined_at.isoformat(),
+    }
     assert "Cizí soukromá adresa" not in str(body)
+
+
+@pytest.mark.django_db
+@override_settings(PUBLIC_API_ORIGIN="https://api.example.test")
+def test_account_export_includes_owned_photo_and_only_relevant_game_payloads(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    now = timezone.now().replace(microsecond=0)
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="GAME42",
+        pub_name="U Exportu",
+        started_at=now,
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account, joined_at=now)
+    PartyEveningMember.objects.create(evening=evening, account=other, joined_at=now)
+    photo = BeerPhoto.objects.create(
+        account=account,
+        party_evening=evening,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/owned.webp",
+        caption="Moje exportní fotka",
+        visibility=BeerPhoto.Visibility.PRIVATE,
+        taken_at=now,
+    )
+    own_game = PartyGame.objects.create(
+        evening=evening,
+        started_by=account,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Pub kvíz",
+        started_at=now,
+        ended_at=now,
+    )
+    answer = PartyGameEvent.objects.create(
+        game=own_game,
+        account=account,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"questionId": "q-plzen", "option": 0},
+        created_at=now,
+    )
+    result = PartyGameEvent.objects.create(
+        game=own_game,
+        account=account,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.FINISH,
+        payload={"winner": "Já", "scores": [{"name": "Já", "score": 7}]},
+        created_at=now,
+    )
+    other_game = PartyGame.objects.create(
+        evening=evening,
+        started_by=other,
+        client_id=uuid.uuid4(),
+        catalog_key="dice",
+        name="Kostky",
+        started_at=now,
+    )
+    score_about_owner = PartyGameEvent.objects.create(
+        game=other_game,
+        account=other,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.SCORE,
+        subject=account,
+        delta=2,
+        payload={"foreign_private_payload": "nesmí ven"},
+        created_at=now,
+    )
+    unrelated = PartyGameEvent.objects.create(
+        game=other_game,
+        account=other,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ANSWER,
+        payload={"unrelated_secret": "také nesmí ven"},
+        created_at=now,
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    body = response.json()
+    exported_photo = body["beer_photos"][0]
+    assert exported_photo["id"] == str(photo.public_id)
+    assert exported_photo["image_url"] == (
+        f"https://api.example.test/media/beer-photos/{account.public_id}/owned.webp"
+    )
+    assert "image_path" not in exported_photo
+
+    party_games = body["party_games"]
+    assert {game["id"] for game in party_games["games"]} == {
+        str(own_game.public_id),
+        str(other_game.public_id),
+    }
+    own_game_export = next(
+        game for game in party_games["games"] if game["id"] == str(own_game.public_id)
+    )
+    other_game_export = next(
+        game for game in party_games["games"] if game["id"] == str(other_game.public_id)
+    )
+    assert own_game_export["client_id"] == str(own_game.client_id)
+    assert other_game_export["client_id"] is None
+    authored = {event["id"]: event for event in party_games["events_authored"]}
+    assert authored[answer.id]["payload"] == {"questionId": "q-plzen", "option": 0}
+    assert authored[result.id]["payload"]["winner"] == "Já"
+    assert party_games["score_events_as_subject"] == [
+        {
+            "id": score_about_owner.id,
+            "game_id": str(other_game.public_id),
+            "kind": PartyGameEvent.Kind.SCORE,
+            "delta": 2,
+            "created_at": now.isoformat(),
+        }
+    ]
+    serialized = str(body)
+    assert "foreign_private_payload" not in serialized
+    assert "unrelated_secret" not in serialized
+    assert str(unrelated.id) not in {
+        str(event["id"])
+        for event in [
+            *party_games["events_authored"],
+            *party_games["score_events_as_subject"],
+        ]
+    }
 
 
 @pytest.mark.django_db
@@ -389,6 +1231,17 @@ def test_account_export_reuses_loaded_auth_relations(client):
         subject="google-export",
         email="social@example.com",
     )
+    AuthIdentity.objects.create(
+        account=account,
+        provider=AuthIdentity.Provider.APPLE,
+        subject="apple-export",
+        email="apple@example.com",
+        apple_refresh_token="TOP-SECRET-REFRESH",
+    )
+    identity_alias = AccountIdentityAlias.objects.create(
+        account=account,
+        public_id=uuid.uuid4(),
+    )
 
     with CaptureQueriesContext(connection) as queries:
         resp = client.get("/v1/account/export", **_auth(token))
@@ -397,7 +1250,37 @@ def test_account_export_reuses_loaded_auth_relations(client):
     body = resp.json()
     assert body["account"]["email"] == "export@example.com"
     assert body["account"]["email_verified"] is True
-    assert set(body["account"]["providers"]) == {"email", "google"}
+    assert set(body["account"]["providers"]) == {"email", "google", "apple"}
+    assert body["account"]["identity_aliases"] == [
+        {
+            "id": str(identity_alias.public_id),
+            "created_at": identity_alias.created_at.isoformat(),
+        }
+    ]
+    assert body["mapping_history"]["community_data"] == []
+    assert body["mapping_history"]["pub_beer_brands"] == []
+    assert body["mapping_history"]["pub_beer_products"] == []
+    assert sorted(body["account"]["identities"], key=lambda i: i["provider"]) == [
+        {
+            "provider": "apple",
+            "subject": "apple-export",
+            "email": "apple@example.com",
+            "created_at": next(
+                i for i in body["account"]["identities"] if i["provider"] == "apple"
+            )["created_at"],
+        },
+        {
+            "provider": "google",
+            "subject": "google-export",
+            "email": "social@example.com",
+            "created_at": next(
+                i for i in body["account"]["identities"] if i["provider"] == "google"
+            )["created_at"],
+        },
+    ]
+    serialized = str(body)
+    assert "apple_refresh_token" not in serialized
+    assert "TOP-SECRET-REFRESH" not in serialized
 
     select_queries = [
         query["sql"].lower()
@@ -406,16 +1289,19 @@ def test_account_export_reuses_loaded_auth_relations(client):
     ]
     assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
     assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
+    assert len(queries.captured_queries) <= 41
 
 
 @pytest.mark.django_db
+@override_settings(PUBLIC_API_ORIGIN="https://api.example.test")
 def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
     sent: dict = {}
 
-    def fake_send_account_export_email(to, *, filename, json_bytes):
+    def fake_send_account_export_email(to, *, filename, json_bytes, idempotency_key=None):
         sent["to"] = to
         sent["filename"] = filename
         sent["json_bytes"] = json_bytes
+        sent["idempotency_key"] = idempotency_key
         return True
 
     monkeypatch.setattr(emailer, "send_account_export_email", fake_send_account_export_email)
@@ -427,6 +1313,16 @@ def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
         email="export@example.com",
         password="!",
         email_verified=True,
+    )
+    account.avatar = "avatars/email-export.webp"
+    account.save(update_fields=["avatar"])
+    BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/email-owned.webp",
+        caption="Fotka v e-mailovém exportu",
+        visibility=BeerPhoto.Visibility.PRIVATE,
+        taken_at=timezone.now(),
     )
     DrinkLog.objects.create(
         account=account,
@@ -448,6 +1344,14 @@ def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
     assert sent["to"] == "export@example.com"
     assert sent["filename"].startswith("na-pivo-export-")
     assert sent["filename"].endswith(".json")
+    assert sent["idempotency_key"].startswith("account-export/")
+    payload = json.loads(sent["json_bytes"])
+    assert payload["account"]["avatar_url"] == (
+        "https://api.example.test/media/avatars/email-export.webp"
+    )
+    assert payload["beer_photos"][0]["image_url"] == (
+        f"https://api.example.test/media/beer-photos/{account.public_id}/email-owned.webp"
+    )
     body = sent["json_bytes"].decode("utf-8")
     assert '"beer_name": "Ležák"' in body
     assert token not in body
@@ -553,6 +1457,134 @@ def test_content_report_creates_moderation_record(client):
     )
     assert self_report.status_code == status.HTTP_400_BAD_REQUEST
     assert self_report.json()["code"] == "self_report"
+
+
+@pytest.mark.django_db
+def test_content_report_retries_retired_target_identity_after_merge(client, monkeypatch):
+    reporter_token, _reporter_id = _bootstrap(client)
+    _source_token, source_public_id = _bootstrap(client)
+    source = Account.objects.get(public_id=source_public_id)
+    target = Account.objects.create(device_id="content-report-merge-target")
+    real_lock = api_views._lock_content_report_accounts
+    merged = False
+
+    def merge_before_first_lock(account_ids):
+        nonlocal merged
+        if not merged:
+            accounts._merge_anonymous_account(source, target)
+            merged = True
+        return real_lock(account_ids)
+
+    monkeypatch.setattr(
+        api_views,
+        "_lock_content_report_accounts",
+        merge_before_first_lock,
+    )
+    payload = {
+        "target_account_id": source_public_id,
+        "reason": ContentReport.Reason.OTHER,
+        "comment": "Nevhodný profil.",
+    }
+
+    raced = client.post(
+        "/v1/content-reports",
+        data=payload,
+        format="json",
+        **_auth(reporter_token),
+    )
+    retry = client.post(
+        "/v1/content-reports",
+        data=payload,
+        format="json",
+        **_auth(reporter_token),
+    )
+
+    assert raced.status_code == status.HTTP_409_CONFLICT
+    assert raced.json()["code"] == "auth"
+    assert retry.status_code == status.HTTP_201_CREATED, retry.content
+    report = ContentReport.objects.get()
+    assert report.target_account_id == target.pk
+    assert report.target_snapshot["id"] == str(target.public_id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_content_report_and_account_merge_do_not_store_a_stale_fk_on_postgres(
+    client,
+    monkeypatch,
+):
+    if connection.vendor != "postgresql":
+        pytest.skip("PostgreSQL row locks are required for this regression test")
+
+    reporter_token, _reporter_id = _bootstrap(client)
+    _source_token, source_public_id = _bootstrap(client)
+    source = Account.objects.get(public_id=source_public_id)
+    target = Account.objects.create(device_id="pg-content-report-merge-target")
+    target_loaded = threading.Event()
+    allow_report_to_lock = threading.Event()
+    real_resolve = api_views._content_report_target
+    paused = False
+
+    def pause_after_optimistic_target(public_id):
+        nonlocal paused
+        resolved = real_resolve(public_id)
+        if (
+            not paused
+            and threading.current_thread().name == "content-report-writer"
+            and public_id == source.public_id
+        ):
+            paused = True
+            target_loaded.set()
+            if not allow_report_to_lock.wait(timeout=10):
+                raise AssertionError("account merge did not finish")
+        return resolved
+
+    monkeypatch.setattr(
+        api_views,
+        "_content_report_target",
+        pause_after_optimistic_target,
+    )
+    payload = {
+        "target_account_id": source_public_id,
+        "reason": ContentReport.Reason.OTHER,
+        "comment": "Nevhodný profil.",
+    }
+
+    def write_report():
+        threading.current_thread().name = "content-report-writer"
+        close_old_connections()
+        try:
+            response = APIClient().post(
+                "/v1/content-reports",
+                data=payload,
+                format="json",
+                **_auth(reporter_token),
+            )
+            return response.status_code, response.json()
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        report_future = executor.submit(write_report)
+        assert target_loaded.wait(timeout=10)
+        try:
+            with transaction.atomic():
+                accounts._merge_anonymous_account(source, target)
+        finally:
+            allow_report_to_lock.set()
+        raced_status, raced_body = report_future.result(timeout=15)
+
+    assert raced_status == status.HTTP_409_CONFLICT, raced_body
+    assert raced_body["code"] == "auth"
+    assert not ContentReport.objects.exists()
+
+    retry = client.post(
+        "/v1/content-reports",
+        data=payload,
+        format="json",
+        **_auth(reporter_token),
+    )
+    assert retry.status_code == status.HTTP_201_CREATED, retry.content
+    assert ContentReport.objects.get().target_account_id == target.pk
 
 
 @pytest.mark.django_db
@@ -679,3 +1711,405 @@ def test_content_report_rejects_non_public_stranger(client):
     assert resp.status_code == status.HTTP_404_NOT_FOUND
     assert resp.json()["code"] == "profile_not_found"
     assert ContentReport.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_account_export_social_blocks_include_only_outgoing_direction(client):
+    token, owner_id = _bootstrap(client)
+    owner = Account.objects.get(public_id=owner_id)
+    blocked_peer = Account.objects.create(device_id=str(uuid.uuid4()), nickname="blocked-peer")
+    blocker = Account.objects.create(device_id=str(uuid.uuid4()), nickname="secret-blocker")
+
+    FriendBlock.objects.create(blocker=owner, blocked=blocked_peer)
+    # Reverse direction: another account blocked the owner. The export must not
+    # reveal that the owner is blocked, nor expose the blocker's public id.
+    FriendBlock.objects.create(blocker=blocker, blocked=owner)
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    blocks = body["social"]["blocks"]
+    assert blocks == [
+        {
+            "direction": "made",
+            "account_id": str(blocked_peer.public_id),
+            "created_at": blocks[0]["created_at"],
+        }
+    ]
+    serialized = str(body)
+    assert str(blocker.public_id) not in serialized
+    assert "received" not in [entry["direction"] for entry in blocks]
+
+
+@pytest.mark.django_db
+def test_account_export_omits_active_invite_and_party_capabilities(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    now = timezone.now()
+    invite = FriendInviteCode.objects.create(
+        account=account,
+        code="RAWINVITESECRET",
+        expires_at=now + timedelta(days=1),
+    )
+    evening = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="RAWJOIN1",
+        pub_name="U exportu",
+        started_at=now,
+    )
+    PartyEveningMember.objects.create(evening=evening, account=account)
+    PubVisit.objects.create(
+        account=account,
+        party_evening=evening,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U exportu",
+        lat=50.0,
+        lng=14.0,
+        city="Praha",
+        external_id="",
+        started_at=now,
+        client_updated_at=now,
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    serialized = json.dumps(body)
+    assert invite.code not in serialized
+    assert evening.join_code not in serialized
+    assert len(body["social"]["invite_codes"]) == 1
+    assert set(body["social"]["invite_codes"][0].keys()) == {"created_at", "expires_at", "revoked"}
+    hosted = body["party_evenings"]["hosted"][0]
+    assert hosted["id"] == str(evening.public_id)
+    assert "join_code" not in hosted
+    visits = body["visits"]
+    assert len(visits) == 1
+    assert visits[0]["party_evening_id"] == str(evening.public_id)
+    assert "party_code" not in visits[0]
+
+
+@pytest.mark.django_db
+def test_account_export_includes_drink_abuse_decision(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Ležák",
+        price_czk=59,
+        volume_ml=500,
+        drank_at=timezone.now(),
+        is_suspect=True,
+        suspect_reason="manual",
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["drinks"][0]["is_suspect"] is True
+    assert body["drinks"][0]["suspect_reason"] == "manual"
+
+
+@pytest.mark.django_db
+def test_account_export_includes_safe_sessions_and_targeting_metadata(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other-sessions")
+    now = timezone.now().replace(microsecond=0)
+
+    AuthToken.objects.create(
+        account=account,
+        token_hash="f" * 64,
+        kind=AuthToken.Kind.SESSION,
+        device_label="iPhone 16 / app 1.2",
+        expires_at=now + timedelta(days=30),
+    )
+    credential = EmailCredential.objects.create(
+        account=account,
+        email="sessions@example.com",
+        password="!",
+        email_verified=True,
+    )
+    authored_activity = FriendPubActivity.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        kind=FriendPubActivity.Kind.PLAN,
+        scheduled_for=now + timedelta(hours=5),
+        reminder_sent_at=now - timedelta(hours=1),
+        started_at=now + timedelta(hours=5),
+        expires_at=now + timedelta(hours=9),
+    )
+    other_activity = FriendPubActivity.objects.create(
+        account=other,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="CIZÍ aktivita",
+        lat=49.20,
+        lng=16.60,
+        city="Brno",
+        started_at=now,
+        expires_at=now + timedelta(hours=4),
+    )
+    recipient = FriendPubActivityRecipient.objects.create(
+        activity=other_activity,
+        account=account,
+    )
+    tombstone = BeerPhotoDeletionTombstone.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+    )
+    checked_in_at = now
+    ended_at = now + timedelta(hours=2)
+    BeerCheckIn.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        beer_name="Exportní ležák",
+        beer_key="exportni-lezak",
+        brewery_name="Pivovar Export",
+        brewery_key="pivovar-export",
+        quantity=1,
+        price_czk=55,
+        pub_name="U Exportu",
+        visibility=BeerCheckIn.Visibility.PRIVATE,
+        checked_in_at=checked_in_at,
+        ended_at=ended_at,
+    )
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Ležák",
+        beer_brand_key="export-brand",
+        beer_brand_name="Exportní značka",
+        beer_product_key="export-brand-lezak",
+        beer_product_name="Exportní ležák 10°",
+        price_czk=59,
+        volume_ml=500,
+        drank_at=now,
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+
+    sessions = body["auth_sessions"]
+    session_item = next(s for s in sessions if s["device_label"] == "iPhone 16 / app 1.2")
+    assert set(session_item.keys()) == {
+        "kind",
+        "device_label",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+    }
+    assert session_item["kind"] == AuthToken.Kind.SESSION
+    assert session_item["expires_at"] == (now + timedelta(days=30)).isoformat()
+
+    assert set(body["email_credential"].keys()) == {"created_at", "updated_at"}
+    assert body["email_credential"]["created_at"] == credential.created_at.isoformat()
+    assert body["email_credential"]["updated_at"] == credential.updated_at.isoformat()
+
+    assert body["social"]["targeted_friend_activities"] == [
+        {
+            "activity_id": str(other_activity.public_id),
+            "created_at": recipient.created_at.isoformat(),
+        }
+    ]
+
+    assert body["beer_photo_deletion_tombstones"] == [
+        {
+            "client_id": str(tombstone.client_id),
+            "created_at": tombstone.created_at.isoformat(),
+        }
+    ]
+
+    authored_export = next(
+        item
+        for item in body["social"]["friend_activities"]
+        if item["id"] == str(authored_activity.public_id)
+    )
+    assert authored_export["reminder_sent_at"] == (now - timedelta(hours=1)).isoformat()
+
+    checkin_export = body["beer_checkins"][0]
+    assert checkin_export["beer_key"] == "exportni-lezak"
+    assert checkin_export["brewery_key"] == "pivovar-export"
+
+    drink_export = body["drinks"][0]
+    assert drink_export["beer_brand_key"] == "export-brand"
+    assert drink_export["beer_brand_name"] == "Exportní značka"
+    assert drink_export["beer_product_key"] == "export-brand-lezak"
+    assert drink_export["beer_product_name"] == "Exportní ležák 10°"
+
+    serialized = str(body)
+    assert "token_hash" not in serialized
+    assert "deletion_epoch" not in serialized
+    assert "password" not in serialized
+    assert "CIZÍ aktivita" not in serialized
+
+
+def test_account_export_maps_every_account_reverse_accessor_explicitly():
+    """Every reverse accessor on Account must be either explicitly exported or
+    explicitly excluded with a concrete reason, so a newly added relation can
+    never silently appear in (or vanish from) the GDPR export."""
+
+    actual_accessors = {
+        relation.get_accessor_name() for relation in Account._meta.related_objects
+    }
+
+    # Every reverse accessor that _export_account_data serializes, documented
+    # with an exact export JSON path where its rows land.
+    exported_relations = {
+        "auth_tokens": "auth_sessions[*].device_label",
+        "email_credential": "email_credential.created_at",
+        "beer_photo_deletion_tombstones": "beer_photo_deletion_tombstones[*].client_id",
+        "targeted_friend_pub_activities": "social.targeted_friend_activities[*].activity_id",
+        "push_devices": "push_devices[*].platform",
+        "usage_stats": "usage.mapper_xp",
+        "identities": "account.identities[*].provider",
+        "identity_aliases": "account.identity_aliases[*].id",
+        "client_events": "telemetry_events[*].event",
+        "drinks": "drinks[*].client_id",
+        "beer_checkins": "beer_checkins[*].client_id",
+        "beer_photos": "beer_photos[*].id",
+        "published_nights": "published_nights[*].id",
+        "published_night_comments": "published_night_comments[*].id",
+        "following_set": "social.following[*]",
+        "follower_set": "social.followers[*]",
+        "sent_friendships": "social.friendships[*].requester_id",
+        "received_friendships": "social.friendships[*].recipient_id",
+        "friend_pub_activities": "social.friend_activities[*].id",
+        "activity_responses": "social.rsvp[*].response",
+        "activity_reactions": "social.reactions[?target=friend_activity].kind",
+        "beer_checkin_reactions": "social.reactions[?target=beer_checkin].checkin_id",
+        "night_rounds": "social.reactions[?target=published_night].night_id",
+        "friend_notifications": "social.notifications[*].id",
+        "blocks_made": "social.blocks[*].account_id",
+        "invite_codes": "social.invite_codes[*].expires_at",
+        "hosted_party_evenings": "party_evenings.hosted[*].id",
+        "party_evening_memberships": "party_evenings.memberships[*].evening_id",
+        "party_evening_drinks": "party_evenings.drinks[*].client_id",
+        "started_party_games": "party_games.games[*].catalog_key",
+        "party_game_events": "party_games.events_authored[*].payload",
+        "party_game_scores": "party_games.score_events_as_subject[*].delta",
+        "pub_event_suggestions": "pub_event_suggestions[*].title",
+        "hosted_community_events": "community_events.hosted[*].exact_address",
+        "community_event_memberships": "community_events.memberships[*].message",
+        "created_community_event_teams": "community_events.created_teams[*].name",
+        "community_event_team_memberships": (
+            "community_events.team_memberships[*].team_name"
+        ),
+        "pub_visits": "visits[*]",
+        "pub_ratings": "ratings[*]",
+        "contribution_logs": "community_contributions[*].payload",
+        "pub_reports": "pub_reports[*].reason",
+        "feedback_reports": "feedback_reports[*].message",
+        "content_reports_made": "content_reports_made[*].comment",
+        "amenity_votes": "amenity_votes[*].value",
+        "added_pubs": "mapping_history.added_pubs[*].client_id",
+        "pub_name_corrections": "mapping_history.name_corrections[*].suggested_name",
+        "amenity_vote_tombstones": "mapping_history.amenity_vote_tombstones[*].amenity_key",
+        "amenity_xp_ledger": "mapping_history.amenity_xp_ledger[*].amenity_key",
+        "mapped_pubs": "mapping_history.mapped_pubs[*].pub_identity_key",
+        "pub_completions": "mapping_history.completed_pubs[*].pub_identity_key",
+        "community_xp_ledger": "mapping_history.community_xp_ledger[*].kind",
+        "community_data": "mapping_history.community_data[*].hours_json",
+        "pub_beer_brands": "mapping_history.pub_beer_brands[*].brand_key",
+        "pub_beer_products": "mapping_history.pub_beer_products[*].product_key",
+        "photo_contest_entries": "photo_contests.entries[*].entry_id",
+        "photo_contest_votes": "photo_contests.votes[*].entry_id",
+    }
+
+    # Reverse accessors deliberately absent from the export, each with a
+    # concrete reason naming its exclusion category.
+    intentionally_excluded_relations = {
+        "one_time_tokens": (
+            "secret/operational row: single-use auth tokens never leave the server"
+        ),
+        "export_jobs": (
+            "secret/operational row: internal export job bookkeeping, not user data"
+        ),
+        "pending_beer_photo_file_deletions": (
+            "secret/operational row: storage cleanup queue, invisible to the account"
+        ),
+        "blocks_received": (
+            "foreign safety/moderation data: revealing incoming blocks would expose "
+            "who blocked the owner"
+        ),
+        "content_reports_received": (
+            "foreign safety/moderation data: reports filed against the owner belong "
+            "to moderation only"
+        ),
+        "friend_notifications_sent": (
+            "foreign safety/moderation data: notifications the owner caused on other "
+            "accounts are those accounts' data"
+        ),
+        "amenities_first_mapped": (
+            "shared non-owned attribution: PubAmenity rows are shared catalog data, "
+            "the account is only credited as first mapper"
+        ),
+    }
+
+    required_exclusion_categories = {
+        "one_time_tokens": "secret/operational",
+        "export_jobs": "secret/operational",
+        "pending_beer_photo_file_deletions": "secret/operational",
+        "blocks_received": "foreign safety/moderation",
+        "content_reports_received": "foreign safety/moderation",
+        "friend_notifications_sent": "foreign safety/moderation",
+        "amenities_first_mapped": "shared non-owned",
+    }
+
+    overlap = sorted(set(exported_relations) & set(intentionally_excluded_relations))
+    assert not overlap, f"accessors classified both ways: {overlap}"
+
+    empty_exported = sorted(
+        accessor
+        for accessor, path in exported_relations.items()
+        if not accessor or not path.strip()
+    )
+    empty_excluded = sorted(
+        accessor
+        for accessor, reason in intentionally_excluded_relations.items()
+        if not accessor or not reason.strip()
+    )
+    assert not empty_exported, f"exported relations need a nonempty path doc: {empty_exported}"
+    assert not empty_excluded, (
+        f"excluded relations need a nonempty reason: {empty_excluded}"
+    )
+
+    declared = set(exported_relations) | set(intentionally_excluded_relations)
+    missing = sorted(actual_accessors - declared)
+    stale = sorted(declared - actual_accessors)
+    assert actual_accessors == declared, (
+        f"Account gained/lost reverse accessors without updating this test.\n"
+        f"missing from dictionaries (add to exported_relations or exclude with "
+        f"a reason): {missing}\n"
+        f"stale entries that no longer exist on Account: {stale}"
+    )
+
+    for accessor, category in required_exclusion_categories.items():
+        reason = intentionally_excluded_relations.get(accessor)
+        assert reason, (
+            f"{accessor} must stay in intentionally_excluded_relations with a "
+            f"'{category}' reason"
+        )
+        assert category in reason, (
+            f"{accessor} exclusion reason lost its '{category}' category phrase: {reason!r}"
+        )
