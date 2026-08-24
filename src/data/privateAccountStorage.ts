@@ -2,7 +2,10 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { runPrivateAccountMutation } from './privateAccountBoundary';
+import {
+  runPrivateAccountCleanupMutation,
+  runPrivateAccountMutation,
+} from './privateAccountBoundary';
 
 let memoryResetDepth = 0;
 
@@ -116,4 +119,25 @@ const privateAccountStorage: typeof AsyncStorage = {
 
 /** Only strict, drained account-boundary cleanup may use this raw adapter. */
 export const privateAccountCleanupStorage = AsyncStorage;
+
+/**
+ * Await one exact persisted-store rewrite owned by a drained account transition.
+ * The caller validates and preserves the envelope; failures keep its durable
+ * recovery marker in place for an idempotent retry.
+ */
+export async function updatePrivateAccountStorageItemDuringTransition(
+  storageKey: string,
+  update: (current: string | null) => string | null,
+): Promise<boolean> {
+  try {
+    return await runPrivateAccountCleanupMutation(async () => {
+      const next = update(await AsyncStorage.getItem(storageKey));
+      if (next === null) return false;
+      await AsyncStorage.setItem(storageKey, next);
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
 export default privateAccountStorage;

@@ -31,7 +31,7 @@ from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -40,9 +40,11 @@ import pubs.accounts as accounts
 import pubs.emailer as emailer
 import pubs.oauth as oauth
 from pubs.accounts import _delete_or_move_account_rows
+from pubs.api.party_views import _visible_game_event_rows
 from pubs.beer_photo_deletions import retry_beer_photo_file_deletion
 from pubs.models import (
     Account,
+    AccountIdentityAlias,
     AccountMergeOperation,
     AuthIdentity,
     AuthToken,
@@ -60,6 +62,7 @@ from pubs.models import (
     PartyEveningDrink,
     PartyEveningMember,
     PartyGame,
+    PartyGameAlias,
     PartyGameEvent,
     PhotoContest,
     PhotoContestEntry,
@@ -535,6 +538,139 @@ def test_login_merge_preserves_three_zero_owner_rows_and_party_tree(client, sent
 
 
 @pytest.mark.django_db
+def test_merge_finishes_a_third_partys_duplicate_game_without_an_account_fk_lock():
+    source = Account.objects.create(device_id="merge-system-finish-source")
+    target = Account.objects.create(device_id="merge-system-finish-target")
+    third = Account.objects.create(device_id="merge-system-finish-third")
+    evening_client_id = uuid.uuid4()
+    source_evening = PartyEvening.objects.create(
+        host=source,
+        client_id=evening_client_id,
+        join_code="SYSF301",
+        pub_name="Zdrojový stůl",
+    )
+    target_evening = PartyEvening.objects.create(
+        host=target,
+        client_id=evening_client_id,
+        join_code="SYSF302",
+        pub_name="Cílový stůl",
+    )
+    for evening, owner in ((source_evening, source), (target_evening, target)):
+        PartyEveningMember.objects.create(evening=evening, account=owner)
+        PartyEveningMember.objects.create(evening=evening, account=third)
+    older = PartyGame.objects.create(
+        evening=source_evening,
+        started_by=third,
+        client_id=uuid.uuid4(),
+        catalog_key="dice-duel",
+        name="Kostky",
+        started_at=timezone.now() - timedelta(minutes=5),
+    )
+    PartyGame.objects.create(
+        evening=target_evening,
+        started_by=third,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Kvíz",
+        started_at=timezone.now(),
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    older.refresh_from_db()
+    finish = PartyGameEvent.objects.get(
+        game=older,
+        kind=PartyGameEvent.Kind.FINISH,
+    )
+    assert older.ended_at is not None
+    assert finish.account_id == target.pk
+    assert list(
+        _visible_game_event_rows(
+            older.evening,
+            {target.pk, third.pk},
+        ).values_list("pk", flat=True)
+    ) == [finish.pk]
+
+    purged_author_event = PartyGameEvent.objects.create(
+        game=older,
+        account=None,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ACTION,
+        payload={"answer": "soukromá odpověď", "score": 42},
+    )
+    assert purged_author_event.pk not in set(
+        _visible_game_event_rows(
+            older.evening,
+            {target.pk, third.pk},
+        ).values_list("pk", flat=True)
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("finished_side", ["source", "target"])
+def test_merge_never_reopens_a_finished_duplicate_game(finished_side):
+    source = Account.objects.create(device_id=f"finished-game-source-{finished_side}")
+    target = Account.objects.create(device_id=f"finished-game-target-{finished_side}")
+    evening_client_id = uuid.uuid4()
+    started_at = timezone.now() - timedelta(hours=1)
+    source_evening = PartyEvening.objects.create(
+        host=source,
+        client_id=evening_client_id,
+        join_code=f"FIN{finished_side[:3].upper()}1",
+        pub_name="Zdrojový stůl",
+        started_at=started_at,
+    )
+    target_evening = PartyEvening.objects.create(
+        host=target,
+        client_id=evening_client_id,
+        join_code=f"FIN{finished_side[:3].upper()}2",
+        pub_name="Cílový stůl",
+        started_at=started_at,
+    )
+    PartyEveningMember.objects.create(evening=source_evening, account=source)
+    PartyEveningMember.objects.create(evening=target_evening, account=target)
+    finished_at = timezone.now() - timedelta(minutes=10)
+    target_game = PartyGame.objects.create(
+        evening=target_evening,
+        started_by=target,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Kvíz",
+        roster_account_ids=[str(target.public_id)],
+        started_at=started_at,
+        ended_at=finished_at if finished_side == "target" else None,
+    )
+    source_game = PartyGame.objects.create(
+        evening=source_evening,
+        started_by=source,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Kvíz retry",
+        roster_account_ids=[str(source.public_id)],
+        started_at=started_at + timedelta(minutes=5),
+        ended_at=finished_at if finished_side == "source" else None,
+    )
+    finished_game = source_game if finished_side == "source" else target_game
+    PartyGameEvent.objects.create(
+        game=finished_game,
+        account=source if finished_side == "source" else target,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.FINISH,
+        created_at=finished_at,
+    )
+    retired_public_id = source_game.public_id
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    target_game.refresh_from_db()
+    assert target_game.ended_at == finished_at
+    assert target_game.events.filter(kind=PartyGameEvent.Kind.FINISH).count() == 1
+    assert PartyGameAlias.objects.get(public_id=retired_public_id).game_id == target_game.pk
+
+
+@pytest.mark.django_db
 def test_login_merge_deduplicates_three_zero_parents_without_losing_children(client, sent_emails):
     _register(client, "merge-conflicts@x.cz", "Tr0ub4dor&3")
     target = EmailCredential.objects.get(email="merge-conflicts@x.cz").account
@@ -762,10 +898,16 @@ def test_login_merge_deduplicates_three_zero_parents_without_losing_children(cli
     assert PartyGame.objects.filter(evening=target_evening, client_id=game_client_id).count() == 1
     target_game.refresh_from_db()
     assert target_game.roster_account_ids == [str(target.public_id)]
-    assert set(target_game.events.values_list("pk", flat=True)) == {
+    assert set(
+        target_game.events.exclude(kind=PartyGameEvent.Kind.START).values_list(
+            "pk",
+            flat=True,
+        )
+    ) == {
         target_event.pk,
         source_event.pk,
     }
+    assert target_game.events.filter(kind=PartyGameEvent.Kind.START).count() == 1
     source_event.refresh_from_db()
     assert source_event.account_id == target.pk
     assert source_event.subject_id == target.pk
@@ -777,10 +919,16 @@ def test_login_merge_deduplicates_three_zero_parents_without_losing_children(cli
         str(target.public_id),
         str(reactor_a.public_id),
     ]
-    assert set(first_catalog_game.events.values_list("pk", flat=True)) == {
+    assert set(
+        first_catalog_game.events.exclude(kind=PartyGameEvent.Kind.START).values_list(
+            "pk",
+            flat=True,
+        )
+    ) == {
         canonical_quiz_event.pk,
         moved_quiz_event.pk,
     }
+    assert first_catalog_game.events.filter(kind=PartyGameEvent.Kind.START).count() == 2
     moved_quiz_event.refresh_from_db()
     assert moved_quiz_event.game_id == first_catalog_game.pk
     foreign_game_story.refresh_from_db()
@@ -1150,6 +1298,161 @@ def test_merge_preserves_public_outgoing_follows_and_drops_private_incoming_foll
 
 
 @pytest.mark.django_db(transaction=True)
+def test_anonymous_merge_prefers_source_active_evening_and_ends_target_evening():
+    source = Account.objects.create(device_id="merge-party-source")
+    target = Account.objects.create(device_id="merge-party-target")
+    now = timezone.now()
+    source_evening = PartyEvening.objects.create(
+        host=source,
+        client_id=uuid.uuid4(),
+        join_code="MERGE111",
+        pub_name="Zdrojový stůl",
+        started_at=now - timedelta(hours=2),
+    )
+    PartyEveningMember.objects.create(
+        evening=source_evening,
+        account=source,
+        joined_at=now - timedelta(hours=2),
+    )
+    target_evening = PartyEvening.objects.create(
+        host=target,
+        client_id=uuid.uuid4(),
+        join_code="MERGE222",
+        pub_name="Cílový stůl",
+        started_at=now - timedelta(hours=1),
+    )
+    target_membership = PartyEveningMember.objects.create(
+        evening=target_evening,
+        account=target,
+        joined_at=now - timedelta(hours=1),
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    source_evening.refresh_from_db()
+    target_evening.refresh_from_db()
+    target_membership.refresh_from_db()
+    active_evening_ids = list(
+        PartyEveningMember.objects.filter(
+            account=target,
+            active=True,
+            evening__active=True,
+        ).values_list("evening_id", flat=True)
+    )
+    assert active_evening_ids == [source_evening.pk]
+    assert source_evening.host_id == target.pk
+    assert target_evening.host_id == target.pk
+    assert target_evening.active is False
+    assert target_evening.ended_at is not None
+    assert target_membership.active is False
+    assert target_membership.left_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_repeated_anonymous_merge_does_not_resurrect_an_older_leave():
+    host = Account.objects.create(device_id="merge-membership-host")
+    target = Account.objects.create(device_id="merge-membership-target")
+    active_source = Account.objects.create(device_id="merge-membership-active-source")
+    stale_left_source = Account.objects.create(device_id="merge-membership-left-source")
+    now = timezone.now()
+    evening = PartyEvening.objects.create(
+        host=host,
+        client_id=uuid.uuid4(),
+        join_code="LWWA23",
+        pub_name="Stavový stůl",
+        started_at=now - timedelta(hours=1),
+    )
+    PartyEveningMember.objects.create(evening=evening, account=host)
+    target_membership = PartyEveningMember.objects.create(
+        evening=evening,
+        account=target,
+        active=False,
+        joined_at=now - timedelta(minutes=40),
+        left_at=now - timedelta(minutes=30),
+    )
+    PartyEveningMember.objects.create(
+        evening=evening,
+        account=active_source,
+        active=True,
+        joined_at=now - timedelta(minutes=10),
+    )
+    PartyEveningMember.objects.create(
+        evening=evening,
+        account=stale_left_source,
+        active=False,
+        joined_at=now - timedelta(minutes=35),
+        left_at=now - timedelta(minutes=20),
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(active_source, target)
+
+    target_membership.refresh_from_db()
+    assert target_membership.active is True
+    assert target_membership.left_at is None
+    assert target_membership.joined_at == now - timedelta(minutes=10)
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(stale_left_source, target)
+
+    target_membership.refresh_from_db()
+    assert target_membership.active is True
+    assert target_membership.left_at is None
+    assert target_membership.joined_at == now - timedelta(minutes=10)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_anonymous_merge_keeps_newest_target_evening_when_source_has_none():
+    source = Account.objects.create(device_id="merge-party-inactive-source")
+    target = Account.objects.create(device_id="merge-party-newest-target")
+    now = timezone.now()
+    older_evening = PartyEvening.objects.create(
+        host=target,
+        client_id=uuid.uuid4(),
+        join_code="MERGE333",
+        pub_name="Starší stůl",
+        started_at=now - timedelta(hours=2),
+    )
+    older_membership = PartyEveningMember.objects.create(
+        evening=older_evening,
+        account=target,
+        joined_at=now - timedelta(hours=2),
+    )
+    newer_host = Account.objects.create(device_id="merge-party-newest-host")
+    newer_evening = PartyEvening.objects.create(
+        host=newer_host,
+        client_id=uuid.uuid4(),
+        join_code="MERGE444",
+        pub_name="Novější stůl",
+        started_at=now - timedelta(hours=1),
+    )
+    PartyEveningMember.objects.create(
+        evening=newer_evening,
+        account=target,
+        joined_at=now - timedelta(hours=1),
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    older_evening.refresh_from_db()
+    older_membership.refresh_from_db()
+    active_evening_ids = list(
+        PartyEveningMember.objects.filter(
+            account=target,
+            active=True,
+            evening__active=True,
+        ).values_list("evening_id", flat=True)
+    )
+    assert active_evening_ids == [newer_evening.pk]
+    assert older_evening.active is False
+    assert older_evening.ended_at is not None
+    assert older_membership.active is False
+    assert older_membership.left_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
 def test_merge_participants_are_locked_in_primary_key_order(monkeypatch):
     first = Account.objects.create(device_id="merge-lock-first")
     second = Account.objects.create(device_id="merge-lock-second")
@@ -1174,6 +1477,42 @@ def test_merge_participants_are_locked_in_primary_key_order(monkeypatch):
     assert locked_source is not None
     assert locked_source.pk == second.pk
     assert locked_target.pk == first.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeypatch):
+    source = Account.objects.create(device_id="merge-nowait-source")
+    target = Account.objects.create(device_id="merge-nowait-target")
+    third = Account.objects.create(device_id="merge-nowait-third")
+    evening = PartyEvening.objects.create(
+        host=source,
+        client_id=uuid.uuid4(),
+        join_code="NOWAIT",
+        pub_name="U Zámku",
+    )
+    PartyEveningMember.objects.create(evening=evening, account=source)
+    PartyEveningMember.objects.create(evening=evening, account=third)
+    original_select_for_update = Account.objects.select_for_update
+
+    def fail_new_account_lock(*args, **kwargs):
+        if kwargs.get("nowait"):
+            raise DatabaseError("could not obtain lock")
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        fail_new_account_lock,
+    )
+
+    with pytest.raises(accounts.AccountError) as raised:
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
+
+    assert raised.value.code == "auth"
+    assert raised.value.http_status == 409
+    assert Account.objects.filter(pk=source.pk).exists()
+    assert not AccountIdentityAlias.objects.filter(public_id=source.public_id).exists()
 
 
 @pytest.mark.django_db

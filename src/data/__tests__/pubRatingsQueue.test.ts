@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+  clearPubRatingsQueue,
   enqueueRatingOp,
   flushPubRatingsQueue,
   type RatingQueueItem,
@@ -150,6 +151,29 @@ describe('enqueueRatingOp — dedup per pubKey (last write wins)', () => {
 });
 
 describe('flushPubRatingsQueue', () => {
+  it('aborts in-flight delivery when the account boundary clears the queue', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('aaaaaaaa')]));
+    let deliverySignal: AbortSignal | undefined;
+    submitRatingUpsert.mockImplementationOnce(
+      async (_payload: WireRatingUpsert, signal: AbortSignal) =>
+        new Promise<'retry'>((resolve) => {
+          deliverySignal = signal;
+          if (signal.aborted) resolve('retry');
+          else signal.addEventListener('abort', () => resolve('retry'), { once: true });
+        }),
+    );
+
+    const flushing = flushPubRatingsQueue();
+    await flushMicrotasks();
+    expect(deliverySignal).toBeInstanceOf(AbortSignal);
+
+    await clearPubRatingsQueue();
+    await flushing;
+
+    expect(deliverySignal?.aborted).toBe(true);
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('re-sends queued ops once the backend recovers and clears the queue', async () => {
     submitRatingUpsert.mockResolvedValue('retry');
     await enqueueRatingOp(upsert('aaaaaaaa'));

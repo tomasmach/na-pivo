@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 import pytest
 from django.conf import settings
 from django.core.cache import cache
-from django.db import connection
+from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 from rest_framework import status
@@ -318,6 +318,54 @@ def test_story_snapshot_only_exposes_consent_filtered_real_rows(client):
     assert global_story["participants"] == []
     assert global_story["hero_photos"] == []
     assert global_story["hero_games"] == friend_story["hero_games"]
+
+
+@pytest.mark.django_db
+def test_offline_story_canonicalizes_a_merged_participant_uuid(client):
+    owner_token, owner = _register(client, "autor-alias")
+    _source_token, source = _register(client, "stary-kamos")
+    _target_token, target = _register(client, "novy-kamos")
+    _make_friends(owner, source)
+    retired_public_id = source.public_id
+    evening = PartyEvening.objects.create(
+        client_id=uuid.uuid4(),
+        join_code="ALIAS1",
+        host=owner,
+        pub_name="U Tygra",
+        started_at=datetime(2026, 7, 21, 16, tzinfo=UTC),
+        ended_at=datetime(2026, 7, 21, 23, 30, tzinfo=UTC),
+        active=False,
+    )
+    PartyEveningMember.objects.create(
+        evening=evening,
+        account=owner,
+        active=False,
+        joined_at=evening.started_at,
+    )
+    PartyEveningMember.objects.create(
+        evening=evening,
+        account=source,
+        active=False,
+        joined_at=datetime(2026, 7, 21, 18, tzinfo=UTC),
+    )
+
+    with transaction.atomic():
+        _merge_anonymous_account(source, target)
+
+    response = _publish(
+        client,
+        owner_token,
+        party_code=evening.join_code,
+        participant_ids=[str(retired_public_id)],
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert [row["id"] for row in response.json()["night"]["participants"]] == [
+        str(target.public_id)
+    ]
+    assert PublishedNight.objects.get(account=owner).participant_ids == [
+        str(target.public_id)
+    ]
 
 
 @pytest.mark.django_db

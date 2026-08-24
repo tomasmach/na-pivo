@@ -139,6 +139,7 @@ from pubs.models import (
     Account,
     AccountDeletionOperation,
     AccountExportJob,
+    AccountIdentityAlias,
     AccountMappedPub,
     AccountPubCompletion,
     AccountUsageStats,
@@ -174,6 +175,7 @@ from pubs.models import (
     PartyEveningDrink,
     PartyEveningMember,
     PartyGame,
+    PartyGameAlias,
     PartyGameEvent,
     PhotoContest,
     PhotoContestEntry,
@@ -792,7 +794,12 @@ def _snapshot_party_evening(
         return None
     membership = (
         PartyEveningMember.objects.select_related("evening")
-        .filter(evening__join_code=code, account=account)
+        .filter(account=account)
+        .filter(
+            Q(evening__join_code=code)
+            | Q(evening__codes__join_code=code)
+        )
+        .distinct()
         .first()
     )
     if membership is None:
@@ -848,12 +855,32 @@ def _published_night_story_updates(data: dict, account: Account) -> dict:
 
     if "participant_ids" in data:
         requested = [str(value) for value in data["participant_ids"]]
+        canonical_by_requested = {
+            str(account.public_id): str(account.public_id)
+            for account in Account.objects.filter(public_id__in=requested)
+        }
+        canonical_by_requested.update(
+            {
+                str(alias.public_id): str(alias.account.public_id)
+                for alias in AccountIdentityAlias.objects.select_related("account").filter(
+                    public_id__in=requested,
+                    account__status=Account.Status.ACTIVE,
+                )
+            }
+        )
+        canonical_requested = list(
+            dict.fromkeys(
+                canonical_by_requested[value]
+                for value in requested
+                if value in canonical_by_requested
+            )
+        )
         author_start, author_end = _party_membership_window(evening, author_membership)
         memberships = (
             PartyEveningMember.objects.select_related("account")
             .filter(
                 evening=evening,
-                account__public_id__in=requested,
+                account__public_id__in=canonical_requested,
                 account__status=Account.Status.ACTIVE,
                 account__ghost_mode=False,
                 account__share_drinks_with_parta=True,
@@ -870,7 +897,9 @@ def _published_night_story_updates(data: dict, account: Account) -> dict:
                 and author_start <= participant_window[1]
             )
         }
-        updates["participant_ids"] = [value for value in requested if value in allowed]
+        updates["participant_ids"] = [
+            value for value in canonical_requested if value in allowed
+        ]
 
     if "game_ids" in data:
         requested = [str(value) for value in data["game_ids"]]
@@ -881,8 +910,24 @@ def _published_night_story_updates(data: dict, account: Account) -> dict:
             evening=evening,
             started_by=account,
         )
-        allowed = {str(row.public_id) for row in rows}
-        updates["game_ids"] = [value for value in requested if value in allowed]
+        canonical_by_requested = {str(row.public_id): str(row.public_id) for row in rows}
+        canonical_by_requested.update(
+            {
+                str(alias.public_id): str(alias.game.public_id)
+                for alias in PartyGameAlias.objects.select_related("game").filter(
+                    public_id__in=requested,
+                    game__evening=evening,
+                    game__started_by=account,
+                )
+            }
+        )
+        updates["game_ids"] = list(
+            dict.fromkeys(
+                canonical_by_requested[value]
+                for value in requested
+                if value in canonical_by_requested
+            )
+        )
 
     return updates
 
@@ -2202,16 +2247,23 @@ def _party_evening_for_entry(
 
     membership = (
         PartyEveningMember.objects.select_related("evening__host")
-        .filter(evening__join_code=code.upper(), account=account)
+        .filter(account=account)
+        .filter(
+            Q(evening__join_code=code.upper())
+            | Q(evening__codes__join_code=code.upper())
+        )
+        .distinct()
         .first()
     )
     if membership is None:
         return None
 
     evening = membership.evening
+    host = evening.host
     if (
-        evening.host.ghost_mode
-        or evening.host.status != Account.Status.ACTIVE
+        host is None
+        or host.ghost_mode
+        or host.status != Account.Status.ACTIVE
         or evening.host_id in _blocked_account_ids(account)
     ):
         return None
@@ -2254,6 +2306,37 @@ def _party_evening_for_entry(
     if entry_end < window_start or occurred_at > window_end:
         return None
     return evening
+
+
+def _locked_party_evening_for_entry(
+    account: Account,
+    code: str | None,
+    *,
+    occurred_at: datetime,
+    occurred_until: datetime | None = None,
+) -> PartyEvening | None:
+    """Resolve and lock an entry's evening after its Account row is locked.
+
+    Account merges lock the complete shared tree before its evenings. Keeping
+    this Account -> Evening order prevents a resolved parent from being merged
+    away between the privacy check and the diary-row insert.
+    """
+
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("party entry resolution requires transaction.atomic()")
+    evening = _party_evening_for_entry(
+        account,
+        code,
+        occurred_at=occurred_at,
+        occurred_until=occurred_until,
+    )
+    if evening is None:
+        return None
+    return (
+        PartyEvening.objects.select_for_update(of=("self",))
+        .filter(pk=evening.pk)
+        .first()
+    )
 
 
 def _party_evening_for_drink(
@@ -2409,7 +2492,16 @@ class DrinksView(APIView):
                 # daily cap deterministic on Postgres, this keeps the duplicate
                 # check strictly before flag evaluation as required by offline
                 # idempotency retries.
-                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                account = (
+                    Account.objects.select_for_update()
+                    .filter(pk=request.user.pk, status=Account.Status.ACTIVE)
+                    .first()
+                )
+                if account is None:
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 drink = DrinkLog.objects.filter(
                     account=account,
                     client_id=data["client_id"],
@@ -2508,10 +2600,14 @@ class DrinksView(APIView):
                 )
                 drink = DrinkLog.objects.create(
                     **row_kwargs,
-                    party_evening=_party_evening_for_drink(
-                        account,
-                        data.get("party_code"),
-                        drank_at=flags.drank_at,
+                    party_evening=(
+                        _locked_party_evening_for_entry(
+                            account,
+                            data.get("party_code"),
+                            occurred_at=flags.drank_at,
+                        )
+                        if account.share_drinks_with_parta
+                        else None
                     ),
                     drank_at=flags.drank_at,
                     is_suspect=flags.is_suspect,
@@ -3002,6 +3098,43 @@ class FeedbackView(APIView):
         )
 
 
+def _content_report_target(public_id: uuid.UUID) -> Account | None:
+    """Resolve a current or retired public identity without exposing aliases."""
+
+    target = Account.objects.filter(
+        public_id=public_id,
+        status=Account.Status.ACTIVE,
+    ).first()
+    if target is not None:
+        return target
+    return (
+        Account.objects.filter(
+            identity_aliases__public_id=public_id,
+            status=Account.Status.ACTIVE,
+        )
+        .order_by("pk")
+        .first()
+    )
+
+
+def _lock_content_report_accounts(account_ids: set[int]) -> dict[int, Account]:
+    """Own both report identities before persisting either Account FK."""
+
+    return {
+        account.pk: account
+        for account in Account.objects.select_for_update()
+        .filter(pk__in=account_ids)
+        .order_by("pk")
+    }
+
+
+def _content_report_auth_retry() -> Response:
+    return Response(
+        {"detail": "Účet se mezitím změnil. Zkus nahlášení znovu.", "code": "auth"},
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
 class ContentReportView(APIView):
     """
     POST /v1/content-reports
@@ -3022,182 +3155,206 @@ class ContentReportView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        target = Account.objects.filter(
-            public_id=data["target_account_id"],
-            status=Account.Status.ACTIVE,
-        ).first()
-
-        # Additive (photo diary): a report may point at a specific beer photo.
-        # The photo must belong to the reported account, and the reporter must
-        # actually be able to SEE it — either through a contest entry (any
-        # round; entering makes a photo visible to every contest viewer) or
-        # through friends visibility + an ACCEPTED friendship. That check IS
-        # the authorization: a contest photo of a non-public profile must stay
-        # reportable, so the profile gate below is skipped for photo reports.
-        photo = None
-        if data.get("photo_id") is not None:
-            photo = (
-                BeerPhoto.objects.select_related("account")
-                .filter(public_id=data["photo_id"])
-                .first()
-            )
-            photo_visible = (
-                photo is not None
-                and target is not None
-                and photo.account_id == target.pk
-                and (
-                    photo.contest_entries.exists()
-                    or (
-                        photo.visibility == BeerPhoto.Visibility.FRIENDS
-                        and Friendship.objects.filter(
-                            Q(requester=request.user, recipient=target)
-                            | Q(requester=target, recipient=request.user),
-                            status=Friendship.Status.ACCEPTED,
-                        ).exists()
-                    )
-                )
-            )
-            if not photo_visible:
+        target = _content_report_target(data["target_account_id"])
+        if target is None:
+            if data.get("photo_id") is not None:
                 return _photo_not_found()
-
-        # Additive (Výčep): a report can target the exact published night the
-        # reporter saw. Ownership and feed visibility are checked together so
-        # the field cannot be used to probe removed or otherwise hidden nights.
-        night = None
-        if data.get("night_id") is not None:
-            night = (
-                PublishedNight.objects.select_related("account")
-                .filter(public_id=data["night_id"])
-                .first()
-            )
-            night_visible = (
-                night is not None
-                and target is not None
-                and night.account_id == target.pk
-                and _published_night_visible_to(night, request.user)
-            )
-            if not night_visible:
+            if data.get("night_id") is not None:
                 return Response(
                     {"detail": "Night not found.", "code": "night_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-
-        # Additive (moderation): a report can target one specific night
-        # comment. The same contract as the comment list applies: the parent
-        # night must be visible to the reporter, and the comment itself must
-        # not be soft-removed, belong to the reported (active) account and be
-        # written by someone the reporter is not blocked from seeing.
-        comment = None
-        if data.get("comment_id") is not None:
-            comment = (
-                PublishedNightComment.objects.select_related("account", "night", "night__account")
-                .filter(public_id=data["comment_id"])
-                .first()
-            )
-            blocked_from_reporter = _blocked_account_ids(request.user)
-            comment_visible = (
-                comment is not None
-                and target is not None
-                and not comment.is_removed
-                and comment.account_id == target.pk
-                and target.status == Account.Status.ACTIVE
-                and target.pk not in blocked_from_reporter
-                and _published_night_visible_to(comment.night, request.user)
-            )
-            if not comment_visible:
+            if data.get("comment_id") is not None:
                 return Response(
                     {"detail": "Comment not found.", "code": "comment_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-
-        # A profile the reporter can actually see can be reported: a public
-        # profile, or a non-public one they share a friendship with. "Share a
-        # friendship" includes a still-pending request in either direction, not
-        # just accepted ones: the friends dashboard shows the requester's profile
-        # in its incoming/outgoing request lists, so an abusive private account
-        # that has only sent a request must stay reportable.
-        can_report = (
-            photo is not None
-            or night is not None
-            or comment is not None
-            or (
-                target is not None
-                and (
-                    target.is_public
-                    or Friendship.objects.filter(
-                        Q(requester=request.user, recipient=target)
-                        | Q(requester=target, recipient=request.user),
-                        status__in=(Friendship.Status.ACCEPTED, Friendship.Status.PENDING),
-                    ).exists()
-                )
-            )
-        )
-        if not can_report:
             return Response(
                 {"detail": "Profile not found.", "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        if target.pk == request.user.pk:
-            return Response(
-                {"detail": "Nelze nahlásit vlastní profil.", "code": "self_report"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
-        snapshot = {
-            "id": str(target.public_id),
-            "nickname": target.nickname,
-            "display_name": target.display_name,
-            "has_avatar": bool(target.avatar),
-            "is_public": target.is_public,
-        }
-        if photo is not None:
-            # Snapshot the reported photo so moderation keeps context even if
-            # the user deletes it before the admin reviews the report.
-            try:
-                photo_url = request.build_absolute_uri(photo.image.url)
-            except ValueError, AttributeError:
-                photo_url = None
-            snapshot["photo_id"] = str(photo.public_id)
-            snapshot["photo_url"] = photo_url
-            snapshot["photo_caption"] = photo.caption
-        if comment is not None:
-            # Snapshot the reported comment so moderation keeps the exact body
-            # and author context even if it is deleted before review.
-            snapshot["comment_id"] = str(comment.public_id)
-            snapshot["comment"] = {
-                "body": comment.body,
-                "author": {
-                    "id": str(comment.account.public_id),
-                    "nickname": comment.account.nickname,
-                    "display_name": comment.account.display_name,
-                },
+        with transaction.atomic():
+            locked_accounts = _lock_content_report_accounts({request.user.pk, target.pk})
+            reporter = locked_accounts.get(request.user.pk)
+            target = locked_accounts.get(target.pk)
+            if reporter is None or reporter.status != Account.Status.ACTIVE:
+                return _content_report_auth_retry()
+            if target is None:
+                return _content_report_auth_retry()
+            canonical_target = _content_report_target(data["target_account_id"])
+            if canonical_target is None or canonical_target.pk != target.pk:
+                return _content_report_auth_retry()
+            if target.status != Account.Status.ACTIVE:
+                return Response(
+                    {"detail": "Profile not found.", "code": "profile_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Additive (photo diary): a report may point at a specific beer photo.
+            # The photo must belong to the reported account, and the reporter must
+            # actually be able to SEE it — either through a contest entry (any
+            # round; entering makes a photo visible to every contest viewer) or
+            # through friends visibility + an ACCEPTED friendship. That check IS
+            # the authorization: a contest photo of a non-public profile must stay
+            # reportable, so the profile gate below is skipped for photo reports.
+            photo = None
+            if data.get("photo_id") is not None:
+                photo = (
+                    BeerPhoto.objects.select_related("account")
+                    .filter(public_id=data["photo_id"])
+                    .first()
+                )
+                photo_visible = (
+                    photo is not None
+                    and photo.account_id == target.pk
+                    and (
+                        photo.contest_entries.exists()
+                        or (
+                            photo.visibility == BeerPhoto.Visibility.FRIENDS
+                            and Friendship.objects.filter(
+                                Q(requester=reporter, recipient=target)
+                                | Q(requester=target, recipient=reporter),
+                                status=Friendship.Status.ACCEPTED,
+                            ).exists()
+                        )
+                    )
+                )
+                if not photo_visible:
+                    return _photo_not_found()
+
+            # Additive (Výčep): a report can target the exact published night the
+            # reporter saw. Ownership and feed visibility are checked together so
+            # the field cannot be used to probe removed or otherwise hidden nights.
+            night = None
+            if data.get("night_id") is not None:
+                night = (
+                    PublishedNight.objects.select_related("account")
+                    .filter(public_id=data["night_id"])
+                    .first()
+                )
+                night_visible = (
+                    night is not None
+                    and night.account_id == target.pk
+                    and _published_night_visible_to(night, reporter)
+                )
+                if not night_visible:
+                    return Response(
+                        {"detail": "Night not found.", "code": "night_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+            # Additive (moderation): a report can target one specific night
+            # comment. The same contract as the comment list applies: the parent
+            # night must be visible to the reporter, and the comment itself must
+            # not be soft-removed, belong to the reported (active) account and be
+            # written by someone the reporter is not blocked from seeing.
+            comment = None
+            if data.get("comment_id") is not None:
+                comment = (
+                    PublishedNightComment.objects.select_related(
+                        "account", "night", "night__account"
+                    )
+                    .filter(public_id=data["comment_id"])
+                    .first()
+                )
+                blocked_from_reporter = _blocked_account_ids(reporter)
+                comment_visible = (
+                    comment is not None
+                    and not comment.is_removed
+                    and comment.account_id == target.pk
+                    and target.pk not in blocked_from_reporter
+                    and _published_night_visible_to(comment.night, reporter)
+                )
+                if not comment_visible:
+                    return Response(
+                        {"detail": "Comment not found.", "code": "comment_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+            # A profile the reporter can actually see can be reported: a public
+            # profile, or a non-public one they share a friendship with. "Share a
+            # friendship" includes a still-pending request in either direction, not
+            # just accepted ones: the friends dashboard shows the requester's profile
+            # in its incoming/outgoing request lists, so an abusive private account
+            # that has only sent a request must stay reportable.
+            can_report = (
+                photo is not None
+                or night is not None
+                or comment is not None
+                or target.is_public
+                or Friendship.objects.filter(
+                    Q(requester=reporter, recipient=target)
+                    | Q(requester=target, recipient=reporter),
+                    status__in=(Friendship.Status.ACCEPTED, Friendship.Status.PENDING),
+                ).exists()
+            )
+            if not can_report:
+                return Response(
+                    {"detail": "Profile not found.", "code": "profile_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if target.pk == reporter.pk:
+                return Response(
+                    {"detail": "Nelze nahlásit vlastní profil.", "code": "self_report"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            snapshot = {
+                "id": str(target.public_id),
+                "nickname": target.nickname,
+                "display_name": target.display_name,
+                "has_avatar": bool(target.avatar),
+                "is_public": target.is_public,
             }
-            night = comment.night
-        if night is not None:
-            # Keep enough immutable context for moderation if the author later
-            # unpublishes or edits the night. No raw location or price data is
-            # present on PublishedNight in the first place.
-            snapshot["night_id"] = str(night.public_id)
-            snapshot["night"] = {
-                "drinking_day": night.drinking_day.isoformat(),
-                "started_at": night.started_at.isoformat(),
-                "ended_at": night.ended_at.isoformat(),
-                "beer_count": night.beer_count,
-                "wine_count": night.wine_count,
-                "soft_drink_count": night.soft_drink_count,
-                "shot_count": night.shot_count,
-                "pub_names": night.pub_names,
-                "city": night.city,
-                "duration_minutes": night.duration_minutes,
-                "visibility": night.visibility,
-            }
-        report = ContentReport.objects.create(
-            reporter=request.user,
-            target_account=target,
-            reason=data["reason"],
-            comment=data.get("comment") or "",
-            target_snapshot=snapshot,
-        )
+            if photo is not None:
+                # Snapshot the reported photo so moderation keeps context even if
+                # the user deletes it before the admin reviews the report.
+                try:
+                    photo_url = request.build_absolute_uri(photo.image.url)
+                except ValueError, AttributeError:
+                    photo_url = None
+                snapshot["photo_id"] = str(photo.public_id)
+                snapshot["photo_url"] = photo_url
+                snapshot["photo_caption"] = photo.caption
+            if comment is not None:
+                # Snapshot the reported comment so moderation keeps the exact body
+                # and author context even if it is deleted before review.
+                snapshot["comment_id"] = str(comment.public_id)
+                snapshot["comment"] = {
+                    "body": comment.body,
+                    "author": {
+                        "id": str(comment.account.public_id),
+                        "nickname": comment.account.nickname,
+                        "display_name": comment.account.display_name,
+                    },
+                }
+                night = comment.night
+            if night is not None:
+                # Keep enough immutable context for moderation if the author later
+                # unpublishes or edits the night. No raw location or price data is
+                # present on PublishedNight in the first place.
+                snapshot["night_id"] = str(night.public_id)
+                snapshot["night"] = {
+                    "drinking_day": night.drinking_day.isoformat(),
+                    "started_at": night.started_at.isoformat(),
+                    "ended_at": night.ended_at.isoformat(),
+                    "beer_count": night.beer_count,
+                    "wine_count": night.wine_count,
+                    "soft_drink_count": night.soft_drink_count,
+                    "shot_count": night.shot_count,
+                    "pub_names": night.pub_names,
+                    "city": night.city,
+                    "duration_minutes": night.duration_minutes,
+                    "visibility": night.visibility,
+                }
+            report = ContentReport.objects.create(
+                reporter=reporter,
+                target_account=target,
+                reason=data["reason"],
+                comment=data.get("comment") or "",
+                target_snapshot=snapshot,
+            )
         return Response(ContentReportSerializer(report).data, status=status.HTTP_201_CREATED)
 
 
@@ -3404,9 +3561,19 @@ class PubVisitView(APIView):
 
         try:
             with transaction.atomic():
+                account = (
+                    Account.objects.select_for_update()
+                    .filter(pk=request.user.pk, status=Account.Status.ACTIVE)
+                    .first()
+                )
+                if account is None:
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 existing = (
                     PubVisit.objects.select_for_update()
-                    .filter(account=request.user, client_id=data["client_id"])
+                    .filter(account=account, client_id=data["client_id"])
                     .first()
                 )
                 if existing is not None and existing.client_updated_at > data["updated_at"]:
@@ -3420,8 +3587,8 @@ class PubVisitView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
-                party_evening = _party_evening_for_entry(
-                    request.user,
+                party_evening = _locked_party_evening_for_entry(
+                    account,
                     data.get("party_code"),
                     occurred_at=data["started_at"],
                     occurred_until=data.get("ended_at"),
@@ -3436,7 +3603,7 @@ class PubVisitView(APIView):
                 )
 
                 _, created = PubVisit.objects.update_or_create(
-                    account=request.user,
+                    account=account,
                     client_id=data["client_id"],
                     defaults={
                         "cache_key": cache_key,
@@ -5189,6 +5356,16 @@ class FriendRequestView(APIView):
                 )
         elif data.get("target_account_id"):
             target = target_query.filter(public_id=data["target_account_id"]).first()
+            if target is None:
+                alias = (
+                    AccountIdentityAlias.objects.select_related("account")
+                    .filter(
+                        public_id=data["target_account_id"],
+                        account__status=Account.Status.ACTIVE,
+                    )
+                    .first()
+                )
+                target = alias.account if alias is not None else None
         else:
             target = target_query.filter(nickname__iexact=data["nickname"]).first()
 
@@ -5218,18 +5395,71 @@ class FriendRequestView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        pending_push: tuple[int, str, str, dict] | None = None
+        optimistic_target_id = target.pk
+        optimistic_target_public_id = target.public_id
         try:
             with transaction.atomic():
                 # Serialize both A→B and B→A attempts through the same account
                 # locks so two simultaneous requests cannot create mirrored rows.
-                list(
-                    Account.objects.select_for_update()
-                    .filter(pk__in=sorted([request.user.pk, target.pk]))
-                    .values_list("pk", flat=True)
-                )
+                locked_accounts = {
+                    account.pk: account
+                    for account in Account.objects.select_for_update()
+                    .filter(pk__in=sorted([request.user.pk, optimistic_target_id]))
+                    .order_by("pk")
+                }
+                requester = locked_accounts.get(request.user.pk)
+                target = locked_accounts.get(optimistic_target_id)
+                if requester is None or requester.status != Account.Status.ACTIVE:
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if target is None:
+                    identity_moved = AccountIdentityAlias.objects.filter(
+                        public_id=optimistic_target_public_id,
+                        account__status=Account.Status.ACTIVE,
+                    ).exists()
+                    if identity_moved:
+                        return Response(
+                            {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                    return Response(
+                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                if target.status != Account.Status.ACTIVE:
+                    return Response(
+                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                # Search/invite resolution happened before these Account locks.
+                # A block or privacy change that committed while this request
+                # waited must win before any relationship or notification is
+                # created.
+                if FriendBlock.objects.filter(
+                    Q(blocker=requester, blocked=target)
+                    | Q(blocker=target, blocked=requester)
+                ).exists():
+                    return Response(
+                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                already_friends = Friendship.objects.filter(
+                    Q(requester=requester, recipient=target)
+                    | Q(requester=target, recipient=requester),
+                    status=Friendship.Status.ACCEPTED,
+                ).exists()
+                if not via_invite and not target.is_public and not already_friends:
+                    return Response(
+                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                request.user = requester
                 reverse = (
                     Friendship.objects.select_for_update()
-                    .filter(requester=target, recipient=request.user)
+                    .filter(requester=target, recipient=requester)
                     .first()
                 )
                 if reverse is not None:
@@ -5238,10 +5468,10 @@ class FriendRequestView(APIView):
                         reverse.responded_at = now
                         reverse.save(update_fields=["status", "responded_at", "updated_at"])
                         title = "Žádost přijata"
-                        body = f"{_friend_display_name(request.user)} si tě přidal mezi kamarády."
+                        body = f"{_friend_display_name(requester)} si tě přidal mezi kamarády."
                         _create_friend_notification(
                             recipient=target,
-                            actor=request.user,
+                            actor=requester,
                             kind=FriendNotification.Kind.FRIEND_ACCEPTED,
                             title=title,
                             body=body,
@@ -5269,7 +5499,7 @@ class FriendRequestView(APIView):
                     Friendship.Status.ACCEPTED if via_invite else Friendship.Status.PENDING
                 )
                 friendship, created = Friendship.objects.select_for_update().get_or_create(
-                    requester=request.user,
+                    requester=requester,
                     recipient=target,
                     defaults={
                         "status": initial_status,
@@ -5309,43 +5539,53 @@ class FriendRequestView(APIView):
                         ).data,
                         status=status.HTTP_200_OK,
                     )
+
+                if created:
+                    # Create the notification while both identities are still
+                    # locked. A concurrent login merge must not turn the actor
+                    # or recipient FK into a stale post-commit write.
+                    if via_invite:
+                        title = "Máš nového parťáka"
+                        body = f"{_friend_display_name(requester)} je v partě přes tvůj kód."
+                        kind = FriendNotification.Kind.FRIEND_ACCEPTED
+                        push_kind = "friend_accepted"
+                    else:
+                        title = "Nový kámoš na pivo?"
+                        body = f"{_friend_display_name(requester)} si tě chce přidat mezi kamarády."
+                        kind = FriendNotification.Kind.FRIEND_REQUEST
+                        push_kind = "friend_request"
+                    _create_friend_notification(
+                        recipient=target,
+                        actor=requester,
+                        kind=kind,
+                        title=title,
+                        body=body,
+                        friendship=friendship,
+                    )
+                    pending_push = (
+                        target.id,
+                        title,
+                        body,
+                        {
+                            "kind": push_kind,
+                            "friendship_id": str(friendship.public_id),
+                        },
+                    )
+                payload = FriendshipSerializer(
+                    friendship,
+                    context=_friend_profile_context(request),
+                ).data
+                response_status = (
+                    status.HTTP_201_CREATED if created else status.HTTP_200_OK
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: request create failed: %s", exc, exc_info=True)
             return _internal_error()
 
-        if created:
-            # An invite redemption is already a done deal, so it announces itself
-            # as one — telling the inviter someone "wants" to be added would ask
-            # them for a decision they have nowhere left to make.
-            if via_invite:
-                title = "Máš nového parťáka"
-                body = f"{_friend_display_name(request.user)} je v partě přes tvůj kód."
-                kind = FriendNotification.Kind.FRIEND_ACCEPTED
-                push_kind = "friend_accepted"
-            else:
-                title = "Nový kámoš na pivo?"
-                body = f"{_friend_display_name(request.user)} si tě chce přidat mezi kamarády."
-                kind = FriendNotification.Kind.FRIEND_REQUEST
-                push_kind = "friend_request"
-            _create_friend_notification(
-                recipient=target,
-                actor=request.user,
-                kind=kind,
-                title=title,
-                body=body,
-                friendship=friendship,
-            )
-            _dispatch_friend_push(
-                [target.id],
-                title,
-                body,
-                {"kind": push_kind, "friendship_id": str(friendship.public_id)},
-            )
-
-        return Response(
-            FriendshipSerializer(friendship, context=_friend_profile_context(request)).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
+        if pending_push is not None:
+            recipient_id, title, body, push_data = pending_push
+            _dispatch_friend_push([recipient_id], title, body, push_data)
+        return Response(payload, status=response_status)
 
 
 class FriendRequestActionView(APIView):
@@ -6519,16 +6759,27 @@ class PublishedNightView(APIView):
             "visibility": data["visibility"],
             "updated_at": data["updated_at"],
         }
-        story_updates = _published_night_story_updates(data, request.user)
-
         try:
             with transaction.atomic():
                 # Lock the account because an absent row cannot be locked. This
                 # serialises the two legitimate publishers for one drinking day
                 # (recap and Výčep) without relying on a uniqueness exception.
-                Account.objects.select_for_update().get(pk=request.user.pk)
+                account = (
+                    Account.objects.select_for_update()
+                    .filter(pk=request.user.pk, status=Account.Status.ACTIVE)
+                    .first()
+                )
+                if account is None:
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                # Resolve optional party references only after the Account lock.
+                # A concurrent merge then either waits and rewrites this new row,
+                # or finishes first and exposes its stable code/game aliases.
+                story_updates = _published_night_story_updates(data, account)
                 locked = list(
-                    PublishedNight.objects.select_for_update().filter(account=request.user)
+                    PublishedNight.objects.select_for_update().filter(account=account)
                 )
                 by_day = next(
                     (night for night in locked if night.drinking_day == data["drinking_day"]),
@@ -6571,7 +6822,7 @@ class PublishedNightView(APIView):
                     created = False
                 else:
                     night = PublishedNight.objects.create(
-                        account=request.user,
+                        account=account,
                         client_id=data["client_id"],
                         client_aliases=[data["client_id"]],
                         **defaults,
@@ -6583,7 +6834,7 @@ class PublishedNightView(APIView):
             logger.error("nights: upsert failed: %s", exc, exc_info=True)
             return _internal_error()
 
-        fresh = _published_night_queryset(request.user).get(pk=night.pk)
+        fresh = _published_night_queryset(account).get(pk=night.pk)
         return Response(
             {
                 "night": PublishedNightSerializer(
@@ -7178,40 +7429,55 @@ class BeerPhotoView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # A delete-by-client marker wins over every later native-upload replay.
-        # Check before both the existing-row fast path and image processing.
-        if BeerPhotoDeletionTombstone.objects.filter(
-            account=request.user, client_id=data["client_id"]
-        ).exists():
-            return Response(
-                {"detail": "Tahle fotka už byla smazaná.", "code": "photo_deleted"},
-                status=status.HTTP_410_GONE,
-            )
-
-        # Idempotent offline retry: same (account, client_id) returns the
-        # existing row WITHOUT re-processing (or even reading) the image.
-        existing = BeerPhoto.objects.filter(
-            account=request.user, client_id=data["client_id"]
-        ).first()
-        if existing is not None:
-            # A photo can be queued while this same phone's offline table-create
-            # is still reaching the server. The first upload is intentionally
-            # accepted as a private diary photo; once the membership exists, an
-            # idempotent retry may fill only the missing FK. Caption, visibility,
-            # image and an already-bound table stay immutable. The normal
-            # occurrence-window resolver keeps an old/foreign code powerless.
-            if existing.party_evening_id is None and data.get("party_code"):
-                evening = _party_evening_for_entry(
-                    request.user,
-                    data.get("party_code"),
-                    occurred_at=existing.taken_at,
+        # A fast idempotent retry must still participate in the same
+        # Account -> Evening lock order as a new upload. Otherwise login can
+        # merge away a just-resolved parent before this row fills its FK.
+        try:
+            with transaction.atomic():
+                account = (
+                    Account.objects.select_for_update()
+                    .filter(pk=request.user.pk, status=Account.Status.ACTIVE)
+                    .first()
                 )
-                if evening is not None:
-                    BeerPhoto.objects.filter(
-                        pk=existing.pk,
-                        party_evening__isnull=True,
-                    ).update(party_evening=evening)
-            return _existing_response(existing.pk)
+                if account is None:
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                # A delete-by-client marker wins over every later native-upload
+                # replay, including one that is already stored locally.
+                if BeerPhotoDeletionTombstone.objects.filter(
+                    account=account,
+                    client_id=data["client_id"],
+                ).exists():
+                    return Response(
+                        {
+                            "detail": "Tahle fotka už byla smazaná.",
+                            "code": "photo_deleted",
+                        },
+                        status=status.HTTP_410_GONE,
+                    )
+                existing = (
+                    BeerPhoto.objects.select_for_update()
+                    .filter(account=account, client_id=data["client_id"])
+                    .first()
+                )
+                if existing is not None:
+                    # A photo can land before its offline table create. A retry
+                    # may fill only the missing association, under fresh locks.
+                    if existing.party_evening_id is None and data.get("party_code"):
+                        evening = _locked_party_evening_for_entry(
+                            account,
+                            data.get("party_code"),
+                            occurred_at=existing.taken_at,
+                        )
+                        if evening is not None:
+                            existing.party_evening = evening
+                            existing.save(update_fields=["party_evening"])
+                    return _existing_response(existing.pk)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("beer_photos: retry lookup failed: %s", exc, exc_info=True)
+            return _internal_error()
 
         # Check-then-insert without locking: two concurrent uploads can overshoot
         # the cap by a request or two, which is fine — the beer_photo_upload
@@ -7243,11 +7509,7 @@ class BeerPhotoView(APIView):
         taken_at = data.get("taken_at") or dj_timezone.now()
         photo = BeerPhoto(
             account=request.user,
-            party_evening=_party_evening_for_entry(
-                request.user,
-                data.get("party_code"),
-                occurred_at=taken_at,
-            ),
+            party_evening=None,
             client_id=data["client_id"],
             caption=data.get("caption") or "",
             pub_cache_key=pub_identity.cache_key,
@@ -7286,7 +7548,17 @@ class BeerPhotoView(APIView):
 
         try:
             with transaction.atomic():
-                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                account = (
+                    Account.objects.select_for_update()
+                    .filter(pk=request.user.pk, status=Account.Status.ACTIVE)
+                    .first()
+                )
+                if account is None:
+                    _discard_unsaved_file(None)
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 # Serialize against delete-by-client on the same account. If
                 # DELETE won while this request decoded the image, discard the
                 # freshly-written file and never create the row.
@@ -7302,14 +7574,29 @@ class BeerPhotoView(APIView):
                         },
                         status=status.HTTP_410_GONE,
                     )
-                existing = BeerPhoto.objects.filter(
-                    account=account,
-                    client_id=data["client_id"],
-                ).first()
+                existing = (
+                    BeerPhoto.objects.select_for_update()
+                    .filter(account=account, client_id=data["client_id"])
+                    .first()
+                )
                 if existing is not None:
+                    if existing.party_evening_id is None and data.get("party_code"):
+                        evening = _locked_party_evening_for_entry(
+                            account,
+                            data.get("party_code"),
+                            occurred_at=existing.taken_at,
+                        )
+                        if evening is not None:
+                            existing.party_evening = evening
+                            existing.save(update_fields=["party_evening"])
                     _discard_unsaved_file(account)
                     return _existing_response(existing.pk)
                 photo.account = account
+                photo.party_evening = _locked_party_evening_for_entry(
+                    account,
+                    data.get("party_code"),
+                    occurred_at=photo.taken_at,
+                )
                 _award_first_diary_event_xp(
                     account=account,
                     event_model=BeerPhoto,
@@ -7739,25 +8026,37 @@ class FriendBlockView(APIView):
 
         try:
             with transaction.atomic():
-                list(
-                    Account.objects.select_for_update()
+                locked_accounts = {
+                    account.pk: account
+                    for account in Account.objects.select_for_update()
                     .filter(pk__in=sorted((request.user.pk, target.pk)))
                     .order_by("pk")
-                    .values_list("pk", flat=True)
-                )
-                FriendBlock.objects.get_or_create(blocker=request.user, blocked=target)
+                }
+                blocker = locked_accounts.get(request.user.pk)
+                target = locked_accounts.get(target.pk)
+                if blocker is None or blocker.status != Account.Status.ACTIVE:
+                    return Response(
+                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if target is None or target.status != Account.Status.ACTIVE:
+                    return Response(
+                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                FriendBlock.objects.get_or_create(blocker=blocker, blocked=target)
                 # A block severs the friendship both ways, so the target drops out
                 # of every list immediately — but DECLINED rows are preserved so a
                 # block→unblock cycle can't wipe the anti-harassment decline
                 # cooldown (a DECLINED row appears in no user-visible list, so
                 # keeping it doesn't weaken the block).
                 Friendship.objects.filter(
-                    Q(requester=request.user, recipient=target)
-                    | Q(requester=target, recipient=request.user)
+                    Q(requester=blocker, recipient=target)
+                    | Q(requester=target, recipient=blocker)
                 ).exclude(status=Friendship.Status.DECLINED).delete()
                 Follow.objects.filter(
-                    Q(follower=request.user, target=target)
-                    | Q(follower=target, target=request.user)
+                    Q(follower=blocker, target=target)
+                    | Q(follower=target, target=blocker)
                 ).delete()
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: block failed: %s", exc, exc_info=True)
@@ -7840,21 +8139,28 @@ class FollowView(APIView):
                 status.HTTP_400_BAD_REQUEST,
             )
         with transaction.atomic():
-            list(
-                Account.objects.select_for_update()
+            locked_accounts = {
+                account.pk: account
+                for account in Account.objects.select_for_update()
                 .filter(pk__in=sorted((request.user.pk, target.pk)))
                 .order_by("pk")
-                .values_list("pk", flat=True)
-            )
-            target.refresh_from_db(fields=["is_public", "status"])
-            if target.status != Account.Status.ACTIVE:
+            }
+            follower = locked_accounts.get(request.user.pk)
+            target = locked_accounts.get(target.pk)
+            if follower is None or follower.status != Account.Status.ACTIVE:
+                return self._error(
+                    "auth",
+                    "Účet se mezitím změnil.",
+                    status.HTTP_409_CONFLICT,
+                )
+            if target is None or target.status != Account.Status.ACTIVE:
                 return self._error(
                     "profile_not_found",
                     "Profil se nepodařilo najít.",
                     status.HTTP_404_NOT_FOUND,
                 )
             if FriendBlock.objects.filter(
-                Q(blocker=request.user, blocked=target) | Q(blocker=target, blocked=request.user)
+                Q(blocker=follower, blocked=target) | Q(blocker=target, blocked=follower)
             ).exists():
                 return self._error(
                     "blocked",
@@ -7867,7 +8173,7 @@ class FollowView(APIView):
                     "Soukromý profil sledovat nejde.",
                     status.HTTP_403_FORBIDDEN,
                 )
-            Follow.objects.get_or_create(follower=request.user, target=target)
+            Follow.objects.get_or_create(follower=follower, target=target)
         return Response({"ok": True}, status=status.HTTP_201_CREATED)
 
 
@@ -9629,6 +9935,9 @@ def _load_export_account(account: Account) -> Account:
             has_pub_beer_brands=Exists(PubBeerBrand.objects.filter(account=OuterRef("pk"))),
             has_pub_beer_products=Exists(PubBeerProduct.objects.filter(account=OuterRef("pk"))),
             has_auth_tokens=Exists(AuthToken.objects.filter(account=OuterRef("pk"))),
+            has_identity_aliases=Exists(
+                AccountIdentityAlias.objects.filter(account=OuterRef("pk"))
+            ),
             has_targeted_friend_activities=Exists(
                 FriendPubActivityRecipient.objects.filter(account=OuterRef("pk"))
             ),
@@ -9827,6 +10136,7 @@ def _load_export_account(account: Account) -> Account:
         ("pub_beer_brands", "has_pub_beer_brands", None),
         ("pub_beer_products", "has_pub_beer_products", None),
         ("auth_tokens", "has_auth_tokens", None),
+        ("identity_aliases", "has_identity_aliases", None),
         (
             "targeted_friend_pub_activities",
             "has_targeted_friend_activities",
@@ -9967,6 +10277,13 @@ def _export_account_data(account: Account) -> dict:
         "exported_at": dj_timezone.now().isoformat(),
         "account": {
             "id": str(account.public_id),
+            "identity_aliases": [
+                {
+                    "id": str(alias.public_id),
+                    "created_at": _iso(alias.created_at),
+                }
+                for alias in account.identity_aliases.all()
+            ],
             "device_id": account.device_id,
             "nickname": account.nickname,
             "display_name": account.display_name,

@@ -4,13 +4,14 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import Q
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+import pubs.accounts as accounts
 from pubs.api import party_views
 from pubs.api.party_views import _serialize_evening
 from pubs.models import (
@@ -19,6 +20,7 @@ from pubs.models import (
     FriendBlock,
     Friendship,
     PartyEvening,
+    PartyEveningCode,
     PartyEveningDrink,
     PartyEveningMember,
 )
@@ -121,7 +123,7 @@ def test_ended_history_is_recent_bounded_and_requires_explicit_membership(client
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("guard", ["member_ghost", "host_ghost", "blocked", "host_inactive"])
+@pytest.mark.parametrize("guard", ["member_ghost", "host_ghost", "blocked"])
 def test_ended_history_honours_current_privacy_guards(client, guard):
     host_token, host = _register(client, "host")
     member_token, member = _register(client, "member")
@@ -137,14 +139,79 @@ def test_ended_history_honours_current_privacy_guards(client, guard):
         host.save(update_fields=["ghost_mode"])
     elif guard == "blocked":
         FriendBlock.objects.create(blocker=member, blocked=host)
-    else:
-        host.status = Account.Status.PENDING_DELETION
-        host.save(update_fields=["status"])
 
     response = client.get("/v1/party-evenings/history", **_auth(member_token))
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"evenings": [], "truncated": False}
+
+
+@pytest.mark.django_db
+def test_ended_recap_survives_host_deletion_without_exposing_identity(client):
+    host_token, host = _register(client, "host")
+    member_token, member = _register(client, "member")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token)).status_code == 200
+    assert client.post("/v1/party-evenings/PRAH24/end", **_auth(host_token)).status_code == 200
+
+    host.status = Account.Status.PENDING_DELETION
+    host.save(update_fields=["status"])
+
+    history = client.get("/v1/party-evenings/history", **_auth(member_token))
+    record = client.get("/v1/party-evenings/PRAH24/record", **_auth(member_token))
+    detail = client.get("/v1/party-evenings/PRAH24", **_auth(member_token))
+
+    assert [row["join_code"] for row in history.json()["evenings"]] == ["PRAH24"]
+    assert record.status_code == status.HTTP_200_OK
+    assert detail.status_code == status.HTTP_404_NOT_FOUND
+    serialized = _serialize_evening(
+        PartyEvening.objects.select_related("host").get(join_code="PRAH24"),
+        member,
+    )
+    assert serialized["host"] == {
+        "id": "deleted",
+        "nickname": None,
+        "display_name": "Smazaný hráč",
+        "avatar_url": None,
+    }
+    assert serialized["members"] == [
+        {
+            "id": str(member.public_id),
+            "nickname": "member",
+            "display_name": "",
+            "avatar_url": None,
+        }
+    ]
+
+    host.delete()
+
+    history_after_purge = client.get("/v1/party-evenings/history", **_auth(member_token))
+    record_after_purge = client.get(
+        "/v1/party-evenings/PRAH24/record",
+        **_auth(member_token),
+    )
+    assert [row["join_code"] for row in history_after_purge.json()["evenings"]] == [
+        "PRAH24"
+    ]
+    assert record_after_purge.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_pending_deletion_host_does_not_bypass_an_existing_recap_block(client):
+    host_token, host = _register(client, "host")
+    member_token, member = _register(client, "member")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token)).status_code == 200
+    assert client.post("/v1/party-evenings/PRAH24/end", **_auth(host_token)).status_code == 200
+    FriendBlock.objects.create(blocker=host, blocked=member)
+    host.status = Account.Status.PENDING_DELETION
+    host.save(update_fields=["status"])
+
+    history = client.get("/v1/party-evenings/history", **_auth(member_token))
+    record = client.get("/v1/party-evenings/PRAH24/record", **_auth(member_token))
+
+    assert history.json() == {"evenings": [], "truncated": False}
+    assert record.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
@@ -409,6 +476,93 @@ def test_join_is_bounded_and_creates_no_relationship_debris(client, monkeypatch)
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("race", "expected_status", "expected_code"),
+    [
+        ("ended", status.HTTP_404_NOT_FOUND, "party_not_found"),
+        ("host_removed", status.HTTP_404_NOT_FOUND, "party_not_found"),
+        ("host_ghost", status.HTTP_409_CONFLICT, "ghost_mode"),
+        ("member_ghost", status.HTTP_409_CONFLICT, "ghost_mode"),
+    ],
+)
+def test_join_rechecks_evening_after_waiting_for_the_row_lock(
+    client,
+    monkeypatch,
+    race,
+    expected_status,
+    expected_code,
+):
+    host_token, host = _register(client, "host")
+    member_token, member = _register(client, "member")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+
+    real_account_select_for_update = Account.objects.select_for_update
+    real_evening_select_for_update = PartyEvening.objects.select_for_update
+    ended_at = timezone.now()
+
+    def change_account_before_lock(*args, **kwargs):
+        if race == "host_ghost":
+            Account.objects.filter(pk=host.pk).update(ghost_mode=True)
+        elif race == "member_ghost":
+            Account.objects.filter(pk=member.pk).update(ghost_mode=True)
+        return real_account_select_for_update(*args, **kwargs)
+
+    def change_evening_before_lock(*args, **kwargs):
+        if race == "ended":
+            PartyEvening.objects.filter(join_code="PRAH24").update(
+                active=False,
+                ended_at=ended_at,
+            )
+        elif race == "host_removed":
+            PartyEvening.objects.filter(join_code="PRAH24").update(host=None)
+        return real_evening_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        change_account_before_lock,
+    )
+    monkeypatch.setattr(
+        PartyEvening.objects,
+        "select_for_update",
+        change_evening_before_lock,
+    )
+
+    response = client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token))
+
+    assert response.status_code == expected_status
+    assert response.json()["code"] == expected_code
+    assert not PartyEveningMember.objects.filter(account=member).exists()
+
+
+@pytest.mark.django_db
+def test_join_locks_accounts_before_the_evening(client, monkeypatch):
+    host_token, _host = _register(client, "host")
+    member_token, _member = _register(client, "member")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+
+    lock_order: list[str] = []
+    real_account_select_for_update = Account.objects.select_for_update
+    real_evening_select_for_update = PartyEvening.objects.select_for_update
+
+    def lock_accounts(*args, **kwargs):
+        lock_order.append("account")
+        return real_account_select_for_update(*args, **kwargs)
+
+    def lock_evening(*args, **kwargs):
+        lock_order.append("evening")
+        return real_evening_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(Account.objects, "select_for_update", lock_accounts)
+    monkeypatch.setattr(PartyEvening.objects, "select_for_update", lock_evening)
+
+    response = client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert lock_order == ["account", "evening"]
+
+
+@pytest.mark.django_db
 def test_join_preserves_declines_and_skips_blocked_members(client):
     host_token, host = _register(client, "host")
     declined_token, declined_peer = _register(client, "odmitnuty")
@@ -481,6 +635,92 @@ def test_create_accepts_join_code_from_released_clients(client):
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["join_code"] == "STUL24"
     assert PartyEvening.objects.filter(join_code="STUL24").exists()
+    assert PartyEveningCode.objects.filter(
+        join_code="STUL24",
+        evening__join_code="STUL24",
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merged_evening_codes_keep_end_and_leave_intents_stable(client):
+    source_token, source = _register(client, "source-host")
+    target_token, target = _register(client, "target-host")
+    leave_before_token, leave_before = _register(client, "leave-before")
+    leave_after_token, leave_after = _register(client, "leave-after")
+    replacement_token, _replacement = _register(client, "replacement-host")
+    shared_client_id = uuid.uuid4()
+
+    def create_duplicate(token: str, code: str):
+        return client.post(
+            "/v1/party-evenings",
+            data={
+                "client_id": str(shared_client_id),
+                "join_code": code,
+                "pub_name": "Duplicitní offline stůl",
+                "pub_city": "Praha",
+            },
+            format="json",
+            **_auth(token),
+        )
+
+    assert create_duplicate(source_token, "SRCA23").status_code == 201
+    assert create_duplicate(target_token, "TGTA23").status_code == 201
+    source_evening = PartyEvening.objects.get(join_code="SRCA23")
+    target_evening = PartyEvening.objects.get(join_code="TGTA23")
+    joined_at = timezone.now() - timedelta(minutes=5)
+    for account in (leave_before, leave_after):
+        PartyEveningMember.objects.create(
+            evening=source_evening,
+            account=account,
+            joined_at=joined_at + timedelta(minutes=1),
+        )
+        PartyEveningMember.objects.create(
+            evening=target_evening,
+            account=account,
+            joined_at=joined_at,
+        )
+
+    left = client.delete(
+        "/v1/party-evenings/SRCA23/join",
+        **_auth(leave_before_token),
+    )
+    ended = client.post(
+        "/v1/party-evenings/SRCA23/end",
+        **_auth(source_token),
+    )
+    assert left.status_code == status.HTTP_200_OK
+    assert left.json() == {"left": True}
+    assert ended.status_code == status.HTTP_200_OK
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    target_evening.refresh_from_db()
+    assert target_evening.active is False
+    assert PartyEveningCode.objects.get(join_code="SRCA23").evening_id == target_evening.pk
+    assert PartyEveningCode.objects.get(join_code="TGTA23").evening_id == target_evening.pk
+    assert PartyEveningMember.objects.get(
+        evening=target_evening,
+        account=leave_before,
+    ).active is False
+
+    delayed_leave = client.delete(
+        "/v1/party-evenings/SRCA23/join",
+        **_auth(leave_after_token),
+    )
+    delayed_end = client.post(
+        "/v1/party-evenings/SRCA23/end",
+        **_auth(target_token),
+    )
+    reused_code = create_duplicate(replacement_token, "SRCA23")
+
+    assert delayed_leave.status_code == status.HTTP_200_OK
+    assert delayed_leave.json() == {"left": True}
+    assert delayed_end.status_code == status.HTTP_200_OK
+    assert delayed_end.json()["join_code"] == "TGTA23"
+    assert reused_code.status_code == status.HTTP_409_CONFLICT
+    assert reused_code.json()["code"] == "join_code_taken"
+    assert not PartyEvening.objects.filter(join_code="SRCA23").exists()
 
 
 @pytest.mark.django_db
@@ -535,6 +775,37 @@ def test_member_can_leave_without_ending_evening(client):
 
 
 @pytest.mark.django_db
+def test_leave_retries_instead_of_losing_a_membership_moved_by_account_merge(
+    client,
+    monkeypatch,
+):
+    host_token, _host = _register(client, "host")
+    member_token, member = _register(client, "anonymous")
+    _target_token, target = _register(client, "signed-in")
+    assert _create(client, host_token).status_code == status.HTTP_201_CREATED
+    assert client.post("/v1/party-evenings/PRAH24/join", **_auth(member_token)).status_code == 200
+
+    original_select_for_update = Account.objects.select_for_update
+    moved = False
+
+    def merge_before_leave_lock(*args, **kwargs):
+        nonlocal moved
+        if not moved:
+            moved = True
+            PartyEveningMember.objects.filter(account=member).update(account=target)
+            member.delete()
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(Account.objects, "select_for_update", merge_before_leave_lock)
+
+    response = client.delete("/v1/party-evenings/PRAH24/join", **_auth(member_token))
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["code"] == "auth"
+    assert PartyEveningMember.objects.get(account=target).active is True
+
+
+@pytest.mark.django_db
 def test_ghost_mode_blocks_create_join_and_explicit_drink_share(client):
     host_token, host = _register(client, "host")
     friend_token, friend = _register(client, "kamos")
@@ -573,6 +844,30 @@ def test_ghost_mode_blocks_create_join_and_explicit_drink_share(client):
 
     host_view = client.get("/v1/party-evenings/PRAH24", **_auth(host_token))
     assert [member["nickname"] for member in host_view.json()["members"]] == ["host"]
+
+
+@pytest.mark.django_db
+def test_create_rechecks_account_after_delete_wins_the_row_lock(client, monkeypatch):
+    token, host = _register(client, "host")
+    real_select_for_update = Account.objects.select_for_update
+
+    def delete_before_lock(*args, **kwargs):
+        # Authentication already accepted the token, then account deletion wins
+        # the Account lock and commits before this request acquires it.
+        Account.objects.filter(pk=host.pk).update(
+            status=Account.Status.PENDING_DELETION,
+            deleted_at=timezone.now(),
+        )
+        return real_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(Account.objects, "select_for_update", delete_before_lock)
+
+    denied = _create(client, token)
+
+    assert denied.status_code == status.HTTP_409_CONFLICT
+    assert denied.json()["code"] == "auth"
+    assert not PartyEvening.objects.exists()
+    assert not PartyEveningMember.objects.exists()
 
 
 @pytest.mark.django_db

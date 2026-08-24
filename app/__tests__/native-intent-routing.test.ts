@@ -27,6 +27,15 @@ describe('native invite routing', () => {
     ).toMatch(/^\/party-live\?joinCode=EFJ66G&invite=[a-z0-9]+-[a-z0-9]+$/);
   });
 
+  it.each([true, false])('opens custom-scheme invite aliases on initial=%s', (initial) => {
+    expect(
+      redirectSystemPath({ path: 'napivo://party/EFJ66G', initial }),
+    ).toMatch(/^\/party-live\?joinCode=EFJ66G&invite=[a-z0-9]+-[a-z0-9]+$/);
+    expect(
+      redirectSystemPath({ path: 'napivo://p/Ab3xK9_pQ2sT', initial }),
+    ).toBe('/parta/pozvanka?code=Ab3xK9_pQ2sT');
+  });
+
   it('records a cold party URL before a pending friend restore can resolve', () => {
     const coordinator = getProcessInviteNavigationCoordinator();
     const restore = coordinator.beginRestoreLookup();

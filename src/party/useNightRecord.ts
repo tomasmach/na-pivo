@@ -23,6 +23,8 @@ import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { usePartyGamesStore } from '@/stores/partyGamesStore';
 import type { PartyGame } from '@/data/partyGamesClient';
+import { normalizePubNameForIdentity } from '@/data/pubIdentity';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 import { drinkingDayKey, useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { buildNightRecord, fallbackPlayerName } from '@/party/nightBuilder';
 import {
@@ -116,6 +118,31 @@ function earliestStartedAt(values: (string | null | undefined)[]): string | null
   return earliest?.value ?? null;
 }
 
+function canonicalStopForPlaceholder(
+  remoteStops: NightStop[],
+  placeholder: NightStop,
+): NightStop | undefined {
+  if (placeholder.cacheKey && !isContextPubKey(placeholder.cacheKey)) return undefined;
+  const name = normalizePubNameForIdentity(placeholder.pubName);
+  if (!name) return undefined;
+
+  const candidates = remoteStops.filter(
+    (candidate) =>
+      candidate.cacheKey != null &&
+      !isContextPubKey(candidate.cacheKey) &&
+      normalizePubNameForIdentity(candidate.pubName) === name,
+  );
+  if (new Set(candidates.map((candidate) => candidate.cacheKey)).size !== 1) return undefined;
+
+  const placeholderAt = Date.parse(placeholder.arrivedAt);
+  if (!Number.isFinite(placeholderAt)) return candidates[0];
+  return candidates.reduce((closest, candidate) => {
+    const closestDistance = Math.abs(Date.parse(closest.arrivedAt) - placeholderAt);
+    const candidateDistance = Math.abs(Date.parse(candidate.arrivedAt) - placeholderAt);
+    return candidateDistance < closestDistance ? candidate : closest;
+  });
+}
+
 /** Exported for a focused no-double-count regression test. */
 export function mergeNightRecords(remote: NightRecord, local: NightRecord): NightRecord {
   const meId = local.people[0]?.id;
@@ -173,7 +200,8 @@ export function mergeNightRecords(remote: NightRecord, local: NightRecord): Nigh
           candidate.by === stop.by &&
           candidate.cacheKey === stop.cacheKey &&
           candidate.arrivedAt === stop.arrivedAt,
-      );
+      ) ??
+      canonicalStopForPlaceholder(remote.stops, stop);
     if (!equivalent) return true;
     stopAliases.set(stop.id, equivalent.id);
     return false;

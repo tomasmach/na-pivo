@@ -87,6 +87,44 @@ function reconnectCurrentPartyGames(): void {
   usePartyGamesStore.getState().connect(code);
 }
 
+function mergeGameSnapshots(
+  knownGames: PartyGame[],
+  knownEvents: PartyGameEvent[],
+  snapshots: PartyGame[],
+): { games: PartyGame[]; events: PartyGameEvent[] } {
+  if (snapshots.length === 0) return { games: knownGames, events: knownEvents };
+
+  const incomingById = new Map(snapshots.map((game) => [game.id, game]));
+  const incomingByCatalog = new Map(snapshots.map((game) => [game.catalogKey, game]));
+  const rekeyedIds = new Map<string, string>();
+  for (const game of knownGames) {
+    const canonical = incomingByCatalog.get(game.catalogKey);
+    if (canonical && canonical.id !== game.id) rekeyedIds.set(game.id, canonical.id);
+  }
+
+  const games: PartyGame[] = [];
+  const seen = new Set<string>();
+  for (const game of knownGames) {
+    const canonical = incomingById.get(game.id) ?? incomingByCatalog.get(game.catalogKey) ?? game;
+    if (seen.has(canonical.id)) continue;
+    seen.add(canonical.id);
+    games.push(canonical);
+  }
+  for (const game of snapshots) {
+    if (seen.has(game.id)) continue;
+    seen.add(game.id);
+    games.push(game);
+  }
+
+  const events = rekeyedIds.size
+    ? knownEvents.map((event) => {
+      const gameId = rekeyedIds.get(event.gameId);
+      return gameId ? { ...event, gameId } : event;
+    })
+    : knownEvents;
+  return { games, events };
+}
+
 export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
   code: null,
   games: [],
@@ -110,13 +148,10 @@ export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
         if (generation !== resourceGeneration || get().code !== code) return;
         set((state) => {
           if (games.length === 0) return state;
-          const incoming = new Map(games.map((game) => [game.id, game]));
-          const merged = state.games.map((game) => incoming.get(game.id) ?? game);
-          const known = new Set(state.games.map((game) => game.id));
-          merged.push(...games.filter((game) => !known.has(game.id)));
-          // Catch-up can add the roster or ended_at to a row already discovered
-          // by this phone's start response. Latest server state is canonical.
-          return { games: merged };
+          // Catch-up can add roster/ended_at or replace a server UUID retired
+          // by account merge. Catalogue identity is unique inside one evening,
+          // so it is also the bridge that rekeys already-folded local events.
+          return mergeGameSnapshots(state.games, state.events, games);
         });
       },
       onEvents: (events) => {
@@ -195,11 +230,7 @@ export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
         return;
       }
       const game = delivery.game;
-      set((state) => ({
-        games: state.games.some((known) => known.id === game.id)
-          ? state.games.map((known) => (known.id === game.id ? game : known))
-          : [...state.games, game],
-      }));
+      set((state) => mergeGameSnapshots(state.games, state.events, [game]));
     });
     return {
       gameId: ticket.localGameId,

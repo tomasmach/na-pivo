@@ -151,7 +151,7 @@ export default function FinishNightScreen() {
     await rememberNightRecord({ ...night, endedAt }, accountId);
     archiveCurrent('manual');
     endParty();
-    finishPartyToRecap(router, 2);
+    finishPartyToRecap(router, '/party-finish');
   };
 
   const publish = async () => {

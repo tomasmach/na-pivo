@@ -99,6 +99,26 @@ describe('app.config store-policy surface', () => {
     expect(config.android?.permissions ?? []).not.toContain('android.permission.RECORD_AUDIO');
   });
 
+  it('ships the Firebase client config required for Android push tokens', () => {
+    expect(config.android?.googleServicesFile).toBe('./google-services.json');
+    const googleServices = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', '..', 'google-services.json'), 'utf8'),
+    ) as {
+      project_info?: { project_id?: string };
+      client?: {
+        client_info?: { android_client_info?: { package_name?: string } };
+      }[];
+    };
+
+    expect(googleServices.project_info?.project_id).toBe('na-pivo-499010');
+    expect(
+      googleServices.client?.some(
+        (client) =>
+          client.client_info?.android_client_info?.package_name === 'com.tomasmach.na_pivo',
+      ),
+    ).toBe(true);
+  });
+
   it('configures expo-camera with microphone and Android audio recording disabled', () => {
     const options = findPluginOptions('expo-camera');
     expect(options?.recordAudioAndroid).toBe(false);

@@ -54,10 +54,13 @@ import {
   clearLocalPrivateAccountData,
   rehydratePrivateStoresAfterBoundary,
 } from './privateAccountData';
+import { rekeyAccountPreferencesQueueOwner } from './accountPreferencesQueue';
+import { rekeyPartyEveningIdentityOwner } from './partyEveningIdentityCache';
 import {
   beginPrivateAccountTransition,
   readPrivateAccountMergeIntent,
   setPrivateAccountDeletionRecoveryBlocked,
+  setPrivateAccountRehydrationRecoveryBlocked,
   type PrivateAccountTransition,
 } from './privateAccountBoundary';
 import {
@@ -194,7 +197,13 @@ export interface AccountProfile {
 /** Success carries the fresh account state; failure carries a code + message. */
 export type AuthResult =
   | { ok: true; profile: AccountProfile }
-  | { ok: false; code: string; detail: string };
+  | {
+      ok: false;
+      code: string;
+      detail: string;
+      /** B is already durable; the store must publish it despite this UI failure. */
+      committedProfile?: AccountProfile;
+    };
 
 /** Lightweight ok/err result for calls that don't return a profile. */
 export type AuthActionResult = { ok: true } | { ok: false; code: string; detail: string };
@@ -641,6 +650,8 @@ interface CredentialTransition {
     operationId: string;
     cancelSafe: boolean;
   } | null;
+  /** Authorized rehydrate already succeeded while the durable marker was held. */
+  privateStoresRehydrated?: boolean;
   blockingResult?: Extract<AuthActionResult, { ok: false }>;
 }
 
@@ -793,10 +804,33 @@ async function abortCredentialTransition<T>(
       result = CREDENTIAL_BOUNDARY_FAILED as T;
     }
   }
+  return (await finishCredentialTransitionRehydration(transition))
+    ? result
+    : CREDENTIAL_BOUNDARY_FAILED;
+}
+
+/**
+ * A failed persisted-store read resets private memory. Freeze before releasing
+ * the transition so no empty-memory write can overwrite the durable snapshot;
+ * only a complete authorized rehydrate may thaw producers again.
+ */
+async function finishCredentialTransitionRehydration(
+  transition: CredentialTransition,
+): Promise<boolean> {
+  setPrivateAccountRehydrationRecoveryBlocked(true);
   transition.photoSessionTransition.release();
   transition.privateAccountTransition?.release();
-  await rehydratePrivateStoresAfterBoundary();
-  return result;
+  if (transition.privateStoresRehydrated) {
+    setPrivateAccountRehydrationRecoveryBlocked(false);
+    return true;
+  }
+  try {
+    const rehydrated = await rehydratePrivateStoresAfterBoundary();
+    if (rehydrated) setPrivateAccountRehydrationRecoveryBlocked(false);
+    return rehydrated;
+  } catch {
+    return false;
+  }
 }
 
 function authFailureCanSafelyCancelMergePreflight(res: FetchOutcome): boolean {
@@ -809,6 +843,7 @@ function authFailureCanSafelyCancelMergePreflight(res: FetchOutcome): boolean {
 async function applyAuthSuccessInner(
   data: RawAccount,
   transition?: CredentialTransition,
+  onSessionCommitted?: (profile: AccountProfile) => void,
 ): Promise<AuthResult> {
   const profile = parseProfile(data);
   if (!data.token || !profile.id) {
@@ -927,6 +962,7 @@ async function applyAuthSuccessInner(
 
   try {
     await setSession(incomingSession);
+    onSessionCommitted?.(profile);
   } catch (err) {
     trackApiFailure('auth_session_persist', { reason: 'secure_store', error: err });
     return {
@@ -943,13 +979,49 @@ async function applyAuthSuccessInner(
     trackApiFailure('auth_push_rebind', { reason: 'incoming_register_deferred' });
   }
 
-  if (partyGameMerge) {
+  let mergeFinalizationFailed = false;
+  if (partyGameMerge && transition) {
     let finalized = false;
     try {
       finalized = await finalizePartyGameQueuesForAccountMerge(
         partyGameMerge.sourceAccountId,
         profile.id,
         partyGameMerge.operationId,
+        async (intent) => {
+          if (!(await rekeyAccountPreferencesQueueOwner(
+            intent.fromAccountId,
+            profile.id,
+            { allowDuringPrivateTransition: true },
+          ))) {
+            trackApiFailure('account_preferences_queue', {
+              reason: 'anonymous_merge_rekey_failed',
+            });
+            return false;
+          }
+          if (!(await rekeyPartyEveningIdentityOwner(
+            intent.fromAccountId,
+            profile.id,
+          ))) {
+            trackApiFailure('auth_party_evening_identity', {
+              reason: 'anonymous_merge_rekey_failed',
+            });
+            return false;
+          }
+          let rehydrated = false;
+          try {
+            rehydrated = await rehydratePrivateStoresAfterBoundary();
+          } catch {
+            rehydrated = false;
+          }
+          if (!rehydrated) {
+            trackApiFailure('auth_private_rehydrate', {
+              reason: 'anonymous_merge_rehydrate_failed',
+            });
+            return false;
+          }
+          transition.privateStoresRehydrated = true;
+          return true;
+        },
       );
     } catch {
       finalized = false;
@@ -969,6 +1041,7 @@ async function applyAuthSuccessInner(
       trackApiFailure('auth_party_games_merge', {
         reason: 'post_session_finalize_deferred',
       });
+      mergeFinalizationFailed = true;
     }
   }
 
@@ -981,6 +1054,7 @@ async function applyAuthSuccessInner(
       preferProvidedSession: true,
     });
   }
+  if (mergeFinalizationFailed) return CREDENTIAL_BOUNDARY_FAILED;
   return { ok: true, profile };
 }
 
@@ -989,19 +1063,27 @@ async function applyAuthSuccess(
   data: RawAccount,
   transition?: CredentialTransition,
 ): Promise<AuthResult> {
+  let committedProfile: AccountProfile | undefined;
+  let result: AuthResult;
   try {
-    return await applyAuthSuccessInner(data, transition);
+    result = await applyAuthSuccessInner(data, transition, profile => {
+      committedProfile = profile;
+    });
   } catch (error) {
     trackApiFailure('auth_session', {
       reason: 'credential_boundary_exception',
       error,
     });
-    return CREDENTIAL_BOUNDARY_FAILED;
-  } finally {
-    transition?.photoSessionTransition.release();
-    transition?.privateAccountTransition?.release();
-    if (transition) await rehydratePrivateStoresAfterBoundary();
+    result = CREDENTIAL_BOUNDARY_FAILED;
   }
+
+  if (transition && !(await finishCredentialTransitionRehydration(transition))) {
+    result = CREDENTIAL_BOUNDARY_FAILED;
+  }
+  if (!result.ok && committedProfile) {
+    return { ...result, committedProfile };
+  }
+  return result;
 }
 
 /** Collapse a profile-returning call's outcome into an AuthResult. */

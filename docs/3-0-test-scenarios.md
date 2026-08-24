@@ -1,10 +1,32 @@
 # Na pivo 3.0 — testovací scénáře
 
-Ruční průchod větví `feat/napivo-3-0`. Devět obrazovek, všechny na **mocknutých
-datech** — nic z toho nesahá na backend, takže scénáře testují *tvar a chování*,
-ne správnost dat.
+## Release QA — 23. srpna 2026
 
-**Co je předem známé a není to bug:**
+Aktuální větev už nepoužívá jen mocky. Mobilní klient, lokální backend, offline
+fronty i sdílený večer jsou propojené a prošly reálným průchodem na iOS a Androidu.
+
+- `npm run typecheck`, `npm test -- --runInBand` a `npm run lint` prošly.
+- `uv run pytest`, Ruff, kontrola migrací a Django deploy check prošly.
+- Čistý iOS build včetně widgetu i Android release build prošly.
+- Android push notifikace prošly v popředí, na pozadí, po studeném startu i po klepnutí.
+- Studený start Android release buildu bez sítě skončil v použitelné offline appce, ne na černé obrazovce.
+- Offline zápis piva se po návratu sítě odeslal právě jednou.
+- Export účtu otevřel systémové sdílení a lokální smazání účtu odstranilo soukromá data.
+- Sdílený večer `YHNGRK` vznikl na iOS, Android se připojil deep linkem, oba účastníci zapsali pivo a host večer zveřejnil.
+- Android po studeném deep linku zobrazil jedinou hospodu, dva účastníky a dvě piva bez chyby navigace.
+- Všech devět her proběhlo na dvou klientech; ovládání i hlavička byly zkontrolované na obou platformách.
+- PostgreSQL 17 prošel migrací ze starého schématu i z čisté databáze a reálným create/join/start party flow.
+
+Před vydáním zbývají kroky mimo repozitář: produkční `api-*` deploy, lidský EAS build,
+kontrola textů a screenshotů ve storech a odeslání buildu do review. OTA ani produkční
+deploy nejsou součástí tohoto průchodu.
+
+## Původní UX checklist
+
+Následuje původní ruční checklist mocků. Položky označené `❌ Bug` jsou historické
+nálezy z návrhové fáze, ne aktuální seznam release blockerů.
+
+**Původní omezení mocků:**
 
 - Kompas se v simulátoru **netočí** — simulátor nemá magnetometr. Na zařízení se točí.
 - Avatary (`pravatar.cc`) a fotky (`picsum.photos`) jsou placeholdery a **potřebují síť**.
@@ -220,7 +242,6 @@ Tyhle se testují na **každé** obrazovce, ne zvlášť:
 
 ## Co tenhle průchod netestuje
 
-- **Nic z toho nesahá na backend.** Data jsou napevno, takže se tím neověří sync, fronty ani konflikty.
-- **Party evening API** (`backend/pubs/api/party_views.py`) je živé a otestované, ale mobilní klient na něj zatím není napojený — piva se nikam neukládají.
+- Původní body výše vznikly nad designovými mocky. Aktuální backend, sync, fronty a party flow pokrývá release QA v úvodu dokumentu.
 - **Roast z AI.** Věta je pravidlová (`src/feed/roast.ts`, 8 testů), ne z modelu.
-- **Android.** Nativní prvky (segment, menu, grafy, sklo) mají RN fallbacky, ale nikdo je neprošel.
+- Fyzický Android telefon a fyzický iPhone. Průchod proběhl v čistých simulátorech; senzory a výkon na reálném hardwaru zůstávají součástí předstore smoke testu.

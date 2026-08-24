@@ -46,6 +46,13 @@ import {
   pubIdentityKey,
 } from './pubIdentity';
 import {
+  combinePrivateAccountMutationSignals,
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+  type PrivateAccountMutationScope,
+} from './privateAccountBoundary';
+import {
   usePubAmenitiesStore,
   type AmenityVoteEntry,
   type HydrateAmenityRow,
@@ -248,9 +255,15 @@ export function resetPubAmenitiesPullGate(): void {
 
 export const resetPubAmenitiesPullGateForTests = resetPubAmenitiesPullGate;
 
-export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
+async function restorePubAmenitiesWithinBoundary(
+  scope: PrivateAccountMutationScope,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   await flushPubAmenitiesQueue();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   const accountId = (await ensureAccount(signal))?.accountId ?? null;
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   if (
     accountId != null &&
     accountId === lastPulledAccountId &&
@@ -259,8 +272,13 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
     return;
   }
   const pendingDeletes = await getQueuedAmenityDeletes();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   const serverVotes = await fetchMyAmenityVotes(signal);
-  if (serverVotes === null) {
+  if (
+    serverVotes === null ||
+    signal.aborted ||
+    !isPrivateAccountMutationScopeCurrent(scope)
+  ) {
     return;
   }
 
@@ -288,14 +306,17 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
   }
 
   // Merge server → local (LWW), suppressing the push echo for the write.
+  if (!isPrivateAccountMutationScopeCurrent(scope)) return;
   runWithoutPubAmenitiesSync(() => {
     usePubAmenitiesStore.getState().hydrateVotes(merged);
   });
 
   // Push local votes the server is missing, or where the local copy is newer.
+  if (!isPrivateAccountMutationScopeCurrent(scope)) return;
   const localVotes = usePubAmenitiesStore.getState().votes;
   for (const [pubKey, pubVotes] of Object.entries(localVotes)) {
     for (const [amenityKey, entry] of Object.entries(pubVotes) as [AmenityKey, AmenityVoteEntry][]) {
+      if (!isPrivateAccountMutationScopeCurrent(scope)) return;
       if (!entry) continue;
       const pair = `${pubKey} ${amenityKey}`;
       if (pendingDeletes.has(pair)) continue;
@@ -313,8 +334,24 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
   }
 
   await flushPubAmenitiesQueue();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   // Stamp only after the whole pass succeeded, so a failed merge/push retries
   // on the next foreground instead of waiting out the gate.
   lastPulledAt = Date.now();
   lastPulledAccountId = accountId;
+}
+
+export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
+  try {
+    await runPrivateAccountMutation(async (scope) => {
+      const combined = combinePrivateAccountMutationSignals(scope, signal);
+      try {
+        await restorePubAmenitiesWithinBoundary(scope, combined.signal);
+      } finally {
+        combined.cleanup();
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof PrivateAccountMutationFrozenError)) throw error;
+  }
 }

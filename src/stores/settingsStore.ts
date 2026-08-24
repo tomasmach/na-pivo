@@ -218,6 +218,7 @@ export const useSettingsStore = create<SettingsState>()(
       setNavigationProvider: (provider) => set({ navigationProvider: provider }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
       setPriceCurrency: (currency, rateCzkPerUnit) => {
+        if (isPrivateAccountMutationFrozen()) return;
         const rate = rateCzkPerUnit ?? getCurrencyRate(currency) ?? 1;
         setCurrencyRate(currency, rate);
         set({ priceCurrency: currency, priceCurrencyRate: rate });

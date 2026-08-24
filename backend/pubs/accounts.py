@@ -47,7 +47,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Count, Q
 from django.db.models.deletion import CASCADE
 from django.utils import timezone
@@ -66,6 +66,7 @@ from pubs.enrichment.normalizer import community_hours_to_osm
 from pubs.models import (
     Account,
     AccountDeletionOperation,
+    AccountIdentityAlias,
     AccountMappedPub,
     AccountMergeOperation,
     AccountPubCompletion,
@@ -99,9 +100,11 @@ from pubs.models import (
     NightRound,
     OneTimeToken,
     PartyEvening,
+    PartyEveningCode,
     PartyEveningDrink,
     PartyEveningMember,
     PartyGame,
+    PartyGameAlias,
     PartyGameEvent,
     PhotoContestEntry,
     PhotoContestVote,
@@ -154,6 +157,10 @@ class ExternalFeedbackCleanupError(Exception):
     Deliberately not an :class:`AccountError`: this is infrastructure cleanup,
     not user-facing validation. Never carries response bodies or credentials.
     """
+
+
+class AccountPurgeConflictError(Exception):
+    """A shared tree changed while the purge acquired its global lock scope."""
 
 
 _LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
@@ -579,6 +586,127 @@ def _validate_account_merge_operation(
         )
 
 
+def _party_tree_account_ids_for_merge(account_ids: set[int]) -> set[int]:
+    """Return every Account FK in party trees an account merge can rewrite."""
+
+    evening_ids = set(
+        PartyEvening.objects.filter(
+            Q(host_id__in=account_ids)
+            | Q(memberships__account_id__in=account_ids)
+        )
+        .values_list("pk", flat=True)
+        .distinct()
+    )
+    if not evening_ids:
+        return set()
+
+    related_ids = set(
+        PartyEvening.objects.filter(pk__in=evening_ids)
+        .exclude(host_id__isnull=True)
+        .values_list("host_id", flat=True)
+    )
+    for queryset in (
+        PartyEveningMember.objects.filter(evening_id__in=evening_ids),
+        PartyEveningDrink.objects.filter(evening_id__in=evening_ids),
+        DrinkLog.objects.filter(party_evening_id__in=evening_ids),
+        BeerPhoto.objects.filter(party_evening_id__in=evening_ids),
+        PubVisit.objects.filter(party_evening_id__in=evening_ids),
+    ):
+        related_ids.update(queryset.values_list("account_id", flat=True))
+    related_ids.update(
+        PartyGame.objects.filter(
+            evening_id__in=evening_ids,
+            started_by_id__isnull=False,
+        ).values_list("started_by_id", flat=True)
+    )
+    for account_id, subject_id in PartyGameEvent.objects.filter(
+        game__evening_id__in=evening_ids
+    ).values_list("account_id", "subject_id"):
+        if account_id is not None:
+            related_ids.add(account_id)
+        if subject_id is not None:
+            related_ids.add(subject_id)
+    return related_ids
+
+
+def _community_tree_account_ids_for_merge(account_ids: set[int]) -> set[int]:
+    """Return every Account FK in community trees an account merge can rewrite."""
+
+    event_ids = set(
+        CommunityEvent.objects.filter(
+            Q(host_id__in=account_ids)
+            | Q(memberships__account_id__in=account_ids)
+            | Q(teams__created_by_id__in=account_ids)
+            | Q(team_memberships__account_id__in=account_ids)
+        )
+        .values_list("pk", flat=True)
+        .distinct()
+    )
+    if not event_ids:
+        return set()
+
+    related_ids = set(
+        CommunityEvent.objects.filter(
+            pk__in=event_ids,
+            host_id__isnull=False,
+        ).values_list("host_id", flat=True)
+    )
+    related_ids.update(
+        CommunityEventMembership.objects.filter(
+            event_id__in=event_ids
+        ).values_list("account_id", flat=True)
+    )
+    related_ids.update(
+        CommunityEventTeam.objects.filter(
+            event_id__in=event_ids,
+            created_by_id__isnull=False,
+        ).values_list("created_by_id", flat=True)
+    )
+    related_ids.update(
+        CommunityEventTeamMembership.objects.filter(
+            event_id__in=event_ids
+        ).values_list("account_id", flat=True)
+    )
+    return related_ids
+
+
+def _shared_tree_account_ids_for_merge(account_ids: set[int]) -> set[int]:
+    return _party_tree_account_ids_for_merge(
+        account_ids
+    ) | _community_tree_account_ids_for_merge(account_ids)
+
+
+def _direct_counterparty_account_ids_for_purge(account_id: int) -> set[int]:
+    """Every other Account FK on a row the final delete can rewrite/remove."""
+    counterpart_ids: set[int] = set()
+    pair_queries = (
+        Friendship.objects.filter(Q(requester_id=account_id) | Q(recipient_id=account_id))
+        .values_list("requester_id", "recipient_id"),
+        Follow.objects.filter(Q(follower_id=account_id) | Q(target_id=account_id)).values_list(
+            "follower_id", "target_id"
+        ),
+        FriendBlock.objects.filter(Q(blocker_id=account_id) | Q(blocked_id=account_id)).values_list(
+            "blocker_id", "blocked_id"
+        ),
+        FriendNotification.objects.filter(
+            Q(recipient_id=account_id) | Q(actor_id=account_id)
+        ).values_list("recipient_id", "actor_id"),
+        ContentReport.objects.filter(
+            Q(reporter_id=account_id) | Q(target_account_id=account_id)
+        ).values_list("reporter_id", "target_account_id"),
+        PartyGameEvent.objects.filter(
+            Q(account_id=account_id) | Q(subject_id=account_id)
+        ).values_list("account_id", "subject_id"),
+    )
+    for rows in pair_queries:
+        for left_id, right_id in rows:
+            if left_id is not None and left_id != account_id:
+                counterpart_ids.add(left_id)
+            if right_id is not None and right_id != account_id:
+                counterpart_ids.add(right_id)
+    return counterpart_ids
+
+
 def _lock_merge_participants(
     source_account: Account | None,
     target_account: Account,
@@ -597,6 +725,11 @@ def _lock_merge_participants(
     participant_ids = {target_account.pk}
     if source_account is not None:
         participant_ids.add(source_account.pk)
+    if source_account is not None and source_account.pk != target_account.pk:
+        # Shared-tree writers lock every Account FK in PK order before parent
+        # rows. A real cross-account merge must own the same identity set before
+        # it locks those trees; an ordinary login/claim must not lock the table.
+        participant_ids.update(_shared_tree_account_ids_for_merge(participant_ids))
     locked_accounts = {
         account.pk: account
         for account in Account.objects.select_for_update()
@@ -1003,23 +1136,98 @@ def _replace_published_night_reference(
         night.save(update_fields=[field_name])
 
 
-def _replace_party_game_roster_reference(*, old_public_id, new_public_id) -> None:
+def _replace_exact_json_value(value, *, old_value: str, new_value: str):
+    """Recursively rekey exact UUID values without interpreting game payloads."""
+    if isinstance(value, dict):
+        return {
+            key: _replace_exact_json_value(
+                nested_value,
+                old_value=old_value,
+                new_value=new_value,
+            )
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _replace_exact_json_value(
+                nested_value,
+                old_value=old_value,
+                new_value=new_value,
+            )
+            for nested_value in value
+        ]
+    return new_value if value == old_value else value
+
+
+def _replace_party_game_roster_reference(
+    *,
+    old_public_id,
+    new_public_id,
+    source_account: Account,
+    target_account: Account,
+) -> None:
     """Keep frozen game entrants valid when an anonymous account is claimed."""
     old_value = str(old_public_id)
     new_value = str(new_public_id)
-    for game in PartyGame.objects.exclude(roster_account_ids=[]).only(
-        "pk", "roster_account_ids"
-    ):
+    affected_game_ids = set(
+        PartyGame.objects.filter(started_by=source_account).values_list("pk", flat=True)
+    )
+    affected_game_ids.update(
+        PartyGameEvent.objects.filter(
+            Q(account=source_account) | Q(subject=source_account)
+        ).values_list("game_id", flat=True)
+    )
+    for game in PartyGame.objects.exclude(roster_account_ids=[]).only("pk", "roster_account_ids"):
         values = game.roster_account_ids or []
-        if old_value not in values:
+        if old_value in values:
+            affected_game_ids.add(game.pk)
+
+    for game in PartyGame.objects.filter(pk__in=affected_game_ids).order_by("pk"):
+        touched = False
+        values = game.roster_account_ids or []
+        if old_value in values:
+            game.roster_account_ids = list(
+                dict.fromkeys(new_value if value == old_value else value for value in values)
+            )
+            game.save(update_fields=["roster_account_ids"])
+            touched = True
+        # Existing opaque events can carry player UUIDs at arbitrary nesting
+        # depths. Rekey exact values alongside the frozen roster so a cold-start
+        # client can still fold picks, rolls and finishes after account claim.
+        for event in PartyGameEvent.objects.filter(game=game).exclude(payload={}):
+            payload = _replace_exact_json_value(
+                event.payload,
+                old_value=old_value,
+                new_value=new_value,
+            )
+            if payload != event.payload:
+                event.payload = payload
+                event.save(update_fields=["payload"])
+                touched = True
+        if not touched:
             continue
-        game.roster_account_ids = list(
-            dict.fromkeys(new_value if value == old_value else value for value in values)
+        # A START envelope means "refetch this game row" to every connected
+        # phone. It replaces a stale frozen roster before the next queued score
+        # arrives, and is deterministic across a replayed merge.
+        PartyGameEvent.objects.get_or_create(
+            game=game,
+            client_id=uuid.uuid5(
+                game.client_id,
+                f"na-pivo-party-game-account-rekey:{old_value}",
+            ),
+            defaults={
+                "account": target_account,
+                "kind": PartyGameEvent.Kind.START,
+            },
         )
-        game.save(update_fields=["roster_account_ids"])
 
 
-def _merge_party_game(source_game: PartyGame, target_game: PartyGame) -> None:
+def _merge_party_game(
+    source_game: PartyGame,
+    target_game: PartyGame,
+    *,
+    synthetic_ended_game_ids: set[int],
+) -> None:
     """Fold a duplicate into the canonical game without changing its lobby.
 
     Callers pass the later/discarded row as ``source_game`` and the first row
@@ -1027,7 +1235,14 @@ def _merge_party_game(source_game: PartyGame, target_game: PartyGame) -> None:
     union during an account merge: adding the later row's entrants would make
     an already-running quiz change teams after login.
     """
-    source_was_active = source_game.ended_at is None
+    real_ended_at = max(
+        (
+            game.ended_at
+            for game in (source_game, target_game)
+            if game.pk not in synthetic_ended_game_ids and game.ended_at is not None
+        ),
+        default=None,
+    )
     _move_parent_rows(
         PartyGameEvent,
         parent_field="game",
@@ -1035,28 +1250,78 @@ def _merge_party_game(source_game: PartyGame, target_game: PartyGame) -> None:
         target_parent=target_game,
         unique_fields=("client_id",),
     )
+    if source_game.payloads_redacted and not target_game.payloads_redacted:
+        target_game.payloads_redacted = True
+        target_game.save(update_fields=["payloads_redacted"])
+    if target_game.payloads_redacted:
+        # Redaction is monotonic across duplicate offline games. Rows just moved
+        # from the source must not resurrect opaque data on the retained alias.
+        PartyGameEvent.objects.filter(game=target_game).update(payload={})
     _replace_published_night_reference(
         "game_ids",
         old_public_id=source_game.public_id,
         new_public_id=target_game.public_id,
         account_ids=None,
     )
+    PartyGameAlias.objects.filter(game=source_game).update(game=target_game)
+    PartyGameAlias.objects.update_or_create(
+        public_id=source_game.public_id,
+        defaults={"game": target_game},
+    )
+    # A connected phone can still cache the retired server UUID. Publish a new
+    # cursor so its next catch-up receives the canonical row and can rekey the
+    # local snapshot before any later canonical events arrive.
+    PartyGameEvent.objects.get_or_create(
+        game=target_game,
+        client_id=uuid.uuid5(
+            source_game.client_id,
+            f"na-pivo-party-game-alias:{source_game.public_id}",
+        ),
+        defaults={
+            "account_id": target_game.evening.host_id,
+            "kind": PartyGameEvent.Kind.START,
+        },
+    )
     source_game.delete()
-    if source_was_active and target_game.ended_at is not None:
-        target_game.ended_at = None
+    # A real finish is monotonic across offline duplicates. The only ended_at
+    # we may clear is the temporary one added below to satisfy the one-active-
+    # game constraint while two still-active copies collapse into one row.
+    merged_ended_at = real_ended_at
+    if target_game.ended_at != merged_ended_at:
+        target_game.ended_at = merged_ended_at
         target_game.save(update_fields=["ended_at"])
 
 
 def _merge_party_member_row(source_row: PartyEveningMember, target_row: PartyEveningMember) -> None:
-    """Combine duplicate membership audit rows, preserving any active consent."""
+    """Combine duplicate membership state by its latest join/leave transition."""
     update_fields: list[str] = []
-    if source_row.joined_at < target_row.joined_at:
-        target_row.joined_at = source_row.joined_at
-        update_fields.append("joined_at")
-    if source_row.active and not target_row.active:
-        target_row.active = True
-        target_row.left_at = None
-        update_fields.extend(["active", "left_at"])
+    source_state_at = (
+        source_row.left_at
+        if not source_row.active and source_row.left_at is not None
+        else source_row.joined_at
+    )
+    target_state_at = (
+        target_row.left_at
+        if not target_row.active and target_row.left_at is not None
+        else target_row.joined_at
+    )
+    source_state_wins = source_state_at > target_state_at or (
+        source_state_at == target_state_at
+        and not source_row.active
+        and target_row.active
+    )
+    if source_state_wins:
+        if source_row.active != target_row.active:
+            target_row.active = source_row.active
+            update_fields.append("active")
+        target_row.left_at = None if source_row.active else source_state_at
+        update_fields.append("left_at")
+        if source_row.active:
+            # joined_at is the ACTIVE transition timestamp: every rejoin path
+            # resets it. Keeping an older first-join time would let a later
+            # merge resurrect an older leave over this newer rejoin.
+            target_row.joined_at = source_state_at
+            update_fields.append("joined_at")
     elif (
         not source_row.active
         and not target_row.active
@@ -1065,18 +1330,105 @@ def _merge_party_member_row(source_row: PartyEveningMember, target_row: PartyEve
     ):
         target_row.left_at = source_row.left_at
         update_fields.append("left_at")
+    if not target_row.active and source_row.joined_at < target_row.joined_at:
+        # Once inactive, left_at carries the current state transition, so the
+        # original join is safe to retain for historical ordering.
+        target_row.joined_at = source_row.joined_at
+        update_fields.append("joined_at")
     if update_fields:
         target_row.save(update_fields=list(dict.fromkeys(update_fields)))
     source_row.delete()
 
 
+def _lock_party_evenings_for_accounts(*account_ids: int) -> list[PartyEvening]:
+    """Lock every party tree touched by an account lifecycle transition.
+
+    Callers already hold the Account rows. Resolving the complete evening-id
+    set first is safe because party mutations take the participant Account lock
+    before touching an evening. The second query acquires every Evening lock in
+    one deterministic primary-key order.
+    """
+
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("party evening locking must run inside transaction.atomic()")
+    ids = set(
+        PartyEvening.objects.filter(host_id__in=account_ids).values_list("pk", flat=True)
+    )
+    ids.update(
+        PartyEveningMember.objects.filter(account_id__in=account_ids).values_list(
+            "evening_id", flat=True
+        )
+    )
+    return list(
+        PartyEvening.objects.select_for_update(of=("self",))
+        .filter(pk__in=ids)
+        .order_by("pk")
+    )
+
+
+def _resolve_active_party_memberships_after_merge(source: Account, target: Account) -> None:
+    """Leave the claimed account on one active table after an anonymous merge."""
+
+    memberships = list(
+        PartyEveningMember.objects.select_for_update(of=("self",))
+        .select_related("evening")
+        .filter(
+            account_id__in=(source.pk, target.pk),
+            active=True,
+            evening__active=True,
+        )
+        .order_by("pk")
+    )
+    source_memberships = [row for row in memberships if row.account_id == source.pk]
+    candidates = source_memberships or [
+        row for row in memberships if row.account_id == target.pk
+    ]
+    canonical = (
+        max(
+            candidates,
+            key=lambda row: (
+                row.evening.started_at,
+                row.evening_id,
+                row.joined_at,
+                row.pk,
+            ),
+        )
+        if candidates
+        else None
+    )
+    canonical_evening_id = canonical.evening_id if canonical is not None else None
+    if canonical_evening_id is None:
+        newest_hosted = (
+            PartyEvening.objects.filter(host=target, active=True)
+            .order_by("-started_at", "-pk")
+            .first()
+        )
+        canonical_evening_id = newest_hosted.pk if newest_hosted is not None else None
+
+    now = timezone.now()
+    for membership in memberships:
+        if membership.pk == getattr(canonical, "pk", None):
+            continue
+        membership.active = False
+        membership.left_at = now
+        membership.save(update_fields=["active", "left_at"])
+
+    for evening in PartyEvening.objects.filter(host=target, active=True).order_by("pk"):
+        if evening.pk == canonical_evening_id:
+            continue
+        evening.active = False
+        evening.ended_at = now
+        evening.save(update_fields=["active", "ended_at", "updated_at"])
+
+
 def _finish_superseded_games_before_evening_merge(
     source_evening: PartyEvening,
     target_evening: PartyEvening,
-) -> None:
+) -> set[int]:
     """Make two copies of one evening satisfy the single-active-game invariant."""
+    synthetic_ended_game_ids: set[int] = set()
     active_games = list(
-        PartyGame.objects.select_for_update()
+        PartyGame.objects.select_for_update(of=("self",))
         .filter(
             evening_id__in=(source_evening.pk, target_evening.pk),
             ended_at__isnull=True,
@@ -1085,7 +1437,7 @@ def _finish_superseded_games_before_evening_merge(
         .order_by("-started_at", "-pk")
     )
     if len(active_games) < 2:
-        return
+        return synthetic_ended_game_ids
     canonical = active_games[0]
     for superseded in active_games[1:]:
         superseded.ended_at = canonical.started_at
@@ -1097,6 +1449,7 @@ def _finish_superseded_games_before_evening_merge(
             # The rows collapse into one logical game below. Publishing an
             # intermediate finish would leave that retained game with a finish
             # event even though the later copy keeps it active.
+            synthetic_ended_game_ids.add(superseded.pk)
             continue
         PartyGameEvent.objects.get_or_create(
             game=superseded,
@@ -1105,11 +1458,18 @@ def _finish_superseded_games_before_evening_merge(
                 "na-pivo-party-game-superseded",
             ),
             defaults={
-                "account": superseded.started_by,
+                # This is merge bookkeeping, not the superseded game's
+                # starter action. Attribute it to the retained evening's host:
+                # the merge already holds that Account lock, so the FK cannot
+                # deadlock with a third participant. Keeping a non-null author
+                # also preserves the privacy meaning of account=NULL, which is
+                # reserved for events whose real author was purged.
+                "account_id": target_evening.host_id,
                 "kind": PartyGameEvent.Kind.FINISH,
                 "created_at": canonical.started_at,
             },
         )
+    return synthetic_ended_game_ids
 
 
 def _merge_party_evening_tree(source_evening: PartyEvening, target_evening: PartyEvening) -> None:
@@ -1138,7 +1498,10 @@ def _merge_party_evening_tree(source_evening: PartyEvening, target_evening: Part
         row.evening = target_evening
         row.save(update_fields=["evening"])
 
-    _finish_superseded_games_before_evening_merge(source_evening, target_evening)
+    synthetic_ended_game_ids = _finish_superseded_games_before_evening_merge(
+        source_evening,
+        target_evening,
+    )
     target_games_by_catalog = {
         row.catalog_key: row
         for row in PartyGame.objects.filter(evening=target_evening).order_by("started_at", "pk")
@@ -1155,7 +1518,11 @@ def _merge_party_evening_tree(source_evening: PartyEvening, target_evening: Part
             conflict = target_games_by_client.get(game.client_id)
         if conflict is not None:
             if (conflict.started_at, conflict.pk) <= (game.started_at, game.pk):
-                _merge_party_game(game, conflict)
+                _merge_party_game(
+                    game,
+                    conflict,
+                    synthetic_ended_game_ids=synthetic_ended_game_ids,
+                )
                 target_games_by_catalog[conflict.catalog_key] = conflict
                 target_games_by_client[conflict.client_id] = conflict
                 continue
@@ -1165,7 +1532,11 @@ def _merge_party_evening_tree(source_evening: PartyEvening, target_evening: Part
             # unique constraints while preserving the first frozen roster.
             target_games_by_catalog.pop(conflict.catalog_key, None)
             target_games_by_client.pop(conflict.client_id, None)
-            _merge_party_game(conflict, game)
+            _merge_party_game(
+                conflict,
+                game,
+                synthetic_ended_game_ids=synthetic_ended_game_ids,
+            )
             game.evening = target_evening
             game.save(update_fields=["evening"])
             target_games_by_catalog[game.catalog_key] = game
@@ -1179,6 +1550,27 @@ def _merge_party_evening_tree(source_evening: PartyEvening, target_evening: Part
     DrinkLog.objects.filter(party_evening=source_evening).update(party_evening=target_evening)
     BeerPhoto.objects.filter(party_evening=source_evening).update(party_evening=target_evening)
     PubVisit.objects.filter(party_evening=source_evening).update(party_evening=target_evening)
+    # Ending is monotonic. If either offline copy was ended before login merged
+    # them, the canonical table must not spring back to life.
+    if not source_evening.active:
+        ended_at = max(
+            filter(None, (source_evening.ended_at, target_evening.ended_at)),
+            default=timezone.now(),
+        )
+        target_evening.active = False
+        target_evening.ended_at = ended_at
+        target_evening.save(update_fields=["active", "ended_at", "updated_at"])
+
+    # Every retired code remains a stable forward pointer. Phones can carry a
+    # durable leave/end write or a link for either offline copy long after this
+    # transaction deletes the duplicate parent.
+    PartyEveningCode.objects.filter(evening=source_evening).update(
+        evening=target_evening
+    )
+    PartyEveningCode.objects.update_or_create(
+        join_code=source_evening.join_code,
+        defaults={"evening": target_evening},
+    )
     source_evening.delete()
 
 
@@ -1793,15 +2185,17 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     if source is None or source.pk == target.pk:
         return
 
-    # Upload/delete requests lock their owner Account row. Lock both merge
-    # participants in primary-key order before touching any child row so an
-    # already-authenticated request cannot slip a new photo or tombstone through
-    # the final source-account cascade. The deterministic order also keeps two
-    # concurrent merges from deadlocking each other.
+    # First own the two identities themselves. The optimistic outer discovery
+    # normally already locked the whole shared tree in PK order. A party join
+    # can still commit one new related account in the narrow gap before these
+    # locks, though; any newly discovered row is therefore acquired NOWAIT
+    # below. Waiting for a lower-PK participant while already holding source
+    # would form a cycle with that join writer.
+    participant_ids = {source.pk, target.pk}
     locked_accounts = {
         account.pk: account
         for account in Account.objects.select_for_update()
-        .filter(pk__in=(source.pk, target.pk))
+        .filter(pk__in=participant_ids)
         .order_by("pk")
     }
     if target.pk not in locked_accounts:
@@ -1809,6 +2203,33 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     if source.pk not in locked_accounts:
         # Another concurrent login already completed this exact merge.
         return
+    shared_account_ids = _shared_tree_account_ids_for_merge(participant_ids)
+    missing_account_ids = shared_account_ids - set(locked_accounts)
+    if missing_account_ids:
+        try:
+            # A savepoint restores the transaction after PostgreSQL reports a
+            # NOWAIT lock conflict, allowing AccountError to become a clean 409
+            # instead of a deadlock/500.
+            with transaction.atomic():
+                newly_locked = {
+                    account.pk: account
+                    for account in Account.objects.select_for_update(nowait=True)
+                    .filter(pk__in=missing_account_ids)
+                    .order_by("pk")
+                }
+        except DatabaseError as exc:
+            raise AccountError(
+                "Účet se mezitím změnil. Zkus přihlášení znovu.",
+                code="auth",
+                http_status=409,
+            ) from exc
+        if set(newly_locked) != missing_account_ids:
+            raise AccountError(
+                "Účet se mezitím změnil. Zkus přihlášení znovu.",
+                code="auth",
+                http_status=409,
+            )
+        locked_accounts.update(newly_locked)
     source = locked_accounts[source.pk]
     target = locked_accounts[target.pk]
     if source.is_claimed:
@@ -1839,6 +2260,13 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
 
     source.auth_tokens.all().delete()
     source.one_time_tokens.all().delete()
+    AccountIdentityAlias.objects.filter(account=source).update(account=target)
+    AccountIdentityAlias.objects.update_or_create(
+        public_id=source.public_id,
+        defaults={"account": target},
+    )
+
+    _lock_party_evenings_for_accounts(source.pk, target.pk)
 
     # Move parent rows before their Account CASCADE can erase entire 3.0 trees.
     # Duplicate offline identities retain the claimed account's parent row, but
@@ -1848,9 +2276,12 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _merge_friend_blocks(source, target)
     _merge_friend_activities(source, target)
     _merge_party_evenings(source, target)
+    _resolve_active_party_memberships_after_merge(source, target)
     _replace_party_game_roster_reference(
         old_public_id=source.public_id,
         new_public_id=target.public_id,
+        source_account=source,
+        target_account=target,
     )
     _merge_community_events(source, target)
     _merge_beer_checkins(source, target)
@@ -2617,34 +3048,39 @@ def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
 def schedule_deletion(account: Account) -> None:
     """Begin account deletion: log out everywhere, revoke Apple, mark pending,
     email the user a cancel-by date. The purge command hard-deletes later."""
-    revoke_all_tokens(account)
-    _revoke_apple_identities(account)
-    PushDevice.objects.filter(account=account, enabled=True).update(
-        enabled=False,
-        permission_status=PushDevice.PermissionStatus.DENIED,
-        updated_at=timezone.now(),
-    )
-    FriendPubActivity.objects.filter(account=account, active=True).update(
-        active=False,
-        updated_at=timezone.now(),
-    )
-
-    account.status = Account.Status.PENDING_DELETION
-    account.deleted_at = timezone.now()
-    account.save(update_fields=["status", "deleted_at"])
-
-    email = account.primary_email
-    if email:
-        cancel_by = (
-            account.deleted_at + timedelta(days=settings.ACCOUNT_DELETION_GRACE_DAYS)
-        ).strftime("%-d. %-m. %Y")
-        _send_account_email_after_commit(
-            "deletion_scheduled",
-            lambda: emailer.send_account_deletion_scheduled_email(
-                email,
-                cancel_by=cancel_by,
-            ),
+    with transaction.atomic():
+        locked = Account.objects.select_for_update().get(pk=account.pk)
+        revoke_all_tokens(locked)
+        _revoke_apple_identities(locked)
+        PushDevice.objects.filter(account=locked, enabled=True).update(
+            enabled=False,
+            permission_status=PushDevice.PermissionStatus.DENIED,
+            updated_at=timezone.now(),
         )
+        FriendPubActivity.objects.filter(account=locked, active=True).update(
+            active=False,
+            updated_at=timezone.now(),
+        )
+        _resolve_shared_lifecycles_on_soft_delete(locked)
+
+        locked.status = Account.Status.PENDING_DELETION
+        locked.deleted_at = timezone.now()
+        locked.save(update_fields=["status", "deleted_at"])
+
+        account.status = locked.status
+        account.deleted_at = locked.deleted_at
+        email = locked.primary_email
+        if email:
+            cancel_by = (
+                locked.deleted_at + timedelta(days=settings.ACCOUNT_DELETION_GRACE_DAYS)
+            ).strftime("%-d. %-m. %Y")
+            _send_account_email_after_commit(
+                "deletion_scheduled",
+                lambda: emailer.send_account_deletion_scheduled_email(
+                    email,
+                    cancel_by=cancel_by,
+                ),
+            )
 
 
 def cancel_deletion(account: Account) -> bool:
@@ -2703,15 +3139,24 @@ def _send_account_email_after_commit(event: str, send: Callable[[], object]) -> 
     transaction.on_commit(deliver)
 
 
-def _scrub_account_uuid_from_json_arrays(account: Account) -> None:
-    """Remove the deleted account's public UUID from frozen JSON id lists."""
+def _scrub_account_uuid_from_json_arrays(account: Account) -> set[int]:
+    """Remove current/retired UUIDs and return games whose payloads may name them."""
 
-    target = str(account.public_id)
+    targets = {
+        str(account.public_id),
+        *(
+            str(value)
+            for value in AccountIdentityAlias.objects.filter(account=account).values_list(
+                "public_id",
+                flat=True,
+            )
+        ),
+    }
 
     def scrub(values: object) -> object | None:
         if not isinstance(values, list):
             return None
-        filtered = [value for value in values if str(value) != target]
+        filtered = [value for value in values if str(value) not in targets]
         return filtered if filtered != values else None
 
     for night in PublishedNight.objects.exclude(participant_ids=[]).only(
@@ -2722,13 +3167,134 @@ def _scrub_account_uuid_from_json_arrays(account: Account) -> None:
             night.participant_ids = cleaned
             night.save(update_fields=["participant_ids"])
 
+    affected_game_ids = set(
+        PartyGame.objects.filter(started_by=account).values_list("pk", flat=True)
+    )
+    affected_game_ids.update(
+        PartyGameEvent.objects.filter(Q(account=account) | Q(subject=account)).values_list(
+            "game_id",
+            flat=True,
+        )
+    )
+    # An unbound/legacy game has no roster edge to scrub. Membership in its
+    # evening is the only safe scope signal, so permanently redact those games
+    # before a stale offline FINISH can arrive after this account is gone.
+    affected_game_ids.update(
+        PartyGame.objects.filter(roster_account_ids=[])
+        .filter(
+            Q(evening__host=account)
+            | Q(evening__memberships__account=account)
+        )
+        .values_list("pk", flat=True)
+        .distinct()
+    )
     for game in PartyGame.objects.exclude(roster_account_ids=[]).only(
         "pk", "roster_account_ids"
     ):
+        values = game.roster_account_ids
+        if isinstance(values, list) and any(str(value) in targets for value in values):
+            affected_game_ids.add(game.pk)
         cleaned = scrub(game.roster_account_ids)
         if cleaned is not None:
             game.roster_account_ids = cleaned
             game.save(update_fields=["roster_account_ids"])
+    return affected_game_ids
+
+
+def _resolve_owned_community_lifecycles(account: Account) -> None:
+    """Remove every live community relation; reactivation starts detached."""
+
+    hosted_event_ids = set(
+        CommunityEvent.objects.filter(host=account).values_list("pk", flat=True)
+    )
+    created_teams = list(
+        CommunityEventTeam.objects.filter(created_by=account)
+        .values_list("pk", "event_id")
+        .order_by("pk")
+    )
+    joined_teams = list(
+        CommunityEventTeamMembership.objects.filter(account=account)
+        .values_list("team_id", "event_id")
+        .order_by("pk")
+    )
+    membership_event_ids = set(
+        CommunityEventMembership.objects.filter(account=account).values_list(
+            "event_id", flat=True
+        )
+    )
+    event_ids = (
+        hosted_event_ids
+        | {event_id for _team_id, event_id in created_teams}
+        | {event_id for _team_id, event_id in joined_teams}
+        | membership_event_ids
+    )
+    list(
+        CommunityEvent.objects.select_for_update(of=("self",))
+        .filter(pk__in=event_ids)
+        .order_by("pk")
+    )
+    team_ids = {
+        *(team_id for team_id, _event_id in created_teams),
+        *(team_id for team_id, _event_id in joined_teams),
+    }
+    list(
+        CommunityEventTeam.objects.select_for_update(of=("self",))
+        .filter(pk__in=team_ids)
+        .order_by("pk")
+    )
+    team_memberships = list(
+        CommunityEventTeamMembership.objects.select_for_update(of=("self",))
+        .filter(account=account)
+        .order_by("pk")
+    )
+    event_memberships = list(
+        CommunityEventMembership.objects.select_for_update(of=("self",))
+        .filter(account=account)
+        .exclude(event_id__in=hosted_event_ids)
+        .order_by("pk")
+    )
+
+    CommunityEventTeamMembership.objects.filter(
+        pk__in=[membership.pk for membership in team_memberships]
+    ).delete()
+    now = timezone.now()
+    for membership in event_memberships:
+        membership.status = (
+            CommunityEventMembership.Status.LEFT
+            if membership.status == CommunityEventMembership.Status.APPROVED
+            else CommunityEventMembership.Status.CANCELLED
+        )
+        membership.decided_at = now
+        membership.save(update_fields=["status", "decided_at", "updated_at"])
+
+    created_team_ids = [team_id for team_id, _event_id in created_teams]
+    CommunityEventTeam.objects.filter(pk__in=created_team_ids).delete()
+    CommunityEvent.objects.filter(pk__in=hosted_event_ids).delete()
+
+
+def _resolve_shared_lifecycles_on_soft_delete(account: Account) -> None:
+    """End live party state immediately; reactivation never restores it."""
+
+    now = timezone.now()
+    evenings = _lock_party_evenings_for_accounts(account.pk)
+    for evening in evenings:
+        if evening.host_id != account.pk or not evening.active:
+            continue
+        evening.active = False
+        evening.ended_at = now
+        evening.save(update_fields=["active", "ended_at", "updated_at"])
+
+    memberships = list(
+        PartyEveningMember.objects.select_for_update(of=("self",))
+        .filter(account=account, active=True)
+        .order_by("pk")
+    )
+    for membership in memberships:
+        membership.active = False
+        membership.left_at = now
+        membership.save(update_fields=["active", "left_at"])
+
+    _resolve_owned_community_lifecycles(account)
 
 
 def _resolve_shared_lifecycles_before_delete(account: Account) -> None:
@@ -2756,8 +3322,7 @@ def _resolve_shared_lifecycles_before_delete(account: Account) -> None:
             evening.active = False
             evening.ended_at = now
             evening.save(update_fields=["active", "ended_at", "updated_at"])
-    CommunityEventTeam.objects.filter(created_by=account).update(name="Parta")
-    CommunityEvent.objects.filter(host=account).delete()
+    _resolve_owned_community_lifecycles(account)
 
 
 def _capture_affected_community_keys(account: Account) -> set[str]:
@@ -2893,7 +3458,7 @@ def _rebuild_community_signals_after_purge(cache_key: str) -> None:
 
 
 def _hard_delete_locked(account: Account) -> None:
-    """Delete one row while its caller holds the Account lock and transaction."""
+    """Delete one row while its caller owns the shared-tree lock scope."""
 
     email = account.primary_email
     # Remote cleanup runs before anything irreversible or local. Linear goes
@@ -2943,13 +3508,16 @@ def _hard_delete_locked(account: Account) -> None:
 
     FriendNotification.objects.filter(actor=account).delete()
     _resolve_shared_lifecycles_before_delete(account)
-    _scrub_account_uuid_from_json_arrays(account)
+    affected_game_ids = _scrub_account_uuid_from_json_arrays(account)
 
     ContentReport.objects.filter(target_account=account).update(target_snapshot={})
     ContentReport.objects.filter(reporter=account).update(comment="")
-    # Game events authored by the deleted account keep their audit row, kind and
-    # delta, but lose their gameplay payload; events authored by others stay.
-    PartyGameEvent.objects.filter(account=account).update(payload={})
+    # A finish/action payload can carry names and UUIDs for players other than
+    # its author. Once a deleted account participated in a game, clear every
+    # opaque payload from that game rather than guessing at future nested
+    # shapes. Audit kind/delta and survivor-owned rows remain intact.
+    PartyGame.objects.filter(pk__in=affected_game_ids).update(payloads_redacted=True)
+    PartyGameEvent.objects.filter(game_id__in=affected_game_ids).update(payload={})
     account.delete()
 
     for cache_key in sorted(affected_community_keys):
@@ -2968,6 +3536,50 @@ def _hard_delete_locked(account: Account) -> None:
         )
 
 
+def _lock_account_purge_scope(account_id: int) -> Account | None:
+    """Lock Account→Evening in writer order before a purge touches game rows."""
+    candidate_ids = {account_id}
+    candidate_ids.update(_shared_tree_account_ids_for_merge(candidate_ids))
+    candidate_ids.update(_direct_counterparty_account_ids_for_purge(account_id))
+    locked_accounts = {
+        locked.pk: locked
+        for locked in Account.objects.select_for_update()
+        .filter(pk__in=candidate_ids)
+        .order_by("pk")
+    }
+    account = locked_accounts.get(account_id)
+    if account is None:
+        return None
+
+    # A join can commit between optimistic discovery and the first Account
+    # locks. Never wait for a newly discovered lower-PK row while already
+    # holding the old scope: abort this purge run and let the worker retry.
+    discovered_ids = {account_id}
+    discovered_ids.update(_shared_tree_account_ids_for_merge(discovered_ids))
+    discovered_ids.update(_direct_counterparty_account_ids_for_purge(account_id))
+    missing_ids = discovered_ids - set(locked_accounts)
+    if missing_ids:
+        try:
+            with transaction.atomic():
+                newly_locked = {
+                    locked.pk: locked
+                    for locked in Account.objects.select_for_update(nowait=True)
+                    .filter(pk__in=missing_ids)
+                    .order_by("pk")
+                }
+        except DatabaseError as exc:
+            raise AccountPurgeConflictError from exc
+        if set(newly_locked) != missing_ids:
+            raise AccountPurgeConflictError
+        locked_accounts.update(newly_locked)
+
+    # Party writers take Account rows first, then the Evening and Game. Owning
+    # the same order makes a survivor writer either finish before the scrub or
+    # resume after the durable redaction flag commits, never deadlock at commit.
+    _lock_party_evenings_for_accounts(account_id)
+    return locked_accounts[account_id]
+
+
 def hard_delete(account: Account) -> None:
     """Irreversibly delete an account under a row lock.
 
@@ -2978,7 +3590,9 @@ def hard_delete(account: Account) -> None:
     """
 
     with transaction.atomic():
-        locked = Account.objects.select_for_update().get(pk=account.pk)
+        locked = _lock_account_purge_scope(account.pk)
+        if locked is None:
+            return
         _hard_delete_locked(locked)
 
 
@@ -2998,7 +3612,7 @@ def hard_delete_expired_account(
     """
 
     with transaction.atomic():
-        account = Account.objects.select_for_update().filter(pk=account_id).first()
+        account = _lock_account_purge_scope(account_id)
         if account is None:
             return False
         if (

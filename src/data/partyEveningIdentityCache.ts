@@ -12,6 +12,7 @@
  */
 
 import AsyncStorage, { privateAccountCleanupStorage } from './privateAccountStorage';
+import { runPrivateAccountCleanupMutation } from './privateAccountBoundary';
 
 import type { PartyEvening } from './partyClient';
 
@@ -163,6 +164,55 @@ export async function savePartyEveningIdentity(
       return identity;
     } catch {
       return null;
+    }
+  });
+}
+
+/** Preserve an anonymous table identity when account A is claimed into B. */
+export function rekeyPartyEveningIdentityOwner(
+  fromAccountId: string,
+  toAccountId: string,
+): Promise<boolean> {
+  if (!fromAccountId || !toAccountId) return Promise.resolve(false);
+  return queueStorage(async () => {
+    try {
+      return await runPrivateAccountCleanupMutation(async () => {
+        const raw = await privateAccountCleanupStorage.getItem(
+          PARTY_EVENING_IDENTITY_STORAGE_KEY,
+        );
+        if (raw === null) return true;
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw) as unknown;
+        } catch {
+          parsed = null;
+        }
+        if (!isStoredIdentity(parsed)) {
+          await privateAccountCleanupStorage.removeItem(
+            PARTY_EVENING_IDENTITY_STORAGE_KEY,
+          );
+          return (await privateAccountCleanupStorage.getItem(
+            PARTY_EVENING_IDENTITY_STORAGE_KEY,
+          )) === null;
+        }
+        if (
+          parsed.accountId !== fromAccountId &&
+          parsed.accountId !== toAccountId
+        ) return false;
+        if (parsed.accountId === toAccountId) return true;
+
+        const rekeyed = JSON.stringify({ ...parsed, accountId: toAccountId });
+        await privateAccountCleanupStorage.setItem(
+          PARTY_EVENING_IDENTITY_STORAGE_KEY,
+          rekeyed,
+        );
+        return (await privateAccountCleanupStorage.getItem(
+          PARTY_EVENING_IDENTITY_STORAGE_KEY,
+        )) === rekeyed;
+      });
+    } catch {
+      return false;
     }
   });
 }

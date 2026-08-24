@@ -296,7 +296,6 @@ const styles = StyleSheet.create({
   },
   dock: { paddingTop: 14 },
   action: {
-    flex: 1,
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,
     alignItems: "center",

@@ -12,6 +12,7 @@ import {
 } from '@/party/useNightRecord';
 import {
   nightMinutes,
+  nightStops,
   nightStandings,
   type NightRecord,
 } from '@/party/nightRecord';
@@ -184,6 +185,66 @@ describe('mergeNightRecords', () => {
         stopId: serverStop.id,
       }),
     ]);
+  });
+
+  it('aliases a joined guest placeholder to the one canonical shared pub', () => {
+    const serverStop = {
+      id: 'visit:host:visit-client-1',
+      by: 'host',
+      pubName: 'U Zlatého tygra',
+      cacheKey: 'u2fkbnjj',
+      arrivedAt: '2026-08-05T18:00:00Z',
+    };
+    const guestStop = {
+      id: 'guest-session',
+      by: 'me',
+      pubName: '  U Zlatého   tygra ',
+      cacheKey: 'ctx:other',
+      arrivedAt: '2026-08-05T18:20:00Z',
+    };
+    const remoteDrink = {
+      id: 'guest-drink',
+      at: '2026-08-05T18:30:00Z',
+      by: 'me',
+      beerName: 'Ležák',
+      drinkType: 'beer' as const,
+      stopId: null,
+    };
+    const localDrink = { ...remoteDrink, stopId: guestStop.id };
+
+    const merged = mergeNightRecords(
+      record({ stops: [serverStop], drinks: [remoteDrink] }),
+      record({ stops: [guestStop], drinks: [localDrink] }),
+    );
+
+    expect(merged.stops).toEqual([serverStop]);
+    expect(merged.drinks).toEqual([
+      expect.objectContaining({ id: localDrink.id, stopId: serverStop.id }),
+    ]);
+    expect(nightStops(merged, Date.parse('2026-08-05T20:00:00Z'))).toHaveLength(1);
+  });
+
+  it('keeps real pubs with the same name and different keys separate', () => {
+    const sameNameStops = [
+      {
+        id: 'pub-a',
+        by: 'host',
+        pubName: 'Lokál',
+        cacheKey: 'u2fkbn1x',
+        arrivedAt: '2026-08-05T18:00:00Z',
+      },
+      {
+        id: 'pub-b',
+        by: 'host',
+        pubName: 'Lokál',
+        cacheKey: 'u2fkbn2y',
+        arrivedAt: '2026-08-05T20:00:00Z',
+      },
+    ];
+
+    const merged = mergeNightRecords(record({ stops: sameNameStops }), record());
+
+    expect(nightStops(merged, Date.parse('2026-08-05T22:00:00Z'))).toHaveLength(2);
   });
 
   it('keeps a no-beer pub crawl visible and collapses synced visit aliases exactly once', () => {

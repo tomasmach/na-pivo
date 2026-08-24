@@ -5,12 +5,14 @@ export interface PartyRouter {
 }
 
 export interface FinishedPartyRouter {
-  dismiss(count?: number): void;
+  canDismiss(): boolean;
+  dismissAll(): void;
+  replace(path: '/friends/party-recap'): void;
   navigate(path: '/friends/party-recap'): void;
 }
 
-const ROOT_MODAL_DISMISS_MS = 260;
-let recapNavigationTimer: ReturnType<typeof setTimeout> | null = null;
+type PartyFinishPath = '/party-live' | '/party-finish';
+let pendingRecapSourcePath: PartyFinishPath | null = null;
 
 /** Minimize the Party hub without trapping a cold-start deep link. */
 export function minimizeParty(router: PartyRouter): void {
@@ -19,27 +21,47 @@ export function minimizeParty(router: PartyRouter): void {
 }
 
 /**
- * Remove both full-screen Party modals, then open recap inside the Kocoviny tab.
+ * Remove the whole full-screen Party stack, then replace its root with recap.
  * The task deliberately survives FinishNightScreen unmounting: that unmount is
  * the first half of the navigation operation, not a reason to cancel it.
  */
 export function finishPartyToRecap(
   router: FinishedPartyRouter,
-  screensToDismiss: 1 | 2 = 1,
+  sourcePath: PartyFinishPath,
 ): void {
-  if (recapNavigationTimer) return;
-  router.dismiss(screensToDismiss);
-  recapNavigationTimer = setTimeout(() => {
-    recapNavigationTimer = null;
-    // Reuse a recap already present in the Friends stack. Pushing a second
-    // copy makes Back reveal the previous recap instead of Kocoviny.
-    router.navigate('/friends/party-recap');
-  }, ROOT_MODAL_DISMISS_MS);
+  if (pendingRecapSourcePath) return;
+  pendingRecapSourcePath = sourcePath;
+  if (!router.canDismiss()) {
+    router.replace('/friends/party-recap');
+    return;
+  }
+  // The recap is committed by RootLayout only after Expo confirms which route
+  // the pop reached. A timer can race the native transition and leave the
+  // already-finished party-live card underneath the recap on Android.
+  router.dismissAll();
 }
 
-/** Test/account-boundary cleanup for a navigation that has not fired yet. */
+/** Commit recap after the native Party-stack dismissal changed the pathname. */
+export function completePendingPartyRecapNavigation(
+  router: Pick<FinishedPartyRouter, 'navigate' | 'replace'>,
+  pathname: string,
+): boolean {
+  if (!pendingRecapSourcePath || pathname === pendingRecapSourcePath) return false;
+  pendingRecapSourcePath = null;
+  if (pathname === '/friends/party-recap') return true;
+  if (pathname.startsWith('/party-')) {
+    // Cold-start finish has party-live as its root. Replace that last Party
+    // card so Back cannot resurrect an empty, already-finished evening.
+    router.replace('/friends/party-recap');
+  } else {
+    // A normal in-app finish returned to the tab stack. Navigate within the
+    // Friends stack so Back from recap has one ordinary destination: Friends.
+    router.navigate('/friends/party-recap');
+  }
+  return true;
+}
+
+/** Account/invite-boundary cleanup for a navigation that has not committed. */
 export function cancelPendingPartyRecapNavigation(): void {
-  if (!recapNavigationTimer) return;
-  clearTimeout(recapNavigationTimer);
-  recapNavigationTimer = null;
+  pendingRecapSourcePath = null;
 }

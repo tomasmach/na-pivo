@@ -38,6 +38,7 @@ import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
+import { installPrivatePubDataRestores } from '@/data/privatePubDataRestore';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { fetchFriendsLive } from '@/data/friendsClient';
@@ -51,6 +52,7 @@ import { flushPartyGameStartsQueue } from '@/data/partyGameStartsQueue';
 import { flushPartyEveningActionsQueue } from '@/data/partyEveningActionsQueue';
 import { flushPartyGamesQueue } from '@/data/partyGamesQueue';
 import { flushBeerPhotosQueue } from '@/data/beerPhotosQueue';
+import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
 import { seedDrinksFromHistory } from '@/data/drinksHistorySync';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
@@ -81,7 +83,10 @@ import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { hasLiveFriendSignal, usePartaSignalStore } from '@/stores/partaSignalStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
-import { cancelPendingPartyRecapNavigation } from '@/party/partyRouting';
+import {
+  cancelPendingPartyRecapNavigation,
+  completePendingPartyRecapNavigation,
+} from '@/party/partyRouting';
 import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -176,6 +181,10 @@ function seedPartaBadge(): void {
   });
 }
 
+function ignoreExpectedPrivateAccountFreeze(error: unknown): void {
+  if (!(error instanceof PrivateAccountMutationFrozenError)) throw error;
+}
+
 function restoreAndFlushAddedPubsQueue(): void {
   void restoreQueuedAddedPubs()
     .then((restoredCount) => {
@@ -190,7 +199,8 @@ function restoreAndFlushAddedPubsQueue(): void {
       if (restoredCount > 0) {
         usePubStore.getState().bumpCatalogRevision();
       }
-    });
+    })
+    .catch(ignoreExpectedPrivateAccountFreeze);
 }
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -335,6 +345,9 @@ export default function RootLayout() {
     inviteNavigationRef.current.leaveConfirmation();
   }, [partyInviteRequest, routeInviteCode]);
   useEffect(() => {
+    completePendingPartyRecapNavigation(router, pathname);
+  }, [pathname, router]);
+  useEffect(() => {
     routerRef.current = router;
   }, [router]);
   useEffect(() => {
@@ -368,6 +381,8 @@ export default function RootLayout() {
     void initializePubReminderNotifications();
     void initializeBeerCountReminderNotifications();
   }, [startupBoundaryReady]);
+
+  useEffect(() => installPrivatePubDataRestores(), []);
 
   const commitCounterNavigation = useCallback(() => {
     cancelPendingPartyRecapNavigation();
@@ -576,11 +591,8 @@ export default function RootLayout() {
     if (!isStartupFlushOwnedByAccountInitialization('drinks')) void flushDrinksQueue();
     void flushDeleteDrinksQueue();
     void flushUpdateDrinksQueue();
-    // Personal ratings: pull + merge the server set (LWW), pushing local-newer
-    // ratings, then flush. Visits: one-time seed of existing history, then flush.
-    void restorePubRatings();
-    // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
-    void restorePubAmenities();
+    // Personal ratings and amenity votes have an account-aware launch/thaw
+    // coordinator above. Visits still seed once here, then flush.
     void seedVisitsFromHistory();
     if (!isStartupFlushOwnedByAccountInitialization('visits')) void flushVisitsQueue();
     // Parta: retry queued RSVP/cinknutí/reactions, and light up push for
@@ -628,8 +640,8 @@ export default function RootLayout() {
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
         void flushUpdateDrinksQueue();
-        void restorePubRatings();
-        void restorePubAmenities();
+        void restorePubRatings().catch(ignoreExpectedPrivateAccountFreeze);
+        void restorePubAmenities().catch(ignoreExpectedPrivateAccountFreeze);
         void flushVisitsQueue();
         void flushFriendsQueue();
         void flushBeerCheckinsQueue();

@@ -4,6 +4,11 @@ import {
   runWithoutPubAmenitiesSync,
   resetPubAmenitiesPullGateForTests,
 } from '../pubAmenitiesSync';
+import { ensureAccount } from '../account';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
@@ -49,6 +54,7 @@ function wire(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetPrivateAccountBoundaryForTests();
   resetPubAmenitiesPullGateForTests();
   getQueuedAmenityDeletes.mockResolvedValue(new Set<string>());
   usePubAmenitiesStore.setState({ votes: {} });
@@ -149,6 +155,53 @@ describe('restorePubAmenities — pull + merge (LWW)', () => {
     fetchMyAmenityVotes.mockResolvedValue([wire({ amenity_key: 'totally_made_up' })]);
     await restorePubAmenities();
     expect(usePubAmenitiesStore.getState().votes[PUB]).toBeUndefined();
+  });
+
+  it('drops an old-account response when credentials change during the fetch', async () => {
+    let fetchStarted!: () => void;
+    let resolveFetch!: (votes: ReturnType<typeof wire>[]) => void;
+    let fetchSignal: AbortSignal | undefined;
+    const started = new Promise<void>((resolve) => {
+      fetchStarted = resolve;
+    });
+    fetchMyAmenityVotes.mockImplementationOnce((signal: AbortSignal) => {
+      fetchSignal = signal;
+      fetchStarted();
+      return new Promise((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+
+    const restoring = restorePubAmenities();
+    await started;
+    const transition = beginPrivateAccountTransition('test-account-switch', 'acc-1');
+    expect(transition).not.toBeNull();
+    const drained = transition!.drain();
+    let didDrain = false;
+    void drained.then(() => {
+      didDrain = true;
+    });
+
+    expect(fetchSignal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(didDrain).toBe(false);
+    resolveFetch([wire()]);
+    await restoring;
+    await drained;
+
+    expect(usePubAmenitiesStore.getState().votes[PUB]).toBeUndefined();
+    expect(enqueueAmenityOp).not.toHaveBeenCalled();
+    transition!.release();
+
+    jest.mocked(ensureAccount).mockResolvedValueOnce({
+      deviceId: 'dev-2',
+      accountId: 'acc-2',
+      token: 'tok-2',
+      authenticated: true,
+    });
+    fetchMyAmenityVotes.mockResolvedValueOnce([wire({ cache_key: OTHER })]);
+    await restorePubAmenities();
+    expect(usePubAmenitiesStore.getState().votes[OTHER]?.game_darts?.vote).toBe('yes');
   });
 });
 

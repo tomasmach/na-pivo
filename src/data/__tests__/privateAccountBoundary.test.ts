@@ -13,6 +13,7 @@ import {
   resetPrivateAccountBoundaryForTests,
   runPrivateAccountMutation,
   setPrivateAccountDeletionRecoveryBlocked,
+  setPrivateAccountRehydrationRecoveryBlocked,
 } from '@/data/privateAccountBoundary';
 import { createQueueLock } from '@/data/createQueue';
 import privateAccountStorage from '@/data/privateAccountStorage';
@@ -32,13 +33,31 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 describe('private account mutation boundary', () => {
   beforeEach(async () => {
     setPrivateAccountDeletionRecoveryBlocked(false);
+    setPrivateAccountRehydrationRecoveryBlocked(false);
     resetPrivateAccountBoundaryForTests();
     await AsyncStorage.clear();
   });
 
   afterEach(() => {
     setPrivateAccountDeletionRecoveryBlocked(false);
+    setPrivateAccountRehydrationRecoveryBlocked(false);
     resetPrivateAccountBoundaryForTests();
+  });
+
+  it('keeps private writes frozen until rehydration recovery is explicitly complete', async () => {
+    setPrivateAccountRehydrationRecoveryBlocked(true);
+
+    await expect(
+      runPrivateAccountMutation(async () => 'unsafe'),
+    ).rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+
+    const transition = beginPrivateAccountTransition('rehydration-retry', 'B');
+    expect(transition).not.toBeNull();
+    transition!.release();
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+
+    setPrivateAccountRehydrationRecoveryBlocked(false);
+    await expect(runPrivateAccountMutation(async () => 'B')).resolves.toBe('B');
   });
 
   it('drains A tasks delayed behind a queue mutex before clear and refuses new writes', async () => {
@@ -110,6 +129,36 @@ describe('private account mutation boundary', () => {
     })).toBe(true);
     expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).toBeNull();
     await expect(runPrivateAccountMutation(async () => 'B')).resolves.toBe('B');
+  });
+
+  it('keeps the cold A to B marker frozen until every local finalizer succeeds', async () => {
+    const transition = beginPrivateAccountTransition('auth', 'A')!;
+    const preflight = await preflightPrivateAccountMerge(
+      transition,
+      'A',
+      async () => true,
+    );
+    expect(preflight).not.toBeNull();
+    expect(await promotePrivateAccountMerge(
+      'A',
+      'B',
+      preflight!.operationId,
+      async () => true,
+    )).toBe(true);
+    transition.release();
+    resetPrivateAccountBoundaryForTests();
+
+    await expect(
+      recoverPrivateAccountMerge('B', async () => false),
+    ).resolves.toBe(false);
+    expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).not.toBeNull();
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+
+    await expect(
+      recoverPrivateAccountMerge('B', async () => true),
+    ).resolves.toBe(true);
+    expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).toBeNull();
+    expect(isPrivateAccountMutationFrozen()).toBe(false);
   });
 
   it('drains a delayed private hydration read and refuses its stale A value', async () => {

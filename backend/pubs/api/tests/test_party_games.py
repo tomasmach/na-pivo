@@ -23,12 +23,28 @@ import pytest
 from asgiref.sync import sync_to_async
 from django.db import IntegrityError, connection, connections, transaction
 from django.db.migrations.executor import MigrationExecutor
+from django.db.models import QuerySet
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient, APIRequestFactory
 
-from pubs.models import Account, AuthToken, FriendBlock, Friendship, PartyGame, PartyGameEvent
+import pubs.accounts as accounts
+import pubs.api.party_views as party_views
+from pubs.models import (
+    Account,
+    AccountIdentityAlias,
+    AuthToken,
+    FriendBlock,
+    Friendship,
+    PartyEvening,
+    PartyEveningCode,
+    PartyEveningMember,
+    PartyGame,
+    PartyGameAlias,
+    PartyGameEvent,
+    PublishedNight,
+)
 
 
 @pytest.fixture
@@ -124,6 +140,466 @@ def _send(client: APIClient, token: str, code: str, game_id: str, events: list[d
         format="json",
         **_auth(token),
     )
+
+
+def _track_party_write_locks(monkeypatch) -> list[str]:
+    lock_order: list[str] = []
+    real_select_for_update = QuerySet.select_for_update
+
+    def track(queryset, *args, **kwargs):
+        labels = {
+            Account: "account",
+            PartyEvening: "evening",
+            PartyEveningMember: "membership",
+            PartyGame: "game",
+        }
+        label = labels.get(queryset.model)
+        if label:
+            lock_order.append(label)
+        return real_select_for_update(queryset, *args, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "select_for_update", track)
+    return lock_order
+
+
+@pytest.mark.django_db
+def test_game_start_locks_accounts_before_evening_and_children(client, monkeypatch):
+    host_token, _host, _guest_token, _guest, code = _table(client)
+    lock_order = _track_party_write_locks(monkeypatch)
+
+    response = _start_game(client, host_token, code)
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert lock_order[0] == "account"
+    assert lock_order.index("account") < lock_order.index("evening")
+    assert lock_order.index("evening") < lock_order.index("game")
+    assert lock_order.index("evening") < lock_order.index("membership")
+
+
+@pytest.mark.django_db
+def test_game_event_locks_accounts_before_evening_and_game(client, monkeypatch):
+    host_token, _host, _guest_token, guest, code = _table(client)
+    game = _start_game(client, host_token, code).json()
+    lock_order = _track_party_write_locks(monkeypatch)
+
+    response = _send(
+        client,
+        host_token,
+        code,
+        game["id"],
+        [
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "score",
+                "subject_id": str(guest.public_id),
+                "delta": 1,
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert lock_order == ["account", "evening", "game"]
+
+
+@pytest.mark.django_db
+def test_game_event_retries_when_subject_is_retired_between_roster_read_and_locks(
+    client,
+    monkeypatch,
+):
+    host_token, _host, _guest_token, guest, code = _table(client)
+    game = _start_game(client, host_token, code).json()
+    real_lock = party_views._lock_accounts_in_pk_order
+
+    def omit_retired_subject(account_ids):
+        locked = real_lock(account_ids)
+        locked.pop(guest.pk, None)
+        return locked
+
+    monkeypatch.setattr(
+        party_views,
+        "_lock_accounts_in_pk_order",
+        omit_retired_subject,
+    )
+    response = _send(
+        client,
+        host_token,
+        code,
+        game["id"],
+        [
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "score",
+                "subject_id": str(guest.public_id),
+                "delta": 1,
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["code"] == "auth"
+    assert not PartyGameEvent.objects.filter(kind=PartyGameEvent.Kind.SCORE).exists()
+
+
+@pytest.mark.django_db
+def test_game_event_retries_when_host_is_retired_before_account_locks(client, monkeypatch):
+    host_token, host, guest_token, _guest, code = _table(client)
+    game = _start_game(client, host_token, code).json()
+    real_lock = party_views._lock_accounts_in_pk_order
+
+    def omit_retired_host(account_ids):
+        locked = real_lock(account_ids)
+        locked.pop(host.pk, None)
+        return locked
+
+    monkeypatch.setattr(
+        party_views,
+        "_lock_accounts_in_pk_order",
+        omit_retired_host,
+    )
+    response = _send(
+        client,
+        guest_token,
+        code,
+        game["id"],
+        [
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "action",
+                "payload": {"type": "prompt_next"},
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["code"] == "auth"
+    assert not PartyGameEvent.objects.filter(kind=PartyGameEvent.Kind.ACTION).exists()
+
+
+@pytest.mark.django_db
+def test_game_start_retries_when_host_is_retired_before_account_locks(client, monkeypatch):
+    _host_token, host, guest_token, guest, code = _table(client)
+    real_lock = party_views._lock_accounts_in_pk_order
+
+    def omit_retired_host(account_ids):
+        locked = real_lock(account_ids)
+        locked.pop(host.pk, None)
+        return locked
+
+    monkeypatch.setattr(
+        party_views,
+        "_lock_accounts_in_pk_order",
+        omit_retired_host,
+    )
+    response = _start_game(
+        client,
+        guest_token,
+        code,
+        roster_ids=[str(host.public_id), str(guest.public_id)],
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["code"] == "auth"
+    assert not PartyGame.objects.exists()
+
+
+@pytest.mark.django_db
+def test_game_start_retries_when_an_existing_starter_is_retired(client, monkeypatch):
+    host_token, _host, guest_token, guest, code = _table(client)
+    first = _start_game(client, guest_token, code)
+    assert first.status_code == status.HTTP_201_CREATED
+    real_lock = party_views._lock_accounts_in_pk_order
+
+    def omit_retired_starter(account_ids):
+        locked = real_lock(account_ids)
+        locked.pop(guest.pk, None)
+        return locked
+
+    monkeypatch.setattr(
+        party_views,
+        "_lock_accounts_in_pk_order",
+        omit_retired_starter,
+    )
+    response = _start_game(
+        client,
+        host_token,
+        code,
+        catalog_key="dice",
+        name="Kostky",
+        roster_ids=[str(_host.public_id), str(guest.public_id)],
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json()["code"] == "auth"
+    assert list(PartyGame.objects.values_list("catalog_key", flat=True)) == ["quiz"]
+
+
+@pytest.mark.django_db
+def test_queued_game_start_canonicalizes_retired_roster_ids(client):
+    _host_token, host, guest_token, guest, code = _table(client)
+    retired_host_id = host.public_id
+    canonical_host = Account.objects.create(device_id="canonical-game-host")
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(host, canonical_host)
+
+    client_id = str(uuid.uuid4())
+    payload = {
+        "client_id": client_id,
+        "roster_ids": [str(retired_host_id), str(guest.public_id)],
+    }
+    response = _start_game(client, guest_token, code, **payload)
+    retry = _start_game(client, guest_token, code, **payload)
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert retry.status_code == status.HTTP_200_OK, retry.content
+    assert [row["id"] for row in response.json()["roster"]] == [
+        str(canonical_host.public_id),
+        str(guest.public_id),
+    ]
+    assert PartyGame.objects.get().roster_account_ids == [
+        str(canonical_host.public_id),
+        str(guest.public_id),
+    ]
+
+
+@pytest.mark.django_db
+def test_stale_player_uuid_survives_repeated_account_merges(client):
+    host_token, _host, _guest_token, source, code = _table(client)
+    game_body = _start_game(client, host_token, code).json()
+    game = PartyGame.objects.get(public_id=game_body["id"])
+    original_seed = game.seed
+    old_public_id = source.public_id
+    historical_client_id = uuid.uuid4()
+    historical_event = PartyGameEvent.objects.create(
+        game=game,
+        account=_host,
+        client_id=historical_client_id,
+        kind=PartyGameEvent.Kind.ACTION,
+        payload={
+            "type": "pick",
+            "playerId": str(old_public_id),
+            "nested": [{"winnerId": str(old_public_id)}],
+            "unrelated": f"player:{old_public_id}",
+        },
+    )
+    legacy_game = PartyGame.objects.create(
+        client_id=uuid.uuid4(),
+        evening=game.evening,
+        started_by=source,
+        catalog_key="legacy-empty",
+        name="Legacy hra",
+        roster_account_ids=[],
+        ended_at=timezone.now(),
+    )
+    legacy_event = PartyGameEvent.objects.create(
+        game=legacy_game,
+        account=source,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.FINISH,
+        payload={"winnerId": str(old_public_id)},
+    )
+    middle = Account.objects.create(device_id="game-alias-middle")
+    target = Account.objects.create(device_id="game-alias-target")
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, middle)
+    with transaction.atomic():
+        accounts._merge_anonymous_account(middle, target)
+
+    game.refresh_from_db()
+    assert game.seed == original_seed
+    assert game.roster_account_ids == [
+        str(_host.public_id),
+        str(target.public_id),
+    ]
+    assert set(
+        AccountIdentityAlias.objects.filter(account=target).values_list(
+            "public_id",
+            flat=True,
+        )
+    ) == {old_public_id, middle.public_id}
+    historical_event.refresh_from_db()
+    assert historical_event.payload == {
+        "type": "pick",
+        "playerId": str(target.public_id),
+        "nested": [{"winnerId": str(target.public_id)}],
+        "unrelated": f"player:{old_public_id}",
+    }
+
+    cold_start = client.get(
+        f"/v1/party-evenings/{code}/games?since=0",
+        **_auth(host_token),
+    ).json()
+    historical_payload = next(
+        event["payload"]
+        for event in cold_start["events"]
+        if event["client_id"] == str(historical_client_id)
+    )
+    assert historical_payload == historical_event.payload
+    legacy_event.refresh_from_db()
+    assert legacy_event.payload == {"winnerId": str(target.public_id)}
+
+    response = _send(
+        client,
+        host_token,
+        code,
+        str(game.public_id),
+        [
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "score",
+                "subject_id": str(old_public_id),
+                "delta": 1,
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    event = PartyGameEvent.objects.get(kind=PartyGameEvent.Kind.SCORE)
+    assert event.subject_id == target.pk
+
+    new_action_client_id = uuid.uuid4()
+    action = _send(
+        client,
+        host_token,
+        code,
+        str(game.public_id),
+        [
+            {
+                "client_id": str(new_action_client_id),
+                "kind": "action",
+                "payload": {
+                    "type": "pick",
+                    "playerId": str(old_public_id),
+                    "nested": [{"winnerId": str(middle.public_id)}],
+                },
+            }
+        ],
+    )
+
+    assert action.status_code == status.HTTP_201_CREATED, action.content
+    action_event = PartyGameEvent.objects.get(client_id=new_action_client_id)
+    assert action_event.payload == {
+        "type": "pick",
+        "playerId": str(target.public_id),
+        "nested": [{"winnerId": str(target.public_id)}],
+    }
+    assert response.json()["accepted"][0]["subject"]["id"] == str(target.public_id)
+
+
+@pytest.mark.django_db
+def test_retired_game_uuid_and_code_resolve_after_evening_merge(client):
+    _source_token, source = _register(client, "source")
+    target_token, target = _register(client, "target")
+    sender_token, sender = _register(client, "sender")
+    _friend(source, sender)
+    _friend(target, sender)
+    evening_client_id = uuid.uuid4()
+    started_at = timezone.now() - timedelta(hours=1)
+    source_evening = PartyEvening.objects.create(
+        host=source,
+        client_id=evening_client_id,
+        join_code="OLDGAME1",
+        pub_name="Zdrojový stůl",
+        started_at=started_at,
+    )
+    target_evening = PartyEvening.objects.create(
+        host=target,
+        client_id=evening_client_id,
+        join_code="NEWGAME1",
+        pub_name="Cílový stůl",
+        started_at=started_at,
+    )
+    for evening, host in ((source_evening, source), (target_evening, target)):
+        PartyEveningCode.objects.create(evening=evening, join_code=evening.join_code)
+        PartyEveningMember.objects.create(evening=evening, account=host)
+        PartyEveningMember.objects.create(evening=evening, account=sender)
+    canonical = PartyGame.objects.create(
+        evening=source_evening,
+        started_by=source,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="První kvíz",
+        roster_account_ids=[str(source.public_id), str(sender.public_id)],
+        started_at=started_at,
+    )
+    canonical_seed = canonical.seed
+    retired = PartyGame.objects.create(
+        evening=target_evening,
+        started_by=target,
+        client_id=uuid.uuid4(),
+        catalog_key="quiz",
+        name="Pozdější kvíz",
+        roster_account_ids=[str(target.public_id), str(sender.public_id)],
+        payloads_redacted=True,
+        started_at=started_at + timedelta(minutes=5),
+    )
+    retired_public_id = retired.public_id
+    retired_event = PartyGameEvent.objects.create(
+        game=retired,
+        account=sender,
+        client_id=uuid.uuid4(),
+        kind=PartyGameEvent.Kind.ACTION,
+        payload={"type": "pick", "playerId": str(target.public_id)},
+    )
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, target)
+
+    canonical.refresh_from_db()
+    assert canonical.evening_id == target_evening.pk
+    assert canonical.seed == canonical_seed
+    assert canonical.ended_at is None
+    assert canonical.payloads_redacted is True
+    retired_event.refresh_from_db()
+    assert retired_event.game_id == canonical.pk
+    assert retired_event.payload == {}
+    assert PartyGameAlias.objects.get(public_id=retired_public_id).game_id == canonical.pk
+
+    scored = _send(
+        client,
+        sender_token,
+        "OLDGAME1",
+        str(retired_public_id),
+        [
+            {
+                "client_id": str(uuid.uuid4()),
+                "kind": "score",
+                "subject_id": str(sender.public_id),
+                "delta": 1,
+            }
+        ],
+    )
+    assert scored.status_code == status.HTTP_201_CREATED, scored.content
+    assert scored.json()["accepted"][0]["game_id"] == str(canonical.public_id)
+
+    ended_at = timezone.now()
+    published = client.post(
+        "/v1/nights",
+        data={
+            "client_id": "retired-game-night",
+            "drinking_day": ended_at.date().isoformat(),
+            "started_at": started_at.isoformat(),
+            "ended_at": ended_at.isoformat(),
+            "beer_count": 1,
+            "wine_count": 0,
+            "soft_drink_count": 0,
+            "shot_count": 0,
+            "pub_names": ["Cílový stůl"],
+            "city": "Praha",
+            "duration_minutes": 60,
+            "visibility": "public",
+            "updated_at": ended_at.isoformat(),
+            "party_code": "OLDGAME1",
+            "game_ids": [str(retired_public_id)],
+        },
+        format="json",
+        **_auth(target_token),
+    )
+    assert published.status_code == status.HTTP_201_CREATED, published.content
+    assert PublishedNight.objects.get(account=target).game_ids == [
+        str(canonical.public_id)
+    ]
 
 
 @pytest.mark.django_db
@@ -1232,6 +1708,34 @@ def test_games_hide_blocked_non_host_profiles_as_authors_subjects_and_starters(c
         ).status_code
         == 201
     )
+    sensitive_client_id = str(uuid.uuid4())
+    finish_client_id = str(uuid.uuid4())
+    sensitive_payload = {
+        "type": "pick",
+        "playerId": str(hidden.public_id),
+        "playerName": hidden.nickname,
+    }
+    assert (
+        _send(
+            client,
+            host_token,
+            code,
+            visible_game["id"],
+            [
+                {
+                    "client_id": sensitive_client_id,
+                    "kind": "action",
+                    "payload": sensitive_payload,
+                },
+                {
+                    "client_id": finish_client_id,
+                    "kind": "finish",
+                    "payload": sensitive_payload,
+                },
+            ],
+        ).status_code
+        == 201
+    )
     hidden_client_id = str(uuid.uuid4())
     hidden_game = _start_game(
         client,
@@ -1256,12 +1760,19 @@ def test_games_hide_blocked_non_host_profiles_as_authors_subjects_and_starters(c
     gameplay = [
         event
         for event in observer_body["events"]
-        if event["kind"] not in {"start", "finish"}
+        if event["kind"] == "score"
     ]
     assert len(gameplay) == 1
     assert gameplay[0]["account"]["id"] == str(host.public_id)
     assert gameplay[0]["subject"]["id"] == str(host.public_id)
+    sensitive_event = next(
+        event
+        for event in observer_body["events"]
+        if event["client_id"] == sensitive_client_id
+    )
+    assert sensitive_event["payload"] == {}
     assert str(hidden.public_id) not in str(observer_body)
+    assert hidden.nickname not in str(observer_body)
     assert hidden_game["id"] not in str(observer_body)
     hidden_retry = _start_game(
         client,
@@ -1281,9 +1792,130 @@ def test_games_hide_blocked_non_host_profiles_as_authors_subjects_and_starters(c
         visible_game["id"],
         hidden_game["id"],
     }
-    assert len(host_body["events"]) == 6
+    assert len(host_body["events"]) == 7
     assert sum(event["kind"] == "start" for event in host_body["events"]) == 2
     assert sum(event["kind"] == "finish" for event in host_body["events"]) == 1
+    host_sensitive_event = next(
+        event
+        for event in host_body["events"]
+        if event["client_id"] == sensitive_client_id
+    )
+    assert host_sensitive_event["payload"] == sensitive_payload
+
+    observer_record = client.get(
+        f"/v1/party-evenings/{code}/record",
+        **_auth(observer_token),
+    ).json()
+    record_sensitive_event = next(
+        event
+        for game in observer_record["games"]
+        for event in game["events"]
+        if event["client_id"] == sensitive_client_id
+    )
+    assert record_sensitive_event["payload"] == {}
+    finished_timeline_event = next(
+        event
+        for event in observer_record["events"]
+        if event["kind"] == "game_finished"
+        and event["game"]["id"] == visible_game["id"]
+    )
+    assert finished_timeline_event["result"] == {}
+    assert str(hidden.public_id) not in str(observer_record)
+    assert hidden.nickname not in str(observer_record)
+
+
+@pytest.mark.django_db
+def test_hard_purged_game_discards_future_opaque_payloads(client):
+    host_token, _host, _guest_token, deleted, code = _table(client)
+    deleted_public_id = str(deleted.public_id)
+    game_body = _start_game(client, host_token, code).json()
+    game = PartyGame.objects.get(public_id=game_body["id"])
+
+    accounts.hard_delete(deleted)
+
+    game.refresh_from_db()
+    assert game.payloads_redacted is True
+    assert deleted_public_id not in game.roster_account_ids
+
+    action_client_id = str(uuid.uuid4())
+    written = _send(
+        client,
+        host_token,
+        code,
+        str(game.public_id),
+        [
+            {
+                "client_id": action_client_id,
+                "kind": "action",
+                "payload": {
+                    "type": "pick",
+                    "playerId": deleted_public_id,
+                    "playerName": "Smazaný hráč",
+                },
+            }
+        ],
+    )
+
+    assert written.status_code == status.HTTP_201_CREATED, written.content
+    assert written.json()["accepted"][0]["payload"] == {}
+    stored = PartyGameEvent.objects.get(client_id=action_client_id)
+    assert stored.payload == {}
+
+
+@pytest.mark.django_db
+def test_unbound_game_payload_is_hidden_when_any_participant_is_hidden(client):
+    host_token, _host, observer_token, observer, code = _table(client)
+    hidden_token, hidden = _register(client, "hidden-unbound")
+    assert client.post(f"/v1/party-evenings/{code}/join", **_auth(hidden_token)).status_code == 200
+    game_body = _start_game(client, host_token, code).json()
+    game = PartyGame.objects.get(public_id=game_body["id"])
+    game.roster_account_ids = []
+    game.save(update_fields=["roster_account_ids"])
+    finish_client_id = str(uuid.uuid4())
+    payload = {
+        "winner": hidden.nickname,
+        "winnerId": str(hidden.public_id),
+    }
+    sent = _send(
+        client,
+        host_token,
+        code,
+        game_body["id"],
+        [
+            {
+                "client_id": finish_client_id,
+                "kind": "finish",
+                "payload": payload,
+            }
+        ],
+    )
+    assert sent.status_code == status.HTTP_201_CREATED, sent.content
+
+    FriendBlock.objects.create(blocker=observer, blocked=hidden)
+
+    observer_body = client.get(
+        f"/v1/party-evenings/{code}/games",
+        **_auth(observer_token),
+    ).json()
+    observer_finish = next(
+        event
+        for event in observer_body["events"]
+        if event["client_id"] == finish_client_id
+    )
+    assert observer_finish["payload"] == {}
+    assert str(hidden.public_id) not in str(observer_body)
+    assert hidden.nickname not in str(observer_body)
+
+    host_body = client.get(
+        f"/v1/party-evenings/{code}/games",
+        **_auth(host_token),
+    ).json()
+    host_finish = next(
+        event
+        for event in host_body["events"]
+        if event["client_id"] == finish_client_id
+    )
+    assert host_finish["payload"] == payload
 
 
 @pytest.mark.django_db
@@ -1481,6 +2113,7 @@ async def test_stream_filters_events_from_a_blocked_non_host_member(
         "delta": 1,
     }
     hidden_event = {**visible_event, "client_id": str(uuid.uuid4()), "delta": 2}
+    sensitive_client_id = str(uuid.uuid4())
     await sync_to_async(_send, thread_sensitive=True)(
         sync_client,
         host_token,
@@ -1494,6 +2127,23 @@ async def test_stream_filters_events_from_a_blocked_non_host_member(
         code,
         game["id"],
         [hidden_event],
+    )
+    await sync_to_async(_send, thread_sensitive=True)(
+        sync_client,
+        host_token,
+        code,
+        game["id"],
+        [
+            {
+                "client_id": sensitive_client_id,
+                "kind": "action",
+                "payload": {
+                    "type": "pick",
+                    "playerId": str(hidden.public_id),
+                    "playerName": hidden.nickname,
+                },
+            }
+        ],
     )
     await sync_to_async(FriendBlock.objects.create, thread_sensitive=True)(
         blocker=observer,
@@ -1512,9 +2162,10 @@ async def test_stream_filters_events_from_a_blocked_non_host_member(
     async for chunk in stream:
         seen += chunk
 
-    assert seen.count(b"event: game_event") == 2
+    assert seen.count(b"event: game_event") == 3
     assert b'"kind": "start"' in seen
     assert b'"delta": 1' in seen
+    assert sensitive_client_id.encode() in seen
     assert str(hidden.public_id).encode() not in seen
     assert hidden.nickname.encode() not in seen
 

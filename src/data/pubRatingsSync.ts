@@ -35,6 +35,13 @@ import {
 } from './pubRatingsQueue';
 import { fetchRatings, type WireRatingUpsert } from './pubRatingsClient';
 import {
+  combinePrivateAccountMutationSignals,
+  isPrivateAccountMutationScopeCurrent,
+  PrivateAccountMutationFrozenError,
+  runPrivateAccountMutation,
+  type PrivateAccountMutationScope,
+} from './privateAccountBoundary';
+import {
   usePubRatingsStore,
   type PubRating,
 } from '@/stores/pubRatingsStore';
@@ -174,11 +181,17 @@ export function resetPubRatingsPullGate(): void {
 
 export const resetPubRatingsPullGateForTests = resetPubRatingsPullGate;
 
-export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
+async function restorePubRatingsWithinBoundary(
+  scope: PrivateAccountMutationScope,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   // Apply queued tombstones before reading, when possible. If any delete remains
   // pending, skip that server row below so a cleared rating does not reappear.
   await flushPubRatingsQueue();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   const accountId = (await ensureAccount(signal))?.accountId ?? null;
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   if (
     accountId != null &&
     accountId === lastPulledAccountId &&
@@ -187,8 +200,13 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
     return;
   }
   const pendingDeleteKeys = await getQueuedRatingDeletePubKeys();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   const serverRatings = await fetchRatings(signal);
-  if (serverRatings === null) {
+  if (
+    serverRatings === null ||
+    signal.aborted ||
+    !isPrivateAccountMutationScopeCurrent(scope)
+  ) {
     return;
   }
 
@@ -206,13 +224,16 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   }
 
   // Merge server → local (LWW), suppressing the push echo for the write.
+  if (!isPrivateAccountMutationScopeCurrent(scope)) return;
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.getState().hydrateRatings(merged);
   });
 
   // Push local ratings the server is missing, or where the local copy is newer.
+  if (!isPrivateAccountMutationScopeCurrent(scope)) return;
   const localRatings = usePubRatingsStore.getState().ratings;
   for (const [pubKey, local] of Object.entries(localRatings)) {
+    if (!isPrivateAccountMutationScopeCurrent(scope)) return;
     if (pendingDeleteKeys.has(pubKey)) continue;
     const server = serverByKey.get(pubKey);
     if (!server) {
@@ -227,8 +248,24 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   }
 
   await flushPubRatingsQueue();
+  if (signal.aborted || !isPrivateAccountMutationScopeCurrent(scope)) return;
   // Stamp only after the whole pass succeeded, so a failed merge/push retries
   // on the next foreground instead of waiting out the gate.
   lastPulledAt = Date.now();
   lastPulledAccountId = accountId;
+}
+
+export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
+  try {
+    await runPrivateAccountMutation(async (scope) => {
+      const combined = combinePrivateAccountMutationSignals(scope, signal);
+      try {
+        await restorePubRatingsWithinBoundary(scope, combined.signal);
+      } finally {
+        combined.cleanup();
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof PrivateAccountMutationFrozenError)) throw error;
+  }
 }

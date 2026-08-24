@@ -29,6 +29,10 @@ import {
   setAnonymousSessionEvictionListener,
 } from '@/data/account';
 import { rehydratePrivateStoresAfterBoundary } from '@/data/privateAccountData';
+import { readPrivateAccountMergeIntent } from '@/data/privateAccountBoundary';
+import { rekeyAccountPreferencesQueueOwner } from '@/data/accountPreferencesQueue';
+import { rekeyPartyEveningIdentityOwner } from '@/data/partyEveningIdentityCache';
+import { recoverPartyGameQueuesForAccount } from '@/data/partyGameQueueBoundary';
 import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot } from '@/data/diarySync';
 
@@ -76,6 +80,9 @@ jest.mock('@/data/privateAccountBoundary', () => ({
 jest.mock('@/data/accountPreferencesQueue', () => ({
   rekeyAccountPreferencesQueueOwner: jest.fn(async () => true),
 }));
+jest.mock('@/data/partyEveningIdentityCache', () => ({
+  rekeyPartyEveningIdentityOwner: jest.fn(async () => true),
+}));
 jest.mock('@/data/partyGameQueueBoundary', () => ({
   recoverPartyGameQueuesForAccount: jest.fn(async () => true),
 }));
@@ -113,6 +120,22 @@ const mockReconcileDiarySnapshot = reconcileDiarySnapshot as jest.MockedFunction
 const mockRehydratePrivateStoresAfterBoundary =
   rehydratePrivateStoresAfterBoundary as jest.MockedFunction<
     typeof rehydratePrivateStoresAfterBoundary
+  >;
+const mockReadPrivateAccountMergeIntent =
+  readPrivateAccountMergeIntent as jest.MockedFunction<
+    typeof readPrivateAccountMergeIntent
+  >;
+const mockRekeyAccountPreferencesQueueOwner =
+  rekeyAccountPreferencesQueueOwner as jest.MockedFunction<
+    typeof rekeyAccountPreferencesQueueOwner
+  >;
+const mockRekeyPartyEveningIdentityOwner =
+  rekeyPartyEveningIdentityOwner as jest.MockedFunction<
+    typeof rekeyPartyEveningIdentityOwner
+  >;
+const mockRecoverPartyGameQueuesForAccount =
+  recoverPartyGameQueuesForAccount as jest.MockedFunction<
+    typeof recoverPartyGameQueuesForAccount
   >;
 
 function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
@@ -212,9 +235,57 @@ beforeEach(() => {
   });
   mockFetchAccountPreferences.mockResolvedValue(null);
   mockReconcileDiarySnapshot.mockResolvedValue(null);
+  mockReadPrivateAccountMergeIntent.mockResolvedValue({ ok: true, intent: null });
+  mockRekeyAccountPreferencesQueueOwner.mockResolvedValue(true);
+  mockRekeyPartyEveningIdentityOwner.mockResolvedValue(true);
+  mockRecoverPartyGameQueuesForAccount.mockResolvedValue(true);
+  mockRehydratePrivateStoresAfterBoundary.mockResolvedValue(true);
 });
 
 describe('initAccount', () => {
+  it('does not reopen account recovery after startup already published a session', async () => {
+    const session = {
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    };
+    useAccountStore.setState({
+      session,
+      status: 'ready',
+      startupBoundaryReady: true,
+      profile: signedInProfile(),
+    });
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockedAuth.recoverPendingAccountDeletionAtStartup).not.toHaveBeenCalled();
+    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    expect(useAccountStore.getState()).toMatchObject({
+      session,
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('recovers the account when startup is marked ready but the session is missing', async () => {
+    useAccountStore.setState({
+      session: null,
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockedAuth.recoverPendingAccountDeletionAtStartup).toHaveBeenCalledTimes(1);
+    expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState()).toMatchObject({
+      session: expect.objectContaining({ accountId: 'a' }),
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
   it('fails closed on a locked session read and succeeds on explicit retry', async () => {
     mockReadDurableAccountSession.mockResolvedValueOnce({
       available: false,
@@ -238,6 +309,73 @@ describe('initAccount', () => {
     expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
     expect(useAccountStore.getState()).toMatchObject({
       session: expect.objectContaining({ accountId: 'a' }),
+      status: 'ready',
+      startupBoundaryReady: true,
+    });
+  });
+
+  it('keeps a recovered A to B marker until the explicit private rehydrate succeeds', async () => {
+    const sessionB = {
+      deviceId: 'device-b',
+      accountId: 'account-b',
+      token: 'token-b',
+      authenticated: true,
+    };
+    mockReadDurableAccountSession.mockResolvedValue({
+      available: true,
+      session: sessionB,
+    });
+    mockEnsureAccount.mockResolvedValue(sessionB);
+    const mergeIntent = {
+      version: 1 as const,
+      operationId: 'merge-1',
+      fromAccountId: 'account-a',
+      toAccountId: 'account-b',
+      preparedAt: 1,
+    };
+    mockReadPrivateAccountMergeIntent.mockResolvedValue({
+      ok: true,
+      intent: mergeIntent,
+    });
+    let markerRemovals = 0;
+    mockRehydratePrivateStoresAfterBoundary
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockRecoverPartyGameQueuesForAccount.mockImplementation(
+      async (_accountId, finalizeAdditionalLocalData) => {
+        const finalized = await (finalizeAdditionalLocalData?.(mergeIntent) ?? true);
+        if (finalized) markerRemovals += 1;
+        return finalized;
+      },
+    );
+
+    await useAccountStore.getState().initAccount();
+
+    expect(useAccountStore.getState()).toMatchObject({
+      status: 'error',
+      startupBoundaryReady: false,
+    });
+    expect(markerRemovals).toBe(0);
+    expect(mockRecoverPartyGameQueuesForAccount).toHaveBeenCalledTimes(1);
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockRekeyAccountPreferencesQueueOwner).toHaveBeenLastCalledWith(
+      'account-a',
+      'account-b',
+      { allowDuringPrivateTransition: true },
+    );
+    expect(mockRekeyPartyEveningIdentityOwner).toHaveBeenLastCalledWith(
+      'account-a',
+      'account-b',
+    );
+    expect(mockRecoverPartyGameQueuesForAccount).toHaveBeenLastCalledWith(
+      'account-b',
+      expect.any(Function),
+    );
+    expect(markerRemovals).toBe(1);
+    expect(useAccountStore.getState()).toMatchObject({
+      session: sessionB,
       status: 'ready',
       startupBoundaryReady: true,
     });
@@ -702,6 +840,45 @@ describe('login', () => {
 
     expect(useAccountStore.getState().profile).toBeNull();
     expect(mockEnsureAccount).not.toHaveBeenCalled();
+  });
+
+  it('publishes durable B while returning a failed post-commit rehydrate', async () => {
+    const profileB = signedInProfile({ id: 'b', displayName: 'Účet B' });
+    const sessionA = {
+      deviceId: 'device-a',
+      accountId: 'a',
+      token: 'token-a',
+      authenticated: false,
+    };
+    const sessionB = {
+      deviceId: 'device-b',
+      accountId: 'b',
+      token: 'token-b',
+      authenticated: true,
+    };
+    useAccountStore.setState({
+      session: sessionA,
+      status: 'ready',
+      profile: signedInProfile({ displayName: 'Účet A' }),
+    });
+    mockedAuth.loginEmail.mockResolvedValueOnce({
+      ok: false,
+      code: 'session_storage',
+      detail: 'Soukromá data se nepodařilo načíst.',
+      committedProfile: profileB,
+    });
+    mockEnsureAccount.mockResolvedValueOnce(sessionB);
+
+    const result = await useAccountStore
+      .getState()
+      .login({ email: 'b@example.com', password: 'pw' });
+
+    expect(result).toEqual(expect.objectContaining({ ok: false }));
+    expect(useAccountStore.getState()).toMatchObject({
+      session: sessionB,
+      profile: profileB,
+    });
+    expect(mockReconcileDiarySnapshot).not.toHaveBeenCalled();
   });
 
   it('returns a session waiting for recovery to ready after successful login', async () => {

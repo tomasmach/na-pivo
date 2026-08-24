@@ -21,7 +21,10 @@ import {
   PrivateAccountMutationFrozenError,
   registerPrivateAccountFreezeListener,
 } from './privateAccountBoundary';
-import { suppressPrivatePersistenceDuringMemoryReset } from './privateAccountStorage';
+import {
+  suppressPrivatePersistenceDuringMemoryReset,
+  updatePrivateAccountStorageItemDuringTransition,
+} from './privateAccountStorage';
 import {
   normalizeAccountPreferencesPatch,
   useSettingsStore,
@@ -30,6 +33,7 @@ import {
 
 export const ACCOUNT_PREFERENCES_QUEUE_STORAGE_KEY =
   'na-pivo-account-preferences-queue';
+const SETTINGS_STORAGE_KEY = 'na-pivo-settings';
 
 interface AccountPreferencesQueueItem {
   version: 1;
@@ -108,6 +112,46 @@ function ownerMatches(
     (queuedOwner === null || queuedOwner === accountId) &&
     (pendingOwner === null || pendingOwner === accountId)
   );
+}
+
+function rekeyPersistedSettingsOwner(
+  raw: string | null,
+  fromAccountId: string,
+  toAccountId: string,
+  pending: PendingAccountPreferences,
+): string | null {
+  if (raw === null) {
+    return JSON.stringify({
+      state: {
+        pendingAccountPreferences: pending,
+        pendingAccountPreferencesOwnerId: toAccountId,
+      },
+      version: 2,
+    });
+  }
+  try {
+    const envelope = JSON.parse(raw) as unknown;
+    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return null;
+    const state = (envelope as { state?: unknown }).state;
+    if (!state || typeof state !== 'object' || Array.isArray(state)) return null;
+    const owner = (state as { pendingAccountPreferencesOwnerId?: unknown })
+      .pendingAccountPreferencesOwnerId;
+    if (
+      owner !== undefined &&
+      owner !== null &&
+      owner !== fromAccountId &&
+      owner !== toAccountId
+    ) return null;
+    return JSON.stringify({
+      ...envelope,
+      state: {
+        ...state,
+        pendingAccountPreferencesOwnerId: toAccountId,
+      },
+    });
+  } catch {
+    return null;
+  }
 }
 
 async function snapshotForDelivery(
@@ -256,34 +300,46 @@ export function enqueueAccountPreferences(
 export async function rekeyAccountPreferencesQueueOwner(
   fromAccountId: string,
   toAccountId: string,
+  options: { allowDuringPrivateTransition?: boolean } = {},
 ): Promise<boolean> {
   if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) return true;
   try {
-    return await mutate(async () => {
-      const current = await loadSingle();
-      if (!current) {
+    return await mutate(
+      async () => {
+        const current = await loadSingle();
         const pending = currentPending();
-        if (
-          pending.ownerAccountId !== null &&
-          pending.ownerAccountId !== fromAccountId &&
-          pending.ownerAccountId !== toAccountId
-        ) return false;
-        if (hasPreferences(pending.preferences)) {
-          useSettingsStore.setState({ pendingAccountPreferencesOwnerId: toAccountId });
+        if (!current) {
+          if (
+            pending.ownerAccountId !== null &&
+            pending.ownerAccountId !== fromAccountId &&
+            pending.ownerAccountId !== toAccountId
+          ) return false;
+        } else {
+          if (
+            current.ownerAccountId !== null &&
+            current.ownerAccountId !== fromAccountId &&
+            current.ownerAccountId !== toAccountId
+          ) return false;
+          if (!(await saveSingle({ ...current, ownerAccountId: toAccountId }))) return false;
         }
+        if (!(await updatePrivateAccountStorageItemDuringTransition(
+          SETTINGS_STORAGE_KEY,
+          (raw) => rekeyPersistedSettingsOwner(
+            raw,
+            fromAccountId,
+            toAccountId,
+            pending.preferences,
+          ),
+        ))) return false;
+        suppressPrivatePersistenceDuringMemoryReset(() => {
+          useSettingsStore.setState({ pendingAccountPreferencesOwnerId: toAccountId });
+        });
         return true;
-      }
-      if (
-        current.ownerAccountId !== null &&
-        current.ownerAccountId !== fromAccountId &&
-        current.ownerAccountId !== toAccountId
-      ) return false;
-      const saved = await saveSingle({ ...current, ownerAccountId: toAccountId });
-      if (saved) {
-        useSettingsStore.setState({ pendingAccountPreferencesOwnerId: toAccountId });
-      }
-      return saved;
-    });
+      },
+      options.allowDuringPrivateTransition
+        ? { allowDuringPrivateTransition: true }
+        : undefined,
+    );
   } catch (error) {
     if (error instanceof PrivateAccountMutationFrozenError) return false;
     throw error;

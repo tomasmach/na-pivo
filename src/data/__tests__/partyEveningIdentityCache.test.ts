@@ -8,8 +8,13 @@ import {
   PARTY_EVENING_IDENTITY_STORAGE_KEY,
   PARTY_EVENING_IDENTITY_TTL_MS,
   partyEveningIdentityGeneration,
+  rekeyPartyEveningIdentityOwner,
   savePartyEveningIdentity,
 } from '../partyEveningIdentityCache';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -18,7 +23,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 const EVENING = { id: 'evening-1', joinCode: 'PIVOXY', isHost: true };
 
 beforeEach(async () => {
+  resetPrivateAccountBoundaryForTests();
   await AsyncStorage.clear();
+});
+
+afterEach(() => {
+  resetPrivateAccountBoundaryForTests();
 });
 
 it('round-trips only the minimal identity for the matching account', async () => {
@@ -76,6 +86,68 @@ it('reports a failed durable clear and succeeds on the exact retry', async () =>
 
   await expect(clearPartyEveningIdentityForAccount('account-a')).resolves.toBe(true);
   expect(await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)).toBeNull();
+});
+
+it('rekeys an active anonymous table to the claimed account and accepts an exact retry', async () => {
+  const now = Date.UTC(2026, 7, 6, 20);
+  await savePartyEveningIdentity('account-a', EVENING, undefined, now);
+
+  const transition = beginPrivateAccountTransition('claim', 'account-a');
+  expect(transition).not.toBeNull();
+  await transition!.drain();
+  await expect(
+    rekeyPartyEveningIdentityOwner('account-a', 'account-b'),
+  ).resolves.toBe(true);
+  transition!.release();
+
+  expect(await loadPartyEveningIdentity('account-b', now + 1_000)).toEqual({
+    ...EVENING,
+    confirmedAt: now,
+  });
+
+  const retry = beginPrivateAccountTransition('claim-retry', 'account-b');
+  expect(retry).not.toBeNull();
+  await retry!.drain();
+  await expect(
+    rekeyPartyEveningIdentityOwner('account-a', 'account-b'),
+  ).resolves.toBe(true);
+  retry!.release();
+});
+
+it('reports a failed rekey without publishing the table under the claimed account', async () => {
+  const now = Date.UTC(2026, 7, 6, 20);
+  await savePartyEveningIdentity('account-a', EVENING, undefined, now);
+  jest.mocked(AsyncStorage.setItem).mockImplementationOnce(async () => undefined);
+
+  const transition = beginPrivateAccountTransition('claim', 'account-a');
+  expect(transition).not.toBeNull();
+  await transition!.drain();
+  await expect(
+    rekeyPartyEveningIdentityOwner('account-a', 'account-b'),
+  ).resolves.toBe(false);
+  transition!.release();
+
+  const raw = JSON.parse(
+    (await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)) as string,
+  );
+  expect(raw.accountId).toBe('account-a');
+});
+
+it('refuses to rekey a table owned by an unrelated account', async () => {
+  await savePartyEveningIdentity('account-c', EVENING);
+
+  const transition = beginPrivateAccountTransition('claim', 'account-a');
+  expect(transition).not.toBeNull();
+  await transition!.drain();
+  await expect(
+    rekeyPartyEveningIdentityOwner('account-a', 'account-b'),
+  ).resolves.toBe(false);
+  transition!.release();
+
+  const raw = JSON.parse(
+    (await AsyncStorage.getItem(PARTY_EVENING_IDENTITY_STORAGE_KEY)) as string,
+  );
+  expect(raw.accountId).toBe('account-c');
 });
 
 it('suppresses a late pre-reset write after the account boundary moves', async () => {

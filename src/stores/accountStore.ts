@@ -31,6 +31,7 @@ import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { readPrivateAccountMergeIntent } from '@/data/privateAccountBoundary';
 import { rekeyAccountPreferencesQueueOwner } from '@/data/accountPreferencesQueue';
+import { rekeyPartyEveningIdentityOwner } from '@/data/partyEveningIdentityCache';
 import { recoverPartyGameQueuesForAccount } from '@/data/partyGameQueueBoundary';
 import { rehydratePrivateStoresAfterBoundary } from '@/data/privateAccountData';
 import { setPivarSnapshotListener } from '@/data/pivarXp';
@@ -295,29 +296,16 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
   /** After a session-changing auth call: persist the new token + profile. */
   const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
-    if (result.ok) {
-      const outgoing = get().session;
-      if (
-        outgoing &&
-        !outgoing.authenticated &&
-        outgoing.accountId !== result.profile.id
-      ) {
-        const rekeyed = await rekeyAccountPreferencesQueueOwner(
-          outgoing.accountId,
-          result.profile.id,
-        );
-        if (!rekeyed) {
-          trackApiFailure('account_preferences_queue', {
-            reason: 'anonymous_merge_rekey_failed',
-          });
-        }
-      }
+    const committedProfile = result.ok ? result.profile : result.committedProfile;
+    if (committedProfile) {
       const synced = await syncSession();
-      if (!synced?.session || synced.session.accountId !== result.profile.id) return result;
+      if (!synced?.session || synced.session.accountId !== committedProfile.id) return result;
       if (!isAccountBoundaryCurrent(synced.scope, get().session)) return result;
-      set({ profile: result.profile });
-      applyAccountSettings(result.profile.settings);
-      await refreshDiarySnapshot();
+      set({ profile: committedProfile });
+      if (result.ok) {
+        applyAccountSettings(committedProfile.settings);
+        await refreshDiarySnapshot();
+      }
     }
     return result;
   };
@@ -353,7 +341,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
     diarySnapshot: null,
 
     initAccount: async () => {
-      if (get().status === 'loading') return;
+      const current = get();
+      if (
+        current.status === 'loading' ||
+        (current.startupBoundaryReady && current.session !== null)
+      ) return;
       const requestScope = captureAccountBoundary(get().session);
       let activeScope = requestScope;
       set({ status: 'loading' });
@@ -373,10 +365,23 @@ export const useAccountStore = create<AccountState>((set, get) => {
           const durable = durableSession.session;
           if (
             durable &&
-            mergeIntent.intent.toAccountId === durable.accountId &&
-            await recoverPartyGameQueuesForAccount(durable.accountId)
+            mergeIntent.intent.toAccountId === durable.accountId
           ) {
-            if (!(await rehydratePrivateStoresAfterBoundary())) {
+            if (!(await recoverPartyGameQueuesForAccount(
+              durable.accountId,
+              async (intent) => {
+                if (!(await rekeyAccountPreferencesQueueOwner(
+                  intent.fromAccountId,
+                  durable.accountId,
+                  { allowDuringPrivateTransition: true },
+                ))) return false;
+                if (!(await rekeyPartyEveningIdentityOwner(
+                  intent.fromAccountId,
+                  durable.accountId,
+                ))) return false;
+                return rehydratePrivateStoresAfterBoundary();
+              },
+            ))) {
               set({ status: 'error', startupBoundaryReady: false });
               return;
             }

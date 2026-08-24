@@ -3,6 +3,7 @@ import { parsePartyInviteCodeFromUrl } from '../partyInviteLink';
 describe('parsePartyInviteCodeFromUrl', () => {
   it.each([
     ['napivo://party-live?code=EFJ66G', 'EFJ66G'],
+    ['napivo://party/EFJ66G', 'EFJ66G'],
     ['https://na-pivo.cz/party/2jw642', '2JW642'],
     ['napivo://party-live?code=PIVO25', 'PIVO25'],
     ['https://na-pivo.cz/party/PIVO25', 'PIVO25'],
@@ -22,6 +23,8 @@ describe('parsePartyInviteCodeFromUrl', () => {
     'napivo://party-live?code=PIVO21',
     'napivo://party-live?code=PIVO2!',
     'napivo://party-live?code=PIVO255',
+    'napivo://party/PIVO20',
+    'napivo://party/PIVO2!/extra',
     'https://na-pivo.cz/party/PIVO20',
     'https://na-pivo.cz/party/PIVO2%21',
     // A friend-invite link must never be mistaken for a table code on cold start.
@@ -43,6 +46,9 @@ describe('parsePartyInviteCodeFromUrl', () => {
   });
 
   it.each([
+    'napivo://party/EFJ66G/',
+    'napivo://party/EFJ66G?utm_source=qr',
+    'napivo://party/EFJ66G/#join',
     'https://na-pivo.cz/party/EFJ66G/',
     'https://na-pivo.cz/party/EFJ66G?utm_source=qr',
     'https://na-pivo.cz/party/EFJ66G/#join',
@@ -51,6 +57,7 @@ describe('parsePartyInviteCodeFromUrl', () => {
   });
 
   it('rejects nested content after a table code', () => {
+    expect(parsePartyInviteCodeFromUrl('napivo://party/EFJ66G/extra')).toBeNull();
     expect(parsePartyInviteCodeFromUrl('https://na-pivo.cz/party/EFJ66G/extra')).toBeNull();
   });
 

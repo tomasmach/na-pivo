@@ -5,6 +5,10 @@ import {
   runWithoutPubRatingsSync,
   resetPubRatingsPullGateForTests,
 } from '../pubRatingsSync';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
@@ -55,6 +59,7 @@ function wire(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetPrivateAccountBoundaryForTests();
   resetPubRatingsPullGateForTests();
   getQueuedRatingDeletePubKeys.mockResolvedValue(new Set<string>());
   usePubRatingsStore.setState({ ratings: {} });
@@ -146,6 +151,53 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     await restorePubRatings();
     expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
     expect(enqueueRatingOp).not.toHaveBeenCalled();
+  });
+
+  it('drops an old-account response when credentials change during the fetch', async () => {
+    let fetchStarted!: () => void;
+    let resolveFetch!: (ratings: ReturnType<typeof wire>[]) => void;
+    let fetchSignal: AbortSignal | undefined;
+    const started = new Promise<void>((resolve) => {
+      fetchStarted = resolve;
+    });
+    fetchRatings.mockImplementationOnce((signal: AbortSignal) => {
+      fetchSignal = signal;
+      fetchStarted();
+      return new Promise((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+
+    const restoring = restorePubRatings();
+    await started;
+    const transition = beginPrivateAccountTransition('test-account-switch', 'acc-1');
+    expect(transition).not.toBeNull();
+    const drained = transition!.drain();
+    let didDrain = false;
+    void drained.then(() => {
+      didDrain = true;
+    });
+
+    expect(fetchSignal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(didDrain).toBe(false);
+    resolveFetch([wire()]);
+    await restoring;
+    await drained;
+
+    expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
+    expect(enqueueRatingOp).not.toHaveBeenCalled();
+    transition!.release();
+
+    jest.mocked(ensureAccount).mockResolvedValueOnce({
+      deviceId: 'dev-2',
+      accountId: 'acc-2',
+      token: 'tok-2',
+      authenticated: true,
+    });
+    fetchRatings.mockResolvedValueOnce([wire({ cache_key: OTHER })]);
+    await restorePubRatings();
+    expect(usePubRatingsStore.getState().ratings[OTHER]?.verdict).toBe('like');
   });
 });
 

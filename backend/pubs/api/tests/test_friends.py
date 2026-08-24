@@ -8,15 +8,18 @@ import pytest
 from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
-from django.db import connection
+from django.db import connection, transaction
+from django.db.models import Q
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+import pubs.accounts as accounts
 from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
+    AccountIdentityAlias,
     AccountUsageStats,
     DrinkLog,
     Follow,
@@ -510,6 +513,204 @@ def test_block_bypasses_ugc_gate_without_stored_acceptance(client):
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"blocked": True}
     assert FriendBlock.objects.filter(blocker=account, blocked=target).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["request", "block", "follow"])
+def test_social_writes_reject_a_target_removed_while_waiting_for_account_locks(
+    client,
+    monkeypatch,
+    operation,
+):
+    token, actor = _register(client, f"actor-{operation}")
+    _target_token, target = _register(client, f"target-{operation}")
+    original_select_for_update = Account.objects.select_for_update
+    removed = False
+
+    def remove_target_before_lock(*args, **kwargs):
+        nonlocal removed
+        if not removed:
+            removed = True
+            Account.objects.filter(pk=target.pk).delete()
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        remove_target_before_lock,
+    )
+
+    if operation == "request":
+        response = client.post(
+            "/v1/friends/requests",
+            data={"target_account_id": str(target.public_id)},
+            format="json",
+            **_auth(token),
+        )
+    elif operation == "block":
+        response = client.post(
+            "/v1/friends/blocks",
+            data={"account_id": str(target.public_id)},
+            format="json",
+            **_auth(token),
+        )
+    else:
+        response = client.post(
+            "/v1/follows",
+            data={"account_id": str(target.public_id)},
+            format="json",
+            **_auth(token),
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "profile_not_found"
+    assert not Friendship.objects.filter(requester=actor).exists()
+    assert not FriendBlock.objects.filter(blocker=actor).exists()
+    assert not Follow.objects.filter(follower=actor).exists()
+
+
+@pytest.mark.django_db
+def test_friend_request_resolves_a_retired_target_across_merge_chain_and_retry(
+    client,
+    monkeypatch,
+):
+    requester_token, requester = _register(client, "alias-requester")
+    _source_token, source = _register(client, "alias-source")
+    _middle_token, middle = _register(client, "alias-middle")
+    _target_token, target = _register(client, "alias-target")
+    _final_token, final = _register(client, "alias-final")
+    retired_public_id = source.public_id
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, middle)
+    with transaction.atomic():
+        accounts._merge_anonymous_account(middle, target)
+
+    real_select_for_update = Account.objects.select_for_update
+    merged_while_waiting = False
+
+    def merge_target_before_account_lock(*args, **kwargs):
+        nonlocal merged_while_waiting
+        if not merged_while_waiting:
+            merged_while_waiting = True
+            accounts._merge_anonymous_account(target, final)
+        return real_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        merge_target_before_account_lock,
+    )
+
+    first = client.post(
+        "/v1/friends/requests",
+        data={"target_account_id": str(retired_public_id)},
+        format="json",
+        **_auth(requester_token),
+    )
+    retry = client.post(
+        "/v1/friends/requests",
+        data={"target_account_id": str(retired_public_id)},
+        format="json",
+        **_auth(requester_token),
+    )
+    repeated_retry = client.post(
+        "/v1/friends/requests",
+        data={"target_account_id": str(retired_public_id)},
+        format="json",
+        **_auth(requester_token),
+    )
+
+    assert first.status_code == status.HTTP_409_CONFLICT
+    assert first.json()["code"] == "auth"
+    assert retry.status_code == status.HTTP_201_CREATED
+    assert repeated_retry.status_code == status.HTTP_200_OK
+    assert Friendship.objects.filter(
+        requester=requester,
+        recipient=final,
+        status=Friendship.Status.PENDING,
+    ).count() == 1
+    assert FriendNotification.objects.filter(
+        recipient=final,
+        actor=requester,
+        kind=FriendNotification.Kind.FRIEND_REQUEST,
+    ).count() == 1
+    assert set(
+        AccountIdentityAlias.objects.filter(account=final).values_list(
+            "public_id",
+            flat=True,
+        )
+    ) == {source.public_id, middle.public_id, target.public_id}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("via_invite", [False, True])
+def test_friend_request_rechecks_a_block_after_the_optimistic_lookup(
+    client,
+    monkeypatch,
+    via_invite,
+):
+    token, requester = _register(client, f"requester-{via_invite}")
+    target_token, target = _register(client, f"target-{via_invite}")
+    request_data = {"nickname": target.nickname}
+    if via_invite:
+        code = client.get("/v1/friends/invite", **_auth(target_token)).json()["code"]
+        request_data = {"invite_code": code}
+
+    FriendBlock.objects.create(blocker=target, blocked=requester)
+    # Simulate a request whose pre-lock visibility snapshot was taken just
+    # before the block committed. The locked database recheck must still win.
+    monkeypatch.setattr("pubs.api.views._blocked_account_ids", lambda _account: set())
+
+    response = client.post(
+        "/v1/friends/requests",
+        data=request_data,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "profile_not_found"
+    assert not Friendship.objects.filter(
+        Q(requester=requester, recipient=target)
+        | Q(requester=target, recipient=requester)
+    ).exists()
+    assert not FriendNotification.objects.filter(
+        Q(recipient=requester) | Q(recipient=target)
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_friend_request_rechecks_private_profile_after_account_lock(client, monkeypatch):
+    token, requester = _register(client, "private-requester")
+    _target_token, target = _register(client, "private-target")
+    original_select_for_update = Account.objects.select_for_update
+    changed = False
+
+    def make_target_private_before_lock(*args, **kwargs):
+        nonlocal changed
+        if not changed:
+            changed = True
+            Account.objects.filter(pk=target.pk).update(is_public=False)
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        make_target_private_before_lock,
+    )
+
+    response = client.post(
+        "/v1/friends/requests",
+        data={"nickname": target.nickname},
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "profile_not_found"
+    assert not Friendship.objects.filter(requester=requester, recipient=target).exists()
+    assert not FriendNotification.objects.filter(recipient=target).exists()
 
 
 def _current_ugc_header(token: str) -> dict[str, str]:

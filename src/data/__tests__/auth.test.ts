@@ -48,7 +48,10 @@ import {
   writeAccountDeletionReceipt,
 } from '@/data/accountDeletionReceipt';
 import type { AccountDeletionIntent } from '@/data/accountDeletionReceipt';
-import { setPrivateAccountDeletionRecoveryBlocked } from '@/data/privateAccountBoundary';
+import {
+  setPrivateAccountDeletionRecoveryBlocked,
+  setPrivateAccountRehydrationRecoveryBlocked,
+} from '@/data/privateAccountBoundary';
 import {
   disableCachedPushDeviceWithBearer,
   registerCachedPushDeviceWithBearer,
@@ -59,6 +62,7 @@ import {
   preflightPartyGameQueuesForAccountMerge,
   promotePartyGameQueuesAccountMerge,
 } from '@/data/partyGameStartsQueue';
+import { rekeyAccountPreferencesQueueOwner } from '@/data/accountPreferencesQueue';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from '@/data/socialAuth';
 import { refreshPartyGamesAfterAccountMerge } from '@/stores/partyGamesStore';
 import { trackApiFailure } from '@/data/telemetryClient';
@@ -83,6 +87,7 @@ jest.mock('@/data/privateAccountBoundary', () => ({
   })),
   readPrivateAccountMergeIntent: jest.fn(async () => ({ ok: true, intent: null })),
   setPrivateAccountDeletionRecoveryBlocked: jest.fn(),
+  setPrivateAccountRehydrationRecoveryBlocked: jest.fn(),
 }));
 
 jest.mock('@/data/account', () => {
@@ -161,6 +166,14 @@ jest.mock('@/data/partyGameStartsQueue', () => ({
     cancelSafe: true,
   })),
   promotePartyGameQueuesAccountMerge: jest.fn(async () => true),
+}));
+
+jest.mock('@/data/accountPreferencesQueue', () => ({
+  rekeyAccountPreferencesQueueOwner: jest.fn(async () => true),
+}));
+
+jest.mock('@/data/partyEveningIdentityCache', () => ({
+  rekeyPartyEveningIdentityOwner: jest.fn(async () => true),
 }));
 
 jest.mock('@/stores/partyGamesStore', () => ({
@@ -269,6 +282,14 @@ const mockRegisterCachedPushDeviceWithBearer =
   registerCachedPushDeviceWithBearer as jest.MockedFunction<
     typeof registerCachedPushDeviceWithBearer
   >;
+const mockRekeyAccountPreferencesQueueOwner =
+  rekeyAccountPreferencesQueueOwner as jest.MockedFunction<
+    typeof rekeyAccountPreferencesQueueOwner
+  >;
+const mockRekeyPartyEveningIdentityOwner = jest.requireMock(
+  '@/data/partyEveningIdentityCache',
+).rekeyPartyEveningIdentityOwner as jest.Mock;
+const mockMergeMarkerRemoved = jest.fn();
 const mockCancelPartyGameMerge =
   cancelUncommittedPartyGameAccountMerge as jest.MockedFunction<
     typeof cancelUncommittedPartyGameAccountMerge
@@ -295,6 +316,10 @@ const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackA
 const mockSetPrivateAccountDeletionRecoveryBlocked =
   setPrivateAccountDeletionRecoveryBlocked as jest.MockedFunction<
     typeof setPrivateAccountDeletionRecoveryBlocked
+  >;
+const mockSetPrivateAccountRehydrationRecoveryBlocked =
+  setPrivateAccountRehydrationRecoveryBlocked as jest.MockedFunction<
+    typeof setPrivateAccountRehydrationRecoveryBlocked
   >;
 const mockFileUpload = (efs as unknown as { __upload: jest.Mock }).__upload;
 const mockFileCtor = (efs as unknown as { __ctor: jest.Mock }).__ctor;
@@ -389,12 +414,33 @@ beforeEach(() => {
     timedOut: false,
   });
   mockCancelPartyGameMerge.mockResolvedValue(true);
-  mockFinalizePartyGameMerge.mockResolvedValue(true);
+  mockFinalizePartyGameMerge.mockImplementation(async (...args: unknown[]) => {
+    const finalizeLocalData = args[3] as
+      | ((intent: {
+          version: 1;
+          operationId: string;
+          fromAccountId: string;
+          toAccountId: string;
+          preparedAt: number;
+        }) => Promise<boolean>)
+      | undefined;
+    if (!finalizeLocalData) return false;
+    const finalized = await finalizeLocalData({
+      version: 1,
+      operationId: MERGE_OPERATION_ID,
+      fromAccountId: String(args[0]),
+      toAccountId: String(args[1]),
+      preparedAt: 1,
+    });
+    if (finalized) mockMergeMarkerRemoved();
+    return finalized;
+  });
   mockPreflightPartyGameMerge.mockResolvedValue({
     operationId: MERGE_OPERATION_ID,
     cancelSafe: true,
   });
   mockPromotePartyGameMerge.mockResolvedValue(true);
+  mockRekeyPartyEveningIdentityOwner.mockResolvedValue(true);
   mockGetGoogleIdToken.mockResolvedValue('gtok');
   mockGetAppleCredential.mockResolvedValue({
     identityToken: 'atok',
@@ -604,6 +650,76 @@ describe('loginEmail', () => {
     );
   });
 
+  it('reports failure but exposes durable B to the store when private rehydrate fails', async () => {
+    installFetch(
+      fetchResolving(200, {
+        id: 'account-b',
+        token: 'token-b',
+        display_name: 'Účet B',
+        is_anonymous: false,
+      }),
+    );
+    mockRehydratePrivateStoresAfterBoundary.mockResolvedValue(false);
+
+    await expect(
+      auth.loginEmail({ email: 'b@example.com', password: 'pw' }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        code: 'session_storage',
+        committedProfile: expect.objectContaining({
+          id: 'account-b',
+          displayName: 'Účet B',
+        }),
+      }),
+    );
+
+    expect(mockSetSession).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'account-b', token: 'token-b' }),
+    );
+    expect(mockRekeyAccountPreferencesQueueOwner).toHaveBeenCalledWith(
+      'a',
+      'account-b',
+      { allowDuringPrivateTransition: true },
+    );
+    expect(mockFinalizePartyGameMerge.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRekeyAccountPreferencesQueueOwner.mock.invocationCallOrder[0],
+    );
+    expect(mockRekeyAccountPreferencesQueueOwner.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRekeyPartyEveningIdentityOwner.mock.invocationCallOrder[0],
+    );
+    expect(mockRekeyPartyEveningIdentityOwner.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRehydratePrivateStoresAfterBoundary.mock.invocationCallOrder[0],
+    );
+    expect(mockRehydratePrivateStoresAfterBoundary).toHaveBeenCalledTimes(2);
+    expect(mockMergeMarkerRemoved).not.toHaveBeenCalled();
+    expect(mockSetPrivateAccountRehydrationRecoveryBlocked.mock.calls).toEqual([
+      [true],
+    ]);
+  });
+
+  it('keeps the recovery freeze when an aborted login cannot rehydrate A', async () => {
+    installFetch(
+      fetchResolving(401, {
+        code: 'invalid_credentials',
+        detail: 'Špatný e-mail nebo heslo.',
+      }),
+    );
+    mockRehydratePrivateStoresAfterBoundary.mockResolvedValueOnce(false);
+
+    await expect(
+      auth.loginEmail({ email: 'b@example.com', password: 'bad' }),
+    ).resolves.toEqual(expect.objectContaining({
+      ok: false,
+      code: 'session_storage',
+    }));
+
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockSetPrivateAccountRehydrationRecoveryBlocked.mock.calls).toEqual([
+      [true],
+    ]);
+  });
+
   it('logs in with the anonymous bearer claim and stores the session without clearing local progress', async () => {
     const spy = installFetch(
       fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false, providers: ['email'] }),
@@ -650,10 +766,25 @@ describe('loginEmail', () => {
       'a',
       'acc-2',
       MERGE_OPERATION_ID,
+      expect.any(Function),
     );
-    expect(mockFinalizePartyGameMerge.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mockSetSession.mock.invocationCallOrder[0],
+    expect(mockRekeyPartyEveningIdentityOwner).toHaveBeenCalledWith('a', 'acc-2');
+    expect(mockFinalizePartyGameMerge.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRekeyAccountPreferencesQueueOwner.mock.invocationCallOrder[0],
     );
+    expect(mockRekeyAccountPreferencesQueueOwner.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRekeyPartyEveningIdentityOwner.mock.invocationCallOrder[0],
+    );
+    expect(mockRekeyPartyEveningIdentityOwner.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRehydratePrivateStoresAfterBoundary.mock.invocationCallOrder[0],
+    );
+    expect(mockRehydratePrivateStoresAfterBoundary.mock.invocationCallOrder[0]).toBeLessThan(
+      mockMergeMarkerRemoved.mock.invocationCallOrder[0],
+    );
+    expect(mockMergeMarkerRemoved.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRefreshPartyGamesAfterMerge.mock.invocationCallOrder[0],
+    );
+    expect(mockRehydratePrivateStoresAfterBoundary).toHaveBeenCalledTimes(1);
     expect(mockRefreshPartyGamesAfterMerge).toHaveBeenCalledTimes(1);
     expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
   });
@@ -716,6 +847,7 @@ describe('loginEmail', () => {
       'account-a',
       'account-a',
       MERGE_OPERATION_ID,
+      expect.any(Function),
     );
     expect(mockCancelPartyGameMerge).not.toHaveBeenCalled();
   });
@@ -732,14 +864,47 @@ describe('loginEmail', () => {
 
     await expect(
       auth.loginEmail({ email: 'b@example.com', password: 'pw' }),
-    ).resolves.toEqual(expect.objectContaining({ ok: true }));
+    ).resolves.toEqual(expect.objectContaining({
+      ok: false,
+      code: 'session_storage',
+      committedProfile: expect.objectContaining({ id: 'account-b' }),
+    }));
 
     expect(mockSetSession).toHaveBeenCalledTimes(1);
     expect(mockFinalizePartyGameMerge).toHaveBeenCalledTimes(1);
+    expect(mockMergeMarkerRemoved).not.toHaveBeenCalled();
     expect(mockRefreshPartyGamesAfterMerge).not.toHaveBeenCalled();
     expect(mockTrackApiFailure).toHaveBeenCalledWith('auth_party_games_merge', {
       reason: 'post_session_finalize_deferred',
     });
+  });
+
+  it('keeps the promoted marker when the active table identity cannot be rekeyed', async () => {
+    mockRekeyPartyEveningIdentityOwner.mockResolvedValueOnce(false);
+    installFetch(
+      fetchResolving(200, {
+        id: 'account-b',
+        token: 'token-b',
+        is_anonymous: false,
+      }),
+    );
+
+    await expect(
+      auth.loginEmail({ email: 'b@example.com', password: 'pw' }),
+    ).resolves.toEqual(expect.objectContaining({
+      ok: false,
+      code: 'session_storage',
+      committedProfile: expect.objectContaining({ id: 'account-b' }),
+    }));
+
+    expect(mockSetSession).toHaveBeenCalledTimes(1);
+    expect(mockFinalizePartyGameMerge).toHaveBeenCalledTimes(1);
+    expect(mockMergeMarkerRemoved).not.toHaveBeenCalled();
+    expect(mockRefreshPartyGamesAfterMerge).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith(
+      'auth_party_evening_identity',
+      { reason: 'anonymous_merge_rekey_failed' },
+    );
   });
 
   it('does not claim with authenticated A and durably clears A before storing B', async () => {

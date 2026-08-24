@@ -7,7 +7,7 @@ from threading import Lock
 
 from asgiref.sync import sync_to_async
 from django.db import IntegrityError, close_old_connections, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -30,15 +30,19 @@ from pubs.api.party_serializers import (
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
 from pubs.models import (
     Account,
+    AccountIdentityAlias,
     BeerPhoto,
     DrinkLog,
     FriendBlock,
     PartyEvening,
+    PartyEveningCode,
     PartyEveningDrink,
     PartyEveningMember,
     PartyGame,
+    PartyGameAlias,
     PartyGameEvent,
     PubVisit,
+    party_game_seed,
 )
 
 # A record is a recap for one real table, not an unbounded export endpoint.
@@ -58,6 +62,104 @@ PARTY_HISTORY_MAX_EVENINGS = 20
 PARTY_EVENING_MAX_MEMBERS = PARTY_RECORD_MAX_PARTICIPANTS
 
 
+def _lock_accounts_in_pk_order(account_ids: set[int]) -> dict[int, Account]:
+    """Lock every party identity before tree rows in one global order."""
+
+    return {
+        account.pk: account
+        for account in Account.objects.select_for_update()
+        .filter(pk__in=sorted(account_ids))
+        .order_by("pk")
+    }
+
+
+def _roster_accounts_by_requested_id(
+    roster_ids: list[uuid.UUID],
+) -> dict[str, Account]:
+    """Resolve current and retired roster UUIDs before taking Account locks."""
+
+    requested = {str(value) for value in roster_ids}
+    resolved = {
+        str(account.public_id): account
+        for account in Account.objects.filter(
+            public_id__in=requested,
+            status=Account.Status.ACTIVE,
+        )
+    }
+    unresolved = requested - set(resolved)
+    if unresolved:
+        resolved.update(
+            {
+                str(alias.public_id): alias.account
+                for alias in AccountIdentityAlias.objects.select_related("account").filter(
+                    public_id__in=unresolved,
+                    account__status=Account.Status.ACTIVE,
+                )
+            }
+        )
+    return resolved
+
+
+def _canonical_roster_ids(
+    roster_ids: list[uuid.UUID],
+    locked_accounts: dict[int, Account],
+) -> tuple[list[str], set[str]]:
+    """Map a queued roster to locked current UUIDs, preserving order."""
+
+    requested = [str(value) for value in roster_ids]
+    by_requested_id = {
+        str(account.public_id): account
+        for account in locked_accounts.values()
+        if account.status == Account.Status.ACTIVE
+    }
+    unresolved = set(requested) - set(by_requested_id)
+    if unresolved:
+        by_requested_id.update(
+            {
+                str(alias.public_id): locked_accounts[alias.account_id]
+                for alias in AccountIdentityAlias.objects.filter(
+                    public_id__in=unresolved,
+                    account_id__in=locked_accounts,
+                )
+                if alias.account_id in locked_accounts
+                and locked_accounts[alias.account_id].status == Account.Status.ACTIVE
+            }
+        )
+
+    missing = {value for value in requested if value not in by_requested_id}
+    canonical = list(
+        dict.fromkeys(
+            str(by_requested_id[value].public_id)
+            for value in requested
+            if value in by_requested_id
+        )
+    )
+    # Two retired UUIDs can collapse onto one person after login. Keep the game
+    # on the table with an unbound lobby instead of persisting a one-player
+    # roster that the public API itself rejects.
+    if len(canonical) == 1:
+        canonical = []
+    return canonical, missing
+
+
+def _canonicalize_identity_aliases_in_json(value, aliases: dict[str, str]):
+    """Replace exact retired account UUID strings inside a bounded game payload."""
+
+    if isinstance(value, str):
+        return aliases.get(value, value)
+    if isinstance(value, list):
+        return [
+            _canonicalize_identity_aliases_in_json(item, aliases)
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _canonicalize_identity_aliases_in_json(item, aliases)
+            for key, item in value.items()
+        }
+    return value
+
+
 def _roster_needs_repair(value) -> bool:
     if not isinstance(value, list) or len(value) in {1} or len(value) > 64:
         return True
@@ -70,7 +172,7 @@ def _roster_needs_repair(value) -> bool:
 
 
 def _profile(account: Account | None) -> dict:
-    if account is None:
+    if account is None or account.status != Account.Status.ACTIVE:
         return {
             "id": "deleted",
             "nickname": None,
@@ -125,17 +227,20 @@ def _can_access_ended_history(evening: PartyEvening, account: Account) -> bool:
     Leaving an active table revokes access immediately. Once the host ends the
     table, its historical membership is the durable consent record that lets a
     former member recover their own recap on another device. Current privacy
-    state still wins: ghost mode, deletion, or a block hides it again.
+    state still wins: ghost mode or a block hides it again. Account deletion
+    hides that person's identity and contributions, but keeps the other
+    participants' private recap recoverable.
     """
     if evening.active or evening.ended_at is None:
         return False
     if account.status != Account.Status.ACTIVE or account.ghost_mode:
         return False
     host = evening.host
-    if host is not None and (host.status != Account.Status.ACTIVE or host.ghost_mode):
-        return False
-    if host is not None and _blocked(account, host):
-        return False
+    if host is not None:
+        if _blocked(account, host):
+            return False
+        if host.status == Account.Status.ACTIVE and host.ghost_mode:
+            return False
     return evening.memberships.filter(account=account).exists()
 
 
@@ -281,13 +386,31 @@ def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
     }
 
 
+def _evening_for_code(code: str) -> PartyEvening | None:
+    normalized = code.upper()
+    reservation = (
+        PartyEveningCode.objects.select_related("evening__host")
+        .filter(join_code=normalized)
+        .first()
+    )
+    if reservation is not None:
+        return reservation.evening
+    # Compatibility for direct ORM fixtures and a rolling deploy before the
+    # reservation backfill has completed in the same migration transaction.
+    return (
+        PartyEvening.objects.select_related("host")
+        .filter(join_code=normalized)
+        .first()
+    )
+
+
 def _member_evening(code: str, account: Account) -> PartyEvening | None:
-    evening = PartyEvening.objects.select_related("host").filter(join_code=code.upper()).first()
+    evening = _evening_for_code(code)
     return evening if evening and _can_access(evening, account) else None
 
 
 def _record_evening(code: str, account: Account) -> PartyEvening | None:
-    evening = PartyEvening.objects.select_related("host").filter(join_code=code.upper()).first()
+    evening = _evening_for_code(code)
     if not evening:
         return None
     return (
@@ -333,7 +456,31 @@ class PartyEveningCollectionView(APIView):
         data = serializer.validated_data
         try:
             with transaction.atomic():
-                host = Account.objects.select_for_update().get(pk=request.user.pk)
+                host = (
+                    Account.objects.select_for_update()
+                    .filter(pk=request.user.pk)
+                    .first()
+                )
+                # Authentication happened before this row lock. A concurrent
+                # delete or privacy change may have committed while this request
+                # was waiting, so authorization must be rechecked on the locked
+                # row before creating any new shared state.
+                if host is None or host.status != Account.Status.ACTIVE:
+                    return Response(
+                        {
+                            "detail": "Account is no longer active.",
+                            "code": "auth",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if host.ghost_mode:
+                    return Response(
+                        {
+                            "detail": "Turn off ghost mode before starting a party evening.",
+                            "code": "ghost_mode",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 evening = PartyEvening.objects.filter(
                     host=host, client_id=data["client_id"]
                 ).first()
@@ -357,18 +504,28 @@ class PartyEveningCollectionView(APIView):
                         pub_city=data.get("pub_city") or "",
                         started_at=data.get("started_at") or timezone.now(),
                     )
+                    # The reservation shares this transaction with the parent.
+                    # A retired code racing this create makes the INSERT fail
+                    # and rolls the parent back instead of becoming ambiguous.
+                    PartyEveningCode.objects.create(
+                        join_code=data["join_code"],
+                        evening=evening,
+                    )
                 PartyEveningMember.objects.update_or_create(
                     evening=evening,
-                    account=request.user,
+                    account=host,
                     defaults={"active": True, "left_at": None},
                 )
+                # Keep the fresh viewer identity and its privacy relationships
+                # stable until the response payload has been assembled.
+                payload = _serialize_evening(evening, host)
         except IntegrityError:
             return Response(
                 {"detail": "Join code already exists.", "code": "join_code_taken"},
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(
-            _serialize_evening(evening, request.user),
+            payload,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
@@ -388,10 +545,14 @@ class PartyEveningHistoryView(APIView):
         rows = list(
             PartyEvening.objects.select_related("host")
             .filter(
+                Q(host__isnull=True)
+                | Q(
+                    host__status=Account.Status.ACTIVE,
+                    host__ghost_mode=False,
+                )
+                | Q(host__status=Account.Status.PENDING_DELETION),
                 active=False,
                 ended_at__isnull=False,
-                host__status=Account.Status.ACTIVE,
-                host__ghost_mode=False,
                 memberships__account=request.user,
             )
             .exclude(host_id__in=_blocked_account_ids(request.user))
@@ -436,16 +597,13 @@ class PartyEveningJoinView(APIView):
     throttle_scope = "friends"
 
     def post(self, request: Request, code: str) -> Response:
-        evening = (
-            PartyEvening.objects.select_related("host")
-            .filter(
-                join_code=code.upper(),
-                active=True,
-                host__status=Account.Status.ACTIVE,
-            )
-            .first()
-        )
-        if not evening:
+        evening = _evening_for_code(code)
+        if (
+            not evening
+            or not evening.active
+            or evening.host is None
+            or evening.host.status != Account.Status.ACTIVE
+        ):
             return Response(
                 {"detail": "Party evening not found.", "code": "party_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -460,12 +618,49 @@ class PartyEveningJoinView(APIView):
                 {"detail": "Party evening is unavailable.", "code": "party_blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        optimistic_host_id = evening.host_id
         with transaction.atomic():
-            evening = (
-                PartyEvening.objects.select_for_update()
-                .select_related("host")
-                .get(pk=evening.pk)
+            locked_accounts = _lock_accounts_in_pk_order(
+                {request.user.pk, optimistic_host_id}
             )
+            host = locked_accounts.get(optimistic_host_id)
+            account = locked_accounts.get(request.user.pk)
+            if (
+                account is None
+                or host is None
+                or account.status != Account.Status.ACTIVE
+                or host.status != Account.Status.ACTIVE
+            ):
+                return Response(
+                    {"detail": "Party evening not found.", "code": "party_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if account.ghost_mode or host.ghost_mode:
+                return Response(
+                    {
+                        "detail": "Party evening is hidden by ghost mode.",
+                        "code": "ghost_mode",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            evening = (
+                PartyEvening.objects.select_for_update(of=("self",))
+                .filter(pk=evening.pk)
+                .first()
+            )
+            # The host can end the table after the optimistic lookup above but
+            # before this transaction acquires the row lock. A concurrent
+            # account merge can also replace or remove the host. Re-check the
+            # locked row so a stale identity never joins the wrong table.
+            if (
+                evening is None
+                or not evening.active
+                or evening.host_id != optimistic_host_id
+            ):
+                return Response(
+                    {"detail": "Party evening not found.", "code": "party_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             active_account_ids = list(
                 evening.memberships.filter(active=True).values_list(
                     "account_id", flat=True
@@ -482,14 +677,7 @@ class PartyEveningJoinView(APIView):
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
-            locked_accounts = {
-                row.pk: row
-                for row in Account.objects.select_for_update()
-                .filter(pk__in=sorted({request.user.pk, *active_account_ids}))
-                .order_by("pk")
-            }
-            account = locked_accounts[request.user.pk]
-            if account != evening.host and _blocked(account, evening.host):
+            if account != host and _blocked(account, host):
                 return Response(
                     {
                         "detail": "Party evening is unavailable.",
@@ -505,32 +693,68 @@ class PartyEveningJoinView(APIView):
                 account=account,
                 defaults={"active": True, "left_at": None, "joined_at": now},
             )
-        return Response(_serialize_evening(evening, request.user))
+            # The authenticated source account may be merged immediately after
+            # commit. Serialize while its Account and the evening are locked so
+            # a stale request.user cannot bypass a moved block relationship.
+            payload = _serialize_evening(evening, account)
+        return Response(payload)
 
     def delete(self, request: Request, code: str) -> Response:
         # Leaving must remain possible after a block or after enabling ghost
         # mode; otherwise an invisible active membership traps the account and
         # prevents it from joining another table.
-        evening = (
-            PartyEvening.objects.select_related("host")
-            .filter(
-                join_code=code.upper(),
-                memberships__account=request.user,
-                memberships__active=True,
-            )
-            .first()
-        )
-        if not evening:
+        optimistic_evening = _evening_for_code(code)
+        if optimistic_evening is None:
             return Response({"left": False})
-        if evening.host_id == request.user.id:
-            return Response(
-                {"detail": "The host must end the evening.", "code": "host_must_end"},
-                status=status.HTTP_400_BAD_REQUEST,
+        optimistic_host_id = optimistic_evening.host_id
+        if optimistic_host_id is None:
+            return Response({"left": False})
+        with transaction.atomic():
+            # Account PK order matches login merge. If merge already retired
+            # this parent, return retryable auth so the durable client retries
+            # the same code through its alias instead of dropping the leave.
+            locked_accounts = _lock_accounts_in_pk_order(
+                {request.user.pk, optimistic_host_id}
             )
-        evening.memberships.filter(account=request.user).update(
-            active=False, left_at=timezone.now()
-        )
-        return Response({"left": True})
+            host = locked_accounts.get(optimistic_host_id)
+            account = locked_accounts.get(request.user.pk)
+            if (
+                host is None
+                or account is None
+                or account.status != Account.Status.ACTIVE
+            ):
+                return Response(
+                    {
+                        "detail": "Account changed while leaving the evening.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            evening = (
+                PartyEvening.objects.select_for_update(of=("self",))
+                .filter(pk=optimistic_evening.pk, host_id=optimistic_host_id)
+                .first()
+            )
+            if evening is None:
+                return Response(
+                    {
+                        "detail": "Evening changed while leaving.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            membership = evening.memberships.filter(account=account, active=True).first()
+            if membership is None:
+                return Response({"left": False})
+            if evening.host_id == account.id:
+                return Response(
+                    {"detail": "The host must end the evening.", "code": "host_must_end"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            updated = evening.memberships.filter(pk=membership.pk, active=True).update(
+                active=False, left_at=timezone.now()
+            )
+        return Response({"left": updated > 0})
 
 
 class PartyEveningEndView(APIView):
@@ -540,17 +764,42 @@ class PartyEveningEndView(APIView):
     throttle_scope = "friends"
 
     def post(self, request: Request, code: str) -> Response:
-        evening = PartyEvening.objects.filter(join_code=code.upper(), host=request.user).first()
-        if not evening:
+        optimistic_evening = _evening_for_code(code)
+        if optimistic_evening is None:
             return Response(
                 {"detail": "Party evening not found.", "code": "party_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        if evening.active:
-            evening.active = False
-            evening.ended_at = timezone.now()
-            evening.save(update_fields=["active", "ended_at", "updated_at"])
-        return Response(_serialize_evening(evening, request.user))
+        with transaction.atomic():
+            account = (
+                Account.objects.select_for_update()
+                .filter(pk=request.user.pk, status=Account.Status.ACTIVE)
+                .first()
+            )
+            if account is None:
+                return Response(
+                    {
+                        "detail": "Account changed while ending the evening.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            evening = (
+                PartyEvening.objects.select_for_update(of=("self",))
+                .filter(pk=optimistic_evening.pk, host=account)
+                .first()
+            )
+            if not evening:
+                return Response(
+                    {"detail": "Party evening not found.", "code": "party_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if evening.active:
+                evening.active = False
+                evening.ended_at = timezone.now()
+                evening.save(update_fields=["active", "ended_at", "updated_at"])
+            payload = _serialize_evening(evening, account)
+        return Response(payload)
 
 
 class PartyEveningDrinkView(APIView):
@@ -586,16 +835,62 @@ class PartyEveningDrinkView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         data = serializer.validated_data
-        drink, created = PartyEveningDrink.objects.update_or_create(
-            account=request.user,
-            client_id=data["client_id"],
-            defaults={
-                "evening": evening,
-                "beer_name": data["beer_name"],
-                "quantity": data["quantity"],
-                "shared_at": data.get("shared_at") or timezone.now(),
-            },
-        )
+        optimistic_host_id = evening.host_id
+        with transaction.atomic():
+            locked_accounts = _lock_accounts_in_pk_order(
+                {request.user.pk, optimistic_host_id}
+            )
+            host = locked_accounts.get(optimistic_host_id)
+            account = locked_accounts.get(request.user.pk)
+            if host is None or account is None or account.status != Account.Status.ACTIVE:
+                return Response(
+                    {
+                        "detail": "Account changed while sharing a drink.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            locked_evening = (
+                PartyEvening.objects.select_for_update(of=("self",))
+                .select_related("host")
+                .filter(pk=evening.pk, host_id=optimistic_host_id)
+                .first()
+            )
+            if (
+                locked_evening is None
+                or not locked_evening.active
+                or not _can_access(locked_evening, account)
+            ):
+                return Response(
+                    {"detail": "Party evening is not active.", "code": "party_not_active"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if account.ghost_mode:
+                return Response(
+                    {
+                        "detail": "Turn off ghost mode before sharing a drink.",
+                        "code": "ghost_mode",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if not account.share_drinks_with_parta:
+                return Response(
+                    {
+                        "detail": "Turn on drink sharing before sharing a drink.",
+                        "code": "drink_sharing_disabled",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            drink, created = PartyEveningDrink.objects.update_or_create(
+                account=account,
+                client_id=data["client_id"],
+                defaults={
+                    "evening": locked_evening,
+                    "beer_name": data["beer_name"],
+                    "quantity": data["quantity"],
+                    "shared_at": data.get("shared_at") or timezone.now(),
+                },
+            )
         return Response(
             {"drink_id": str(drink.id), "created": created},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -636,12 +931,6 @@ def _game_roster_profiles(game: PartyGame, viewer: Account) -> list[dict]:
 
 
 def _serialize_game(game: PartyGame, viewer: Account) -> dict:
-    seed = 2_166_136_261
-    # FNV-1a over the table/game identity. Both values are restricted to ASCII,
-    # so the tiny client implementation produces exactly the same 32-bit seed
-    # even before a pending start has received its server UUID.
-    for byte in f"{game.evening.join_code}:{game.catalog_key}".encode("ascii"):
-        seed = ((seed ^ byte) * 16_777_619) & 0xFFFF_FFFF
     return {
         "id": str(game.public_id),
         "catalog_key": game.catalog_key,
@@ -653,11 +942,61 @@ def _serialize_game(game: PartyGame, viewer: Account) -> dict:
         "ended_at": game.ended_at.isoformat() if game.ended_at else None,
         # Known before an offline local-id -> server-id remap. Prompt decks use
         # it to deal the same order on every phone and after a cold restart.
-        "seed": (seed & 0x7FFF_FFFF) or 1,
+        "seed": game.seed,
     }
 
 
-def _serialize_game_event(event: PartyGameEvent) -> dict:
+def _game_payload_requires_redaction(
+    game: PartyGame,
+    visible_public_ids: set[str],
+    all_participant_public_ids: set[str],
+) -> bool:
+    """Fail closed when an opaque payload may name a currently hidden entrant."""
+    snapshot = {str(account_id) for account_id in (game.roster_account_ids or [])}
+    if game.payloads_redacted:
+        return True
+    if snapshot:
+        return not snapshot.issubset(visible_public_ids)
+    # A legacy/unbound game has no safe identity scope. If this viewer cannot
+    # see every table participant, its opaque payload must not cross the block,
+    # ghost-mode or pending-deletion boundary.
+    return not all_participant_public_ids.issubset(visible_public_ids)
+
+
+def _game_identity_ids_for_accounts(account_ids: set[int]) -> set[str]:
+    """Current and retired UUIDs that resolve to viewer-visible accounts."""
+    return {
+        *(
+            str(public_id)
+            for public_id in Account.objects.filter(pk__in=account_ids).values_list(
+                "public_id",
+                flat=True,
+            )
+        ),
+        *(
+            str(public_id)
+            for public_id in AccountIdentityAlias.objects.filter(
+                account_id__in=account_ids
+            ).values_list("public_id", flat=True)
+        ),
+    }
+
+
+def _evening_participant_public_ids(evening: PartyEvening) -> set[str]:
+    return {
+        str(public_id)
+        for public_id in evening.memberships.values_list(
+            "account__public_id",
+            flat=True,
+        )
+    }
+
+
+def _serialize_game_event(
+    event: PartyGameEvent,
+    *,
+    redact_payload: bool = False,
+) -> dict:
     return {
         # The row id IS the cursor. Clients store the highest one they have seen
         # and hand it straight back as `since`.
@@ -670,7 +1009,7 @@ def _serialize_game_event(event: PartyGameEvent) -> dict:
         "account": _profile(event.account),
         "subject": _profile(event.subject) if event.subject else None,
         "delta": event.delta,
-        "payload": event.payload,
+        "payload": {} if redact_payload else event.payload,
         "at": event.created_at.isoformat(),
     }
 
@@ -746,6 +1085,8 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
                 participants.append(viewer_membership)
     participant_ids = {membership.account_id for membership in participants}
     profiles = {membership.account_id: _profile(membership.account) for membership in participants}
+    visible_public_ids = _game_identity_ids_for_accounts(participant_ids)
+    all_participant_public_ids = _evening_participant_public_ids(evening)
 
     visits, stops_truncated = _limited_rows(
         evening.party_visits.select_related("account")
@@ -923,6 +1264,11 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
     finish_by_game: dict[int, PartyGameEvent] = {}
     for game in game_rows:
         events = game_events[game.pk]
+        redact_payload = _game_payload_requires_redaction(
+            game,
+            visible_public_ids,
+            all_participant_public_ids,
+        )
         finish = next(
             (event for event in reversed(events) if event.kind == PartyGameEvent.Kind.FINISH),
             None,
@@ -938,8 +1284,13 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
                 "started_by": profiles.get(game.started_by_id, _profile(None)),
                 "started_at": game.started_at.isoformat(),
                 "ended_at": game.ended_at.isoformat() if game.ended_at else None,
-                "result": finish.payload if finish is not None else None,
-                "events": [_serialize_game_event(event) for event in events],
+                "result": (
+                    {} if redact_payload else finish.payload
+                ) if finish is not None else None,
+                "events": [
+                    _serialize_game_event(event, redact_payload=redact_payload)
+                    for event in events
+                ],
             }
         )
 
@@ -1012,7 +1363,7 @@ def _serialize_party_record(evening: PartyEvening, viewer: Account, request: Req
                     "at": finish.created_at.isoformat(),
                     "account": _profile(finish.account),
                     "game": game_item,
-                    "result": finish.payload,
+                    "result": game_item["result"],
                 }
             )
     timeline.sort(key=lambda event: (event["at"], event["id"]))
@@ -1073,8 +1424,11 @@ def _visible_game_event_rows(
         PartyGameEvent.objects.filter(
             game__evening=evening,
             game__started_by_id__in=participant_ids,
-            account_id__in=participant_ids,
         )
+        # account=NULL means the real author was purged. Never resurrect that
+        # person's answers, actions or result payload through another visible
+        # participant's game.
+        .filter(account_id__in=participant_ids)
         .filter(Q(subject_id__isnull=True) | Q(subject_id__in=participant_ids))
         .select_related("game", "account", "subject")
     )
@@ -1119,6 +1473,8 @@ class PartyGameCollectionView(APIView):
             since = 0
 
         participant_ids = _visible_party_account_ids(evening, request.user)
+        visible_public_ids = _game_identity_ids_for_accounts(participant_ids)
+        all_participant_public_ids = _evening_participant_public_ids(evening)
         events = game_events_since(
             evening,
             request.user,
@@ -1139,7 +1495,17 @@ class PartyGameCollectionView(APIView):
             {
                 "cursor": events[-1].id if events else (latest.id if latest else since),
                 "games": [_serialize_game(game, request.user) for game in games],
-                "events": [_serialize_game_event(event) for event in events],
+                "events": [
+                    _serialize_game_event(
+                        event,
+                        redact_payload=_game_payload_requires_redaction(
+                            event.game,
+                            visible_public_ids,
+                            all_participant_public_ids,
+                        ),
+                    )
+                    for event in events
+                ],
             }
         )
 
@@ -1154,17 +1520,109 @@ class PartyGameCollectionView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         data = serializer.validated_data
-        participant_ids = _visible_party_account_ids(evening, request.user)
+        optimistic_host_id = evening.host_id
+        optimistic_starter_ids = set(
+            evening.games.exclude(started_by_id__isnull=True).values_list(
+                "started_by_id",
+                flat=True,
+            )
+        )
+        requested_roster_ids = data.get("roster_ids")
+        optimistic_roster_accounts = (
+            _roster_accounts_by_requested_id(requested_roster_ids)
+            if requested_roster_ids is not None
+            else {}
+        )
+        optimistic_roster_account_ids = {
+            account.pk for account in optimistic_roster_accounts.values()
+        }
         # The whole table plays one copy of a catalogue game per evening. Lock
-        # the parent so two phones opening it together converge even without a
-        # schema change that could make legacy duplicate rows unmigratable.
+        # every Account FK before the parent so login/delete cannot deadlock a
+        # game start. Then the parent makes two phones opening the same game
+        # converge without a legacy-breaking schema change.
         with transaction.atomic():
-            locked_evening = PartyEvening.objects.select_for_update().get(pk=evening.pk)
-            if not locked_evening.active:
+            account_ids = {
+                optimistic_host_id,
+                request.user.pk,
+                *optimistic_starter_ids,
+                *optimistic_roster_account_ids,
+            }
+            locked_accounts = _lock_accounts_in_pk_order(account_ids)
+            locked_host = locked_accounts.get(optimistic_host_id)
+            account = locked_accounts.get(request.user.pk)
+            if (
+                locked_host is None
+                or account is None
+                or account.status != Account.Status.ACTIVE
+                or not optimistic_starter_ids.issubset(locked_accounts)
+                or not optimistic_roster_account_ids.issubset(locked_accounts)
+            ):
+                return Response(
+                    {
+                        "detail": "Account changed while starting the game.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if (
+                locked_host.status != Account.Status.ACTIVE
+                or account.ghost_mode
+            ):
                 return Response(
                     {"detail": "Party evening is not active.", "code": "party_not_active"},
                     status=status.HTTP_409_CONFLICT,
                 )
+            locked_evening = (
+                PartyEvening.objects.select_for_update(of=("self",))
+                .select_related("host")
+                .filter(pk=evening.pk)
+                .first()
+            )
+            if locked_evening is None or locked_evening.host_id != optimistic_host_id:
+                return Response(
+                    {
+                        "detail": "Evening changed while starting the game.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            current_starter_ids = set(
+                locked_evening.games.exclude(started_by_id__isnull=True).values_list(
+                    "started_by_id",
+                    flat=True,
+                )
+            )
+            if not current_starter_ids.issubset(locked_accounts):
+                return Response(
+                    {
+                        "detail": "Game changed while starting the game.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if (
+                not locked_evening.active
+                or not _can_access(locked_evening, account)
+            ):
+                return Response(
+                    {"detail": "Party evening is not active.", "code": "party_not_active"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            participant_ids = _visible_party_account_ids(locked_evening, account)
+            canonical_requested_roster_ids: list[str] | None = None
+            if requested_roster_ids is not None:
+                canonical_requested_roster_ids, missing_roster_ids = _canonical_roster_ids(
+                    requested_roster_ids,
+                    locked_accounts,
+                )
+                if missing_roster_ids:
+                    return Response(
+                        {
+                            "detail": "Sestava obsahuje někoho, kdo už u stolu není.",
+                            "code": "roster_member_not_active",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
             game = (
                 locked_evening.games.filter(catalog_key=data["catalog_key"])
                 .order_by("started_at", "id")
@@ -1182,16 +1640,20 @@ class PartyGameCollectionView(APIView):
                 # this order matters on every supported database.
                 _finish_superseded_games(locked_evening, None)
                 active_memberships = list(
-                    _visible_participant_rows(locked_evening, request.user)
-                    .select_for_update()
+                    _visible_participant_rows(locked_evening, account)
+                    # Only membership rows are mutated/used for the frozen
+                    # roster. Locking joined Account rows here would invert the
+                    # global Account -> Evening order after Evening is already
+                    # locked and can deadlock a concurrent merge or deletion.
+                    .select_for_update(of=("self",))
                     .filter(active=True)
                 )
                 active_roster_ids = [
                     str(membership.account.public_id)
                     for membership in active_memberships
                 ]
-                if "roster_ids" in data:
-                    roster_account_ids = [str(value) for value in data["roster_ids"]]
+                if canonical_requested_roster_ids is not None:
+                    roster_account_ids = canonical_requested_roster_ids
                     unknown_ids = set(roster_account_ids) - set(active_roster_ids)
                     if unknown_ids:
                         return Response(
@@ -1209,10 +1671,14 @@ class PartyGameCollectionView(APIView):
                 game = PartyGame.objects.create(
                     evening=locked_evening,
                     client_id=data["client_id"],
-                    started_by=request.user,
+                    started_by=account,
                     catalog_key=data["catalog_key"],
                     name=data["name"],
                     scoring=data["scoring"],
+                    seed=party_game_seed(
+                        locked_evening.join_code,
+                        data["catalog_key"],
+                    ),
                     roster_account_ids=roster_account_ids,
                     started_at=bounded_client_time(
                         data.get("started_at"),
@@ -1227,11 +1693,11 @@ class PartyGameCollectionView(APIView):
                 # evening above makes that first non-empty selection win even
                 # when two phones open the lobby together. Released clients
                 # omit the field, so they still get the whole active table.
-                requested_roster = data.get("roster_ids")
+                requested_roster = canonical_requested_roster_ids
                 if requested_roster is None:
                     requested_roster = [
                         membership.account.public_id
-                        for membership in _visible_members(locked_evening, request.user)
+                        for membership in _visible_members(locked_evening, account)
                     ]
                 roster_account_ids = [str(value) for value in requested_roster]
                 if len(roster_account_ids) == 1:
@@ -1242,7 +1708,7 @@ class PartyGameCollectionView(APIView):
                         str(membership.account.public_id)
                         for membership in _visible_participant_rows(
                             locked_evening,
-                            request.user,
+                            account,
                         ).filter(active=True)
                     }
                     unknown_ids = set(roster_account_ids) - active_roster_ids
@@ -1291,13 +1757,14 @@ class PartyGameCollectionView(APIView):
                         "kind": PartyGameEvent.Kind.START,
                     },
                 )
-        if game.started_by_id not in participant_ids:
-            return Response(
-                {"detail": "Game not found.", "code": "game_not_found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            if game.started_by_id not in participant_ids:
+                return Response(
+                    {"detail": "Game not found.", "code": "game_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            payload = _serialize_game(game, account)
         return Response(
-            _serialize_game(game, request.user),
+            payload,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
@@ -1325,67 +1792,220 @@ class PartyGameEventView(APIView):
             public_id=game_id,
             started_by_id__in=participant_ids,
         ).first()
+        if game is None:
+            game = (
+                PartyGame.objects.filter(
+                    aliases__public_id=game_id,
+                    evening=evening,
+                    started_by_id__in=participant_ids,
+                )
+                .order_by("pk")
+                .first()
+            )
         if not game:
             return Response(
                 {"detail": "Game not found.", "code": "game_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        participant_memberships = _visible_participants(evening, request.user)
-        frozen_roster_ids = {
-            str(value) for value in (game.roster_account_ids or [])
-        }
-        roster_ids = frozen_roster_ids or {
-            str(member.account.public_id)
-            for member in participant_memberships
-            if member.active
-        }
-        # Scores may still name somebody who left after the game began. New
-        # table members, on the other hand, do not join a quiz halfway through.
-        members = {
+        optimistic_members = {
             str(member.account.public_id): member.account
-            for member in participant_memberships
-            if str(member.account.public_id) in roster_ids
+            for member in _visible_participants(evening, request.user)
         }
-        requester_is_entrant = str(request.user.public_id) in roster_ids
-        requester_is_bound_entrant = str(request.user.public_id) in frozen_roster_ids
-        # A bound roster is the whole player list. An active table observer who
-        # was never dealt in gets to watch, not to write — no event kind.
-        outside_frozen_roster = bool(frozen_roster_ids) and not requester_is_bound_entrant
-        candidate_items = []
-        for item in serializer.validated_data["events"]:
-            if outside_frozen_roster:
-                continue
-            subject = members.get(str(item.get("subject_id"))) if item.get("subject_id") else None
-            if item["kind"] == "score" and subject is None:
-                # Scoring somebody outside the frozen lobby is not an error
-                # worth failing the batch over — it is a stale phone. Skip it
-                # and let the rest through.
-                continue
-            if item["kind"] == "answer" and not requester_is_entrant:
-                # An active table member may watch a game they sat out, but the
-                # frozen lobby roster — not today's membership — decides who
-                # can commit a quiz answer.
-                continue
-            if item["kind"] == "action" and not requester_is_bound_entrant:
-                # Empty roster means the cover is merely on the table. Gameplay
-                # starts only after one lobby atomically binds its players.
-                continue
-            candidate_items.append((item, subject))
+        requested_subject_ids = {
+            item["subject_id"]
+            for item in serializer.validated_data["events"]
+            if item.get("subject_id")
+        }
+        unknown_subject_ids = requested_subject_ids - {
+            uuid.UUID(public_id) for public_id in optimistic_members
+        }
+        if unknown_subject_ids:
+            optimistic_members.update(
+                {
+                    str(alias.public_id): alias.account
+                    for alias in AccountIdentityAlias.objects.select_related("account")
+                    .filter(
+                        public_id__in=unknown_subject_ids,
+                        account_id__in={
+                            member.pk for member in optimistic_members.values()
+                        },
+                    )
+                }
+            )
+        optimistic_subject_ids = {
+            subject.pk
+            for item in serializer.validated_data["events"]
+            if item.get("subject_id")
+            if (subject := optimistic_members.get(str(item["subject_id"]))) is not None
+        }
+        optimistic_host_id = evening.host_id
 
         written: list[PartyGameEvent] = []
         with transaction.atomic():
-            # Every event writer takes the evening lock first, then its game.
-            # That serialises the per-evening budget even when two games receive
-            # offline batches at once, without relying on an eventually
-            # consistent count.
-            locked_evening = PartyEvening.objects.select_for_update().get(pk=evening.pk)
-            if not locked_evening.active:
+            account_ids = {
+                optimistic_host_id,
+                request.user.pk,
+                *optimistic_subject_ids,
+            }
+            locked_accounts = _lock_accounts_in_pk_order(account_ids)
+            # A merge can retire a subject after the optimistic roster read but
+            # before these locks. Never acknowledge that durable score as an
+            # empty success: the next retry will resolve its new identity alias.
+            if not optimistic_subject_ids.issubset(locked_accounts):
+                return Response(
+                    {
+                        "detail": "Account changed while saving the game.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            locked_host = locked_accounts.get(optimistic_host_id)
+            account = locked_accounts.get(request.user.pk)
+            if (
+                locked_host is None
+                or account is None
+                or account.status != Account.Status.ACTIVE
+            ):
+                return Response(
+                    {
+                        "detail": "Account changed while saving the game.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if (
+                locked_host.status != Account.Status.ACTIVE
+                or account.ghost_mode
+            ):
                 return Response(
                     {"detail": "Party evening is not active.", "code": "party_not_active"},
                     status=status.HTTP_409_CONFLICT,
                 )
-            locked_game = PartyGame.objects.select_for_update().get(pk=game.pk)
+            locked_evening = (
+                PartyEvening.objects.select_for_update(of=("self",))
+                .select_related("host")
+                .filter(pk=evening.pk)
+                .first()
+            )
+            if locked_evening is None or locked_evening.host_id != optimistic_host_id:
+                return Response(
+                    {
+                        "detail": "Evening changed while saving the game.",
+                        "code": "auth",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if (
+                not locked_evening.active
+                or not _can_access(locked_evening, account)
+            ):
+                return Response(
+                    {"detail": "Party evening is not active.", "code": "party_not_active"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            participant_ids = _visible_party_account_ids(locked_evening, account)
+            locked_game_id = (
+                PartyGame.objects.filter(
+                    public_id=game_id,
+                    evening=locked_evening,
+                )
+                .values_list("pk", flat=True)
+                .first()
+            )
+            if locked_game_id is None:
+                locked_game_id = (
+                    PartyGameAlias.objects.filter(
+                        public_id=game_id,
+                        game__evening=locked_evening,
+                    )
+                    .values_list("game_id", flat=True)
+                    .first()
+                )
+            locked_game = (
+                PartyGame.objects.select_for_update(of=("self",))
+                .filter(pk=locked_game_id, evening=locked_evening)
+                .first()
+                if locked_game_id is not None
+                else None
+            )
+            if locked_game is None or locked_game.started_by_id not in participant_ids:
+                return Response(
+                    {"detail": "Game not found.", "code": "game_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            participant_memberships = _visible_participants(locked_evening, account)
+            frozen_roster_ids = {
+                str(value) for value in (locked_game.roster_account_ids or [])
+            }
+            roster_ids = frozen_roster_ids or {
+                str(member.account.public_id)
+                for member in participant_memberships
+                if member.active
+            }
+            roster_account_ids = {
+                member.account_id
+                for member in participant_memberships
+                if str(member.account.public_id) in roster_ids
+            }
+            payload_identity_aliases = {
+                str(alias.public_id): str(alias.account.public_id)
+                for alias in AccountIdentityAlias.objects.select_related("account").filter(
+                    account_id__in=roster_account_ids,
+                )
+            }
+            # Scores may still name somebody who left after the game began. New
+            # table members, on the other hand, do not join a quiz halfway through.
+            members = {
+                str(member.account.public_id): member.account
+                for member in participant_memberships
+                if str(member.account.public_id) in roster_ids
+                and member.account_id in locked_accounts
+            }
+            stale_subject_ids = requested_subject_ids - {
+                uuid.UUID(public_id) for public_id in members
+            }
+            if stale_subject_ids:
+                for alias in AccountIdentityAlias.objects.filter(
+                    public_id__in=stale_subject_ids,
+                    account_id__in={member.pk for member in members.values()},
+                ):
+                    canonical_account = locked_accounts.get(alias.account_id)
+                    if canonical_account is not None:
+                        members[str(alias.public_id)] = canonical_account
+            requester_is_entrant = str(account.public_id) in roster_ids
+            requester_is_bound_entrant = str(account.public_id) in frozen_roster_ids
+            outside_frozen_roster = (
+                bool(frozen_roster_ids) and not requester_is_bound_entrant
+            )
+            candidate_items = []
+            for item in serializer.validated_data["events"]:
+                if outside_frozen_roster:
+                    continue
+                subject = (
+                    members.get(str(item.get("subject_id")))
+                    if item.get("subject_id")
+                    else None
+                )
+                if item["kind"] == "score" and subject is None:
+                    continue
+                if item["kind"] == "answer" and not requester_is_entrant:
+                    continue
+                if item["kind"] == "action" and not requester_is_bound_entrant:
+                    continue
+                canonical_item = {
+                    **item,
+                    "payload": (
+                        {}
+                        if locked_game.payloads_redacted
+                        else _canonicalize_identity_aliases_in_json(
+                            item.get("payload") or {},
+                            payload_identity_aliases,
+                        )
+                    ),
+                }
+                candidate_items.append((canonical_item, subject))
 
             # A finished game is an immutable log. Returning a successful empty
             # acceptance keeps released offline queues idempotent while making
@@ -1447,7 +2067,7 @@ class PartyGameEventView(APIView):
                     with transaction.atomic():
                         event = PartyGameEvent.objects.create(
                             game=locked_game,
-                            account=request.user,
+                            account=account,
                             client_id=item["client_id"],
                             kind=item["kind"],
                             subject=subject,
@@ -1468,13 +2088,16 @@ class PartyGameEventView(APIView):
                 if event.kind == PartyGameEvent.Kind.FINISH and locked_game.ended_at is None:
                     locked_game.ended_at = event.created_at
                     locked_game.save(update_fields=["ended_at"])
-
-        latest = _visible_game_event_rows(evening, participant_ids).order_by("-id").first()
-        return Response(
-            {
+            latest = _visible_game_event_rows(
+                locked_evening,
+                participant_ids,
+            ).order_by("-id").first()
+            payload = {
                 "cursor": latest.id if latest else 0,
                 "accepted": [_serialize_game_event(event) for event in written],
-            },
+            }
+        return Response(
+            payload,
             status=status.HTTP_201_CREATED if written else status.HTTP_200_OK,
         )
 
@@ -1611,16 +2234,22 @@ def _release_stream_slot(account_id: int) -> None:
         _stream_connection_total = max(0, _stream_connection_total - 1)
 
 
-def _stream_access_context(code: str, account: Account) -> tuple[PartyEvening, set[int]] | None:
+def _stream_access_context(
+    code: str,
+    account: Account,
+) -> tuple[PartyEvening, set[int], set[str], set[str]] | None:
     """Authorize a stream tick in two queries, including current block state."""
     if account.ghost_mode:
         return None
     evening = (
         PartyEvening.objects.select_related("host")
         .filter(
-            join_code=code.upper(),
             memberships__account=account,
             memberships__active=True,
+        )
+        .filter(
+            Q(join_code=code.upper())
+            | Q(codes__join_code=code.upper())
         )
         .filter(Q(host__isnull=True) | Q(host__status=Account.Status.ACTIVE, host__ghost_mode=False))
         .exclude(
@@ -1632,19 +2261,49 @@ def _stream_access_context(code: str, account: Account) -> tuple[PartyEvening, s
     )
     if evening is None:
         return None
-    participant_ids = set(
-        evening.memberships.filter(
-            account__status=Account.Status.ACTIVE,
-            account__ghost_mode=False,
+    membership_rows = evening.memberships.annotate(
+        viewer_blocked=Exists(
+            FriendBlock.objects.filter(
+                Q(blocker_id=OuterRef("account_id"), blocked=account)
+                | Q(blocked_id=OuterRef("account_id"), blocker=account)
+            )
         )
-        .exclude(
-            Q(account__blocks_made__blocked=account)
-            | Q(account__blocks_received__blocker=account)
-        )
-        .values_list("account_id", flat=True)
-        .distinct()
+    ).values_list(
+        "account_id",
+        "account__public_id",
+        "account__status",
+        "account__ghost_mode",
+        "viewer_blocked",
+        "account__identity_aliases__public_id",
     )
-    return evening, participant_ids
+    participant_ids: set[int] = set()
+    visible_public_ids: set[str] = set()
+    all_participant_public_ids: set[str] = set()
+    for (
+        participant_id,
+        public_id,
+        account_status,
+        ghost_mode,
+        viewer_blocked,
+        alias_public_id,
+    ) in membership_rows:
+        all_participant_public_ids.add(str(public_id))
+        if (
+            account_status != Account.Status.ACTIVE
+            or ghost_mode
+            or viewer_blocked
+        ):
+            continue
+        participant_ids.add(participant_id)
+        visible_public_ids.add(str(public_id))
+        if alias_public_id is not None:
+            visible_public_ids.add(str(alias_public_id))
+    return (
+        evening,
+        participant_ids,
+        visible_public_ids,
+        all_participant_public_ids,
+    )
 
 
 def _probe_stream_event_cursor(evening_id: int, cursor: int) -> int | None:
@@ -1669,9 +2328,22 @@ def _stream_game_events(request, code: str, cursor: int) -> list[tuple[int, dict
     context = _stream_access_context(code, account)
     if context is None:
         return None
-    evening, participant_ids = context
+    evening, participant_ids, visible_public_ids, all_participant_public_ids = context
     events = game_events_since(evening, account, cursor, participant_ids=participant_ids)
-    return [(event.id, _serialize_game_event(event)) for event in events]
+    return [
+        (
+            event.id,
+            _serialize_game_event(
+                event,
+                redact_payload=_game_payload_requires_redaction(
+                    event.game,
+                    visible_public_ids,
+                    all_participant_public_ids,
+                ),
+            ),
+        )
+        for event in events
+    ]
 
 
 async def party_game_stream(request, code: str):

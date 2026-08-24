@@ -354,7 +354,7 @@ export default function LivePartyMockScreen() {
     finishFromServer(night.endedAt);
     archiveCurrent('manual');
     endParty();
-    finishPartyToRecap(router);
+    finishPartyToRecap(router, '/party-live');
   }, [accountId, active, archiveCurrent, confirmedPartyCode, endParty, finishFromServer, night, router]);
 
   /**

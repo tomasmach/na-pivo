@@ -96,9 +96,7 @@ class CommunityEventTeamUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(min_length=1, max_length=40, trim_whitespace=True)
 
 
-def _claimed_or_error(request: Request) -> Response | None:
-    if request.user.is_claimed:
-        return None
+def _claimed_account_error() -> Response:
     return Response(
         {
             "detail": "Přihlas se, ať je u domácích setkání jasné, kdo přichází.",
@@ -106,6 +104,28 @@ def _claimed_or_error(request: Request) -> Response | None:
         },
         status=status.HTTP_403_FORBIDDEN,
     )
+
+
+def _claimed_or_error(request: Request) -> Response | None:
+    return None if request.user.is_claimed else _claimed_account_error()
+
+
+def _inactive_account_error() -> Response:
+    return Response(
+        {"detail": "Účet už není aktivní.", "code": "account_inactive"},
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+def _lock_accounts_in_pk_order(account_ids: set[int]) -> dict[int, Account]:
+    """Lock every FK identity before Event/Team rows in one global order."""
+
+    return {
+        account.pk: account
+        for account in Account.objects.select_for_update()
+        .filter(pk__in=sorted(account_ids))
+        .order_by("pk")
+    }
 
 
 def _profile(account: Account | None) -> dict:
@@ -585,25 +605,37 @@ class CommunityEventCollectionView(APIView):
         if precondition is not None:
             return precondition
         data = serializer.validated_data
-        event, created = CommunityEvent.objects.get_or_create(
-            host=request.user,
-            client_id=data["client_id"],
-            defaults={
-                "title": data["title"],
-                "description": data["description"],
-                "city": data["city"],
-                "area_label": data["area_label"],
-                "exact_address": data["exact_address"],
-                "lat": data["lat"],
-                "lng": data["lng"],
-                "starts_at": data["starts_at"],
-                "ends_at": data["ends_at"],
-                "capacity": data["capacity"],
-            },
-        )
-        event = _event_queryset().get(pk=event.pk)
+        with transaction.atomic():
+            account = _lock_accounts_in_pk_order({request.user.pk}).get(request.user.pk)
+            if account is None or account.status != Account.Status.ACTIVE:
+                return _inactive_account_error()
+            if not account.is_claimed:
+                return _claimed_account_error()
+            if account.ghost_mode:
+                return Response(
+                    {"detail": "Nejdřív vypni neviditelný režim.", "code": "ghost_mode"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            event, created = CommunityEvent.objects.get_or_create(
+                host=account,
+                client_id=data["client_id"],
+                defaults={
+                    "title": data["title"],
+                    "description": data["description"],
+                    "city": data["city"],
+                    "area_label": data["area_label"],
+                    "exact_address": data["exact_address"],
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "starts_at": data["starts_at"],
+                    "ends_at": data["ends_at"],
+                    "capacity": data["capacity"],
+                },
+            )
+            event = _event_queryset().get(pk=event.pk)
+            payload = _serialize_event(event, account)
         return Response(
-            _serialize_event(event, request.user),
+            payload,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
@@ -692,40 +724,107 @@ class CommunityEventJoinView(APIView):
             precondition = ugc_consent_precondition(request)
             if precondition is not None:
                 return precondition
-        event = _event_queryset().filter(pk=event_id).first()
-        if (
-            not event
-            or event.status != CommunityEvent.Status.ACTIVE
-            or event.ends_at <= timezone.now()
-        ):
+        optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
+        if optimistic_event is None:
             return Response(
                 {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
                 status=status.HTTP_409_CONFLICT,
             )
-        if event.host is None:
+        optimistic_host_id = optimistic_event["host_id"]
+        if optimistic_host_id is None:
             return Response(
-                {"detail": "K tomuhle setkání se nejde přidat.", "code": "event_unavailable"},
+                {
+                    "detail": "K tomuhle setkání se nejde přidat.",
+                    "code": "event_unavailable",
+                },
                 status=status.HTTP_404_NOT_FOUND,
             )
-        if event.host_id == request.user.id:
-            return Response(
-                {"detail": "Pořadatel už u stolu je.", "code": "host_cannot_join"},
-                status=status.HTTP_400_BAD_REQUEST,
+        with transaction.atomic():
+            # Account merge owns Account rows before it updates hosted events.
+            # Lock the same identities first so a membership INSERT cannot
+            # deadlock PostgreSQL by requesting an Account FK lock while a
+            # concurrent login waits for this event.
+            locked_accounts = {
+                account.pk: account
+                for account in Account.objects.select_for_update()
+                .filter(pk__in=sorted({request.user.pk, optimistic_host_id}))
+                .order_by("pk")
+            }
+            account = locked_accounts.get(request.user.pk)
+            host = locked_accounts.get(optimistic_host_id)
+            if (
+                account is None
+                or host is None
+                or account.status != Account.Status.ACTIVE
+                or host.status != Account.Status.ACTIVE
+            ):
+                return Response(
+                    {
+                        "detail": "K tomuhle setkání se nejde přidat.",
+                        "code": "event_unavailable",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            event = (
+                _event_queryset()
+                .select_for_update(of=("self",))
+                .filter(pk=event_id)
+                .first()
             )
-        if request.user.ghost_mode or event.host.ghost_mode or _blocked(event.host, request.user):
-            return Response(
-                {"detail": "K tomuhle setkání se nejde přidat.", "code": "event_unavailable"},
-                status=status.HTTP_404_NOT_FOUND,
+            if (
+                not event
+                or event.status != CommunityEvent.Status.ACTIVE
+                or event.ends_at <= timezone.now()
+            ):
+                return Response(
+                    {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if event.host_id != optimistic_host_id:
+                return Response(
+                    {
+                        "detail": "K tomuhle setkání se nejde přidat.",
+                        "code": "event_unavailable",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if event.host_id == account.id:
+                return Response(
+                    {"detail": "Pořadatel už u stolu je.", "code": "host_cannot_join"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if (
+                account.ghost_mode
+                or host.ghost_mode
+                or _blocked(host, account)
+            ):
+                return Response(
+                    {
+                        "detail": "K tomuhle setkání se nejde přidat.",
+                        "code": "event_unavailable",
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            membership = (
+                CommunityEventMembership.objects.select_for_update()
+                .filter(event=event, account=account)
+                .first()
             )
-        membership, _created = CommunityEventMembership.objects.update_or_create(
-            event=event,
-            account=request.user,
-            defaults={
-                "message": serializer.validated_data["message"],
-                "status": CommunityEventMembership.Status.PENDING,
-                "decided_at": None,
-            },
-        )
+            if membership is None:
+                membership = CommunityEventMembership.objects.create(
+                    event=event,
+                    account=account,
+                    message=serializer.validated_data["message"],
+                    status=CommunityEventMembership.Status.PENDING,
+                )
+            elif membership.status != CommunityEventMembership.Status.APPROVED:
+                membership.message = serializer.validated_data["message"]
+                membership.status = CommunityEventMembership.Status.PENDING
+                membership.decided_at = None
+                membership.save(
+                    update_fields=["message", "status", "decided_at", "updated_at"]
+                )
         return Response(
             {"request_id": str(membership.id), "status": membership.status},
             status=status.HTTP_202_ACCEPTED,
@@ -796,27 +895,84 @@ class CommunityEventTeamCollectionView(APIView):
             return precondition
         data = serializer.validated_data
 
+        optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
+        if optimistic_event is None or optimistic_event["host_id"] is None:
+            return Response(
+                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        optimistic_host_id = optimistic_event["host_id"]
+        optimistic_creator_id = (
+            CommunityEventTeam.objects.filter(
+                event_id=event_id,
+                client_id=data["client_id"],
+            )
+            .values_list("created_by_id", flat=True)
+            .first()
+        )
+        account_ids = {request.user.pk, optimistic_host_id}
+        if optimistic_creator_id is not None:
+            account_ids.add(optimistic_creator_id)
+
         with transaction.atomic():
+            locked_accounts = _lock_accounts_in_pk_order(account_ids)
+            account = locked_accounts.get(request.user.pk)
+            host = locked_accounts.get(optimistic_host_id)
+            creator = (
+                locked_accounts.get(optimistic_creator_id)
+                if optimistic_creator_id is not None
+                else None
+            )
+            if account is None or account.status != Account.Status.ACTIVE:
+                return _inactive_account_error()
+            if not account.is_claimed:
+                return _claimed_account_error()
+            if host is None or host.status != Account.Status.ACTIVE:
+                return Response(
+                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if optimistic_creator_id is not None and (
+                creator is None or creator.status != Account.Status.ACTIVE
+            ):
+                return Response(
+                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             event = (
-                CommunityEvent.objects.select_for_update()
+                CommunityEvent.objects.select_for_update(of=("self",))
                 .select_related("host")
                 .filter(pk=event_id)
                 .first()
             )
+            if event is None or event.host_id != optimistic_host_id:
+                return Response(
+                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            event.host = host
             access_error = _team_access_error(
                 event,
-                request.user,
+                account,
                 require_open=True,
             )
             if access_error is not None:
                 return access_error
 
-            team = CommunityEventTeam.objects.filter(
-                event=event,
-                client_id=data["client_id"],
-            ).first()
+            team = (
+                CommunityEventTeam.objects.select_for_update(of=("self",))
+                .filter(
+                    event=event,
+                    client_id=data["client_id"],
+                )
+                .first()
+            )
             if team is not None:
-                if team.created_by_id != request.user.id:
+                # The Account and Event locks serialize same-owner retries. The
+                # optimistic lookup can still have seen no row while another
+                # copy of this exact request was finishing, so ownership on the
+                # locked row is the authoritative idempotency check.
+                if team.created_by_id != account.id:
                     return Response(
                         {
                             "detail": "Tenhle požadavek už použil někdo jiný.",
@@ -828,7 +984,7 @@ class CommunityEventTeamCollectionView(APIView):
             else:
                 if CommunityEventTeamMembership.objects.filter(
                     event=event,
-                    account=request.user,
+                    account=account,
                 ).exists():
                     return Response(
                         {"detail": "Už jsi v jiném týmu.", "code": "already_on_team"},
@@ -846,7 +1002,7 @@ class CommunityEventTeamCollectionView(APIView):
                     with transaction.atomic():
                         team = CommunityEventTeam.objects.create(
                             event=event,
-                            created_by=request.user,
+                            created_by=account,
                             client_id=data["client_id"],
                             name=data["name"],
                         )
@@ -856,7 +1012,7 @@ class CommunityEventTeamCollectionView(APIView):
                         event=event,
                         client_id=data["client_id"],
                     ).first()
-                    if team is None or team.created_by_id != request.user.id:
+                    if team is None or team.created_by_id != account.id:
                         return Response(
                             {
                                 "detail": "Tenhle požadavek už použil někdo jiný.",
@@ -869,7 +1025,7 @@ class CommunityEventTeamCollectionView(APIView):
                 _membership, _joined, seat_error = _claim_team_seat(
                     event,
                     team,
-                    request.user,
+                    account,
                 )
                 if seat_error is not None:
                     if created:
@@ -883,10 +1039,9 @@ class CommunityEventTeamCollectionView(APIView):
                         status=status.HTTP_409_CONFLICT,
                     )
             team_id = team.id
-
-        event = _event_queryset(include_teams=True).get(pk=event_id)
-        roster = _serialize_team_roster(event, request.user)
-        team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
+            event = _event_queryset(include_teams=True).get(pk=event_id)
+            roster = _serialize_team_roster(event, account)
+            team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
         return Response(
             {"created": created, "team": team_payload, "team_roster": roster},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -904,24 +1059,73 @@ class CommunityEventTeamMembershipView(APIView):
         if error:
             return error
 
+        optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
+        if optimistic_event is None or optimistic_event["host_id"] is None:
+            return Response(
+                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        optimistic_host_id = optimistic_event["host_id"]
+        optimistic_team = (
+            CommunityEventTeam.objects.filter(pk=team_id, event_id=event_id)
+            .values("created_by_id")
+            .first()
+        )
+        optimistic_creator_id = (
+            optimistic_team["created_by_id"] if optimistic_team is not None else None
+        )
+        account_ids = {request.user.pk, optimistic_host_id}
+        if optimistic_creator_id is not None:
+            account_ids.add(optimistic_creator_id)
+
         with transaction.atomic():
+            locked_accounts = _lock_accounts_in_pk_order(account_ids)
+            account = locked_accounts.get(request.user.pk)
+            host = locked_accounts.get(optimistic_host_id)
+            creator = (
+                locked_accounts.get(optimistic_creator_id)
+                if optimistic_creator_id is not None
+                else None
+            )
+            if account is None or account.status != Account.Status.ACTIVE:
+                return _inactive_account_error()
+            if not account.is_claimed:
+                return _claimed_account_error()
+            if host is None or host.status != Account.Status.ACTIVE:
+                return Response(
+                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if optimistic_creator_id is not None and (
+                creator is None or creator.status != Account.Status.ACTIVE
+            ):
+                return Response(
+                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             event = (
-                CommunityEvent.objects.select_for_update()
+                CommunityEvent.objects.select_for_update(of=("self",))
                 .select_related("host")
                 .filter(pk=event_id)
                 .first()
             )
-            blocked_ids = _blocked_account_ids(request.user)
+            if event is None or event.host_id != optimistic_host_id:
+                return Response(
+                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            event.host = host
+            blocked_ids = _blocked_account_ids(account)
             access_error = _team_access_error(
                 event,
-                request.user,
+                account,
                 require_open=True,
                 blocked_account_ids=blocked_ids,
             )
             if access_error is not None:
                 return access_error
             team = (
-                CommunityEventTeam.objects.select_for_update()
+                CommunityEventTeam.objects.select_for_update(of=("self",))
                 .filter(pk=team_id, event=event)
                 .first()
             )
@@ -931,9 +1135,16 @@ class CommunityEventTeamMembershipView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if (
-                team.created_by is None
-                or team.created_by.status != Account.Status.ACTIVE
-                or team.created_by.ghost_mode
+                optimistic_team is None
+                or team.created_by_id != optimistic_creator_id
+                or creator is None
+            ):
+                return Response(
+                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if (
+                creator.ghost_mode
                 or team.created_by_id in blocked_ids
                 or (
                     blocked_ids
@@ -951,7 +1162,7 @@ class CommunityEventTeamMembershipView(APIView):
             _membership, joined, seat_error = _claim_team_seat(
                 event,
                 team,
-                request.user,
+                account,
             )
             if seat_error is not None:
                 code = "team_full" if seat_error == "team_full" else "already_on_team"
@@ -963,9 +1174,9 @@ class CommunityEventTeamMembershipView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-        event = _event_queryset(include_teams=True).get(pk=event_id)
-        roster = _serialize_team_roster(event, request.user)
-        team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
+            event = _event_queryset(include_teams=True).get(pk=event_id)
+            roster = _serialize_team_roster(event, account)
+            team_payload = next(row for row in roster["teams"] if row["id"] == str(team_id))
         return Response(
             {"joined": joined, "team": team_payload, "team_roster": roster},
             status=status.HTTP_201_CREATED if joined else status.HTTP_200_OK,
@@ -977,7 +1188,7 @@ class CommunityEventTeamMembershipView(APIView):
             return error
         with transaction.atomic():
             event = (
-                CommunityEvent.objects.select_for_update()
+                CommunityEvent.objects.select_for_update(of=("self",))
                 .select_related("host")
                 .filter(pk=event_id)
                 .first()
@@ -1017,7 +1228,7 @@ class CommunityEventTeamDetailView(APIView):
 
         with transaction.atomic():
             event = (
-                CommunityEvent.objects.select_for_update()
+                CommunityEvent.objects.select_for_update(of=("self",))
                 .select_related("host")
                 .filter(pk=event_id)
                 .first()
@@ -1049,7 +1260,7 @@ class CommunityEventTeamDetailView(APIView):
             return error
         with transaction.atomic():
             event = (
-                CommunityEvent.objects.select_for_update()
+                CommunityEvent.objects.select_for_update(of=("self",))
                 .select_related("host")
                 .filter(pk=event_id)
                 .first()
@@ -1154,27 +1365,45 @@ class CommunityEventReportView(APIView):
     def post(self, request: Request, event_id) -> Response:
         serializer = CommunityEventReportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        event = CommunityEvent.objects.select_related("host").filter(pk=event_id).first()
-        if not event or event.host is None:
+        optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
+        if optimistic_event is None or optimistic_event["host_id"] is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        if event.host_id == request.user.id:
-            return Response(
-                {"detail": "Vlastní setkání nejde nahlásit.", "code": "self_report"},
-                status=status.HTTP_400_BAD_REQUEST,
+        optimistic_host_id = optimistic_event["host_id"]
+        with transaction.atomic():
+            locked_accounts = _lock_accounts_in_pk_order(
+                {request.user.pk, optimistic_host_id}
             )
-        report = ContentReport.objects.create(
-            reporter=request.user,
-            target_account=event.host,
-            reason=serializer.validated_data["reason"],
-            comment=serializer.validated_data["comment"],
-            target_snapshot={
-                "community_event_id": str(event.id),
-                "title": event.title,
-                "city": event.city,
-                "area_label": event.area_label,
-                "host": _profile(event.host),
-            },
-        )
+            reporter = locked_accounts.get(request.user.pk)
+            host = locked_accounts.get(optimistic_host_id)
+            if reporter is None or reporter.status != Account.Status.ACTIVE:
+                return _inactive_account_error()
+            if host is None or host.status != Account.Status.ACTIVE:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            event = (
+                CommunityEvent.objects.select_for_update(of=("self",))
+                .filter(pk=event_id, host_id=optimistic_host_id)
+                .first()
+            )
+            if event is None:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            if event.host_id == reporter.id:
+                return Response(
+                    {"detail": "Vlastní setkání nejde nahlásit.", "code": "self_report"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            report = ContentReport.objects.create(
+                reporter=reporter,
+                target_account=host,
+                reason=serializer.validated_data["reason"],
+                comment=serializer.validated_data["comment"],
+                target_snapshot={
+                    "community_event_id": str(event.id),
+                    "title": event.title,
+                    "city": event.city,
+                    "area_label": event.area_label,
+                    "host": _profile(host),
+                },
+            )
         return Response(
             {"id": str(report.id), "status": report.status}, status=status.HTTP_201_CREATED
         )

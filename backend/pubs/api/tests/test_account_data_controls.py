@@ -2,21 +2,25 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import pytest
 from django.core.cache import cache
-from django.db import connection
+from django.db import close_old_connections, connection, connections, transaction
 from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs import emailer
+from pubs import accounts, emailer
+from pubs.api import views as api_views
 from pubs.models import (
     Account,
+    AccountIdentityAlias,
     AccountMappedPub,
     AccountPubCompletion,
     AccountUsageStats,
@@ -1234,6 +1238,10 @@ def test_account_export_reuses_loaded_auth_relations(client):
         email="apple@example.com",
         apple_refresh_token="TOP-SECRET-REFRESH",
     )
+    identity_alias = AccountIdentityAlias.objects.create(
+        account=account,
+        public_id=uuid.uuid4(),
+    )
 
     with CaptureQueriesContext(connection) as queries:
         resp = client.get("/v1/account/export", **_auth(token))
@@ -1243,6 +1251,12 @@ def test_account_export_reuses_loaded_auth_relations(client):
     assert body["account"]["email"] == "export@example.com"
     assert body["account"]["email_verified"] is True
     assert set(body["account"]["providers"]) == {"email", "google", "apple"}
+    assert body["account"]["identity_aliases"] == [
+        {
+            "id": str(identity_alias.public_id),
+            "created_at": identity_alias.created_at.isoformat(),
+        }
+    ]
     assert body["mapping_history"]["community_data"] == []
     assert body["mapping_history"]["pub_beer_brands"] == []
     assert body["mapping_history"]["pub_beer_products"] == []
@@ -1443,6 +1457,134 @@ def test_content_report_creates_moderation_record(client):
     )
     assert self_report.status_code == status.HTTP_400_BAD_REQUEST
     assert self_report.json()["code"] == "self_report"
+
+
+@pytest.mark.django_db
+def test_content_report_retries_retired_target_identity_after_merge(client, monkeypatch):
+    reporter_token, _reporter_id = _bootstrap(client)
+    _source_token, source_public_id = _bootstrap(client)
+    source = Account.objects.get(public_id=source_public_id)
+    target = Account.objects.create(device_id="content-report-merge-target")
+    real_lock = api_views._lock_content_report_accounts
+    merged = False
+
+    def merge_before_first_lock(account_ids):
+        nonlocal merged
+        if not merged:
+            accounts._merge_anonymous_account(source, target)
+            merged = True
+        return real_lock(account_ids)
+
+    monkeypatch.setattr(
+        api_views,
+        "_lock_content_report_accounts",
+        merge_before_first_lock,
+    )
+    payload = {
+        "target_account_id": source_public_id,
+        "reason": ContentReport.Reason.OTHER,
+        "comment": "Nevhodný profil.",
+    }
+
+    raced = client.post(
+        "/v1/content-reports",
+        data=payload,
+        format="json",
+        **_auth(reporter_token),
+    )
+    retry = client.post(
+        "/v1/content-reports",
+        data=payload,
+        format="json",
+        **_auth(reporter_token),
+    )
+
+    assert raced.status_code == status.HTTP_409_CONFLICT
+    assert raced.json()["code"] == "auth"
+    assert retry.status_code == status.HTTP_201_CREATED, retry.content
+    report = ContentReport.objects.get()
+    assert report.target_account_id == target.pk
+    assert report.target_snapshot["id"] == str(target.public_id)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_content_report_and_account_merge_do_not_store_a_stale_fk_on_postgres(
+    client,
+    monkeypatch,
+):
+    if connection.vendor != "postgresql":
+        pytest.skip("PostgreSQL row locks are required for this regression test")
+
+    reporter_token, _reporter_id = _bootstrap(client)
+    _source_token, source_public_id = _bootstrap(client)
+    source = Account.objects.get(public_id=source_public_id)
+    target = Account.objects.create(device_id="pg-content-report-merge-target")
+    target_loaded = threading.Event()
+    allow_report_to_lock = threading.Event()
+    real_resolve = api_views._content_report_target
+    paused = False
+
+    def pause_after_optimistic_target(public_id):
+        nonlocal paused
+        resolved = real_resolve(public_id)
+        if (
+            not paused
+            and threading.current_thread().name == "content-report-writer"
+            and public_id == source.public_id
+        ):
+            paused = True
+            target_loaded.set()
+            if not allow_report_to_lock.wait(timeout=10):
+                raise AssertionError("account merge did not finish")
+        return resolved
+
+    monkeypatch.setattr(
+        api_views,
+        "_content_report_target",
+        pause_after_optimistic_target,
+    )
+    payload = {
+        "target_account_id": source_public_id,
+        "reason": ContentReport.Reason.OTHER,
+        "comment": "Nevhodný profil.",
+    }
+
+    def write_report():
+        threading.current_thread().name = "content-report-writer"
+        close_old_connections()
+        try:
+            response = APIClient().post(
+                "/v1/content-reports",
+                data=payload,
+                format="json",
+                **_auth(reporter_token),
+            )
+            return response.status_code, response.json()
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        report_future = executor.submit(write_report)
+        assert target_loaded.wait(timeout=10)
+        try:
+            with transaction.atomic():
+                accounts._merge_anonymous_account(source, target)
+        finally:
+            allow_report_to_lock.set()
+        raced_status, raced_body = report_future.result(timeout=15)
+
+    assert raced_status == status.HTTP_409_CONFLICT, raced_body
+    assert raced_body["code"] == "auth"
+    assert not ContentReport.objects.exists()
+
+    retry = client.post(
+        "/v1/content-reports",
+        data=payload,
+        format="json",
+        **_auth(reporter_token),
+    )
+    assert retry.status_code == status.HTTP_201_CREATED, retry.content
+    assert ContentReport.objects.get().target_account_id == target.pk
 
 
 @pytest.mark.django_db
@@ -1841,6 +1983,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         "push_devices": "push_devices[*].platform",
         "usage_stats": "usage.mapper_xp",
         "identities": "account.identities[*].provider",
+        "identity_aliases": "account.identity_aliases[*].id",
         "client_events": "telemetry_events[*].event",
         "drinks": "drinks[*].client_id",
         "beer_checkins": "beer_checkins[*].client_id",

@@ -46,6 +46,8 @@ const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 let idSeq = 0;
+let renderer: ReturnType<typeof TestRenderer.create> | undefined;
+
 function drink(minutesAgo: number, priceCzk = 50) {
   idSeq += 1;
   return {
@@ -86,9 +88,13 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  act(() => renderer?.unmount());
+  renderer = undefined;
+});
+
 describe('StatsScreen', () => {
   it('shows the empty state with no drinks', async () => {
-    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
       await Promise.resolve();
@@ -114,7 +120,6 @@ describe('StatsScreen', () => {
       });
     });
 
-    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
       await Promise.resolve();
@@ -159,7 +164,6 @@ describe('StatsScreen', () => {
       },
     });
 
-    let renderer: ReturnType<typeof TestRenderer.create>;
     await act(async () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
       await Promise.resolve();

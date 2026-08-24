@@ -67,10 +67,10 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<RatingQueueItem>
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
 const runLocked = createQueueLock();
 
-async function deliver(item: RatingQueueItem): Promise<SubmitRatingResult> {
+async function deliver(item: RatingQueueItem, signal: AbortSignal): Promise<SubmitRatingResult> {
   // Deletes are timestamped tombstone PUTs (empty verdict/tag/note) so the
   // backend can apply the same last-write-wins conflict rule as normal upserts.
-  return submitRatingUpsert(item.payload);
+  return submitRatingUpsert(item.payload, signal);
 }
 
 /** Pending tombstones that restore must not hydrate back into local state. */
@@ -105,7 +105,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   for (const item of queue) {
     if (signal.aborted) break;
     attempted.set(item.pubKey, signature(item));
-    const result = await deliver(item);
+    const result = await deliver(item, signal);
     if (result !== 'retry') settled.add(item.pubKey);
   }
 

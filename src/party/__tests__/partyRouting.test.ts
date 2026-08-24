@@ -1,15 +1,12 @@
 import {
   cancelPendingPartyRecapNavigation,
+  completePendingPartyRecapNavigation,
   finishPartyToRecap,
   minimizeParty,
 } from '../partyRouting';
 
 describe('Party route fallback', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => {
-    cancelPendingPartyRecapNavigation();
-    jest.useRealTimers();
-  });
+  afterEach(cancelPendingPartyRecapNavigation);
   it('returns to the previous screen when the stack has one', () => {
     const router = { canGoBack: () => true, back: jest.fn(), replace: jest.fn() };
 
@@ -28,36 +25,74 @@ describe('Party route fallback', () => {
     expect(router.replace).toHaveBeenCalledWith('/friends');
   });
 
-  it('unwinds the requested root screens before navigating to one recap', () => {
-    const router = { dismiss: jest.fn(), navigate: jest.fn() };
+  it('unwinds every party screen and waits for the native pathname transition', () => {
+    const router = {
+      canDismiss: () => true,
+      dismissAll: jest.fn(),
+      replace: jest.fn(),
+      navigate: jest.fn(),
+    };
 
-    finishPartyToRecap(router, 2);
-    finishPartyToRecap(router, 2);
+    finishPartyToRecap(router, '/party-finish');
+    finishPartyToRecap(router, '/party-finish');
 
-    expect(router.dismiss).toHaveBeenCalledTimes(1);
-    expect(router.dismiss).toHaveBeenCalledWith(2);
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(router.dismissAll).toHaveBeenCalledTimes(1);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(completePendingPartyRecapNavigation(router, '/party-finish')).toBe(false);
 
-    jest.advanceTimersByTime(259);
-    expect(router.navigate).not.toHaveBeenCalled();
-
-    jest.advanceTimersByTime(1);
+    expect(completePendingPartyRecapNavigation(router, '/friends')).toBe(true);
     expect(router.navigate).toHaveBeenCalledTimes(1);
     expect(router.navigate).toHaveBeenCalledWith('/friends/party-recap');
+    expect(completePendingPartyRecapNavigation(router, '/friends')).toBe(false);
+  });
+
+  it('replaces a cold-start party root without dispatching an invalid dismiss', () => {
+    const router = {
+      canDismiss: () => false,
+      dismissAll: jest.fn(),
+      replace: jest.fn(),
+      navigate: jest.fn(),
+    };
+
+    finishPartyToRecap(router, '/party-live');
+    finishPartyToRecap(router, '/party-live');
+
+    expect(router.dismissAll).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith('/friends/party-recap');
+    expect(completePendingPartyRecapNavigation(router, '/friends/party-recap')).toBe(true);
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('replaces a cold-start party-live root left by dismissAll', () => {
+    const router = {
+      canDismiss: () => true,
+      dismissAll: jest.fn(),
+      replace: jest.fn(),
+      navigate: jest.fn(),
+    };
+
+    finishPartyToRecap(router, '/party-finish');
+    expect(completePendingPartyRecapNavigation(router, '/party-live')).toBe(true);
+    expect(router.replace).toHaveBeenCalledWith('/friends/party-recap');
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   it('cancels a pending recap without blocking the next finished evening', () => {
-    const router = { dismiss: jest.fn(), navigate: jest.fn() };
+    const router = {
+      canDismiss: () => true,
+      dismissAll: jest.fn(),
+      replace: jest.fn(),
+      navigate: jest.fn(),
+    };
 
-    finishPartyToRecap(router);
+    finishPartyToRecap(router, '/party-finish');
     cancelPendingPartyRecapNavigation();
-    jest.runOnlyPendingTimers();
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(completePendingPartyRecapNavigation(router, '/friends')).toBe(false);
 
-    finishPartyToRecap(router);
-    jest.advanceTimersByTime(260);
-    expect(router.dismiss).toHaveBeenCalledTimes(2);
+    finishPartyToRecap(router, '/party-finish');
+    completePendingPartyRecapNavigation(router, '/friends');
+    expect(router.dismissAll).toHaveBeenCalledTimes(2);
     expect(router.navigate).toHaveBeenCalledTimes(1);
-    expect(router.navigate).toHaveBeenCalledWith('/friends/party-recap');
   });
 });

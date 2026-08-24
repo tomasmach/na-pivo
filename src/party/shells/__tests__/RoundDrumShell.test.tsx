@@ -3,6 +3,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
+import { MockLayout } from '@/mocks/mockTheme';
 
 jest.mock('react-native-reanimated', () => ({ useReducedMotion: () => true }));
 
@@ -23,6 +24,15 @@ it('reserves the safe bottom lane for the game beer action', () => {
       .UNSAFE_getAllByType(View)
       .some((node) => StyleSheet.flatten(node.props.style)?.paddingBottom === 122),
   ).toBe(true);
+  const action = screen.getByLabelText('Roztoč');
+  const rawActionStyle = action.props.style;
+  const actionStyle = StyleSheet.flatten(
+    typeof rawActionStyle === 'function'
+      ? rawActionStyle({ pressed: false })
+      : rawActionStyle,
+  );
+  expect(actionStyle?.height).toBe(MockLayout.sheetButtonHeight);
+  expect(actionStyle?.flex).toBeUndefined();
 });
 
 it('chooses and publishes a stable id once on a reduced-motion double tap', () => {

@@ -3,6 +3,7 @@ import { canonicalizeInviteSystemPath } from '../inviteSystemPath';
 describe('canonicalizeInviteSystemPath', () => {
   it.each([
     ['napivo://parta/pozvanka?code=Ab3xK9_pQ2sT', '/parta/pozvanka?code=Ab3xK9_pQ2sT'],
+    ['napivo://p/Ab3xK9_pQ2sT', '/parta/pozvanka?code=Ab3xK9_pQ2sT'],
     ['https://na-pivo.cz/p/Ab3xK9_pQ2sT', '/parta/pozvanka?code=Ab3xK9_pQ2sT'],
   ])('canonicalizes friend invite %s', (path, expected) => {
     expect(canonicalizeInviteSystemPath(path, 'request-1')).toBe(expected);
@@ -10,6 +11,7 @@ describe('canonicalizeInviteSystemPath', () => {
 
   it.each([
     'napivo://party-live?code=EFJ66G',
+    'napivo://party/EFJ66G',
     'https://na-pivo.cz/party/efj66g',
   ])('canonicalizes party invite %s and gives each delivery an id', (path) => {
     expect(canonicalizeInviteSystemPath(path, 'warm-2')).toBe(

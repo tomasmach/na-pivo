@@ -146,6 +146,24 @@ describe('partyGamesStore', () => {
     expect(usePartyGamesStore.getState().games).toEqual([GAME]);
   });
 
+  it('rekeys a retired server game and its buffered events by catalogue identity', () => {
+    const canonical = { ...GAME, id: 'game-canonical', seed: 731 };
+    usePartyGamesStore.getState().connect('STUL24');
+    handlers().onGames([GAME]);
+    handlers().onEvents([event()]);
+
+    handlers().onGames([canonical]);
+    handlers().onEvents([event({ cursor: 2, clientId: 'event-2', gameId: canonical.id })]);
+
+    const state = usePartyGamesStore.getState();
+    expect(state.games).toEqual([canonical]);
+    expect(state.events.map((item) => item.gameId)).toEqual([
+      canonical.id,
+      canonical.id,
+    ]);
+    expect(eventsOfGame(state.events, canonical.id)).toHaveLength(2);
+  });
+
   it('durably places a picked game with an explicit pending roster', async () => {
     const handle = await placePartyGameOnTable('STUL24', {
       catalogKey: 'quiz',

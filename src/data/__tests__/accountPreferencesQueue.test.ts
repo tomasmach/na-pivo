@@ -11,11 +11,14 @@ import {
   enqueueAccountPreferences,
   flushAccountPreferencesQueue,
   hasQueuedAccountPreferences,
+  rekeyAccountPreferencesQueueOwner,
 } from '../accountPreferencesQueue';
 import {
+  PRIVATE_ACCOUNT_MERGE_STORAGE_KEY,
   beginPrivateAccountTransition,
   resetPrivateAccountBoundaryForTests,
 } from '../privateAccountBoundary';
+import { recoverPartyGameQueuesForAccount } from '../partyGameQueueBoundary';
 import { suppressPrivatePersistenceDuringMemoryReset } from '../privateAccountStorage';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -128,6 +131,150 @@ it('survives an offline restart and delivers the opt-out when connectivity retur
     pendingAccountPreferences: {},
     pendingAccountPreferencesOwnerId: null,
   });
+});
+
+it('rekeys pending preferences inside cold merge recovery before clearing its marker', async () => {
+  await expect(
+    enqueueAccountPreferences(
+      { marketingEmailsEnabled: false },
+      SESSION_A.accountId,
+    ),
+  ).resolves.toBe(true);
+  await nextTurn();
+  expect(JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!))
+    .toMatchObject({
+      state: {
+        pendingAccountPreferences: { marketingEmailsEnabled: false },
+        pendingAccountPreferencesOwnerId: SESSION_A.accountId,
+      },
+    });
+  await AsyncStorage.setItem(
+    PRIVATE_ACCOUNT_MERGE_STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      operationId: 'merge-1',
+      fromAccountId: SESSION_A.accountId,
+      toAccountId: SESSION_B.accountId,
+      preparedAt: 1,
+    }),
+  );
+  resetPrivateAccountBoundaryForTests();
+
+  await expect(
+    rekeyAccountPreferencesQueueOwner(SESSION_A.accountId, SESSION_B.accountId),
+  ).resolves.toBe(false);
+  const setItem = (AsyncStorage.setItem as jest.Mock).getMockImplementation()!;
+  let failSettingsRekey = true;
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(
+    (key: string, value: string) => {
+      if (key === 'na-pivo-settings' && failSettingsRekey) {
+        failSettingsRekey = false;
+        return Promise.reject(new Error('disk full'));
+      }
+      return setItem(key, value);
+    },
+  );
+  await expect(
+    recoverPartyGameQueuesForAccount(
+      SESSION_B.accountId,
+      (intent) => rekeyAccountPreferencesQueueOwner(
+        intent.fromAccountId,
+        SESSION_B.accountId,
+        { allowDuringPrivateTransition: true },
+      ),
+    ),
+  ).resolves.toBe(false);
+  expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).not.toBeNull();
+  expect(JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!))
+    .toMatchObject({
+      state: { pendingAccountPreferencesOwnerId: SESSION_A.accountId },
+    });
+
+  resetPrivateAccountBoundaryForTests();
+  await expect(
+    recoverPartyGameQueuesForAccount(
+      SESSION_B.accountId,
+      (intent) => rekeyAccountPreferencesQueueOwner(
+        intent.fromAccountId,
+        SESSION_B.accountId,
+        { allowDuringPrivateTransition: true },
+      ),
+    ),
+  ).resolves.toBe(true);
+
+  expect(JSON.parse(
+    (await AsyncStorage.getItem(ACCOUNT_PREFERENCES_QUEUE_STORAGE_KEY))!,
+  )).toEqual([
+    expect.objectContaining({ ownerAccountId: SESSION_B.accountId }),
+  ]);
+  expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).toBeNull();
+  expect(JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!))
+    .toMatchObject({
+      state: {
+        pendingAccountPreferences: { marketingEmailsEnabled: false },
+        pendingAccountPreferencesOwnerId: SESSION_B.accountId,
+      },
+    });
+
+  suppressPrivatePersistenceDuringMemoryReset(() => {
+    useSettingsStore.setState({
+      pendingAccountPreferences: {},
+      pendingAccountPreferencesOwnerId: null,
+    });
+  });
+  await useSettingsStore.persist.rehydrate();
+  await nextTurn();
+  expect(useSettingsStore.getState()).toMatchObject({
+    pendingAccountPreferences: { marketingEmailsEnabled: false },
+    pendingAccountPreferencesOwnerId: SESSION_B.accountId,
+  });
+});
+
+it('recovers a durable settings overlay when the separate queue write never existed', async () => {
+  expect(useSettingsStore.getState().stageAccountPreferences(
+    { marketingEmailsEnabled: false },
+    SESSION_A.accountId,
+  )).toBe(true);
+  await nextTurn();
+  expect(await AsyncStorage.getItem(ACCOUNT_PREFERENCES_QUEUE_STORAGE_KEY)).toBeNull();
+  await AsyncStorage.setItem(
+    PRIVATE_ACCOUNT_MERGE_STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      operationId: 'merge-overlay-only',
+      fromAccountId: SESSION_A.accountId,
+      toAccountId: SESSION_B.accountId,
+      preparedAt: 1,
+    }),
+  );
+  suppressPrivatePersistenceDuringMemoryReset(() => {
+    useSettingsStore.setState({
+      pendingAccountPreferences: {},
+      pendingAccountPreferencesOwnerId: null,
+    });
+  });
+  resetPrivateAccountBoundaryForTests();
+
+  await expect(
+    recoverPartyGameQueuesForAccount(
+      SESSION_B.accountId,
+      (intent) => rekeyAccountPreferencesQueueOwner(
+        intent.fromAccountId,
+        SESSION_B.accountId,
+        { allowDuringPrivateTransition: true },
+      ),
+    ),
+  ).resolves.toBe(true);
+
+  expect(await AsyncStorage.getItem(PRIVATE_ACCOUNT_MERGE_STORAGE_KEY)).toBeNull();
+  expect(JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!))
+    .toMatchObject({
+      state: {
+        pendingAccountPreferences: { marketingEmailsEnabled: false },
+        pendingAccountPreferencesOwnerId: SESSION_B.accountId,
+      },
+    });
+  expect(await AsyncStorage.getItem(ACCOUNT_PREFERENCES_QUEUE_STORAGE_KEY)).toBeNull();
 });
 
 it('keeps a pending optimistic value over a stale account refresh', () => {

@@ -12,6 +12,7 @@ import {
   finalizePrivateAccountMerge,
   preflightPrivateAccountMerge,
   promotePrivateAccountMerge,
+  readPrivateAccountMergeIntent,
   recoverPrivateAccountMerge,
   refreshPrivateAccountMergeIntentFromStorage,
   registerPrivateAccountFreezeListener,
@@ -82,6 +83,9 @@ export interface PartyGameBoundarySnapshot {
 }
 
 export type PartyGameMergePreflight = PrivateAccountMergePreflight;
+export type PartyGameMergeLocalFinalizer = (
+  intent: PrivateAccountMergeIntent,
+) => Promise<boolean>;
 
 /** Both keys share one mutex so an account-merge multiSet cannot race enqueue. */
 export const runPartyGameQueueMutation = createQueueLock({ protectPrivateAccount: false });
@@ -628,6 +632,7 @@ export async function finalizePartyGameQueuesForAccountMerge(
   fromAccountId: string,
   toAccountId: string,
   operationId: string,
+  finalizeAdditionalLocalData: PartyGameMergeLocalFinalizer,
 ): Promise<boolean> {
   invalidatePartyGameBoundary();
   const session = await ensureAccount(boundaryController.signal);
@@ -637,7 +642,10 @@ export async function finalizePartyGameQueuesForAccountMerge(
       fromAccountId,
       toAccountId,
       operationId,
-      finalizeMergeLocked,
+      async (intent) => {
+        if (!(await finalizeAdditionalLocalData(intent))) return false;
+        return finalizeMergeLocked(intent);
+      },
       queueSnapshotsAreFinalized,
     ));
   if (finalized) {
@@ -648,12 +656,26 @@ export async function finalizePartyGameQueuesForAccountMerge(
 }
 
 /**
- * Cold-boot guard used before every queue mutation/flush. A remains frozen,
- * B completes the idempotent rekey, and any unrelated C fails closed.
+ * Ordinary queue work may only proceed with no global merge marker. Startup
+ * recovery supplies the full private-data finalizer; without it, B must not
+ * complete only the game subset and strand the rest of A's account data.
  */
-export async function recoverPartyGameQueuesForAccount(accountId: string): Promise<boolean> {
-  return runPartyGameQueueMutation(() =>
-    recoverPrivateAccountMerge(accountId, finalizeMergeLocked));
+export async function recoverPartyGameQueuesForAccount(
+  accountId: string,
+  finalizeAdditionalLocalData?: PartyGameMergeLocalFinalizer,
+): Promise<boolean> {
+  return runPartyGameQueueMutation(async () => {
+    if (!finalizeAdditionalLocalData) {
+      const merge = await readPrivateAccountMergeIntent();
+      return merge.ok && merge.intent === null;
+    }
+    return recoverPrivateAccountMerge(accountId, async (intent) => {
+      if (
+        !(await finalizeAdditionalLocalData(intent))
+      ) return false;
+      return finalizeMergeLocked(intent);
+    });
+  });
 }
 
 /**

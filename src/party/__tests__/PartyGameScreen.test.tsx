@@ -20,6 +20,7 @@ const mockStartSharedGame = jest.fn();
 const mockAddBeer = jest.fn();
 const mockLoadPendingPartyGameRuntime = jest.fn();
 const mockLoadQueuedPartyGameEvents = jest.fn();
+let mockRoundPickedPlayerId = "honza";
 let mockRouteKey = "dice";
 let mockPlacedGame = false;
 let mockSharedCode: string | null = "TABLE1";
@@ -40,7 +41,6 @@ let mockCanonicalOutcome: {
 beforeEach(() => {
   mockCanGoBack = true;
 });
-
 // Mutable so individual tests can model a cold start (nobody known yet)
 // without leaking state into other tests; rebuilt in `beforeEach`.
 const createMockNight = (): NightRecord => ({
@@ -405,7 +405,7 @@ jest.mock("@/party/shells/RoundDrumShell", () => {
         }),
         ReactModule.createElement(Pressable, {
           accessibilityLabel: "pick-action",
-          onPress: () => onPicked?.("honza"),
+          onPress: () => onPicked?.(mockRoundPickedPlayerId),
         }),
         ReactModule.createElement(Pressable, {
           accessibilityLabel: "round-done",
@@ -635,6 +635,7 @@ describe("PartyGameScreen result wiring", () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockRouteKey = "dice";
+    mockRoundPickedPlayerId = "honza";
     mockCanGoBack = true;
     mockPlacedGame = false;
     mockSharedCode = "TABLE1";
@@ -702,6 +703,11 @@ describe("PartyGameScreen result wiring", () => {
     render(<PartyGameScreen />);
     fireEvent.press(screen.getByLabelText("start-game"));
     await waitFor(() => expect(screen.getByLabelText("Ukončit hru")).toBeTruthy());
+    expect(screen.getByText("Konec").props).toMatchObject({
+      numberOfLines: 1,
+      adjustsFontSizeToFit: true,
+      minimumFontScale: 0.8,
+    });
 
     fireEvent.press(screen.getByLabelText("Ukončit hru"));
 
@@ -858,6 +864,51 @@ describe("PartyGameScreen result wiring", () => {
       },
     });
     expect(mockFinishGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not attribute an excluded lobby player's pending action by roster position", async () => {
+    mockRouteKey = "round";
+    mockRoundPickedPlayerId = "petra";
+    let resolvePickSend: ((stored: boolean) => void) | null = null;
+    mockSendGameEvent.mockImplementation(
+      (_gameId: string, event: { kind: string }) =>
+        event.kind === "action"
+          ? new Promise<boolean>((resolve) => {
+              resolvePickSend = resolve;
+            })
+          : Promise.resolve(true),
+    );
+
+    const view = render(<PartyGameScreen />);
+    // This phone starts [host=honza, observer=petra]. Another phone wins the
+    // bind race with [guest=me, host=honza].
+    fireEvent.press(screen.getByLabelText("lobby-me"));
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("pick-action")).toBeTruthy(),
+    );
+    fireEvent.press(screen.getByLabelText("pick-action"));
+    expect(screen.getByLabelText("picked-petra")).toBeTruthy();
+
+    mockSharedRoster = [
+      {
+        id: "me",
+        nickname: "guest",
+        displayName: "Guest",
+        avatarUrl: null,
+      },
+      { id: "honza", nickname: "host", displayName: "Host", avatarUrl: null },
+    ];
+    view.rerender(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+
+    expect(screen.getByLabelText("picked-none")).toBeTruthy();
+    expect(screen.queryByLabelText("picked-honza")).toBeNull();
+    await act(async () => resolvePickSend?.(true));
+
+    expect(mockSendGameEvent).toHaveBeenCalledTimes(1);
+    expect(mockFinishGame).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("canonical-done")).toBeNull();
   });
 
   it("does not finish a round when its pick could not be stored durably", async () => {
@@ -1427,12 +1478,74 @@ describe("PartyGameScreen result wiring", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Bod pro honza. Aktuálně 3")).toBeTruthy();
     });
-    expect(mockSendGameEvent).toHaveBeenCalledWith("game-1", {
-      kind: "score",
-      subjectId: "honza",
-      delta: 1,
-      createdAt: expect.any(String),
-    });
+    expect(mockSendGameEvent).toHaveBeenCalledWith(
+      "game-1",
+      {
+        kind: "score",
+        subjectId: "honza",
+        delta: 1,
+        createdAt: expect.any(String),
+      },
+      expect.any(String),
+    );
+  });
+
+  it("keeps a pending score on the same player when a different lobby wins", async () => {
+    mockRouteKey = "score";
+    const view = render(<PartyGameScreen />);
+    // This phone starts [host=honza, observer=petra]. Another phone wins the
+    // bind race with [guest=me, host=honza].
+    fireEvent.press(screen.getByLabelText("lobby-me"));
+    fireEvent.press(screen.getByLabelText("start-game"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Bod pro Honza. Aktuálně 0")).toBeTruthy(),
+    );
+
+    fireEvent.press(screen.getByLabelText("Bod pro Honza. Aktuálně 0"));
+    await waitFor(() => expect(mockSendGameEvent).toHaveBeenCalledTimes(1));
+    const [, sentScore, clientId] = mockSendGameEvent.mock.calls[0] as [
+      string,
+      { delta: number; createdAt: string },
+      string,
+    ];
+
+    mockSharedRoster = [
+      {
+        id: "me",
+        nickname: "guest",
+        displayName: "Guest",
+        avatarUrl: null,
+      },
+      { id: "honza", nickname: "host", displayName: "Host", avatarUrl: null },
+    ];
+    view.rerender(<PartyGameScreen />);
+    act(() => jest.runOnlyPendingTimers());
+    expect(screen.getByLabelText("Bod pro host. Aktuálně 1")).toBeTruthy();
+    expect(screen.getByLabelText("Bod pro guest. Aktuálně 0")).toBeTruthy();
+    expect(screen.queryByLabelText(/Bod pro Petra\./)).toBeNull();
+
+    mockGameEvents = [
+      {
+        cursor: 9,
+        clientId,
+        gameId: "game-1",
+        kind: "score",
+        account: GAME_PROFILE,
+        subject: {
+          id: "honza",
+          nickname: "host",
+          displayName: "Host",
+          avatarUrl: null,
+        },
+        delta: sentScore.delta,
+        payload: {},
+        at: sentScore.createdAt,
+      },
+    ];
+    view.rerender(<PartyGameScreen />);
+
+    expect(screen.getByLabelText("Bod pro host. Aktuálně 1")).toBeTruthy();
+    expect(screen.getByLabelText("Bod pro guest. Aktuálně 0")).toBeTruthy();
   });
 
   it("rolls an optimistic score back and lets it be retried when storage fails", async () => {

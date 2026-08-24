@@ -67,6 +67,7 @@ let boundaryController = new AbortController();
 let boundaryFrozen = false;
 let durableMarkerBlocks = false;
 let deletionRecoveryBlocks = false;
+let rehydrationRecoveryBlocks = false;
 let activeTransition: ActiveTransition | null = null;
 let nextTransitionId = 1;
 let activeMutationCount = 0;
@@ -119,7 +120,11 @@ function notifyThaw(): void {
 }
 
 function recomputeFrozen(): void {
-  const shouldFreeze = activeTransition !== null || durableMarkerBlocks || deletionRecoveryBlocks;
+  const shouldFreeze =
+    activeTransition !== null ||
+    durableMarkerBlocks ||
+    deletionRecoveryBlocks ||
+    rehydrationRecoveryBlocks;
   if (shouldFreeze === boundaryFrozen) return;
   boundaryFrozen = shouldFreeze;
   boundaryGeneration += 1;
@@ -143,6 +148,12 @@ function setDurableMarkerBlocks(blocks: boolean): void {
  */
 export function setPrivateAccountDeletionRecoveryBlocked(blocked: boolean): void {
   deletionRecoveryBlocks = blocked;
+  recomputeFrozen();
+}
+
+/** Keep every private writer frozen until a failed account rehydrate recovers. */
+export function setPrivateAccountRehydrationRecoveryBlocked(blocked: boolean): void {
+  rehydrationRecoveryBlocks = blocked;
   recomputeFrozen();
 }
 
@@ -287,6 +298,29 @@ export function registerPrivateAccountThawListener(listener: ThawListener): () =
 
 export function capturePrivateAccountMutationScope(): PrivateAccountMutationScope {
   return { generation: boundaryGeneration, signal: boundaryController.signal };
+}
+
+/** Combine a caller-owned cancellation signal with the account-boundary lease. */
+export function combinePrivateAccountMutationSignals(
+  scope: PrivateAccountMutationScope,
+  operationSignal?: AbortSignal,
+): { signal: AbortSignal; cleanup: () => void } {
+  if (!operationSignal || operationSignal === scope.signal) {
+    return { signal: scope.signal, cleanup: () => undefined };
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  for (const signal of [scope.signal, operationSignal]) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', abort);
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      scope.signal.removeEventListener('abort', abort);
+      operationSignal.removeEventListener('abort', abort);
+    },
+  };
 }
 
 export function isPrivateAccountMutationScopeCurrent(
@@ -528,6 +562,7 @@ export function resetPrivateAccountBoundaryForTests(): void {
   boundaryFrozen = false;
   durableMarkerBlocks = false;
   deletionRecoveryBlocks = false;
+  rehydrationRecoveryBlocks = false;
   activeTransition = null;
   nextTransitionId = 1;
   activeMutationCount = 0;

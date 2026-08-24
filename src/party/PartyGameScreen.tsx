@@ -153,6 +153,19 @@ function deterministicFirstPlayer(roster: LobbyPlayer[]): LobbyPlayer | null {
   );
 }
 
+function sameRoster(left: LobbyPlayer[] | null, right: LobbyPlayer[]): boolean {
+  return Boolean(
+    left &&
+    left.length === right.length &&
+    left.every(
+      (player, index) =>
+        player.id === right[index]?.id &&
+        player.name === right[index]?.name &&
+        player.tint === right[index]?.tint,
+    ),
+  );
+}
+
 export default function PartyGameScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -259,6 +272,7 @@ export default function PartyGameScreen() {
         tintFor(person.id),
     }));
   }, [sharedGame, table]);
+  const gameCurrentPlayerId = currentPlayerId;
   const legacyGameAlreadyPlayed = Boolean(
     sharedGame &&
     sharedGame.roster.length === 0 &&
@@ -272,23 +286,18 @@ export default function PartyGameScreen() {
   const spectator = Boolean(
     sharedGame &&
     sharedGame.roster.length > 0 &&
-    currentPlayerId &&
-    !sharedGame.roster.some((person) => person.id === currentPlayerId),
+    gameCurrentPlayerId &&
+    !sharedGame.roster.some((person) => person.id === gameCurrentPlayerId),
   );
-  React.useEffect(() => {
-    if (!sharedGame || !serverRoster || selectedRoster) return undefined;
-    const timer = setTimeout(() => {
-      setSelectedRoster((current) => current ?? serverRoster);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [selectedRoster, serverRoster, sharedGame]);
   // On the current backend an empty roster is only a cover placed on the
   // table. The first confirmed lobby must bind its selection before play.
   // A released backend could already have accepted gameplay without a frozen
   // roster; a real non-start event is the compatibility proof for that case.
   const roster = sharedGame
-    ? (selectedRoster ??
-      serverRoster ??
+    ? ((serverRoster && sameRoster(selectedRoster, serverRoster)
+        ? selectedRoster
+        : serverRoster) ??
+      selectedRoster ??
       (legacyGameAlreadyPlayed ? table : null))
     : selectedRoster;
   const localGameId = localGame?.scope === gameScope ? localGame.id : null;
@@ -353,7 +362,6 @@ export default function PartyGameScreen() {
     [def?.scoring, gameScope, key, name, sharedCode, startSharedGame, table],
   );
 
-  const localScoreSequence = React.useRef(0);
   const [localScoreEvents, setLocalScoreEvents] = React.useState<
     {
       id: string | number;
@@ -365,6 +373,24 @@ export default function PartyGameScreen() {
   const [localActionEvents, setLocalActionEvents] = React.useState<
     PartyGameEventInput[]
   >([]);
+  React.useEffect(() => {
+    if (
+      !sharedGame ||
+      !serverRoster ||
+      sameRoster(selectedRoster, serverRoster)
+    )
+      return undefined;
+    const timer = setTimeout(() => {
+      // The first server-confirmed lobby wins. A different local lobby contains
+      // different people, not an index-by-index identity map. Keep queued event
+      // ids untouched so roster validation can ignore an excluded player instead
+      // of attributing their action to whoever occupies the same position.
+      setSelectedRoster((current) =>
+        sameRoster(current, serverRoster) ? current : serverRoster,
+      );
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [selectedRoster, serverRoster, sharedGame]);
 
   /**
    * Pub kvíz — the one game that is genuinely played on several phones.
@@ -417,6 +443,7 @@ export default function PartyGameScreen() {
           return person ? [person] : [];
         });
         if (
+          !serverRoster &&
           restoredRoster.length > 0 &&
           restoredRoster.length === pendingRuntime.rosterIds.length
         ) {
@@ -431,7 +458,7 @@ export default function PartyGameScreen() {
       if (gameId) ids.add(gameId);
       const queued = await loadQueuedPartyGameEvents(sharedCode, [...ids]);
       if (cancelled || queued.length === 0) return;
-      const me = currentPlayerId;
+      const me = gameCurrentPlayerId;
       if (me) {
         const restoredAnswers = queued.flatMap(({ event, queuedAt }) => {
           if (event.kind !== "answer") return [];
@@ -493,11 +520,9 @@ export default function PartyGameScreen() {
           });
           return additions.length > 0 ? [...current, ...additions] : current;
         });
-      const restoredActions = queued
-        .map(({ event }) => event)
-        .filter(
-          (event): event is PartyGameEventInput => event.kind === "action",
-        );
+      const restoredActions = queued.flatMap(({ event }) =>
+        event.kind === "action" ? [event] : [],
+      );
       if (restoredActions.length > 0)
         setLocalActionEvents((current) => {
           const seen = new Set(current.map((event) => event.clientId));
@@ -513,12 +538,13 @@ export default function PartyGameScreen() {
       cancelled = true;
     };
   }, [
-    currentPlayerId,
+    gameCurrentPlayerId,
     gameId,
     gameScope,
     key,
     sharedCode,
     sharedGame?.id,
+    serverRoster,
     table,
   ]);
   const sharedActions = React.useMemo(
@@ -630,9 +656,15 @@ export default function PartyGameScreen() {
   // not as the tap captured it.
   const sharedPickRef = React.useRef(sharedPick);
   const canonicalFinishRef = React.useRef(canonicalFinish);
+  const canonicalRosterByIdRef = React.useRef(
+    new Map((roster ?? []).map((player) => [player.id, player])),
+  );
   React.useLayoutEffect(() => {
     sharedPickRef.current = sharedPick;
     canonicalFinishRef.current = canonicalFinish;
+    canonicalRosterByIdRef.current = new Map(
+      (roster ?? []).map((player) => [player.id, player]),
+    );
   });
   // Holds the game scope while this phone's round pick send is still in
   // flight; a stale scope never matches, so a new game starts unguarded.
@@ -687,7 +719,7 @@ export default function PartyGameScreen() {
   const answer = (option: number) => {
     if (spectator) return;
     const current = QUIZ_QUESTIONS[question];
-    const me = nightMe(night)?.id;
+    const me = gameCurrentPlayerId;
     if (
       forceRevealed ||
       !current ||
@@ -753,10 +785,12 @@ export default function PartyGameScreen() {
       event.gameId === gameId && event.kind === "score" && event.subject,
   );
   const pendingLocalScores = React.useMemo(() => {
-    const me = nightMe(night)?.id;
+    const me = gameCurrentPlayerId;
+    const acknowledgedClientIds = new Set<string>();
     const acknowledgements = new Map<string, number>();
     for (const event of serverScoreEvents) {
       if (!event.subject || event.account.id !== me) continue;
+      if (event.clientId) acknowledgedClientIds.add(event.clientId);
       const signature = scoreSignature(event.subject.id, event.delta, event.at);
       acknowledgements.set(
         signature,
@@ -764,6 +798,8 @@ export default function PartyGameScreen() {
       );
     }
     return localScoreEvents.filter((event) => {
+      if (typeof event.id === "string" && acknowledgedClientIds.has(event.id))
+        return false;
       const signature = scoreSignature(
         event.subjectId,
         event.delta,
@@ -774,7 +810,7 @@ export default function PartyGameScreen() {
       acknowledgements.set(signature, remaining - 1);
       return false;
     });
-  }, [localScoreEvents, night, serverScoreEvents]);
+  }, [gameCurrentPlayerId, localScoreEvents, serverScoreEvents]);
   const scoresById = React.useMemo(() => {
     const scores: Record<string, number> = {};
     for (const event of serverScoreEvents) {
@@ -789,9 +825,9 @@ export default function PartyGameScreen() {
   const bump = (player: LobbyPlayer) => {
     if (spectator) return;
     const createdAt = new Date(stamp()).toISOString();
-    localScoreSequence.current += 1;
+    const clientId = generateUuidV4();
     const optimisticScore = {
-      id: localScoreSequence.current,
+      id: clientId,
       subjectId: player.id,
       delta: 1,
       createdAt,
@@ -805,12 +841,16 @@ export default function PartyGameScreen() {
           current.filter((event) => event.id !== optimisticScore.id),
         );
       };
-      void sendGameEvent(gameId, {
-        kind: "score",
-        subjectId: player.id,
-        delta: 1,
-        createdAt,
-      }).then((stored) => {
+      void sendGameEvent(
+        gameId,
+        {
+          kind: "score",
+          subjectId: player.id,
+          delta: 1,
+          createdAt,
+        },
+        clientId,
+      ).then((stored) => {
         if (stored === false) rollback();
       }, rollback);
     }
@@ -1061,6 +1101,9 @@ export default function PartyGameScreen() {
             >
               <Text
                 style={styles.endText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
                 Konec
@@ -1241,11 +1284,11 @@ export default function PartyGameScreen() {
                 // finish wins outright, and a canonical remote pick names the
                 // payer — this phone's spin was too late either way.
                 if (canonicalFinishRef.current) return;
-                const canonicalId = sharedPickRef.current?.playerId;
-                const resolvedPayer = canonicalId
-                  ? (roster.find((player) => player.id === canonicalId) ??
-                    payer)
-                  : payer;
+                const resolvedId =
+                  sharedPickRef.current?.playerId ?? payer.id;
+                const resolvedPayer =
+                  canonicalRosterByIdRef.current.get(resolvedId);
+                if (!resolvedPayer) return;
                 return report({
                   winner: null,
                   winnerId: null,
@@ -1298,7 +1341,7 @@ export default function PartyGameScreen() {
           spectator={spectator}
           entrants={entrants}
           answers={answers}
-          me={nightMe(night)?.id ?? "me"}
+          me={gameCurrentPlayerId ?? "me"}
           index={question}
           tintOf={(playerId) =>
             roster.find((person) => person.id === playerId)?.tint ?? Colors.amber
@@ -1387,7 +1430,7 @@ export default function PartyGameScreen() {
                           : undefined,
                       drawnById:
                         roster[sharedCardDraws.length % roster.length]?.id ??
-                        currentPlayerId,
+                        gameCurrentPlayerId,
                     });
                 }
               : (result) => {
@@ -1511,7 +1554,13 @@ export default function PartyGameScreen() {
           hitSlop={6}
         >
           <BeerIcon size={18} color={Colors.stout} />
-          <Text style={styles.counterText} allowFontScaling={false}>
+          <Text
+            style={[
+              styles.counterText,
+              Platform.OS === "android" && styles.counterTextAndroid,
+            ]}
+            allowFontScaling={false}
+          >
             {beerCount}
           </Text>
           <PlusIcon size={15} color={Colors.stout} />
@@ -1558,9 +1607,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   end: {
-    minWidth: 44,
+    width: 44,
     height: 44,
-    paddingLeft: 12,
     alignItems: "flex-end",
     justifyContent: "center",
   },
@@ -1628,6 +1676,7 @@ const styles = StyleSheet.create({
     color: Colors.stout,
     fontVariant: ["tabular-nums"],
   },
+  counterTextAndroid: { transform: [{ translateY: 3 }] },
 
   body: {
     paddingHorizontal: MockLayout.screenPad,

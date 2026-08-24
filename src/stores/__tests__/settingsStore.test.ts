@@ -229,6 +229,20 @@ describe('useSettingsStore', () => {
     expect(useSettingsStore.getState().priceCurrency).toBe('CZK');
   });
 
+  it('ignores automatic currency detection during an account transition', () => {
+    const { beginPrivateAccountTransition } = jest.requireActual(
+      '@/data/privateAccountBoundary',
+    );
+    const { useSettingsStore } = jest.requireActual('../settingsStore');
+    const transition = beginPrivateAccountTransition('account-switch', 'account-a');
+
+    expect(transition).not.toBeNull();
+    useSettingsStore.getState().setPriceCurrency('EUR', 25);
+
+    expect(useSettingsStore.getState().priceCurrency).toBe('CZK');
+    transition?.release();
+  });
+
   it('keeps priceCurrency in the partialized payload', async () => {
     const { useSettingsStore } = jest.requireActual('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();

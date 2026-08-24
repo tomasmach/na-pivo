@@ -31,6 +31,15 @@ from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name
 
 
+def party_game_seed(join_code: str, catalog_key: str) -> int:
+    """Return the shared 31-bit FNV-1a deal seed used by released clients."""
+
+    seed = 2_166_136_261
+    for byte in f"{join_code.upper()}:{catalog_key}".encode("ascii"):
+        seed = ((seed ^ byte) * 16_777_619) & 0xFFFF_FFFF
+    return (seed & 0x7FFF_FFFF) or 1
+
+
 class PubHours(models.Model):
     """
     Cached opening-hours data for a pub identified by a geohash-8 cache key.
@@ -927,6 +936,23 @@ class Account(models.Model):
         return methods
 
 
+class AccountIdentityAlias(models.Model):
+    """A retired public UUID that still resolves to its merged account.
+
+    Shared game queues can outlive an anonymous-to-claimed account merge on a
+    different phone. The alias lets those already-durable events name the same
+    player without preserving the deleted account or exposing a lookup API.
+    """
+
+    public_id = models.UUIDField(unique=True)
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="identity_aliases",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class AccountDeletionOperation(models.Model):
     """Opaque durable proof that one account-deletion request completed.
 
@@ -1535,6 +1561,24 @@ class PartyEvening(models.Model):
                 name="pubs_partye_host_id_310b62_idx",
             )
         ]
+
+
+class PartyEveningCode(models.Model):
+    """A stable join-code reservation for a canonical or merged table.
+
+    Account login can discover two offline copies of one logical evening and
+    collapse them. Phones may already have durable end/leave actions or links
+    carrying either code. Keeping every live and retired code in this one unique
+    namespace prevents a concurrent new table from reusing a retired code.
+    """
+
+    join_code = models.CharField(max_length=8, unique=True)
+    evening = models.ForeignKey(
+        PartyEvening,
+        on_delete=models.CASCADE,
+        related_name="codes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class PartyEveningMember(models.Model):
@@ -4627,6 +4671,10 @@ class PartyGame(models.Model):
     catalog_key = models.CharField(max_length=40)
     name = models.CharField(max_length=80)
     scoring = models.CharField(max_length=8, choices=Scoring.choices, default=Scoring.POINTS)
+    # Frozen when the game is created. An account merge can move the game to a
+    # canonical evening with a different join code, but must never reshuffle a
+    # deck that is already on the table.
+    seed = models.PositiveIntegerField(editable=False)
     # Public Account UUIDs, frozen in lobby order. An empty list means the game
     # is on the table but its lobby has not selected players yet.
     # Membership is allowed to change while a game is running; deriving this
@@ -4634,6 +4682,10 @@ class PartyGame(models.Model):
     # answers against different teams. UUID strings keep the snapshot stable
     # without turning game participation into another durable social relation.
     roster_account_ids = models.JSONField(default=list, blank=True)
+    # Once a participant is hard-purged, opaque historical/future payloads for
+    # this game stay empty. The flag contains no identity and closes the race
+    # where a stale offline writer resumes after the one-time purge scrub.
+    payloads_redacted = models.BooleanField(default=False)
     started_at = models.DateTimeField(default=timezone.now, db_index=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 
@@ -4656,6 +4708,26 @@ class PartyGame(models.Model):
 
     def __str__(self) -> str:
         return f"PartyGame({self.public_id})"
+
+    def save(self, *args, **kwargs) -> None:
+        if self.seed is None:
+            self.seed = party_game_seed(self.evening.join_code, self.catalog_key)
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = [*update_fields, "seed"]
+        super().save(*args, **kwargs)
+
+
+class PartyGameAlias(models.Model):
+    """A retired server game UUID that still resolves to its canonical game."""
+
+    public_id = models.UUIDField(unique=True)
+    game = models.ForeignKey(
+        PartyGame,
+        on_delete=models.CASCADE,
+        related_name="aliases",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class PartyGameEvent(models.Model):

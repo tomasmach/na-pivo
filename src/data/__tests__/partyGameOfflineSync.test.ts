@@ -314,9 +314,21 @@ it('keeps A bytes frozen until setSession succeeds, then atomically rekeys for B
   ).resolves.toBe(true);
 
   mockCurrentAccountId = 'account-b';
+  const fullFinalizer = jest.fn(async () => {
+    expect(await AsyncStorage.getItem(MERGE_KEY)).not.toBeNull();
+    expect(await AsyncStorage.getItem(STARTS_KEY)).toBe(startsBefore);
+    expect(await AsyncStorage.getItem(EVENTS_KEY)).toBe(eventsRawBefore);
+    return true;
+  });
   await expect(
-    finalizePartyGameQueuesForAccountMerge('account-a', 'account-b', OPERATION_ID),
+    finalizePartyGameQueuesForAccountMerge(
+      'account-a',
+      'account-b',
+      OPERATION_ID,
+      fullFinalizer,
+    ),
   ).resolves.toBe(true);
+  expect(fullFinalizer).toHaveBeenCalledTimes(1);
 
   const starts = JSON.parse((await AsyncStorage.getItem(STARTS_KEY))!);
   const events = JSON.parse((await AsyncStorage.getItem(EVENTS_KEY))!);
@@ -354,10 +366,38 @@ it('leaves both queue snapshots frozen when phase-two persistence fails', async 
   (AsyncStorage.multiSet as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
 
   await expect(
-    finalizePartyGameQueuesForAccountMerge('account-a', 'account-b', OPERATION_ID),
+    finalizePartyGameQueuesForAccountMerge(
+      'account-a',
+      'account-b',
+      OPERATION_ID,
+      async () => true,
+    ),
   ).resolves.toBe(false);
   expect(await AsyncStorage.getItem(STARTS_KEY)).toBe(startsBefore);
   expect(await AsyncStorage.getItem(EVENTS_KEY)).toBe(eventsBefore);
+  expect(await AsyncStorage.getItem(MERGE_KEY)).not.toBeNull();
+});
+
+it('keeps the promoted marker when the full local finalizer cannot rehydrate', async () => {
+  await expect(
+    preflightPartyGameQueuesForAccountMerge('account-a'),
+  ).resolves.toEqual({ operationId: OPERATION_ID, cancelSafe: true });
+  await expect(
+    promotePartyGameQueuesAccountMerge('account-a', 'account-b', OPERATION_ID),
+  ).resolves.toBe(true);
+  mockCurrentAccountId = 'account-b';
+  const failedRehydrate = jest.fn(async () => false);
+
+  await expect(
+    finalizePartyGameQueuesForAccountMerge(
+      'account-a',
+      'account-b',
+      OPERATION_ID,
+      failedRehydrate,
+    ),
+  ).resolves.toBe(false);
+
+  expect(failedRehydrate).toHaveBeenCalledTimes(1);
   expect(await AsyncStorage.getItem(MERGE_KEY)).not.toBeNull();
 });
 
@@ -386,7 +426,7 @@ it('keeps A frozen after setSession failure and lets the same login resume', asy
   expect(await AsyncStorage.getItem(MERGE_KEY)).not.toBeNull();
 });
 
-it('cold boot as B finalizes the intent before flushing A work', async () => {
+it('ordinary B flush and enqueue preserve a pending global A to B marker', async () => {
   startPartyGame.mockResolvedValue({ ok: false, code: 'network', detail: '' });
   const ticket = await enqueuePartyGameStart('PIVOXY', {
     clientId: CLIENT_ID,
@@ -403,14 +443,20 @@ it('cold boot as B finalizes the intent before flushing A work', async () => {
   startPartyGame.mockResolvedValue({ ok: true, game: GAME });
   await flushPartyGameStartsQueue();
 
-  expect(startPartyGame).toHaveBeenCalledWith(
-    'PIVOXY',
-    expect.objectContaining({ rosterIds: ['account-b', 'guest'] }),
-    expect.any(AbortSignal),
-    'account-b',
-  );
-  expect(await AsyncStorage.getItem(MERGE_KEY)).toBeNull();
-  expect(await AsyncStorage.getItem(STARTS_KEY)).toBeNull();
+  expect(startPartyGame).not.toHaveBeenCalled();
+  expect(JSON.parse((await AsyncStorage.getItem(STARTS_KEY))!)).toMatchObject({
+    ownerAccountId: 'account-a',
+  });
+  expect(await AsyncStorage.getItem(MERGE_KEY)).not.toBeNull();
+  await expect(
+    enqueuePartyGameStart('PIVOXY', {
+      clientId: 'new-b-start',
+      catalogKey: 'quiz',
+      name: 'Pub kvíz',
+      rosterIds: ['account-b'],
+    }),
+  ).resolves.toBeNull();
+  expect(await AsyncStorage.getItem(MERGE_KEY)).not.toBeNull();
 });
 
 it('persists phase zero before auth and keeps source-only response loss frozen', async () => {
@@ -530,7 +576,12 @@ it('quarantines ownerless bytes before phase zero and never rekeys them to the a
   ).resolves.toBe(true);
   mockCurrentAccountId = 'account-b';
   await expect(
-    finalizePartyGameQueuesForAccountMerge('account-a', 'account-b', OPERATION_ID),
+    finalizePartyGameQueuesForAccountMerge(
+      'account-a',
+      'account-b',
+      OPERATION_ID,
+      async () => true,
+    ),
   ).resolves.toBe(true);
   expect(await AsyncStorage.getItem(EVENTS_KEY)).toBeNull();
   expect(JSON.parse((await AsyncStorage.getItem(EVENTS_QUARANTINE_KEY))!).entries)
