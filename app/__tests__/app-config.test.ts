@@ -87,9 +87,9 @@ describe('app.config store-policy surface', () => {
     expect(config.ios?.infoPlist?.NSMicrophoneUsageDescription).toBeUndefined();
   });
 
-  it('bumps the marketing version to 3.0.0 in both package.json and the expo config', () => {
-    expect(config.version).toBe('3.0.0');
-    expect(pkgJson.version).toBe('3.0.0');
+  it('sets the marketing version to 2.0.0 in both package.json and the expo config', () => {
+    expect(config.version).toBe('2.0.0');
+    expect(pkgJson.version).toBe('2.0.0');
   });
 
   it('blocks RECORD_AUDIO outright so transitive plugins cannot re-add it', () => {
@@ -190,8 +190,8 @@ describe('release config surface (app.json vs app.config.ts)', () => {
 
   const buildPropertiesOptions = findPluginOptions('expo-build-properties');
 
-  it('declares OTA updates in the final config under the appVersion policy', () => {
-    expect(config.runtimeVersion).toEqual({ policy: 'appVersion' });
+  it('isolates SDK 57 OTA updates from older 2.0.0 test builds', () => {
+    expect(config.runtimeVersion).toBe('2.0.0-sdk57');
     expect(config.updates?.url).toBe(
       'https://u.expo.dev/1f785cbf-d168-4396-937a-463e1c3de2e8',
     );
