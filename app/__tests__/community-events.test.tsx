@@ -316,7 +316,7 @@ describe('CommunityEventsScreen', () => {
   });
 
   it('rolls the default start into tomorrow late at night', async () => {
-    const now = new Date('2026-08-21T23:30:00+02:00');
+    const now = new Date(2026, 7, 21, 23, 30);
     jest.setSystemTime(now);
     await renderScreen();
     act(() => renderer!.root.findByProps({ children: cs.communityEvents.create }).parent!.props.onPress());
@@ -335,8 +335,6 @@ describe('CommunityEventsScreen', () => {
     });
 
     const startsAt = new Date(mockCreateCommunityEvent.mock.calls[0][0].startsAt);
-    expect(startsAt.getTime()).toBeGreaterThan(now.getTime());
-    expect(startsAt.getDate()).toBe(22);
-    expect(startsAt.getHours()).toBe(1);
+    expect(startsAt.getTime()).toBe(new Date(2026, 7, 22, 1).getTime());
   });
 });
