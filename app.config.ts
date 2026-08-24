@@ -232,8 +232,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'na-pivo',
     owner: 'tomasmachs-organization',
     scheme: 'napivo',
-    version: '3.0.0',
-    runtimeVersion: { policy: 'appVersion' },
+    version: '2.0.0',
+    runtimeVersion: '2.0.0-sdk57',
     updates: {
       url: 'https://u.expo.dev/1f785cbf-d168-4396-937a-463e1c3de2e8',
     },
