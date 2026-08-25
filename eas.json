@@ -44,6 +44,11 @@
         }
     },
     "submit": {
+        "uprate": {
+            "ios": {
+                "ascAppId": "6773790025"
+            }
+        },
         "production": {
             "ios": {
                 "appleId": "tomades1@gmail.com",
