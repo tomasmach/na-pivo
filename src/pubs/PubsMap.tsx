@@ -7,6 +7,7 @@ import MapView, {
   type Region,
 } from 'react-native-maps';
 
+import { BeerIcon } from '@/components/shared/IconGlyph';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { pubCountLabel } from '@/i18n/plural';
 import { buildPubsMapClusters, pubsMapGrid } from '@/pubs/pubsMapModel';
@@ -24,13 +25,13 @@ const BUBBLE_HALF_HEIGHT_PX = 17;
 /** Roughly a city across the screen. Wider than this and the names are noise. */
 const LABEL_MAX_DELTA = 0.035;
 
-/** Dot, gap, one line of text — the anchor keeps the dot on the coordinate. */
-const PIN_SIZE = 14;
+/** Tappable beer marker, gap, one line of text. */
+const PIN_HIT_SIZE = 56;
 const PIN_LABEL_LINE = 15;
 const PIN_LABEL_GAP = 2;
 const PIN_ANCHOR = {
   x: 0.5,
-  y: PIN_SIZE / 2 / (PIN_SIZE + PIN_LABEL_GAP + PIN_LABEL_LINE),
+  y: PIN_HIT_SIZE / 2 / (PIN_HIT_SIZE + PIN_LABEL_GAP + PIN_LABEL_LINE),
 };
 
 const CENTER_ANCHOR = { x: 0.5, y: 0.5 } as const;
@@ -77,6 +78,19 @@ class StablePubMarker extends React.PureComponent<
 
   render() {
     const { pub, labelled, closed, onPress } = this.props;
+    const marker = (
+      <View testID="pub-map-marker-hit" style={styles.pinHit}>
+        <View
+          testID="pub-map-marker-visual"
+          style={[styles.pubPin, closed && styles.pubPinClosed]}
+        >
+          <BeerIcon
+            size={15}
+            color={closed ? withAlpha(Colors.foam, 0.58) : Colors.foam}
+          />
+        </View>
+      </View>
+    );
     return (
       <Marker
         coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
@@ -87,7 +101,7 @@ class StablePubMarker extends React.PureComponent<
       >
         {labelled ? (
           <View style={styles.namedPin}>
-            <View style={[styles.pin, closed && styles.pinClosed]} />
+            {marker}
             <Text
               style={[styles.pinLabel, closed && styles.pinLabelClosed]}
               numberOfLines={1}
@@ -97,7 +111,7 @@ class StablePubMarker extends React.PureComponent<
             </Text>
           </View>
         ) : (
-          <View style={[styles.pin, closed && styles.pinClosed]} />
+          marker
         )}
       </Marker>
     );
@@ -444,8 +458,8 @@ export function PubsMap({
 
 const styles = StyleSheet.create({
   emptyMap: { backgroundColor: Colors.stout },
-  // Bounded: the whole marker view takes taps, so a wide one would swallow the
-  // dots beside it. Long names truncate instead.
+  // Bounded: the whole named marker takes taps, so a wide one would swallow the
+  // markers beside it. Long names truncate instead.
   namedPin: { alignItems: 'center', gap: PIN_LABEL_GAP, width: 104 },
   // Shadow rather than a plate: a name over a dark map reads fine, and twelve
   // filled chips would be a second map on top of the first one.
@@ -460,17 +474,25 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   pinLabelClosed: { color: withAlpha(Colors.foam, 0.62) },
-  pin: {
-    width: PIN_SIZE,
-    height: PIN_SIZE,
-    borderRadius: PIN_SIZE / 2,
-    backgroundColor: Colors.amber,
-    borderWidth: 2,
-    borderColor: withAlpha('#000000', 0.78),
+  pinHit: {
+    width: PIN_HIT_SIZE,
+    height: PIN_HIT_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  pinClosed: {
-    backgroundColor: withAlpha(Colors.foam, 0.48),
-    borderColor: withAlpha('#000000', 0.72),
+  pubPin: {
+    width: 31,
+    height: 31,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout3, 0.96),
+    borderWidth: 2,
+    borderColor: Colors.amber,
+  },
+  pubPinClosed: {
+    backgroundColor: withAlpha(Colors.stout3, 0.88),
+    borderColor: withAlpha(Colors.foamMuted, 0.58),
   },
   pinSelected: {
     paddingHorizontal: 9,
