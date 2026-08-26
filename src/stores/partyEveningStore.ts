@@ -98,6 +98,14 @@ interface PartyCreateTicket {
 }
 let retainedCreateTicket: PartyCreateTicket | null = null;
 
+/**
+ * Tables this phone already walked away from as stale. The server keeps a
+ * table nobody closed open, so a plain refresh would hand it straight back —
+ * and the "Starý večer jsem zavřel" toast would greet every visit to the hub.
+ * Process-local on purpose: one reminder per launch is enough.
+ */
+const dismissedStaleCodes = new Set<string>();
+
 function failed(set: (patch: Partial<PartyEveningState>) => void, error: PartyError): null {
   set({ busy: false, error: error.detail });
   return null;
@@ -230,13 +238,16 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     const session = await ensureAccount();
     if (!isCurrent()) return;
 
-    const result = await fetchCurrentPartyEvening();
+    let result = await fetchCurrentPartyEvening();
     if (!isCurrent()) return;
     if (!result.ok) {
       // A failed refresh is not "you are not in an evening". Keep what we have
       // and say nothing — walking into a cellar must not close the table.
       set({ loaded: true });
       return;
+    }
+    if (result.evening && dismissedStaleCodes.has(result.evening.joinCode.toUpperCase())) {
+      result = { ...result, evening: null };
     }
     const locallyFinished = result.evening
       ? await hasQueuedPartyEveningAction(result.evening.joinCode)
@@ -510,6 +521,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
       state.evening?.joinCode.toUpperCase() === wanted ||
       state.confirmedIdentity?.joinCode.toUpperCase() === wanted;
     if (!matches) return;
+    dismissedStaleCodes.add(wanted);
     membershipGeneration += 1;
     retainedCreateTicket = null;
     void clearPartyEveningIdentityForCode(wanted);
