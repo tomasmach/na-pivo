@@ -732,7 +732,7 @@ export const cs = {
     contactEmailPlaceholder: 'tvuj@email.cz',
     submit: 'Odeslat',
     versionCaption: (version: string) => `Odesílám i verzi aplikace: ${version}`,
-    successTitle: 'Díky! 🍺',
+    successTitle: 'Díky!',
     successBody:
       'Zpráva dorazí, i kdyby teď zrovna nebylo připojení — odešlu ji, jakmile budeš online.',
     successClose: 'Zavřít',

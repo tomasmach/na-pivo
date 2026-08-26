@@ -6,10 +6,9 @@
  * `token` is bumped on every show() so the <Toast> re-animates even when the
  * same message is fired twice in a row.
  *
- * The leading visual defaults to the original 🍺 emoji so every existing caller
- * stays byte-identical. A caller may pass an optional leading IconGlyph element
- * instead (e.g. CompassIcon / SproutIcon in amber for Mapér XP events) — this is
- * the additive slot the "Zmapuj hospodu" toasts use to stay emoji-free.
+ * The leading visual defaults to the drawn beer glyph, so every existing caller
+ * stays byte-identical. A caller may pass its own leading IconGlyph element
+ * instead (e.g. CompassIcon / SproutIcon in amber for Mapér XP events).
  */
 
 import type { ReactNode } from 'react';
@@ -17,7 +16,7 @@ import { create } from 'zustand';
 
 /** Optional richer payload for show(). A bare string keeps the legacy call shape. */
 export interface ToastOptions {
-  /** Leading IconGlyph element. When omitted the toast renders the default 🍺. */
+  /** Leading IconGlyph element. When omitted the toast draws a půllitr. */
   icon?: ReactNode;
 }
 
