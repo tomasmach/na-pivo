@@ -298,10 +298,11 @@ it('the active turn is one polite live header saying exactly who throws', () => 
     />,
   );
 
-  const turn = screen.getByText('Házíš ty');
+  // The status line is one grouped node — the disc and the sentence together.
+  const turn = screen.getByLabelText('Házíš ty');
   expect(turn.props.accessibilityRole).toBe('header');
   expect(turn.props.accessibilityLiveRegion).toBe('polite');
-  expect(turn.props.accessibilityLabel).toBeUndefined();
+  expect(screen.getByText('Házíš ty')).toBeTruthy();
 });
 
 it('a completed round announces the visible verdict with the loser folded into one node', () => {

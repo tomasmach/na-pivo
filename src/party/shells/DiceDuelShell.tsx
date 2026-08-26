@@ -28,8 +28,6 @@ import React from "react";
 import {
   AccessibilityInfo,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -63,7 +61,14 @@ import {
   type DicePlayer,
   type DiceState,
 } from "@/games/web/dice/rules";
-import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
+import {
+  GameStage,
+  STAGE_FILL,
+  StageChip,
+  StagePill,
+  StageStatus,
+  stageBody,
+} from "@/party/shells/GameStage";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap, Fonts } from "@/theme/fonts";
 import { Radius, Spacing } from "@/theme/layout";
@@ -367,155 +372,60 @@ export function DiceDuelShell({
     );
   }
 
-  // One screen, one table. The round summary swaps in around a GameHost that
+  // One screen, one table. The round summary lays itself over a GameHost that
   // stays mounted — remounting the WebView between rounds costs far more than
-  // hiding it for a beat, so the host only ever unmounts when the game ends.
+  // covering it for a beat, so the host only ever unmounts when the game ends.
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.body,
-        { paddingBottom: insets.bottom + 88 },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text
-        key="kicker"
-        style={styles.kicker}
-        maxFontSizeMultiplier={FontScaleCap.body}
+    <View style={stageBody(insets.bottom)}>
+      <GameStage
+        topLeft={
+          <StageChip
+            label={
+              roundDone
+                ? `${state.roundNumber}. kolo`
+                : `${state.roundNumber}. kolo · ${TARGET_WINS}× a jsi z obliga`
+            }
+          />
+        }
       >
-        {roundDone
-          ? `${state.roundNumber}. kolo`
-          : `${state.roundNumber}. kolo · ${TARGET_WINS}× a jsi z obliga`}
-      </Text>
-
-      {roundDone ? (
-        <React.Fragment key="summary">
-          <Text
-            style={styles.verdict}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={roundAnnouncement}
-          >
-            {verdictLine}
-          </Text>
-          {loserLine ? (
-            <Text
-              style={styles.verdictSub}
-              maxFontSizeMultiplier={FontScaleCap.body}
-              accessibilityElementsHidden
-              importantForAccessibility="no"
-            >
-              {loserLine}
-            </Text>
+        {/* A real table: the dice fall, bounce off the rails and come to rest
+            crooked, and whatever is on top is the answer. They stay where they
+            landed while the next thrower decides — dice do not vanish between
+            throws. */}
+        <View style={styles.canvas} pointerEvents={roundDone ? "none" : "auto"}>
+          {!localOnly ? (
+            <GameHost
+              ref={canvas}
+              game="dice"
+              players={players.map((player) => ({
+                id: player.id,
+                colour: player.tint,
+              }))}
+              // GameHost keeps these latest props across its own retry. Supplying
+              // local state too means a restarted WebView resumes the current
+              // round instead of silently opening a fresh game.
+              options={{ count: 2, state }}
+              // The game runs the rules; this is where its state arrives.
+              onState={(next) => {
+                if (!controlled) setLocalState(next as DiceState);
+              }}
+              onEvent={(name, payload) => {
+                if (spectator || name !== "settled") return;
+                settled(payload as { dice: number[]; playerId: string });
+              }}
+              onError={() => {
+                interactionLocked.current = false;
+                setRolling(false);
+              }}
+            />
+          ) : last ? (
+            <View style={styles.fallbackWrap}>
+              <Text style={styles.fallbackDice} allowFontScaling={false}>
+                {last.dice[0]} + {last.dice[1]}
+              </Text>
+            </View>
           ) : null}
-
-          <View style={styles.rolls}>
-            {[...state.round]
-              .sort((a, b) => total(b) - total(a))
-              .map((entry) => (
-                <View
-                  key={entry.playerId}
-                  style={[
-                    styles.rollRow,
-                    winners.includes(entry.playerId) && styles.rollRowWin,
-                  ]}
-                >
-                  <PersonAvatar
-                    name={nameOf(entry.playerId)}
-                    tint={tintOf(entry.playerId)}
-                    size={30}
-                  />
-                  <Text style={styles.rollName} numberOfLines={1}>
-                    {nameOf(entry.playerId)}
-                  </Text>
-                  <Text style={styles.rollDice} allowFontScaling={false}>
-                    {entry.dice[0]} + {entry.dice[1]}
-                  </Text>
-                  <Text style={styles.rollTotal} allowFontScaling={false}>
-                    {total(entry)}
-                  </Text>
-                </View>
-              ))}
-          </View>
-
-          <Pressable
-            onPress={nextRound}
-            disabled={spectator}
-            style={({ pressed }) => [
-              styles.action,
-              pressed && !spectator && styles.pressed,
-              spectator && styles.muted,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Další kolo"
-            accessibilityState={{ disabled: spectator }}
-          >
-            <Text
-              style={styles.actionText}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              Další kolo
-            </Text>
-          </Pressable>
-        </React.Fragment>
-      ) : (
-        <View key="turn" style={styles.turn}>
-          <PersonAvatar
-            name={nameOf(turn)}
-            tint={tintOf(turn ?? "")}
-            size={64}
-          />
-          <Text
-            style={styles.turnName}
-            numberOfLines={2}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-            accessibilityRole="header"
-            accessibilityLiveRegion="polite"
-          >
-            {turnLine}
-          </Text>
         </View>
-      )}
-
-      {/* A real table: the dice fall, bounce off the rails and come to rest
-          crooked, and whatever is on top is the answer. They stay where they
-          landed while the next thrower decides — dice do not vanish between
-          throws. Hidden, not gone, while the round summary shows. */}
-      <View
-        key="dice"
-        style={[styles.dice, roundDone && styles.diceHidden]}
-        pointerEvents={roundDone ? "none" : "auto"}
-      >
-        {!localOnly ? (
-          <GameHost
-            ref={canvas}
-            game="dice"
-            players={players.map((player) => ({
-              id: player.id,
-              colour: player.tint,
-            }))}
-            // GameHost keeps these latest props across its own retry. Supplying
-            // local state too means a restarted WebView resumes the current
-            // round instead of silently opening a fresh game.
-            options={{ count: 2, state }}
-            // The game runs the rules; this is where its state arrives.
-            onState={(next) => {
-              if (!controlled) setLocalState(next as DiceState);
-            }}
-            onEvent={(name, payload) => {
-              if (spectator || name !== "settled") return;
-              settled(payload as { dice: number[]; playerId: string });
-            }}
-            onError={() => {
-              interactionLocked.current = false;
-              setRolling(false);
-            }}
-          />
-        ) : last ? (
-          <Text style={styles.fallbackDice} allowFontScaling={false}>
-            {last.dice[0]} + {last.dice[1]}
-          </Text>
-        ) : null}
 
         {/* The call, over the table. An RN layer rather than text inside the
             page: it stays real text — Dynamic Type, VoiceOver, the app's own
@@ -537,41 +447,81 @@ export function DiceDuelShell({
             </Text>
           </Animated.View>
         ) : null}
-      </View>
 
-      {!roundDone ? (
-        <React.Fragment key="play">
-          {/* Smaller than the dice, because the dice ARE the screen. A full-width
-              amber bar under them made the button the loudest thing in a game whose
-              whole point is what just landed. */}
-          <Pressable
-            onPress={roll}
-            disabled={rolling || spectator}
-            style={({ pressed }) => [
-              styles.roll,
-              (pressed || rolling) && !spectator && styles.pressed,
-              spectator && styles.muted,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={`Hodit za ${nameOf(turn)}`}
-            accessibilityState={{ disabled: Boolean(rolling || spectator) }}
+        {/* The round, settled: what everybody threw, as the two numbers that
+            decided it, laid over the table the dice are still sitting on. */}
+        {roundDone ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeIn.duration(200)}
+            style={styles.summary}
           >
-            <Text
-              style={styles.actionText}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {rolling ? "…" : "Hoď"}
-            </Text>
-          </Pressable>
+            <View style={styles.rolls}>
+              {[...state.round]
+                .sort((a, b) => total(b) - total(a))
+                .map((entry) => (
+                  <View
+                    key={entry.playerId}
+                    style={[
+                      styles.rollRow,
+                      winners.includes(entry.playerId) && styles.rollRowWin,
+                    ]}
+                  >
+                    <PersonAvatar
+                      name={nameOf(entry.playerId)}
+                      tint={tintOf(entry.playerId)}
+                      size={30}
+                    />
+                    <Text style={styles.rollName} numberOfLines={1}>
+                      {nameOf(entry.playerId)}
+                    </Text>
+                    <Text style={styles.rollDice} allowFontScaling={false}>
+                      {entry.dice[0]} + {entry.dice[1]}
+                    </Text>
+                    <Text style={styles.rollTotal} allowFontScaling={false}>
+                      {total(entry)}
+                    </Text>
+                  </View>
+                ))}
+            </View>
+          </Animated.View>
+        ) : null}
+      </GameStage>
 
-          <Ladder state={state} tintOf={tintOf} nameOf={nameOf} />
-        </React.Fragment>
-      ) : null}
-    </ScrollView>
+      {roundDone ? (
+        <StageStatus
+          name={nameOf(winners[0] ?? null)}
+          tint={tintOf(winners[0] ?? "")}
+          text={verdictLine}
+          sub={loserLine}
+          accessibilityLabel={roundAnnouncement}
+        />
+      ) : (
+        <StageStatus
+          name={nameOf(turn)}
+          tint={tintOf(turn ?? "")}
+          text={turnLine}
+          role="header"
+        />
+      )}
+
+      <Ladder state={state} tintOf={tintOf} nameOf={nameOf} />
+
+      <View style={styles.dock}>
+        <StagePill
+          label={roundDone ? "Další kolo" : rolling ? "…" : "Hoď"}
+          onPress={roundDone ? nextRound : roll}
+          disabled={spectator || (!roundDone && rolling)}
+          tone={spectator ? "muted" : "primary"}
+          accessibilityLabel={
+            roundDone ? "Další kolo" : `Hodit za ${nameOf(turn)}`
+          }
+        />
+      </View>
+    </View>
   );
 }
 
-/** The ladder, quiet, under the turn — context, not the question. */
+/** The ladder, as chips: who is safe, and how close everybody else is. */
 function Ladder({
   state,
   tintOf,
@@ -587,7 +537,13 @@ function Ladder({
         const wins = state.wins[player.id] ?? 0;
         const safe = state.safe.includes(player.id);
         return (
-          <View key={player.id} style={styles.ladderRow}>
+          <View
+            key={player.id}
+            style={[styles.ladderChip, safe && styles.ladderChipSafe]}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={`${nameOf(player.id)} ${wins} z ${TARGET_WINS}`}
+          >
             <PersonAvatar
               name={nameOf(player.id)}
               tint={tintOf(player.id)}
@@ -616,14 +572,13 @@ function Ladder({
 }
 
 const styles = StyleSheet.create({
-  body: {
-    flexGrow: 1,
-    paddingHorizontal: MockLayout.screenPad,
-    paddingTop: Spacing.lg,
+  /** The canvas owns the whole playfield; the stage owns its frame. */
+  canvas: STAGE_FILL,
+  fallbackWrap: {
+    ...STAGE_FILL,
     alignItems: "center",
+    justifyContent: "center",
   },
-  pressed: { opacity: 0.8 },
-  kicker: { fontSize: 13, fontWeight: "700", color: Colors.mutedText },
   fallbackDice: {
     fontFamily: Fonts.numeral,
     fontSize: 56,
@@ -643,69 +598,46 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: Colors.foam,
     letterSpacing: -0.4,
-    textShadowColor: MockColors.bg,
+    textShadowColor: Colors.stout,
     textShadowRadius: 12,
   },
 
-  turn: { alignItems: "center", gap: Spacing.sm, marginTop: Spacing.xl },
-  turnName: {
-    fontSize: 34,
-    fontWeight: "800",
-    color: Colors.foam,
-    letterSpacing: -0.6,
-    textAlign: "center",
-  },
-
-  dice: {
-    alignSelf: "stretch",
-    height: 260,
-    marginTop: Spacing.md,
-    borderRadius: Radius.card,
-    overflow: "hidden",
-  },
   /**
-   * Out of the way between rounds, but never out of the layout.
+   * The settled round, laid over the table.
    *
-   * `display: none` gave the WebView a zero frame, and WKWebView throws away a
-   * page it is not drawing — so every round summary cost a full reload and the
-   * table came back on "Načítám hru…". Absolute and transparent keeps it its
-   * real size, mounted and already rendered when the next round starts.
+   * `display: none` on the canvas gave the WebView a zero frame, and WKWebView
+   * throws away a page it is not drawing — so every round summary used to cost
+   * a full reload and the table came back on "Načítám hru…". Covering it keeps
+   * the page mounted, its real size, and already rendered for the next round.
    */
-  diceHidden: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    opacity: 0,
-    marginTop: 0,
-  },
-  roll: {
-    height: 54,
-    paddingHorizontal: 44,
-    borderRadius: Radius.pill,
-    alignItems: "center",
+  summary: {
+    ...STAGE_FILL,
     justifyContent: "center",
-    marginTop: Spacing.xl,
-    backgroundColor: Colors.amber,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: withAlpha(Colors.stout, 0.88),
   },
-  muted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
 
-  action: {
-    alignSelf: "stretch",
-    height: MockLayout.sheetButtonHeight,
-    borderRadius: Radius.pill,
-    alignItems: "center",
+  ladder: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
-    marginTop: Spacing.xl,
-    backgroundColor: Colors.amber,
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
   },
-  actionText: { ...MockType.buttonLabel, color: Colors.stout },
-
-  ladder: { alignSelf: "stretch", marginTop: Spacing.xl, gap: Spacing.sm },
-  ladderRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  ladderChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 34,
+    paddingLeft: 5,
+    paddingRight: 12,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  ladderChipSafe: { backgroundColor: withAlpha(Colors.amber, 0.18) },
   ladderName: {
-    flex: 1,
-    fontSize: 15,
+    maxWidth: 120,
+    fontSize: 14,
     fontWeight: "600",
     color: withAlpha(Colors.foam, 0.75),
   },
@@ -719,56 +651,29 @@ const styles = StyleSheet.create({
   },
   pipOn: { backgroundColor: Colors.amber },
 
-  verdict: {
-    fontSize: 30,
-    lineHeight: 38,
-    fontWeight: "800",
-    color: Colors.foam,
-    textAlign: "center",
-    marginTop: Spacing.md,
-    letterSpacing: -0.5,
-  },
-  verdictSub: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: Colors.mutedText,
-    marginTop: Spacing.xs,
-  },
-
-  rolls: { alignSelf: "stretch", marginTop: Spacing.xl, gap: Spacing.xs },
+  rolls: { alignSelf: "stretch", gap: Spacing.xs },
   rollRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
-    height: 52,
+    height: 56,
     paddingHorizontal: Spacing.md,
-    borderRadius: 18,
-    backgroundColor: MockColors.surfaceHigh,
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout3,
   },
   rollRowWin: { backgroundColor: withAlpha(Colors.amber, 0.16) },
   rollName: { flex: 1, fontSize: 16, fontWeight: "700", color: Colors.foam },
   rollDice: { fontSize: 14, fontWeight: "600", color: Colors.mutedText },
+  /** The two numbers that decided the round, at the size they deserve. */
   rollTotal: {
-    minWidth: 34,
+    minWidth: 42,
     textAlign: "right",
     fontFamily: Fonts.numeral,
-    fontSize: 20,
-    lineHeight: 25,
+    fontSize: 30,
+    lineHeight: 37,
     includeFontPadding: false,
     color: Colors.foam,
   },
 
-  payer: { alignItems: "center", gap: Spacing.sm, marginTop: Spacing.xxl },
-  payerName: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: Colors.amber,
-    letterSpacing: -0.5,
-  },
-  payerSub: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: Colors.mutedText,
-    textAlign: "center",
-  },
+  dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });
