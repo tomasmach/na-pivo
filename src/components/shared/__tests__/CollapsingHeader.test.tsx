@@ -4,6 +4,13 @@ import TestRenderer, { act } from 'react-test-renderer';
 
 import { Colors } from '@/theme/colors';
 
+import {
+  COLLAPSING_BAR_HEIGHT,
+  CollapsingHeader,
+  barFadeRange,
+  useCollapsingHeader,
+} from '../CollapsingHeader';
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('expo-glass-effect', () => ({
@@ -13,13 +20,6 @@ jest.mock('expo-glass-effect', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
-
-import {
-  COLLAPSING_BAR_HEIGHT,
-  CollapsingHeader,
-  barFadeRange,
-  useCollapsingHeader,
-} from '../CollapsingHeader';
 
 function Host() {
   const { progress } = useCollapsingHeader(40);

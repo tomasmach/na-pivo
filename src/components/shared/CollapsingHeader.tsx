@@ -14,7 +14,7 @@
  * transparent-header native back control keeps working on top of it.
  */
 
-import React, { useMemo, useRef, type ReactNode } from 'react';
+import React, { useMemo, useState, type ReactNode } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +42,10 @@ export function barFadeRange(threshold: number): [number, number] {
 }
 
 export function useCollapsingHeader(threshold: number) {
-  const scrollY = useRef(new Animated.Value(0)).current;
+  // `useState` rather than a ref: the value is read during render (the
+  // interpolation is part of the returned style), which the refs lint rule
+  // rightly forbids for refs. The lazy initialiser keeps it to one instance.
+  const [scrollY] = useState(() => new Animated.Value(0));
 
   return useMemo(() => {
     return {
