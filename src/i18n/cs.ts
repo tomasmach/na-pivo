@@ -716,7 +716,7 @@ export const cs = {
     attachmentPrivacy: 'Odešlu ji jen spolu s tímhle hlášením.',
     attachmentRemove: 'Odebrat přílohu',
     attachmentPreparing: 'Připravuju fotku…',
-    attachmentSourceTitle: 'Odkud vezmeme fotku?',
+    attachmentSourceTitle: 'Odkud vezmeš fotku?',
     attachmentCamera: 'Vyfotit',
     attachmentLibrary: 'Vybrat z galerie',
     attachmentPermissionTitle: 'Bez povolení to nepůjde',
@@ -864,7 +864,7 @@ export const cs = {
     editIntro:
       'Název můžeš opravit hned. Pro změnu adresy potvrď nový bod přímo u hospody.',
     locationHeader: 'Poloha',
-    locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložíme jen tento bod, žádnou trasu ani historii polohy.',
+    locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložím jen tenhle bod, žádnou trasu ani historii polohy.',
     editLocationHeader: 'Změna polohy (nepovinná)',
     editLocationBody: 'Původní bod zůstane beze změny. Novou adresu a polohu potvrď jen tehdy, když opravdu nesedí.',
     useCurrentLocation: 'Použít moji aktuální polohu',
@@ -1208,7 +1208,7 @@ export const cs = {
     report: 'Nahlásit setkání',
     reportTitle: 'Nahlásit setkání?',
     reportCancel: 'Nechat být',
-    reported: 'Díky. Mrkneme na to.',
+    reported: 'Díky. Mrknu na to.',
     cancelEvent: 'Zrušit setkání',
     cancelConfirmTitle: 'Zrušit setkání?',
     cancelConfirmBack: 'Nechat ho',
@@ -1232,7 +1232,7 @@ export const cs = {
     areaPlaceholder: 'Vinohrady',
     exactAddress: 'Přesná adresa',
     exactAddressPlaceholder: 'Ulice, číslo a případně zvonek',
-    exactAddressHint: 'Ve veřejném přehledu ji nikdy neukážeme. Dostanou ji jen lidé, které schválíš.',
+    exactAddressHint: 'Ve veřejném přehledu ji nikdy neukážu. Dostanou ji jen lidé, které schválíš.',
     useLocation: 'Použít polohu tohoto místa',
     locationReady: 'Poloha uložená jen k tomuto setkání',
     start: 'Začátek',
@@ -1391,7 +1391,7 @@ export const cs = {
     reportAction: 'Nahlásit fotku',
     reportConfirmTitle: 'Nahlásit tuhle fotku?',
     reportConfirmBody: 'Poletí na kontrolu. Díky, že hlídáš výčep.',
-    reportedToast: 'Nahlášeno. Mrkneme na to.',
+    reportedToast: 'Nahlášeno. Mrknu na to.',
 
     // — Results celebration (top 3, shown once per round) —
     resultsEyebrow: 'VÝSLEDKY KOLA',
@@ -2778,9 +2778,9 @@ export const cs = {
     // — Reporting a public night —
     reportNight: 'Nahlásit noc',
     reportTitle: 'Nahlásit tuhle noc?',
-    reportBody: 'Nahlášení pošleš anonymně nám. Mrkneme na to.',
+    reportBody: 'Nahlášení pošleš anonymně mně. Mrknu na to.',
     reportConfirm: 'Nahlásit',
-    reportSentToast: 'Díky, máme to. Mrkneme na to.',
+    reportSentToast: 'Díky, mám to. Mrknu na to.',
     reportErrorToast: 'Nahlášení nedošlo. Zkus to znovu.',
   },
 
@@ -3226,6 +3226,7 @@ export const cs = {
     partaTable: 'Kdo dneska jde',
     presenceRow: (name: string, pub: string) =>
       `${name} teď sedí ${pub}. Ťukni pro profil.`,
+    presenceRowMine: (pub: string) => `Teď sedíš ${pub}. Ťukni pro profil.`,
     presenceCompass: (pub: string) => `Ukázat ${pub} na kompasu`,
     sittingRow: (name: string, what: string, where: string, when: string) =>
       `${name}, ${what}, ${where}${when ? `, ${when}` : ''}. Ťukni pro profil.`,

@@ -281,7 +281,7 @@ it('reports the concrete foreign night from the detail action menu', async () =>
     reason: 'spam',
     nightId: 'night-1',
   });
-  expect(mockShowToast).toHaveBeenCalledWith('Díky, máme to. Mrkneme na to.');
+  expect(mockShowToast).toHaveBeenCalledWith('Díky, mám to. Mrknu na to.');
 });
 
 it('confirms and deletes the owner publication while keeping the private diary', async () => {

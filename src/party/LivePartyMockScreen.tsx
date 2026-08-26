@@ -800,7 +800,7 @@ export default function LivePartyMockScreen() {
           entry.kind === 'pub'
             ? `${pubText}${entry.label}`
             : entry.kind === 'join'
-              ? `${entry.label} přisedl`
+              ? `${entry.label} je u stolu`
               : entry.kind === 'photo'
                 ? 'Fotka'
                 : entry.label,
