@@ -515,6 +515,24 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     return () => endPickingPub();
   }, [beginPickingPub, endPickingPub, picker]);
 
+  /**
+   * Arrival. `useArrivalDetector` has fired the haptic and the cink; this is
+   * the half that was left behind when the compass became a list cell — the
+   * celebration screen. Same shape as 2.x: remember the pub the screen names,
+   * push, then dismiss so the detector's "once per target" latch stands.
+   *
+   * Never from the picker: that is this screen raised as a modal over a running
+   * night, and a celebration on top of it would bury the pub you came to pick.
+   */
+  const { arrived, dismissArrival } = compass;
+  const arrivedPub = compass.pub;
+  React.useEffect(() => {
+    if (!arrived || picker) return;
+    if (arrivedPub) usePubStore.getState().setRevealedPub(arrivedPub);
+    router.push('/celebration' as Href);
+    dismissArrival();
+  }, [arrived, arrivedPub, dismissArrival, picker, router]);
+
   const closePicker = React.useCallback(() => {
     endPickingPub();
     leaveRoute(router);
