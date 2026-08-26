@@ -1143,7 +1143,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                       <Text style={styles.listStateText}>
                         {emptyState === 'search-failed'
                           ? 'Hospody se teď nenačetly.'
-                          : 'V okolí zatím nic nemáme.'}
+                          : 'V okolí zatím nic není.'}
                       </Text>
                       <Pressable
                         onPress={compass.retrySearch}
