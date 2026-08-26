@@ -874,6 +874,64 @@ describe('useNightRecord offline photos', () => {
   });
 });
 
+describe('useNightRecord after leaving a shared table', () => {
+  it('does not rebuild the hub from the evening that just ended', () => {
+    const originals = {
+      tally: useTallyStore.getState(),
+      live: useLivePartyStore.getState(),
+      evening: usePartyEveningStore.getState(),
+      games: usePartyGamesStore.getState(),
+      photos: useBeerPhotosStore.getState(),
+    };
+    let unmount: (() => void) | undefined;
+
+    try {
+      useTallyStore.setState({ current: null, history: [] });
+      useLivePartyStore.setState({
+        live: false,
+        pubName: '',
+        pubKey: null,
+        startedAt: null,
+        pubVisits: [],
+        games: [],
+      });
+      usePartyEveningStore.setState({
+        evening: null,
+        confirmedIdentity: null,
+        pendingJoinCode: null,
+        lastEvening: {
+          id: 'e1',
+          joinCode: 'PIVOXY',
+          pubName: 'U Hrocha',
+          startedAt: '2026-08-05T18:00:00Z',
+          endedAt: '2026-08-05T23:00:00Z',
+          active: false,
+          isHost: false,
+          members: [],
+          events: [],
+        } as never,
+      });
+      usePartyGamesStore.setState({ code: null, games: [], events: [], live: false });
+      useBeerPhotosStore.setState({ photos: [] });
+
+      const rendered = renderHook(() => useNightRecord());
+      unmount = rendered.unmount;
+
+      expect(rendered.result.current.code).toBeNull();
+      expect(rendered.result.current.stops).toEqual([]);
+      expect(rendered.result.current.drinks).toEqual([]);
+      expect(rendered.result.current.games).toEqual([]);
+    } finally {
+      unmount?.();
+      useTallyStore.setState(originals.tally);
+      useLivePartyStore.setState(originals.live);
+      usePartyEveningStore.setState(originals.evening);
+      usePartyGamesStore.setState(originals.games);
+      useBeerPhotosStore.setState(originals.photos);
+    }
+  });
+});
+
 describe('useNightRecord drinking-day duration', () => {
   it('starts the recap at the first sitting even when Party was opened at the last pub', () => {
     const first: TallySession = {

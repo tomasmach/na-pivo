@@ -433,7 +433,11 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
   const sharedEvents = usePartyGamesStore((state) => state.events);
   const allPhotos = useBeerPhotosStore((state) => state.photos);
 
-  const targetEvening = evening ?? lastEvening;
+  // `lastEvening` is the RECAP's memory of the table that just ended, not a
+  // table you are at. The hub used to hydrate from it too, so after leaving a
+  // shared evening the pre-evening screen came back carrying the old thread —
+  // somebody else's beers and games under a stopwatch that was not running.
+  const targetEvening = evening ?? (recoverLatestEnded ? lastEvening : null);
   const code = targetEvening?.joinCode ?? confirmedIdentity?.joinCode ?? null;
   const initialCachedRecord = code && accountId ? readNightRecordCache(accountId, code) : null;
   const [remote, setRemote] = React.useState<{
