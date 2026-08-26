@@ -31,7 +31,6 @@ import React from 'react';
 import {
   AccessibilityInfo,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -43,7 +42,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { cs } from '@/i18n/cs';
 import type { GameScore } from '@/games/protocol';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import {
+  GameStage,
+  StageCard,
+  StageChip,
+  StageInk,
+  StagePill,
+} from '@/party/shells/GameStage';
+import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -178,6 +184,35 @@ export function GameResult({
     if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility?.(summaryLabel);
   }, [summaryLabel]);
 
+  const podium = ranking.slice(0, 3);
+  const rest = ranking.slice(3);
+
+  /* One focusable summary instead of three fragmented nodes; the label reuses
+     only what is already on screen. */
+  const summary = (
+    <View
+      style={styles.star}
+      accessible
+      accessibilityRole="header"
+      accessibilityLiveRegion="assertive"
+      accessibilityLabel={summaryLabel}
+    >
+      {star ? <PersonAvatar name={star} tint={starTint} size={72} /> : null}
+      <Text
+        style={[styles.title, ranking.length === 0 && styles.titleInk]}
+        maxFontSizeMultiplier={FontScaleCap.heading}
+      >
+        {title}
+      </Text>
+      <Text
+        style={[styles.note, ranking.length === 0 && styles.noteInk]}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {note}
+      </Text>
+    </View>
+  );
+
   return (
     <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(260)} style={styles.body}>
       <ScrollView
@@ -185,42 +220,77 @@ export function GameResult({
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {title === cs.gameResult.done ? null : (
-          <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.gameResult.done}
-          </Text>
-        )}
-
-        {/* One focusable summary instead of three fragmented nodes; the
-            label reuses only what is already on screen. */}
-        <View
-          style={styles.star}
-          accessible
-          accessibilityRole="header"
-          accessibilityLiveRegion="assertive"
-          accessibilityLabel={summaryLabel}
+        <GameStage
+          topLeft={
+            title === cs.gameResult.done ? undefined : (
+              <StageChip label={cs.gameResult.done} />
+            )
+          }
+          style={styles.stage}
         >
-          {star ? <PersonAvatar name={star} tint={starTint} size={72} /> : null}
-          <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {title}
-          </Text>
-          <Text style={styles.note} maxFontSizeMultiplier={FontScaleCap.body}>
-            {note}
-          </Text>
-        </View>
+          {ranking.length > 0 ? (
+            /* A ranking is a podium: first in the middle and taller, the other
+               two beside it. A list of rows told you the same thing and looked
+               like a settings screen. */
+            <View style={styles.podium}>
+              {[podium[1], podium[0], podium[2]].map((row, slot) => {
+                if (!row) return <View key={`empty-${slot}`} style={styles.step} />;
+                const place = ranking.indexOf(row) + 1;
+                const first = place === 1;
+                return (
+                  <Animated.View
+                    key={row.key ?? `${row.name}-${place}`}
+                    entering={
+                      reduceMotion
+                        ? undefined
+                        : FadeInDown.delay((place - 1) * 60).duration(220)
+                    }
+                    style={[styles.step, first && styles.stepFirst]}
+                    accessible
+                    accessibilityLabel={`${place}. ${row.name} ${row.suffix ?? row.score}`}
+                  >
+                    <PersonAvatar
+                      name={row.name}
+                      tint={row.tint ?? Colors.amber}
+                      size={first ? 64 : 44}
+                    />
+                    <Text
+                      style={[styles.stepName, first && styles.stepNameFirst]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {row.name}
+                    </Text>
+                    <Text
+                      style={[styles.stepScore, first && styles.stepScoreFirst]}
+                      allowFontScaling={false}
+                    >
+                      {row.suffix ?? row.score}
+                    </Text>
+                  </Animated.View>
+                );
+              })}
+            </View>
+          ) : (
+            /* Nobody ranked: the ending is the card itself, so the stage is not
+               a half-empty box with a sentence floating under it. */
+            <StageCard>{summary}</StageCard>
+          )}
+        </GameStage>
 
-        {ranking.length > 0 ? (
+        {ranking.length > 0 ? summary : null}
+
+        {rest.length > 0 ? (
           <View style={styles.board}>
-            {ranking.map((row, index) => (
-              <Animated.View
+            {rest.map((row, index) => (
+              <View
                 key={row.key ?? `${row.name}-${index}`}
-                entering={reduceMotion ? undefined : FadeInDown.delay(index * 60).duration(220)}
-                style={[styles.row, index === 0 && styles.rowTop]}
+                style={styles.row}
                 accessible
-                accessibilityLabel={`${index + 1}. ${row.name} ${row.suffix ?? row.score}`}
+                accessibilityLabel={`${index + 4}. ${row.name} ${row.suffix ?? row.score}`}
               >
                 <Text style={styles.rank} allowFontScaling={false}>
-                  {index + 1}
+                  {index + 4}
                 </Text>
                 <PersonAvatar name={row.name} tint={row.tint ?? Colors.amber} size={30} />
                 <Text
@@ -233,23 +303,14 @@ export function GameResult({
                 <Text style={styles.score} allowFontScaling={false}>
                   {row.suffix ?? row.score}
                 </Text>
-              </Animated.View>
+              </View>
             ))}
           </View>
         ) : null}
       </ScrollView>
 
       <View style={[styles.dock, { marginBottom: insets.bottom + Spacing.sm }]}>
-        <Pressable
-          onPress={onDone}
-          style={({ pressed }) => [styles.done, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={doneLabel}
-        >
-          <Text style={styles.doneText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {doneLabel}
-          </Text>
-        </Pressable>
+        <StagePill label={doneLabel} onPress={onDone} />
       </View>
     </Animated.View>
   );
@@ -267,10 +328,46 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
     alignItems: 'center',
   },
-  pressed: { opacity: 0.8 },
-  kicker: { fontSize: 13, fontWeight: '700', color: Colors.mutedText },
+  stage: { paddingHorizontal: Spacing.md },
 
-  star: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xxl },
+  podium: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    gap: Spacing.sm,
+  },
+  step: {
+    flex: 1,
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout3,
+  },
+  stepFirst: {
+    paddingVertical: Spacing.xl,
+    backgroundColor: withAlpha(Colors.amber, 0.18),
+  },
+  stepName: {
+    maxWidth: '100%',
+    fontSize: 14,
+    fontWeight: '700',
+    color: withAlpha(Colors.foam, 0.8),
+    textAlign: 'center',
+  },
+  stepNameFirst: { fontSize: 16, color: Colors.foam },
+  stepScore: {
+    fontFamily: Fonts.numeral,
+    fontSize: 20,
+    lineHeight: 25,
+    includeFontPadding: false,
+    color: Colors.foam,
+  },
+  stepScoreFirst: { fontSize: 28, lineHeight: 35, color: Colors.amber },
+
+  star: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.lg },
   title: {
     fontFamily: Fonts.numeral,
     fontSize: 32,
@@ -286,8 +383,11 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     textAlign: 'center',
   },
+  /** On the cream card the ink flips; the words and the sizes do not. */
+  titleInk: { color: StageInk.strong },
+  noteInk: { color: StageInk.soft },
 
-  board: { alignSelf: 'stretch', marginTop: Spacing.xxl, gap: Spacing.xs },
+  board: { alignSelf: 'stretch', marginTop: Spacing.lg, gap: Spacing.xs },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -297,7 +397,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: MockColors.surfaceHigh,
   },
-  rowTop: { backgroundColor: withAlpha(Colors.amber, 0.16) },
   rank: {
     minWidth: 18,
     fontFamily: Fonts.numeral,
@@ -319,16 +418,5 @@ const styles = StyleSheet.create({
     marginTop: 'auto',
     marginHorizontal: MockLayout.screenPad,
     alignSelf: 'stretch',
-    flexDirection: 'row',
-    gap: 10,
   },
-  done: {
-    flex: 1,
-    height: MockLayout.sheetButtonHeight,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  doneText: { ...MockType.buttonLabel, color: Colors.stout },
 });
