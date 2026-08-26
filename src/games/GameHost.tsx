@@ -349,16 +349,30 @@ export const GameHost = React.forwardRef<
 });
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: 'transparent' },
+  /**
+   * The host owns the play area's surface and its corner radius; the page
+   * paints nothing of its own. The canvas used to fill itself with the app's
+   * stout, which put a hard-edged rectangle on a screen made of rounded
+   * surfaces — and `overflow: hidden` is what actually clips a WebView to it.
+   */
+  wrap: {
+    flex: 1,
+    borderRadius: Radius.card,
+    overflow: 'hidden',
+    backgroundColor: MockColors.surface,
+  },
+  // A transparent background is also what makes react-native-webview drop
+  // WKWebView's own opaque fill, so the surface above shows through.
   web: { flex: 1, backgroundColor: 'transparent' },
   status: {
     position: 'absolute',
     inset: 0,
+    borderRadius: Radius.card,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.md,
     paddingHorizontal: Spacing.xl,
-    backgroundColor: MockColors.bg,
+    backgroundColor: MockColors.surface,
   },
   statusText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText, textAlign: 'center' },
   retry: {

@@ -481,7 +481,11 @@ export function DiceDuelShell({
           crooked, and whatever is on top is the answer. They stay where they
           landed while the next thrower decides — dice do not vanish between
           throws. Hidden, not gone, while the round summary shows. */}
-      <View key="dice" style={[styles.dice, roundDone && styles.diceHidden]}>
+      <View
+        key="dice"
+        style={[styles.dice, roundDone && styles.diceHidden]}
+        pointerEvents={roundDone ? "none" : "auto"}
+      >
         {!localOnly ? (
           <GameHost
             ref={canvas}
@@ -652,8 +656,29 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  dice: { alignSelf: "stretch", height: 260, marginTop: Spacing.md },
-  diceHidden: { display: "none" },
+  dice: {
+    alignSelf: "stretch",
+    height: 260,
+    marginTop: Spacing.md,
+    borderRadius: Radius.card,
+    overflow: "hidden",
+  },
+  /**
+   * Out of the way between rounds, but never out of the layout.
+   *
+   * `display: none` gave the WebView a zero frame, and WKWebView throws away a
+   * page it is not drawing — so every round summary cost a full reload and the
+   * table came back on "Načítám hru…". Absolute and transparent keeps it its
+   * real size, mounted and already rendered when the next round starts.
+   */
+  diceHidden: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    opacity: 0,
+    marginTop: 0,
+  },
   roll: {
     height: 54,
     paddingHorizontal: 44,
