@@ -173,7 +173,24 @@ const EMPTY = {
   games: [] as GameEntry[],
 };
 
-const LIVE_PARTY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const LIVE_PARTY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Is this evening old enough that nobody is sitting at it any more?
+ *
+ * The same 24 hours the persisted local chrome expires after, and the same cap
+ * the server puts on a single party entry. A shared table hosted by another
+ * account had no such rule, so a night nobody closed came back with a running
+ * `110:29:55` on the clock.
+ */
+export function isStaleNightStart(
+  startedAt: string | number | null | undefined,
+  now = Date.now(),
+): boolean {
+  const opened = typeof startedAt === 'number' ? startedAt : Date.parse(startedAt ?? '');
+  if (!Number.isFinite(opened)) return false;
+  return now - opened > LIVE_PARTY_MAX_AGE_MS;
+}
 
 function mergePersistedState(
   persisted: unknown,

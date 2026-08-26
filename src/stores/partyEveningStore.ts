@@ -68,7 +68,11 @@ export interface PartyEveningState {
   leave: () => Promise<boolean>;
   end: () => Promise<boolean>;
   finishFromServer: (endedAt: string) => void;
-  /** The server says this exact active table no longer exists; close it locally. */
+  /**
+   * Detach from this exact active table locally, without ending it on the
+   * server: either the server says it no longer exists, or it opened longer
+   * ago than a night can last (`isStaleNightStart`).
+   */
   closeLostTable: (joinCode: string) => void;
   clearError: () => void;
 }

@@ -85,6 +85,7 @@ import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
   clockAt,
+  isStaleNightStart,
   minutesBetween,
   partyTapOptions,
   useLivePartyStore,
@@ -268,6 +269,7 @@ export default function LivePartyMockScreen() {
   const pendingJoinCode = usePartyEveningStore((s) => s.pendingJoinCode);
   const confirmedPartyCode = usePartyEveningStore(selectConfirmedPartyJoinCode);
   const finishFromServer = usePartyEveningStore((s) => s.finishFromServer);
+  const closeLostTable = usePartyEveningStore((s) => s.closeLostTable);
   const accountId = useAccountStore((s) => s.session?.accountId);
   const nearby = useNearbyPub();
   const tallyCurrent = useTallyStore((s) => s.current);
@@ -311,13 +313,36 @@ export default function LivePartyMockScreen() {
     void refreshEvening();
   }, [refreshEvening]);
 
+  // A shared table nobody closed is not a running evening. The local chrome
+  // already expires after 24 hours and the server refuses a party entry past
+  // the same cap, but a table hosted by another account had no such rule — the
+  // hub reopened a night from three days ago with the stopwatch still ticking.
+  const staleEveningCode = React.useMemo(
+    () =>
+      evening?.active && isStaleNightStart(evening.startedAt)
+        ? evening.joinCode
+        : null,
+    [evening],
+  );
+
+  React.useEffect(() => {
+    if (!staleEveningCode) return;
+    // Detach only: no publish, no server call. The table is the server's
+    // business; this phone just stops pretending it is sitting at it.
+    closeLostTable(staleEveningCode);
+    endParty();
+    useToastStore.getState().show(cs.party.staleEveningClosed);
+  }, [closeLostTable, endParty, staleEveningCode]);
+
   React.useEffect(() => {
     // The server can briefly return the previous table while a new local one is
     // already running. Without this guard that stale refresh rewrites the pub
     // and stopwatch underneath the current evening. Explicit joins replace the
     // local night in their success handler below.
-    if (evening?.active && !live) resumeParty(evening.pubName, evening.startedAt);
-  }, [evening, live, resumeParty]);
+    if (evening?.active && !live && !staleEveningCode) {
+      resumeParty(evening.pubName, evening.startedAt);
+    }
+  }, [evening, live, resumeParty, staleEveningCode]);
 
   React.useEffect(() => {
     const detected = nearby.selected;

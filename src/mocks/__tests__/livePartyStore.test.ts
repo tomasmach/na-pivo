@@ -1,4 +1,5 @@
 import {
+  isStaleNightStart,
   partyTapOptions,
   restoreLivePartyState,
   useLivePartyStore,
@@ -157,5 +158,23 @@ describe('livePartyStore persistence boundary', () => {
         now,
       ).pubVisits,
     ).toEqual([visit]);
+  });
+});
+
+describe('isStaleNightStart', () => {
+  const now = Date.parse('2026-08-26T20:00:00Z');
+
+  it('closes an evening opened more than a day ago', () => {
+    // The QA table: started 110 hours ago and still ticking.
+    expect(isStaleNightStart('2026-08-22T06:00:00Z', now)).toBe(true);
+  });
+
+  it('keeps a long but plausible night running', () => {
+    expect(isStaleNightStart('2026-08-25T21:00:00Z', now)).toBe(false);
+  });
+
+  it('never closes an evening it cannot date', () => {
+    expect(isStaleNightStart(null, now)).toBe(false);
+    expect(isStaleNightStart('nonsense', now)).toBe(false);
   });
 });
