@@ -1697,6 +1697,29 @@ a víc dělat nemusí. Kreslené `react-native-svg`, žádný nový balík.
 kostkami dělal z tlačítka nejhlasitější věc na obrazovce, jejíž celý smysl je,
 co právě dopadlo.
 
+### 21.3a Každá hra se hraje na stejném stole
+
+Etalon je Flaška: jedna velká zaoblená plocha přes celou šířku, uprostřed jedna
+věc, pod ní odpověď v nativním textu a jedna jantarová pilulka. Ostatní hry byly
+text na černé a vypadaly jako chybová hláška. **Stůl je sdílená komponenta**
+(`src/party/shells/GameStage.tsx`) a používají ho všechny skořápky včetně lobby
+a výsledku — nová hra si vlastní rám nekreslí.
+
+| část | co to je | pravidlo |
+|---|---|---|
+| `StageIntro` | řádek nad stolem | jedna krátká věta, `MockType.label` |
+| `GameStage` | hrací plocha | `Colors.stout2`, `Radius.cardLarge`, ~54 % výšky obrazovky, jemná vinětace (černá 0–34 %) |
+| `StageChip` | počítadlo v rohu stolu | „3/20“, „4. kolo“, „Zbývá 51“ |
+| `StageCard` | papírová karta na stole | `Colors.foam`, tmavý inkoust — jediné místo, kde text není pěna |
+| `StageStatus` | odpověď pod stolem | disk hráče + jedna velká věta |
+| `StageChips` | hráči pod statusem | avatar + jméno (+ skóre, když hra počítá) |
+| `StagePill` | akce | právě jedna jantarová, sekundární je tichá `stout3` pilulka |
+
+Vinětace je **jediný** gradient, který na stole smí být, a existuje proto, aby
+plocha četla jako nasvícený stůl, ne jako karta. Žádné glow, žádná druhá plná
+jantarová plocha uvnitř stolu — vybraná odpověď v kvízu je jantarový **tint
+s okrajem**, ne plná výplň (§2.2).
+
 ### 21.4 Fyzické hry žijí ve WebView
 
 Devět her je obsah plus skořápka v React Native. **Výjimka je jedna: hra, jejíž
