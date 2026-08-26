@@ -10,11 +10,19 @@ import { en } from './en';
 import * as csCounts from './plural';
 import * as enCounts from './enHelpers';
 import { intlLocaleFor, resolveLocale, type Locale } from './locale';
+import { readLanguagePreference, type LanguagePreference } from './languagePreference';
 
-export type { Locale, Strings };
+export type { Locale, Strings, LanguagePreference };
 export { resolveLocale } from './locale';
+export { applyLanguagePreference } from './languagePreference';
 
-export const locale: Locale = resolveLocale(getLocales().map((l) => l.languageCode));
+/** What the user picked in Settings; 'system' follows the phone. */
+export const languagePreference: LanguagePreference = readLanguagePreference();
+
+export const locale: Locale =
+  languagePreference === 'system'
+    ? resolveLocale(getLocales().map((l) => l.languageCode))
+    : languagePreference;
 
 /** Pass to Intl.DateTimeFormat / toLocaleDateString instead of a literal 'cs-CZ'. */
 export const intlLocale = intlLocaleFor(locale);

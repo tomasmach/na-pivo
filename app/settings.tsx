@@ -56,7 +56,7 @@ import {
 } from '@/data/friendsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import FriendSettingsSheet from '@/friends/FriendSettingsSheet';
-import { intlLocale, t } from '@/i18n';
+import { applyLanguagePreference, intlLocale, languagePreference, t, type LanguagePreference } from '@/i18n';
 import {
   disableBeerCountReminderNotifications,
   enableBeerCountReminderNotifications,
@@ -392,6 +392,73 @@ function BeerCountReminderRow({
           </View>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+const LANGUAGE_OPTIONS: readonly LanguagePreference[] = ['system', 'cs', 'en'];
+
+function LanguageRow() {
+  const { fontScale } = useWindowDimensions();
+  const useLargeTypeLayout = fontScale > 1.5;
+  const [pending, setPending] = useState<LanguagePreference | null>(null);
+  const current = pending ?? languagePreference;
+
+  const choose = (next: LanguagePreference) => {
+    if (next === languagePreference || pending) return;
+    setPending(next);
+    void applyLanguagePreference(next);
+  };
+
+  return (
+    <View style={styles.notificationsCard}>
+      <View
+        style={[
+          styles.languageRow,
+          useLargeTypeLayout && styles.reminderIntervalRowLargeType,
+        ]}
+      >
+        <Text style={styles.reminderIntervalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.settings.language.label}
+        </Text>
+        <View
+          style={[
+            styles.reminderIntervalOptions,
+            useLargeTypeLayout && styles.reminderIntervalOptionsLargeType,
+          ]}
+        >
+          {LANGUAGE_OPTIONS.map((option) => {
+            const selected = current === option;
+            const name = t.settings.language[option];
+            return (
+              <Pressable
+                key={option}
+                onPress={() => choose(option)}
+                style={[
+                  styles.reminderIntervalOption,
+                  useLargeTypeLayout && styles.reminderIntervalOptionLargeType,
+                  selected && styles.reminderIntervalOptionSelected,
+                ]}
+                hitSlop={{ top: 8, bottom: 8 }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={t.settings.language.option(name)}
+              >
+                <Text
+                  style={[
+                    styles.reminderIntervalOptionText,
+                    selected && styles.reminderIntervalOptionTextSelected,
+                  ]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 }
@@ -925,6 +992,8 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        <SectionLabel spaced>{t.settings.language.section}</SectionLabel>
+        <LanguageRow />
 
         <View style={styles.footer}>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1172,6 +1241,13 @@ const styles = StyleSheet.create({
   },
   toggleThumbOn: { backgroundColor: Colors.foam },
   toggleThumbOff: { backgroundColor: Colors.mutedText },
+  languageRow: {
+    minHeight: 58,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   reminderIntervalRow: {
     minHeight: 44,
     paddingLeft: 24,

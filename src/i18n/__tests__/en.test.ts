@@ -20,7 +20,7 @@ function leaves(tree: unknown): Map<string, unknown> {
 
 // Proper nouns, the currency symbol and one quoted pub term keep their
 // diacritics in English on purpose.
-const KEEP_CZECH = ['Kč', 'Tomáš', 'Vinohradská', 'Mělník', 'Žatec', 'Plzeň', 'Rakovník', 'šnyt'];
+const KEEP_CZECH = ['Kč', 'Česky', 'Tomáš', 'Vinohradská', 'Mělník', 'Žatec', 'Plzeň', 'Rakovník', 'šnyt'];
 const CZECH = /[ěščřžýáíéúůňťď]/i;
 const stripCurrency = (text: string) =>
   KEEP_CZECH.reduce((acc, word) => acc.split(word).join(''), text);

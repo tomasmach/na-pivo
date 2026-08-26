@@ -249,7 +249,10 @@ describe('app.config native localization', () => {
   });
 
   it('bundles expo-localization so the app can read the device language', () => {
-    expect(config.plugins).toContain('expo-localization');
+    expect(config.plugins).toContainEqual([
+      'expo-localization',
+      { supportedLocales: ['cs', 'sk', 'en'] },
+    ]);
   });
 
   it('enables mixed localizations so bundled strings apply on any device locale', () => {

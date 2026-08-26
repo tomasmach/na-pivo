@@ -597,6 +597,14 @@ export const en: Strings = {
         },
       },
     },
+    language: {
+      section: 'App language',
+      label: 'The app speaks',
+      system: 'Like the phone',
+      cs: 'Česky',
+      en: 'English',
+      option: (name: string) => `App language: ${name}`,
+    },
     beerCountReminder: {
       title: 'Diary check',
       subtitle: "After an entry I set one reminder to check the diary. It doesn't repeat on its own.",

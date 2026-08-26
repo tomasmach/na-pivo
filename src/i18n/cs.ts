@@ -617,6 +617,14 @@ export const cs = {
         },
       },
     },
+    language: {
+      section: 'Jazyk aplikace',
+      label: 'Appka mluví',
+      system: 'Podle telefonu',
+      cs: 'Česky',
+      en: 'English',
+      option: (name: string) => `Jazyk aplikace: ${name}`,
+    },
     beerCountReminder: {
       title: 'Kontrola deníčku',
       subtitle: 'Po zápisu nastavím jednu upomínku ke kontrole deníčku. Sama se neopakuje.',

@@ -40,6 +40,7 @@ module.exports = {
     '^expo-linking$': '<rootDir>/src/__mocks__/expo-linking.ts',
     '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
     '^expo-localization$': '<rootDir>/src/__mocks__/expo-localization.ts',
+    '^expo-updates$': '<rootDir>/src/__mocks__/expo-updates.ts',
     '^expo-secure-store$': '<rootDir>/src/__mocks__/expo-secure-store.ts',
     '^expo-file-system$': '<rootDir>/src/__mocks__/expo-file-system.ts',
     '^expo-clipboard$': '<rootDir>/src/__mocks__/expo-clipboard.ts',

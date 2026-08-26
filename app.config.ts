@@ -122,7 +122,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     ],
     'expo-notifications',
-    'expo-localization',
+    // Lists the bundle languages for the OS so Android 13+ offers the per-app
+    // language switch the same way iOS does.
+    ['expo-localization', { supportedLocales: ['cs', 'sk', 'en'] }],
     // Camera stays on (menu OCR, beer photos) but never touches the
     // microphone: recordAudioAndroid:false keeps expo-camera from requesting
     // RECORD_AUDIO and microphonePermission:false drops NSMicrophoneUsageDescription.
