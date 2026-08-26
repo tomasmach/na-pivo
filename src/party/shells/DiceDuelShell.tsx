@@ -429,8 +429,12 @@ export function DiceDuelShell({
 
         {/* The call, over the table. An RN layer rather than text inside the
             page: it stays real text — Dynamic Type, VoiceOver, the app's own
-            font — while looking like it landed on the felt. */}
-        {cheer ? (
+            font — while looking like it landed on the felt.
+
+            It goes the moment the round is settled: the summary that covers the
+            table is translucent, so the shout stayed legible underneath it and
+            said the same name twice, once loud and once as a ghost. */}
+        {cheer && !roundDone ? (
           <Animated.View
             key={cheer}
             entering={FadeIn.duration(180)}

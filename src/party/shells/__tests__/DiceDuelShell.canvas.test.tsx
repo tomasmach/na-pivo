@@ -329,6 +329,43 @@ it('a completed round announces the visible verdict with the loser folded into o
   expect(sub.props.accessibilityElementsHidden).toBe(true);
 });
 
+it('drops the shout once the round summary covers the table', () => {
+  jest.useFakeTimers();
+  const afterMe = recordRoll(startDice(PLAYERS), 'me', [6, 4]);
+  const complete = recordRoll(afterMe, 'honza', [6, 6]);
+  const { rerender } = render(
+    <DiceDuelShell
+      players={PLAYERS}
+      onFinished={jest.fn()}
+      onDone={jest.fn()}
+      state={afterMe}
+      onRoll={jest.fn()}
+      onNextRound={jest.fn()}
+    />,
+  );
+
+  act(() =>
+    mockGameHostProps?.onEvent?.('settled', { dice: [6, 6], playerId: 'honza' }),
+  );
+  expect(screen.getByText('Honza má dvanáct!')).toBeTruthy();
+
+  rerender(
+    <DiceDuelShell
+      players={PLAYERS}
+      onFinished={jest.fn()}
+      onDone={jest.fn()}
+      state={complete}
+      onRoll={jest.fn()}
+      onNextRound={jest.fn()}
+    />,
+  );
+
+  // The summary is translucent, so a shout left underneath it reads as a ghost
+  // of the line the app is already saying properly.
+  expect(screen.queryByText('Honza má dvanáct!')).toBeNull();
+  expect(screen.getByText('Honza bere kolo')).toBeTruthy();
+});
+
 it('a transient cheer is a polite live text node', () => {
   jest.useFakeTimers();
   render(
