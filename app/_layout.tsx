@@ -95,6 +95,7 @@ import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboa
 import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogHost } from '@/components/shared/AppDialog';
+import { UgcConsentGate } from '@/account/UgcConsentGate';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
 import {
@@ -982,6 +983,7 @@ export default function RootLayout() {
         <PubReminderOnboardingModal />
         <NicknameNudgeModal />
         <PubReminderEnableFailureModal />
+        <UgcConsentGate />
         <AppDialogHost />
         <AppReviewPromptGate />
         <ProductTelemetryTracker

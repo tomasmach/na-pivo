@@ -702,6 +702,21 @@ export const cs = {
     skip: 'Teď ne',
   },
 
+  ugcConsent: {
+    title: 'Pravidla pro sdílený obsah',
+    lines: [
+      'Co zveřejníš — večery, fotky, komentáře, hospody — vidí ostatní pivaři.',
+      'Žádná nenávist, žádné obtěžování, nic sexuálního, žádný spam. Nahlášený obsah smažu a účet můžu zablokovat.',
+      'Podrobnosti jsou v podmínkách používání.',
+    ],
+    termsLink: 'Přečíst podmínky',
+    accept: 'Souhlasím',
+    acceptBusy: 'Ukládám…',
+    later: 'Teď ne',
+    laterHint: 'Dokud nesouhlasíš, zůstane to jen u tebe v telefonu.',
+    error: 'Nepovedlo se to uložit. Zkus to za chvíli.',
+  },
+
   report: {
     title: 'Napiš mi',
     intro: 'Něco nefunguje nebo ti něco chybí? Napiš mi pár slov, pomůže to.',
