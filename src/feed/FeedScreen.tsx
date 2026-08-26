@@ -396,17 +396,17 @@ export const FeedCard = memo(function FeedCard({
             return (
               <View
                 key={fact.label}
-                style={[
-                  styles.fact,
-                  { width: `${100 / facts.length}%` },
-                  last && styles.factLast,
-                ]}
+                style={[styles.fact, last && styles.factLast]}
               >
+                {/* No `adjustsFontSizeToFit` here. The night detail mounts this
+                    card inside a container that lays out at zero width on the
+                    first pass; iOS shrinks the value to the minimum scale then
+                    and never grows it back, so "3" rendered at ~6 pt. The fact
+                    values are short by construction ("3", "4h 45m"), so an
+                    equal-width cell with `numberOfLines={1}` is enough. */}
                 <Text
                   style={[styles.factValue, last && styles.factTextLast]}
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
                   allowFontScaling={false}
                 >
                   {fact.value}
@@ -1066,7 +1066,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
-  fact: { minWidth: 0, paddingRight: Spacing.sm },
+  // Equal-width cells that shrink with the row instead of a percentage width,
+  // so a long value truncates inside its cell rather than pushing the row.
+  fact: { flex: 1, minWidth: 0, paddingRight: Spacing.sm },
   factLast: { paddingRight: 0, alignItems: 'flex-end' },
   factTextLast: { textAlign: 'right' },
   factValue: {

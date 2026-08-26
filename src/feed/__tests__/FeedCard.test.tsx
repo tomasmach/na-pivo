@@ -261,4 +261,29 @@ describe('FeedCard', () => {
     const routeTile = renderer!.root.findByProps({ testID: 'night-route-tile' });
     expect(StyleSheet.flatten(routeTile.props.style).height).toBe(164);
   });
+  // Regression: the detail screen mounts this card in a container that lays out
+  // at zero width on the first pass. With `adjustsFontSizeToFit` iOS shrank the
+  // fact values to the minimum scale there and never grew them back — "3"
+  // rendered at roughly 6 pt.
+  it('renders fact values at full size in flexible cells', () => {
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <FeedCard night={night({ pubNames: ['U Zlatého tygra'], durationMinutes: 285 })} />,
+      );
+    });
+
+    const valueNodes = renderer!.root
+      .findAllByType('Text')
+      .filter((node: { props: Record<string, unknown> }) => {
+        const style = StyleSheet.flatten(node.props.style as never) as { fontSize?: number } | null;
+        return style?.fontSize === 22 && typeof node.props.children === 'string';
+      });
+
+    expect(valueNodes.length).toBeGreaterThan(0);
+    for (const node of valueNodes) {
+      expect(node.props.adjustsFontSizeToFit).toBeUndefined();
+      expect(node.props.numberOfLines).toBe(1);
+    }
+  });
 });
