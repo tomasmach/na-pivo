@@ -73,13 +73,11 @@ export function InviteSheet({
   // already asked — at a table of five you invite the same person twice.
   const [invited, setInvited] = React.useState<string[]>([]);
 
-  React.useEffect(() => {
-    if (!visible) setInvited([]);
-  }, [visible]);
-
   const loadFriends = React.useCallback((signal?: AbortSignal) => {
     setLoading(true);
     setFailed(false);
+    // Opening the sheet again starts a fresh round of invitations.
+    setInvited([]);
     void fetchFriendsDashboard(signal).then((dashboard) => {
       if (signal?.aborted) return;
       setLoading(false);
