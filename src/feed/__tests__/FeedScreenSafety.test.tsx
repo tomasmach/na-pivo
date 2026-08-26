@@ -75,6 +75,14 @@ jest.mock('@/utils/useReduceMotion', () => ({ useReduceMotion: () => true }));
 const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
+// `Animated.FlatList` wraps the list, so match the outermost node that carries
+// the feed data instead of the host type.
+function findFeedList(root: ReactTestInstance): ReactTestInstance {
+  return root.findAll(
+    (node) => typeof node.props.renderItem === 'function' && Array.isArray(node.props.data),
+  )[0];
+}
+
 function night(id: string, authorId: string, nickname: string): PublishedNight {
   return {
     id,
@@ -113,7 +121,7 @@ function night(id: string, authorId: string, nickname: string): PublishedNight {
 function renderedNights(
   renderer: ReturnType<typeof TestRenderer.create>,
 ): PublishedNight[] {
-  return renderer.root.findByType('FlatList').props.data as PublishedNight[];
+  return findFeedList(renderer.root).props.data as PublishedNight[];
 }
 
 it('renders the neutral scoring badge instead of retired drink copy', async () => {
@@ -134,7 +142,7 @@ it('renders the neutral scoring badge instead of retired drink copy', async () =
   });
   await flushUi();
 
-  const flatList = renderer.root.findByType('FlatList') as ReactTestInstance;
+  const flatList = findFeedList(renderer.root) as ReactTestInstance;
   const rowElement = flatList.props.renderItem({ item: gameNight, index: 0 });
 
   let cardRenderer: ReturnType<typeof TestRenderer.create> | null = null;

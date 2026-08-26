@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList } from 'react-native';
+import type { ReactTestInstance } from 'react-test-renderer';
 
 import type { PublishedNight } from '@/data/nightsClient';
 
@@ -119,8 +119,16 @@ function night(id: string, author: string): PublishedNight {
   };
 }
 
+// `Animated.FlatList` wraps the list, so match the outermost node that carries
+// the feed data instead of the host type.
+function findFeedList(root: ReactTestInstance): ReactTestInstance {
+  return root.findAll(
+    (node) => typeof node.props.renderItem === 'function' && Array.isArray(node.props.data),
+  )[0];
+}
+
 function feedData(renderer: ReturnType<typeof TestRenderer.create>): PublishedNight[] {
-  return renderer.root.findByType(FlatList).props.data as PublishedNight[];
+  return findFeedList(renderer.root).props.data as PublishedNight[];
 }
 
 async function settleEffects(): Promise<void> {
@@ -221,7 +229,7 @@ describe('FeedScreen account boundary', () => {
     });
     await act(settleEffects);
 
-    const footer = renderer!.root.findByType(FlatList).props.ListFooterComponent;
+    const footer = findFeedList(renderer!.root).props.ListFooterComponent;
     expect(footer.props.accessibilityLabel).toBe('Načíst další večery');
 
     await act(async () => {
