@@ -111,10 +111,10 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     # Exactly the 11 active kinds; the two reserved (active=False), smoking, and the four
     # deactivated kinds (seating_kids_corner, payment_cash_only,
     # atmosphere_dogs_welcome, practical_food) are excluded.
-    assert len(keys) == 11
+    assert len(keys) == 12
     assert "atmosphere_smoking" not in keys
     assert "practical_outdoor_tap" not in keys
-    assert "practical_tank_beer" not in keys
+    assert "practical_tank_beer" in keys
     assert "seating_kids_corner" not in keys
     assert "payment_cash_only" not in keys
 
@@ -406,11 +406,11 @@ def test_unknown_amenity_key_is_ignored_not_400(client):
 @pytest.mark.django_db
 def test_inactive_amenity_key_is_ignored(client):
     token = _register(client)
-    # practical_tank_beer is seeded but active=False → write ignored.
+    # practical_tank_beer was seeded inactive until 2.0.0 activated it for the
+    # "Tank" filter chip; a vote on it is a real vote now.
     resp = _put(client, token, _vote(amenity_key="practical_tank_beer"))
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["results"][0]["ignored_unknown_amenity"] is True
-    assert PubAmenityVote.objects.count() == 0
+    assert resp.json()["results"][0]["ignored_unknown_amenity"] is False
 
 
 @pytest.mark.django_db
@@ -615,10 +615,10 @@ def test_read_aggregates_and_completeness(client):
     pub = resp.json()["pubs"][0]
     assert pub["cache_key"] == _KEY
     assert pub["mapper_count"] == 3  # distinct accounts (garden had 3)
-    assert pub["completeness"]["total_kinds"] == 11
+    assert pub["completeness"]["total_kinds"] == 12
     # Only garden has status != unknown (wifi has 1 vote).
     assert pub["completeness"]["mapped_count"] == 1
-    assert pub["completeness"]["pct"] == pytest.approx(1 / 11, abs=1e-4)
+    assert pub["completeness"]["pct"] == pytest.approx(1 / 12, abs=1e-4)
 
     by_key = {a["amenity_key"]: a for a in pub["amenities"]}
     assert by_key["seating_garden"]["status"] == "yes"
@@ -696,7 +696,7 @@ def test_read_deactivated_kind_excluded_and_completeness_clamped(client):
     # Deactivated kind is excluded from amenities AND completeness numerator;
     # the denominator drops to 10. pct stays clamped within [0, 1].
     assert all(a["amenity_key"] != "seating_garden" for a in pub["amenities"])
-    assert pub["completeness"]["total_kinds"] == 10
+    assert pub["completeness"]["total_kinds"] == 11
     assert pub["completeness"]["mapped_count"] == 0
     assert 0.0 <= pub["completeness"]["pct"] <= 1.0
 
@@ -707,7 +707,7 @@ def test_read_empty_for_unmapped_cell(client):
     pub = resp.json()["pubs"][0]
     assert pub["amenities"] == []
     assert pub["completeness"]["mapped_count"] == 0
-    assert pub["completeness"]["total_kinds"] == 11
+    assert pub["completeness"]["total_kinds"] == 12
 
 
 @pytest.mark.django_db
