@@ -11,21 +11,24 @@
  */
 
 import React from "react";
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PersonAvatar } from "@/components/shared/PersonAvatar";
 import {
   GAME_HOST_AVAILABLE,
   GameHost,
   type GameHostHandle,
 } from "@/games/GameHost";
 import { GameResult, type GameOutcome } from "@/games/GameResult";
-import { MockLayout, MockType } from "@/mocks/mockTheme";
-import { Colors, withAlpha } from "@/theme/colors";
-import { FontScaleCap } from "@/theme/fonts";
-import { Radius, Spacing } from "@/theme/layout";
+import {
+  GameStage,
+  STAGE_FILL,
+  StagePill,
+  StageStatus,
+  stageBody,
+} from "@/party/shells/GameStage";
+import { Spacing } from "@/theme/layout";
 
 export interface PickPlayer {
   id: string;
@@ -192,9 +195,10 @@ export function PickShell({
   }
 
   return (
-    <View style={[styles.body, { paddingBottom: insets.bottom + 88 }]}>
-      <View style={styles.stage}>
+    <View style={stageBody(insets.bottom)}>
+      <GameStage>
         {canvas ? (
+          <View style={styles.canvas}>
           <GameHost
             ref={host}
             game={game}
@@ -249,94 +253,42 @@ export function PickShell({
               setSpinning(false);
             }}
           />
+          </View>
         ) : null}
-
-      </View>
+      </GameStage>
 
       {/* The name, UNDER the table rather than over it. Printed on top it landed
           across the seat markers and the bottle it is talking about; the answer
           and the thing that produced it must not fight for the same pixels. */}
-      {pickedPlayer ? (
+      {pickedPlayer && verdictText ? (
         <Animated.View
           key={`${pickedPlayer.id}:${effectiveRevision}`}
           entering={FadeIn.duration(220)}
-          style={styles.verdict}
           pointerEvents="none"
-          accessible
-          accessibilityLiveRegion="polite"
-          accessibilityLabel={verdictText ?? undefined}
         >
-          <PersonAvatar
+          <StageStatus
             name={pickedPlayer.name}
             tint={pickedPlayer.tint}
-            size={44}
+            text={verdictText}
           />
-          <Text
-            style={styles.verdictText}
-            numberOfLines={2}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-          >
-            {verdictText}
-          </Text>
         </Animated.View>
       ) : null}
 
       <View style={styles.dock}>
-        <Pressable
+        <StagePill
+          label={spinning ? "…" : pickedPlayer ? "Znovu" : action}
           onPress={spin}
           disabled={spectator || spinning}
-          style={({ pressed }) => [
-            styles.action,
-            pressed || spinning ? styles.pressed : null,
-            spectator ? styles.muted : null,
-          ]}
-          accessibilityRole="button"
+          tone={spectator ? "muted" : "primary"}
           accessibilityLabel={pickedPlayer ? `${action} znovu` : action}
-          accessibilityState={{ disabled: spectator || spinning }}
-        >
-          <Text
-            style={styles.actionText}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-          >
-            {spinning ? "…" : pickedPlayer ? "Znovu" : action}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: MockLayout.screenPad },
-  pressed: { opacity: 0.8 },
-  muted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
-  stage: { flex: 1 },
-  verdict: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  verdictText: {
-    flexShrink: 1,
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: "800",
-    color: Colors.foam,
-    letterSpacing: -0.5,
-  },
-  action: {
-    alignSelf: "center",
-    height: 54,
-    marginTop: Spacing.md,
-    paddingHorizontal: 44,
-    borderRadius: Radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.amber,
-  },
-  actionText: { ...MockType.buttonLabel, color: Colors.stout },
-  dock: { flexDirection: "row", gap: 10 },
+  /** The canvas owns the whole playfield; the stage owns its frame. */
+  canvas: STAGE_FILL,
+  dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });
