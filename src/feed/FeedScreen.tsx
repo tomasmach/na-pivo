@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   FlatList,
   Image,
   Pressable,
@@ -825,7 +826,7 @@ function FeedScreenContent() {
 
   return (
     <View style={styles.screen}>
-      <FlatList
+      <Animated.FlatList
         style={styles.screen}
         data={nights ?? []}
         keyExtractor={(night) => night.id}
