@@ -261,7 +261,7 @@ function shortHistoricalDate(startIso: string, endIso?: string | null): string {
     minute: '2-digit',
     hour12: false,
   });
-  return `${date} ${startTime}–${endTime}${end.toDateString() !== start.toDateString() ? ' +1' : ''}`;
+  return `${date} ${startTime}-${endTime}${end.toDateString() !== start.toDateString() ? ' +1' : ''}`;
 }
 
 function historicalMeta(checkIn: BeerCheckIn, priceCurrency: PriceCurrency): string {

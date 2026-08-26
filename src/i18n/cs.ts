@@ -1208,9 +1208,9 @@ export const cs = {
     noMine: 'Zatím žádné vlastní ani domluvené setkání.',
     distance: {
       under_1_km: 'do 1 km',
-      '1_3_km': '1–3 km',
-      '3_8_km': '3–8 km',
-      '8_15_km': '8–15 km',
+      '1_3_km': '1-3 km',
+      '3_8_km': '3-8 km',
+      '8_15_km': '8-15 km',
     },
     spots: (count: number) =>
       count === 1
@@ -2083,7 +2083,7 @@ export const cs = {
     // — My standing —
     rankNoun: 'MÍSTO',
     noScore: 'Zatím bez čárky',
-    totalInBoard: (count: string | null) => `z ${count ?? '–'} v tabulce`,
+    totalInBoard: (count: string | null) => `z ${count ?? '-'} v tabulce`,
     listLabel: 'Kdo vede',
     heroA11y: (table: string, rank: string, score: string, total: number | null) =>
       `${table}. Pořadí podle skóre ${rank}. ${score}. V tabulce je ${total ?? 0}.`,
@@ -2166,7 +2166,7 @@ export const cs = {
     factSpan: 'Délka',
     factPace: 'Tempo',
     // Shown when a night has no price, no span or too few drinks to have a pace.
-    factEmpty: '–',
+    factEmpty: '-',
 
     // — Chronology under the card —
     olderHeader: 'Starší večery',
@@ -2303,7 +2303,7 @@ export const cs = {
     statSpent: 'UTRACENO',
     // Diary still formats its distance summary with these compatibility labels.
     kmShort: 'km',
-    notAvailable: '–',
+    notAvailable: '-',
 
     // — Achievements —
     achievementsHeader: 'ODZNAKY',

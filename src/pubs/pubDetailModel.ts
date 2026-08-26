@@ -18,11 +18,11 @@ export interface OpeningHoursRow {
 }
 
 function formatIntervals(intervals: WeeklyHours[(typeof DAY_KEYS)[number]]): string {
-  return intervals.map(([start, end]) => `${start}–${end}`).join(', ');
+  return intervals.map(([start, end]) => `${start}-${end}`).join(', ');
 }
 
 function groupLabel(from: number, to: number): string {
-  return from === to ? DAY_LABELS[from] : `${DAY_LABELS[from]}–${DAY_LABELS[to]}`;
+  return from === to ? DAY_LABELS[from] : `${DAY_LABELS[from]}-${DAY_LABELS[to]}`;
 }
 
 export function buildOpeningHoursRows(
@@ -31,7 +31,10 @@ export function buildOpeningHoursRows(
   closedLabel: string,
 ): OpeningHoursRow[] {
   const hours = weeklyHours ?? parseOsmOpeningHoursToWeeklyHours(rawHours);
-  if (!hours) return rawHours?.trim() ? [{ days: '', hours: rawHours.trim() }] : [];
+  if (!hours) {
+    const raw = rawHours?.trim().replace(/[\u2013\u2014]/g, '-');
+    return raw ? [{ days: '', hours: raw }] : [];
+  }
 
   const values = DAY_KEYS.map((day) => formatIntervals(hours[day]));
   const rows: OpeningHoursRow[] = [];

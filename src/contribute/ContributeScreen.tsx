@@ -286,7 +286,7 @@ function HoursDayRow({
                 accessibilityLabel={`${dayName} ${cs.contribute.from}`}
               />
               <Text style={styles.timeDash} maxFontSizeMultiplier={FontScaleCap.body}>
-                –
+                -
               </Text>
               <SplitTimeInput
                 value={interval[1]}

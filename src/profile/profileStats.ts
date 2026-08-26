@@ -30,7 +30,7 @@ export interface ProfileRecord {
 }
 
 function formatDuration(seconds: number | null): string {
-  if (seconds === null || seconds <= 0) return '–';
+  if (seconds === null || seconds <= 0) return '-';
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.round((seconds % 3600) / 60);
   if (hours === 0) return `${minutes} min`;

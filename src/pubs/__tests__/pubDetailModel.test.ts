@@ -14,8 +14,8 @@ const HOURS: WeeklyHours = {
 describe('pubDetailModel', () => {
   it('groups consecutive days with identical opening hours', () => {
     expect(buildOpeningHoursRows(HOURS, null, 'Zavřeno')).toEqual([
-      { days: 'Po–Čt', hours: '11:00–23:00' },
-      { days: 'Pá–So', hours: '11:00–01:00' },
+      { days: 'Po-Čt', hours: '11:00-23:00' },
+      { days: 'Pá-So', hours: '11:00-01:00' },
       { days: 'Ne', hours: 'Zavřeno' },
     ]);
   });

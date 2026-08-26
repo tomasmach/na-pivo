@@ -80,7 +80,7 @@ function formatTime(event: CommunityEvent): string {
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
   const day = start.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric' });
-  return `${day} · ${start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`;
+  return `${day} · ${start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}-${end.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function distanceLabel(value: DistanceBand | null): string {
