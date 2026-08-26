@@ -1,4 +1,4 @@
-import { Platform, Pressable } from 'react-native';
+import { Pressable } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SettingsIcon } from '@/components/shared/IconGlyph';
@@ -6,10 +6,10 @@ import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
 
 /**
- * Native stack for the Profil tab — the same treatment as Kocoviny and
- * Komunita: an iOS 26 large title that scrolls away and re-forms small on the
- * bar. No `headerTransparent` / custom blur; a plain native bar already is
- * glass on 26.
+ * Native stack for the Profil tab — the same treatment as Komunita: an iOS 26
+ * large title that scrolls away and re-forms small on the bar, pinned to an
+ * opaque stout. Left on the system material the segmented control ghosted
+ * through the bar as it scrolled under it.
  *
  * Settings live behind the trailing gear rather than as a row in the content
  * (§0.4, and the 3.0 nav decision that settings belong to Profil).
@@ -28,9 +28,13 @@ export default function ProfileLayout() {
         headerShadowVisible: false,
         headerLargeTitleShadowVisible: false,
         headerTintColor: Colors.amber,
-        ...(Platform.OS === 'android'
-          ? { headerStyle: { backgroundColor: Colors.stout } }
-          : null),
+        // Opaque on BOTH platforms. Left to itself iOS gives the bar its light
+        // scroll-edge material, which on a stout screen read as a faint lighter
+        // rounded band above the title — and let scrolled content ghost through
+        // the bar. The same pin the diary route already uses (§15.2: the
+        // material always has an opaque fallback, and this bar has to hide
+        // content, not show it).
+        headerStyle: { backgroundColor: Colors.stout },
         headerTitleStyle: { color: Colors.foam },
         headerLargeTitleStyle: { color: Colors.foam },
         contentStyle: { backgroundColor: Colors.stout },
