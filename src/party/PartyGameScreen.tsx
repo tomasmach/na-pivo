@@ -61,7 +61,12 @@ import { cs } from "@/i18n/cs";
 import { beerCountLabel } from "@/i18n/plural";
 import { GAME_PROMPTS, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
 import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
-import type { QuizAnswer, QuizEntrant } from "@/party/quiz/rules";
+import {
+  quizFinishResult,
+  quizState,
+  type QuizAnswer,
+  type QuizEntrant,
+} from "@/party/quiz/rules";
 import {
   foldDiceActions,
   foldSharedGameActions,
@@ -1040,6 +1045,13 @@ export default function PartyGameScreen() {
   }, [canonicalFinish, fourthKingDraw, key, report, roster, spectator]);
 
   const finish = () => {
+    // The quiz scores itself from the answers, not from the "+1" score events
+    // the other games use. Reporting `ranked` here handed the result screen a
+    // row of zeros under a scoreboard that said otherwise.
+    if (shell === "quiz") {
+      void report(quizFinishResult(quizState({ entrants, answers, index: question })));
+      return;
+    }
     void report({
       // A drinking game names nobody, and keeps no tally: the only tally it
       // could keep is who drank most.
