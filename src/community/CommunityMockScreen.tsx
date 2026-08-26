@@ -291,15 +291,36 @@ function CommunityMockScreenContent() {
               <Podium rows={boardRows.slice(0, 3)} metric={metric} />
               {rest.map((row) => {
                 const handle = row.account.nickname ? `@${row.account.nickname}` : row.account.displayName;
+                // A name on a board is a person, so it opens their profile —
+                // the same door the feed's author gives you. Your own row is
+                // the exception: you are already where it would take you.
+                const openProfile =
+                  row.isMe || !row.account.id
+                    ? undefined
+                    : () =>
+                        router.push(
+                          `/user?accountId=${encodeURIComponent(row.account.id)}` as Href,
+                        );
                 return (
-                  <View key={row.account.id} style={[styles.row, row.isMe && styles.rowMe]}>
+                  <Pressable
+                    key={row.account.id}
+                    onPress={openProfile}
+                    disabled={!openProfile}
+                    accessibilityRole={openProfile ? 'button' : undefined}
+                    accessibilityLabel={
+                      openProfile
+                        ? cs.a11y.leaderboardRow(row.rank, handle, row.score, scoreUnit(metric, row.score))
+                        : undefined
+                    }
+                    style={({ pressed }) => [styles.row, row.isMe && styles.rowMe, pressed && openProfile && styles.pressed]}
+                  >
                     <Avatar uri={row.account.avatarUrl} nickname={row.account.nickname} displayName={row.account.displayName} size={34} border="quiet" />
                     <View style={styles.body}>
                       <Text style={[styles.handle, row.isMe && styles.handleMe]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={FontScaleCap.body}>{handle}</Text>
                       <Text style={styles.rank} allowFontScaling={false}>{row.rank}. místo</Text>
                     </View>
                     <Text style={styles.score} allowFontScaling={false}>{row.score}<Text style={styles.scoreUnit} allowFontScaling={false}> {scoreUnit(metric, row.score)}</Text></Text>
-                  </View>
+                  </Pressable>
                 );
               })}
             </>
