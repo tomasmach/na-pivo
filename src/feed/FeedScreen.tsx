@@ -414,10 +414,13 @@ export const FeedCard = memo(function FeedCard({
                 >
                   {fact.value}
                 </Text>
+                {/* The fact is the number; its label must never end in "Ve…".
+                    At the largest text sizes a third of a card is narrower than
+                    the word, so the label wraps instead of clipping. */}
                 <Text
                   style={[styles.factLabel, last && styles.factTextLast]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
                 >
                   {fact.label}
                 </Text>
@@ -500,7 +503,7 @@ function FeedScreenContent() {
         : null;
     if (startedAt === null) return null;
     return drinkingDayKey(new Date(startedAt));
-  }, [evening?.active, evening?.startedAt, partyLive, partyStartedAt]);
+  }, [evening, partyLive, partyStartedAt]);
   const feedNights = useMemo(
     () => withoutRunningNight(nights ?? [], runningDrinkingDay),
     [nights, runningDrinkingDay],
@@ -1056,6 +1059,10 @@ const styles = StyleSheet.create({
   },
   routeRow: {
     flexDirection: 'row',
+    // At the largest text sizes the pub name and the drink tail no longer fit
+    // on one line. Wrapping moves the tail down; shrinking would leave
+    // "→ U Pin… · 1 ne…" instead.
+    flexWrap: 'wrap',
     alignItems: 'baseline',
     marginTop: Spacing.xs,
     minWidth: 0,
