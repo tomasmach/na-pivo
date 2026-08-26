@@ -24,7 +24,11 @@ import {
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { buildRoast } from '@/feed/roast';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
-import { nightPhotoReferences, nightPublishPayload } from '@/party/nightPublish';
+import {
+  defaultNightTitle,
+  nightPhotoReferences,
+  nightPublishPayload,
+} from '@/party/nightPublish';
 import { nightByBeer, nightMe, nightMinutes, nightTally } from '@/party/nightRecord';
 import { rememberNightRecord, useNightRecord } from '@/party/useNightRecord';
 import { finishPartyToRecap } from '@/party/partyRouting';
@@ -39,6 +43,7 @@ import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { cs } from '@/i18n/cs';
 
 function currentTime(): number {
   return Date.now();
@@ -99,16 +104,17 @@ export default function FinishNightScreen() {
   const me = nightMe(night);
   const activePeopleCount = night.people.filter((person) => person.active !== false).length;
   const tally = nightTally(night);
-  const byType = nightByBeer({
-    ...night,
-    drinks: night.drinks.filter((drink) => drink.by === me?.id),
-  });
+  const ownerId = accountId ?? me?.id;
+  const myDrinks = night.drinks.filter((drink) => drink.by === ownerId);
+  const byType = nightByBeer({ ...night, drinks: myDrinks });
+  // The server refuses a night with no drinks of its own ("A published night
+  // must contain at least one drink"), which at a shared table where only the
+  // other person drank meant an endless retry loop behind a generic error.
+  const canPublish = myDrinks.length > 0;
   const played = night.games.filter((game) => game.result);
   const partyCode = evening?.joinCode ?? confirmedIdentity?.joinCode ?? night.code ?? undefined;
   const partyDrinkingDay = drinkingDayKey(new Date(night.startedAt));
-  const defaultTitle = night.stops[0]?.pubName
-    ? `Večer v ${night.stops[0].pubName}`
-    : 'Pivní večer';
+  const defaultTitle = defaultNightTitle(night.stops[0]);
   const roast = React.useMemo(
     () => buildRoast({
       beers: tally.beers,
@@ -169,7 +175,7 @@ export default function FinishNightScreen() {
         visibility: 'friends',
         now: currentTime(),
         city: evening?.pubCity || undefined,
-        ownerId: accountId ?? me?.id,
+        ownerId,
         title: publishTitle,
         roastLine: roastEnabled && roast ? roast.line : '',
         roastBasis: roastEnabled && roast ? roast.basis : '',
@@ -381,38 +387,64 @@ export default function FinishNightScreen() {
             {error}
           </Text>
         ) : null}
-        <Pressable
-          onPress={() => void publish()}
-          disabled={publishing}
-          style={({ pressed }) => [
-            styles.publish,
-            publishing && styles.publishDisabled,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Ukončit a zveřejnit večer"
-          accessibilityState={{ disabled: publishing, busy: publishing }}
-        >
-          <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {publishing ? 'Ukládám…' : 'Ukončit a zveřejnit'}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void finishPrivately()}
-          disabled={publishing}
-          style={({ pressed }) => [
-            styles.privateFinish,
-            publishing && styles.publishDisabled,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Ukončit večer bez zveřejnění"
-          accessibilityState={{ disabled: publishing }}
-        >
-          <Text style={styles.privateFinishText} maxFontSizeMultiplier={FontScaleCap.body}>
-            Ukončit bez zveřejnění
-          </Text>
-        </Pressable>
+        {canPublish ? (
+          <>
+            <Pressable
+              onPress={() => void publish()}
+              disabled={publishing}
+              style={({ pressed }) => [
+                styles.publish,
+                publishing && styles.publishDisabled,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Ukončit a zveřejnit večer"
+              accessibilityState={{ disabled: publishing, busy: publishing }}
+            >
+              <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {publishing ? 'Ukládám…' : 'Ukončit a zveřejnit'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void finishPrivately()}
+              disabled={publishing}
+              style={({ pressed }) => [
+                styles.privateFinish,
+                publishing && styles.publishDisabled,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Ukončit večer bez zveřejnění"
+              accessibilityState={{ disabled: publishing }}
+            >
+              <Text style={styles.privateFinishText} maxFontSizeMultiplier={FontScaleCap.body}>
+                Ukončit bez zveřejnění
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.reason} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.party.nothingToPublish}
+            </Text>
+            <Pressable
+              onPress={() => void finishPrivately()}
+              disabled={publishing}
+              style={({ pressed }) => [
+                styles.publish,
+                publishing && styles.publishDisabled,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Ukončit večer bez zveřejnění"
+              accessibilityState={{ disabled: publishing, busy: publishing }}
+            >
+              <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {publishing ? 'Ukládám…' : 'Ukončit bez zveřejnění'}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <BeerPhotoCaptureFlow
@@ -509,6 +541,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   error: { fontSize: 13, color: Colors.amber },
+  reason: { fontSize: 13, color: Colors.mutedText, textAlign: 'center' },
   publish: {
     height: MockLayout.sheetButtonHeight,
     borderRadius: Radius.pill,

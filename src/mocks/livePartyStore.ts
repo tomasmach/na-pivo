@@ -173,7 +173,24 @@ const EMPTY = {
   games: [] as GameEntry[],
 };
 
-const LIVE_PARTY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const LIVE_PARTY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Is this evening old enough that nobody is sitting at it any more?
+ *
+ * The same 24 hours the persisted local chrome expires after, and the same cap
+ * the server puts on a single party entry. A shared table hosted by another
+ * account had no such rule, so a night nobody closed came back with a running
+ * `110:29:55` on the clock.
+ */
+export function isStaleNightStart(
+  startedAt: string | number | null | undefined,
+  now = Date.now(),
+): boolean {
+  const opened = typeof startedAt === 'number' ? startedAt : Date.parse(startedAt ?? '');
+  if (!Number.isFinite(opened)) return false;
+  return now - opened > LIVE_PARTY_MAX_AGE_MS;
+}
 
 function mergePersistedState(
   persisted: unknown,
@@ -367,10 +384,20 @@ export const useLivePartyStore = create<LivePartyState>()(
   ),
 );
 
-/** "1h 12m" / "48m". Shared, so the bar, the hub and the recap agree. */
+/**
+ * "48m" / "1h 12m" / "110h". Shared, so the bar, the hub and the recap agree.
+ *
+ * Past ten hours the minutes are dropped: an evening that long is a number you
+ * read, not a stopwatch you check, and "110h 30m" was wide enough to run into
+ * the column beside it on the finish screen.
+ */
+const ELAPSED_MINUTES_CUTOFF_H = 10;
+
 export function formatElapsed(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours >= ELAPSED_MINUTES_CUTOFF_H) return `${hours}h`;
+  return `${hours}h ${minutes % 60}m`;
 }
 
 /**

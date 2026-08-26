@@ -90,17 +90,20 @@ export function NightRoute({
   /** Where to look when there are no stops yet — the party hub's idle state
    *  frames the neighbourhood the evening is about to happen in instead of
    *  rendering nothing and leaving a black band. No marker: there is no stop
-   *  to number, just a place. */
-  fallbackCenter?: { lat: number; lng: number };
+   *  to number, just a place. `span` widens the frame for a centre the app is
+   *  only guessing at (no fix yet), so it reads as "somewhere here" rather than
+   *  as a wrong street corner. */
+  fallbackCenter?: { lat: number; lng: number; span?: number };
 }) {
   const region = useMemo(() => {
     if (stops.length > 0) return regionFor(stops);
     if (fallbackCenter) {
+      const span = Math.max(MIN_SPAN, fallbackCenter.span ?? MIN_SPAN);
       return {
         latitude: fallbackCenter.lat,
         longitude: fallbackCenter.lng,
-        latitudeDelta: MIN_SPAN,
-        longitudeDelta: MIN_SPAN,
+        latitudeDelta: span,
+        longitudeDelta: span,
       };
     }
     return null;

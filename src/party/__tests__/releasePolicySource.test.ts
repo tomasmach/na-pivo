@@ -79,8 +79,11 @@ describe('release policy: LiveParty GPS wiring', () => {
   const liveParty = read('src', 'party', 'LivePartyMockScreen.tsx');
 
   it('takes its map fallback position from useNearbyPub instead of a second GPS watcher', () => {
-    expect(liveParty).not.toContain('useDevicePosition');
-    expect(squash(liveParty)).toMatch(/fallbackCenter=\{\s*nearby\.position\s*\?\?\s*undefined\s*\}/);
+    // Reading the last known fix is fine; STARTING a second watcher is not.
+    expect(liveParty).not.toMatch(/useDevicePosition\s*\(/);
+    expect(squash(liveParty)).toMatch(
+      /fallbackCenter=\{\s*nearby\.position\s*\?\?\s*lastKnownDevicePosition\(\)\s*\?\?\s*CZ_FALLBACK_CENTER\s*\}/,
+    );
   });
 
   it('gates its useNightRecord polling on route focus', () => {

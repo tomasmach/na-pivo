@@ -117,3 +117,25 @@ it('keeps the editor to one save intent without glow or a duplicate cancel actio
   act(() => renderer!.unmount());
   jest.useRealTimers();
 });
+
+it('lets a beer be logged in a pub without knowing the price', () => {
+  jest.useFakeTimers();
+  let renderer: ReturnType<typeof TestRenderer.create>;
+  act(() => {
+    renderer = TestRenderer.create(
+      <BeerFormModal
+        visible
+        mode="add"
+        placeContext="pub"
+        beer={{ id: 'beer-1', name: 'Pilsner Urquell 12\u00b0', volume_ml: 500 } as never}
+        onCancel={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+  });
+  act(() => jest.runOnlyPendingTimers());
+
+  expect(renderer!.root.findByType('GlowButton').props.disabled).toBe(false);
+  act(() => renderer!.unmount());
+  jest.useRealTimers();
+});

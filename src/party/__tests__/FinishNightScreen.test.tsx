@@ -140,6 +140,16 @@ describe('FinishNightScreen offline photo context', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockNight.people = [{ id: 'account-a', name: 'Ty', avatarUrl: null, tint: '#E8A317' }];
+    mockNight.drinks = [
+      {
+        id: 'drink-a',
+        at: mockStartedAt,
+        by: 'account-a',
+        beerName: 'Pilsner Urquell',
+        drinkType: 'beer',
+        stopId: null,
+      },
+    ];
     mockPublishNight.mockResolvedValue({ ok: false, detail: 'Zkus to znovu.' });
     mockRememberNightRecord.mockResolvedValue(undefined);
   });
@@ -228,6 +238,35 @@ describe('FinishNightScreen offline photo context', () => {
       await Promise.resolve();
     });
     expect(mockPublishNight).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers only the private finish when nothing of mine is written down', () => {
+    // A shared table where only the other person drank: the server rejects a
+    // night with no drinks of its own, so publishing must not be on offer.
+    mockNight.drinks = [
+      {
+        id: 'drink-b',
+        at: mockStartedAt,
+        by: 'friend-a',
+        beerName: 'Kozel',
+        drinkType: 'beer',
+        stopId: null,
+      },
+    ];
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(<FinishNightScreen />);
+    });
+
+    expect(
+      renderer!.root.findAllByProps({ accessibilityLabel: 'Ukončit a zveřejnit večer' }),
+    ).toHaveLength(0);
+    expect(
+      renderer!.root.findAllByProps({ accessibilityLabel: 'Ukončit večer bez zveřejnění' }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      JSON.stringify(renderer!.toJSON()),
+    ).toContain('Bez vlastního piva není co zveřejnit.');
   });
 
   it('counts only people who are still at the table', () => {

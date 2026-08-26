@@ -251,31 +251,35 @@ export function PickShell({
           />
         ) : null}
 
-        {/* The name, over the object. Real text, so it scales and speaks. */}
-        {pickedPlayer ? (
-          <Animated.View
-            key={`${pickedPlayer.id}:${effectiveRevision}`}
-            entering={FadeIn.duration(220)}
-            style={styles.verdict}
-            pointerEvents="none"
-            accessible
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={verdictText ?? undefined}
-          >
-            <PersonAvatar
-              name={pickedPlayer.name}
-              tint={pickedPlayer.tint}
-              size={44}
-            />
-            <Text
-              style={styles.verdictText}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {verdictText}
-            </Text>
-          </Animated.View>
-        ) : null}
       </View>
+
+      {/* The name, UNDER the table rather than over it. Printed on top it landed
+          across the seat markers and the bottle it is talking about; the answer
+          and the thing that produced it must not fight for the same pixels. */}
+      {pickedPlayer ? (
+        <Animated.View
+          key={`${pickedPlayer.id}:${effectiveRevision}`}
+          entering={FadeIn.duration(220)}
+          style={styles.verdict}
+          pointerEvents="none"
+          accessible
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={verdictText ?? undefined}
+        >
+          <PersonAvatar
+            name={pickedPlayer.name}
+            tint={pickedPlayer.tint}
+            size={44}
+          />
+          <Text
+            style={styles.verdictText}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {verdictText}
+          </Text>
+        </Animated.View>
+      ) : null}
 
       <View style={styles.dock}>
         <Pressable
@@ -306,27 +310,27 @@ const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: MockLayout.screenPad },
   pressed: { opacity: 0.8 },
   muted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
-  stage: { flex: 1, justifyContent: "flex-end" },
+  stage: { flex: 1 },
   verdict: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: Spacing.xl,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
   verdictText: {
-    fontSize: 30,
+    flexShrink: 1,
+    fontSize: 26,
+    lineHeight: 32,
     fontWeight: "800",
     color: Colors.foam,
-    textAlign: "center",
     letterSpacing: -0.5,
-    textShadowColor: withAlpha(Colors.black, 0.9),
-    textShadowRadius: 14,
   },
   action: {
     alignSelf: "center",
     height: 54,
+    marginTop: Spacing.md,
     paddingHorizontal: 44,
     borderRadius: Radius.pill,
     alignItems: "center",

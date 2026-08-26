@@ -2449,6 +2449,15 @@ export const cs = {
     },
   },
 
+  party: {
+    /** Server rule: a published night needs at least one drink of my own. */
+    nothingToPublish: 'Bez vlastního piva není co zveřejnit.',
+    staleEveningClosed: 'Starý večer jsem zavřel.',
+    nightTitleOutsidePub: 'Večer mimo hospodu',
+    nightTitleAtPub: (pubName: string) => `Večer v ${pubName}`,
+    nightTitleFallback: 'Pivní večer',
+  },
+
   gameResult: {
     payingSelf: 'Platíš ty',
     payingOther: (name: string) => `Platí ${name}`,

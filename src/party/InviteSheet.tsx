@@ -68,10 +68,16 @@ export function InviteSheet({
   const [friends, setFriends] = React.useState<FriendProfile[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  // Who I have already handed the code to. The row used to keep saying "Poslat
+  // kód" after the share sheet closed, so there was no way to tell whom you had
+  // already asked — at a table of five you invite the same person twice.
+  const [invited, setInvited] = React.useState<string[]>([]);
 
   const loadFriends = React.useCallback((signal?: AbortSignal) => {
     setLoading(true);
     setFailed(false);
+    // Opening the sheet again starts a fresh round of invitations.
+    setInvited([]);
     void fetchFriendsDashboard(signal).then((dashboard) => {
       if (signal?.aborted) return;
       setLoading(false);
@@ -100,10 +106,16 @@ export function InviteSheet({
       : `Přisedni ke stolu v Na pivo. Kód: ${code}`;
   }, [code, link]);
 
-  const shareLink = React.useCallback(() => {
-    if (!inviteMessage) return;
-    void Share.share({ message: inviteMessage });
-  }, [inviteMessage]);
+  const shareLink = React.useCallback(
+    (friendId?: string) => {
+      if (!inviteMessage) return;
+      if (friendId) {
+        setInvited((current) => (current.includes(friendId) ? current : [...current, friendId]));
+      }
+      void Share.share({ message: inviteMessage });
+    },
+    [inviteMessage],
+  );
 
   const copyLink = React.useCallback(() => {
     if (!link) return;
@@ -185,7 +197,11 @@ export function InviteSheet({
             ) : null}
             {friends.map((friend) => {
               const here = present.includes(friend.id);
-              const name = friend.nickname ?? friend.displayName;
+              const sent = invited.includes(friend.id);
+              // A friend who never picked a nickname rendered as a blank row.
+              // Same fallback the feed uses, so a person looks like a person
+              // wherever you meet them.
+              const name = friend.nickname || friend.displayName.trim() || 'Pivař';
               return (
                 <View key={friend.id} style={styles.friendRow}>
                   <Avatar
@@ -209,9 +225,16 @@ export function InviteSheet({
                         U stolu
                       </Text>
                     </View>
+                  ) : sent ? (
+                    <View style={styles.hereRow}>
+                      <CheckIcon size={15} color={Colors.mutedText} />
+                      <Text style={styles.here} allowFontScaling={false}>
+                        Posláno
+                      </Text>
+                    </View>
                   ) : (
                     <Pressable
-                      onPress={shareLink}
+                      onPress={() => shareLink(friend.id)}
                       style={({ pressed }) => [styles.invite, pressed && styles.pressed]}
                       accessibilityRole="button"
                       accessibilityLabel={`Poslat kód: ${name}`}

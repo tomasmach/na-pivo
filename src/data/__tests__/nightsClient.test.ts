@@ -490,3 +490,35 @@ describe('UGC consent gate — direct actual client requests', () => {
     },
   );
 });
+
+describe('server rejection text', () => {
+  function fetchReturning(status: number, body: unknown): void {
+    global.fetch = jest.fn(async () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+    })) as unknown as typeof fetch;
+  }
+
+  it('surfaces the serializer error DRF puts in non_field_errors', async () => {
+    fetchReturning(400, {
+      non_field_errors: ['A published night must contain at least one drink.'],
+    });
+
+    await expect(actualNightsClient.publishNight(payload)).resolves.toEqual({
+      ok: false,
+      code: 'http_400',
+      detail: 'A published night must contain at least one drink.',
+    });
+  });
+
+  it('falls back to the generic line when the body says nothing', async () => {
+    fetchReturning(400, {});
+
+    await expect(actualNightsClient.publishNight(payload)).resolves.toEqual({
+      ok: false,
+      code: 'http_400',
+      detail: 'Nepoda\u0159ilo se to ulo\u017eit. Zkus to znovu.',
+    });
+  });
+});

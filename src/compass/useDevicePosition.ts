@@ -52,6 +52,29 @@ const MIN_PUBLISH_ACCURACY_DELTA_M = 5;
 
 const METERS_PER_DEGREE_LAT = 111_320;
 
+/**
+ * The last fix this PROCESS saw, shared by every consumer of the hook.
+ *
+ * Position used to be private state per hook instance, so a screen that mounted
+ * mid-session started from `null` and waited for a fresh GPS sample: the pub
+ * picker opened over the Hospody tab with no distances and a "no location" empty
+ * state, and the party hub drew a black rectangle where its map belongs — both
+ * while the phone knew perfectly well where it was.
+ *
+ * In memory only. Never persisted, never logged, dropped with the process.
+ */
+let processPosition: DevicePosition | null = null;
+
+/** Where the phone last was, for a caller that cannot wait for its own fix. */
+export function lastKnownDevicePosition(): DevicePosition | null {
+  return processPosition;
+}
+
+/** Test seam: the module cache must not leak between test cases. */
+export function clearLastKnownDevicePosition(): void {
+  processPosition = null;
+}
+
 function approxDistanceMeters(a: DevicePosition, b: DevicePosition): number {
   const dLat = (b.lat - a.lat) * METERS_PER_DEGREE_LAT;
   const dLng =
@@ -62,9 +85,9 @@ function approxDistanceMeters(a: DevicePosition, b: DevicePosition): number {
 }
 
 export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
-  const [position, setPosition] = useState<DevicePosition | null>(null);
+  const [position, setPosition] = useState<DevicePosition | null>(() => processPosition);
   const [startRequestNonce, setStartRequestNonce] = useState(0);
-  const lastPublishedRef = useRef<DevicePosition | null>(null);
+  const lastPublishedRef = useRef<DevicePosition | null>(processPosition);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const startingRef = useRef(false);
   const retryQueuedRef = useRef(false);
@@ -105,6 +128,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
 
       hasPositionRef.current = true;
       lastPublishedRef.current = next;
+      processPosition = next;
       setPosition(next);
     },
     [],

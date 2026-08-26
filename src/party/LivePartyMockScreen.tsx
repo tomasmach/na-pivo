@@ -53,7 +53,12 @@ import {
   WineIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassPill } from '@/components/shared/GlassIconButton';
-import { PartyDrinkSheet, type PartyDrinkChoice } from '@/party/PartyDrinkSheet';
+import {
+  PartyDrinkSheet,
+  mergePartyDrinkChoices,
+  type PartyDrinkChoice,
+  type PartyDrinkSource,
+} from '@/party/PartyDrinkSheet';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
@@ -81,10 +86,12 @@ import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
 import { formatDistanceCs } from '@/compass/distance';
 import { useNearbyPub } from '@/counter/useNearbyPub';
+import { lastKnownDevicePosition } from '@/compass/useDevicePosition';
 import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
   clockAt,
+  isStaleNightStart,
   minutesBetween,
   partyTapOptions,
   useLivePartyStore,
@@ -139,6 +146,15 @@ type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
 /** The catalogue entry behind a game on the table — the cover art lives there,
  *  and the live store only keeps the key. */
 const gameDef = (key: string) => GAME_CATALOG.find((game) => game.key === key) ?? GAME_CATALOG[0];
+
+/**
+ * The map of last resort: Prague, framed wide enough to read as "Czechia".
+ *
+ * The hub's top 460pt were plain black whenever there was no fix yet — the map
+ * simply rendered nothing. A guessed frame is a worse map but an honest screen,
+ * and the moment a real position arrives it replaces this.
+ */
+const CZ_FALLBACK_CENTER = { lat: 50.0808, lng: 14.4287, span: 0.9 };
 
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
@@ -268,6 +284,7 @@ export default function LivePartyMockScreen() {
   const pendingJoinCode = usePartyEveningStore((s) => s.pendingJoinCode);
   const confirmedPartyCode = usePartyEveningStore(selectConfirmedPartyJoinCode);
   const finishFromServer = usePartyEveningStore((s) => s.finishFromServer);
+  const closeLostTable = usePartyEveningStore((s) => s.closeLostTable);
   const accountId = useAccountStore((s) => s.session?.accountId);
   const nearby = useNearbyPub();
   const tallyCurrent = useTallyStore((s) => s.current);
@@ -311,13 +328,36 @@ export default function LivePartyMockScreen() {
     void refreshEvening();
   }, [refreshEvening]);
 
+  // A shared table nobody closed is not a running evening. The local chrome
+  // already expires after 24 hours and the server refuses a party entry past
+  // the same cap, but a table hosted by another account had no such rule — the
+  // hub reopened a night from three days ago with the stopwatch still ticking.
+  const staleEveningCode = React.useMemo(
+    () =>
+      evening?.active && isStaleNightStart(evening.startedAt)
+        ? evening.joinCode
+        : null,
+    [evening],
+  );
+
+  React.useEffect(() => {
+    if (!staleEveningCode) return;
+    // Detach only: no publish, no server call. The table is the server's
+    // business; this phone just stops pretending it is sitting at it.
+    closeLostTable(staleEveningCode);
+    endParty();
+    useToastStore.getState().show(cs.party.staleEveningClosed);
+  }, [closeLostTable, endParty, staleEveningCode]);
+
   React.useEffect(() => {
     // The server can briefly return the previous table while a new local one is
     // already running. Without this guard that stale refresh rewrites the pub
     // and stopwatch underneath the current evening. Explicit joins replace the
     // local night in their success handler below.
-    if (evening?.active && !live) resumeParty(evening.pubName, evening.startedAt);
-  }, [evening, live, resumeParty]);
+    if (evening?.active && !live && !staleEveningCode) {
+      resumeParty(evening.pubName, evening.startedAt);
+    }
+  }, [evening, live, resumeParty, staleEveningCode]);
 
   React.useEffect(() => {
     const detected = nearby.selected;
@@ -557,40 +597,41 @@ export default function LivePartyMockScreen() {
           [...drinksAtPlace].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null,
       };
     }, [myDrinks, partyPlaceKey, tallyCurrent, tallyHistory]);
-  const drinkChoices = React.useMemo(() => {
-    const groupedDrinks = new Map<string, PartyDrinkChoice>();
-    for (const drink of privateDrinksAtPlace) {
-      const key = drinkIdentity(drink);
-      const current = groupedDrinks.get(key);
-      groupedDrinks.set(key, {
-        key,
+  // What you already drank here, then the pub's taps — merged so one beer is
+  // one row however the three sources spell it (§13 of the QA pass: "Pilsner
+  // Urquell · 0,5 l · 60 Kč ×2" sat right above "Pilsner Urquell 12° · 0,5 l").
+  const drinkChoices = React.useMemo<PartyDrinkChoice[]>(() => {
+    const sources: PartyDrinkSource[] = [
+      ...privateDrinksAtPlace.map((drink) => ({
         name: drink.beerName,
         drinkType: drinkTypeOf(drink),
         priceCzk: drink.priceCzk,
         volumeMl: drink.volumeMl,
-        count: (current?.count ?? 0) + 1,
-        meta: [
-          drink.volumeMl ? formatVolume(drink.volumeMl) : null,
-          drink.priceCzk ? formatPrice(drink.priceCzk, priceCurrency) : null,
-        ].filter(Boolean).join(' · ') || null,
-      });
-    }
-    for (const tap of taps) {
-      const candidate: PartyDrinkChoice = {
-        key: `beer|${tap.name}|500|${tap.priceCzk ?? ''}`,
+        count: 1,
+      })),
+      ...taps.map((tap) => ({
         name: tap.name,
-        drinkType: 'beer',
+        drinkType: 'beer' as DrinkType,
         priceCzk: tap.priceCzk ?? undefined,
         volumeMl: 500,
         count: 0,
-        meta: [formatVolume(500), tap.priceCzk ? formatPrice(tap.priceCzk, priceCurrency) : null]
-          .filter(Boolean).join(' · '),
-      };
-      if (![...groupedDrinks.values()].some((row) => row.name === tap.name && row.drinkType === 'beer')) {
-        groupedDrinks.set(candidate.key, candidate);
-      }
-    }
-    return [...groupedDrinks.values()];
+      })),
+    ];
+    return mergePartyDrinkChoices(sources).map((row) => ({
+      key: `${row.drinkType}|${row.name}|${row.volumeMl ?? ''}|${row.priceCzk ?? ''}`,
+      name: row.name,
+      drinkType: row.drinkType,
+      priceCzk: row.priceCzk,
+      volumeMl: row.volumeMl,
+      count: row.count,
+      meta:
+        [
+          row.volumeMl ? formatVolume(row.volumeMl) : null,
+          row.priceCzk ? formatPrice(row.priceCzk, priceCurrency) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
+    }));
   }, [priceCurrency, privateDrinksAtPlace, taps]);
   const { totalCzk, hasCompletePrice, receiptBeerRows, receiptOtherRows } = React.useMemo(() => {
     const receiptGrouped = new Map<string, PartyDrinkChoice>();
@@ -839,7 +880,7 @@ export default function LivePartyMockScreen() {
           live={active}
           height={mapHeight}
           caption={false}
-          fallbackCenter={nearby.position ?? undefined}
+          fallbackCenter={nearby.position ?? lastKnownDevicePosition() ?? CZ_FALLBACK_CENTER}
         />
       </View>
 
@@ -1035,15 +1076,20 @@ export default function LivePartyMockScreen() {
             )}
           </View>
 
-          {/* Shown even before the first beer, as zeroes. An empty stopwatch is
-              still a stopwatch — the shape tells you what the night will collect,
-              which a paragraph explaining it never did. */}
-          {/* Which numbers these are is a product rule with tests, not a fixed
+          {/* Only once the night is running. A stopwatch reading "0:00 večer"
+              before anything has happened is a number about nothing — and it
+              stayed on screen after a shared table ended, which read as an
+              evening still going. Before the first drink the hub is a place,
+              some people and a way to start.
+
+              Which numbers these are is a product rule with tests, not a fixed
               row: alone the table is your own count twice over. */}
-          <PulsePanel
-            startedAt={startedAt}
-            stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
-          />
+          {active ? (
+            <PulsePanel
+              startedAt={startedAt}
+              stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
+            />
+          ) : null}
 
           {/* The thread. Every kind of thing the row of buttons can add lands
               here, in order, with the name of whoever added it — at a table of

@@ -174,3 +174,28 @@ export function quizWinner(standings: QuizStanding[]): string | null {
   const shared = standings.filter((row) => row.score === top.score).length > 1;
   return shared || top.score === 0 ? null : top.teamId;
 }
+
+/**
+ * The result of a quiz stopped before the last question.
+ *
+ * A quiz keeps its own scoreboard — a fold over the answers — while every other
+ * game counts "+1" score events. "Ukončit hru" reported those score events, so
+ * a table that had just watched `machtest 1` on the scoreboard got `1. machtest
+ * 0` on the result screen.
+ */
+export function quizFinishResult(state: QuizState): {
+  winner: string | null;
+  winnerId: string | null;
+  scores: { name: string; score: number; playerId: string }[];
+} {
+  const winnerId = quizWinner(state.standings);
+  return {
+    winner: state.standings.find((row) => row.teamId === winnerId)?.teamName ?? null,
+    winnerId,
+    scores: state.standings.map((row) => ({
+      name: row.teamName,
+      score: row.score,
+      playerId: row.teamId,
+    })),
+  };
+}

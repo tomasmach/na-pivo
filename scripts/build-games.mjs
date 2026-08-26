@@ -52,10 +52,17 @@ const GAMES = [
   { key: 'wheel', entry: 'src/games/web/wheel/main.ts' },
 ];
 
-/** No margins, no scroll, no text selection — it is a table, not a document. */
+/**
+ * No margins, no scroll, no text selection — it is a table, not a document.
+ *
+ * The page paints NO background of its own. It used to fill itself with the
+ * app's stout, which made the canvas a hard-edged rectangle sitting on top of
+ * the screen instead of part of it; the host now owns the surface and its
+ * corner radius, and the page draws only the prop.
+ */
 const CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #15120F; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
   body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   canvas { display: block; width: 100%; height: 100%; }
 `;
