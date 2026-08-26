@@ -144,6 +144,55 @@ it('reads each ranking row as a single label with rank, name and displayed score
   expect(screen.getByLabelText('2. Hráč 2 12')).toBeTruthy();
 });
 
+it('draws only the people who placed, never an empty podium slot', () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'a', name: 'machtest', tint: '#E8A317' },
+        { id: 'b', name: 'KlaraNaCepu', tint: '#6FB3D9' },
+      ]}
+      outcome={{
+        scores: [
+          { playerId: 'a', score: 1 },
+          { playerId: 'b', score: 0 },
+        ],
+        winnerId: 'a',
+      }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  const step = StyleSheet.flatten(screen.getByLabelText('1. machtest 1').props.style);
+  const columns = screen
+    .UNSAFE_getAllByType(View)
+    .filter((node) => StyleSheet.flatten(node.props.style)?.maxWidth === step.maxWidth);
+  expect(columns).toHaveLength(2);
+});
+
+it('keeps the winner line and the final action out of any scroller', () => {
+  render(
+    <GameResult
+      players={[
+        { id: 'a', name: 'machtest', tint: '#E8A317' },
+        { id: 'b', name: 'KlaraNaCepu', tint: '#6FB3D9' },
+      ]}
+      outcome={{
+        scores: [
+          { playerId: 'a', score: 1 },
+          { playerId: 'b', score: 0 },
+        ],
+        winnerId: 'a',
+      }}
+      onDone={jest.fn()}
+    />,
+  );
+
+  expect(screen.UNSAFE_queryByType(ScrollView)).toBeNull();
+  expect(screen.getByText('Vyhrává machtest')).toBeTruthy();
+  expect(screen.getByText('Nejvíc bodů u stolu.')).toBeTruthy();
+  expect(screen.getByLabelText('Konec')).toBeTruthy();
+});
+
 it("prefers an exact player id over another player's matching display name", () => {
   render(
     <GameResult

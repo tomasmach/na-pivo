@@ -213,13 +213,16 @@ export function GameResult({
     </View>
   );
 
+  /* Second, first, third — with the empty slots taken out, not drawn. A missing
+     third place is a person who does not exist, and an empty rounded box in the
+     row said one was standing there. Two columns simply centre. */
+  const columns = [podium[1], podium[0], podium[2]].filter(
+    (row): row is (typeof podium)[number] => Boolean(row),
+  );
+
   return (
     <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(260)} style={styles.body}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.content}>
         <GameStage
           topLeft={
             title === cs.gameResult.done ? undefined : (
@@ -233,8 +236,7 @@ export function GameResult({
                two beside it. A list of rows told you the same thing and looked
                like a settings screen. */
             <View style={styles.podium}>
-              {[podium[1], podium[0], podium[2]].map((row, slot) => {
-                if (!row) return <View key={`empty-${slot}`} style={styles.step} />;
+              {columns.map((row) => {
                 const place = ranking.indexOf(row) + 1;
                 const first = place === 1;
                 return (
@@ -281,7 +283,11 @@ export function GameResult({
         {ranking.length > 0 ? summary : null}
 
         {rest.length > 0 ? (
-          <View style={styles.board}>
+          <ScrollView
+            style={styles.board}
+            contentContainerStyle={styles.boardRows}
+            showsVerticalScrollIndicator={false}
+          >
             {rest.map((row, index) => (
               <View
                 key={row.key ?? `${row.name}-${index}`}
@@ -305,9 +311,9 @@ export function GameResult({
                 </Text>
               </View>
             ))}
-          </View>
+          </ScrollView>
         ) : null}
-      </ScrollView>
+      </View>
 
       <View style={[styles.dock, { marginBottom: insets.bottom + Spacing.sm }]}>
         <StagePill label={doneLabel} onPress={onDone} />
@@ -321,9 +327,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: Spacing.lg,
   },
-  scroll: { flex: 1, alignSelf: 'stretch' },
+  /* A column, not a scroller: the stage is the only thing allowed to give way,
+     so the winner line and the pill are never pushed off the bottom. */
   content: {
-    flexGrow: 1,
+    flex: 1,
+    alignSelf: 'stretch',
     paddingHorizontal: MockLayout.screenPad,
     paddingBottom: Spacing.lg,
     alignItems: 'center',
@@ -339,6 +347,9 @@ const styles = StyleSheet.create({
   },
   step: {
     flex: 1,
+    // Two people are a podium of two, centred — not two columns stretched wide
+    // enough to look like the third is missing.
+    maxWidth: 132,
     alignItems: 'center',
     gap: Spacing.xs,
     paddingVertical: Spacing.md,
@@ -387,7 +398,8 @@ const styles = StyleSheet.create({
   titleInk: { color: StageInk.strong },
   noteInk: { color: StageInk.soft },
 
-  board: { alignSelf: 'stretch', marginTop: Spacing.lg, gap: Spacing.xs },
+  board: { alignSelf: 'stretch', flexShrink: 1, marginTop: Spacing.lg },
+  boardRows: { gap: Spacing.xs, paddingBottom: Spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
