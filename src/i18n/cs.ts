@@ -297,6 +297,8 @@ export const cs = {
   compass: {
     headerTitle: 'na pivo',
     hiddenPubHint: 'Ťukni pro odhalení',
+    /** Stands in for the pub's name while "Schovávat názvy hospod" is on. */
+    hiddenPubName: 'Tajná hospoda',
     distanceCaption: {
       nearest: 'do nejbližšího piva',
       surprise: 'do tvého náhodného piva',

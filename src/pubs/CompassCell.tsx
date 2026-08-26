@@ -7,6 +7,7 @@ import { cs } from '@/i18n/cs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -30,18 +31,32 @@ export function CompassCell({
 }) {
   const rotation = useCompassRotation(position, { lat: pub.pub.lat, lng: pub.pub.lng });
 
+  /**
+   * "Schovávat názvy hospod" (settings). The needle still points, the distance
+   * still counts down — only the name and the facts that would give it away
+   * wait for a tap, exactly like the 2.x compass card. The reveal is keyed by
+   * pub id, so the next pub the head cell picks is a secret again.
+   */
+  const hidePubNames = useSettingsStore((state) => state.hidePubNames);
+  const [revealedId, setRevealedId] = React.useState<string | null>(null);
+  const hidden = hidePubNames && revealedId !== pub.id;
+  const name = hidden ? cs.compass.hiddenPubName : pub.name;
+  const meta = hidden
+    ? cs.compass.hiddenPubHint
+    : [pub.openLabel, pub.beerLine].filter(Boolean).join(' · ');
+
   return (
     <Pressable
-      onPress={onPress}
+      onPress={hidden ? () => setRevealedId(pub.id) : onPress}
       style={({ pressed }) => [styles.cell, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`${badge} hospoda ${pub.name}, ${pub.distanceLabel ?? 'vzdálenost neznámá'}`}
+      accessibilityLabel={`${badge} hospoda ${name}, ${pub.distanceLabel ?? 'vzdálenost neznámá'}`}
     >
       <CompassContainer rotation={rotation} size={DIAL} />
 
       <View style={styles.body}>
         <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.name}
+          {name}
         </Text>
         <View style={styles.distanceRow}>
           <Text style={styles.distance} allowFontScaling={false}>
@@ -57,7 +72,7 @@ export function CompassCell({
           </View>
         </View>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {[pub.openLabel, pub.beerLine].filter(Boolean).join(' · ')}
+          {meta}
         </Text>
       </View>
 
