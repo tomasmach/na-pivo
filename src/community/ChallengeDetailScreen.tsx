@@ -15,12 +15,21 @@
  * The header is transparent with no title (see the community `_layout`), so the
  * screen owns its own heading and has to clear the floating back button — hence
  * the `insets.top + 52` top pad, the same figure the party recap uses.
+ *
+ * Clearing the button is not enough once you scroll, though: the progress line
+ * ("6 z 10 hospod") used to run straight under it. `CollapsingHeader` re-forms
+ * the bar behind the button as soon as the big title leaves, so the button
+ * always has something opaque under it.
  */
 
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  CollapsingHeader,
+  useCollapsingHeader,
+} from '@/components/shared/CollapsingHeader';
 import { CheckIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { TAB_CHROME } from '@/components/shared/TabBar';
@@ -39,14 +48,19 @@ function deadlineLabel(value: string): string {
 
 export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
   const insets = useSafeAreaInsets();
+  // The title starts right under the bar band and is two lines at most, so it
+  // has left by the time the content has moved a title's height.
+  const { progress, scrollProps } = useCollapsingHeader(56);
 
   return (
-    <ScrollView
+    <View style={styles.screen}>
+    <Animated.ScrollView
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
         { paddingTop: insets.top + 52, paddingBottom: insets.bottom + TAB_CHROME },
       ]}
+      {...scrollProps}
     >
       {/* No glyph here. On the card it tells three challenges apart at a
           glance; on the screen that is only about this one it decorates a
@@ -139,7 +153,10 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
           })}
         </>
       ) : null}
-    </ScrollView>
+    </Animated.ScrollView>
+
+      <CollapsingHeader progress={progress} title={challenge.title} />
+    </View>
   );
 }
 

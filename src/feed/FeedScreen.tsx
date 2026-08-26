@@ -12,6 +12,10 @@ import {
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  CollapsingHeader,
+  useCollapsingHeader,
+} from '@/components/shared/CollapsingHeader';
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import {
   DicesIcon,
@@ -396,17 +400,17 @@ export const FeedCard = memo(function FeedCard({
             return (
               <View
                 key={fact.label}
-                style={[
-                  styles.fact,
-                  { width: `${100 / facts.length}%` },
-                  last && styles.factLast,
-                ]}
+                style={[styles.fact, last && styles.factLast]}
               >
+                {/* No `adjustsFontSizeToFit` here. The night detail mounts this
+                    card inside a container that lays out at zero width on the
+                    first pass; iOS shrinks the value to the minimum scale then
+                    and never grows it back, so "3" rendered at ~6 pt. The fact
+                    values are short by construction ("3", "4h 45m"), so an
+                    equal-width cell with `numberOfLines={1}` is enough. */}
                 <Text
                   style={[styles.factValue, last && styles.factTextLast]}
                   numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
                   allowFontScaling={false}
                 >
                   {fact.value}
@@ -464,6 +468,9 @@ export const FeedCard = memo(function FeedCard({
 
 function FeedScreenContent() {
   const insets = useSafeAreaInsets();
+  // The wordmark row is 28pt tall under an 8pt pad, so it has cleared the bar
+  // band by 40pt of scroll.
+  const { progress: headerProgress, scrollProps } = useCollapsingHeader(40);
   const router = useRouter();
   const pendingRequests = usePartaSignalStore((state) => state.pendingRequests);
   const reduceMotion = useReduceMotion();
@@ -870,6 +877,7 @@ function FeedScreenContent() {
           (nights?.length ?? 0) === 0 && styles.contentEmpty,
         ]}
         contentInsetAdjustmentBehavior="never"
+        {...scrollProps}
         onEndReachedThreshold={0.35}
         onEndReached={() => loadMore()}
         showsVerticalScrollIndicator={false}
@@ -878,7 +886,10 @@ function FeedScreenContent() {
         }
       />
 
-      <View style={[styles.headerActions, { top: insets.top + Spacing.sm }]}>
+      {/* The bar that forms once the wordmark scrolls away. Without it the two
+          buttons floated on nothing and post text ran under them and under the
+          status bar. */}
+      <CollapsingHeader progress={headerProgress} title={cs.appName}>
         <View style={styles.partaButtonWrap}>
           <GlassIconButton
             size={40}
@@ -906,7 +917,7 @@ function FeedScreenContent() {
         >
           <SearchIcon size={19} color={Colors.amber} />
         </GlassIconButton>
-      </View>
+      </CollapsingHeader>
     </View>
   );
 }
@@ -936,13 +947,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.sm,
     paddingBottom: Spacing.sm,
-  },
-  headerActions: {
-    position: 'absolute',
-    right: MockLayout.screenPad,
-    zIndex: 2,
-    flexDirection: 'row',
-    gap: Spacing.sm,
   },
   partaButtonWrap: { position: 'relative' },
   partaBadge: {
@@ -1066,7 +1070,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
-  fact: { minWidth: 0, paddingRight: Spacing.sm },
+  // Equal-width cells that shrink with the row instead of a percentage width,
+  // so a long value truncates inside its cell rather than pushing the row.
+  fact: { flex: 1, minWidth: 0, paddingRight: Spacing.sm },
   factLast: { paddingRight: 0, alignItems: 'flex-end' },
   factTextLast: { textAlign: 'right' },
   factValue: {

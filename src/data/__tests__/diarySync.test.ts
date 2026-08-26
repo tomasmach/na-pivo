@@ -201,3 +201,58 @@ it('never mutates the Zustand-owned local sessions while sorting the view', () =
   expect(local.drinks.map((drink) => drink.id)).toEqual(['later', 'earlier']);
   expect(result[0].session.drinks.map((drink) => drink.id)).toEqual(['earlier', 'later']);
 });
+
+it('keeps one evening per pub and night when a drink falls outside the visit window', () => {
+  // The diary hero shows the newest session and the list shows the rest, so a
+  // second session for the same night made one evening appear twice with
+  // contradicting numbers: "1 pivo · 65 Kč" above "2 piva · 130 Kč".
+  const visit = { ...remoteVisit('visit-tygr', PUB_A), name: 'U Zlatého tygra' };
+  const insideOne = {
+    ...remoteDrink('drink-inside-1', PUB_A, 65),
+    name: 'U Zlatého tygra',
+    drank_at: '2026-07-19T18:30:00Z',
+  };
+  const insideTwo = {
+    ...remoteDrink('drink-inside-2', PUB_A, 65),
+    name: 'U Zlatého tygra',
+    drank_at: '2026-07-19T19:30:00Z',
+  };
+  // Poured after the visit was closed — same pub, same night, still one evening.
+  const afterClose = {
+    ...remoteDrink('drink-after-close', PUB_A, 65),
+    name: 'U Zlatého tygra',
+    drank_at: '2026-07-19T21:30:00Z',
+  };
+
+  const result = deriveReconciledDiarySessions(
+    { drinks: [insideOne, insideTwo, afterClose], visits: [visit] },
+    [],
+  );
+
+  expect(result).toHaveLength(1);
+  expect(result[0].session.clientId).toBe('visit-tygr');
+  expect(result[0].session.drinks.map((drink) => drink.id)).toEqual([
+    'drink-inside-1',
+    'drink-inside-2',
+    'drink-after-close',
+  ]);
+});
+
+it('attaches an out-of-window drink to the local evening at the same pub', () => {
+  const local = localSession('visit-local', PUB_A, ['drink-local']);
+  const strayDrink = {
+    ...remoteDrink('drink-stray', PUB_A, 65),
+    drank_at: '2026-07-19T21:30:00Z',
+  };
+
+  const result = deriveReconciledDiarySessions({ drinks: [strayDrink], visits: [] }, [local]);
+
+  expect(result).toHaveLength(1);
+  expect(result[0].source).toBe('local');
+  expect(result[0].session.drinks.map((drink) => drink.id)).toEqual([
+    'drink-local',
+    'drink-stray',
+  ]);
+  // The Zustand-owned object is never touched while deriving the view.
+  expect(local.drinks.map((drink) => drink.id)).toEqual(['drink-local']);
+});

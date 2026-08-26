@@ -1191,11 +1191,14 @@ const styles = StyleSheet.create({
   reminderIntervalOptions: {
     flex: 1,
     flexDirection: 'row',
+    // Wrapping, not shrinking: the chips have a fixed minWidth, so a shrunk
+    // row pushed the last one under the card edge instead of clipping it.
+    flexWrap: 'wrap',
     justifyContent: 'flex-end',
-    gap: 4,
+    columnGap: 4,
+    rowGap: 4,
   },
   reminderIntervalOptionsLargeType: {
-    flexWrap: 'wrap',
     justifyContent: 'flex-start',
   },
   reminderIntervalOption: {

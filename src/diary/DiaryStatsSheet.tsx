@@ -74,6 +74,9 @@ export interface DiaryStatsSheetProps {
   topPubs: StatRow[];
   /** "Roky", newest first. */
   years: StatRow[];
+  /** Pinned footnote, already composed by the parent (the 50-evening limit only
+   *  applies without an account, so the sentence is not always the same). */
+  footer: string;
   onClose: () => void;
 }
 
@@ -84,6 +87,7 @@ export function DiaryStatsSheet({
   month,
   topPubs,
   years,
+  footer,
   onClose,
 }: DiaryStatsSheetProps) {
   const insets = useSafeAreaInsets();
@@ -199,7 +203,7 @@ export function DiaryStatsSheet({
               numbers do and do not count, so it must never scroll off. */}
           <View style={styles.footer}>
             <Text style={styles.footerCopy} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.diary.statsFooter}
+              {footer}
             </Text>
           </View>
         </View>

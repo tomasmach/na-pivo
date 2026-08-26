@@ -88,7 +88,7 @@ export function Toast() {
         accessibilityRole="button"
       >
         {/* Leading visual: a caller-supplied IconGlyph, or a drawn beer glyph.
-            It used to fall back to a 🍺 emoji — emoji are banned in UI chrome
+            It used to fall back to an emoji — emoji are banned in UI chrome
             (§12), and a toast is chrome. */}
         <View style={styles.iconSlot}>
           {icon ?? <BeerIcon size={18} color={Colors.amber} />}

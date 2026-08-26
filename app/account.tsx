@@ -28,7 +28,8 @@ import {
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { QuietPill } from '@/components/shared/QuietPill';
+import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { isAppleSignInSupported } from '@/data/socialAuth';
 import type { AuthProvider } from '@/data/auth';
@@ -491,7 +492,7 @@ export default function AccountScreen() {
             }
             disabled={profileRetrying || busy === 'logout'}
           />
-          <CounterSecondary
+          <QuietPill
             label={
               logoutBusy
                 ? cs.account.loading
@@ -614,6 +615,8 @@ export default function AccountScreen() {
         </View>
       </View>
 
+      <View style={styles.spacer} />
+
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
@@ -624,7 +627,7 @@ export default function AccountScreen() {
       />
 
       {isClaimed ? (
-        <CounterSecondary
+        <QuietPill
           label={logoutBusy ? cs.account.loading : cs.account.logout}
           onPress={() => void handleLogout()}
           accessibilityLabel={
@@ -715,19 +718,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   accountCard: {
-    flex: 1,
     overflow: 'hidden',
     backgroundColor: Colors.stout2,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.07),
     paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
+    paddingVertical: 20,
   },
   cardBody: {
-    flex: 1,
-    minHeight: 132,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -750,9 +749,8 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   cardFooter: {
-    marginTop: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
@@ -767,6 +765,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
+  },
+  spacer: {
+    flex: 1,
   },
   unavailableState: {
     flex: 1,

@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, View } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 
 import type { Pub } from '@/data/pubs';
@@ -14,25 +14,31 @@ jest.mock('react-native-maps', () => ({
   __esModule: true,
   PROVIDER_GOOGLE: 'google',
   default: forwardRef(function MockMapView(
-    { children }: { children?: React.ReactNode },
+    { children, ...props }: { children?: React.ReactNode },
     ref,
   ) {
     useImperativeHandle(ref, () => ({
       animateCamera: mockAnimateCamera,
       animateToRegion: mockAnimateToRegion,
+      fitToCoordinates: jest.fn(),
     }));
-    return <View>{children}</View>;
+    return (
+      <View testID="map-view" {...props}>
+        {children}
+      </View>
+    );
   }),
   Marker: ({
     accessibilityLabel,
     children,
     onPress,
+    ...props
   }: {
     accessibilityLabel?: string;
     children?: React.ReactNode;
     onPress?: () => void;
   }) => (
-    <Pressable accessibilityLabel={accessibilityLabel} onPress={onPress}>
+    <Pressable accessibilityLabel={accessibilityLabel} onPress={onPress} {...props}>
       {children}
     </Pressable>
   ),
@@ -47,12 +53,15 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   ),
 }));
 
-function presentation(openState: PubPresentation['openState']): PubPresentation {
+function presentation(
+  openState: PubPresentation['openState'],
+  overrides: { id?: string; name?: string; lat?: number; lng?: number } = {},
+): PubPresentation {
   const pub = {
-    id: 'pub-1',
-    name: 'U Testu',
-    lat: 50.08,
-    lng: 14.43,
+    id: overrides.id ?? 'pub-1',
+    name: overrides.name ?? 'U Testu',
+    lat: overrides.lat ?? 50.08,
+    lng: overrides.lng ?? 14.43,
   } as Pub;
   return {
     pub,
@@ -127,5 +136,97 @@ describe('PubsMap', () => {
     expect(getByTestId('pub-map-marker-icon').props.accessibilityValue.text).toBe(
       `15:${withAlpha(Colors.foam, 0.58)}`,
     );
+  });
+
+  it('lifts the Google attribution above the sheet instead of clamping it under one', () => {
+    const { height } = Dimensions.get('window');
+    const sheetInset = Math.round(height * 0.8);
+
+    const { getByTestId } = render(
+      <PubsMap
+        pubs={[presentation('open')]}
+        currentPosition={{ lat: 50.08, lng: 14.43 }}
+        bottomInset={sheetInset}
+      />,
+    );
+
+    const padding = getByTestId('map-view').props.mapPadding;
+    expect(padding.bottom).toBe(sheetInset);
+    expect(padding.bottom).toBeGreaterThan(Math.round(height * 0.62));
+  });
+
+  it('still leaves the map a strip to draw in when the inset is absurd', () => {
+    const { height } = Dimensions.get('window');
+
+    const { getByTestId } = render(
+      <PubsMap
+        pubs={[presentation('open')]}
+        currentPosition={{ lat: 50.08, lng: 14.43 }}
+        bottomInset={height * 4}
+      />,
+    );
+
+    expect(getByTestId('map-view').props.mapPadding.bottom).toBe(Math.round(height - 88));
+  });
+
+  it('keeps pub names off the attribution corner', () => {
+    const { queryByText } = render(
+      <PubsMap
+        pubs={[
+          presentation('open', {
+            id: 'corner',
+            name: 'U Loga',
+            lat: 50.08 - 0.0122,
+            lng: 14.43 - 0.0122,
+          }),
+          presentation('open', { id: 'middle', name: 'U Stredu' }),
+        ]}
+        currentPosition={{ lat: 50.08, lng: 14.43 }}
+      />,
+    );
+
+    expect(queryByText('U Stredu')).not.toBeNull();
+    expect(queryByText('U Loga')).toBeNull();
+  });
+
+  it('renders the cluster count and freezes the marker only after it has laid out', () => {
+    const { getByTestId, getByLabelText } = render(
+      <PubsMap
+        pubs={[
+          presentation('open', { id: 'a', name: 'A', lat: 50.08, lng: 14.43 }),
+          presentation('open', { id: 'b', name: 'B', lat: 50.0801, lng: 14.4301 }),
+        ]}
+        currentPosition={{ lat: 50.08, lng: 14.43 }}
+      />,
+    );
+
+    expect(getByTestId('pub-map-cluster')).toHaveTextContent('2');
+    expect(getByTestId('pub-map-cluster').props.collapsable).toBe(false);
+
+    const marker = getByLabelText('2 hospody. Přiblížit');
+    expect(marker.props.tracksViewChanges).toBe(true);
+
+    act(() => jest.advanceTimersByTime(200));
+
+    expect(getByLabelText('2 hospody. Přiblížit').props.tracksViewChanges).toBe(false);
+    expect(getByTestId('pub-map-cluster')).toHaveTextContent('2');
+  });
+
+  it('gives the selected pub label the same settle before freezing', () => {
+    const { getByTestId, getByLabelText } = render(
+      <PubsMap
+        pubs={[presentation('open')]}
+        currentPosition={{ lat: 50.08, lng: 14.43 }}
+        selectedId="pub-1"
+      />,
+    );
+
+    expect(getByTestId('pub-map-selected')).toHaveTextContent('U Testu');
+    expect(getByTestId('pub-map-selected').props.collapsable).toBe(false);
+    expect(getByLabelText('U Testu').props.tracksViewChanges).toBe(true);
+
+    act(() => jest.advanceTimersByTime(200));
+
+    expect(getByLabelText('U Testu').props.tracksViewChanges).toBe(false);
   });
 });

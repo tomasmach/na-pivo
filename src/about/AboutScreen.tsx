@@ -32,7 +32,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { leaveRoute } from '@/navigation/leaveRoute';
-import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   fetchAllReleaseNotes,
@@ -102,7 +102,8 @@ export default function AboutScreen() {
         {/* ── Brand hero ── */}
         <View style={styles.hero}>
           <View style={styles.medallion}>
-            <Text style={styles.medallionEmoji}>🍺</Text>
+            {/* Drawn glyph, not an emoji (§19). */}
+            <BeerIcon size={44} color={Colors.amber} />
           </View>
           <Text style={styles.appName}>{cs.appName}</Text>
           <Text style={styles.tagline}>{cs.about.tagline}</Text>
@@ -278,10 +279,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.xs,
-  },
-  medallionEmoji: {
-    fontSize: 44,
-    lineHeight: 52,
   },
   appName: {
     fontWeight: '800',

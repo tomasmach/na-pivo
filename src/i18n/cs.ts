@@ -752,7 +752,7 @@ export const cs = {
     contactEmailPlaceholder: 'tvuj@email.cz',
     submit: 'Odeslat',
     versionCaption: (version: string) => `Odesílám i verzi aplikace: ${version}`,
-    successTitle: 'Díky! 🍺',
+    successTitle: 'Díky!',
     successBody:
       'Zpráva dorazí, i kdyby teď zrovna nebylo připojení — odešlu ji, jakmile budeš online.',
     successClose: 'Zavřít',
@@ -2215,8 +2215,9 @@ export const cs = {
     statsYearsTitle: 'Roky',
     // Second line under a year: "průměr 3,4 na večer"
     statsYearAvg: (avg: string) => `průměr ${avg} na večer`,
-    statsFooter:
-      'Počítám jen piva, ale útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
+    statsFooter: 'Počítám jen piva, ale útrata je za všechno.',
+    /** Druhá věta patiček jen bez účtu — s účtem si pamatuju všechno. */
+    statsFooterNoAccount: 'Bez účtu si pamatuju posledních 50 večerů.',
   },
 
   profile: {
@@ -2831,13 +2832,13 @@ export const cs = {
     historicalTimeFromLabel: 'Od',
     historicalTimeToLabel: 'Do',
     historicalTimePlaceholder: '19:45',
-    historicalTimeToPlaceholder: 'vol.',
+    historicalTimeToPlaceholder: 'Nepovinné',
     historicalDateError: 'Zkontroluj datum a časy. Budoucnost zatím nečepuju.',
     historicalPubLabel: 'Hospoda',
     historicalPubPlaceholder: 'Kde to bylo?',
     historicalQuantityLabel: 'Počet',
     historicalPriceLabel: 'Cena / ks',
-    historicalPricePlaceholder: 'vol.',
+    historicalPricePlaceholder: 'Nepovinné',
     historicalCityLabel: 'Město',
     historicalVisibilityHint: 'Starší zápisy jsou nejdřív jen pro tebe.',
     historicalVisibilityFriendsHint: 'Parta uvidí piva, hospodu, čas a poznámku.',

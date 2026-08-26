@@ -48,8 +48,11 @@ jest.mock('@/profile/Avatar', () => ({ Avatar: () => null }));
 jest.mock('@/counter/NudgeSlot', () => ({ NudgeSlot: () => null }));
 jest.mock('@/counter/CounterCta', () => ({
   CounterCta: (props: Record<string, unknown>) => React.createElement('CounterCta', props),
-  CounterSecondary: (props: Record<string, unknown>) =>
-    React.createElement('CounterSecondary', props),
+}));
+// The secondary action is the shared quiet pill now (DESIGN §6.2), not the 2.x
+// amber outline.
+jest.mock('@/components/shared/QuietPill', () => ({
+  QuietPill: (props: Record<string, unknown>) => React.createElement('QuietPill', props),
 }));
 jest.mock('@/data/socialAuth', () => ({ isAppleSignInSupported: () => false }));
 
@@ -139,7 +142,7 @@ describe('account release flows', () => {
     });
 
     expect(renderer.root.findByProps({ accessibilityLabel: cs.a11y.accountRetry })).toBeTruthy();
-    const exit = renderer.root.findByType('CounterSecondary' as never);
+    const exit = renderer.root.findByType('QuietPill' as never);
     expect(exit.props.accessibilityLabel).toBe(cs.a11y.backButton);
     expect(exit.props.label).toBe(cs.account.resetInvalidCta);
 
@@ -172,7 +175,7 @@ describe('account release flows', () => {
     expect(accountState.refreshProfile).toHaveBeenCalledTimes(1);
     expect(accountState.logout).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByType('CounterCta' as never).props.disabled).toBe(true);
-    expect(renderer.root.findByType('CounterSecondary' as never).props).toEqual(
+    expect(renderer.root.findByType('QuietPill' as never).props).toEqual(
       expect.objectContaining({
         label: cs.account.loading,
         accessibilityLabel: cs.account.loading,
@@ -233,7 +236,7 @@ describe('account release flows', () => {
       renderer.update(<AccountScreen />);
     });
 
-    const lockedLogout = renderer.root.findByType('CounterSecondary' as never);
+    const lockedLogout = renderer.root.findByType('QuietPill' as never);
     expect(lockedLogout.props).toEqual(
       expect.objectContaining({
         label: cs.account.loading,

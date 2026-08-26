@@ -47,9 +47,9 @@ describe("app/account.tsx source contract", () => {
     expect(row).toMatch(/cs\.account\.deleteAccount/);
   });
 
-  test("logout CounterSecondary block is wrapped by isClaimed", () => {
+  test("logout QuietPill block is wrapped by isClaimed", () => {
     expect(src).toMatch(
-      /\{\s*isClaimed\s*\?\s*\([\s\S]{0,500}<CounterSecondary[\s\S]{0,500}cs\.account\.logout/,
+      /\{\s*isClaimed\s*\?\s*\([\s\S]{0,500}<QuietPill[\s\S]{0,500}cs\.account\.logout/,
     );
   });
 
