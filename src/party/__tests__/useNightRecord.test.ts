@@ -872,6 +872,76 @@ describe('useNightRecord offline photos', () => {
       useBeerPhotosStore.setState(originals.photos);
     }
   });
+
+  it('drops a photo from the evening that ended before this one started', () => {
+    const startedAt = '2026-08-05T20:00:00.000Z';
+    const session: TallySession = {
+      clientId: 'stop-b',
+      pubKey: 'pub-b',
+      pubName: 'Druhá hospoda',
+      startedAt,
+      drinks: [],
+    };
+    const photo = (clientId: string, takenAt: string): BeerPhotoLocal => ({
+      id: null,
+      clientId,
+      imageUrl: null,
+      caption: '',
+      pubCacheKey: 'pub-b',
+      pubName: 'Druhá hospoda',
+      pubCity: 'Praha',
+      visibility: 'private',
+      takenAt,
+      createdAt: takenAt,
+      inContest: false,
+      localUri: `file:///${clientId}.jpg`,
+      syncState: 'pending',
+      partyDrinkingDay: '2026-08-05',
+    });
+    const originals = {
+      tally: useTallyStore.getState(),
+      live: useLivePartyStore.getState(),
+      evening: usePartyEveningStore.getState(),
+      games: usePartyGamesStore.getState(),
+      photos: useBeerPhotosStore.getState(),
+    };
+    let unmount: (() => void) | undefined;
+
+    try {
+      useTallyStore.setState({ current: session, history: [] });
+      useLivePartyStore.setState({
+        live: true,
+        pubName: session.pubName,
+        pubKey: session.pubKey,
+        startedAt: Date.parse(startedAt),
+        games: [],
+      });
+      usePartyEveningStore.setState({
+        evening: null,
+        lastEvening: null,
+        pendingJoinCode: null,
+      });
+      usePartyGamesStore.setState({ code: null, games: [], events: [], live: false });
+      useBeerPhotosStore.setState({
+        photos: [
+          photo('previous-evening', '2026-08-05T19:00:00.000Z'),
+          photo('this-evening', '2026-08-05T20:30:00.000Z'),
+        ],
+      });
+
+      const rendered = renderHook(() => useNightRecord());
+      unmount = rendered.unmount;
+
+      expect(rendered.result.current.photos.map((row) => row.id)).toEqual(['this-evening']);
+    } finally {
+      unmount?.();
+      useTallyStore.setState(originals.tally);
+      useLivePartyStore.setState(originals.live);
+      usePartyEveningStore.setState(originals.evening);
+      usePartyGamesStore.setState(originals.games);
+      useBeerPhotosStore.setState(originals.photos);
+    }
+  });
 });
 
 describe('useNightRecord after leaving a shared table', () => {

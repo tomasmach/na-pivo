@@ -524,7 +524,7 @@ function ComposeSheet({
           </View>
 
           <View style={styles.closeBtn}>
-            <CloseButton onPress={requestClose} label={cs.friends.settingsClose} />
+            <CloseButton onPress={requestClose} />
           </View>
 
           <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>

@@ -129,7 +129,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
             >
               {cs.friends.codeSheetTitle}
             </Text>
-            <CloseButton onPress={() => requestClose()} label={cs.friends.settingsClose} />
+            <CloseButton onPress={() => requestClose()} />
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false} bounces={false}>

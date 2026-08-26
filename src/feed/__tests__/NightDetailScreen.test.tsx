@@ -21,6 +21,7 @@ const mockClearNightReaction = jest.fn();
 const mockEnqueueNightOp = jest.fn();
 const mockShowDialog = jest.fn();
 const mockMarkUnpublished = jest.fn();
+const mockScrollToEnd = jest.fn();
 let mockAccountId = 'viewer-a';
 
 jest.mock('expo-router', () => ({
@@ -45,13 +46,17 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   MenuIcon: () => null,
   Trash2Icon: () => null,
 }));
-jest.mock('@/components/shared/KeyboardAwareScrollView', () => ({
-  KeyboardAwareScrollView: (props: Record<string, unknown>) => {
-
-    const ReactModule = jest.requireActual('react');
-    return ReactModule.createElement('KeyboardAwareScrollView', props, props.children);
-  },
-}));
+jest.mock('@/components/shared/KeyboardAwareScrollView', () => {
+  const ReactModule = jest.requireActual('react');
+  return {
+    KeyboardAwareScrollView: ReactModule.forwardRef(
+      (props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+        ReactModule.useImperativeHandle(ref, () => ({ scrollToEnd: mockScrollToEnd }));
+        return ReactModule.createElement('KeyboardAwareScrollView', props, props.children);
+      },
+    ),
+  };
+});
 jest.mock('@/data/account', () => ({
   generateUuidV4: () => '11111111-1111-4111-8111-111111111111',
 }));
@@ -276,7 +281,7 @@ it('reports the concrete foreign night from the detail action menu', async () =>
     reason: 'spam',
     nightId: 'night-1',
   });
-  expect(mockShowToast).toHaveBeenCalledWith('Díky, máme to. Mrkneme na to.');
+  expect(mockShowToast).toHaveBeenCalledWith('Díky, mám to. Mrknu na to.');
 });
 
 it('confirms and deletes the owner publication while keeping the private diary', async () => {
@@ -424,4 +429,25 @@ it('reverts an offline reaction when the durable queue cannot persist it', async
   );
   expect(mockShowToast).toHaveBeenCalledWith('Runda nedošla. Zkus to za chvíli.');
   expect(mockShowToast).not.toHaveBeenCalledWith('Rundu pošlu, až chytím signál.');
+});
+
+it('scrolls the composer above the keyboard when the comment field is focused', async () => {
+  jest.useFakeTimers();
+  let renderer: ReturnType<typeof TestRenderer.create>;
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(<NightDetailScreen />);
+    });
+
+    const input = renderer!.root.findAllByType('TextInput')[0];
+    act(() => input.props.onFocus());
+    expect(mockScrollToEnd).not.toHaveBeenCalled();
+
+    act(() => jest.advanceTimersByTime(400));
+    expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: true });
+
+    act(() => renderer!.unmount());
+  } finally {
+    jest.useRealTimers();
+  }
 });

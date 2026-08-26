@@ -1,5 +1,6 @@
 import {
   isStaleNightStart,
+  hubPubName,
   partyTapOptions,
   restoreLivePartyState,
   useLivePartyStore,
@@ -176,5 +177,17 @@ describe('isStaleNightStart', () => {
   it('never closes an evening it cannot date', () => {
     expect(isStaleNightStart(null, now)).toBe(false);
     expect(isStaleNightStart('nonsense', now)).toBe(false);
+  });
+});
+
+describe('hubPubName', () => {
+  it('forgets the pub of an evening that has ended so the hub can detect one again', () => {
+    expect(hubPubName('', { pubName: 'U Zlatého tygra', active: false })).toBe('');
+  });
+
+  it('names the active evening pub and always prefers the local pick', () => {
+    expect(hubPubName('', { pubName: 'U Zlatého tygra', active: true })).toBe('U Zlatého tygra');
+    expect(hubPubName('Lokál', { pubName: 'U Zlatého tygra', active: true })).toBe('Lokál');
+    expect(hubPubName('  ', null)).toBe('');
   });
 });

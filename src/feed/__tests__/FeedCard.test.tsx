@@ -286,4 +286,26 @@ describe('FeedCard', () => {
       expect(node.props.numberOfLines).toBe(1);
     }
   });
+
+  it('lets the biggest text sizes wrap the fact label and the route instead of clipping them', () => {
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(
+        <FeedCard night={night({
+            pubNames: ['U Zlatého tygra', 'U Pinkasů'],
+            softDrinkCount: 1,
+            durationMinutes: 285,
+          })} />,
+      );
+    });
+
+    const label = renderer!.root
+      .findAllByType('Text')
+      .find((node: { props: { children: unknown } }) => node.props.children === 'Večer');
+    expect(label!.props.numberOfLines).toBe(2);
+    expect(label!.props.maxFontSizeMultiplier).toBe(1.2);
+
+    const routeRow = renderer!.root.findByProps({ testID: 'night-route-line' });
+    expect(StyleSheet.flatten(routeRow.props.style).flexWrap).toBe('wrap');
+  });
 });

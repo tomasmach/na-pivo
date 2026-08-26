@@ -97,7 +97,11 @@ const PresenceRow = memo(function PresenceRow({
           onPress={openProfile}
           onLongPress={handleLongPress}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.presenceRow(name, presence.pubName || cs.friends.presenceSomewhere)}
+          accessibilityLabel={
+            mine
+              ? cs.a11y.presenceRowMine(presence.pubName || cs.friends.presenceSomewhere)
+              : cs.a11y.presenceRow(name, presence.pubName || cs.friends.presenceSomewhere)
+          }
           style={({ pressed }) => [styles.identity, pressed && styles.dim]}
         >
           <Avatar

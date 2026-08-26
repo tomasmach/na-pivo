@@ -552,7 +552,19 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
     }));
     const games = mergeNightGames(localNightGames, sharedGames, finishedResults);
 
+    // The drinking day outlives the evening: end one table and open another the
+    // same night and the day key still matches, which used to hang the previous
+    // evening's photo at the top of the new thread. Drinks are cut by the
+    // evening window, so photos are too.
+    const endedAt = targetEvening?.endedAt ?? recoveredRecord?.endedAt ?? null;
+    const endedAtMs = endedAt ? Date.parse(endedAt) : Number.NaN;
     const photos: NightPhoto[] = allPhotos.flatMap((photo) => {
+      const takenAtMs = Date.parse(photo.takenAt);
+      const insideWindow =
+        !Number.isFinite(takenAtMs) ||
+        ((!(opened > 0) || takenAtMs >= opened) &&
+          (!Number.isFinite(endedAtMs) || takenAtMs <= endedAtMs));
+      if (!insideWindow) return [];
       const belongsToServerTable =
         !!effectiveCode && photo.partyCode?.toUpperCase() === effectiveCode.toUpperCase();
       const belongsToLocalNight =
@@ -571,7 +583,7 @@ export function useNightRecord(options: NightRecordOptions = {}): NightRecord {
       games,
       photos,
       ...(opened > 0 ? { startedAt: openedIso } : {}),
-      endedAt: targetEvening?.endedAt ?? recoveredRecord?.endedAt ?? null,
+      endedAt,
     });
     return confirmedIdentity && !record.code
       ? { ...record, id: confirmedIdentity.id, code: confirmedIdentity.joinCode }

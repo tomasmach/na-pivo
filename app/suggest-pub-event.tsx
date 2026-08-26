@@ -228,7 +228,7 @@ export default function SuggestPubEventScreen() {
           </Field>
 
           <Text style={styles.moderation} maxFontSizeMultiplier={FontScaleCap.body}>
-            Návrh nejdřív zkontrolujeme. Neověřené a skončené akce ostatní neuvidí.
+            Návrh nejdřív zkontroluju. Neověřené a skončené akce ostatní neuvidí.
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
 

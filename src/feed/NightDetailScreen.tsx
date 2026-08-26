@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -158,6 +158,26 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
     () => new Set(),
   );
   const pendingCommentRef = React.useRef<{ body: string; clientId: string } | null>(null);
+  const scrollRef = React.useRef<ScrollView>(null);
+  const composerScrollTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The scroll view lifts the focused field above the keyboard, but "Poslat"
+  // sits under the input and would stay covered. The composer is the last thing
+  // in the page, so scrolling to the end after the keyboard inset lands keeps
+  // the whole thing — field and button — in the visible strip.
+  const revealComposer = React.useCallback(() => {
+    if (composerScrollTimer.current) clearTimeout(composerScrollTimer.current);
+    composerScrollTimer.current = setTimeout(() => {
+      composerScrollTimer.current = null;
+      scrollRef.current?.scrollToEnd?.({ animated: true });
+    }, 350);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (composerScrollTimer.current) clearTimeout(composerScrollTimer.current);
+    },
+    [],
+  );
 
   const applyReaction = React.useCallback((nightId: string, rounds: number, myRound: boolean) => {
     setNight((current) => current?.id === nightId
@@ -322,6 +342,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
       </View>
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xxl }]}
         showsVerticalScrollIndicator={false}
       >
@@ -365,6 +386,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
                   maxLength={500}
                   multiline
                   style={styles.input}
+                  onFocus={revealComposer}
                   accessibilityLabel="Komentář k večeru"
                 />
                 <Pressable
