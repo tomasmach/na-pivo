@@ -237,7 +237,6 @@ connect({
       session.players.map((player) => player.label ?? ''),
       { bg: session.theme.bg, ink: session.theme.ink, accent: session.theme.accent },
     );
-    document.body.style.background = session.theme.bg;
 
     wheel.onStopped = (index) => {
       if (finished) return;

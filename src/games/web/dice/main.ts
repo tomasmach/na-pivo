@@ -398,7 +398,6 @@ connect({
   start(session: GameSession) {
     const count = Number(session.options.count ?? 2);
     const table = new DiceTable(session.theme.ink, session.theme.bg, count);
-    document.body.style.background = session.theme.bg;
 
     // The game owns its own progression. The app draws the words from the
     // snapshots below and never recomputes any of this — one set of rules,
