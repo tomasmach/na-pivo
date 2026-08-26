@@ -128,7 +128,10 @@ it('persists the draw result and can render the same card after reconnect', () =
   );
 
   fireEvent.press(screen.getByLabelText('Táhni kartu'));
-  fireEvent.press(screen.getByLabelText('Táhni kartu'));
+  // The card the drawer chose is on screen straight away — no second client,
+  // no server echo. The button therefore already reads "znovu".
+  expect(screen.queryByText('?')).toBeNull();
+  fireEvent.press(screen.getByLabelText(/^Táhni kartu/));
   expect(onDraw).toHaveBeenCalledTimes(1);
   expect(onDraw).toHaveBeenCalledWith(expect.objectContaining({ cardId: expect.any(String) }));
 
@@ -612,4 +615,28 @@ it('never announces imperatively on Android and leaves it to the live region', (
   } finally {
     Platform.OS = originalOS;
   }
+});
+
+it('resolves a card draw on the drawing phone with nobody else at the table', () => {
+  // The QA table: two members, the other one joined over the API and never
+  // touches the game. The draw must land here, not wait for their echo — and it
+  // must survive the shared fold coming back empty.
+  const onDraw = jest.fn();
+  const view = render(
+    <DrawShell kind="card" players={PLAYERS} action="Táhni kartu" result={null} onDraw={onDraw} />,
+  );
+
+  fireEvent.press(screen.getByLabelText('Táhni kartu'));
+
+  const drawn = onDraw.mock.calls[0][0].cardId as string;
+  const card = KINGS_DECK.find((item) => item.id === drawn)!;
+  expect(screen.getByText(card.title)).toBeTruthy();
+  expect(screen.queryByText('?')).toBeNull();
+  expect(screen.queryByText('…')).toBeNull();
+
+  // A rejected enqueue leaves the shared fold empty; the card stays up.
+  view.rerender(
+    <DrawShell kind="card" players={PLAYERS} action="Táhni kartu" result={null} onDraw={onDraw} />,
+  );
+  expect(screen.getByText(card.title)).toBeTruthy();
 });

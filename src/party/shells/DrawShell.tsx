@@ -102,8 +102,24 @@ export function DrawShell({
     null,
   );
   const timers = React.useRef<ReturnType<typeof setTimeout>[]>([]);
-  const shown = result === undefined ? localResult : result;
-  const effectiveCardIds = drawnCardIds ?? localCardIds;
+  /**
+   * The draw resolves on the phone that drew it, full stop.
+   *
+   * In shared mode the card used to be read ONLY from the folded server/queue
+   * state, so the moment that fold came back empty — a rejected enqueue, a
+   * rolled-back optimistic action, a table where the other phone never answers
+   * — the card flipped back to "?" and the drawer was left staring at it. The
+   * canonical shared draw still wins the moment it exists; until then this
+   * phone shows its own.
+   */
+  const shown = result ?? localResult;
+  const effectiveCardIds = React.useMemo(
+    () =>
+      drawnCardIds === undefined
+        ? localCardIds
+        : [...drawnCardIds, ...localCardIds.filter((id) => !drawnCardIds.includes(id))],
+    [drawnCardIds, localCardIds],
+  );
   const deckFinished =
     kind === "card" &&
     effectiveCardIds.filter((cardId) => cardId.endsWith("-K") || cardId === "K")
@@ -131,13 +147,16 @@ export function DrawShell({
     announcedNonce.current = nonce;
     AccessibilityInfo.announceForAccessibility?.(label);
   }, [rolling, shown?.nonce, shownPlayer?.name, cardLabel]);
+  // Unlocks on the CANONICAL draw, not on the optimistic one this phone just
+  // painted: otherwise a double tap in reduced motion draws two cards.
+  const canonicalNonce = result === undefined ? localResult?.nonce : result?.nonce;
   React.useEffect(() => {
     interactionLocked.current = false;
     if (fallbackUnlock.current) {
       clearTimeout(fallbackUnlock.current);
       fallbackUnlock.current = null;
     }
-  }, [shown?.nonce]);
+  }, [canonicalNonce]);
   React.useEffect(
     () => () => {
       if (fallbackUnlock.current) clearTimeout(fallbackUnlock.current);
@@ -173,9 +192,11 @@ export function DrawShell({
     }
 
     const publish = () => {
-      if (result === undefined) setLocalResult(next);
-      if (drawnCardIds === undefined && next.cardId) {
-        setLocalCardIds((current) => [...current, next.cardId!]);
+      setLocalResult(next);
+      if (next.cardId) {
+        setLocalCardIds((current) =>
+          current.includes(next.cardId!) ? current : [...current, next.cardId!],
+        );
       }
       onDraw?.(next);
       const finishesDeck =
