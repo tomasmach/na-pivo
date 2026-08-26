@@ -158,18 +158,27 @@ export function deriveReconciledDiarySessions(
       ? drinkingDayKey(new Date(drink.drank_at))
       : drink.drank_at;
 
-    const matchingLocal = Array.from(sessions.values()).find(
-      (item) =>
-        item.source === 'local' &&
-        item.session.pubKey === pubKey &&
-        sameDrinkingDay(item.session.startedAt, drink.drank_at),
-    );
-    if (matchingLocal) {
-      const cloned = {
-        ...matchingLocal.session,
-        drinks: [...matchingLocal.session.drinks, wireDrinkToTallyDrink(drink)],
-      };
-      sessions.set(matchingLocal.session.clientId, { ...matchingLocal, session: cloned });
+    // One pub, one drinking day = one evening. A drink that falls outside a
+    // visit's time window (poured before it opened, or after it was closed)
+    // used to spawn a second session for the same night, so the diary showed
+    // the same evening twice with contradicting numbers. Attach it to the
+    // evening that is already there — local first, it carries the richer row.
+    const known = Array.from(sessions.values());
+    const sameNight = (item: ReconciledDiarySession) =>
+      item.session.pubKey === pubKey && sameDrinkingDay(item.session.startedAt, drink.drank_at);
+    const matching =
+      known.find((item) => item.source === 'local' && sameNight(item)) ?? known.find(sameNight);
+    if (matching) {
+      if (matching.source === 'local') {
+        // Never mutate the Zustand-owned local object while deriving a view.
+        const cloned = {
+          ...matching.session,
+          drinks: [...matching.session.drinks, wireDrinkToTallyDrink(drink)],
+        };
+        sessions.set(matching.session.clientId, { ...matching, session: cloned });
+      } else {
+        matching.session.drinks.push(wireDrinkToTallyDrink(drink));
+      }
       continue;
     }
 

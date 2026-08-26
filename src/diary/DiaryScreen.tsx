@@ -102,6 +102,16 @@ function formatWalkedKm(metres: number): string {
   return `${text} ${cs.profile.kmShort}`;
 }
 
+/**
+ * The pinned footnote of the stats sheet. The 50-evening limit is a property of
+ * having no account, so telling a signed-in user about it is simply false.
+ */
+export function statsFooterCopy(signedIn: boolean): string {
+  return signedIn
+    ? cs.diary.statsFooter
+    : `${cs.diary.statsFooter} ${cs.diary.statsFooterNoAccount}`;
+}
+
 /** Beers only — the count that gets the big numeral, exactly as on the counter. */
 function beerCount(session: TallySession): number {
   return session.drinks.filter((d) => normalizeDrinkType(d.drinkType) === 'beer').length;
@@ -821,6 +831,7 @@ export default function DiaryScreen({
         records={[]}
         topPubs={pubRows}
         years={yearRows}
+        footer={statsFooterCopy(signedIn)}
         onClose={closeStats}
       />
 

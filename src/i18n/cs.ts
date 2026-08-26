@@ -2195,8 +2195,9 @@ export const cs = {
     statsYearsTitle: 'Roky',
     // Second line under a year: "průměr 3,4 na večer"
     statsYearAvg: (avg: string) => `průměr ${avg} na večer`,
-    statsFooter:
-      'Počítám jen piva, ale útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
+    statsFooter: 'Počítám jen piva, ale útrata je za všechno.',
+    /** Druhá věta patiček jen bez účtu — s účtem si pamatuju všechno. */
+    statsFooterNoAccount: 'Bez účtu si pamatuju posledních 50 večerů.',
   },
 
   profile: {
