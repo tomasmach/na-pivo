@@ -346,6 +346,15 @@ export default function LivePartyMockScreen() {
     // Detach only: no publish, no server call. The table is the server's
     // business; this phone just stops pretending it is sitting at it.
     closeLostTable(staleEveningCode);
+    // The local evening is ended only when it IS that stale table. A fresh
+    // night started while the server still remembered an old table must keep
+    // running — the Android QA lost four logged beers to exactly that.
+    const local = useLivePartyStore.getState();
+    const localIsStale =
+      !local.live ||
+      local.startedAt === null ||
+      isStaleNightStart(new Date(local.startedAt).toISOString());
+    if (!localIsStale) return;
     endParty();
     useToastStore.getState().show(cs.party.staleEveningClosed);
   }, [closeLostTable, endParty, staleEveningCode]);
