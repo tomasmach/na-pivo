@@ -85,6 +85,7 @@ import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
   clockAt,
+  hubPubName,
   minutesBetween,
   partyTapOptions,
   useLivePartyStore,
@@ -756,7 +757,7 @@ export default function LivePartyMockScreen() {
     }
     toast(menuScanFailureCopy(result.status, cs.counter.scanDrinksEmpty));
   };
-  const displayPubName = pubName.trim() || evening?.pubName.trim() || 'Vyber hospodu';
+  const displayPubName = hubPubName(pubName, evening) || 'Vyber hospodu';
   const currentVisit = selectedVisit?.pubKey === partyPlaceKey ? selectedVisit : null;
   const partyPub: Pub | null = detectedPub ?? (
     /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(partyPlaceKey)

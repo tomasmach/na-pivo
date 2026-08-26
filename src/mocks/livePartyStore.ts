@@ -367,6 +367,21 @@ export const useLivePartyStore = create<LivePartyState>()(
   ),
 );
 
+/**
+ * Which pub the hub is standing in before the evening starts.
+ *
+ * An evening that has ENDED stops naming the place. Ending clears the pub, its
+ * key and its taps in one go, so a leftover name would show the old pub with a
+ * bare "Pivo" instead of what it čepuje. With nothing named, the hub falls back
+ * to the pub it detects nearby — taps included.
+ */
+export function hubPubName(
+  pubName: string,
+  evening: { pubName: string; active: boolean } | null,
+): string {
+  return pubName.trim() || (evening?.active ? evening.pubName.trim() : '');
+}
+
 /** "1h 12m" / "48m". Shared, so the bar, the hub and the recap agree. */
 export function formatElapsed(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
