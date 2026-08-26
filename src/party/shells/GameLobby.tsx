@@ -23,10 +23,19 @@ import { CheckIcon } from '@/components/shared/IconGlyph';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { GameCover } from '@/party/GameCover';
 import type { GameDef } from '@/party/gameCatalog';
+import {
+  GameStage,
+  STAGE_FILL,
+  StagePill,
+  useStageHeight,
+} from '@/party/shells/GameStage';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+
+/** The cover is the hero, but the roster has to fit under it without scrolling. */
+const COVER_FRACTION = 0.3;
 
 export interface LobbyPlayer {
   /** Stable account id; display names are not a cross-phone identity. */
@@ -48,6 +57,7 @@ export function GameLobby({
   onInvite?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const coverHeight = useStageHeight(COVER_FRACTION);
   const [out, setOut] = React.useState<string[]>([]);
 
   const playing = table.filter((person) => !out.includes(person.id));
@@ -62,9 +72,16 @@ export function GameLobby({
     <View style={styles.wrap}>
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {def ? (
-          <View style={styles.hero}>
-            <GameCover game={def} height={148} glyph={44} />
-          </View>
+          <GameStage fraction={COVER_FRACTION} style={styles.hero}>
+            <View style={STAGE_FILL}>
+              <GameCover
+                game={def}
+                height={coverHeight}
+                glyph={72}
+                radius={Radius.cardLarge}
+              />
+            </View>
+          </GameStage>
         ) : null}
 
         <Text
@@ -88,31 +105,38 @@ export function GameLobby({
           Kdo hraje
         </Text>
 
-        {table.map((person) => {
-          const isIn = !out.includes(person.id);
-          return (
-            <Pressable
-              key={person.id}
-              onPress={() => toggle(person.id)}
-              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: isIn }}
-              accessibilityLabel={person.name}
-            >
-              <PersonAvatar name={person.name} tint={person.tint} size={38} />
-              <Text
-                style={[styles.name, !isIn && styles.nameOut]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
+        {/* Chips, not rows: the roster is one glance, and a ticked chip reads
+            as "in" from across the table faster than a list with checkboxes
+            down the right edge. */}
+        <View style={styles.roster}>
+          {table.map((person) => {
+            const isIn = !out.includes(person.id);
+            return (
+              <Pressable
+                key={person.id}
+                onPress={() => toggle(person.id)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  isIn && styles.chipOn,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: isIn }}
+                accessibilityLabel={person.name}
               >
-                {person.name}
-              </Text>
-              <View style={[styles.tick, isIn && styles.tickOn]}>
-                {isIn ? <CheckIcon size={15} color={Colors.stout} /> : null}
-              </View>
-            </Pressable>
-          );
-        })}
+                <PersonAvatar name={person.name} tint={person.tint} size={26} />
+                <Text
+                  style={[styles.name, !isIn && styles.nameOut]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {person.name}
+                </Text>
+                {isIn ? <CheckIcon size={15} color={Colors.amber} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
 
         {onInvite ? (
           <Pressable
@@ -129,21 +153,19 @@ export function GameLobby({
       </ScrollView>
 
       <View style={[styles.foot, { paddingBottom: insets.bottom + Spacing.sm }]}>
-        <Pressable
+        <StagePill
+          label={
+            enough
+              ? `Začít — hraje vás ${playing.length}`
+              : 'Aspoň dva, jinak to není hra'
+          }
           onPress={() => enough && onStart(playing)}
           disabled={!enough}
-          style={({ pressed }) => [styles.start, !enough && styles.startOff, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={enough ? `Začít, hraje ${playing.length}` : 'Potřebuješ aspoň dva hráče'}
-          accessibilityState={{ disabled: !enough }}
-        >
-          <Text
-            style={[styles.startText, !enough && styles.startTextOff]}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-          >
-            {enough ? `Začít — hraje vás ${playing.length}` : 'Aspoň dva, jinak to není hra'}
-          </Text>
-        </Pressable>
+          tone={enough ? 'primary' : 'quiet'}
+          accessibilityLabel={
+            enough ? `Začít, hraje ${playing.length}` : 'Potřebuješ aspoň dva hráče'
+          }
+        />
       </View>
     </View>
   );
@@ -154,7 +176,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   body: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.xl },
 
-  hero: { marginTop: Spacing.md, borderRadius: 18, overflow: 'hidden' },
+  hero: { marginTop: Spacing.md },
   title: { ...MockType.titleXL, fontSize: 27, color: Colors.foam, marginTop: Spacing.lg },
   rules: {
     fontSize: 15,
@@ -171,37 +193,27 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
 
-  row: {
+  roster: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
-    minHeight: 60,
+    gap: Spacing.sm,
+    minHeight: 44,
+    paddingLeft: 6,
+    paddingRight: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
   },
-  name: { flex: 1, fontSize: 18, fontWeight: '700', color: Colors.foam },
+  chipOn: { backgroundColor: withAlpha(Colors.amber, 0.16) },
+  name: { maxWidth: 160, fontSize: 16, fontWeight: '700', color: Colors.foam },
   nameOut: { color: withAlpha(Colors.foam, 0.35) },
-  invite: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', marginTop: Spacing.sm },
+  invite: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', marginTop: Spacing.md },
   inviteText: { fontSize: 15, fontWeight: '700', color: Colors.amber },
-  tick: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: withAlpha(Colors.foam, 0.2),
-  },
-  tickOn: { backgroundColor: Colors.amber, borderColor: Colors.amber },
 
   foot: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.sm },
-  start: {
-    height: MockLayout.sheetButtonHeight,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  startOff: { backgroundColor: withAlpha(Colors.foam, 0.08) },
-  startText: { ...MockType.buttonLabel, color: Colors.stout },
-  startTextOff: { color: Colors.mutedText },
-
 });

@@ -22,14 +22,17 @@ export function GameCover({
   game,
   height,
   glyph = 30,
+  /** Match the surface the cover sits in — the stage is softer than a grid tile. */
+  radius = 18,
 }: {
   game: GameDef;
   height: number;
   glyph?: number;
+  radius?: number;
 }) {
   const { Icon } = game;
   return (
-    <View style={[styles.wrap, { height }]}>
+    <View style={[styles.wrap, { height, borderRadius: radius }]}>
       <Svg style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id={`cover-${game.key}`} x1="0" y1="0" x2="1" y2="1">
