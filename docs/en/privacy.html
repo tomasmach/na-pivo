@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy | Na pivo</title>
+<meta name="description" content="Privacy policy for the Na pivo mobile app.">
+<meta property="og:title" content="Privacy Policy | Na pivo">
+<meta property="og:description" content="How the Na pivo app works with location, the Beer Diary, photos, the community and third-party services.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23fff3d6'/%3E%3Ctext x='32' y='43' font-size='34' text-anchor='middle'%3E🍺%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to content</a>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="index.html" aria-label="Na pivo">
+      <span class="logo" aria-hidden="true">🍺</span>
+      <span class="name">Na pivo</span>
+    </a>
+    <nav class="top-nav" aria-label="Main navigation">
+      <a href="index.html">Documents</a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="../privacy.html" hreflang="cs" lang="cs">Česky</a>
+    </nav>
+  </header>
+
+  <main id="content" class="document-shell">
+  <article class="document">
+  <p class="eyebrow">Na pivo</p>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 23 August 2026</p>
+  <p class="updated">This is an English translation for convenience. The Czech version is the binding one.</p>
+
+  <h2 id="kdo-jsme">Who we are</h2>
+  <p>The <strong>Na pivo</strong> app is operated by a natural person (a solo developer), referred to below as “we” or “the operator”. This policy explains what data the app processes, what it uses the data for and what rights you have when it comes to privacy. We try to collect as little data as possible: we do not store continuous GPS history or your movement route, and we use no advertising or external analytics tools.</p>
+
+  <h2 id="data">What data we process</h2>
+
+  <h3>Location</h3>
+  <p>The app uses your current location to find pubs nearby, to point the direction arrow at the pub you picked (the compass) and to show the surroundings on the map. Your current or approximate location can be sent to our own server, which searches a local directory of pubs. <strong>We do not store continuous GPS history, individual GPS points or your movement route.</strong></p>
+  <p>One thing to watch out for, though: the records you create in the app yourself (beers logged, pub visits, ratings, plans) contain the specific pub including its location and the time of the record. Those records therefore build up a <strong>history of the venues you visited</strong> tied to your account, but not the route you took between them. More detail in the “Beer Diary and your records” section.</p>
+
+  <h3>Background location (pub reminders)</h3>
+  <p>The optional reminder feature (“aren’t you in a pub right now?”) uses <strong>geofencing</strong>: the app sets small zones around up to 20 of the nearest pubs, and your phone’s system tells it when you enter or leave one. This needs background location permission (“Always” on iOS). The feature is off by default; you switch it on and off yourself in settings.</p>
+  <p>Zones are evaluated on the phone itself. No coordinates are sent to the server when you enter a zone or leave it; the reminder appears locally. When the app refreshes the list of nearby pubs for the zones while in the foreground, it sends your current location to the server just as it does with an ordinary search for pubs nearby. We do not track or store continuous background location.</p>
+
+  <h3>Motion sensors</h3>
+  <p>The app reads data from the motion sensors (compass and accelerometer) so it can turn the direction arrow correctly as you turn your phone. This data is processed only on the device and is not sent anywhere.</p>
+  <p>We also store the total number of metres walked in the app against your anonymous account. The total is counted on the phone itself and only the increments in metres are sent to the server, never GPS points, a route or location history.</p>
+
+  <h3>Searching for and adding pubs</h3>
+  <p>Ordinary search for pubs nearby uses our own local directory of venues. When you add a missing venue, we search for the name in that directory and can add results from <strong>Google Places</strong>. When you pick a point on the map or use your current location, the server can turn its coordinates into an address through <strong>Google Geocoding</strong>. What gets sent is the name searched for or the point you confirmed, not your identity. Venues you add are shown publicly to other users.</p>
+
+  <h3>Anonymous device account</h3>
+  <p>On first launch the app creates a random anonymous device identifier (a random UUID) and sends it to our own server, so that every device has a temporary anonymous account. The identifier contains no personal data and only serves to tell devices apart.</p>
+
+  <h3>User account (optional sign-in)</h3>
+  <p>Signing in is <strong>optional</strong>: the core features (compass, counter, diary) can be used anonymously. Some community features (public profile, Parta, community meet-ups) need an account you are signed in to. If you decide to create one, we process the following, depending on the sign-in method you choose:</p>
+  <ul>
+    <li><strong>Email and password</strong>: we store your email address, and your password only in an unreadable (hashed) form, never in plain text.</li>
+    <li><strong>Sign-in with Google or Apple</strong>: from the provider we get a stable account identifier and an email address (with Apple this can be a hidden relay address), and possibly a name. We never see your password at the provider.</li>
+  </ul>
+  <p>When you sign in, the anonymous device data you have so far is attached to your account so that it stays with you. One account can be linked to several sign-in methods and you can unlink them in settings at any time.</p>
+
+  <h3>Public profile (nickname and profile photo)</h3>
+  <p>When you create an account, you can choose a <strong>nickname</strong> and upload a <strong>profile photo</strong>. We store them on our server and they make up your profile in the app. A profile with a nickname and a photo is <strong>visible to other users</strong>: it is part of the community and discovery side of the app. The first time you sign in with Google, we can take your profile photo from your Google account. You can change or completely delete the nickname and the photo at any time.</p>
+
+  <h3>Beer Diary and your records</h3>
+  <p>What you record in the app syncs to our server under your account (anonymous or signed in), so that it stays with you after a reinstall and across devices. This covers:</p>
+  <ul>
+    <li><strong>beers and other drinks you log</strong>: the type and name of the drink, the price, the volume, how it was served, the time and the pub including its location;</li>
+    <li><strong>pub visits</strong>: the pub, the start and the end of the visit;</li>
+    <li><strong>pub ratings</strong>: the rating, tags and your own free-form notes;</li>
+    <li><strong>beer check-ins</strong>: the beer, brewery, style, rating, note;</li>
+    <li><strong>evenings</strong>: a summary of the evening (date, drink counts, pubs visited, town).</li>
+  </ul>
+  <p>These records do not show up publicly anywhere on their own. Some of them are shared with your Parta (the friends you accepted) unless you turn sharing off, see the next section. And if you post the summary of an evening yourself, it shows up to your Parta or publicly, depending on the visibility you choose.</p>
+
+  <h3>Parta: sharing with friends</h3>
+  <p>When you add friends in the app (your Parta), we store your friend list, friend requests, invitations (including QR codes and links), plans and the messages attached to them, reactions and any blocks on the server.</p>
+  <p><strong>Sharing your evening with your Parta is on by default.</strong> The friends you accepted can therefore see that you are in a pub right now (including which one), how many beers you have and what you logged last. You can turn sharing off in the Parta settings at any time, or use <strong>ghost mode</strong>, where you are temporarily invisible to your Parta. This information is not shared with anyone other than the friends you accepted.</p>
+  <p>If you report someone, we store your comment and a snapshot of the reported content with the report, so that we can assess the report even if the author changes the content in the meantime.</p>
+
+  <h3>Photos</h3>
+  <p>You can add <strong>photos</strong> to the beers and evenings you log. We store them on our server; before storing we convert them to a compact format and <strong>strip their metadata, GPS location included</strong>. A photo is visible to your Parta by default; if you enter it into the photo contest, it is publicly visible, voting included. You can delete photos at any time.</p>
+
+  <h3>Beer menu scan (AI)</h3>
+  <p>The “Vyfoť menu” (snap the menu) feature lets you photograph a beer menu and have the list of beers pulled out of it automatically. The photo is sent through our server for processing by an AI model (currently Google Gemini) via the <strong>OpenRouter</strong> service. We <strong>do not store</strong> the photo on our server: we only shrink it, strip the metadata and pass it on for processing, and we require the provider not to use the data for training models. You always use the feature deliberately, no photos are sent automatically.</p>
+
+  <h3>Community meet-ups</h3>
+  <p>If you create a community meet-up, we store its description, time, capacity and exact place including the address. The exact address is visible to the host and to approved attendees; people interested in coming send the host a request with a short message. To find meet-ups nearby, your current location is sent to the server just as it is when searching for pubs.</p>
+
+  <h3>Leaderboards and gamification</h3>
+  <p>The app has leaderboards and badges (beer counts, pubs visited, experience points for mapping pubs and so on). Leaderboards show your public profile and a derived score. To keep leaderboards fair, we use <strong>simple automatic anti-cheating rules</strong>: a record that looks implausible (for example going over the daily limit, or a suspiciously fast series of records) stays in your private diary but does not count towards public leaderboards and statistics. The rules delete nothing of yours and have no effect other than visibility in the leaderboards.</p>
+
+  <h3>Push notifications</h3>
+  <p>If you allow notifications, the app obtains a push token and sends it to our server together with the platform and the app version. We deliver notifications (friend requests, what is happening in your Parta, reactions) through the <strong>Expo Push Service</strong>, which processes the token and the message content for that purpose. Pub reminders from geofencing appear on the phone itself and pass through no external service.</p>
+
+  <h3>Feedback</h3>
+  <p>When you send us feedback, we store its text, any contact details you give in it yourself, the attached screenshot and basic technical details (app version, platform). We can copy feedback into a task management tool (Linear) so that we do not forget to sort it out. When an account is permanently deleted, we delete the message, the attachment and any copy of it in Linear.</p>
+
+  <h3>Operational and product statistics and technical errors</h3>
+  <p>The app sends a limited set of events to our own server, so that we can tell whether it works and which parts people use. This covers opening the app, returning to the foreground, views of the main screens, use of the main buttons and controls, the result of selected actions, the app version, the platform and the status codes of selected requests. We can attach an event to an anonymous or a signed-in account. We use only a fixed allowed list of event names and coarse categories. <strong>We do not send pub or beer names, text entered by users, identifiers of the profiles or posts being viewed, search queries, GPS points, a route or precise location into product events.</strong></p>
+  <p>Technical error reports also contain the error message and part of the technical output (a stack trace). Before sending, we automatically strip email addresses, tokens and account identifiers from them. We do not use this data for advertising, for tracking across apps, or for anything other than fixing bugs and improving the app.</p>
+
+  <h3>What we do NOT collect</h3>
+  <ul>
+    <li>Signing in is optional; we collect neither an email address nor a name until you voluntarily create an account.</li>
+    <li>We use no advertising SDKs, no external analytics tools and no tracking across apps or websites.</li>
+    <li>We do not store a continuous history of your location, GPS points or your movement route.</li>
+    <li>We do not read your contacts, your photo library or other data on your phone; we only get to a photo when you pick it or take it yourself.</li>
+  </ul>
+
+  <h2 id="pouziti">How we use data</h2>
+  <p>The data we process serves only to run the app:</p>
+  <ul>
+    <li><strong>Location and motion sensors</strong>: finding pubs nearby, the direction arrow, the map and the optional pub reminders.</li>
+    <li><strong>Anonymous device account</strong>: telling individual devices apart without personal registration.</li>
+    <li><strong>User account (email / Google / Apple)</strong>: signing in and carrying your data between devices.</li>
+    <li><strong>Beer Diary, visits, ratings, photos</strong>: your personal record of your evenings and your statistics.</li>
+    <li><strong>Public profile, Parta and community features</strong>: sharing with friends, leaderboards, discovery and community meet-ups.</li>
+    <li><strong>Operational and product statistics and technical errors</strong>: finding out how many accounts use the app, which features are useful and where the app fails.</li>
+  </ul>
+  <p>We do not use data for ad targeting or for tracking across services. The only automation that assesses your records is the leaderboard fairness rules described above; no automated decision-making with legal effects takes place.</p>
+
+  <h2 id="treti-strany">Third-party services</h2>
+
+  <h3>The operator’s own server</h3>
+  <p>On our own server we process the anonymous device account, any user account and profile, the Beer Diary and your records, photos, the social data of your Parta, community meet-ups, pub details filled in voluntarily, push tokens, feedback and operational and product statistics. This data serves only to run the app, measure usage and improve the app; we send it to no ad network and to no external analytics tool.</p>
+
+  <h3>Google Maps, Google Places and Google Geocoding</h3>
+  <p>The map screen uses the <strong>Google Maps SDK</strong>, which talks to Google servers to draw the map (among other things the section of the map being displayed and technical device identifiers). When you add a missing venue, our server can search for the name you entered through the <strong>Google Places API</strong> and convert the point or address you confirmed through the <strong>Google Geocoding API</strong>. Google receives the name searched for, the address text or the coordinates of the chosen point, not your identity. Policy: <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a></p>
+
+  <h3>Menu photo processing (OpenRouter and an AI model)</h3>
+  <p>Our server passes the beer menu photo from the “Vyfoť menu” feature to the <strong>OpenRouter</strong> service, which processes it with an AI model (currently Google Gemini). We do not store the photo, and under our settings the provider must not use it for training. Policy: <a href="https://openrouter.ai/privacy">https://openrouter.ai/privacy</a></p>
+
+  <h3>Expo Push Service</h3>
+  <p>We deliver push notifications through the Expo service (Expo Push Service), which processes the device push token and the content of the notification. Policy: <a href="https://expo.dev/privacy">https://expo.dev/privacy</a></p>
+
+  <h3>Firmy.cz (Seznam.cz, a.s.)</h3>
+  <p>We fill pub opening hours in on the server from the public Firmy.cz directory. Only the name and town of the venue is sent, never any data about you. Policy: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
+
+  <h3>Sign-in with Google and Apple</h3>
+  <p>If you choose to sign in with Google or Apple, identity verification happens at that provider under its own policy. From the provider, our app receives only a stable account identifier and an email address (possibly a name, and with Google a profile photo). More: <a href="https://policies.google.com/privacy">Google</a>, <a href="https://www.apple.com/legal/privacy/">Apple</a>.</p>
+
+  <h3>Sending emails (Resend)</h3>
+  <p>If you have an account with an email address, we send transactional emails (address verification, password reset, an export of your data, confirmation of account deletion) through the <strong>Resend</strong> service. To deliver them, it processes your email address and the content of the message, which with a data export means the attached file with your data too. Policy: <a href="https://resend.com/legal/privacy-policy">https://resend.com/legal/privacy-policy</a></p>
+
+  <h3>Linear</h3>
+  <p>We can copy feedback from the app into the <strong>Linear</strong> tool, where we handle it as work items. The text of the message, the contact details given in the feedback and technical details are transferred. Policy: <a href="https://linear.app/privacy">https://linear.app/privacy</a></p>
+
+  <h3>Exchange rates (Frankfurter)</h3>
+  <p>If you log the price of a beer in a foreign currency, the app asks the public frankfurter.dev service for the exchange rate. Only the currency code is sent, no location and no personal data.</p>
+
+  <h3>External navigation</h3>
+  <p>When you ask for navigation to a pub, an external map app opens (Apple Maps, Google Maps or Mapy.cz) and the destination is handed over to it. This only ever happens when you tap.</p>
+
+  <h2>How long we keep data</h2>
+  <p>Individual operational, product and error events are kept for <strong>90 days</strong> at most and then deleted automatically. We delete short-lived social data on an ongoing basis: expired plans and live activities within 7 days of ending, delivered notifications within 45 days, expired invitations and rejected requests within 14 days.</p>
+  <p>The content of your account (Beer Diary, visits, ratings, photos, evenings, profile) is kept until you delete it yourself or delete the whole account. Third-party services keep any data under their own policies.</p>
+
+  <h2 id="smazani-uctu">Deleting your account</h2>
+  <p>You can delete your account and the data attached to it at any time in the app (<strong>Settings → Account → Delete account</strong>) or ask for deletion without the app. Once requested, the account is deactivated for 14 days and then permanently deleted; until then it can be restored by signing in again. We permanently remove your identification and profile details (email address, name, nickname, profile photo, password, links to Google and Apple), your private content (Beer Diary, visits, ratings, photos, social connections), your contributions about pubs, the public meet-ups you hosted and the feedback you sent us.</p>
+  <p>Information about pubs from other people and from independent sources stays, that is not your account data. Without your identity, only the necessary moderation records and parts of other people’s shared content can remain, for example the technical history of a shared game. Details and how to do it: <a href="delete-account.html">Deleting your account</a>.</p>
+
+  <h2 id="prava">Your rights</h2>
+  <p>Under the GDPR (the General Data Protection Regulation) you have the right to:</p>
+  <ul>
+    <li><strong>access</strong> the personal data we process about you,</li>
+    <li><strong>rectification</strong> of inaccurate data,</li>
+    <li><strong>erasure</strong> (the “right to be forgotten”),</li>
+    <li><strong>restriction of processing</strong>,</li>
+    <li><strong>data portability</strong>,</li>
+    <li><strong>object</strong> to the processing.</li>
+  </ul>
+  <p>In the app you can request an export of the main content of your account by email (diary, visits, ratings, profile, social data) and also <a href="delete-account.html">delete</a> the account and its data. When you use the app anonymously, your installation has a temporary device account on our server under a random UUID. The Beer Diary and other content sync to it, but without you signing in we know neither your name nor your email address. With any other question or request, get in touch at the contact address below.</p>
+
+  <h2>Children</h2>
+  <p>The app is not meant for children. Given the subject (finding pubs) it is meant for adult users and we knowingly collect no data about children.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>We can update this policy from time to time. We will let you know about material changes by updating this page and changing the “Last updated” date in the header. We recommend checking the policy from time to time.</p>
+
+  <h2 id="kontakt">Contact us</h2>
+  <p>If you have any question about privacy or about this policy, write to us at: <a href="mailto:tomades1@gmail.com">tomades1@gmail.com</a></p>
+
+  <div class="nav">
+    <a href="index.html">← Back</a>
+    <a href="terms.html">Terms of Use</a>
+  </div>
+
+  <footer>
+    <span>Na pivo · Privacy Policy</span>
+    <span><a href="mailto:tomades1@gmail.com">tomades1@gmail.com</a></span>
+  </footer>
+  </article>
+  <aside class="toc" aria-label="Table of contents">
+    <p class="toc-title">Contents</p>
+    <a href="#kdo-jsme">Who we are</a>
+    <a href="#data">What data we process</a>
+    <a href="#pouziti">How we use data</a>
+    <a href="#treti-strany">Third-party services</a>
+    <a href="#smazani-uctu">Deleting your account</a>
+    <a href="#prava">Your rights</a>
+    <a href="#kontakt">Contact us</a>
+  </aside>
+  </main>
+</div>
+</body>
+</html>
