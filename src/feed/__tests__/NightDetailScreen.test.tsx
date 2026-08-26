@@ -296,7 +296,7 @@ it('confirms and deletes the owner publication while keeping the private diary',
     message: string;
     buttons: { onPress?: () => void }[];
   };
-  expect(dialog.message).toBe('Večer zmizí z Výčepu i profilů. V deníčku ti zůstane.');
+  expect(dialog.message).toBe('Večer zmizí z Kocovin i profilů. V deníčku ti zůstane.');
   await act(async () => {
     dialog.buttons[1].onPress?.();
     await flushPromises();
