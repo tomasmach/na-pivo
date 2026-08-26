@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  FlatList,
   Image,
   Pressable,
   RefreshControl,
