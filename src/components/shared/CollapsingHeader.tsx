@@ -85,15 +85,17 @@ export function CollapsingHeader({
       {/* The material. `pointerEvents="none"` so taps reach the list behind the
           bar while it is still transparent. */}
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]} pointerEvents="none">
+        {/* Stout always sits under the glass: on a simulator, and on any
+            device where the material comes out thin, the bar still hides the
+            list scrolling behind it (§15.2). */}
+        <View style={[StyleSheet.absoluteFill, GLASS ? styles.solidUnderGlass : styles.solid]} />
         {GLASS ? (
           <GlassView
             style={StyleSheet.absoluteFill}
             glassEffectStyle="regular"
             colorScheme="dark"
           />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, styles.solid]} />
-        )}
+        ) : null}
         <View style={styles.hairline} />
       </Animated.View>
 
@@ -119,6 +121,7 @@ export function CollapsingHeader({
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
   solid: { backgroundColor: Colors.stout },
+  solidUnderGlass: { backgroundColor: withAlpha(Colors.stout, 0.92) },
   hairline: {
     position: 'absolute',
     left: 0,
