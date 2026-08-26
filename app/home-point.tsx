@@ -14,7 +14,7 @@ import * as Location from 'expo-location';
 import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChevronLeftIcon, MapPinIcon, TargetIcon, Trash2Icon } from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon, HouseIcon, MapPinIcon, TargetIcon, Trash2Icon } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
@@ -22,6 +22,7 @@ import { cs } from '@/i18n/cs';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
+import { openHomeInMaps } from '@/utils/maps';
 
 import { Radius, Spacing } from '@/theme/layout';
 
@@ -274,6 +275,21 @@ export default function HomePointScreen() {
               <Text style={styles.inlineButtonText}>Otevřít nastavení</Text>
             </Pressable>
           </View>
+        ) : null}
+
+        {/* The point exists to be walked to. Without this the app could store a
+            home and never take you there — `openHomeInMaps` had no caller at
+            all. Outlined, not amber: saving is still what this screen is for. */}
+        {savedPoint ? (
+          <Pressable
+            onPress={() => void openHomeInMaps(savedPoint)}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.compass.moreHome}
+          >
+            <HouseIcon size={18} color={Colors.foam} />
+            <Text style={styles.secondaryButtonText}>{cs.compass.moreHome}</Text>
+          </Pressable>
         ) : null}
 
         {savedPoint ? (
