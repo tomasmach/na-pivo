@@ -57,7 +57,7 @@
   <p>On first launch the app creates a random anonymous device identifier (a random UUID) and sends it to our own server, so that every device has a temporary anonymous account. The identifier contains no personal data and only serves to tell devices apart.</p>
 
   <h3>User account (optional sign-in)</h3>
-  <p>Signing in is <strong>optional</strong>: the core features (compass, counter, diary) can be used anonymously. Some community features (public profile, Parta, community meet-ups) need an account you are signed in to. If you decide to create one, we process the following, depending on the sign-in method you choose:</p>
+  <p>Signing in is <strong>optional</strong>: the core features (compass, counter, diary) can be used anonymously. Some community features (public profile, Crew, community meet-ups) need an account you are signed in to. If you decide to create one, we process the following, depending on the sign-in method you choose:</p>
   <ul>
     <li><strong>Email and password</strong>: we store your email address, and your password only in an unreadable (hashed) form, never in plain text.</li>
     <li><strong>Sign-in with Google or Apple</strong>: from the provider we get a stable account identifier and an email address (with Apple this can be a hidden relay address), and possibly a name. We never see your password at the provider.</li>
@@ -76,18 +76,18 @@
     <li><strong>beer check-ins</strong>: the beer, brewery, style, rating, note;</li>
     <li><strong>evenings</strong>: a summary of the evening (date, drink counts, pubs visited, town).</li>
   </ul>
-  <p>These records do not show up publicly anywhere on their own. Some of them are shared with your Parta (the friends you accepted) unless you turn sharing off, see the next section. And if you post the summary of an evening yourself, it shows up to your Parta or publicly, depending on the visibility you choose.</p>
+  <p>These records do not show up publicly anywhere on their own. Some of them are shared with your Crew (the friends you accepted) unless you turn sharing off, see the next section. And if you post the summary of an evening yourself, it shows up to your Crew or publicly, depending on the visibility you choose.</p>
 
-  <h3>Parta: sharing with friends</h3>
-  <p>When you add friends in the app (your Parta), we store your friend list, friend requests, invitations (including QR codes and links), plans and the messages attached to them, reactions and any blocks on the server.</p>
-  <p><strong>Sharing your evening with your Parta is on by default.</strong> The friends you accepted can therefore see that you are in a pub right now (including which one), how many beers you have and what you logged last. You can turn sharing off in the Parta settings at any time, or use <strong>ghost mode</strong>, where you are temporarily invisible to your Parta. This information is not shared with anyone other than the friends you accepted.</p>
+  <h3>Crew: sharing with friends</h3>
+  <p>When you add friends in the app (your Crew), we store your friend list, friend requests, invitations (including QR codes and links), plans and the messages attached to them, reactions and any blocks on the server.</p>
+  <p><strong>Sharing your evening with your Crew is on by default.</strong> The friends you accepted can therefore see that you are in a pub right now (including which one), how many beers you have and what you logged last. You can turn sharing off in the Crew settings at any time, or use <strong>ghost mode</strong>, where you are temporarily invisible to your Crew. This information is not shared with anyone other than the friends you accepted.</p>
   <p>If you report someone, we store your comment and a snapshot of the reported content with the report, so that we can assess the report even if the author changes the content in the meantime.</p>
 
   <h3>Photos</h3>
-  <p>You can add <strong>photos</strong> to the beers and evenings you log. We store them on our server; before storing we convert them to a compact format and <strong>strip their metadata, GPS location included</strong>. A photo is visible to your Parta by default; if you enter it into the photo contest, it is publicly visible, voting included. You can delete photos at any time.</p>
+  <p>You can add <strong>photos</strong> to the beers and evenings you log. We store them on our server; before storing we convert them to a compact format and <strong>strip their metadata, GPS location included</strong>. A photo is visible to your Crew by default; if you enter it into the photo contest, it is publicly visible, voting included. You can delete photos at any time.</p>
 
   <h3>Beer menu scan (AI)</h3>
-  <p>The “Vyfoť menu” (snap the menu) feature lets you photograph a beer menu and have the list of beers pulled out of it automatically. The photo is sent through our server for processing by an AI model (currently Google Gemini) via the <strong>OpenRouter</strong> service. We <strong>do not store</strong> the photo on our server: we only shrink it, strip the metadata and pass it on for processing, and we require the provider not to use the data for training models. You always use the feature deliberately, no photos are sent automatically.</p>
+  <p>The “Snap the menu” feature lets you photograph a beer menu and have the list of beers pulled out of it automatically. The photo is sent through our server for processing by an AI model (currently Google Gemini) via the <strong>OpenRouter</strong> service. We <strong>do not store</strong> the photo on our server: we only shrink it, strip the metadata and pass it on for processing, and we require the provider not to use the data for training models. You always use the feature deliberately, no photos are sent automatically.</p>
 
   <h3>Community meet-ups</h3>
   <p>If you create a community meet-up, we store its description, time, capacity and exact place including the address. The exact address is visible to the host and to approved attendees; people interested in coming send the host a request with a short message. To find meet-ups nearby, your current location is sent to the server just as it is when searching for pubs.</p>
@@ -96,7 +96,7 @@
   <p>The app has leaderboards and badges (beer counts, pubs visited, experience points for mapping pubs and so on). Leaderboards show your public profile and a derived score. To keep leaderboards fair, we use <strong>simple automatic anti-cheating rules</strong>: a record that looks implausible (for example going over the daily limit, or a suspiciously fast series of records) stays in your private diary but does not count towards public leaderboards and statistics. The rules delete nothing of yours and have no effect other than visibility in the leaderboards.</p>
 
   <h3>Push notifications</h3>
-  <p>If you allow notifications, the app obtains a push token and sends it to our server together with the platform and the app version. We deliver notifications (friend requests, what is happening in your Parta, reactions) through the <strong>Expo Push Service</strong>, which processes the token and the message content for that purpose. Pub reminders from geofencing appear on the phone itself and pass through no external service.</p>
+  <p>If you allow notifications, the app obtains a push token and sends it to our server together with the platform and the app version. We deliver notifications (friend requests, what is happening in your Crew, reactions) through the <strong>Expo Push Service</strong>, which processes the token and the message content for that purpose. Pub reminders from geofencing appear on the phone itself and pass through no external service.</p>
 
   <h3>Feedback</h3>
   <p>When you send us feedback, we store its text, any contact details you give in it yourself, the attached screenshot and basic technical details (app version, platform). We can copy feedback into a task management tool (Linear) so that we do not forget to sort it out. When an account is permanently deleted, we delete the message, the attachment and any copy of it in Linear.</p>
@@ -120,7 +120,7 @@
     <li><strong>Anonymous device account</strong>: telling individual devices apart without personal registration.</li>
     <li><strong>User account (email / Google / Apple)</strong>: signing in and carrying your data between devices.</li>
     <li><strong>Beer Diary, visits, ratings, photos</strong>: your personal record of your evenings and your statistics.</li>
-    <li><strong>Public profile, Parta and community features</strong>: sharing with friends, leaderboards, discovery and community meet-ups.</li>
+    <li><strong>Public profile, Crew and community features</strong>: sharing with friends, leaderboards, discovery and community meet-ups.</li>
     <li><strong>Operational and product statistics and technical errors</strong>: finding out how many accounts use the app, which features are useful and where the app fails.</li>
   </ul>
   <p>We do not use data for ad targeting or for tracking across services. The only automation that assesses your records is the leaderboard fairness rules described above; no automated decision-making with legal effects takes place.</p>
@@ -128,13 +128,13 @@
   <h2 id="treti-strany">Third-party services</h2>
 
   <h3>The operator’s own server</h3>
-  <p>On our own server we process the anonymous device account, any user account and profile, the Beer Diary and your records, photos, the social data of your Parta, community meet-ups, pub details filled in voluntarily, push tokens, feedback and operational and product statistics. This data serves only to run the app, measure usage and improve the app; we send it to no ad network and to no external analytics tool.</p>
+  <p>On our own server we process the anonymous device account, any user account and profile, the Beer Diary and your records, photos, the social data of your Crew, community meet-ups, pub details filled in voluntarily, push tokens, feedback and operational and product statistics. This data serves only to run the app, measure usage and improve the app; we send it to no ad network and to no external analytics tool.</p>
 
   <h3>Google Maps, Google Places and Google Geocoding</h3>
   <p>The map screen uses the <strong>Google Maps SDK</strong>, which talks to Google servers to draw the map (among other things the section of the map being displayed and technical device identifiers). When you add a missing venue, our server can search for the name you entered through the <strong>Google Places API</strong> and convert the point or address you confirmed through the <strong>Google Geocoding API</strong>. Google receives the name searched for, the address text or the coordinates of the chosen point, not your identity. Policy: <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a></p>
 
   <h3>Menu photo processing (OpenRouter and an AI model)</h3>
-  <p>Our server passes the beer menu photo from the “Vyfoť menu” feature to the <strong>OpenRouter</strong> service, which processes it with an AI model (currently Google Gemini). We do not store the photo, and under our settings the provider must not use it for training. Policy: <a href="https://openrouter.ai/privacy">https://openrouter.ai/privacy</a></p>
+  <p>Our server passes the beer menu photo from the “Snap the menu” feature to the <strong>OpenRouter</strong> service, which processes it with an AI model (currently Google Gemini). We do not store the photo, and under our settings the provider must not use it for training. Policy: <a href="https://openrouter.ai/privacy">https://openrouter.ai/privacy</a></p>
 
   <h3>Expo Push Service</h3>
   <p>We deliver push notifications through the Expo service (Expo Push Service), which processes the device push token and the content of the notification. Policy: <a href="https://expo.dev/privacy">https://expo.dev/privacy</a></p>
