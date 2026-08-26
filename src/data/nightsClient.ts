@@ -290,16 +290,37 @@ export function nightPublishWire(payload: NightPublishPayload): Record<string, u
   };
 }
 
-function extractError(data: unknown, status: number): NightActionError {
-  if (data && typeof data === 'object') {
-    const obj = data as Record<string, unknown>;
-    if (typeof obj.detail === 'string') {
-      return {
-        ok: false,
-        code: typeof obj.code === 'string' ? obj.code : `http_${status}`,
-        detail: obj.detail,
-      };
+/**
+ * The first sentence the server actually said.
+ *
+ * DRF answers a rejected publish with `{"non_field_errors": ["…"]}` rather than
+ * `detail`, so reading only `detail` turned "A published night must contain at
+ * least one drink" into "Nepodařilo se to uložit. Zkus to znovu." and the user
+ * retried forever.
+ */
+function firstSerializerError(obj: Record<string, unknown>): string | null {
+  const fields = ['non_field_errors', ...Object.keys(obj)];
+  for (const field of fields) {
+    if (field === 'code' || field === 'detail') continue;
+    const value = obj[field];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (Array.isArray(value)) {
+      const first = value.find((item) => typeof item === 'string' && item.trim());
+      if (typeof first === 'string') return first.trim();
     }
+  }
+  return null;
+}
+
+function extractError(data: unknown, status: number): NightActionError {
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    const code = typeof obj.code === 'string' ? obj.code : `http_${status}`;
+    if (typeof obj.detail === 'string' && obj.detail.trim()) {
+      return { ok: false, code, detail: obj.detail };
+    }
+    const serializerError = firstSerializerError(obj);
+    if (serializerError) return { ok: false, code, detail: serializerError };
   }
   return { ok: false, code: `http_${status}`, detail: 'Nepodařilo se to uložit. Zkus to znovu.' };
 }
