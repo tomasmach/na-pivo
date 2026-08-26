@@ -252,10 +252,13 @@ function BeerFormBody({
 
   const trimmedName = name.trim();
   const priceCzk = parsePriceInputToCzk(priceText, priceCurrency);
-  // Outside a pub the price is optional: an empty field is fine (unknown stays
-  // unknown), a non-empty one must still parse.
+  // The price is OPTIONAL everywhere it is not the whole point of the sheet.
+  // The diary has always stored it as unknown, and requiring it in a pub meant
+  // a tap row with no known price opened a form you could not submit — a beer
+  // that goes unwritten because nobody remembered what it cost. `price` mode is
+  // the exception: that sheet exists to ask "Kolik stojí?".
   const priceValid =
-    outside || menuMode ? priceText.trim() === '' || priceCzk !== null : priceCzk !== null;
+    mode === 'price' ? priceCzk !== null : priceText.trim() === '' || priceCzk !== null;
   const nameValid = nameLocked || trimmedName.length > 0;
   const canSubmit = priceValid && nameValid;
   const placeholder = menuMode

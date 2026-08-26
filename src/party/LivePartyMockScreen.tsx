@@ -53,7 +53,12 @@ import {
   WineIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassPill } from '@/components/shared/GlassIconButton';
-import { PartyDrinkSheet, type PartyDrinkChoice } from '@/party/PartyDrinkSheet';
+import {
+  PartyDrinkSheet,
+  mergePartyDrinkChoices,
+  type PartyDrinkChoice,
+  type PartyDrinkSource,
+} from '@/party/PartyDrinkSheet';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
@@ -592,40 +597,41 @@ export default function LivePartyMockScreen() {
           [...drinksAtPlace].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null,
       };
     }, [myDrinks, partyPlaceKey, tallyCurrent, tallyHistory]);
-  const drinkChoices = React.useMemo(() => {
-    const groupedDrinks = new Map<string, PartyDrinkChoice>();
-    for (const drink of privateDrinksAtPlace) {
-      const key = drinkIdentity(drink);
-      const current = groupedDrinks.get(key);
-      groupedDrinks.set(key, {
-        key,
+  // What you already drank here, then the pub's taps — merged so one beer is
+  // one row however the three sources spell it (§13 of the QA pass: "Pilsner
+  // Urquell · 0,5 l · 60 Kč ×2" sat right above "Pilsner Urquell 12° · 0,5 l").
+  const drinkChoices = React.useMemo<PartyDrinkChoice[]>(() => {
+    const sources: PartyDrinkSource[] = [
+      ...privateDrinksAtPlace.map((drink) => ({
         name: drink.beerName,
         drinkType: drinkTypeOf(drink),
         priceCzk: drink.priceCzk,
         volumeMl: drink.volumeMl,
-        count: (current?.count ?? 0) + 1,
-        meta: [
-          drink.volumeMl ? formatVolume(drink.volumeMl) : null,
-          drink.priceCzk ? formatPrice(drink.priceCzk, priceCurrency) : null,
-        ].filter(Boolean).join(' · ') || null,
-      });
-    }
-    for (const tap of taps) {
-      const candidate: PartyDrinkChoice = {
-        key: `beer|${tap.name}|500|${tap.priceCzk ?? ''}`,
+        count: 1,
+      })),
+      ...taps.map((tap) => ({
         name: tap.name,
-        drinkType: 'beer',
+        drinkType: 'beer' as DrinkType,
         priceCzk: tap.priceCzk ?? undefined,
         volumeMl: 500,
         count: 0,
-        meta: [formatVolume(500), tap.priceCzk ? formatPrice(tap.priceCzk, priceCurrency) : null]
-          .filter(Boolean).join(' · '),
-      };
-      if (![...groupedDrinks.values()].some((row) => row.name === tap.name && row.drinkType === 'beer')) {
-        groupedDrinks.set(candidate.key, candidate);
-      }
-    }
-    return [...groupedDrinks.values()];
+      })),
+    ];
+    return mergePartyDrinkChoices(sources).map((row) => ({
+      key: `${row.drinkType}|${row.name}|${row.volumeMl ?? ''}|${row.priceCzk ?? ''}`,
+      name: row.name,
+      drinkType: row.drinkType,
+      priceCzk: row.priceCzk,
+      volumeMl: row.volumeMl,
+      count: row.count,
+      meta:
+        [
+          row.volumeMl ? formatVolume(row.volumeMl) : null,
+          row.priceCzk ? formatPrice(row.priceCzk, priceCurrency) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
+    }));
   }, [priceCurrency, privateDrinksAtPlace, taps]);
   const { totalCzk, hasCompletePrice, receiptBeerRows, receiptOtherRows } = React.useMemo(() => {
     const receiptGrouped = new Map<string, PartyDrinkChoice>();

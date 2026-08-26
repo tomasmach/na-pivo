@@ -23,6 +23,69 @@ export interface PartyDrinkChoice {
   meta: string | null;
 }
 
+/** One candidate row, before it is dressed up with a key and a meta line. */
+export interface PartyDrinkSource {
+  name: string;
+  drinkType: DrinkType;
+  priceCzk?: number;
+  volumeMl?: number;
+  /** How many of these are already written down tonight; 0 for a mere offer. */
+  count: number;
+}
+
+/**
+ * The same beer, spelled three ways.
+ *
+ * The list is fed from three places — what you already logged here, the pub's
+ * tap menu and the house default — so one Plzeň came out as "Pilsner Urquell ·
+ * 0,5 l · 60 Kč ×2" AND "Pilsner Urquell 12° · 0,5 l". A degree is not a
+ * different beer, so the name is normalised down to letters and digits before
+ * two rows are compared.
+ */
+function drinkNameIdentity(name: string): string {
+  return name
+    .toLocaleLowerCase('cs-CZ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // "12°", "11 °" — the degree belongs to the same tap.
+    .replace(/\d+\s*°/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * One row per drink, in first-seen order.
+ *
+ * The merged row keeps the price (a fact the other row simply did not have),
+ * the fuller spelling and the summed count.
+ */
+export function mergePartyDrinkChoices(
+  sources: readonly PartyDrinkSource[],
+): PartyDrinkSource[] {
+  const rows: PartyDrinkSource[] = [];
+  const positions = new Map<string, number>();
+
+  for (const source of sources) {
+    const identity = `${source.drinkType}|${drinkNameIdentity(source.name)}|${source.volumeMl ?? ''}`;
+    const at = positions.get(identity);
+    if (at === undefined) {
+      positions.set(identity, rows.length);
+      rows.push({ ...source });
+      continue;
+    }
+    const existing = rows[at];
+    rows[at] = {
+      ...existing,
+      name: source.name.length > existing.name.length ? source.name : existing.name,
+      priceCzk: existing.priceCzk ?? source.priceCzk,
+      volumeMl: existing.volumeMl ?? source.volumeMl,
+      count: existing.count + source.count,
+    };
+  }
+
+  return rows;
+}
+
 const TYPES: readonly DrinkType[] = ['beer', 'wine', 'shot', 'soft_drink'];
 
 export function PartyDrinkSheet({

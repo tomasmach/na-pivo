@@ -3,7 +3,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { View } from 'react-native';
 
 import { cs } from '@/i18n/cs';
-import { PartyDrinkSheet } from '@/party/PartyDrinkSheet';
+import { PartyDrinkSheet, mergePartyDrinkChoices } from '@/party/PartyDrinkSheet';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -48,4 +48,44 @@ it('captures the backdate clock at the user action after the sheet closes', () =
 
   now.mockRestore();
   jest.useRealTimers();
+});
+
+describe('mergePartyDrinkChoices', () => {
+  it('collapses the same beer however the three sources spell it', () => {
+    const rows = mergePartyDrinkChoices([
+      { name: 'Pilsner Urquell', drinkType: 'beer', priceCzk: 60, volumeMl: 500, count: 1 },
+      { name: 'Pilsner Urquell', drinkType: 'beer', priceCzk: 60, volumeMl: 500, count: 1 },
+      { name: 'Pilsner Urquell 12\u00b0', drinkType: 'beer', volumeMl: 500, count: 0 },
+    ]);
+
+    expect(rows).toEqual([
+      {
+        name: 'Pilsner Urquell 12\u00b0',
+        drinkType: 'beer',
+        priceCzk: 60,
+        volumeMl: 500,
+        count: 2,
+      },
+    ]);
+  });
+
+  it('takes the price from whichever row knows it', () => {
+    const rows = mergePartyDrinkChoices([
+      { name: 'Kozel', drinkType: 'beer', volumeMl: 500, count: 0 },
+      { name: 'kozel', drinkType: 'beer', priceCzk: 45, volumeMl: 500, count: 1 },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].priceCzk).toBe(45);
+  });
+
+  it('keeps genuinely different drinks apart', () => {
+    const rows = mergePartyDrinkChoices([
+      { name: 'Plze\u0148', drinkType: 'beer', volumeMl: 500, count: 0 },
+      { name: 'Plze\u0148', drinkType: 'beer', volumeMl: 300, count: 0 },
+      { name: 'Kofola', drinkType: 'soft_drink', volumeMl: 500, count: 0 },
+    ]);
+
+    expect(rows).toHaveLength(3);
+  });
 });
