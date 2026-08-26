@@ -228,6 +228,61 @@ export function QuizShell({
   }
   if (!question) return null;
 
+  const tile = (optionIndex: number) => {
+    const option = question.options[optionIndex];
+    const right = revealed && optionIndex === question.answer;
+    const wrong = revealed && mine?.option === optionIndex && !right;
+    const picked = mine?.option === optionIndex;
+    return (
+      <Pressable
+        key={option}
+        onPress={() => {
+          if (!canAnswer || answerLocked.current === question.id) return;
+          answerLocked.current = question.id;
+          // Canonical answers unlock us; bound the lock in case this answer
+          // never lands anywhere.
+          if (answerUnlock.current) clearTimeout(answerUnlock.current);
+          const atQuestion = question.id;
+          answerUnlock.current = setTimeout(() => {
+            if (answerLocked.current === atQuestion) answerLocked.current = null;
+          }, LOCK_RECOVERY_MS);
+          onAnswer(optionIndex);
+        }}
+        disabled={!canAnswer}
+        style={({ pressed }) => [
+          styles.tile,
+          picked && styles.tilePicked,
+          right && styles.tileRight,
+          wrong && styles.tileWrong,
+          pressed && canAnswer && styles.pressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !canAnswer, selected: picked }}
+        accessibilityLiveRegion={revealed && right ? "assertive" : undefined}
+        accessibilityLabel={
+          revealed && right ? (correctLabel ?? undefined) : option
+        }
+      >
+        <View style={styles.tileTop}>
+          <Text
+            style={[styles.letter, picked && styles.letterOn]}
+            allowFontScaling={false}
+          >
+            {LETTERS[optionIndex]}
+          </Text>
+          {right ? <CheckIcon size={16} color={Colors.success} /> : null}
+        </View>
+        <Text
+          style={[styles.tileText, picked && styles.tileTextOn]}
+          numberOfLines={3}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {option}
+        </Text>
+      </Pressable>
+    );
+  };
+
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
@@ -256,66 +311,17 @@ export function QuizShell({
             </Animated.Text>
           </StageCard>
 
-          {/* Four tiles, two by two. A vertical list of four rows read as a
-              settings screen; a grid reads as a game you tap fast. */}
+          {/* Four tiles, two by two, taking everything the question card
+              left behind. A vertical list of four rows read as a settings
+              screen; four equal slabs read as a game you tap fast, and the tap
+              target is as big as the table allows. */}
           <View style={styles.grid}>
-            {question.options.map((option, optionIndex) => {
-              const right = revealed && optionIndex === question.answer;
-              const wrong = revealed && mine?.option === optionIndex && !right;
-              const picked = mine?.option === optionIndex;
-              return (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    if (!canAnswer || answerLocked.current === question.id)
-                      return;
-                    answerLocked.current = question.id;
-                    // Canonical answers unlock us; bound the lock in case this
-                    // answer never lands anywhere.
-                    if (answerUnlock.current) clearTimeout(answerUnlock.current);
-                    const atQuestion = question.id;
-                    answerUnlock.current = setTimeout(() => {
-                      if (answerLocked.current === atQuestion)
-                        answerLocked.current = null;
-                    }, LOCK_RECOVERY_MS);
-                    onAnswer(optionIndex);
-                  }}
-                  disabled={!canAnswer}
-                  style={({ pressed }) => [
-                    styles.tile,
-                    picked && styles.tilePicked,
-                    right && styles.tileRight,
-                    wrong && styles.tileWrong,
-                    pressed && canAnswer && styles.pressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ disabled: !canAnswer, selected: picked }}
-                  accessibilityLiveRegion={
-                    revealed && right ? "assertive" : undefined
-                  }
-                  accessibilityLabel={
-                    revealed && right ? (correctLabel ?? undefined) : option
-                  }
-                >
-                  <View style={styles.tileTop}>
-                    <Text
-                      style={[styles.letter, picked && styles.letterOn]}
-                      allowFontScaling={false}
-                    >
-                      {LETTERS[optionIndex]}
-                    </Text>
-                    {right ? <CheckIcon size={16} color={Colors.success} /> : null}
-                  </View>
-                  <Text
-                    style={[styles.tileText, picked && styles.tileTextOn]}
-                    numberOfLines={3}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {option}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {[0, 2].map((start) => (
+              <View key={start} style={styles.gridRow}>
+                {tile(start)}
+                {tile(start + 1)}
+              </View>
+            ))}
           </View>
         </GameStage>
 
@@ -389,15 +395,14 @@ const styles = StyleSheet.create({
   },
 
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flex: 1,
     alignSelf: "stretch",
-    justifyContent: "space-between",
     marginTop: Spacing.md,
-    rowGap: Spacing.sm,
+    gap: Spacing.sm,
   },
+  gridRow: { flex: 1, flexDirection: "row", gap: Spacing.sm },
   tile: {
-    width: "48.5%",
+    flex: 1,
     minHeight: 84,
     padding: Spacing.md,
     borderRadius: Radius.medium,

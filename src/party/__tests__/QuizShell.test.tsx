@@ -83,6 +83,24 @@ const answer = (entrantId: string, option: number): QuizAnswer => ({
 });
 
 describe('QuizShell', () => {
+  it('gives the four tiles the rest of the stage, in two equal rows', () => {
+    renderShell([]);
+
+    const tiles = QUESTION.options.map((option) => {
+      const style = screen.getByLabelText(option).props.style;
+      return StyleSheet.flatten(
+        typeof style === 'function' ? style({ pressed: false }) : style,
+      );
+    });
+    // Every tile grows the same amount, so no answer is bigger than another and
+    // none of them stops halfway down the table.
+    for (const tile of tiles) {
+      expect(tile.flex).toBe(1);
+      expect(tile.minHeight).toBe(tiles[0].minHeight);
+    }
+    expect(tiles).toHaveLength(4);
+  });
+
   it('waits for a durable finish and retries the exact quiz result after failure', async () => {
     const answers: QuizAnswer[] = QUIZ_QUESTIONS.flatMap((question, index) => [
       {
