@@ -1,23 +1,26 @@
 /**
- * Chance, drawn: dice, a person, a card off the top.
+ * Chance, drawn: a card off the top, or a person out of the hat.
  *
- * The games that come down to "the app decides" — Kostky and King's Cup. What
- * makes them worth opening a phone for is not the
- * answer, which anyone could get by counting on fingers; it is the SUSPENSE
- * before it. So none of them just prints a result: the dice tumble, the names
- * race past and slow down, the card turns over. That half second is the game.
+ * King's Cup is the game this is really for, and what makes it worth opening a
+ * phone for is not the answer — anyone could deal a real deck — it is the
+ * SUSPENSE before it. So nothing here just prints a result: the card turns over.
  *
- * All three land on a value chosen up front and then animate TO it, rather than
- * animating and reading off whatever they hit. Otherwise reduced motion — where
- * there is no animation to read off — would need its own second implementation,
- * and the two would drift.
+ * The card is now a card. Rank and suit in both corners, red on cream for the
+ * hearts and diamonds, the rule's title in the middle and the rule under it;
+ * before the first draw the deck shows its back — stout, with the repeated
+ * glyph pattern drawn out of plain Views, because a "?" in a grey box is not a
+ * playing card and the whole table could see that.
+ *
+ * The draw lands on a value chosen up front and then animates TO it, rather
+ * than animating and reading off whatever it hits. Otherwise reduced motion —
+ * where there is no animation to read off — would need its own second
+ * implementation, and the two would drift.
  */
 
 import React from "react";
 import {
   AccessibilityInfo,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -34,7 +37,16 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { kingsDeck, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
-import { MockColors, MockLayout } from "@/mocks/mockTheme";
+import {
+  GameStage,
+  STAGE_FILL,
+  StageCard,
+  StageChip,
+  StageInk,
+  StageIntro,
+  StagePill,
+  stageBody,
+} from "@/party/shells/GameStage";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap, Fonts } from "@/theme/fonts";
 import { Radius, Spacing } from "@/theme/layout";
@@ -51,6 +63,20 @@ const LOCK_RECOVERY_MS = 1200;
 /** Module scope so `react-hooks/purity` can see these are taps, not render. */
 const pick = <T,>(items: readonly T[]): T =>
   items[Math.floor(Math.random() * items.length)];
+
+const SUIT_GLYPH: Record<string, string> = {
+  clubs: "♣",
+  diamonds: "♦",
+  hearts: "♥",
+  spades: "♠",
+};
+
+/** Hearts and diamonds are red. On a cream card that is not decoration. */
+function suitInk(suit?: string): string {
+  return suit === "hearts" || suit === "diamonds"
+    ? StageInk.red
+    : StageInk.strong;
+}
 
 export interface DrawPlayer {
   id: string;
@@ -108,8 +134,8 @@ export function DrawShell({
    * In shared mode the card used to be read ONLY from the folded server/queue
    * state, so the moment that fold came back empty — a rejected enqueue, a
    * rolled-back optimistic action, a table where the other phone never answers
-   * — the card flipped back to "?" and the drawer was left staring at it. The
-   * canonical shared draw still wins the moment it exists; until then this
+   * — the card flipped back to its back and the drawer was left staring at it.
+   * The canonical shared draw still wins the moment it exists; until then this
    * phone shows its own.
    */
   const shown = result ?? localResult;
@@ -128,11 +154,17 @@ export function DrawShell({
   const shownCard =
     KINGS_DECK.find((card) => card.id === shown?.cardId) ??
     KINGS_CARDS.find((card) => card.card === shown?.cardId);
+  const shownRank = shownCard
+    ? "card" in shownCard
+      ? shownCard.card
+      : shownCard.rank
+    : null;
+  const shownSuit =
+    shownCard && "suit" in shownCard ? (shownCard.suit as string) : undefined;
+  const remaining = KINGS_DECK.length - effectiveCardIds.length;
   // One announcement per settled draw: the visible rank, title and rule.
   const cardLabel = shownCard
-    ? `${
-        "card" in shownCard ? shownCard.card : shownCard.rank
-      } ${shownCard.title} ${shownCard.rule}`
+    ? `${shownRank} ${shownCard.title} ${shownCard.rule}`
     : undefined;
   // Seeded with the result already on screen, so a remount never re-announces.
   const announcedNonce = React.useRef(shown?.nonce);
@@ -244,21 +276,40 @@ export function DrawShell({
     }, ROLL_MS);
   };
 
-  const settleStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: settle.value }],
+  /**
+   * Two half turns over the roll: the back goes round twice and the face is
+   * already at rest when it swaps in, so it reads as one card turning over
+   * rather than two cards trading places.
+   */
+  const flipStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 900 },
+      { rotateY: `${spin.value * 360}deg` },
+      { scale: settle.value },
+    ],
   }));
 
-  return (
-    <View style={[styles.wrap, { paddingBottom: insets.bottom + 88 }]}>
-      {intro && !shown ? (
-        <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-          {intro}
-        </Text>
-      ) : null}
+  const label = rolling
+    ? "…"
+    : deckFinished
+      ? "Dohráno"
+      : shown
+        ? "Znovu"
+        : action;
 
-      <View style={styles.stage}>
+  return (
+    <View style={stageBody(insets.bottom)}>
+      {intro && !shown ? <StageIntro text={intro} /> : null}
+
+      <GameStage
+        topRight={
+          kind === "card" ? (
+            <StageChip label={`Zbývá ${Math.max(0, remaining)}`} />
+          ) : undefined
+        }
+      >
         {kind === "person" ? (
-          <Animated.View style={settleStyle}>
+          <Animated.View style={flipStyle}>
             {rolling ? (
               // Names racing past. Not a spinner: you can see it is choosing
               // between the people actually at the table.
@@ -279,67 +330,113 @@ export function DrawShell({
         ) : null}
 
         {kind === "card" ? (
-          <Animated.View style={[styles.card, settleStyle]}>
+          <Animated.View style={[styles.cardWrap, flipStyle]}>
             {rolling || !shownCard ? (
-              <Text
-                style={styles.cardBack}
-                allowFontScaling={false}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-              >
-                ?
-              </Text>
+              <CardBack />
             ) : (
-              <Animated.View
-                key={shown?.nonce}
-                entering={FadeIn.duration(200)}
-                accessible
-                accessibilityRole="text"
-                accessibilityLiveRegion="polite"
-                accessibilityLabel={cardLabel}
-              >
-                <Text style={styles.cardRank} allowFontScaling={false}>
-                  {"card" in shownCard ? shownCard.card : shownCard.rank}
-                </Text>
-                <Text
-                  style={styles.cardTitle}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
+              <StageCard>
+                <CardCorner rank={shownRank} suit={shownSuit} place="top" />
+                <Animated.View
+                  key={shown?.nonce}
+                  entering={reduceMotion ? undefined : FadeIn.duration(200)}
+                  style={styles.face}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLiveRegion="polite"
+                  accessibilityLabel={cardLabel}
                 >
-                  {shownCard.title}
-                </Text>
-                <Text
-                  style={styles.cardRule}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {shownCard.rule}
-                </Text>
-              </Animated.View>
+                  <Text
+                    style={styles.cardTitle}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {shownCard.title}
+                  </Text>
+                  <Text
+                    style={styles.cardRule}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {shownCard.rule}
+                  </Text>
+                </Animated.View>
+                <CardCorner rank={shownRank} suit={shownSuit} place="bottom" />
+              </StageCard>
             )}
           </Animated.View>
         ) : null}
-      </View>
+      </GameStage>
 
-      <Pressable
-        onPress={draw}
-        disabled={spectator || rolling || deckFinished}
-        style={({ pressed }) => [
-          styles.action,
-          (pressed || rolling) && styles.actionPressed,
-          spectator && styles.actionMuted,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={
-          deckFinished ? "Dohráno" : shown ? `${action} znovu` : action
-        }
-        accessibilityState={{ disabled: spectator || rolling || deckFinished }}
-      >
-        <Text
-          style={styles.actionText}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {rolling ? "…" : deckFinished ? "Dohráno" : shown ? "Znovu" : action}
+      <View style={styles.dock}>
+        <StagePill
+          label={label}
+          onPress={draw}
+          disabled={spectator || rolling || deckFinished}
+          tone={spectator ? "muted" : "primary"}
+          accessibilityLabel={
+            deckFinished ? "Dohráno" : shown ? `${action} znovu` : action
+          }
+        />
+      </View>
+    </View>
+  );
+}
+
+/** Rank and suit in the card's corner — upright at the top, upside down below. */
+function CardCorner({
+  rank,
+  suit,
+  place,
+}: {
+  rank: string | null;
+  suit?: string;
+  place: "top" | "bottom";
+}) {
+  const ink = suitInk(suit);
+  return (
+    <View
+      style={[
+        styles.corner,
+        place === "top" ? styles.cornerTop : styles.cornerBottom,
+      ]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <Text style={[styles.rank, { color: ink }]} allowFontScaling={false}>
+        {rank}
+      </Text>
+      {suit ? (
+        <Text style={[styles.suit, { color: ink }]} allowFontScaling={false}>
+          {SUIT_GLYPH[suit]}
         </Text>
-      </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The deck, face down.
+ *
+ * A repeating diamond lattice built out of plain Views — no image, no SVG, and
+ * nothing that has to be commissioned. It only has to say "there is a deck here
+ * and you have not turned it over yet", and at arm's length across a table it
+ * does.
+ */
+function CardBack() {
+  return (
+    <View
+      testID="card-back"
+      style={styles.back}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={styles.backPattern} pointerEvents="none">
+        {Array.from({ length: 7 }).map((_, row) => (
+          <View key={row} style={styles.backRow}>
+            {Array.from({ length: 5 }).map((__, column) => (
+              <View key={column} style={styles.backPip} />
+            ))}
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -367,20 +464,6 @@ function RollingNames({ players }: { players: DrawPlayer[] }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: MockLayout.screenPad,
-  },
-  intro: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: withAlpha(Colors.foam, 0.5),
-    textAlign: "center",
-    marginBottom: Spacing.xl,
-  },
-  stage: { minHeight: 220, alignItems: "center", justifyContent: "center" },
-
   person: {
     fontSize: 40,
     lineHeight: 48,
@@ -391,54 +474,67 @@ const styles = StyleSheet.create({
   },
   personRolling: { color: withAlpha(Colors.foam, 0.45) },
 
-  card: {
-    width: 260,
-    minHeight: 200,
-    padding: Spacing.lg,
-    borderRadius: 24,
+  cardWrap: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
     justifyContent: "center",
-    backgroundColor: MockColors.surfaceHigh,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.12),
   },
-  cardBack: {
+  face: { alignItems: "center", justifyContent: "center", width: "100%" },
+  corner: { position: "absolute", alignItems: "center" },
+  cornerTop: { top: Spacing.md, left: Spacing.md },
+  cornerBottom: {
+    bottom: Spacing.md,
+    right: Spacing.md,
+    transform: [{ rotate: "180deg" }],
+  },
+  rank: {
     fontFamily: Fonts.numeral,
-    fontSize: 64,
-    lineHeight: 79,
+    fontSize: 22,
+    lineHeight: 27,
     includeFontPadding: false,
-    color: withAlpha(Colors.foam, 0.2),
-    textAlign: "center",
   },
-  cardRank: {
-    fontFamily: Fonts.numeral,
-    fontSize: 34,
-    lineHeight: 42,
-    includeFontPadding: false,
-    color: Colors.amber,
-  },
+  suit: { fontSize: 16, lineHeight: 18, fontWeight: "700" },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 30,
+    lineHeight: 36,
     fontWeight: "800",
-    color: Colors.foam,
-    marginTop: 2,
+    color: StageInk.strong,
+    textAlign: "center",
+    letterSpacing: -0.5,
   },
   cardRule: {
+    marginTop: Spacing.sm,
     fontSize: 15,
     lineHeight: 21,
     fontWeight: "500",
-    color: withAlpha(Colors.foam, 0.72),
-    marginTop: Spacing.sm,
+    color: StageInk.soft,
+    textAlign: "center",
   },
 
-  action: {
-    height: 60,
-    borderRadius: Radius.pill,
+  back: {
+    width: "78%",
+    maxWidth: 300,
+    maxHeight: "84%",
+    marginTop: Spacing.xl,
+    aspectRatio: 0.72,
+    borderRadius: Radius.medium,
+    overflow: "hidden",
+    backgroundColor: Colors.stout3,
+    borderWidth: 6,
+    borderColor: Colors.foam,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: Spacing.xl,
-    backgroundColor: Colors.amber,
   },
-  actionPressed: { opacity: 0.85 },
-  actionMuted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
-  actionText: { fontSize: 17, fontWeight: "800", color: Colors.stout },
+  backPattern: { ...STAGE_FILL, justifyContent: "space-evenly" as const },
+  backRow: { flexDirection: "row", justifyContent: "space-evenly" },
+  backPip: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    transform: [{ rotate: "45deg" }],
+    backgroundColor: withAlpha(Colors.amber, 0.16),
+  },
+
+  dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });
