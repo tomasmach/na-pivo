@@ -80,6 +80,26 @@ function historicalNight(
   };
 }
 
+/**
+ * Hide the evening that is still running.
+ *
+ * A running evening already has its place in the app: the live bar and the ring
+ * around the Party tab (DESIGN §20.5). Its drinks reach the server one by one,
+ * so the automatic Parta history would otherwise draw them as a finished post
+ * — with a duration that grows while you sit there — before anything was
+ * published.
+ */
+export function withoutRunningNight(
+  nights: readonly PublishedNight[],
+  runningDrinkingDay: string | null,
+): PublishedNight[] {
+  if (!runningDrinkingDay) return [...nights];
+  return nights.filter(
+    (night) =>
+      !(night.historical && night.isMine && night.drinkingDay === runningDrinkingDay),
+  );
+}
+
 /** Add automatic Parta history without duplicating an explicitly published day. */
 export function mergeHistoricalNights(
   published: readonly PublishedNight[],

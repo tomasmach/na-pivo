@@ -1,7 +1,7 @@
 import type { PublishedNight } from '@/data/nightsClient';
 import type { PartaFeedSitting } from '@/data/partaFeedClient';
 
-import { mergeHistoricalNights } from '../historicalFeedModel';
+import { mergeHistoricalNights, withoutRunningNight } from '../historicalFeedModel';
 
 function sitting(
   id: string,
@@ -102,4 +102,37 @@ it('keeps the explicitly published version instead of duplicating its historical
   expect(mergeHistoricalNights([published], [sitting('legacy')])).toEqual([
     published,
   ]);
+});
+
+
+describe('withoutRunningNight', () => {
+  const automatic = (over: Partial<PublishedNight> = {}): PublishedNight => ({
+    ...publishedNight(),
+    id: 'historical-night:me:2026-07-18',
+    historical: true,
+    isMine: true,
+    drinkingDay: '2026-07-18',
+    ...over,
+  });
+
+  it('hides my own automatic card for the evening that is still running', () => {
+    const nights = [automatic(), automatic({ id: 'other-day', drinkingDay: '2026-07-17' })];
+
+    expect(withoutRunningNight(nights, '2026-07-18').map((night) => night.id)).toEqual([
+      'other-day',
+    ]);
+  });
+
+  it("keeps a published night, a friend's card and everything when nothing runs", () => {
+    const nights = [
+      automatic({ id: 'published', historical: false }),
+      automatic({ id: 'friend', isMine: false }),
+    ];
+
+    expect(withoutRunningNight(nights, '2026-07-18').map((night) => night.id)).toEqual([
+      'published',
+      'friend',
+    ]);
+    expect(withoutRunningNight([automatic()], null)).toHaveLength(1);
+  });
 });

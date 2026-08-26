@@ -54,15 +54,18 @@ import {
   mergeNightPages,
   replaceNightReaction,
 } from '@/feed/feedModel';
-import { mergeHistoricalNights } from '@/feed/historicalFeedModel';
+import { mergeHistoricalNights, withoutRunningNight } from '@/feed/historicalFeedModel';
 import { useNightReaction } from '@/feed/useNightReaction';
 import { useNightActions } from '@/feed/useNightActions';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
 import { useAccountStore } from '@/stores/accountStore';
 import { hasLiveFriendSignal, usePartaSignalStore } from '@/stores/partaSignalStore';
+import { usePartyEveningStore } from '@/stores/partyEveningStore';
+import { drinkingDayKey } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -481,6 +484,28 @@ function FeedScreenContent() {
   const [moreError, setMoreError] = useState(false);
   const [showingCache, setShowingCache] = useState(false);
 
+  // The evening that is running right now is chrome, not a post (§20.5). Its
+  // drinks are already on the server, so without this the feed would show it as
+  // a finished night while you are still sitting in it.
+  const partyLive = useLivePartyStore((state) => state.live);
+  const partyStartedAt = useLivePartyStore((state) => state.startedAt);
+  const evening = usePartyEveningStore((state) => state.evening);
+  const runningDrinkingDay = useMemo(() => {
+    const eveningStartedAt =
+      evening?.active === true ? Date.parse(evening.startedAt) : Number.NaN;
+    const startedAt = partyLive && partyStartedAt !== null
+      ? partyStartedAt
+      : Number.isFinite(eveningStartedAt)
+        ? eveningStartedAt
+        : null;
+    if (startedAt === null) return null;
+    return drinkingDayKey(new Date(startedAt));
+  }, [evening?.active, evening?.startedAt, partyLive, partyStartedAt]);
+  const feedNights = useMemo(
+    () => withoutRunningNight(nights ?? [], runningDrinkingDay),
+    [nights, runningDrinkingDay],
+  );
+
   const requestSeq = useRef(0);
   const mountedRef = useRef(true);
   const accountIdRef = useRef<string | null>(null);
@@ -771,7 +796,7 @@ function FeedScreenContent() {
           onChange={changeScope}
           inset={MockLayout.screenPad}
         />
-        {(nights?.length ?? 0) > 0 && (showingCache || loadError) ? (
+        {feedNights.length > 0 && (showingCache || loadError) ? (
           <View style={[styles.statusBar, loadError && styles.statusBarError]}>
             <Text style={styles.statusText} maxFontSizeMultiplier={FontScaleCap.body}>
               {loadError
@@ -794,7 +819,7 @@ function FeedScreenContent() {
         ) : null}
       </View>
     ),
-    [changeScope, insets.top, loadError, nights?.length, refresh, scopeLabel, showingCache],
+    [changeScope, feedNights.length, insets.top, loadError, refresh, scopeLabel, showingCache],
   );
 
   const empty = initialLoading ? (
@@ -820,7 +845,7 @@ function FeedScreenContent() {
     <View style={styles.screen}>
       <FlatList
         style={styles.screen}
-        data={nights ?? []}
+        data={feedNights}
         keyExtractor={(night) => night.id}
         renderItem={({ item, index }) => (
           <FeedCard
@@ -867,7 +892,7 @@ function FeedScreenContent() {
         contentContainerStyle={[
           styles.content,
           { paddingBottom: insets.bottom + TAB_CHROME },
-          (nights?.length ?? 0) === 0 && styles.contentEmpty,
+          feedNights.length === 0 && styles.contentEmpty,
         ]}
         contentInsetAdjustmentBehavior="never"
         onEndReachedThreshold={0.35}
