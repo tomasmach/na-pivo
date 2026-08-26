@@ -23,6 +23,24 @@ export interface UseDevicePositionResult {
  * The live high-accuracy watcher keeps running and replaces it as soon as a
  * fresh sample arrives. A tight age cap prevents a fix from a previous journey
  * from briefly pointing the compass at the wrong city. */
+/**
+ * Is the app in front of the user right now?
+ *
+ * Every guard here used to compare `AppState.currentState === 'active'`, and
+ * after a JS reload that read can still be `'unknown'` — the app has never
+ * reported a state to this fresh runtime. The watcher then refused to start,
+ * and the ONLY way back was an AppState `change` event, which never arrives
+ * because the app is already in the foreground: the pub list sat on "Zkusit
+ * polohu znovu" with no distances until the app was relaunched.
+ *
+ * `'unknown'` therefore counts as foreground. Backgrounded and inactive still
+ * do not — those are the states the guard actually exists for.
+ */
+function isForeground(): boolean {
+  const state = AppState.currentState;
+  return state === 'active' || state === 'unknown';
+}
+
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 100;
 
@@ -102,7 +120,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       });
       if (
         cached &&
-        AppState.currentState === 'active' &&
+        isForeground() &&
         isMountedRef.current &&
         enabledRef.current
       ) {
@@ -147,7 +165,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
         !isMountedRef.current ||
         !enabledRef.current ||
         subscriptionRef.current ||
-        AppState.currentState !== 'active'
+        !isForeground()
       ) {
         sub.remove();
         return;
@@ -162,7 +180,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
         !subscriptionRef.current &&
         isMountedRef.current &&
         enabledRef.current &&
-        AppState.currentState === 'active';
+        isForeground();
       retryQueuedRef.current = false;
       if (shouldRunQueuedRetry) {
         // Re-enter through the effect after this attempt has fully settled.
@@ -181,7 +199,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     if (
       !isMountedRef.current ||
       !enabledRef.current ||
-      AppState.currentState !== 'active'
+      !isForeground()
     ) {
       return;
     }
@@ -196,7 +214,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   useEffect(() => {
     enabledRef.current = enabled;
 
-    if (enabled && AppState.currentState === 'active') {
+    if (enabled && isForeground()) {
       // Run after the effect body so any cached/native callback updates state as
       // an external-system response, never as a cascading synchronous effect.
       void Promise.resolve().then(startWatching);

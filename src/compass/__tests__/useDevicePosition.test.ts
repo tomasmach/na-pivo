@@ -450,4 +450,36 @@ describe('useDevicePosition', () => {
     hook.unmount();
     expect(remove).toHaveBeenCalledTimes(1);
   });
+  // A JS reload gives the fresh runtime an AppState it has never been told
+  // about. Treating that as "not foreground" left the pub list on "Zkusit
+  // polohu znovu" with no distances until the app was relaunched, because the
+  // only way back was an AppState change event that never fires while the app
+  // is already in front of you.
+  it('starts watching after a reload leaves the app state unreported', async () => {
+    (AppState as { currentState: string }).currentState = 'unknown';
+    (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
+  it('still refuses to watch while the app is in the background', async () => {
+    (AppState as { currentState: string }).currentState = 'background';
+    (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).not.toHaveBeenCalled();
+    hook.unmount();
+  });
 });
