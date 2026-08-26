@@ -27,8 +27,14 @@ import {
   fetchFriendInviteCode,
   followAccount,
   searchFriends,
+  sendFriendRequest,
   type FriendProfile,
 } from '@/data/friendsClient';
+import {
+  enqueueFriendOp,
+  isRetriableFriendError,
+  type FriendQueueItem,
+} from '@/data/friendsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -126,12 +132,47 @@ export function AddFriendTools({
   }, [query, setResults, showToast]);
 
   /**
-   * Search now ends in a follow, not an invite. Sending a stranger a request
-   * and waiting for them to confirm was the ceremony this rebuild removed —
-   * being in someone's party is something you earn by sitting down with them,
-   * and the QR/link above is how you get them to the table. Following is the
-   * light thing you can do from a search result, so that is what the row does.
+   * A search result offers both halves of "I found you".
+   *
+   * The invite is the primary one: it is what @nickname search was for, it is
+   * what the person on the other end gets a push about, and it is the only one
+   * of the two that survives no signal — a request that cannot be delivered
+   * goes into the friends queue and lands later. Following stays as the light,
+   * one-way alternative for people you only want to watch.
    */
+  const requestFriend = useCallback(
+    async (profile: FriendProfile) => {
+      if (requestingKey) return;
+      trackUiInteraction('friend_request_send', 'submit');
+      setRequestingKey(profile.id);
+      const queuedRequest: FriendQueueItem = {
+        op: 'request',
+        key: `account:${profile.id}`,
+        accountId: profile.id,
+      };
+      const result = await sendFriendRequest({ accountId: profile.id });
+      if (!mountedRef.current) return;
+      setRequestingKey(null);
+      if (result.ok || isRetriableFriendError(result)) {
+        trackUiInteraction('friend_request_send', 'success');
+        if (!result.ok) {
+          await enqueueFriendOp(queuedRequest);
+          if (!mountedRef.current) return;
+        }
+        showToast(cs.friends.requestSent, {
+          icon: <UserPlusIcon size={20} color={Colors.amber} />,
+        });
+        setQuery('');
+        setResults([]);
+        onChanged();
+      } else {
+        trackUiInteraction('friend_request_send', 'failure');
+        showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
+      }
+    },
+    [onChanged, requestingKey, setQuery, setResults, showToast],
+  );
+
   const followProfile = useCallback(
     async (profile: FriendProfile) => {
       if (requestingKey) return;
@@ -257,11 +298,23 @@ export function AddFriendTools({
                       hitSlop={ROUND_HIT_SLOP}
                       accessibilityRole="button"
                       accessibilityLabel={`${cs.friends.follow}: ${profile.nickname ?? profile.displayName}`}
+                      style={({ pressed }) => [pressed && styles.dim]}
+                    >
+                      <Text style={styles.followBtnText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {cs.friends.follow}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void requestFriend(profile)}
+                      disabled={requestingKey != null}
+                      hitSlop={ROUND_HIT_SLOP}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${cs.friends.addByNickname}: ${profile.nickname ?? profile.displayName}`}
                       style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
                     >
                       {requestingKey === profile.id ? (
-                      <ActivityIndicator color={Colors.foam} size="small" />
-                    ) : (
+                        <ActivityIndicator color={Colors.foam} size="small" />
+                      ) : (
                         <PlusIcon size={18} color={Colors.foam} />
                       )}
                     </Pressable>
@@ -344,6 +397,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
+  },
+  followBtnText: {
+    fontWeight: '600',
+    fontSize: 14,
+    color: Colors.mutedText,
   },
   addBtn: {
     width: HitArea.min,

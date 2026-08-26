@@ -297,6 +297,8 @@ export const cs = {
   compass: {
     headerTitle: 'na pivo',
     hiddenPubHint: 'Ťukni pro odhalení',
+    /** Stands in for the pub's name while "Schovávat názvy hospod" is on. */
+    hiddenPubName: 'Tajná hospoda',
     distanceCaption: {
       nearest: 'do nejbližšího piva',
       surprise: 'do tvého náhodného piva',
@@ -433,6 +435,9 @@ export const cs = {
       count === 1 ? 'Filtruju jednu věc' : count >= 2 && count <= 4 ? `Filtruju ${count} věci` : `Filtruju ${count} věcí`,
     nudgeFiltersClear: 'Zrušit',
     nudgeFocused: 'Mířím za partou',
+    /** Badge on the head cell while the needle is borrowed by a friend's
+     *  "Ukaž na kompasu" instead of pointing at the list's first pub. */
+    focusBadge: 'Cíl',
     nudgeNoMagnetometer: 'Tvůj telefon nemá kompas, šipka se točit nebude.',
     nudgeCalibrate: 'Otoč telefonem do osmičky, ať se kompas srovná.',
   },

@@ -287,4 +287,45 @@ describe('CommunityMockScreen', () => {
     );
     expect(event[0].props.accessibilityLabel).toContain('Letná. Otevřít akci');
   });
+
+  it('opens a profile from a leaderboard row, but never your own', async () => {
+    mockFetchLeaderboard.mockResolvedValueOnce({
+      category: 'pubs',
+      period: 'week',
+      periodStart: null,
+      totalRanked: 5,
+      entries: [1, 2, 3, 4, 5].map((rank) => ({
+        rank,
+        score: 10 - rank,
+        isMe: rank === 5,
+        isFriend: false,
+        account: {
+          id: `account-${rank}`,
+          nickname: `pivar${rank}`,
+          displayName: `Pivař ${rank}`,
+          avatarUrl: null,
+        },
+      })),
+      me: { rank: 5, score: 5, listed: true, eligible: true },
+    });
+
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(<CommunityMockScreen />);
+    });
+    await act(settleEffects);
+
+    const stranger = renderer!.root.findByProps({
+      accessibilityLabel: '4. @pivar4, 6 hospod',
+    });
+    act(() => stranger.props.onPress());
+    expect(mockPush).toHaveBeenCalledWith('/user?accountId=account-4');
+
+    // Your own row is not a door to somewhere you already are.
+    const mine = renderer!.root.findAll(
+      (node: { props?: { accessibilityLabel?: string } }) =>
+        node.props?.accessibilityLabel?.includes('@pivar5') === true,
+    );
+    expect(mine).toHaveLength(0);
+  });
 });

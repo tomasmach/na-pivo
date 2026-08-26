@@ -21,6 +21,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   ChevronLeftIcon: () => null,
+  HouseIcon: () => null,
   MapPinIcon: () => null,
   TargetIcon: () => null,
   Trash2Icon: () => null,

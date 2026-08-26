@@ -15,6 +15,12 @@
  * only shows up once you follow someone. Incoming requests appear only while
  * somebody is genuinely waiting, because a push must end at the decision it
  * announced instead of at a list that cannot accept it.
+ *
+ * "Odeslané pozvánky" is back for the same reason, and under the same
+ * condition: it is rendered only while somebody has actually been asked. An
+ * invite that vanishes the moment it is sent cannot be taken back, and
+ * `?focus=outgoing` — which the invite-claim screen still hands out — has to
+ * land on something.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -30,9 +36,10 @@ import {
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { CheckIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
-import { respondFriendRequest } from '@/data/friendsClient';
+import { cancelFriendRequest, respondFriendRequest } from '@/data/friendsClient';
 import { runPrivateAccountMutation } from '@/data/privateAccountBoundary';
 import { cs } from '@/i18n/cs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -44,7 +51,7 @@ import { useToastStore } from '@/stores/toastStore';
 import { useAccountStore } from '@/stores/accountStore';
 
 import { FollowingRow } from './FollowingRow';
-import { FriendMini } from './FriendMini';
+import { FriendMini, friendDisplayName } from './FriendMini';
 import { FriendListRow } from './FriendListRow';
 import FriendsSkeleton from './FriendsSkeleton';
 import OfflineBanner from './OfflineBanner';
@@ -62,6 +69,9 @@ function PartaPeopleScreenContent() {
   const openSafety = useFriendSafety(reload);
   const scrollRef = useRef<ScrollView>(null);
   const requestsYRef = useRef(0);
+  const outgoingYRef = useRef(0);
+  const cancelingRef = useRef<string | null>(null);
+  const [canceling, setCanceling] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const respondingRef = useRef<Record<string, 'accept' | 'decline'>>({});
   const [responding, setResponding] = useState<Record<string, 'accept' | 'decline'>>({});
@@ -90,11 +100,23 @@ function PartaPeopleScreenContent() {
     );
   }, [dashboard?.incomingRequests, params.friendshipId]);
 
+  // People you have asked and who have not answered yet. Without this section
+  // an invite disappeared the moment it was sent — and `?focus=outgoing`, which
+  // the claim screen still hands out, landed on a list that did not have it.
+  const outgoingRequests = dashboard?.outgoingRequests ?? [];
+
   useEffect(() => {
-    if (params.focus !== 'requests' || !dashboard) return undefined;
+    if (!dashboard) return undefined;
+    const target =
+      params.focus === 'requests'
+        ? requestsYRef
+        : params.focus === 'outgoing'
+          ? outgoingYRef
+          : null;
+    if (!target) return undefined;
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({
-        y: Math.max(0, requestsYRef.current - Spacing.sm),
+        y: Math.max(0, target.current - Spacing.sm),
         animated: true,
       });
     }, 60);
@@ -133,6 +155,38 @@ function PartaPeopleScreenContent() {
       }
       showToast(action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined);
       reload();
+    },
+    [reload, showToast],
+  );
+
+  const confirmCancel = useCallback(
+    (requestId: string, recipientId: string) => {
+      showAppDialog({
+        title: cs.friends.cancelInviteTitle,
+        buttons: [
+          { text: cs.common.cancel, style: 'cancel' },
+          {
+            text: cs.friends.cancelInviteConfirm,
+            style: 'destructive',
+            onPress: () => {
+              if (cancelingRef.current) return;
+              cancelingRef.current = requestId;
+              setCanceling(requestId);
+              void cancelFriendRequest(recipientId).then((result) => {
+                if (!mountedRef.current) return;
+                cancelingRef.current = null;
+                setCanceling(null);
+                if (!result.ok) {
+                  showToast(result.detail || cs.friends.requestActionError);
+                  return;
+                }
+                showToast(cs.friends.inviteCanceled);
+                reload();
+              });
+            },
+          },
+        ],
+      });
     },
     [reload, showToast],
   );
@@ -233,6 +287,49 @@ function PartaPeopleScreenContent() {
             />
           ))}
 
+          {outgoingRequests.length > 0 ? (
+            <View
+              onLayout={(event) => {
+                outgoingYRef.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <SectionBreak title={cs.friends.outgoingHeader} />
+              <View style={styles.requests}>
+                {outgoingRequests.map((request, index) => (
+                  <View
+                    key={request.id}
+                    style={[styles.requestRow, index > 0 && styles.requestRowBorder]}
+                  >
+                    <FriendMini profile={request.recipient} />
+                    <Pressable
+                      onPress={() => confirmCancel(request.id, request.recipient.id)}
+                      disabled={canceling != null}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${cs.friends.cancelInviteConfirm}: ${friendDisplayName(request.recipient)}`}
+                      accessibilityState={{
+                        disabled: canceling != null,
+                        busy: canceling === request.id,
+                      }}
+                      style={({ pressed }) => [pressed && styles.dim]}
+                    >
+                      {canceling === request.id ? (
+                        <ActivityIndicator size="small" color={Colors.mutedText} />
+                      ) : (
+                        <Text
+                          style={styles.cancelInvite}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {cs.common.cancel}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {following.length > 0 ? (
             <>
               <SectionBreak title={cs.friends.followingHeader} />
@@ -302,6 +399,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   acceptButton: { backgroundColor: Colors.amber },
+  cancelInvite: { fontSize: 14, fontWeight: '600', color: Colors.mutedText },
+  dim: { opacity: 0.6 },
   primary: {
     minHeight: 54,
     marginTop: MockLayout.sectionGap,

@@ -73,7 +73,7 @@ import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
-import { resolvePubListEmptyState } from '@/pubs/pubListState';
+import { resolveCompassFocusHead, resolvePubListEmptyState } from '@/pubs/pubListState';
 import {
   mapViewportCacheCovers,
   mapViewportRadiusKm,
@@ -515,6 +515,24 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     return () => endPickingPub();
   }, [beginPickingPub, endPickingPub, picker]);
 
+  /**
+   * Arrival. `useArrivalDetector` has fired the haptic and the cink; this is
+   * the half that was left behind when the compass became a list cell — the
+   * celebration screen. Same shape as 2.x: remember the pub the screen names,
+   * push, then dismiss so the detector's "once per target" latch stands.
+   *
+   * Never from the picker: that is this screen raised as a modal over a running
+   * night, and a celebration on top of it would bury the pub you came to pick.
+   */
+  const { arrived, dismissArrival } = compass;
+  const arrivedPub = compass.pub;
+  React.useEffect(() => {
+    if (!arrived || picker) return;
+    if (arrivedPub) usePubStore.getState().setRevealedPub(arrivedPub);
+    router.push('/celebration' as Href);
+    dismissArrival();
+  }, [arrived, arrivedPub, dismissArrival, picker, router]);
+
   const closePicker = React.useCallback(() => {
     endPickingPub();
     leaveRoute(router);
@@ -691,10 +709,28 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     [filters, presentations, shuffleSeed, sort],
   );
 
+  /**
+   * "Ukaž na kompasu" (§F2). A friend's handoff outranks the sort: it carries
+   * only a coarse geohash cell and a name, so when that cell is a pub we
+   * already know the head cell is that pub's real row, and when it is not it
+   * becomes a name-and-distance-only stand-in with nothing to open.
+   */
+  const focusedPub = compass.focusedPub;
+  const focusHead = React.useMemo(
+    () => resolveCompassFocusHead(focusedPub, presentations, compass.currentPosition, visitIndex),
+    [compass.currentPosition, focusedPub, presentations, visitIndex],
+  );
+
   // The compass head cell points at whatever the sort put first, so the needle
   // and the list always agree about where you are being sent.
-  const head = compass.currentPosition ? ordered[0] : null;
-  const listPubs = head ? ordered.slice(1) : ordered;
+  const head = focusHead?.pub ?? (compass.currentPosition ? ordered[0] : null);
+  // The list keeps its own order while the needle is borrowed; only the row that
+  // is already standing in the head cell is dropped, so nothing appears twice.
+  const listPubs = focusHead
+    ? ordered.filter((pub) => pub.id !== focusHead.pub.id)
+    : head
+      ? ordered.slice(1)
+      : ordered;
   const effectiveSelected =
     selectedPub && ordered.some((pub) => pub.id === selectedPub)
       ? selectedPub
@@ -739,10 +775,18 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     [openPubDetail, picker],
   );
 
-  const pickSort = React.useCallback((next: Sort) => {
-    setSort(next);
-    if (next === 'Náhodně v okolí') setShuffleSeed((n) => n + 1);
-  }, []);
+  const clearFocusedPub = compass.clearFocusedPub;
+  const pickSort = React.useCallback(
+    (next: Sort) => {
+      setSort(next);
+      if (next === 'Náhodně v okolí') setShuffleSeed((n) => n + 1);
+      // Picking a sort is asking the head cell a new question, so the borrowed
+      // needle goes back to the list — the same "Zpět na nejbližší" move the
+      // 2.x compass had as its own button.
+      clearFocusedPub();
+    },
+    [clearFocusedPub],
+  );
 
   // The locate button rides just above the sheet's resting top, so collapsing
   // the sheet walks the button down with it instead of stranding it.
@@ -1007,11 +1051,15 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                     <CompassCell
                       pub={head}
                       position={compass.currentPosition}
-                      badge={BADGE[sort]}
+                      badge={focusHead ? cs.compass.focusBadge : BADGE[sort]}
                       // It is a pub row, so it opens the pub. It used to open the
                       // map, which meant the one cell naming a place was the one
-                      // cell that would not take you to it.
-                      onPress={() => openPubDetail(head.id)}
+                      // cell that would not take you to it. A coarse friend
+                      // target has no catalogue row, so it opens nothing.
+                      onPress={
+                        focusHead && !focusHead.real ? undefined : () => openPubDetail(head.id)
+                      }
+                      onClose={focusHead ? clearFocusedPub : undefined}
                     />
                   ) : null}
 
