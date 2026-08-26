@@ -36,6 +36,9 @@ const PIN_ANCHOR = {
 
 const CENTER_ANCHOR = { x: 0.5, y: 0.5 } as const;
 
+/** How long a custom marker keeps re-rasterising before it freezes. */
+const SNAPSHOT_SETTLE_MS = 160;
+
 /**
  * Google's logo sits in the bottom-left of whatever the map padding leaves
  * visible, and the terms say it has to stay readable. Half sizes in points,
@@ -45,6 +48,28 @@ const ATTRIBUTION_HALF_WIDTH_PX = 46;
 const ATTRIBUTION_HALF_HEIGHT_PX = 18;
 /** Never pad the map so hard that the logo lands under the sheet anyway. */
 const MIN_VISIBLE_MAP_PX = 88;
+
+/**
+ * Android rasterises a custom marker once and then reuses the bitmap. Given
+ * `tracksViewChanges={false}` on the first frame it snapshots before the text
+ * inside has laid out, so a cluster arrives as an empty ring with no number.
+ * Track for a beat, then freeze — the bitmap is correct and the map stays cheap.
+ */
+function useSettledSnapshot(signature: string): boolean {
+  const [snapshot, setSnapshot] = useState({ signature, tracking: true });
+  if (snapshot.signature !== signature) setSnapshot({ signature, tracking: true });
+  useEffect(() => {
+    const timer = setTimeout(
+      () =>
+        setSnapshot((current) =>
+          current.signature === signature ? { signature, tracking: false } : current,
+        ),
+      SNAPSHOT_SETTLE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [signature]);
+  return snapshot.signature !== signature || snapshot.tracking;
+}
 
 type StablePubMarkerProps = {
   pub: PubPresentation;
@@ -89,7 +114,7 @@ class StablePubMarker extends React.PureComponent<
   render() {
     const { pub, labelled, closed, onPress } = this.props;
     const marker = (
-      <View testID="pub-map-marker-hit" style={styles.pinHit}>
+      <View collapsable={false} testID="pub-map-marker-hit" style={styles.pinHit}>
         <View
           testID="pub-map-marker-visual"
           style={[styles.pubPin, closed && styles.pubPinClosed]}
@@ -110,7 +135,7 @@ class StablePubMarker extends React.PureComponent<
         anchor={labelled ? PIN_ANCHOR : CENTER_ANCHOR}
       >
         {labelled ? (
-          <View style={styles.namedPin}>
+          <View collapsable={false} style={styles.namedPin}>
             {marker}
             <Text
               style={[styles.pinLabel, closed && styles.pinLabelClosed]}
@@ -126,6 +151,55 @@ class StablePubMarker extends React.PureComponent<
       </Marker>
     );
   }
+}
+
+function ClusterMarker({
+  latitude,
+  longitude,
+  count,
+  onPress,
+}: {
+  latitude: number;
+  longitude: number;
+  count: number;
+  onPress: () => void;
+}) {
+  const tracksViewChanges = useSettledSnapshot(`${latitude}:${longitude}:${count}`);
+  return (
+    <Marker
+      coordinate={{ latitude, longitude }}
+      onPress={onPress}
+      tracksViewChanges={tracksViewChanges}
+      anchor={CENTER_ANCHOR}
+      accessibilityLabel={`${pubCountLabel(count)}. Přiblížit`}
+    >
+      <View collapsable={false} testID="pub-map-cluster" style={styles.clusterPin}>
+        <Text style={styles.clusterText} allowFontScaling={false}>
+          {count}
+        </Text>
+      </View>
+    </Marker>
+  );
+}
+
+function SelectedPubMarker({ pub, onPress }: { pub: PubPresentation; onPress?: () => void }) {
+  const tracksViewChanges = useSettledSnapshot(`${pub.id}:${pub.name}`);
+  return (
+    <Marker
+      coordinate={{ latitude: pub.pub.lat, longitude: pub.pub.lng }}
+      onPress={onPress}
+      tracksViewChanges={tracksViewChanges}
+      accessibilityLabel={pub.name}
+      zIndex={10}
+      anchor={CENTER_ANCHOR}
+    >
+      <View collapsable={false} testID="pub-map-selected" style={styles.pinSelected}>
+        <Text style={styles.pinTextSelected} numberOfLines={1} allowFontScaling={false}>
+          {pub.name}
+        </Text>
+      </View>
+    </Marker>
+  );
 }
 
 function initialRegionFor(
@@ -437,20 +511,13 @@ export function PubsMap({
       {clusters.map((cluster) => {
         if (cluster.items.length > 1) {
           return (
-            <Marker
+            <ClusterMarker
               key={`cluster:${cluster.id}:${cluster.items.length}`}
-              coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
+              latitude={cluster.lat}
+              longitude={cluster.lng}
+              count={cluster.items.length}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
-              tracksViewChanges={false}
-              anchor={CENTER_ANCHOR}
-              accessibilityLabel={`${pubCountLabel(cluster.items.length)}. Přiblížit`}
-            >
-              <View style={styles.clusterPin}>
-                <Text style={styles.clusterText} allowFontScaling={false}>
-                  {cluster.items.length}
-                </Text>
-              </View>
-            </Marker>
+            />
           );
         }
         const pub = cluster.items[0].pub;
@@ -466,21 +533,11 @@ export function PubsMap({
       })}
 
       {selectedPub ? (
-        <Marker
+        <SelectedPubMarker
           key={`${selectedPub.id}:selected`}
-          coordinate={{ latitude: selectedPub.pub.lat, longitude: selectedPub.pub.lng }}
+          pub={selectedPub}
           onPress={() => onPressPub?.(selectedPub.id)}
-          tracksViewChanges={false}
-          accessibilityLabel={selectedPub.name}
-          zIndex={10}
-          anchor={CENTER_ANCHOR}
-        >
-          <View style={styles.pinSelected}>
-            <Text style={styles.pinTextSelected} numberOfLines={1} allowFontScaling={false}>
-              {selectedPub.name}
-            </Text>
-          </View>
-        </Marker>
+        />
       ) : null}
     </MapView>
   );
