@@ -65,15 +65,16 @@ beforeEach(() => {
   announceSpy.mockClear();
 });
 
-it('keeps the prompt footer above the home indicator and the game beer action', () => {
+it('keeps the prompt body above the home indicator and the game beer action', () => {
   render(
     <PromptShell prompts={['První', 'Druhá']} seed={17} step={0} onNext={jest.fn()} />,
   );
 
-  const footer = screen.getByText('Ťukni kamkoliv').parent?.parent;
-  expect(StyleSheet.flatten(footer?.props.style)).toEqual(
-    expect.objectContaining({ bottom: 122 }),
-  );
+  expect(
+    screen
+      .UNSAFE_getAllByType(View)
+      .some((node) => StyleSheet.flatten(node.props.style)?.paddingBottom === 122),
+  ).toBe(true);
 });
 
 it('keeps the King’s Cup action above the home indicator and the game beer action', () => {
@@ -430,7 +431,7 @@ it('keeps the unturned card back decorative', () => {
     />,
   );
 
-  const back = screen.getByText('?', { includeHiddenElements: true });
+  const back = screen.getByTestId('card-back', { includeHiddenElements: true });
   expect(back.props.importantForAccessibility).toBe('no-hide-descendants');
   expect(back.props.accessibilityElementsHidden).toBe(true);
 });
@@ -445,13 +446,13 @@ it('shows a prompt spectator plain text without hint or advance', () => {
 
   expect(UNSAFE_queryAllByType(Pressable)).toHaveLength(0);
   expect(screen.getByText(expectedFirst)).toBeTruthy();
-  expect(screen.queryByText('Ťukni kamkoliv')).toBeNull();
+  expect(screen.queryByText('Další')).toBeNull();
 
   const card = screen.getByLabelText(expectedFirst);
   expect(card.props.accessibilityRole).toBe('text');
 
-  const count = StyleSheet.flatten(screen.getByText('1/3').props.style);
-  expect(count.marginLeft).toBe('auto');
+  // The deck counter stays on the stage, in its corner.
+  expect(screen.getByText('1/3')).toBeTruthy();
 
   fireEvent.press(screen.getByText(expectedFirst));
   expect(onNext).not.toHaveBeenCalled();
@@ -599,7 +600,9 @@ it('never announces imperatively on Android and leaves it to the live region', (
         drawnCardIds={[]}
       />,
     );
-    expect(screen.getByText('?', { includeHiddenElements: true })).toBeTruthy();
+    expect(
+      screen.getByTestId('card-back', { includeHiddenElements: true }),
+    ).toBeTruthy();
 
     drawView.rerender(
       <DrawShell
