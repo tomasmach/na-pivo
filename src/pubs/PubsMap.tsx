@@ -36,6 +36,16 @@ const PIN_ANCHOR = {
 
 const CENTER_ANCHOR = { x: 0.5, y: 0.5 } as const;
 
+/**
+ * Google's logo sits in the bottom-left of whatever the map padding leaves
+ * visible, and the terms say it has to stay readable. Half sizes in points,
+ * generous enough to cover the logo plus its margin.
+ */
+const ATTRIBUTION_HALF_WIDTH_PX = 46;
+const ATTRIBUTION_HALF_HEIGHT_PX = 18;
+/** Never pad the map so hard that the logo lands under the sheet anyway. */
+const MIN_VISIBLE_MAP_PX = 88;
+
 type StablePubMarkerProps = {
   pub: PubPresentation;
   labelled: boolean;
@@ -204,11 +214,17 @@ export function PubsMap({
     [pubs],
   );
 
+  // Padding is also what lifts Google's logo out from under the sheet — the
+  // supported way to keep the attribution readable, which the terms require.
+  // Clamped only so the map keeps a strip to draw in; clamping it to a share of
+  // the screen used to drop the logo behind a raised sheet.
   const mapPadding = useMemo(
     () => ({
       top: 0,
       right: 0,
-      bottom: Math.round(Math.min(bottomInset, screenHeight * 0.62)),
+      bottom: Math.round(
+        Math.max(Math.min(bottomInset, screenHeight - MIN_VISIBLE_MAP_PX), 0),
+      ),
       left: 0,
     }),
     [bottomInset, screenHeight],
@@ -255,6 +271,20 @@ export function PubsMap({
       lng: visibleRegion.longitudeDelta * (BUBBLE_HALF_WIDTH_PX / Math.max(screenWidth, 1)),
     };
     const claimed: { lat: number; lng: number; halfLat: number; halfLng: number }[] = [];
+    // Google's logo owns the bottom-left of the visible strip and no pub name
+    // gets to sit on it. Same keep-out machinery as the labels, just anchored to
+    // the corner of the region instead of to a pub.
+    const attribution = {
+      lat: visibleRegion.latitudeDelta * (ATTRIBUTION_HALF_HEIGHT_PX / visibleMapHeight),
+      lng:
+        visibleRegion.longitudeDelta * (ATTRIBUTION_HALF_WIDTH_PX / Math.max(screenWidth, 1)),
+    };
+    claimed.push({
+      lat: visibleRegion.latitude - visibleRegion.latitudeDelta / 2 + attribution.lat,
+      lng: visibleRegion.longitude - visibleRegion.longitudeDelta / 2 + attribution.lng,
+      halfLat: attribution.lat,
+      halfLng: attribution.lng,
+    });
     const free = (lat: number, lng: number) =>
       claimed.every(
         (spot) =>
