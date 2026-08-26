@@ -17,7 +17,7 @@ import { useRouter, type Href } from 'expo-router';
 import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchLeaderboard, type Leaderboard } from '@/data/leaderboardsClient';
 import { optimisticRankAfter } from '@/leaderboards/rankMath';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -59,7 +59,7 @@ export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number 
     const prev = celebratedRef.current;
     if (prev == null || projectedRank < prev) {
       celebratedRef.current = projectedRank;
-      showToast(cs.leaderboards.rankUpToast(projectedRank), {
+      showToast(t.leaderboards.rankUpToast(projectedRank), {
         icon: <TrophyIcon size={20} color={Colors.amber} />,
       });
     }
@@ -73,13 +73,13 @@ export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number 
     <Pressable
       onPress={() => router.push({ pathname: '/leaderboards', params: { source: 'counter' } } as Href)}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.leaderboardsOpen}
+      accessibilityLabel={t.a11y.leaderboardsOpen}
       style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
     >
       <TrophyIcon size={14} color={Colors.amber} />
       <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         <Text style={styles.rank}>{`${projectedRank}.`}</Text>
-        {cs.leaderboards.chipLabelSuffix}
+        {t.leaderboards.chipLabelSuffix}
       </Text>
     </Pressable>
   );

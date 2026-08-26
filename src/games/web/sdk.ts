@@ -14,6 +14,7 @@
  */
 
 import {
+  GAME_ERROR_PROTOCOL_MISMATCH,
   GAME_PROTOCOL_VERSION,
   parseToGame,
   type FromGame,
@@ -194,7 +195,8 @@ export function connect(definition: GameDefinition): void {
   (window as unknown as { napivoGame(raw: string): void }).napivoGame = (raw) => {
     const message = parseToGame(raw);
     if (!message) {
-      session.fail('Hra dostala zprávu, které nerozumí.');
+      // A code, not a sentence: the page has no locale, the host has.
+      session.fail(GAME_ERROR_PROTOCOL_MISMATCH);
       return;
     }
     apply(message);

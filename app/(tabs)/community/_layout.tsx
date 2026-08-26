@@ -2,6 +2,7 @@ import { Pressable } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SearchIcon } from '@/components/shared/IconGlyph';
+import { t } from '@/i18n';
 
 import { Colors } from '@/theme/colors';
 
@@ -42,14 +43,14 @@ export default function CommunityLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Komunita',
+          title: t.tabs.community,
           // Same door as Kocoviny: people are found by searching for them, not
           // by scrolling a leaderboard until a name appears.
           headerRight: () => (
             <Pressable
               onPress={() => router.push('/search' as Href)}
               accessibilityRole="button"
-              accessibilityLabel="Hledat"
+              accessibilityLabel={t.a11y.communitySearchButton}
               hitSlop={10}
             >
               <SearchIcon size={20} color={Colors.amber} />

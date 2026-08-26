@@ -32,6 +32,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { usePathname, useRouter, type Href } from 'expo-router';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
+import { beerCountLabel, t } from '@/i18n';
 import { formatStopwatch, useLivePartyStore, useNightSeconds } from '@/mocks/livePartyStore';
 import { beersOf, nightMe } from '@/party/nightRecord';
 import { useNightRecord } from '@/party/useNightRecord';
@@ -42,14 +43,6 @@ import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const GLASS = isLiquidGlassAvailable();
-
-/** "1 pivo / 3 piva / 7 piv" — the strip is small enough that a wrong plural is
- *  the first thing you notice on it. */
-function beersLabel(count: number): string {
-  if (count === 1) return '1 pivo';
-  if (count >= 2 && count <= 4) return `${count} piva`;
-  return `${count} piv`;
-}
 
 /**
  * The clock, ticking, on its own — the same trick the hub uses: only this line
@@ -104,14 +97,14 @@ export function LivePartyBar() {
         onPress={() => router.navigate('/beer' as Href)}
         style={({ pressed }) => [styles.body, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`Večer běží, ${pubName}, ${beersLabel(count)}. Otevřít.`}
+        accessibilityLabel={t.liveParty.a11yBar(pubName, beerCountLabel(count))}
       >
         <View style={styles.text}>
           <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {pubName}
           </Text>
           <Text style={styles.meta} numberOfLines={1} allowFontScaling={false}>
-            {beersLabel(count)}
+            {beerCountLabel(count)}
           </Text>
         </View>
 
@@ -125,7 +118,7 @@ export function LivePartyBar() {
         onPress={() => beer.add(houseBeer)}
         style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
         accessibilityRole="button"
-        accessibilityLabel="Přidat pivo"
+        accessibilityLabel={t.liveParty.a11yAddBeer}
         hitSlop={6}
       >
         <BeerIcon size={17} color={Colors.stout} />

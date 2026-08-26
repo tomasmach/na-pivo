@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { BeerIcon, PlusIcon } from '@/components/shared/IconGlyph';
+import { t } from '@/i18n';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -74,7 +75,7 @@ export function BeerList({
             onPress={() => onAdd(beer.name)}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={`Dát si ${beer.name}`}
+            accessibilityLabel={t.partyBeers.a11yAdd(beer.name)}
           >
             <View style={styles.grow}>
               <Text
@@ -85,9 +86,9 @@ export function BeerList({
                 {beer.name}
               </Text>
               <Text style={styles.price} allowFontScaling={false}>
-                {beer.price !== null ? `${beer.price} Kč` : ''}
+                {beer.price !== null ? t.partyBeers.price(beer.price) : ''}
                 {beer.price !== null && count > 0 ? ' · ' : ''}
-                {count > 0 ? `už ${count}×` : ''}
+                {count > 0 ? t.partyBeers.alreadyCount(count) : ''}
               </Text>
             </View>
 
@@ -103,10 +104,10 @@ export function BeerList({
         onPress={() => setCustom(true)}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel="Zapsat vlastní pivo"
+        accessibilityLabel={t.partyBeers.a11yOwnBeer}
       >
         <Text style={styles.other} maxFontSizeMultiplier={FontScaleCap.body}>
-          Jiné pivo
+          {t.partyBeers.otherBeer}
         </Text>
         <View style={styles.otherPlus}>
           <PlusIcon size={17} color={Colors.mutedText} />
@@ -119,14 +120,14 @@ export function BeerList({
             <View style={styles.grabber} />
             <View style={styles.dialogHead}>
               <Text style={styles.dialogTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Co piješ?
+                {t.partyBeers.customTitle}
               </Text>
               <CloseButton onPress={() => setCustom(false)} />
             </View>
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Značka a stupně"
+              placeholder={t.partyBeers.customPlaceholder}
               placeholderTextColor={MockColors.fieldHint}
               style={styles.input}
               autoFocus
@@ -138,10 +139,10 @@ export function BeerList({
               onPress={commit}
               style={({ pressed }) => [styles.save, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Zapsat"
+              accessibilityLabel={t.partyBeers.save}
             >
               <Text style={styles.saveText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Zapsat
+                {t.partyBeers.save}
               </Text>
             </Pressable>
           </View>

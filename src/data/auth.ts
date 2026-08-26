@@ -15,6 +15,8 @@
 
 import { File, UploadType } from 'expo-file-system';
 
+import { t } from '@/i18n';
+
 import {
   ensureAccount,
   ensureCredentialBindingForSession,
@@ -495,7 +497,7 @@ function extractError(data: unknown, status: number): { code: string; detail: st
       }
     }
   }
-  return { code: `http_${status}`, detail: 'Něco se pokazilo. Zkus to znovu.' };
+  return { code: `http_${status}`, detail: t.auth.genericError };
 }
 
 interface FetchOutcome {
@@ -591,49 +593,43 @@ async function authFetch(
 const NETWORK_ERROR = {
   ok: false as const,
   code: 'network',
-  detail: 'Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu.',
+  detail: t.auth.network,
 };
 
 const PHOTO_DELETIONS_PENDING = {
   ok: false as const,
   code: 'photo_deletions_pending',
-  detail:
-    'Nejdřív musím dosmazat fotky. Připoj se k internetu a zkus to znovu.',
+  detail: t.auth.photoDeletionsPending,
 };
 
 const PHOTO_DELETIONS_REKEY_FAILED = {
   ok: false as const,
   code: 'photo_deletions_storage',
-  detail:
-    'Rozdělané mazání fotek se nepodařilo přenést. Uvolni místo v telefonu a zkus to znovu.',
+  detail: t.auth.photoDeletionsRekeyFailed,
 };
 
 const SESSION_BOUNDARY_FAILED = {
   ok: false as const,
   code: 'session_storage',
-  detail:
-    'Odhlášení se nepodařilo dokončit. Odemkni telefon a zkus to znovu.',
+  detail: t.auth.sessionBoundaryFailed,
 };
 
 const CREDENTIAL_BOUNDARY_FAILED = {
   ok: false as const,
   code: 'session_storage',
-  detail:
-    'Přihlášení nejde dokončit, dokud se nesmažou stará data v telefonu. Uvolni místo a zkus to znovu.',
+  detail: t.auth.credentialBoundaryFailed,
 };
 
 const ACCOUNT_DELETION_RECEIPT_FAILED = {
   ok: false as const,
   code: 'account_deletion_storage',
-  detail:
-    'Smazání účtu nejde v telefonu dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
+  detail: t.auth.accountDeletionReceiptFailed,
 };
 
 const ACCOUNT_DELETION_RECOVERED = {
   ok: false as const,
   code: 'account_deletion_recovered',
-  detail:
-    'Předchozí mazání jsem dokončil. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+  detail: t.auth.accountDeletionRecovered,
 };
 
 interface CredentialTransition {
@@ -851,7 +847,7 @@ async function applyAuthSuccessInner(
     return {
       ok: false,
       code: 'protocol',
-      detail: 'Server neposlal platné přihlášení. Zkus to znovu.',
+      detail: t.auth.invalidSession,
     };
   }
 
@@ -968,7 +964,7 @@ async function applyAuthSuccessInner(
     return {
       ok: false,
       code: 'session_storage',
-      detail: 'Přihlášení se nepodařilo uložit. Odemkni telefon a zkus to znovu.',
+      detail: t.auth.sessionStorage,
     };
   }
 
@@ -1182,36 +1178,36 @@ function mapSocialError(err: unknown): AuthResult {
   if (err instanceof SocialAuthError) {
     if (err.code === 'cancelled') return CANCELLED;
     if (err.code === 'unsupported') {
-      return { ok: false, code: 'unsupported', detail: 'Tenhle způsob přihlášení na tvém telefonu nejde.' };
+      return { ok: false, code: 'unsupported', detail: t.auth.socialUnsupported };
     }
     if (err.code === 'misconfigured') {
       return {
         ok: false,
         code: 'misconfigured',
-        detail: 'Google přihlášení teď není správně nastavené. Zkus zatím přihlášení e-mailem.',
+        detail: t.auth.socialMisconfigured,
       };
     }
     if (err.code === 'play_services') {
       return {
         ok: false,
         code: err.code,
-        detail: 'Google Play služby chybí nebo jsou zastaralé. Aktualizuj je, nebo se přihlas e-mailem.',
+        detail: t.auth.socialPlayServices,
       };
     }
     if (err.code === 'account_picker') {
       return {
         ok: false,
         code: err.code,
-        detail: 'Výběr Google účtu se nepodařilo otevřít. Zkontroluj účet v telefonu, zkus to znovu, nebo se přihlas e-mailem.',
+        detail: t.auth.socialAccountPicker,
       };
     }
     return {
       ok: false,
       code: err.code,
-      detail: 'Přihlášení přes Google nebo Apple se nezdařilo. Zkus to znovu.',
+      detail: t.auth.socialFailed,
     };
   }
-  return { ok: false, code: 'failed', detail: 'Přihlášení se nezdařilo.' };
+  return { ok: false, code: 'failed', detail: t.auth.signInFailed };
 }
 
 export async function signInWithGoogle(): Promise<AuthResult> {

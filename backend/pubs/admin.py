@@ -734,12 +734,14 @@ class PubVisitAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 class ReleaseNoteItemInline(admin.TabularInline):
     model = ReleaseNoteItem
     extra = 1
-    fields = ("order", "icon", "text")
+    fields = ("order", "icon", "text", "text_en")
     ordering = ("order",)
 
 
 @admin.register(ReleaseNote)
 class ReleaseNoteAdmin(admin.ModelAdmin):
+    # Leave title_en and text_en empty to keep a note Czech-only; the app then
+    # hides the popup for users running the app in English.
     list_display = ("version", "title", "is_published", "published_at", "updated_at")
     list_filter = ("is_published",)
     search_fields = ("version", "title")

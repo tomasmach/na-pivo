@@ -8,6 +8,7 @@ account shape returned after auth).
 
 from __future__ import annotations
 
+from django.utils.translation import gettext_lazy
 from rest_framework import serializers
 
 from pubs.models import AuthIdentity
@@ -22,7 +23,7 @@ _UNLINK_CHOICES = ["email", *AuthIdentity.Provider.values]
 class MergeOperationIdField(serializers.UUIDField):
     default_error_messages = {
         **serializers.UUIDField.default_error_messages,
-        "not_uuid4": "Musí být náhodné UUIDv4.",
+        "not_uuid4": gettext_lazy("Musí být náhodné UUIDv4."),
     }
 
     def to_internal_value(self, data):

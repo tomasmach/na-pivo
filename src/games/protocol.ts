@@ -29,6 +29,13 @@
 /** Bumped only for a breaking change; both ends check it. */
 export const GAME_PROTOCOL_VERSION = 1;
 
+/**
+ * The page has no locale and no strings file, so an `error` frame it raises by
+ * itself carries a stable code rather than a sentence. The host translates it;
+ * anything else in `message` is passed through as the game wrote it.
+ */
+export const GAME_ERROR_PROTOCOL_MISMATCH = 'protocol_mismatch';
+
 export interface GamePlayer {
   /** Stable within one game. The app maps it back to a person. */
   id: string;

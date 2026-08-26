@@ -15,6 +15,7 @@ import { usePubStore } from '@/stores/pubStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+import { t } from '@/i18n';
 
 function mergeCurrentPub(pubs: Pub[], current: Pub | null): Pub[] {
   if (!current) return pubs;
@@ -58,7 +59,7 @@ export default function PubDetailScreen() {
       <View style={styles.stateScreen}>
         {loading ? <ActivityIndicator color={Colors.amber} /> : null}
         <Text style={styles.stateText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {loading ? 'Načítám hospodu…' : 'Hospodu jsem nenačetl.'}
+          {loading ? t.pubDetail.stateLoading : t.pubDetail.stateFailed}
         </Text>
         {!loading ? (
           <Pressable
@@ -66,7 +67,7 @@ export default function PubDetailScreen() {
             style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
             accessibilityRole="button"
           >
-            <Text style={styles.retryText}>Zkusit znovu</Text>
+            <Text style={styles.retryText}>{t.pubDetail.activityRetry}</Text>
           </Pressable>
         ) : null}
       </View>

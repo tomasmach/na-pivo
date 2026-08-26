@@ -41,7 +41,7 @@ import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { AchievementGrid } from '@/profile/AchievementGrid';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import {
   profileTimelineSeries,
@@ -53,8 +53,23 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-const TABS = ['Statistiky', 'Aktivita'] as const;
-const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
+/** Stable keys; the visible labels come from t below. */
+const TABS = ['stats', 'activity'] as const;
+const TAB_LABELS: Record<(typeof TABS)[number], string> = {
+  stats: t.profile.tabStats,
+  activity: t.profile.tabActivity,
+};
+const TAB_OPTIONS = TABS.map((key) => TAB_LABELS[key]);
+const tabFromLabel = (label: string) => TABS.find((key) => TAB_LABELS[key] === label) ?? 'stats';
+
+const PERIODS: ProfilePeriod[] = ['week', 'month', 'year'];
+const PERIOD_LABELS: Record<ProfilePeriod, string> = {
+  week: t.profile.periodWeek,
+  month: t.profile.periodMonth,
+  year: t.profile.periodYear,
+};
+const PERIOD_OPTIONS = PERIODS.map((key) => PERIOD_LABELS[key]);
+const periodFromLabel = (label: string) => PERIODS.find((key) => PERIOD_LABELS[key] === label) ?? 'week';
 
 /**
  * The relationship button no longer offers "Přidat" to a stranger: a friendship
@@ -64,14 +79,14 @@ const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
  * would otherwise have nowhere to answer it.
  */
 function relationshipLabel(detail: FriendProfileDetail, isFollowing: boolean): string {
-  if (detail.blocked) return cs.friends.unblockAction;
+  if (detail.blocked) return t.friends.unblockAction;
   switch (detail.friendshipStatus) {
     case 'accepted':
-      return 'Parťák';
+      return t.publicProfile.relationshipFriend;
     case 'incoming_pending':
-      return 'Přijmout';
+      return t.publicProfile.relationshipAccept;
     default:
-      return isFollowing ? cs.friends.unfollow : cs.friends.follow;
+      return isFollowing ? t.friends.unfollow : t.friends.follow;
   }
 }
 
@@ -87,8 +102,8 @@ export default function PublicProfileScreen() {
   const [detailViewerAccountId, setDetailViewerAccountId] = useState<string | null>(null);
   const [storedLoading, setLoading] = useState(true);
   const [storedLoadFailed, setLoadFailed] = useState(false);
-  const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
-  const [period, setPeriod] = useState<ProfilePeriod>('Měsíc');
+  const [tab, setTab] = useState<(typeof TABS)[number]>('stats');
+  const [period, setPeriod] = useState<ProfilePeriod>('month');
   const [scrubbed, setScrubbed] = useState<number | null>(null);
   const [relationshipBusyFor, setRelationshipBusyFor] = useState<string | null>(null);
   /**
@@ -225,7 +240,7 @@ export default function PublicProfileScreen() {
   const selectedPoint = scrubbed === null ? null : series.points[scrubbed];
   const handle = detail?.profile.nickname
     ? `@${detail.profile.nickname}`
-    : detail?.profile.displayName || 'Pivař';
+    : detail?.profile.displayName || t.publicProfile.handleFallback;
 
   const refreshRelationship = useCallback(async () => {
     await loadProfile();
@@ -250,7 +265,7 @@ export default function PublicProfileScreen() {
     });
     if (!viewerIsCurrent(requestedViewer)) return;
     setSafetyBusyFor(null);
-    showToast(cs.friends.unblocked);
+    showToast(t.friends.unblocked);
     await Promise.all([loadProfile(), loadNights()]);
   }, [detail, loadNights, loadProfile, safetyBusy, showToast, viewerAccountId, viewerIsCurrent]);
 
@@ -283,7 +298,7 @@ export default function PublicProfileScreen() {
     }
     if (nextFollowing !== null) {
       setFollowingFor({ viewer: requestedViewer, profile: detail.profile.id, value: nextFollowing });
-      showToast(nextFollowing ? cs.friends.followed : cs.friends.unfollowed);
+      showToast(nextFollowing ? t.friends.followed : t.friends.unfollowed);
       return;
     }
     await refreshRelationship();
@@ -299,10 +314,14 @@ export default function PublicProfileScreen() {
       return;
     }
     showAppDialog({
-      title: `Odebrat ${handle} z party?`,
+      title: t.publicProfile.removeConfirmTitle(handle),
       buttons: [
-        { text: 'Nechat v partě', style: 'cancel' },
-        { text: 'Odebrat', style: 'destructive', onPress: () => void runRelationshipAction() },
+        { text: t.publicProfile.removeKeep, style: 'cancel' },
+        {
+          text: t.publicProfile.removeAction,
+          style: 'destructive',
+          onPress: () => void runRelationshipAction(),
+        },
       ],
     });
   };
@@ -318,7 +337,7 @@ export default function PublicProfileScreen() {
     });
     if (!viewerIsCurrent(requestedViewer)) return;
     setSafetyBusyFor(null);
-    showToast(result.ok ? cs.friends.reportDone : result.detail);
+    showToast(result.ok ? t.friends.reportDone : result.detail);
   }, [detail, handle, safetyBusy, showToast, viewerAccountId, viewerIsCurrent]);
 
   const blockProfile = useCallback(async () => {
@@ -353,17 +372,17 @@ export default function PublicProfileScreen() {
     });
     if (!viewerIsCurrent(requestedViewer)) return;
     setSafetyBusyFor(null);
-    showToast(cs.friends.blocked);
+    showToast(t.friends.blocked);
   }, [detail, safetyBusy, showToast, viewerAccountId, viewerIsCurrent]);
 
   const confirmReportProfile = useCallback(() => {
     showAppDialog({
-      title: cs.profile.report.confirmTitle,
-      message: cs.profile.report.confirmBody(handle),
+      title: t.profile.report.confirmTitle,
+      message: t.profile.report.confirmBody(handle),
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.profile.report.confirmSubmit,
+          text: t.profile.report.confirmSubmit,
           style: 'destructive',
           onPress: () => void reportProfile(),
         },
@@ -373,12 +392,12 @@ export default function PublicProfileScreen() {
 
   const confirmBlockProfile = useCallback(() => {
     showAppDialog({
-      title: cs.friends.blockTitle(handle),
-      message: cs.friends.blockBody,
+      title: t.friends.blockTitle(handle),
+      message: t.friends.blockBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.friends.blockConfirm,
+          text: t.friends.blockConfirm,
           style: 'destructive',
           onPress: () => void blockProfile(),
         },
@@ -390,20 +409,20 @@ export default function PublicProfileScreen() {
     if (!detail || safetyBusy) return;
     if (detail.blocked) {
       showAppDialog({
-        title: cs.friends.rowActionsTitle,
+        title: t.friends.rowActionsTitle,
         buttons: [
-          { text: cs.friends.unblockAction, onPress: () => void unblockProfile() },
-          { text: cs.common.cancel, style: 'cancel' },
+          { text: t.friends.unblockAction, onPress: () => void unblockProfile() },
+          { text: t.common.cancel, style: 'cancel' },
         ],
       });
       return;
     }
     showAppDialog({
-      title: cs.friends.rowActionsTitle,
+      title: t.friends.rowActionsTitle,
       buttons: [
-        { text: cs.friends.reportAction, onPress: confirmReportProfile },
-        { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlockProfile },
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.friends.reportAction, onPress: confirmReportProfile },
+        { text: t.friends.blockAction, style: 'destructive', onPress: confirmBlockProfile },
+        { text: t.common.cancel, style: 'cancel' },
       ],
     });
   }, [confirmBlockProfile, confirmReportProfile, detail, safetyBusy, unblockProfile]);
@@ -446,7 +465,7 @@ export default function PublicProfileScreen() {
 
   if (loading && !detail) {
     return (
-      <View style={styles.stateScreen} accessibilityLabel="Načítám profil">
+      <View style={styles.stateScreen} accessibilityLabel={t.publicProfile.loadingA11y}>
         <SkeletonBlock width={72} height={72} radius={36} reduceMotion={reduceMotion} />
         <SkeletonBlock width="72%" height={24} reduceMotion={reduceMotion} />
         <SkeletonBlock width="88%" height={140} reduceMotion={reduceMotion} />
@@ -458,14 +477,14 @@ export default function PublicProfileScreen() {
     return (
       <View style={styles.stateScreen}>
         <Text style={styles.stateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          Profil se teď nenačetl
+          {t.publicProfile.loadFailed}
         </Text>
         <Pressable
           onPress={() => void loadProfile()}
           style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
           accessibilityRole="button"
         >
-          <Text style={styles.retryText}>Zkusit znovu</Text>
+          <Text style={styles.retryText}>{t.publicProfile.retry}</Text>
         </Pressable>
       </View>
     );
@@ -482,7 +501,7 @@ export default function PublicProfileScreen() {
           onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Zpět"
+          accessibilityLabel={t.publicProfile.backA11y}
           hitSlop={8}
         >
           <ChevronLeftIcon size={20} color={Colors.foam} />
@@ -493,7 +512,7 @@ export default function PublicProfileScreen() {
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityState={{ disabled: safetyBusy }}
-          accessibilityLabel="Další možnosti profilu"
+          accessibilityLabel={t.publicProfile.moreA11y}
           hitSlop={8}
         >
           <MenuIcon size={19} color={Colors.foam} />
@@ -517,8 +536,8 @@ export default function PublicProfileScreen() {
             </Text>
             <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
               {detail.stats.nightsTogether > 0
-                ? `Byli jste spolu ${detail.stats.nightsTogether}× na pivu`
-                : 'Ještě jste spolu nebyli'}
+                ? t.publicProfile.nightsTogether(detail.stats.nightsTogether)
+                : t.publicProfile.nightsTogetherNone}
             </Text>
           </View>
         </View>
@@ -542,7 +561,7 @@ export default function PublicProfileScreen() {
               <PlusIcon size={17} color={Colors.stout} />
             )}
             <Text style={[styles.actionText, relationshipOn && styles.actionTextOn]} maxFontSizeMultiplier={FontScaleCap.body}>
-              {relationshipDisabled ? 'Chvilku…' : relationshipLabel(detail, following)}
+              {relationshipDisabled ? t.publicProfile.busy : relationshipLabel(detail, following)}
             </Text>
           </Pressable>
 
@@ -559,11 +578,11 @@ export default function PublicProfileScreen() {
             ]}
             accessibilityRole="button"
             accessibilityState={{ disabled: !detail.isFriend || detail.blocked }}
-            accessibilityLabel={`Pozvat ${handle} na pivo`}
+            accessibilityLabel={t.publicProfile.inviteA11y(handle)}
           >
             <BeerIcon size={17} color={Colors.foam} />
             <Text style={[styles.actionText, styles.actionTextGhost]} maxFontSizeMultiplier={FontScaleCap.body}>
-              Na pivo?
+              {t.publicProfile.invite}
             </Text>
           </Pressable>
         </View>
@@ -571,20 +590,25 @@ export default function PublicProfileScreen() {
         {detail.blocked ? (
           <View style={styles.blockedState}>
             <Text style={styles.activityTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.profileBlocked}
+              {t.friends.profileBlocked}
             </Text>
           </View>
         ) : (
-          <UnderlineTabs options={TABS} value={tab} onChange={setTab} inset={MockLayout.screenPad} />
+          <UnderlineTabs
+            options={TAB_OPTIONS}
+            value={TAB_LABELS[tab]}
+            onChange={(label) => setTab(tabFromLabel(label))}
+            inset={MockLayout.screenPad}
+          />
         )}
 
-        {!detail.blocked && tab === 'Statistiky' ? (
+        {!detail.blocked && tab === 'stats' ? (
           <>
             {detail.publishedTimeline?.windows ? (
               <>
                 <View style={styles.totals}>
                   <Text style={styles.window} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {selectedPoint ? selectedPoint.label : period}
+                    {selectedPoint ? selectedPoint.label : PERIOD_LABELS[period]}
                   </Text>
                   <StatGrid columns={4} compact stats={selectedPoint?.totals ?? series.totals} />
                 </View>
@@ -592,20 +616,24 @@ export default function PublicProfileScreen() {
                   <BarChart points={series.points} onScrub={setScrubbed} />
                 </View>
                 <View style={styles.periodRow}>
-                  <Segmented options={PERIODS} value={period} onChange={setPeriod} />
+                  <Segmented
+                    options={PERIOD_OPTIONS}
+                    value={PERIOD_LABELS[period]}
+                    onChange={(label) => setPeriod(periodFromLabel(label))}
+                  />
                 </View>
               </>
             ) : null}
 
             {detail.publicStats ? (
               <>
-                <SectionBreak title="Celkem" />
+                <SectionBreak title={t.publicProfile.totalsTitle} />
                 <StatGrid
                   columns={3}
                   stats={[
-                    { label: 'Piv', value: String(detail.publicStats.totalBeers) },
-                    { label: 'Hospod', value: String(detail.publicStats.distinctPubs) },
-                    { label: 'Mapér', value: String(detail.publicStats.mapperLevel) },
+                    { label: t.profile.chartStatBeers, value: String(detail.publicStats.totalBeers) },
+                    { label: t.profile.chartStatPubs, value: String(detail.publicStats.distinctPubs) },
+                    { label: t.publicProfile.statMapper, value: String(detail.publicStats.mapperLevel) },
                   ]}
                 />
               </>
@@ -613,7 +641,7 @@ export default function PublicProfileScreen() {
 
             {detail.achievements ? (
               <>
-                <SectionBreak title="Odznaky" />
+                <SectionBreak title={t.publicProfile.badgesTitle} />
                 <AchievementGrid mapper={undefined} achievements={detail.achievements ?? EMPTY_ACHIEVEMENTS} />
               </>
             ) : null}
@@ -621,7 +649,7 @@ export default function PublicProfileScreen() {
         ) : !detail.blocked ? (
           <View style={styles.activity}>
             {nightsLoading && nights === null ? (
-              <View style={styles.activityLoading} accessibilityLabel="Načítám večery">
+              <View style={styles.activityLoading} accessibilityLabel={t.publicProfile.nightsLoadingA11y}>
                 <SkeletonBlock width="100%" height={150} reduceMotion={reduceMotion} />
                 <SkeletonBlock width="100%" height={150} reduceMotion={reduceMotion} />
               </View>
@@ -629,11 +657,11 @@ export default function PublicProfileScreen() {
             {!nightsLoading && (nights?.length ?? 0) === 0 ? (
               <View style={styles.activityState}>
                 <Text style={styles.activityTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {nightsError ? 'Večery se teď nedotáhly' : 'Zatím žádný zveřejněný večer'}
+                  {nightsError ? t.profile.nightsError : t.profile.nightsEmpty}
                 </Text>
                 {nightsError ? (
                   <Pressable onPress={() => void loadNights()} style={styles.retry} accessibilityRole="button">
-                    <Text style={styles.retryText}>Zkusit znovu</Text>
+                    <Text style={styles.retryText}>{t.profile.nightsRetry}</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -651,7 +679,9 @@ export default function PublicProfileScreen() {
             ))}
             {nightsCursor ? (
               <Pressable onPress={() => void loadMore()} disabled={moreLoading} style={styles.more} accessibilityRole="button">
-                <Text style={styles.moreText}>{moreLoading ? 'Dotahuju…' : 'Starší večery'}</Text>
+                <Text style={styles.moreText}>
+                  {moreLoading ? t.profile.nightsLoadingMore : t.profile.nightsMore}
+                </Text>
               </Pressable>
             ) : null}
           </View>

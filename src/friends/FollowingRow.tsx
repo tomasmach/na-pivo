@@ -15,7 +15,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { Avatar } from '@/profile/Avatar';
 import type { FollowedProfile } from '@/data/friendsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -29,7 +29,7 @@ interface FollowingRowProps {
 }
 
 export function FollowingRow({ profile, first, onOpenProfile }: FollowingRowProps) {
-  const meta = profile.lastDrink ? cs.friends.followingLastDrink(profile.lastDrink) : cs.friends.followingQuiet;
+  const meta = profile.lastDrink ? t.friends.followingLastDrink(profile.lastDrink) : t.friends.followingQuiet;
 
   return (
     <Pressable

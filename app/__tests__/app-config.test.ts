@@ -219,12 +219,17 @@ describe('release config surface (app.json vs app.config.ts)', () => {
   });
 });
 
-describe('app.config native Czech localization', () => {
-  const csLocalePath = path.join(__dirname, '..', '..', 'locales', 'cs.json');
-  const csLocale: {
+describe('app.config native localization', () => {
+  type NativeLocale = {
     ios?: Record<string, unknown>;
     android?: Record<string, unknown>;
-  } = JSON.parse(fs.readFileSync(csLocalePath, 'utf8'));
+  };
+  const readLocale = (name: string): NativeLocale =>
+    JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', '..', 'locales', `${name}.json`), 'utf8'),
+    );
+  const csLocale = readLocale('cs');
+  const enLocale = readLocale('en');
 
   const localizedIosKeys = [
     'CFBundleDisplayName',
@@ -235,11 +240,19 @@ describe('app.config native Czech localization', () => {
     'NSCameraUsageDescription',
   ] as const;
 
-  it('maps the native locales to Czech only', () => {
-    expect(config.locales).toEqual({ cs: './locales/cs.json' });
+  it('maps the native locales to Czech (also for Slovak devices) and English', () => {
+    expect(config.locales).toEqual({
+      cs: './locales/cs.json',
+      sk: './locales/cs.json',
+      en: './locales/en.json',
+    });
   });
 
-  it('enables mixed localizations so Czech strings apply on any device locale', () => {
+  it('bundles expo-localization so the app can read the device language', () => {
+    expect(config.plugins).toContain('expo-localization');
+  });
+
+  it('enables mixed localizations so bundled strings apply on any device locale', () => {
     expect(config.ios?.infoPlist?.CFBundleAllowMixedLocalizations).toBe(true);
   });
 
@@ -251,12 +264,25 @@ describe('app.config native Czech localization', () => {
     expect(Object.keys(csLocale.ios ?? {}).sort()).toEqual([...localizedIosKeys].sort());
   });
 
+  it('gives English its own non-empty text for every localized key', () => {
+    expect(Object.keys(enLocale.ios ?? {}).sort()).toEqual([...localizedIosKeys].sort());
+    for (const key of localizedIosKeys) {
+      const value = enLocale.ios?.[key];
+      expect(typeof value).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+      if (key !== 'CFBundleDisplayName') expect(value).not.toBe(csLocale.ios?.[key]);
+    }
+    expect(enLocale.android).toEqual(csLocale.android);
+  });
+
   it('never localizes a microphone permission (it is intentionally absent)', () => {
     expect(csLocale.ios).not.toHaveProperty('NSMicrophoneUsageDescription');
+    expect(enLocale.ios).not.toHaveProperty('NSMicrophoneUsageDescription');
   });
 
   it('never localizes a Face ID permission (it is intentionally absent)', () => {
     expect(csLocale.ios).not.toHaveProperty('NSFaceIDUsageDescription');
+    expect(enLocale.ios).not.toHaveProperty('NSFaceIDUsageDescription');
   });
 
   it('localizes the Android launcher app name', () => {

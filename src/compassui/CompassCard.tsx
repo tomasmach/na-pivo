@@ -40,7 +40,7 @@ import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon, RefreshCwIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
@@ -223,7 +223,7 @@ export function CompassCard({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {cs.compass.revealHint}
+              {t.compass.revealHint}
             </Text>
           ) : (
             <>
@@ -279,7 +279,7 @@ export function CompassCard({
                         numberOfLines={1}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {beerMenuRotates ? `${cs.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
+                        {beerMenuRotates ? `${t.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
                       </Text>
                     </View>
                   ) : beerMenuRotates ? (
@@ -290,7 +290,7 @@ export function CompassCard({
                         numberOfLines={1}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {cs.counter.rotatingMenuBadge}
+                        {t.counter.rotatingMenuBadge}
                       </Text>
                     </View>
                   ) : null}

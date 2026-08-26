@@ -7,7 +7,7 @@ import {
   type PublishedNight,
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 type ApplyReaction = (nightId: string, rounds: number, myRound: boolean) => void;
 type ShowToast = (message: string) => void;
@@ -58,7 +58,7 @@ export function useNightReaction(
       if (result.ok) {
         if (mountedRef.current) {
           applyReaction(night.id, result.rounds, result.myRound);
-          showToast(turningOn ? cs.vycep.roundSentToast : cs.vycep.roundUndoneToast);
+          showToast(turningOn ? t.vycep.roundSentToast : t.vycep.roundUndoneToast);
         }
         finish(night.id);
         return;
@@ -72,14 +72,14 @@ export function useNightReaction(
         if (mountedRef.current) {
           if (queued) {
             applyReaction(night.id, queuedRounds, turningOn);
-            showToast(cs.vycep.roundQueuedToast);
+            showToast(t.vycep.roundQueuedToast);
           } else {
             applyReaction(night.id, night.rounds, night.myRound);
-            showToast(cs.vycep.roundErrorToast);
+            showToast(t.vycep.roundErrorToast);
           }
         }
       } else if (mountedRef.current) {
-        showToast(cs.vycep.roundErrorToast);
+        showToast(t.vycep.roundErrorToast);
       }
       finish(night.id);
     });

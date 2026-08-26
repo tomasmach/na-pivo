@@ -65,7 +65,7 @@ import {
   runPrivateAccountMutation,
 } from '@/data/privateAccountBoundary';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
@@ -366,7 +366,7 @@ export function HistoricalBeerEntrySheet({
         if (generationRef.current !== generation) return;
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.myBeers.historicalSaveError, {
+        showToast(t.myBeers.historicalSaveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
         return;
@@ -398,7 +398,7 @@ export function HistoricalBeerEntrySheet({
       if (result === 'storage-error') {
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.myBeers.historicalSaveError, {
+        showToast(t.myBeers.historicalSaveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
         return;
@@ -406,7 +406,7 @@ export function HistoricalBeerEntrySheet({
       if (!(await removeBeerCheckInActionTicket(actionKey))) {
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.myBeers.historicalSaveError, {
+        showToast(t.myBeers.historicalSaveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
         return;
@@ -417,7 +417,7 @@ export function HistoricalBeerEntrySheet({
       }
       submittingRef.current = false;
       setSubmitting(false);
-      showToast(cs.myBeers.historicalSaved(payloads.length), {
+      showToast(t.myBeers.historicalSaved(payloads.length), {
         icon: <BeerIcon size={20} color={Colors.amber} />,
       });
       reset();
@@ -428,7 +428,7 @@ export function HistoricalBeerEntrySheet({
         if (generationRef.current !== generation) return;
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.myBeers.historicalSaveError, {
+        showToast(t.myBeers.historicalSaveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
       });
@@ -475,9 +475,9 @@ export function HistoricalBeerEntrySheet({
 
         <View style={styles.header}>
           <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.historicalTitle}
+            {t.myBeers.historicalTitle}
           </Text>
-          <CloseButton onPress={cancelAndClose} label={cs.myBeers.editDrinkCancel} />
+          <CloseButton onPress={cancelAndClose} label={t.myBeers.editDrinkCancel} />
         </View>
 
         <KeyboardAwareScrollView
@@ -488,7 +488,7 @@ export function HistoricalBeerEntrySheet({
           keyboardAvoidedExternally
           contentContainerStyle={styles.scrollContent}
         >
-          <FieldLabel first>{cs.myBeers.historicalBeersLabel}</FieldLabel>
+          <FieldLabel first>{t.myBeers.historicalBeersLabel}</FieldLabel>
           {beerLines.map((line, index) => {
             const parsed = parsedBeerLines[index];
             return (
@@ -500,8 +500,8 @@ export function HistoricalBeerEntrySheet({
                     onChangeText={(value) => onChangeBeerName(line.id, value)}
                     placeholder={
                       index === 0
-                        ? cs.beerCheckins.beerPlaceholder
-                        : cs.myBeers.historicalNextBeerPlaceholder
+                        ? t.beerCheckins.beerPlaceholder
+                        : t.myBeers.historicalNextBeerPlaceholder
                     }
                     placeholderTextColor={MockColors.fieldHint}
                     style={[styles.input, styles.beerNameInput]}
@@ -514,7 +514,7 @@ export function HistoricalBeerEntrySheet({
                       style={({ pressed }) => [styles.removeBeerButton, pressed && styles.dim]}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.a11y.myBeersRemoveHistoricalBeer(
+                      accessibilityLabel={t.a11y.myBeersRemoveHistoricalBeer(
                         line.beerName || `${index + 1}`,
                       )}
                     >
@@ -552,7 +552,7 @@ export function HistoricalBeerEntrySheet({
                 <View style={styles.lineMetaRow}>
                   <View style={styles.countCol}>
                     <Text style={styles.miniLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.myBeers.historicalQuantityLabel}
+                      {t.myBeers.historicalQuantityLabel}
                     </Text>
                     <TextInput
                       value={line.quantityText}
@@ -571,7 +571,7 @@ export function HistoricalBeerEntrySheet({
                   </View>
                   <View style={styles.priceCol}>
                     <Text style={styles.miniLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.myBeers.historicalPriceLabel}
+                      {t.myBeers.historicalPriceLabel}
                     </Text>
                     <View style={[styles.priceInputWrap, !parsed.priceValid && styles.inputError]}>
                       <TextInput
@@ -582,7 +582,7 @@ export function HistoricalBeerEntrySheet({
                             priceText: sanitizePriceInput(value, priceCurrency),
                           })
                         }
-                        placeholder={cs.myBeers.historicalPricePlaceholder}
+                        placeholder={t.myBeers.historicalPricePlaceholder}
                         placeholderTextColor={MockColors.fieldHint}
                         style={styles.priceInput}
                         keyboardType={
@@ -607,21 +607,21 @@ export function HistoricalBeerEntrySheet({
               onPress={addBeerLine}
               style={({ pressed }) => [styles.addBeer, pressed && styles.dim]}
               accessibilityRole="button"
-              accessibilityLabel={cs.myBeers.historicalAddBeer}
+              accessibilityLabel={t.myBeers.historicalAddBeer}
             >
               <PlusIcon size={16} color={Colors.amber} />
               <Text style={styles.addBeerText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.historicalAddBeer}
+                {t.myBeers.historicalAddBeer}
               </Text>
             </Pressable>
           ) : null}
 
-          <FieldLabel>{cs.myBeers.historicalPubLabel}</FieldLabel>
+          <FieldLabel>{t.myBeers.historicalPubLabel}</FieldLabel>
           <TextInput
             value={pubName}
             onFocus={dismissSuggestions}
             onChangeText={setPubName}
-            placeholder={cs.myBeers.historicalPubPlaceholder}
+            placeholder={t.myBeers.historicalPubPlaceholder}
             placeholderTextColor={MockColors.fieldHint}
             style={styles.input}
             maxLength={120}
@@ -630,7 +630,7 @@ export function HistoricalBeerEntrySheet({
 
           <View style={styles.dateTimeRow}>
             <View style={styles.dateCol}>
-              <FieldLabel>{cs.myBeers.historicalDateLabel}</FieldLabel>
+              <FieldLabel>{t.myBeers.historicalDateLabel}</FieldLabel>
               <TextInput
                 value={dateText}
                 onFocus={dismissSuggestions}
@@ -638,7 +638,7 @@ export function HistoricalBeerEntrySheet({
                   setDateError(false);
                   setDateText(value);
                 }}
-                placeholder={cs.myBeers.historicalDatePlaceholder}
+                placeholder={t.myBeers.historicalDatePlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 style={[styles.input, dateError && styles.inputError]}
                 keyboardType="numbers-and-punctuation"
@@ -646,7 +646,7 @@ export function HistoricalBeerEntrySheet({
               />
             </View>
             <View style={styles.timeCol}>
-              <FieldLabel>{cs.myBeers.historicalTimeFromLabel}</FieldLabel>
+              <FieldLabel>{t.myBeers.historicalTimeFromLabel}</FieldLabel>
               <TextInput
                 value={startTimeText}
                 onFocus={dismissSuggestions}
@@ -654,7 +654,7 @@ export function HistoricalBeerEntrySheet({
                   setDateError(false);
                   setStartTimeText(value);
                 }}
-                placeholder={cs.myBeers.historicalTimePlaceholder}
+                placeholder={t.myBeers.historicalTimePlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 style={[styles.input, styles.timeInput, dateError && styles.inputError]}
                 keyboardType="numbers-and-punctuation"
@@ -662,7 +662,7 @@ export function HistoricalBeerEntrySheet({
               />
             </View>
             <View style={styles.timeCol}>
-              <FieldLabel>{cs.myBeers.historicalTimeToLabel}</FieldLabel>
+              <FieldLabel>{t.myBeers.historicalTimeToLabel}</FieldLabel>
               <TextInput
                 value={endTimeText}
                 onFocus={dismissSuggestions}
@@ -670,7 +670,7 @@ export function HistoricalBeerEntrySheet({
                   setDateError(false);
                   setEndTimeText(value);
                 }}
-                placeholder={cs.myBeers.historicalTimeToPlaceholder}
+                placeholder={t.myBeers.historicalTimeToPlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 style={[styles.input, styles.timeInput, dateError && styles.inputError]}
                 keyboardType="numbers-and-punctuation"
@@ -680,16 +680,16 @@ export function HistoricalBeerEntrySheet({
           </View>
           {dateError ? (
             <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.myBeers.historicalDateError}
+              {t.myBeers.historicalDateError}
             </Text>
           ) : null}
 
-          <FieldLabel>{cs.beerCheckins.noteLabel}</FieldLabel>
+          <FieldLabel>{t.beerCheckins.noteLabel}</FieldLabel>
           <TextInput
             value={note}
             onFocus={dismissSuggestions}
             onChangeText={setNote}
-            placeholder={cs.beerCheckins.notePlaceholder}
+            placeholder={t.beerCheckins.notePlaceholder}
             placeholderTextColor={MockColors.fieldHint}
             style={[styles.input, styles.noteInput]}
             multiline
@@ -699,11 +699,11 @@ export function HistoricalBeerEntrySheet({
 
           {/* The one place helper copy earns its line: this decides who else
               ever sees the evening, and the two words alone do not say it. */}
-          <FieldLabel>{cs.beerCheckins.visibilityLabel}</FieldLabel>
+          <FieldLabel>{t.beerCheckins.visibilityLabel}</FieldLabel>
           <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
             {isPrivate
-              ? cs.myBeers.historicalVisibilityPrivateHint
-              : cs.myBeers.historicalVisibilityFriendsHint}
+              ? t.myBeers.historicalVisibilityPrivateHint
+              : t.myBeers.historicalVisibilityFriendsHint}
           </Text>
           <View style={styles.visibilityRow}>
             <Pressable
@@ -715,14 +715,14 @@ export function HistoricalBeerEntrySheet({
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected: isPrivate }}
-              accessibilityLabel={cs.beerCheckins.visibilityPrivate}
+              accessibilityLabel={t.beerCheckins.visibilityPrivate}
             >
               <LockKeyholeIcon size={16} color={isPrivate ? Colors.amber : Colors.mutedText} />
               <Text
                 style={[styles.visibilityText, isPrivate && styles.visibilityTextActive]}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.beerCheckins.visibilityPrivate}
+                {t.beerCheckins.visibilityPrivate}
               </Text>
             </Pressable>
             <Pressable
@@ -734,14 +734,14 @@ export function HistoricalBeerEntrySheet({
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected: !isPrivate }}
-              accessibilityLabel={cs.beerCheckins.visibilityFriends}
+              accessibilityLabel={t.beerCheckins.visibilityFriends}
             >
               <UsersIcon size={16} color={!isPrivate ? Colors.amber : Colors.mutedText} />
               <Text
                 style={[styles.visibilityText, !isPrivate && styles.visibilityTextActive]}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.beerCheckins.visibilityFriends}
+                {t.beerCheckins.visibilityFriends}
               </Text>
             </Pressable>
           </View>
@@ -760,10 +760,10 @@ export function HistoricalBeerEntrySheet({
             ]}
             accessibilityRole="button"
             accessibilityState={{ disabled: !canSubmit || submitting }}
-            accessibilityLabel={cs.myBeers.historicalSubmit}
+            accessibilityLabel={t.myBeers.historicalSubmit}
           >
             <Text style={styles.submitText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.myBeers.historicalSubmit}
+              {t.myBeers.historicalSubmit}
             </Text>
           </Pressable>
         </View>

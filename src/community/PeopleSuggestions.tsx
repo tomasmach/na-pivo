@@ -9,7 +9,7 @@ import {
   type FriendSuggestion,
 } from '@/data/friendsClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -20,23 +20,11 @@ function label(person: FriendSuggestion): string {
   return person.nickname ? `@${person.nickname}` : person.displayName;
 }
 
-function hasFewForm(count: number): boolean {
-  const lastTwo = count % 100;
-  return count % 10 >= 2 && count % 10 <= 4 && (lastTwo < 12 || lastTwo > 14);
-}
-
 function reasonLabel(person: FriendSuggestion): string {
   const { count, kind } = person.suggestionReason;
-  if (kind === 'shared_pubs') {
-    if (count === 1) return 'Máte společnou hospodu';
-    return hasFewForm(count)
-      ? `Máte ${count} společné hospody`
-      : `Máte ${count} společných hospod`;
-  }
-  if (count === 1) return 'Jeden společný kamarád';
-  return hasFewForm(count)
-    ? `${count} společní kamarádi`
-    : `${count} společných kamarádů`;
+  return kind === 'shared_pubs'
+    ? t.community.suggestionSharedPubs(count)
+    : t.community.suggestionSharedFriends(count);
 }
 
 export function PeopleSuggestions() {
@@ -66,7 +54,7 @@ export function PeopleSuggestions() {
       });
       if (result.ok) {
         setSent((current) => new Set(current).add(person.id));
-        showToast(cs.friends.followed);
+        showToast(t.friends.followed);
       } else {
         showToast(result.detail);
       }
@@ -75,7 +63,7 @@ export function PeopleSuggestions() {
 
   if (people === null) {
     return (
-      <View style={styles.loading} accessibilityLabel="Načítám doporučené pivaře">
+      <View style={styles.loading} accessibilityLabel={t.community.suggestionsLoading}>
         <SkeletonBlock width="100%" height={52} reduceMotion={reduceMotion} />
         <SkeletonBlock width="100%" height={52} reduceMotion={reduceMotion} />
       </View>
@@ -101,7 +89,7 @@ export function PeopleSuggestions() {
             accessibilityRole="button"
             accessibilityState={{ disabled: busy.has(person.id) || added }}
             accessibilityLabel={
-              added ? `${cs.friends.followingHeader}: ${personLabel}` : `${cs.friends.follow}: ${personLabel}`
+              added ? `${t.friends.followingHeader}: ${personLabel}` : `${t.friends.follow}: ${personLabel}`
             }
           >
             <Avatar

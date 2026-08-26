@@ -87,8 +87,10 @@ async function buildGameHtml(game) {
   });
 
   const js = result.outputFiles[0].text;
+  // No lang attribute: the page draws no words of its own. Every label the
+  // table reads is passed in by the host in the app's language.
   const html = `<!doctype html>
-<html lang="cs">
+<html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />

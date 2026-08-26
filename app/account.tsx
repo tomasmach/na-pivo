@@ -33,7 +33,7 @@ import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { isAppleSignInSupported } from '@/data/socialAuth';
 import type { AuthProvider } from '@/data/auth';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import {
   selectAvatarUrl,
@@ -51,9 +51,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SHEET_DISMISS_MS = 260;
 
 function providerName(provider: AuthProvider): string {
-  if (provider === 'email') return cs.account.methodEmail;
-  if (provider === 'google') return cs.account.methodGoogle;
-  return cs.account.methodApple;
+  if (provider === 'email') return t.account.methodEmail;
+  if (provider === 'google') return t.account.methodGoogle;
+  return t.account.methodApple;
 }
 
 export default function AccountScreen() {
@@ -151,8 +151,8 @@ export default function AccountScreen() {
       const result = await requestEmailVerification();
       showToast(
         result.ok
-          ? cs.account.verifyEmailRequestedToast
-          : result.detail || cs.account.errorGeneric,
+          ? t.account.verifyEmailRequestedToast
+          : result.detail || t.account.errorGeneric,
       );
     } finally {
       finishBusy('verify');
@@ -169,11 +169,11 @@ export default function AccountScreen() {
         if (result.ok) {
           showToast(
             provider === 'google'
-              ? cs.account.linkedGoogleToast
-              : cs.account.linkedAppleToast,
+              ? t.account.linkedGoogleToast
+              : t.account.linkedAppleToast,
           );
         } else if (result.code !== 'cancelled') {
-          showToast(result.detail || cs.account.errorGeneric);
+          showToast(result.detail || t.account.errorGeneric);
         }
       } finally {
         finishBusy(operation);
@@ -190,8 +190,8 @@ export default function AccountScreen() {
         const result = await unlink(provider);
         showToast(
           result.ok
-            ? cs.account.unlinkedToast
-            : result.detail || cs.account.errorGeneric,
+            ? t.account.unlinkedToast
+            : result.detail || t.account.errorGeneric,
         );
       } finally {
         finishBusy(operation);
@@ -205,12 +205,12 @@ export default function AccountScreen() {
       const name = providerName(provider);
       runAfterSheetClose(() => {
         showAppDialog({
-          title: cs.account.unlinkConfirmTitle(name),
-          message: cs.account.unlinkConfirmBody,
+          title: t.account.unlinkConfirmTitle(name),
+          message: t.account.unlinkConfirmBody,
           buttons: [
-            { text: cs.account.deleteConfirmCancel, style: 'cancel' },
+            { text: t.account.deleteConfirmCancel, style: 'cancel' },
             {
-              text: cs.account.unlinkCta,
+              text: t.account.unlinkCta,
               style: 'destructive',
               onPress: () => void handleUnlink(provider),
             },
@@ -225,14 +225,14 @@ export default function AccountScreen() {
   const handleSetPassword = useCallback(async () => {
     if (busyRef.current) return;
     if (newPassword.length < MIN_PASSWORD) {
-      setPasswordError(cs.account.errorPasswordShort);
+      setPasswordError(t.account.errorPasswordShort);
       return;
     }
 
     const hasProfileEmail = !!profile?.email;
     const email = passwordEmail.trim();
     if (!hasProfileEmail && !EMAIL_RE.test(email)) {
-      setPasswordError(cs.account.errorEmailInvalid);
+      setPasswordError(t.account.errorEmailInvalid);
       return;
     }
 
@@ -246,9 +246,9 @@ export default function AccountScreen() {
       if (result.ok) {
         setPasswordOpen(false);
         setNewPassword('');
-        showToast(cs.account.setPasswordToast);
+        showToast(t.account.setPasswordToast);
       } else {
-        setPasswordError(result.detail || cs.account.errorGeneric);
+        setPasswordError(result.detail || t.account.errorGeneric);
       }
     } finally {
       finishBusy('setPassword');
@@ -268,7 +268,7 @@ export default function AccountScreen() {
     try {
       const result = await logout();
       if (!result.ok) {
-        showToast(result.detail || cs.account.errorGeneric);
+        showToast(result.detail || t.account.errorGeneric);
         return;
       }
       leave();
@@ -292,14 +292,14 @@ export default function AccountScreen() {
   const handleDelete = useCallback(() => {
     if (busyRef.current) return;
     showAppDialog({
-      title: cs.account.deleteConfirmTitle,
+      title: t.account.deleteConfirmTitle,
       message: isClaimed
-        ? cs.account.deleteConfirmBody
-        : cs.account.deleteAnonymousConfirmBody,
+        ? t.account.deleteConfirmBody
+        : t.account.deleteAnonymousConfirmBody,
       buttons: [
-        { text: cs.account.deleteConfirmCancel, style: 'cancel' },
+        { text: t.account.deleteConfirmCancel, style: 'cancel' },
         {
-          text: cs.account.deleteConfirmConfirm,
+          text: t.account.deleteConfirmConfirm,
           style: 'destructive',
           onPress: async () => {
             if (!startBusy('delete')) return;
@@ -307,8 +307,8 @@ export default function AccountScreen() {
               const result = await deleteAccount();
               showToast(
                 result.ok
-                  ? cs.account.deleteToast
-                  : result.detail || cs.account.errorGeneric,
+                  ? t.account.deleteToast
+                  : result.detail || t.account.errorGeneric,
               );
               if (result.ok) leave();
             } finally {
@@ -328,8 +328,8 @@ export default function AccountScreen() {
       const result = await exportAccountData();
       showToast(
         result.ok
-          ? cs.account.exportDataToast
-          : result.detail || cs.account.errorGeneric,
+          ? t.account.exportDataToast
+          : result.detail || t.account.errorGeneric,
       );
     } finally {
       finishBusy('export');
@@ -344,9 +344,9 @@ export default function AccountScreen() {
     ) {
       return {
         kind: 'checkin',
-        text: cs.account.nudgeVerify,
+        text: t.account.nudgeVerify,
         ctaLabel:
-          busy === 'verify' ? cs.account.loading : cs.account.nudgeVerifyCta,
+          busy === 'verify' ? t.account.loading : t.account.nudgeVerifyCta,
         onPress: () => void handleVerifyEmail(),
         onDismiss: () => setDismissedNudge('verify'),
       };
@@ -360,8 +360,8 @@ export default function AccountScreen() {
       const onlyProvider = providerName(providers[0]);
       return {
         kind: 'checkin',
-        text: cs.account.nudgeSingleMethod(onlyProvider),
-        ctaLabel: cs.account.setPasswordCta,
+        text: t.account.nudgeSingleMethod(onlyProvider),
+        ctaLabel: t.account.setPasswordCta,
         onPress: () => runAfterSheetClose(openPasswordSheet),
         onDismiss: () => setDismissedNudge('single-method'),
       };
@@ -370,7 +370,7 @@ export default function AccountScreen() {
     if (busy === 'export') {
       return {
         kind: 'dopito',
-        label: cs.account.exportRunning,
+        label: t.account.exportRunning,
         onPress: () => undefined,
       };
     }
@@ -397,17 +397,17 @@ export default function AccountScreen() {
     () => [
       {
         key: 'export',
-        label: cs.account.exportData,
+        label: t.account.exportData,
         icon: Share2Icon,
         onPress: () => void handleExportData(),
-        accessibilityLabel: cs.a11y.accountExportData,
+        accessibilityLabel: t.a11y.accountExportData,
       },
       {
         key: 'delete',
-        label: cs.account.deleteAccount,
+        label: t.account.deleteAccount,
         icon: Trash2Icon,
         onPress: () => runAfterSheetClose(handleDelete),
-        accessibilityLabel: cs.a11y.accountDelete,
+        accessibilityLabel: t.a11y.accountDelete,
       },
     ],
     [handleDelete, handleExportData, runAfterSheetClose],
@@ -433,7 +433,7 @@ export default function AccountScreen() {
           pressed && styles.pressed,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.backButton}
+        accessibilityLabel={t.a11y.backButton}
       >
         <ChevronLeftIcon size={22} color={Colors.foam} />
       </Pressable>
@@ -442,7 +442,7 @@ export default function AccountScreen() {
         numberOfLines={1}
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
-        {cs.account.accountTitle}
+        {t.account.accountTitle}
       </Text>
       <View style={styles.headerSpacer} />
       {profile ? (
@@ -454,7 +454,7 @@ export default function AccountScreen() {
           ]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.accountMore}
+          accessibilityLabel={t.a11y.accountMore}
         >
           <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
@@ -481,24 +481,24 @@ export default function AccountScreen() {
             style={styles.unavailableText}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.account.accountLoadError}
+            {t.account.accountLoadError}
           </Text>
           <CounterCta
-            label={profileRetrying ? cs.account.loading : cs.account.accountRetry}
+            label={profileRetrying ? t.account.loading : t.account.accountRetry}
             subLabel={null}
             onPress={() => void handleRetryProfile()}
             accessibilityLabel={
-              profileRetrying ? cs.account.loading : cs.a11y.accountRetry
+              profileRetrying ? t.account.loading : t.a11y.accountRetry
             }
             disabled={profileRetrying || busy === 'logout'}
           />
           <QuietPill
             label={
               logoutBusy
-                ? cs.account.loading
+                ? t.account.loading
                 : signedIn
-                  ? cs.account.logout
-                  : cs.account.resetInvalidCta
+                  ? t.account.logout
+                  : t.account.resetInvalidCta
             }
             onPress={() => {
               if (logoutBusy) return;
@@ -510,10 +510,10 @@ export default function AccountScreen() {
             }}
             accessibilityLabel={
               logoutBusy
-                ? cs.account.loading
+                ? t.account.loading
                 : signedIn
-                  ? cs.a11y.accountLogout
-                  : cs.a11y.backButton
+                  ? t.a11y.accountLogout
+                  : t.a11y.backButton
             }
             disabled={logoutBusy}
           />
@@ -527,7 +527,7 @@ export default function AccountScreen() {
     (nickname ? `@${nickname}` : '') ||
     displayName ||
     profile.email ||
-    cs.account.anonymousName;
+    t.account.anonymousName;
   const identityCaption =
     nickname && displayName && `@${nickname}` !== displayName
       ? displayName
@@ -548,7 +548,7 @@ export default function AccountScreen() {
       <View
         style={styles.accountCard}
         accessibilityRole="text"
-        accessibilityLabel={cs.a11y.accountIdentity(
+        accessibilityLabel={t.a11y.accountIdentity(
           identityName,
           profile.email,
           linkedMethods,
@@ -597,7 +597,7 @@ export default function AccountScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {isClaimed ? linkedMethods : cs.account.anonymousName}
+            {isClaimed ? linkedMethods : t.account.anonymousName}
           </Text>
           <Text
             style={styles.verification}
@@ -605,12 +605,12 @@ export default function AccountScreen() {
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {!isClaimed
-              ? cs.account.anonymousDataNote
+              ? t.account.anonymousDataNote
               : profile.email
                 ? profile.emailVerified
-                  ? cs.account.emailVerified
-                  : cs.account.emailUnverified
-                : cs.account.emailMissing}
+                  ? t.account.emailVerified
+                  : t.account.emailUnverified
+                : t.account.emailMissing}
           </Text>
         </View>
       </View>
@@ -620,18 +620,18 @@ export default function AccountScreen() {
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
-        label={cs.account.ctaMethods}
+        label={t.account.ctaMethods}
         subLabel={null}
         onPress={() => setMethodsOpen(true)}
-        accessibilityLabel={cs.a11y.accountMethods}
+        accessibilityLabel={t.a11y.accountMethods}
       />
 
       {isClaimed ? (
         <QuietPill
-          label={logoutBusy ? cs.account.loading : cs.account.logout}
+          label={logoutBusy ? t.account.loading : t.account.logout}
           onPress={() => void handleLogout()}
           accessibilityLabel={
-            logoutBusy ? cs.account.loading : cs.a11y.accountLogout
+            logoutBusy ? t.account.loading : t.a11y.accountLogout
           }
           disabled={logoutBusy}
         />
@@ -669,7 +669,7 @@ export default function AccountScreen() {
 
       <MoreSheet
         visible={moreOpen}
-        title={cs.account.moreTitle}
+        title={t.account.moreTitle}
         rows={moreRows}
         onClose={() => setMoreOpen(false)}
       />

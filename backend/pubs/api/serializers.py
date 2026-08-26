@@ -54,6 +54,7 @@ from pubs.beer_catalog import (
     BEER_PRICE_MIN_CZK,
     normalize_beer_payload,
 )
+from pubs.i18n import current_locale, normalize_locale
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
 from pubs.models import (
     BEER_CHECKIN_MAX_TAGS,
@@ -811,6 +812,18 @@ class PushDeviceRequestSerializer(serializers.Serializer):
         default="",
         trim_whitespace=True,
     )
+    # Additive: released app versions never send this. Anything unrecognised is
+    # normalized to "cs" instead of rejected, so a newer client can never brick
+    # its offline queue on a language tag.
+    locale = serializers.CharField(
+        # Generous bound so a full BCP-47 tag ("en-US-POSIX") normalizes instead
+        # of 400ing; validate_locale collapses it to "cs" or "en" anyway.
+        max_length=64,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
 
     def validate_push_token(self, value: str) -> str:
         if not value:
@@ -818,6 +831,9 @@ class PushDeviceRequestSerializer(serializers.Serializer):
         if EXPO_PUSH_TOKEN_RE.fullmatch(value) is None:
             raise serializers.ValidationError("push_token must be a valid Expo push token.")
         return value
+
+    def validate_locale(self, value: str) -> str:
+        return normalize_locale(value) if value else ""
 
 
 class PushDeviceDeleteSerializer(serializers.Serializer):
@@ -844,6 +860,7 @@ class PushDeviceResponseSerializer(serializers.ModelSerializer):
             "permission_status",
             "enabled",
             "app_version",
+            "locale",
             "created_at",
             "updated_at",
             "last_registered_at",
@@ -3079,10 +3096,12 @@ class AccountMeSerializer(serializers.ModelSerializer):
         # block uses ``xp`` / ``distinct_mapped_pubs`` / ``first_mapper_count`` /
         # ``levels[].xp``. The PUT-response snapshot in mapper.py uses the SAME
         # ``xp`` key so the two endpoints can never disagree.
+        # Level titles are lazy msgids, so str() them HERE: the ladder is a
+        # module-level table imported once, while the language is per request.
         return {
             "xp": xp,
             "level": progress["level"],
-            "title": progress["title"],
+            "title": str(progress["title"]),
             "xp_into_level": progress["xp_into_level"],
             "xp_for_next_level": progress["xp_for_next_level"],
             "distinct_mapped_pubs": stats["mapped_pubs_count"],
@@ -3090,7 +3109,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "first_mapper_count": stats["first_mapper_count"],
             "completed_pubs_count": stats["completed_pubs_count"],
             "levels": [
-                {"level": lvl["level"], "title": lvl["title"], "xp": lvl["xp"]}
+                {"level": lvl["level"], "title": str(lvl["title"]), "xp": lvl["xp"]}
                 for lvl in maper_levels()
             ],
             "xp_rules": maper_xp_rules(),
@@ -3103,10 +3122,13 @@ class AccountMeSerializer(serializers.ModelSerializer):
         return {
             "xp": xp,
             "level": progress["level"],
-            "title": progress["title"],
+            "title": str(progress["title"]),
             "xp_into_level": progress["xp_into_level"],
             "xp_for_next_level": progress["xp_for_next_level"],
-            "levels": pivar_levels(),
+            "levels": [
+                {"level": lvl["level"], "title": str(lvl["title"]), "xp": lvl["xp"]}
+                for lvl in pivar_levels()
+            ],
             "xp_rules": pivar_xp_rules(),
         }
 
@@ -3185,23 +3207,30 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
 
 
 class ReleaseNoteItemSerializer(serializers.Serializer):
-    """A single highlight bullet in the response body."""
+    """A single highlight bullet in the response body.
+
+    ``text_en`` is additive and may be empty: older notes were written before
+    the app spoke English, and the client hides the popup rather than showing
+    Czech to an English user.
+    """
 
     icon = serializers.CharField(allow_blank=True)
     text = serializers.CharField()
+    text_en = serializers.CharField(allow_blank=True)
 
 
 class ReleaseNoteSerializer(serializers.ModelSerializer):
     """Response body for GET /v1/release-notes.
 
     ``items`` reads the related ReleaseNoteItem rows in their ``order`` (the
-    related manager honours ReleaseNoteItem.Meta.ordering)."""
+    related manager honours ReleaseNoteItem.Meta.ordering). ``title_en`` is
+    additive and blank on notes that have no English copy."""
 
     items = ReleaseNoteItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = ReleaseNote
-        fields = ["version", "title", "items"]
+        fields = ["version", "title", "title_en", "items"]
         read_only_fields = fields
 
 
@@ -3263,16 +3292,37 @@ class PubAmenityKindSerializer(serializers.Serializer):
     The model keeps the columns named label/short_label/filter_candidate/rank/
     active; the wire contract (and the mobile WireAmenityKind type) uses
     label_cs/short_label_cs/map_filterable/is_active/order.
+
+    ``label``/``short_label`` are additive and already resolved for the
+    requesting language, so a new client can render them without knowing which
+    language it asked for. The ``_cs`` pair stays byte-identical for released
+    app versions.
     """
 
     key = serializers.CharField()
     group = serializers.CharField()
     label_cs = serializers.CharField(source="label")
     short_label_cs = serializers.CharField(source="short_label")
+    label_en = serializers.SerializerMethodField()
+    short_label_en = serializers.SerializerMethodField()
+    label = serializers.SerializerMethodField()
+    short_label = serializers.SerializerMethodField()
     icon = serializers.CharField()
     map_filterable = serializers.BooleanField(source="filter_candidate")
     is_active = serializers.BooleanField(source="active")
     order = serializers.IntegerField(source="rank")
+
+    def get_label_en(self, obj) -> str:
+        return obj.label_en or obj.label
+
+    def get_short_label_en(self, obj) -> str:
+        return obj.short_label_en or obj.short_label
+
+    def get_label(self, obj) -> str:
+        return self.get_label_en(obj) if current_locale() == "en" else obj.label
+
+    def get_short_label(self, obj) -> str:
+        return self.get_short_label_en(obj) if current_locale() == "en" else obj.short_label
 
 
 class PubAmenityReadQuerySerializer(serializers.Serializer):

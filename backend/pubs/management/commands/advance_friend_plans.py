@@ -38,6 +38,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy
 
 # Reuse the exact, already-tested fanout / helper stack from the API layer so a
 # converted plan is indistinguishable from a live broadcast made via HTTP.
@@ -51,6 +52,7 @@ from pubs.api.views import (
     _prague_today_bounds,
     _send_friend_push,
 )
+from pubs.i18n import LocalizedText
 from pubs.models import FriendNotification, FriendPubActivity, FriendPubActivityRecipient
 
 logger = logging.getLogger("pubs.friends")
@@ -111,8 +113,13 @@ class Command(BaseCommand):
                 reminded += 1
                 continue
 
-            title = "Večer se schází parta"
-            body = f"{plan.name} v {local_time}. Nezapomeň se ukázat."
+            # No request here, so the language belongs to the reader, not to
+            # this thread: keep the msgid + params and let the push layer render.
+            title = LocalizedText(gettext_lazy("Večer se schází parta"))
+            body = LocalizedText(
+                gettext_lazy("%(pub)s v %(time)s. Nezapomeň se ukázat."),
+                {"pub": plan.name, "time": local_time},
+            )
             # Self-reminder: ignores ghost, honours the creator's quiet hours (the
             # push is dropped inside _send_friend_push; we stamp the row regardless
             # so the reminder is never retried on the next tick).
@@ -244,8 +251,11 @@ class Command(BaseCommand):
             return
 
         actor = _friend_display_name(owner)
-        title = "Kamarád je na pivu"
-        body = f"{actor} sedí v {plan.name}. Nechceš se přidat?"
+        title = LocalizedText(gettext_lazy("Kamarád je na pivu"))
+        body = LocalizedText(
+            gettext_lazy("%(name)s sedí v %(pub)s. Nechceš se přidat?"),
+            {"name": actor, "pub": plan.name},
+        )
         _bulk_create_friend_notifications(
             recipient_ids=friend_ids,
             actor=owner,

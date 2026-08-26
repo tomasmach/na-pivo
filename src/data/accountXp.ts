@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 import type { AccountMapper, AccountPivar, MapperLevel } from './auth';
 import { levelForXp } from './mapperXp';
 
@@ -5,13 +7,13 @@ import { levelForXp } from './mapperXp';
  * Pivař counters additively for released clients; the current app combines both
  * authoritative totals so every useful contribution moves the same level. */
 export const FALLBACK_ACCOUNT_LEVELS: readonly MapperLevel[] = [
-  { level: 1, title: 'Zelenáč', xp: 0 },
-  { level: 2, title: 'Ochutnávač', xp: 150 },
-  { level: 3, title: 'Pivní tovaryš', xp: 500 },
-  { level: 4, title: 'Výčepní', xp: 1500 },
-  { level: 5, title: 'Sládek', xp: 4000 },
-  { level: 6, title: 'Pivní mistr', xp: 9000 },
-  { level: 7, title: 'Pivní legenda', xp: 18000 },
+  { level: 1, title: t.xp.account.rookie, xp: 0 },
+  { level: 2, title: t.xp.account.taster, xp: 150 },
+  { level: 3, title: t.xp.account.journeyman, xp: 500 },
+  { level: 4, title: t.xp.account.barkeep, xp: 1500 },
+  { level: 5, title: t.xp.account.brewmaster, xp: 4000 },
+  { level: 6, title: t.xp.account.beerMaster, xp: 9000 },
+  { level: 7, title: t.xp.account.beerLegend, xp: 18000 },
 ];
 
 export interface AccountXpProgress {

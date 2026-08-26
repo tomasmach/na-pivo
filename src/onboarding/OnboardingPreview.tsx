@@ -20,6 +20,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BeerIcon, CameraIcon, DicesIcon } from '@/components/shared/IconGlyph';
+import { t } from '@/i18n';
 import { CompassCell } from '@/pubs/CompassCell';
 import { Leaderboard } from '@/mocks/Leaderboard';
 import { StatGrid } from '@/mocks/StatGrid';
@@ -76,7 +77,7 @@ export function OnboardingPreview({ slide }: { slide: 'compass' | 'diary' | 'acc
   if (slide === 'compass') {
     return (
       <View style={styles.frame} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <CompassCell pub={PREVIEW_PUB} position={PREVIEW_POSITION} badge="Nejbližší" />
+        <CompassCell pub={PREVIEW_PUB} position={PREVIEW_POSITION} badge={t.compass.modeNearest} />
       </View>
     );
   }
@@ -88,27 +89,27 @@ export function OnboardingPreview({ slide }: { slide: 'compass' | 'diary' | 'acc
           <StatGrid
             columns={3}
             stats={[
-              { label: 'piv', value: '4' },
-              { label: 'u stolu', value: '3' },
-              { label: 'večer', value: '2:15' },
+              { label: t.onboarding.previewStatBeers, value: '4' },
+              { label: t.onboarding.previewStatTable, value: '3' },
+              { label: t.onboarding.previewStatNight, value: '2:15' },
             ]}
           />
           <View style={styles.thread}>
             <LogRow
               icon={<BeerIcon size={15} color={Colors.amber} />}
               text="Flekovský ležák 13°"
-              by="Ty"
+              by={t.onboarding.previewMe}
               at="22:40"
             />
             <LogRow
               icon={<DicesIcon size={15} color={Colors.amber} />}
-              text="Kostky"
+              text={t.onboarding.previewGame}
               by="Honza"
               at="22:12"
             />
             <LogRow
               icon={<CameraIcon size={15} color={Colors.amber} />}
-              text="Fotka"
+              text={t.onboarding.previewPhoto}
               by="Klára"
               at="21:58"
             />
@@ -122,15 +123,15 @@ export function OnboardingPreview({ slide }: { slide: 'compass' | 'diary' | 'acc
     <View style={styles.frame} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={styles.card}>
         <Text style={styles.boardTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          Mapéři tenhle měsíc
+          {t.onboarding.previewBoardTitle}
         </Text>
         <Leaderboard
           rows={[
             { id: '1', name: 'Honza', score: 8, tint: '#7DD66B' },
-            { id: '2', name: 'Ty', score: 6, tint: Colors.amber, me: true },
+            { id: '2', name: t.onboarding.previewMe, score: 6, tint: Colors.amber, me: true },
             { id: '3', name: 'Klára', score: 4, tint: '#A8896A' },
           ]}
-          unit="hospod"
+          unit={t.onboarding.previewBoardUnit}
         />
       </View>
     </View>

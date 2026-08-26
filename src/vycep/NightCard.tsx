@@ -12,8 +12,14 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import type { PublishedNight } from '@/data/nightsClient';
 import { useNightActions } from '@/feed/useNightActions';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+import {
+  beerCountLabel,
+  intlLocale,
+  shotCountLabel,
+  softDrinkCountLabel,
+  t,
+  wineCountLabel,
+} from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -33,7 +39,7 @@ interface NightCardProps {
 function authorLabel(night: PublishedNight): string {
   if (night.author.nickname) return `@${night.author.nickname}`;
   if (night.author.displayName) return night.author.displayName;
-  return cs.vycep.anonymousAuthor;
+  return t.vycep.anonymousAuthor;
 }
 
 function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
@@ -44,7 +50,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
       [
         night.pubNames.length > 0 ? night.pubNames.slice(0, 5).join(' → ') : null,
         night.durationMinutes != null && night.durationMinutes > 0
-          ? cs.vycep.nightDuration(
+          ? t.vycep.nightDuration(
               Math.floor(night.durationMinutes / 60),
               night.durationMinutes % 60,
             )
@@ -82,9 +88,9 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     night.isMine
       ? (
           night.visibility === 'public'
-            ? cs.vycep.visibilityChipWorld
-            : cs.vycep.visibilityChipFriends
-        ).toLocaleLowerCase('cs-CZ')
+            ? t.vycep.visibilityChipWorld
+            : t.vycep.visibilityChipFriends
+        ).toLocaleLowerCase(intlLocale)
       : null,
   ]
     .filter((part): part is string => part !== null)
@@ -94,7 +100,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     <View
       style={styles.card}
       accessibilityRole="text"
-      accessibilityLabel={cs.a11y.nightCard(owner)}
+      accessibilityLabel={t.a11y.nightCard(owner)}
     >
       <View style={styles.header}>
         <Avatar
@@ -115,7 +121,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
           onPress={openMenu}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.nightMenu}
+          accessibilityLabel={t.a11y.nightMenu}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
         >
           <MenuIcon size={18} color={Colors.mutedText} />
@@ -139,7 +145,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
         {night.isMine ? (
           night.rounds > 0 ? (
             <Text style={styles.mineRoundsText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.vycep.roundCount(night.rounds)}
+              {t.vycep.roundCount(night.rounds)}
             </Text>
           ) : (
             <View />

@@ -6,6 +6,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { ChallengeDetailScreen } from '@/community/ChallengeDetailScreen';
 import { fetchChallenge, type Challenge } from '@/data/challengesClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -59,7 +60,7 @@ export default function ChallengeRoute() {
 
   if (state === 'loading') {
     return (
-      <View style={styles.loading} accessibilityLabel="Načítám výzvu">
+      <View style={styles.loading} accessibilityLabel={t.challengeDetail.routeLoading}>
         <SkeletonBlock width="72%" height={32} reduceMotion={reduceMotion} />
         <SkeletonBlock width="100%" height={92} reduceMotion={reduceMotion} />
         <SkeletonBlock width="88%" height={54} reduceMotion={reduceMotion} />
@@ -71,14 +72,14 @@ export default function ChallengeRoute() {
     return (
       <View style={styles.missing}>
         <Text style={styles.missingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          Výzvu se teď nepovedlo načíst.
+          {t.challengeDetail.routeLoadError}
         </Text>
         <Pressable
           onPress={() => setRetry((value) => value + 1)}
           accessibilityRole="button"
           style={styles.retry}
         >
-          <Text style={styles.retryText}>Zkusit znovu</Text>
+          <Text style={styles.retryText}>{t.challengeDetail.routeRetry}</Text>
         </Pressable>
       </View>
     );

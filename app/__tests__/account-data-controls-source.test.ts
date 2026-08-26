@@ -37,19 +37,19 @@ describe("app/account.tsx source contract", () => {
     expect(exportIdx).toBeGreaterThanOrEqual(0);
     const row = src.slice(Math.max(0, exportIdx - 600), exportIdx + 900);
     expect(row).toMatch(/Share2Icon/);
-    expect(row).toMatch(/cs\.account\.exportData/);
+    expect(row).toMatch(/t\.account\.exportData/);
   });
 
   test("delete MoreRow exists with cs.account.deleteAccount", () => {
     const deleteIdx = src.search(/key\s*:\s*["']delete["']/);
     expect(deleteIdx).toBeGreaterThanOrEqual(0);
     const row = src.slice(Math.max(0, deleteIdx - 600), deleteIdx + 900);
-    expect(row).toMatch(/cs\.account\.deleteAccount/);
+    expect(row).toMatch(/t\.account\.deleteAccount/);
   });
 
   test("logout QuietPill block is wrapped by isClaimed", () => {
     expect(src).toMatch(
-      /\{\s*isClaimed\s*\?\s*\([\s\S]{0,500}<QuietPill[\s\S]{0,500}cs\.account\.logout/,
+      /\{\s*isClaimed\s*\?\s*\([\s\S]{0,500}<QuietPill[\s\S]{0,500}t\.account\.logout/,
     );
   });
 
@@ -57,8 +57,8 @@ describe("app/account.tsx source contract", () => {
     const cardIdx = src.indexOf("anonymousName");
     expect(cardIdx).toBeGreaterThanOrEqual(0);
     const card = src.slice(cardIdx, cardIdx + 1200);
-    expect(card).toMatch(/cs\.account\.anonymousName/);
-    expect(src).toMatch(/cs\.account\.anonymousDataNote/);
+    expect(card).toMatch(/t\.account\.anonymousName/);
+    expect(src).toMatch(/t\.account\.anonymousDataNote/);
   });
 
   test("handleExportData: busy export, await exportAccountData, failure detail, finally reset", () => {
@@ -73,7 +73,7 @@ describe("app/account.tsx source contract", () => {
 
     // failure path surfaces a result detail
     expect(fn).toMatch(
-      /result\.ok[\s\S]{0,300}cs\.account\.exportDataToast[\s\S]{0,300}result\.detail/,
+      /result\.ok[\s\S]{0,300}t\.account\.exportDataToast[\s\S]{0,300}result\.detail/,
     );
 
     // busy state always resets

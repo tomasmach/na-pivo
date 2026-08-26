@@ -16,6 +16,7 @@ import io
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
@@ -56,7 +57,7 @@ def process_beer_photo(file_or_bytes) -> ContentFile:
     if size is None and isinstance(file_or_bytes, (bytes, bytearray)):
         size = len(file_or_bytes)
     if size is not None and size > max_bytes:
-        raise BeerPhotoError("Fotka je příliš velká.", code="photo_too_large", http_status=400)
+        raise BeerPhotoError(gettext("Fotka je příliš velká."), code="photo_too_large", http_status=400)
 
     if isinstance(file_or_bytes, (bytes, bytearray)):
         raw = bytes(file_or_bytes)
@@ -69,9 +70,9 @@ def process_beer_photo(file_or_bytes) -> ContentFile:
             pass
         raw = file_or_bytes.read(max_bytes + 1)
     if len(raw) > max_bytes:
-        raise BeerPhotoError("Fotka je příliš velká.", code="photo_too_large", http_status=400)
+        raise BeerPhotoError(gettext("Fotka je příliš velká."), code="photo_too_large", http_status=400)
     if not raw:
-        raise BeerPhotoError("Fotku se nepodařilo načíst.", code="photo_invalid", http_status=400)
+        raise BeerPhotoError(gettext("Fotku se nepodařilo načíst."), code="photo_invalid", http_status=400)
 
     # --- decompression-bomb ceiling (before decode), restored in finally ---
     max_edge = settings.BEER_PHOTO_MAX_EDGE_PX
@@ -95,7 +96,7 @@ def process_beer_photo(file_or_bytes) -> ContentFile:
                 )
         except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
             raise BeerPhotoError(
-                "Fotku se nepodařilo načíst.", code="photo_invalid", http_status=400
+                gettext("Fotku se nepodařilo načíst."), code="photo_invalid", http_status=400
             ) from exc
     finally:
         Image.MAX_IMAGE_PIXELS = previous_limit

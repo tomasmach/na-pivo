@@ -19,6 +19,7 @@ import { useCompassRotation } from '@/pubs/useCompassRotation';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
+import { t } from '@/i18n';
 
 const GLASS = isLiquidGlassAvailable();
 const DIAL = 62;
@@ -44,7 +45,7 @@ function PubCard({
       onPress={onPress}
       style={({ pressed }) => [styles.card, { width }, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`${pub.name}, ${pub.distanceLabel ?? 'vzdálenost neznámá'}, detail`}
+      accessibilityLabel={t.pubList.carouselA11y(pub.name, pub.distanceLabel ?? t.pubList.distanceUnknown)}
     >
       {GLASS ? (
         <GlassView
@@ -69,7 +70,7 @@ function PubCard({
           {nearest ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText} allowFontScaling={false}>
-                Nejbližší
+                {t.compass.modeNearest}
               </Text>
             </View>
           ) : null}

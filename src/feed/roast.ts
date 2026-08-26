@@ -32,7 +32,7 @@
  * Silence is a valid outcome — a forced joke is worse than none.
  */
 
-import { beerCountLabel, czechPlural, gameCountLabel, pubCountLabel } from '@/i18n/plural';
+import { beerCountLabel, gameCountLabel, pubCountLabel, t } from '@/i18n';
 
 export interface RoastInput {
   beers: number;
@@ -73,29 +73,29 @@ export function buildRoast(input: RoastInput): Roast | null {
 
   if (input.pubs >= 3 && input.photos === 0) {
     return {
-      line: `${pubCountLabel(input.pubs)} a ani jedna fotka`,
-      basis: 'Zítra si z toho nebudeš pamatovat nic',
+      line: t.roast.noPhotos(pubCountLabel(input.pubs)),
+      basis: t.roast.noPhotosBasis,
     };
   }
 
   if (input.games > 0 && input.gamesWon === 0) {
     return {
-      line: `${gameCountLabel(input.games)}, ani jedna výhra`,
-      basis: 'Aspoň jsi platil rundu',
+      line: t.roast.noWins(gameCountLabel(input.games)),
+      basis: t.roast.noWinsBasis,
     };
   }
 
   if (input.visitsToSamePub >= 5 && input.pubs === 1) {
     return {
-      line: 'Zase ta samá hospoda',
-      basis: `${input.visitsToSamePub}. návštěva. Objevitel roku to nebude`,
+      line: t.roast.samePub,
+      basis: t.roast.samePubBasis(input.visitsToSamePub),
     };
   }
 
   if (ratio <= 0.5 && input.duration >= 180) {
     return {
-      line: `${formatDuration(input.duration)} a ${beerCountLabel(input.beers)}`,
-      basis: 'To už není pití, to je schůze',
+      line: t.roast.slowPace(formatDuration(input.duration), beerCountLabel(input.beers)),
+      basis: t.roast.slowPaceBasis,
     };
   }
 
@@ -104,8 +104,8 @@ export function buildRoast(input: RoastInput): Roast | null {
 }
 
 function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} minut`;
+  if (minutes < 60) return t.roast.durationMinutes(minutes);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return m === 0 ? `${h} ${czechPlural(h, { one: 'hodina', few: 'hodiny', many: 'hodin' })}` : `${h}h ${m}m`;
+  return m === 0 ? t.roast.durationHours(h) : t.roast.durationHoursMinutes(h, m);
 }

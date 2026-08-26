@@ -5,6 +5,7 @@ import type { Pub } from '@/data/pubs';
 import type { WireVisit } from '@/data/visitsClient';
 import type { TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
+import { intlLocale, t } from '@/i18n';
 
 export interface VisitedPubSummary {
   cacheKey: string;
@@ -251,7 +252,7 @@ export function buildVisitedPubs(
     if (!previous) {
       grouped.set(key, {
         cacheKey: key,
-        name: visit.name || match?.name || 'Hospoda',
+        name: visit.name || match?.name || t.map.pubNameFallback,
         lat: visit.lat,
         lng: visit.lng,
         city,
@@ -275,7 +276,7 @@ export function buildVisitedCities(visited: VisitedPubSummary[]): VisitedCitySum
   const cities = new Map<string, VisitedCitySummary & { latSum: number; lngSum: number }>();
   for (const pub of visited) {
     if (!pub.city) continue;
-    const key = pub.city.toLocaleLowerCase('cs-CZ');
+    const key = pub.city.toLocaleLowerCase(intlLocale);
     const previous = cities.get(key);
     if (!previous) {
       cities.set(key, {
@@ -329,7 +330,7 @@ export function buildLivePubs(
     const { lat, lng } = decodeGeohash8(key);
     grouped.set(key, {
       cacheKey: key,
-      name: activity.name || 'Hospoda',
+      name: activity.name || t.map.pubNameFallback,
       city: normalizedCity(activity.city),
       lat,
       lng,

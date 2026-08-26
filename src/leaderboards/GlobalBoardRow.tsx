@@ -10,7 +10,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CrownIcon } from '@/components/shared/IconGlyph';
 import type { BoardEntry } from '@/data/leaderboardsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -30,9 +30,9 @@ const AVATAR_SIZE = 34;
 
 /** `@nickname` (the listing handle) → display name → a friendly fallback. */
 function resolveName(entry: BoardEntry): string {
-  if (entry.isMe) return cs.leaderboards.rowMe;
+  if (entry.isMe) return t.leaderboards.rowMe;
   if (entry.account.nickname) return `@${entry.account.nickname}`;
-  return entry.account.displayName || cs.leaderboards.rowFallbackName;
+  return entry.account.displayName || t.leaderboards.rowFallbackName;
 }
 
 export const GlobalBoardRow = memo(function GlobalBoardRow({
@@ -43,7 +43,7 @@ export const GlobalBoardRow = memo(function GlobalBoardRow({
 }: GlobalBoardRowProps) {
   const { rank, score, isMe, isFriend, account } = entry;
 
-  const a11yLabel = cs.a11y.leaderboardRow(rank, resolveName(entry), score, unit);
+  const a11yLabel = t.a11y.leaderboardRow(rank, resolveName(entry), score, unit);
 
   const rowContent = (
     <>
@@ -76,7 +76,7 @@ export const GlobalBoardRow = memo(function GlobalBoardRow({
         </Text>
         {isFriend && !isMe ? (
           <Text style={styles.friendLine} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.leaderboards.rowFriend}
+            {t.leaderboards.rowFriend}
           </Text>
         ) : null}
       </View>

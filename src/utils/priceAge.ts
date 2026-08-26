@@ -1,4 +1,4 @@
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -20,11 +20,11 @@ export function priceAgeDays(observedAt: string, nowMs: number = Date.now()): nu
 export function priceAgeLabel(observedAt: string, nowMs: number = Date.now()): string | null {
   const days = priceAgeDays(observedAt, nowMs);
   if (days === null) return null;
-  if (days === 0) return cs.compass.priceAgeToday;
-  if (days === 1) return cs.compass.priceAgeYesterday;
-  if (days < 7) return cs.compass.priceAgeDays(days);
-  if (days < 31) return cs.compass.priceAgeWeeks(Math.floor(days / 7));
-  return cs.compass.priceAgeMonths(Math.max(1, Math.floor(days / 30)));
+  if (days === 0) return t.compass.priceAgeToday;
+  if (days === 1) return t.compass.priceAgeYesterday;
+  if (days < 7) return t.compass.priceAgeDays(days);
+  if (days < 31) return t.compass.priceAgeWeeks(Math.floor(days / 7));
+  return t.compass.priceAgeMonths(Math.max(1, Math.floor(days / 30)));
 }
 
 /** True when the observation is old enough to render as approximate. */

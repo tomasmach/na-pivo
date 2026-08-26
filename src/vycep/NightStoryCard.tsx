@@ -18,7 +18,7 @@ import { forwardRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, G, Path, Text as SvgText, TextPath } from 'react-native-svg';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 
 import type { NightSummary } from '@/vycep/nightModel';
@@ -127,7 +127,7 @@ export function stickerLayout(night: NightSummary, mode: StickerMode) {
   const numberHero = !live || night.beerCount > 0;
   const extras = live
     ? ''
-    : cs.vycep.storySecondaryLine(
+    : t.vycep.storySecondaryLine(
         night.wineCount,
         night.shotCount,
         night.softDrinkCount,
@@ -200,11 +200,11 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
     } = stickerLayout(night, mode);
     const city = night.city?.trim();
     const topLabel = live
-      ? cs.vycep.storyLiveTopArc
+      ? t.vycep.storyLiveTopArc
       : city
         ? `${city.toUpperCase()} · ${dateLabel}`
         : dateLabel;
-    const heroUnit = cs.vycep.storyStatBeers(night.beerCount).toUpperCase();
+    const heroUnit = t.vycep.storyStatBeers(night.beerCount).toUpperCase();
     const pubs = night.pubNames.map(fit);
 
     return (
@@ -237,7 +237,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
               strokeWidth={numberHero ? 16 : 12}
               letterSpacing={numberHero ? undefined : 2}
             >
-              {numberHero ? String(night.beerCount) : cs.vycep.storyLiveHero}
+              {numberHero ? String(night.beerCount) : t.vycep.storyLiveHero}
             </OutlinedText>
             {numberHero ? (
               <OutlinedText
@@ -288,7 +288,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
                 strokeWidth={9}
                 letterSpacing={1}
               >
-                {cs.vycep.storyLiveCta}
+                {t.vycep.storyLiveCta}
               </OutlinedText>
             ) : null}
 
@@ -299,7 +299,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
               strokeWidth={8}
               letterSpacing={5}
             >
-              {cs.vycep.storyBrand}
+              {t.vycep.storyBrand}
             </OutlinedArcText>
           </G>
         </Svg>

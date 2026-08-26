@@ -18,7 +18,7 @@ import {
   LockKeyholeIcon,
   ShieldIcon,
 } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useAccountStore, selectIsPublic } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -95,7 +95,7 @@ export default function ProfilePrivacyScreen() {
         finish();
         return;
       }
-      setError(result.detail || cs.profile.privacy.error);
+      setError(result.detail || t.profile.privacy.error);
     } finally {
       setBusy(false);
     }
@@ -122,27 +122,27 @@ export default function ProfilePrivacyScreen() {
         </View>
 
         <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.profile.privacy.eyebrow}
+          {t.profile.privacy.eyebrow}
         </Text>
         <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.profile.privacy.title}
+          {t.profile.privacy.title}
         </Text>
         <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.profile.privacy.body}
+          {t.profile.privacy.body}
         </Text>
 
         <View style={styles.choices} accessibilityRole="radiogroup">
           <PrivacyChoice
             selected={isPublic}
-            title={cs.profile.privacy.publicTitle}
-            body={cs.profile.privacy.publicBody}
+            title={t.profile.privacy.publicTitle}
+            body={t.profile.privacy.publicBody}
             icon={<EyeIcon size={22} color={isPublic ? Colors.amber : Colors.mutedText} />}
             onPress={() => select(true)}
           />
           <PrivacyChoice
             selected={!isPublic}
-            title={cs.profile.privacy.privateTitle}
-            body={cs.profile.privacy.privateBody}
+            title={t.profile.privacy.privateTitle}
+            body={t.profile.privacy.privateBody}
             icon={
               <LockKeyholeIcon
                 size={22}
@@ -156,14 +156,14 @@ export default function ProfilePrivacyScreen() {
         <View style={styles.promise}>
           <ShieldIcon size={18} color={Colors.amber} />
           <Text style={styles.promiseText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.profile.privacy.promise}
+            {t.profile.privacy.promise}
           </Text>
         </View>
 
         {!!error && (
           <View style={styles.errorBox} accessibilityRole="alert">
             <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.profile.privacy.error}
+              {t.profile.privacy.error}
             </Text>
           </View>
         )}
@@ -172,11 +172,11 @@ export default function ProfilePrivacyScreen() {
       <View style={styles.footer}>
         <View>
           <GlowButton
-            label={busy ? cs.profile.privacy.saving : cs.profile.privacy.confirm}
+            label={busy ? t.profile.privacy.saving : t.profile.privacy.confirm}
             onPress={handleConfirm}
             glow={busy ? 'none' : 'strong'}
             disabled={busy}
-            accessibilityLabel={cs.profile.privacy.confirm}
+            accessibilityLabel={t.profile.privacy.confirm}
           />
           {busy ? (
             <View style={styles.buttonSpinner} pointerEvents="none">
@@ -189,10 +189,10 @@ export default function ProfilePrivacyScreen() {
           disabled={busy}
           style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={error ? cs.profile.privacy.skipAfterError : cs.profile.privacy.skip}
+          accessibilityLabel={error ? t.profile.privacy.skipAfterError : t.profile.privacy.skip}
         >
           <Text style={styles.skipText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {error ? cs.profile.privacy.skipAfterError : cs.profile.privacy.skip}
+            {error ? t.profile.privacy.skipAfterError : t.profile.privacy.skip}
           </Text>
         </Pressable>
       </View>

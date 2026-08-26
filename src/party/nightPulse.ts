@@ -10,7 +10,7 @@
  *     last beer was written.
  */
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 /** Kept in full for compatibility with callers typed against older kinds. */
 export type PulseKind = 'idle' | 'first' | 'fast' | 'steady' | 'slow' | 'paused';
@@ -35,7 +35,7 @@ const PAUSE_MINUTES = 45;
 
 export function buildPulse({ beerTimes, now }: PulseInput): Pulse {
   if (beerTimes.length === 0) {
-    return { kind: 'idle', headline: 'Zatím sucho', basis: 'Večer začne prvním pivem.' };
+    return { kind: 'idle', headline: t.liveParty.pulseIdle, basis: t.liveParty.pulseIdleBasis };
   }
 
   const last = beerTimes[beerTimes.length - 1];
@@ -44,8 +44,8 @@ export function buildPulse({ beerTimes, now }: PulseInput): Pulse {
   if (beerTimes.length === 1) {
     return {
       kind: 'first',
-      headline: 'Rozjezd',
-      basis: since > 0 ? `První pivo před ${since} min` : 'První pivo právě teď',
+      headline: t.liveParty.pulseFirst,
+      basis: since > 0 ? t.liveParty.pulseFirstBasis(since) : t.liveParty.pulseFirstNow,
     };
   }
 
@@ -54,15 +54,15 @@ export function buildPulse({ beerTimes, now }: PulseInput): Pulse {
   if (since >= PAUSE_MINUTES) {
     return {
       kind: 'paused',
-      headline: 'Pauza',
-      basis: `Bez piva už ${since} min`,
+      headline: t.liveParty.pulsePaused,
+      basis: t.liveParty.pulsePausedBasis(since),
     };
   }
 
   return {
     kind: 'steady',
-    headline: 'Večer běží',
-    basis: `Poslední zápis před ${since} min`,
+    headline: t.liveParty.pulseSteady,
+    basis: t.liveParty.pulseSteadyBasis(since),
   };
 }
 
@@ -82,14 +82,16 @@ export function hubStats({
   table,
   others,
 }: PulseInput & { mine: number; table: number; others: number }): PulseStat[] {
-  const stats: PulseStat[] = [{ label: others > 0 ? 'tvoje piva' : 'piva', value: String(mine) }];
+  const stats: PulseStat[] = [
+    { label: others > 0 ? t.liveParty.statMyBeers : t.liveParty.statBeers, value: String(mine) },
+  ];
   if (others > 0) {
-    stats.push({ label: cs.counter.partyTotalBeersLabel, value: String(table) });
+    stats.push({ label: t.counter.partyTotalBeersLabel, value: String(table) });
   }
   return stats;
 }
 
 /** How many beers are written down this evening. */
 export function fourthStat({ beerTimes }: PulseInput): PulseStat {
-  return { label: 'zapsaná piva', value: String(beerTimes.length) };
+  return { label: t.liveParty.statLoggedBeers, value: String(beerTimes.length) };
 }

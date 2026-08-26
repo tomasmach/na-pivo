@@ -15,9 +15,9 @@ describe('DiaryScreen static regressions', () => {
   const source = readSource('src', 'diary', 'DiaryScreen.tsx');
 
   it.each([
-    'cs.diary.factPace',
-    'cs.diary.statsMonthAvgLabel',
-    'cs.diary.statsYearAvg',
+    't.diary.factPace',
+    't.diary.statsMonthAvgLabel',
+    't.diary.statsYearAvg',
     'recordRows',
     'computeRecords',
     'plausibleFastestBeerMs',
@@ -26,10 +26,10 @@ describe('DiaryScreen static regressions', () => {
   });
 
   it.each([
-    'cs.diary.factSpent',
-    'cs.diary.factSpan',
-    'cs.diary.statsRatings',
-    'cs.diary.statsWalked',
+    't.diary.factSpent',
+    't.diary.factSpan',
+    't.diary.statsRatings',
+    't.diary.statsWalked',
     'records={[]}',
   ])('still contains %s', (required) => {
     expect(source).toContain(required);
@@ -40,7 +40,7 @@ describe('DiaryStatsSheet static regressions', () => {
   const source = readSource('src', 'diary', 'DiaryStatsSheet.tsx');
 
   it('does not render a records section', () => {
-    expect(source).not.toContain('renderSection(cs.diary.statsRecordsTitle');
+    expect(source).not.toContain('renderSection(t.diary.statsRecordsTitle');
   });
 
   it('still declares the backward-compatible records prop', () => {
@@ -48,8 +48,8 @@ describe('DiaryStatsSheet static regressions', () => {
   });
 
   it('still renders pubs and years sections', () => {
-    expect(source).toContain('renderSection(cs.diary.statsPubsTitle');
-    expect(source).toContain('renderSection(cs.diary.statsYearsTitle');
+    expect(source).toContain('renderSection(t.diary.statsPubsTitle');
+    expect(source).toContain('renderSection(t.diary.statsYearsTitle');
   });
 });
 

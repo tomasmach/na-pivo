@@ -3,6 +3,7 @@ import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import type { WireAmenityAggregate } from '@/data/pubAmenitiesClient';
 import type { WireVisit } from '@/data/visitsClient';
+import { intlLocale, t } from '@/i18n';
 
 export interface PubPosition {
   lat: number;
@@ -76,23 +77,23 @@ export function presentOpenStatus(pub: Pub): {
     (pub.hoursStatus === 'loading' || pub.hoursStatus === 'pending') &&
     pub.isOpenNow == null
   ) {
-    return { state: 'loading', label: 'Načítám otevíračku' };
+    return { state: 'loading', label: t.pubList.openLoading };
   }
 
   const nextChange = localTimeFromIso(pub.nextChange);
   if (pub.isOpenNow === true) {
     return {
       state: 'open',
-      label: nextChange ? `Otevřeno do ${nextChange}` : 'Otevřeno',
+      label: nextChange ? t.pubList.openUntil(nextChange) : t.pubList.open,
     };
   }
   if (pub.isOpenNow === false) {
     return {
       state: 'closed',
-      label: nextChange ? `Zavřeno · otevře v ${nextChange}` : 'Zavřeno',
+      label: nextChange ? t.pubList.closedUntil(nextChange) : t.pubList.closed,
     };
   }
-  return { state: 'unknown', label: 'Otevírací doba neznámá' };
+  return { state: 'unknown', label: t.pubList.hoursUnknown };
 }
 
 function splitDistance(distance: string | null): { value: string | null; unit: string | null } {
@@ -192,10 +193,10 @@ export function presentPub(
   const beerLine = featuredTap
     ? featuredTap.priceCzk == null
       ? featuredTap.name
-      : `${featuredTap.name}  (${featuredTap.priceCzk} Kč)`
+      : t.pubList.beerWithPrice(featuredTap.name, featuredTap.priceCzk)
     : referencePrice == null
       ? null
-      : `Pivo od ${referencePrice} Kč`;
+      : t.pubList.beerFrom(referencePrice);
   const rating =
     typeof pub.rating === 'number' && Number.isFinite(pub.rating) ? pub.rating : null;
   const visitsSummary = summarizePubVisits(pub, visits);
@@ -205,7 +206,7 @@ export function presentPub(
     pub,
     id: pub.id,
     name: pub.name,
-    address: pub.address?.trim() || pub.city?.trim() || 'Adresu neznám',
+    address: pub.address?.trim() || pub.city?.trim() || t.pubList.addressUnknown,
     distanceMeters,
     distanceLabel,
     distanceValue: distance.value,
@@ -224,7 +225,7 @@ export function presentPub(
 }
 
 function normalize(value: string): string {
-  return value.trim().toLocaleLowerCase('cs-CZ');
+  return value.trim().toLocaleLowerCase(intlLocale);
 }
 
 export function beerFilterOptions(pubs: readonly Pub[]): string[] {
@@ -235,7 +236,7 @@ export function beerFilterOptions(pubs: readonly Pub[]): string[] {
       if (name) byKey.set(normalize(name), name);
     }
   }
-  return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'cs-CZ'));
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, intlLocale));
 }
 
 export function pubMatchesFilters(pub: PubPresentation, filters: PubListFilters): boolean {
@@ -304,10 +305,10 @@ export function formatLastVisit(iso: string | null, now = new Date()): string {
   if (Number.isNaN(date.getTime())) return '-';
   const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
   const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
-  if (dateKey === todayKey) return 'dnes';
+  if (dateKey === todayKey) return t.pubList.lastVisitToday;
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
-  if (dateKey === yesterdayKey) return 'včera';
-  return `${date.getDate()}. ${date.getMonth() + 1}.`;
+  if (dateKey === yesterdayKey) return t.pubList.lastVisitYesterday;
+  return new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'numeric' }).format(date);
 }

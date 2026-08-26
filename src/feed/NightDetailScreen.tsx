@@ -25,7 +25,7 @@ import {
 import { useNightActions } from '@/feed/useNightActions';
 import { useNightReaction } from '@/feed/useNightReaction';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { Avatar } from '@/profile/Avatar';
 import { useAccountStore } from '@/stores/accountStore';
@@ -38,7 +38,7 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 function commentWhen(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '';
-  return new Intl.DateTimeFormat('cs-CZ', {
+  return new Intl.DateTimeFormat(intlLocale, {
     day: 'numeric',
     month: 'numeric',
     hour: '2-digit',
@@ -133,7 +133,7 @@ function CommentRow({
           style={({ pressed }) => [styles.deleteComment, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityState={{ disabled: deleting, busy: deleting }}
-          accessibilityLabel="Smazat komentář"
+          accessibilityLabel={t.nightDetail.deleteCommentA11y}
         >
           <Trash2Icon size={16} color={Colors.mutedText} />
         </Pressable>
@@ -284,12 +284,12 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
   const remove = (comment: NightComment) => {
     if (!id || deletingCommentIds.has(comment.id)) return;
     showAppDialog({
-      title: cs.vycep.deleteCommentTitle,
-      message: cs.vycep.deleteCommentBody,
+      title: t.vycep.deleteCommentTitle,
+      message: t.vycep.deleteCommentBody,
       buttons: [
-        { text: cs.vycep.deleteCommentCancel, style: 'cancel' },
+        { text: t.vycep.deleteCommentCancel, style: 'cancel' },
         {
-          text: cs.vycep.deleteCommentConfirm,
+          text: t.vycep.deleteCommentConfirm,
           style: 'destructive',
           onPress: () => {
             setDeletingCommentIds((current) => new Set(current).add(comment.id));
@@ -324,14 +324,14 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
   return (
     <View style={styles.screen}>
       <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
-        <GlassIconButton size={40} accessibilityLabel="Zpátky" onPress={() => leaveRoute(router)}>
+        <GlassIconButton size={40} accessibilityLabel={t.nightDetail.back} onPress={() => leaveRoute(router)}>
           <ChevronLeftIcon size={20} color={Colors.foam} />
         </GlassIconButton>
-        <Text style={styles.topTitle} maxFontSizeMultiplier={FontScaleCap.heading}>Večer</Text>
+        <Text style={styles.topTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{t.nightDetail.title}</Text>
         {night ? (
           <GlassIconButton
             size={40}
-            accessibilityLabel="Možnosti večera"
+            accessibilityLabel={t.feed.nightMenuA11y}
             onPress={() => openNightActions(night)}
           >
             <MenuIcon size={19} color={Colors.foam} />
@@ -358,7 +358,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
             <PeopleSection night={night} />
             <View style={styles.section}>
               <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Komentáře
+                {t.nightDetail.comments}
               </Text>
               {comments === null ? (
                 <View style={styles.commentSkeletons}>
@@ -375,19 +375,19 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
                   />
                 ))
               ) : (
-                <Text style={styles.emptyComments} maxFontSizeMultiplier={FontScaleCap.body}>Zatím ticho. Cinkni první poznámku.</Text>
+                <Text style={styles.emptyComments} maxFontSizeMultiplier={FontScaleCap.body}>{t.nightDetail.commentsEmpty}</Text>
               )}
               <View style={styles.composer}>
                 <TextInput
                   value={body}
                   onChangeText={setBody}
-                  placeholder="Napiš něco k večeru"
+                  placeholder={t.nightDetail.composerPlaceholder}
                   placeholderTextColor={Colors.mutedText}
                   maxLength={500}
                   multiline
                   style={styles.input}
                   onFocus={revealComposer}
-                  accessibilityLabel="Komentář k večeru"
+                  accessibilityLabel={t.nightDetail.composerA11y}
                 />
                 <Pressable
                   onPress={submit}
@@ -398,16 +398,16 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
                     pressed && styles.pressed,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="Poslat komentář"
+                  accessibilityLabel={t.nightDetail.sendA11y}
                 >
-                  <Text style={styles.sendText} maxFontSizeMultiplier={FontScaleCap.body}>{sending ? 'Posílám…' : 'Poslat'}</Text>
+                  <Text style={styles.sendText} maxFontSizeMultiplier={FontScaleCap.body}>{sending ? t.nightDetail.sending : t.nightDetail.send}</Text>
                 </Pressable>
               </View>
             </View>
           </>
         ) : loadError ? (
           <View style={styles.state}>
-            <Text style={styles.stateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>Tenhle večer se schoval</Text>
+            <Text style={styles.stateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{t.nightDetail.goneTitle}</Text>
             <Pressable
               onPress={() => {
                 setLoadError(false);
@@ -417,7 +417,7 @@ function NightDetailContent({ viewerAccountId }: { viewerAccountId: string | nul
               style={styles.retry}
               accessibilityRole="button"
             >
-              <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>Zkusit znovu</Text>
+              <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>{t.vycep.retry}</Text>
             </Pressable>
           </View>
         ) : (

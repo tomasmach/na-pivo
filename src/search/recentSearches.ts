@@ -1,4 +1,5 @@
 import AsyncStorage from '@/data/privateAccountStorage';
+import { intlLocale } from '@/i18n';
 
 const STORAGE_KEY = 'na-pivo-search-recent-v1';
 const MAX_RECENT = 8;
@@ -6,10 +7,10 @@ const MAX_RECENT = 8;
 export function mergeRecentSearches(current: readonly string[], query: string): string[] {
   const clean = query.trim().slice(0, 80);
   if (!clean) return current.slice(0, MAX_RECENT);
-  const key = clean.toLocaleLowerCase('cs-CZ');
+  const key = clean.toLocaleLowerCase(intlLocale);
   return [
     clean,
-    ...current.filter((item) => item.toLocaleLowerCase('cs-CZ') !== key),
+    ...current.filter((item) => item.toLocaleLowerCase(intlLocale) !== key),
   ].slice(0, MAX_RECENT);
 }
 

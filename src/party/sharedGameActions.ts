@@ -8,6 +8,7 @@
  */
 
 import type { PartyGameEvent, PartyGameEventInput } from '@/data/partyGamesClient';
+import { NOBODY_NAME } from '@/party/nightBuilder';
 import {
   recordRoll,
   settleRound,
@@ -75,7 +76,7 @@ export function canonicalGameFinish(
         })
       : [];
     const safeName = (value: unknown) =>
-      typeof value === 'string' && value.trim() && value !== 'Nikdo' ? value : null;
+      typeof value === 'string' && value.trim() && value !== NOBODY_NAME ? value : null;
     return {
       winnerId: safeName(payload.winnerId),
       payingId: safeName(payload.payingId),

@@ -28,18 +28,11 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume , beerCountLabel, beerNoun, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n';
 import {
   menuScanPermissionDeniedCopy,
   showMenuScanPermissionBlocked,
 } from '@/contribute/menuScanPermission';
-import {
-  beerCountLabel,
-  beerNoun,
-  shotCountLabel,
-  softDrinkCountLabel,
-  wineCountLabel,
-} from '@/i18n/plural';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
@@ -224,7 +217,7 @@ export function groupMenuBeers(menu: CommunityBeer[]): MenuBeerGroup[] {
 function beerLine(beer: { name: string; volumeMl?: number; servingType?: ServingType }): string {
   const serving =
     beer.servingType && beer.servingType !== 'unknown' && beer.servingType !== 'draft'
-      ? cs.counter.servingTypeLabel(beer.servingType).toLowerCase()
+      ? t.counter.servingTypeLabel(beer.servingType).toLowerCase()
       : null;
   return [beer.name, serving, beer.volumeMl ? formatVolume(beer.volumeMl) : null]
     .filter(Boolean)
@@ -268,23 +261,23 @@ function PermissionGate({
         <BeerIcon size={48} color={Colors.amber} />
       </View>
       <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {cs.counter.permTitle}
+        {t.counter.permTitle}
       </Text>
       <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.counter.permBody}
+        {t.counter.permBody}
       </Text>
       <View style={styles.gateButton}>
         <GlowButton
-          label={cs.counter.permCta}
+          label={t.counter.permCta}
           onPress={requestPermission}
           glow="soft"
-          accessibilityLabel={cs.a11y.counterRequestLocation}
+          accessibilityLabel={t.a11y.counterRequestLocation}
         />
       </View>
       {permissionState === 'denied' && (
         <View style={styles.gateButtonSecondary}>
           <GlowButton
-            label={cs.counter.permOpenSettings}
+            label={t.counter.permOpenSettings}
             onPress={() => Linking.openSettings()}
             variant="secondary"
             glow="none"
@@ -297,11 +290,11 @@ function PermissionGate({
         style={styles.gateLink}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={cs.counter.outsideNoLocationCta}
+        accessibilityLabel={t.counter.outsideNoLocationCta}
       >
         <HouseIcon size={16} color={Colors.mutedText} />
         <Text style={styles.gateLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.counter.outsideNoLocationCta}
+          {t.counter.outsideNoLocationCta}
         </Text>
       </Pressable>
     </View>
@@ -367,10 +360,10 @@ function Tacek({
   const placeLabel = place
     ? pub
       ? pub.name
-      : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext)
+      : t.counter.outsideLabel(outsideContext as OutsidePlaceContext)
     : unresolvedKind === 'detecting'
-      ? cs.counter.detecting
-      : cs.counter.placeUnknown;
+      ? t.counter.detecting
+      : t.counter.placeUnknown;
   const chipKind: PlaceChipKind = place
     ? pub
       ? 'pub'
@@ -733,8 +726,8 @@ function Tacek({
       ? null
       : [
           sinceLastBeer === 0
-            ? cs.counter.lastDrinkShortJustNow
-            : cs.counter.lastDrinkShortMinutesAgo(sinceLastBeer),
+            ? t.counter.lastDrinkShortJustNow
+            : t.counter.lastDrinkShortMinutesAgo(sinceLastBeer),
           otherDrinkSummary || null,
         ]
           .filter((part): part is string => !!part)
@@ -784,7 +777,7 @@ function Tacek({
       const drinkType = beer.drinkType ?? 'beer';
       const startsSession = !isThisSession || (current?.drinks.length ?? 0) === 0;
 
-      const label = pub ? pub.name : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext);
+      const label = pub ? pub.name : t.counter.outsideLabel(outsideContext as OutsidePlaceContext);
       const tallyPlace = pub
         ? {
             pubKey: cell,
@@ -845,7 +838,7 @@ function Tacek({
         // claims success. Keep this ticket on either storage failure so Retry
         // reuses the exact same idempotency ID.
         if ((await enqueueDrink(entry, { deliver: false })) === 'storage-error') {
-          showToast(cs.friends.queueSaveError);
+          showToast(t.friends.queueSaveError);
           return;
         }
         if (!isPrivateAccountMutationScopeCurrent(scope)) {
@@ -868,7 +861,7 @@ function Tacek({
         if (visitResult === 'storage-error') {
           useTallyStore.setState({ current: before.current, history: before.history });
           await removeQueuedDrink(id);
-          showToast(cs.friends.queueSaveError);
+          showToast(t.friends.queueSaveError);
           return;
         }
         countActionTicketsRef.current.delete(actionKey);
@@ -925,21 +918,21 @@ function Tacek({
           waterNudgeKeyRef.current !== nudgeKey;
         if (waterNudged) {
           waterNudgeKeyRef.current = nudgeKey;
-          showToast(cs.counter.waterNudge(liveCount), {
+          showToast(t.counter.waterNudge(liveCount), {
             icon: <GlassWaterIcon size={20} color={Colors.amber} />,
           });
         } else if (!atOverride) {
           showToast(
             drinkType === 'beer'
-              ? cs.counter.countedToast(liveCount)
-              : cs.counter.countedToastOther,
+              ? t.counter.countedToast(liveCount)
+              : t.counter.countedToastOther,
             { icon: <DrinkToastIcon drinkType={drinkType} /> },
           );
         }
       })
         .catch((error) => {
           if (!(error instanceof PrivateAccountMutationFrozenError)) {
-            showToast(cs.friends.queueSaveError);
+            showToast(t.friends.queueSaveError);
           }
         })
         .finally(() => countActionsInFlightRef.current.delete(actionKey));
@@ -1027,7 +1020,7 @@ function Tacek({
           throw new PrivateAccountMutationFrozenError();
         }
         if (deletion === 'storage-error') {
-          showToast(cs.friends.queueSaveError);
+          showToast(t.friends.queueSaveError);
           return;
         }
         if (pub) {
@@ -1045,7 +1038,7 @@ function Tacek({
             throw new PrivateAccountMutationFrozenError();
           }
           if (visitResult === 'storage-error') {
-            showToast(cs.friends.queueSaveError);
+            showToast(t.friends.queueSaveError);
             return;
           }
         }
@@ -1066,7 +1059,7 @@ function Tacek({
       })
         .catch((error) => {
           if (!(error instanceof PrivateAccountMutationFrozenError)) {
-            showToast(cs.friends.queueSaveError);
+            showToast(t.friends.queueSaveError);
           }
         })
         .finally(() => removingDrinkIdsRef.current.delete(targetId));
@@ -1130,7 +1123,7 @@ function Tacek({
     const started = new Date(current.startedAt);
     if (Number.isNaN(started.getTime())) return null;
     const time = `${started.getHours()}:${String(started.getMinutes()).padStart(2, '0')}`;
-    return cs.counter.receiptStarted(time);
+    return t.counter.receiptStarted(time);
   }, [current, isThisSession]);
 
   // ── Beer form ───────────────────────────────────────────────────────────────
@@ -1275,22 +1268,22 @@ function Tacek({
 
   const handleCameraPress = useCallback(() => {
     showAppDialog({
-      title: cs.counter.cameraTitle,
+      title: t.counter.cameraTitle,
       buttons: [
         {
-          text: cs.counter.cameraBeer,
+          text: t.counter.cameraBeer,
           onPress: () => setPhotoCaptureOpen(true),
         },
         {
-          text: cs.counter.cameraMenu,
+          text: t.counter.cameraMenu,
           onPress: pub
             ? handleScanMenu
             : () => {
-                showToast(cs.counter.cameraMenuNeedsPub);
+                showToast(t.counter.cameraMenuNeedsPub);
                 onChangePlace();
               },
         },
-        { text: cs.counter.cancel, style: 'cancel' },
+        { text: t.counter.cancel, style: 'cancel' },
       ],
     });
   }, [handleScanMenu, onChangePlace, pub, showToast]);
@@ -1314,7 +1307,7 @@ function Tacek({
         return;
       }
       if (picked.status === 'error') {
-        toast(cs.contribute.scanMenu.errorToast, {
+        toast(t.contribute.scanMenu.errorToast, {
           icon: <InfoIcon size={18} color={Colors.foamMuted} />,
         });
         return;
@@ -1329,16 +1322,16 @@ function Tacek({
       }
       const message =
         result.status === 'daily-cap'
-          ? cs.contribute.scanMenu.dailyCapToast
+          ? t.contribute.scanMenu.dailyCapToast
           : result.status === 'rate-limited'
-            ? cs.contribute.scanMenu.rateLimitedToast
+            ? t.contribute.scanMenu.rateLimitedToast
             : result.status === 'unavailable'
-              ? cs.contribute.scanMenu.unavailableToast
+              ? t.contribute.scanMenu.unavailableToast
               : result.status === 'bad-image'
-                ? cs.contribute.scanMenu.badImageToast
+                ? t.contribute.scanMenu.badImageToast
                 : result.status === 'empty'
-                  ? cs.counter.scanDrinksEmpty
-                  : cs.contribute.scanMenu.errorToast;
+                  ? t.counter.scanDrinksEmpty
+                  : t.contribute.scanMenu.errorToast;
       toast(message, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
     } finally {
       setScanningDrinks(false);
@@ -1372,21 +1365,21 @@ function Tacek({
     yesterdayEvening.setHours(20, 0, 0, 0);
 
     showAppDialog({
-      title: cs.counter.backdateTitle,
+      title: t.counter.backdateTitle,
       buttons: [
         {
-          text: cs.counter.backdateHourAgo,
+          text: t.counter.backdateHourAgo,
           onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)),
         },
         {
-          text: cs.counter.backdateTwoHoursAgo,
+          text: t.counter.backdateTwoHoursAgo,
           onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)),
         },
         {
-          text: cs.counter.backdateYesterdayEvening,
+          text: t.counter.backdateYesterdayEvening,
           onPress: () => openBackdateForm(clamp(yesterdayEvening.getTime())),
         },
-        { text: cs.counter.cancel, style: 'cancel' },
+        { text: t.counter.cancel, style: 'cancel' },
       ],
     });
   }, [openBackdateForm]);
@@ -1397,16 +1390,16 @@ function Tacek({
     trackUiInteraction('counter_finish_open');
     const clientId = current?.clientId ?? null;
     showAppDialog({
-      title: cs.counter.doneTitle,
-      message: cs.counter.doneBody,
+      title: t.counter.doneTitle,
+      message: t.counter.doneBody,
       buttons: [
         {
-          text: cs.counter.cancel,
+          text: t.counter.cancel,
           style: 'cancel',
           onPress: () => setDopitoNudgedFor(clientId),
         },
         {
-          text: cs.counter.doneConfirm,
+          text: t.counter.doneConfirm,
           onPress: () => {
             const archived = archiveCurrent('manual');
             syncVisit(archived);
@@ -1456,19 +1449,19 @@ function Tacek({
       });
       if (result.state === 'delivered') {
         setBroadcastCell(cell);
-        showToast(cs.friends.shareSuccess);
+        showToast(t.friends.shareSuccess);
         if (hapticEnabled) fireLightImpactHaptic();
       } else if (result.state === 'queued') {
         setBroadcastCell(cell);
-        showToast(cs.friends.composeQueued);
+        showToast(t.friends.composeQueued);
       } else if (result.state === 'storage-error') {
-        showToast(cs.friends.queueSaveError);
+        showToast(t.friends.queueSaveError);
       } else {
-        showToast(result.direct?.detail || cs.friends.shareError);
+        showToast(result.direct?.detail || t.friends.shareError);
       }
     } catch (error) {
       if (!(error instanceof PrivateAccountMutationFrozenError)) {
-        showToast(cs.friends.shareError);
+        showToast(t.friends.shareError);
       }
     } finally {
       sharingWithFriendsRef.current = false;
@@ -1506,40 +1499,40 @@ function Tacek({
     // beer and it never counts.
     if (!place) {
       return {
-        label: cs.counter.ctaLogBeer,
+        label: t.counter.ctaLogBeer,
         subLabel: null as string | null,
-        a11y: cs.counter.ctaLogBeer,
+        a11y: t.counter.ctaLogBeer,
         onPress: handlePlaceOpen,
       };
     }
     if (resumable) {
       return {
-        label: cs.counter.resumeEvening,
-        subLabel: cs.counter.resumeSub(beerCountLabel(sessionCount(resumable))),
-        a11y: cs.a11y.counterResume,
+        label: t.counter.resumeEvening,
+        subLabel: t.counter.resumeSub(beerCountLabel(sessionCount(resumable))),
+        a11y: t.a11y.counterResume,
         onPress: handleResume,
       };
     }
     if (repeatBeer) {
       return {
-        label: cs.counter.repeatCta,
+        label: t.counter.repeatCta,
         subLabel: beerLine(repeatBeer),
-        a11y: cs.a11y.counterRepeat(repeatBeer.name),
+        a11y: t.a11y.counterRepeat(repeatBeer.name),
         onPress: handleRepeatDrink,
       };
     }
     if (hasSomethingToPick) {
       return {
-        label: cs.counter.ctaPick,
+        label: t.counter.ctaPick,
         subLabel: null as string | null,
-        a11y: cs.counter.ctaPick,
+        a11y: t.counter.ctaPick,
         onPress: handlePickOpen,
       };
     }
     return {
-      label: cs.counter.ctaFirstBeer,
+      label: t.counter.ctaFirstBeer,
       subLabel: null as string | null,
-      a11y: cs.a11y.counterAddBeer,
+      a11y: t.a11y.counterAddBeer,
       onPress: handleAddBeer,
     };
   }, [
@@ -1574,9 +1567,9 @@ function Tacek({
         kind: 'rapid',
         text:
           pendingRapid.minutes === null || pendingRapid.minutes === 0
-            ? cs.counter.rapidInlineJustNow
-            : cs.counter.rapidInline(pendingRapid.minutes),
-        confirmLabel: cs.counter.rapidInlineConfirm,
+            ? t.counter.rapidInlineJustNow
+            : t.counter.rapidInline(pendingRapid.minutes),
+        confirmLabel: t.counter.rapidInlineConfirm,
         onConfirm: confirmRapid,
       };
     }
@@ -1584,24 +1577,24 @@ function Tacek({
       return {
         kind: 'counted',
         text: lastCounted.isBeer
-          ? cs.counter.countedStrip(lastCounted.ordinal)
-          : cs.counter.countedStripOther,
-        undoLabel: cs.counter.undo,
+          ? t.counter.countedStrip(lastCounted.ordinal)
+          : t.counter.countedStripOther,
+        undoLabel: t.counter.undo,
         onUndo: () => removeDrinkById(lastCounted.id),
       };
     }
     if (dopitoVisible) {
       return {
         kind: 'dopito',
-        label: cs.counter.dopitoNudge,
+        label: t.counter.dopitoNudge,
         onPress: handleDone,
       };
     }
     if (checkInBeerName && pub) {
       return {
         kind: 'checkin',
-        text: cs.counter.checkinNudge,
-        ctaLabel: cs.counter.checkinNudgeCta,
+        text: t.counter.checkinNudge,
+        ctaLabel: t.counter.checkinNudgeCta,
         onPress: () => setCheckInSheetOpen(true),
         onDismiss: () => setCheckInBeerName(null),
       };
@@ -1623,10 +1616,10 @@ function Tacek({
       ? [
           {
             key: 'done',
-            label: cs.counter.doneDrinking,
+            label: t.counter.doneDrinking,
             icon: CheckIcon,
             onPress: () => runAfterSheetClose(handleDone),
-            accessibilityLabel: cs.a11y.counterDone,
+            accessibilityLabel: t.a11y.counterDone,
           },
         ]
       : []),
@@ -1634,7 +1627,7 @@ function Tacek({
       ? [
           {
             key: 'sticker',
-            label: cs.counter.moreStory,
+            label: t.counter.moreStory,
             icon: Share2Icon,
             onPress: () => runAfterSheetClose(() => setStickerOpen(true)),
           },
@@ -1644,7 +1637,7 @@ function Tacek({
       ? [
           {
             key: 'ping',
-            label: broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort,
+            label: broadcasted ? t.friends.counterAlreadyLive : t.friends.shareHereShort,
             icon: broadcasted ? CheckIcon : BellRingIcon,
             onPress: () => runAfterSheetClose(() => void handleShareWithFriends()),
             disabled: broadcasted,
@@ -1653,7 +1646,7 @@ function Tacek({
       : []),
     {
       key: 'backdate',
-      label: cs.counter.backdateLink,
+      label: t.counter.backdateLink,
       icon: HistoryIcon,
       onPress: () => runAfterSheetClose(handleBackdatePress),
     },
@@ -1661,7 +1654,7 @@ function Tacek({
       ? [
           {
             key: 'scan',
-            label: scanningDrinks ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks,
+            label: scanningDrinks ? t.counter.scanDrinksLoading : t.counter.scanDrinks,
             icon: ClipboardListIcon,
             onPress: () => runAfterSheetClose(() => setScanSourceVisible(true)),
             disabled: scanningDrinks,
@@ -1693,7 +1686,7 @@ function Tacek({
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.photoDiary.counterCta}
+          accessibilityLabel={t.photoDiary.counterCta}
         >
           <CameraIcon size={20} color={Colors.amber} />
         </Pressable>
@@ -1705,7 +1698,7 @@ function Tacek({
             style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.counterMore}
+            accessibilityLabel={t.a11y.counterMore}
           >
             <MenuIcon size={20} color={Colors.mutedText} />
           </Pressable>
@@ -1721,8 +1714,8 @@ function Tacek({
         onOpenReceipt={() => setReceiptOpen(true)}
         accessibilityLabel={
           count > 0
-            ? cs.a11y.counterCoaster(beerCountLabel(count), spentLabel ?? undefined)
-            : cs.a11y.counterCoasterEmpty
+            ? t.a11y.counterCoaster(beerCountLabel(count), spentLabel ?? undefined)
+            : t.a11y.counterCoasterEmpty
         }
       >
         {/* The room the drawn mug used to take, spent on the two shortcuts
@@ -1773,7 +1766,7 @@ function Tacek({
 
       <MoreSheet
         visible={moreVisible}
-        title={cs.counter.moreTitle}
+        title={t.counter.moreTitle}
         rows={moreRows}
         onClose={closeMore}
       />

@@ -26,6 +26,7 @@
  */
 
 import type { PartyEvening } from '@/data/partyClient';
+import { t } from '@/i18n';
 import { drinkingDayKey, type TallyDrink, type TallySession } from '@/stores/tallyStore';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import type {
@@ -49,6 +50,23 @@ const TINTS = ['#7DD66B', '#F0BE5C', '#A8896A', '#FBF3E0', '#6FB3D9', '#D98C6F']
 export const ME_TINT = '#E8A317';
 
 /**
+ * Sentinels, not copy.
+ *
+ * These three strings are STORED (in the night record cache, in the shared
+ * evening and in game payloads) and COMPARED against by released apps, so they
+ * stay Czech in every language. Rendering them goes through `t`; the values
+ * below are only ever written and matched.
+ */
+export const ME_NAME = 'Ty';
+export const NOBODY_NAME = 'Nikdo';
+export const OUTSIDE_PUB_NAME = 'Mimo hospodu';
+
+/** The stored me-sentinel, said in the reader's language. */
+export function displayPersonName(name: string): string {
+  return name === ME_NAME ? t.liveParty.you : name;
+}
+
+/**
  * "Hráč N" for somebody with no name on record.
  *
  * N comes from the id ALONE, never from list position: every phone derives the
@@ -63,7 +81,7 @@ export function fallbackPlayerName(id: string): string {
   for (let index = 0; index < id.length; index += 1) {
     hash = (hash * 31 + id.charCodeAt(index)) | 0;
   }
-  return `Hráč ${1 + (Math.abs(hash) % 99)}`;
+  return t.liveParty.fallbackPlayer(1 + (Math.abs(hash) % 99));
 }
 
 /**
@@ -82,7 +100,7 @@ export function tintFor(id: string): string {
 }
 
 /** Who is at the table. `me` first — the list is read as "us", not as a roster. */
-export function peopleOf(evening: PartyEvening | null, meId: string, meName = 'Ty'): NightPerson[] {
+export function peopleOf(evening: PartyEvening | null, meId: string, meName = ME_NAME): NightPerson[] {
   const me: NightPerson = { id: meId, name: meName, avatarUrl: null, tint: ME_TINT };
   if (!evening) return [me];
   // When somebody sat down, from the evening's own join events.

@@ -35,8 +35,7 @@ import { useRouter } from 'expo-router';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, beerNoun, czechPlural } from '@/i18n/plural';
+import { beerCountLabel, beerNoun, intlLocale, t } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
 import {
   ChevronRightIcon,
@@ -97,9 +96,9 @@ import type { PriceCurrency } from '@/utils/currency';
 function formatWalkedKm(metres: number): string {
   const km = metres / 1000;
   const text = km
-    .toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+    .toLocaleString(intlLocale, { minimumFractionDigits: 0, maximumFractionDigits: 1 })
     .replace(/ /g, ' ');
-  return `${text} ${cs.profile.kmShort}`;
+  return `${text} ${t.profile.kmShort}`;
 }
 
 /**
@@ -108,8 +107,8 @@ function formatWalkedKm(metres: number): string {
  */
 export function statsFooterCopy(signedIn: boolean): string {
   return signedIn
-    ? cs.diary.statsFooter
-    : `${cs.diary.statsFooter} ${cs.diary.statsFooterNoAccount}`;
+    ? t.diary.statsFooter
+    : `${t.diary.statsFooter} ${t.diary.statsFooterNoAccount}`;
 }
 
 /** Beers only — the count that gets the big numeral, exactly as on the counter. */
@@ -130,22 +129,19 @@ function nightFacts(session: TallySession, priceCurrency: PriceCurrency): Stat[]
 
   return [
     {
-      label: cs.diary.factSpent,
-      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : cs.diary.factEmpty,
+      label: t.diary.factSpent,
+      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : t.diary.factEmpty,
     },
     {
-      label: cs.diary.factSpan,
-      value: spanMs > 0 ? cs.stats.span(spanMs) : cs.diary.factEmpty,
+      label: t.diary.factSpan,
+      value: spanMs > 0 ? t.stats.span(spanMs) : t.diary.factEmpty,
     },
   ];
 }
 
-/** Declensions for the nights that held no beer at all. */
-const OTHER_NOUN: Record<'wine' | 'soft_drink' | 'shot', Parameters<typeof czechPlural>[1]> = {
-  wine: { one: 'víno', few: 'vína', many: 'vín' },
-  soft_drink: { one: 'nealko', few: 'nealka', many: 'nealk' },
-  shot: { one: 'panák', few: 'panáky', many: 'panáků' },
-};
+/** The drink kinds a beerless night can be named after. */
+const OTHER_TYPES = ['wine', 'soft_drink', 'shot'] as const;
+type OtherType = (typeof OTHER_TYPES)[number];
 
 /**
  * The noun under the numeral. Beers win; a night of nothing but shots or wine
@@ -156,7 +152,7 @@ function nightNoun(session: TallySession): { count: number; noun: string } {
   if (beers > 0) return { count: beers, noun: beerNoun(beers).toUpperCase() };
 
   const total = session.drinks.length;
-  if (total === 0) return { count: 0, noun: cs.diary.emptyNoun };
+  if (total === 0) return { count: 0, noun: t.diary.emptyNoun };
 
   // Whatever there was most of that night names the numeral.
   const tally = new Map<string, number>();
@@ -164,15 +160,15 @@ function nightNoun(session: TallySession): { count: number; noun: string } {
     const type = normalizeDrinkType(drink.drinkType);
     tally.set(type, (tally.get(type) ?? 0) + 1);
   }
-  let dominant: 'wine' | 'soft_drink' | 'shot' = 'shot';
+  let dominant: OtherType = 'shot';
   let best = -1;
   for (const [type, count] of tally) {
-    if (count > best && type in OTHER_NOUN) {
+    if (count > best && (OTHER_TYPES as readonly string[]).includes(type)) {
       best = count;
-      dominant = type as 'wine' | 'soft_drink' | 'shot';
+      dominant = type as OtherType;
     }
   }
-  return { count: total, noun: czechPlural(total, OTHER_NOUN[dominant]).toUpperCase() };
+  return { count: total, noun: t.diary.otherNoun(dominant, total).toUpperCase() };
 }
 
 type DiaryNight = { key: string; session: TallySession; kind: 'session'; source: 'local' | 'remote' };
@@ -194,7 +190,7 @@ const NightRow = React.memo(function NightRow({
 }) {
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
   const totalCzk = sessionTotalCzk(session);
-  const meta = cs.diary.nightMeta([
+  const meta = t.diary.nightMeta([
     eveningDateLabel(session.startedAt, new Date(nowMinuteMs)),
     sessionDrinkSummary(session),
     totalCzk > 0 ? formatPrice(totalCzk, priceCurrency) : '',
@@ -205,11 +201,11 @@ const NightRow = React.memo(function NightRow({
       onPress={() => onOpen(session)}
       style={({ pressed }) => [styles.row, !isFirst && styles.rowDivider, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.diaryNight(session.pubName || cs.diary.noPub, meta)}
+      accessibilityLabel={t.a11y.diaryNight(session.pubName || t.diary.noPub, meta)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {session.pubName || cs.diary.noPub}
+          {session.pubName || t.diary.noPub}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {meta}
@@ -243,12 +239,12 @@ function shortHistoricalDate(startIso: string, endIso?: string | null): string {
   const startMs = Date.parse(startIso);
   if (!Number.isFinite(startMs)) return '';
   const start = new Date(startMs);
-  const date = start.toLocaleDateString('cs-CZ', {
+  const date = start.toLocaleDateString(intlLocale, {
     day: 'numeric',
     month: 'numeric',
     year: 'numeric',
   });
-  const startTime = start.toLocaleTimeString('cs-CZ', {
+  const startTime = start.toLocaleTimeString(intlLocale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -256,7 +252,7 @@ function shortHistoricalDate(startIso: string, endIso?: string | null): string {
   const endMs = endIso ? Date.parse(endIso) : Number.NaN;
   if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
   const end = new Date(endMs);
-  const endTime = end.toLocaleTimeString('cs-CZ', {
+  const endTime = end.toLocaleTimeString(intlLocale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -266,10 +262,10 @@ function shortHistoricalDate(startIso: string, endIso?: string | null): string {
 
 function historicalMeta(checkIn: BeerCheckIn, priceCurrency: PriceCurrency): string {
   const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
-  return cs.diary.nightMeta([
+  return t.diary.nightMeta([
     quantity > 1 ? `${quantity}×` : '',
     checkIn.priceCzk != null ? formatPrice(checkIn.priceCzk * quantity, priceCurrency) : '',
-    checkIn.pubName || cs.myBeers.historicalNoPub,
+    checkIn.pubName || t.myBeers.historicalNoPub,
     shortHistoricalDate(checkIn.checkedInAt, checkIn.endedAt),
   ]);
 }
@@ -344,10 +340,10 @@ const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
   const meta = historicalMeta(checkIn, priceCurrency);
   const isPrivate = checkIn.visibility === 'private';
   // The markers are glyphs on screen, so the words go to the screen reader.
-  const spokenMeta = cs.diary.nightMeta([
+  const spokenMeta = t.diary.nightMeta([
     meta,
-    isPrivate ? cs.diary.privateTag : '',
-    isQueued ? cs.diary.queuedTag : '',
+    isPrivate ? t.diary.privateTag : '',
+    isQueued ? t.diary.queuedTag : '',
   ]);
 
   return (
@@ -359,7 +355,7 @@ const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
         pressed && styles.rowPressed,
       ]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, spokenMeta)}
+      accessibilityLabel={t.a11y.myBeersDiaryEntry(checkIn.beerName, spokenMeta)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -572,24 +568,24 @@ export default function DiaryScreen({
   // rather than as an export when they arrive as figures first (§3, StatGrid).
   const totalsStats: Stat[] = useMemo(() => {
     const stats: Stat[] = [
-      { label: cs.diary.statsEvenings, value: String(lifetime.totalEvenings) },
-      { label: cs.diary.statsPubs, value: String(lifetime.distinctPubs) },
-      { label: cs.diary.statsSpent, value: formatPrice(lifetime.totalSpentCzk, priceCurrency) },
+      { label: t.diary.statsEvenings, value: String(lifetime.totalEvenings) },
+      { label: t.diary.statsPubs, value: String(lifetime.distinctPubs) },
+      { label: t.diary.statsSpent, value: formatPrice(lifetime.totalSpentCzk, priceCurrency) },
     ];
     // These two used to live in the profile's stats grid. Numbers have exactly
     // one home now, and this is it.
     if (ratingsCount > 0) {
-      stats.push({ label: cs.diary.statsRatings, value: String(ratingsCount) });
+      stats.push({ label: t.diary.statsRatings, value: String(ratingsCount) });
     }
     if (walkedM != null) {
-      stats.push({ label: cs.diary.statsWalked, value: formatWalkedKm(walkedM) });
+      stats.push({ label: t.diary.statsWalked, value: formatWalkedKm(walkedM) });
     }
     return stats;
   }, [lifetime, priceCurrency, ratingsCount, walkedM]);
 
   const monthStats: Stat[] | null = useMemo(() => {
     if (!thisMonth) return null;
-    return [{ label: cs.diary.statsMonthBeers, value: String(thisMonth.beers) }];
+    return [{ label: t.diary.statsMonthBeers, value: String(thisMonth.beers) }];
   }, [thisMonth]);
 
   // Top five is enough: nobody reads the sixth-favourite pub.
@@ -621,8 +617,8 @@ export default function DiaryScreen({
         // Not the default check: this strip reports a failure, and a tick next
         // to "nenačetl se" is a small lie about what happened.
         icon: TriangleAlertIcon,
-        text: cs.diary.loadFailed,
-        undoLabel: cs.diary.retry,
+        text: t.diary.loadFailed,
+        undoLabel: t.diary.retry,
         onUndo: () => {
           trackUiInteraction('diary_retry', 'retry');
           setCheckInState((current) => {
@@ -637,7 +633,7 @@ export default function DiaryScreen({
     if (activeCheckIns.pendingCount > 0) {
       return {
         kind: 'dopito',
-        label: cs.diary.queued(activeCheckIns.pendingCount),
+        label: t.diary.queued(activeCheckIns.pendingCount),
         onPress: () => undefined,
       };
     }
@@ -722,7 +718,7 @@ export default function DiaryScreen({
             style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.diaryStats}
+            accessibilityLabel={t.a11y.diaryStats}
           >
             <MenuIcon size={20} color={Colors.mutedText} />
           </Pressable>
@@ -744,15 +740,15 @@ export default function DiaryScreen({
                 nounLabel={lastNoun.noun}
                 whenLabel={
                   isRunning
-                    ? `${eveningDateLabel(lastNight.session.startedAt, now)} · ${cs.diary.running}`
+                    ? `${eveningDateLabel(lastNight.session.startedAt, now)} · ${t.diary.running}`
                     : eveningDateLabel(lastNight.session.startedAt, now)
                 }
-                placeLabel={lastNight.session.pubName || cs.diary.noPub}
+                placeLabel={lastNight.session.pubName || t.diary.noPub}
                 facts={lastFacts}
                 onPress={() => openEvening(lastNight)}
-                accessibilityLabel={cs.a11y.diaryCard(
+                accessibilityLabel={t.a11y.diaryCard(
                   beerCountLabel(lastNoun.count),
-                  lastNight.session.pubName || cs.diary.noPub,
+                  lastNight.session.pubName || t.diary.noPub,
                   eveningDateLabel(lastNight.session.startedAt, now),
                 )}
               />
@@ -762,7 +758,7 @@ export default function DiaryScreen({
               <>
                 {/* A band, not a hairline: two chronologies under one hero read
                     as one long list when only margin separates them (§4.1). */}
-                <SectionBreak title={cs.diary.olderHeader} inset={MockLayout.screenPad} />
+                <SectionBreak title={t.diary.olderHeader} inset={MockLayout.screenPad} />
                 {olderNights.map((night, index) => (
                   <NightRow
                     key={night.key}
@@ -778,7 +774,7 @@ export default function DiaryScreen({
 
             {visibleCheckIns.length > 0 ? (
               <>
-                <SectionBreak title={cs.diary.manualHeader} inset={MockLayout.screenPad} />
+                <SectionBreak title={t.diary.manualHeader} inset={MockLayout.screenPad} />
                 {visibleCheckIns.map((checkIn, index) => (
                   <HistoricalCheckInRow
                     key={checkIn.clientId || checkIn.id}
@@ -798,10 +794,10 @@ export default function DiaryScreen({
         <View style={styles.empty}>
           <TallyCoaster marks={0} nights={0} width={96} />
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.diary.emptyTitle}
+            {t.diary.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.diary.emptyBody}
+            {t.diary.emptyBody}
           </Text>
         </View>
       )}
@@ -813,19 +809,19 @@ export default function DiaryScreen({
         <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
         <GlowButton
-          label={cs.diary.cta}
+          label={t.diary.cta}
           onPress={() => {
             trackUiInteraction('diary_historical_open');
             setHistoricalOpen(true);
           }}
           glow="soft"
-          accessibilityLabel={cs.a11y.myBeersAddHistorical}
+          accessibilityLabel={t.a11y.myBeersAddHistorical}
         />
       </View>
 
       <DiaryStatsSheet
         visible={statsVisible}
-        totalBeers={lifetime.totalBeers.toLocaleString('cs-CZ')}
+        totalBeers={lifetime.totalBeers.toLocaleString(intlLocale)}
         totals={totalsStats}
         month={monthStats}
         records={[]}

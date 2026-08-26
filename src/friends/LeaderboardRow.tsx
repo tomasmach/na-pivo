@@ -14,7 +14,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import { Avatar } from '@/profile/Avatar';
 import { CrownIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { LeaderboardEntry } from '@/data/friendsClient';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -41,10 +41,10 @@ const AVATAR_SIZE = 34;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function resolveName(entry: LeaderboardEntry): string {
-  if (entry.isMe) return cs.friends.leaderboardMe;
+  if (entry.isMe) return t.friends.leaderboardMe;
   const { nickname, displayName } = entry.account;
   if (nickname) return `@${nickname}`;
-  return displayName || 'Kámoš';
+  return displayName || t.friends.fallbackName;
 }
 
 export const LeaderboardRow = memo(function LeaderboardRow({

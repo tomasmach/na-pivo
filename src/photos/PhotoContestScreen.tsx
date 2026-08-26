@@ -68,7 +68,7 @@ import {
 } from '@/data/photoContestClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
 import { ScalePressable } from '@/photos/ScalePressable';
@@ -108,7 +108,7 @@ const FRAME_FALLBACK_RATIO = 3 / 4;
 
 function nameOf(entry: PhotoContestEntry | PhotoContestWinner): string {
   const p = entry.account;
-  return p.nickname ? `@${p.nickname}` : p.displayName || 'Pivař';
+  return p.nickname ? `@${p.nickname}` : p.displayName || t.vycep.anonymousAuthor;
 }
 
 /** Staggered fade + translateY reveal for gallery tiles on first mount. */
@@ -178,7 +178,7 @@ function VotePill({
       accessibilityRole="button"
       accessibilityState={{ selected: entry.myVote, disabled: entry.isMine }}
       accessibilityLabel={
-        entry.myVote ? cs.a11y.contestUnvote(nameOf(entry)) : cs.a11y.contestVote(nameOf(entry))
+        entry.myVote ? t.a11y.contestUnvote(nameOf(entry)) : t.a11y.contestVote(nameOf(entry))
       }
       style={({ pressed }) => [
         styles.votePill,
@@ -193,7 +193,7 @@ function VotePill({
         numberOfLines={1}
         allowFontScaling={false}
       >
-        {cs.photoContest.votesCount(entry.votes)}
+        {t.photoContest.votesCount(entry.votes)}
       </Animated.Text>
     </Pressable>
   );
@@ -237,12 +237,12 @@ function EntryTile({
         onLongPress={entry.isMine ? undefined : onActions}
         onLayout={(event) => setImageWidth(event.nativeEvent.layout.width)}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.contestOpenPhoto(nameOf(entry))}
-        accessibilityHint={entry.isMine ? undefined : cs.a11y.contestPhotoActionsHint}
+        accessibilityLabel={t.a11y.contestOpenPhoto(nameOf(entry))}
+        accessibilityHint={entry.isMine ? undefined : t.a11y.contestPhotoActionsHint}
         accessibilityActions={
           entry.isMine
             ? undefined
-            : [{ name: 'longpress', label: cs.a11y.contestEntryActions(nameOf(entry)) }]
+            : [{ name: 'longpress', label: t.a11y.contestEntryActions(nameOf(entry)) }]
         }
         onAccessibilityAction={(event) => {
           if (event.nativeEvent.actionName === 'longpress') onActions();
@@ -259,7 +259,7 @@ function EntryTile({
         {entry.isMine ? (
           <View style={styles.mineChip}>
             <Text style={styles.mineChipText} allowFontScaling={false}>
-              {cs.photoContest.myEntryBadge}
+              {t.photoContest.myEntryBadge}
             </Text>
           </View>
         ) : null}
@@ -270,7 +270,7 @@ function EntryTile({
           disabled={entry.isMine}
           hitSlop={4}
           accessibilityRole={entry.isMine ? undefined : 'button'}
-          accessibilityLabel={entry.isMine ? undefined : cs.a11y.contestOpenProfile(nameOf(entry))}
+          accessibilityLabel={entry.isMine ? undefined : t.a11y.contestOpenProfile(nameOf(entry))}
           style={({ pressed }) => [styles.entryAuthorRow, pressed && styles.pressedDim]}
         >
           <Avatar
@@ -325,19 +325,19 @@ function WinnerTile({ winner, lead }: { winner: PhotoContestWinner; lead: boolea
         <View style={styles.winnerCrown}>
           <TrophyIcon size={13} color={Colors.stout} />
           <Text style={styles.winnerCrownText} allowFontScaling={false}>
-            {cs.photoContest.title}
+            {t.photoContest.title}
           </Text>
         </View>
       ) : (
         <Text style={styles.winnerRank} allowFontScaling={false}>
-          {cs.photoContest.winnerRank(winner.rank)}
+          {t.photoContest.winnerRank(winner.rank)}
         </Text>
       )}
       <Text style={styles.winnerName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {nameOf(winner)}
       </Text>
       <Text style={styles.winnerVotes} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.photoContest.votesCount(winner.votes)}
+        {t.photoContest.votesCount(winner.votes)}
       </Text>
     </View>
   );
@@ -522,8 +522,8 @@ export default function PhotoContestScreen() {
           if (generation === entriesGenRef.current) setEntries(previous);
           showToast(
             res.code === 'cannot_vote_own'
-              ? cs.photoContest.errorCannotVoteOwn
-              : res.detail || cs.photoContest.errorVote,
+              ? t.photoContest.errorCannotVoteOwn
+              : res.detail || t.photoContest.errorVote,
           );
           return;
         }
@@ -554,7 +554,7 @@ export default function PhotoContestScreen() {
       if (!mountedRef.current) return;
       if (res.ok) {
         trackUiInteraction('photo_contest_enter', 'success');
-        showToast(cs.photoContest.enteredToast, {
+        showToast(t.photoContest.enteredToast, {
           icon: <TrophyIcon size={18} color={Colors.amber} />,
         });
         void load();
@@ -564,8 +564,8 @@ export default function PhotoContestScreen() {
       trackUiInteraction('photo_contest_enter', 'failure');
       showToast(
         res.code === 'nickname_required'
-          ? cs.photoContest.errorNicknameRequired
-          : res.detail || cs.photoContest.errorEnter,
+          ? t.photoContest.errorNicknameRequired
+          : res.detail || t.photoContest.errorEnter,
       );
     },
     [showToast, load],
@@ -574,11 +574,11 @@ export default function PhotoContestScreen() {
   const confirmEnter = useCallback(
     (photoId: string) => {
       showAppDialog({
-        title: cs.photoContest.enterConfirmTitle,
-        message: cs.photoContest.enterConfirmBody,
+        title: t.photoContest.enterConfirmTitle,
+        message: t.photoContest.enterConfirmBody,
         buttons: [
-          { text: cs.common.cancel, style: 'cancel' },
-          { text: cs.photoContest.enterCta, onPress: () => void doEnter(photoId) },
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.photoContest.enterCta, onPress: () => void doEnter(photoId) },
         ],
       });
     },
@@ -592,21 +592,21 @@ export default function PhotoContestScreen() {
     actionBusyRef.current = false;
     if (!mountedRef.current) return;
     if (res.ok) {
-      showToast(cs.photoContest.withdrawnToast);
+      showToast(t.photoContest.withdrawnToast);
       void load();
       void loadBeerPhotos();
       return;
     }
-    showToast(res.detail || cs.photoContest.errorGeneric);
+    showToast(res.detail || t.photoContest.errorGeneric);
   }, [showToast, load]);
 
   const confirmWithdraw = useCallback(() => {
     showAppDialog({
-      title: cs.photoContest.withdrawConfirmTitle,
-      message: cs.photoContest.withdrawConfirmBody,
+      title: t.photoContest.withdrawConfirmTitle,
+      message: t.photoContest.withdrawConfirmBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        { text: cs.photoContest.withdrawCta, style: 'destructive', onPress: () => void doWithdraw() },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.photoContest.withdrawCta, style: 'destructive', onPress: () => void doWithdraw() },
       ],
     });
   }, [doWithdraw]);
@@ -623,7 +623,7 @@ export default function PhotoContestScreen() {
         comment: entry.photoId ? '' : `contest entry ${entry.id}`,
       }).then((res) => {
         if (!mountedRef.current) return;
-        showToast(res.ok ? cs.photoContest.reportedToast : res.detail || cs.photoContest.errorGeneric);
+        showToast(res.ok ? t.photoContest.reportedToast : res.detail || t.photoContest.errorGeneric);
       });
     },
     [showToast],
@@ -650,11 +650,11 @@ export default function PhotoContestScreen() {
   const confirmReport = useCallback(
     (entry: PhotoContestEntry) => {
       showAppDialog({
-        title: cs.photoContest.reportConfirmTitle,
-        message: cs.photoContest.reportConfirmBody,
+        title: t.photoContest.reportConfirmTitle,
+        message: t.photoContest.reportConfirmBody,
         buttons: [
-          { text: cs.common.cancel, style: 'cancel' },
-          { text: cs.photoContest.reportAction, style: 'destructive', onPress: () => doReport(entry) },
+          { text: t.common.cancel, style: 'cancel' },
+          { text: t.photoContest.reportAction, style: 'destructive', onPress: () => doReport(entry) },
         ],
       });
     },
@@ -665,12 +665,12 @@ export default function PhotoContestScreen() {
     (entry: PhotoContestEntry) => {
       if (entry.isMine) return;
       showAppDialog({
-        title: cs.photoContest.entryActionsTitle(nameOf(entry)),
+        title: t.photoContest.entryActionsTitle(nameOf(entry)),
         buttons: [
-          { text: cs.photoContest.openPhotoAction, onPress: () => openViewer(entry) },
-          { text: cs.photoContest.openProfileAction, onPress: () => openProfile(entry) },
-          { text: cs.photoContest.reportAction, style: 'destructive', onPress: () => confirmReport(entry) },
-          { text: cs.common.cancel, style: 'cancel' },
+          { text: t.photoContest.openPhotoAction, onPress: () => openViewer(entry) },
+          { text: t.photoContest.openProfileAction, onPress: () => openProfile(entry) },
+          { text: t.photoContest.reportAction, style: 'destructive', onPress: () => confirmReport(entry) },
+          { text: t.common.cancel, style: 'cancel' },
         ],
       });
     },
@@ -752,7 +752,7 @@ export default function PhotoContestScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.pressedDim]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
@@ -760,7 +760,7 @@ export default function PhotoContestScreen() {
         <View style={styles.headerTitleRow}>
           <TrophyIcon size={18} color={Colors.amber} />
           <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.photoContest.title}
+            {t.photoContest.title}
           </Text>
         </View>
         <View style={styles.headerBtn} />
@@ -783,11 +783,11 @@ export default function PhotoContestScreen() {
       ) : state === 'error' ? (
         <View style={styles.centerBlock}>
           <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.photoContest.loadError}
+            {t.photoContest.loadError}
           </Text>
           <View style={styles.errorCta}>
             <GlowButton
-              label={cs.photoContest.retry}
+              label={t.photoContest.retry}
               onPress={retry}
               variant="secondary"
               glow="none"
@@ -827,7 +827,7 @@ export default function PhotoContestScreen() {
             </Text>
           ) : null}
           <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.photoContest.subtitle}
+            {t.photoContest.subtitle}
           </Text>
 
           {/* Reigning winner — the traveling golden coaster: last round's
@@ -846,14 +846,14 @@ export default function PhotoContestScreen() {
                 <View style={styles.reigningTitleRow}>
                   <TrophyIcon size={13} color={Colors.amber} />
                   <Text style={styles.reigningTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.photoContest.reigningTitle}
+                    {t.photoContest.reigningTitle}
                   </Text>
                 </View>
                 <Text style={styles.reigningName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                   {nameOf(winners[0])}
                 </Text>
                 <Text style={styles.reigningVotes} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.photoContest.votesCount(winners[0].votes)}
+                  {t.photoContest.votesCount(winners[0].votes)}
                 </Text>
               </View>
             </View>
@@ -862,13 +862,13 @@ export default function PhotoContestScreen() {
           {!contest ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.photoContest.noContest}
+                {t.photoContest.noContest}
               </Text>
             </View>
           ) : (
             <>
               {/* ── My entry ── */}
-              <Text style={styles.sectionHeader}>{cs.photoContest.myEntryHeader}</Text>
+              <Text style={styles.sectionHeader}>{t.photoContest.myEntryHeader}</Text>
               {myEntry ? (
                 <View style={styles.myEntryCard}>
                   <View style={styles.myEntryThumbWrap}>
@@ -881,7 +881,7 @@ export default function PhotoContestScreen() {
                   </View>
                   <View style={styles.myEntryBody}>
                     <Text style={styles.myEntryVotes} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.photoContest.votesCount(myEntry.votes)}
+                      {t.photoContest.votesCount(myEntry.votes)}
                     </Text>
                     {myEntry.caption ? (
                       <Text style={styles.myEntryCaption} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -892,11 +892,11 @@ export default function PhotoContestScreen() {
                       onPress={confirmWithdraw}
                       style={({ pressed }) => [styles.withdrawPill, pressed && styles.pressedDim]}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.photoContest.withdrawCta}
+                      accessibilityLabel={t.photoContest.withdrawCta}
                       hitSlop={4}
                     >
                       <Text style={styles.withdrawPillText} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.photoContest.withdrawCta}
+                        {t.photoContest.withdrawCta}
                       </Text>
                     </Pressable>
                   </View>
@@ -908,14 +908,14 @@ export default function PhotoContestScreen() {
                       <CameraIcon size={18} color={Colors.amber} />
                     </View>
                     <Text style={styles.enterTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.photoContest.enterCardTitle}
+                      {t.photoContest.enterCardTitle}
                     </Text>
                   </View>
                   <Text style={styles.enterHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.photoContest.enterCardHint}
+                    {t.photoContest.enterCardHint}
                   </Text>
                   <GlowButton
-                    label={cs.photoContest.takePhotoCta}
+                    label={t.photoContest.takePhotoCta}
                     onPress={() => setCaptureOpen(true)}
                     glow="soft"
                     height={52}
@@ -926,7 +926,7 @@ export default function PhotoContestScreen() {
                       <View style={styles.enterDivider}>
                         <View style={styles.enterDividerLine} />
                         <Text style={styles.enterDividerText} allowFontScaling={false}>
-                          {cs.photoContest.pickFromDiary}
+                          {t.photoContest.pickFromDiary}
                         </Text>
                         <View style={styles.enterDividerLine} />
                       </View>
@@ -941,7 +941,7 @@ export default function PhotoContestScreen() {
                             onPress={() => photo.id && confirmEnter(photo.id)}
                             style={styles.enterThumb}
                             accessibilityRole="button"
-                            accessibilityLabel={cs.a11y.contestPickMyPhoto(photo.caption || photo.pubName)}
+                            accessibilityLabel={t.a11y.contestPickMyPhoto(photo.caption || photo.pubName)}
                           >
                             {photo.imageUrl ? (
                               <Image
@@ -957,18 +957,18 @@ export default function PhotoContestScreen() {
                     </>
                   ) : (
                     <Text style={styles.enterEmptyHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.photoContest.enterNoPhotos}
+                      {t.photoContest.enterNoPhotos}
                     </Text>
                   )}
                 </View>
               )}
 
               {/* ── Entries gallery ── */}
-              <Text style={styles.sectionHeader}>{cs.photoContest.entriesHeader}</Text>
+              <Text style={styles.sectionHeader}>{t.photoContest.entriesHeader}</Text>
               {entries.length === 0 ? (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.photoContest.emptyEntries}
+                    {t.photoContest.emptyEntries}
                   </Text>
                 </View>
               ) : null}
@@ -986,14 +986,14 @@ export default function PhotoContestScreen() {
               {/* ── Last round podium ── */}
               {lastResults && podium.length > 0 ? (
                 <>
-                  <Text style={styles.sectionHeader}>{cs.photoContest.winnersHeader}</Text>
+                  <Text style={styles.sectionHeader}>{t.photoContest.winnersHeader}</Text>
                   <View style={styles.podiumRow}>
                     {podium.map((winner) => (
                       <WinnerTile key={winner.rank} winner={winner} lead={winner.rank === 1} />
                     ))}
                   </View>
                   <Text style={styles.winnerNote} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.photoContest.winnerBadgeNote}
+                    {t.photoContest.winnerBadgeNote}
                   </Text>
                 </>
               ) : null}
@@ -1015,7 +1015,7 @@ export default function PhotoContestScreen() {
             onPress={() => setViewerEntry(null)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.photoViewerClose}
+            accessibilityLabel={t.a11y.photoViewerClose}
             style={({ pressed }) => [
               styles.viewerClose,
               { top: insets.top + Spacing.sm },
@@ -1065,7 +1065,7 @@ export default function PhotoContestScreen() {
                         style={styles.viewerLoadErrorText}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {cs.photoDiary.viewerLoadError}
+                        {t.photoDiary.viewerLoadError}
                       </Text>
                       <Pressable
                         onPress={() => {
@@ -1073,7 +1073,7 @@ export default function PhotoContestScreen() {
                           setViewerReloadKey((value) => value + 1);
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={cs.a11y.photoViewerRetry}
+                        accessibilityLabel={t.a11y.photoViewerRetry}
                         style={({ pressed }) => [
                           styles.viewerRetry,
                           pressed && styles.pressedDim,
@@ -1083,7 +1083,7 @@ export default function PhotoContestScreen() {
                           style={styles.viewerRetryText}
                           maxFontSizeMultiplier={FontScaleCap.heading}
                         >
-                          {cs.photoDiary.viewerRetry}
+                          {t.photoDiary.viewerRetry}
                         </Text>
                       </Pressable>
                     </View>
@@ -1109,7 +1109,7 @@ export default function PhotoContestScreen() {
                     setViewerEntry(null);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.contestOpenProfile(nameOf(viewerEntry))}
+                  accessibilityLabel={t.a11y.contestOpenProfile(nameOf(viewerEntry))}
                   style={({ pressed }) => [styles.viewerAuthorRow, pressed && styles.pressedDim]}
                 >
                   <Avatar

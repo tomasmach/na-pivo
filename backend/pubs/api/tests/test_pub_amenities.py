@@ -122,13 +122,19 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     orders = [k["order"] for k in body["kinds"]]
     assert orders == sorted(orders)
 
-    # Canonical wire field names, exactly 8 per item.
+    # Canonical wire field names. The _cs pair released apps read never moves;
+    # label_en/short_label_en and the request-language label/short_label pair are
+    # additive for the clients that speak English.
     first = body["kinds"][0]
     assert set(first.keys()) == {
         "key",
         "group",
         "label_cs",
         "short_label_cs",
+        "label_en",
+        "short_label_en",
+        "label",
+        "short_label",
         "icon",
         "map_filterable",
         "is_active",

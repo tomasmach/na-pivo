@@ -1,0 +1,877 @@
+# English catalogue for the Na pivo backend.
+# The source language is Czech: every msgid is the Czech string the app has
+# always shipped. Leave a msgstr empty to fall back to Czech.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: na-pivo backend\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-26 21:56+0200\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Heslo je příliš slabé."
+msgstr "That password is too weak."
+
+msgid "Přezdívka je příliš krátká."
+msgstr "That nickname is too short."
+
+msgid "Přezdívka je příliš dlouhá."
+msgstr "That nickname is too long."
+
+msgid "Přezdívka smí obsahovat jen písmena, číslice, tečku a podtržítko."
+msgstr "A nickname can only contain letters, digits, a full stop and an underscore."
+
+msgid "Tuto přezdívku nelze použít."
+msgstr "That nickname cannot be used."
+
+msgid "Tuto přezdívku už někdo používá."
+msgstr "Someone is already using that nickname."
+
+msgid "Obrázek je příliš velký."
+msgstr "That image is too big."
+
+msgid "Obrázek nelze načíst."
+msgstr "That image cannot be read."
+
+msgid "Tento pokus o přihlášení už patří jinému účtu. Zkus původní přihlášení."
+msgstr "This sign-in attempt already belongs to another account. Try the original sign-in."
+
+msgid "Tento pokus o přihlášení vznikl na jiném účtu."
+msgstr "This sign-in attempt started on a different account."
+
+msgid "Původní anonymní účet už nejde bezpečně ověřit. Zkus přihlášení znovu."
+msgstr "I cannot safely verify the original anonymous account. Sign in again."
+
+msgid "Původní účet už byl mezitím přihlášen. Zkus pokračovat s tímto účtem."
+msgstr "The original account has been signed in meanwhile. Try carrying on with this account."
+
+msgid "Původní účet už není aktivní. Dokonči nejdřív obnovu nebo smazání účtu."
+msgstr "The original account is no longer active. Finish restoring or deleting it first."
+
+msgid "Pro nastavení hesla je potřeba e-mail."
+msgstr "I need an email to set a password."
+
+msgid "Tento e-mail už používá jiný účet."
+msgstr "Another account is already using this email."
+
+msgid "Zadej platný e-mail."
+msgstr "Enter a valid email."
+
+msgid "Nesprávný e-mail nebo heslo."
+msgstr "Wrong email or password."
+
+msgid "Původní anonymní účet už nejde bezpečně ověřit. Zkus registraci znovu."
+msgstr "I cannot safely verify the original anonymous account. Sign up again."
+
+msgid "Účet už má nastavené heslo."
+msgstr "This account already has a password."
+
+msgid "Přihlášení u poskytovatele se nepodařilo ověřit."
+msgstr "I could not verify the sign-in with the provider."
+
+msgid "Neznámý poskytovatel přihlášení."
+msgstr "Unknown sign-in provider."
+
+msgid "Účet se mezitím změnil. Zkus přihlášení znovu."
+msgstr "The account changed in the meantime. Sign in again."
+
+msgid "Původní účet nejde bezpečně sloučit. Zkus přihlášení znovu."
+msgstr "The original account cannot be merged safely. Sign in again."
+
+msgid "Poskytovatel nevrátil identitu."
+msgstr "The provider did not return an identity."
+
+msgid "Přihlášení přes Apple teď potřebuje nový autorizační kód."
+msgstr "Signing in with Apple needs a new authorisation code now."
+
+msgid ""
+"Tento e-mail už používá jiný účet. Přihlas se heslem a propoj poskytovatele "
+"v nastavení účtu."
+msgstr "Another account is already using this email. Sign in with your password and link the provider in account settings."
+
+msgid "Tenhle poskytovatel už je propojený s jiným účtem."
+msgstr "This provider is already linked to another account."
+
+msgid "Propojení přes Apple teď potřebuje nový autorizační kód."
+msgstr "Linking with Apple needs a new authorisation code now."
+
+msgid "Tento účet u poskytovatele je už propojený s jiným účtem."
+msgstr "This provider account is already linked to another account."
+
+msgid "K účtu už je propojený jiný účet tohoto poskytovatele."
+msgstr "Another account from this provider is already linked to yours."
+
+msgid "Tento způsob přihlášení není propojený."
+msgstr "This sign-in method is not linked."
+
+msgid ""
+"Tohle je tvůj jediný způsob přihlášení. Nejdřív přidej heslo nebo jiného "
+"poskytovatele."
+msgstr "This is your only way to sign in. Add a password or another provider first."
+
+msgid "Apple token se nepodařilo odvolat. Zkus to prosím znovu."
+msgstr "I could not revoke the Apple token. Please try again."
+
+msgid "Odkaz je neplatný nebo vypršel."
+msgstr "The link is invalid or has expired."
+
+msgid "Účet nemá nastavené heslo."
+msgstr "This account has no password set."
+
+msgid "Apple token se nepodařilo odvolat. Zkusíme to znovu."
+msgstr "I could not revoke the Apple token. I will try again."
+
+msgid "Musí být náhodné UUIDv4."
+msgstr "It has to be a random UUIDv4."
+
+msgid "Otevřít Na Pivo"
+msgstr "Open Na Pivo"
+
+msgid "Tenhle odkaz nefunguje"
+msgstr "This link does not work"
+
+msgid ""
+"Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, nebo si v appce "
+"řekni o nový."
+msgstr "The link is missing its code. Open the email again and tap the button, or ask for a new one in the app."
+
+msgid "Nové heslo"
+msgstr "New password"
+
+msgid ""
+"Klepni na tlačítko a nastav si nové heslo přímo v appce. Otevři tenhle odkaz "
+"na telefonu, kde máš Na Pivo nainstalované."
+msgstr "Tap the button and set a new password right in the app. Open this link on the phone where you have Na Pivo installed."
+
+msgid "Nastavit nové heslo v appce"
+msgstr "Set a new password in the app"
+
+msgid "Chybí ověřovací kód"
+msgstr "The verification code is missing"
+
+msgid "Odkaz vypadá neúplně. V appce si nech poslat nový ověřovací e-mail."
+msgstr "The link looks incomplete. Ask the app to send a new verification email."
+
+msgid "Ověření se nezdařilo"
+msgstr "Verification failed"
+
+msgid ""
+"Odkaz už neplatí nebo byl použitý. V appce si nech poslat nový ověřovací e-"
+"mail."
+msgstr "The link has expired or has already been used. Ask the app to send a new verification email."
+
+msgid "Něco se pokazilo"
+msgstr "Something went wrong"
+
+msgid "Ověření teď neproběhlo. Zkus odkaz otevřít za chvíli znovu."
+msgstr "Verification did not go through. Try opening the link again in a moment."
+
+msgid "E-mail ověřen"
+msgstr "Email verified"
+
+msgid "Hotovo. E-mail máš ověřený, můžeš se vrátit do appky."
+msgstr "Done. Your email is verified, you can go back to the app."
+
+msgid "Deset nových hospod"
+msgstr "Ten new pubs"
+
+msgid "hospod"
+msgstr "pubs"
+
+msgid "Deset podniků, kde jsi před tímhle měsícem ještě neseděl."
+msgstr "Ten places you had not sat down in before this month."
+
+msgid "Odznak Objevitel"
+msgstr "Explorer badge"
+
+msgid "Počítá se potvrzená návštěva hospody v tomhle měsíci."
+msgstr "A confirmed pub visit this month counts."
+
+msgid "Podnik, kde už jsi byl dřív, se nepočítá."
+msgstr "A place you have been to before does not count."
+
+msgid "Každá hospoda se započítá jen jednou."
+msgstr "Each pub counts only once."
+
+msgid "Tři čtvrtky po sobě"
+msgstr "Three Thursdays in a row"
+
+msgid "čtvrtků"
+msgstr "Thursdays"
+
+msgid "Tři čtvrteční večery v podniku bez vynechání."
+msgstr "Three Thursday nights in a pub without missing one."
+
+msgid "Odznak Čtvrtkař"
+msgstr "Thursday regular badge"
+
+msgid "Počítá se pijácký den, který začne ve čtvrtek."
+msgstr "A drinking day that starts on a Thursday counts."
+
+msgid "Musí u něj být potvrzená návštěva podniku."
+msgstr "It needs a confirmed visit to a place."
+
+msgid "Vynechaný čtvrtek sérii ukončí."
+msgstr "A missed Thursday ends the streak."
+
+msgid "Ochutnej pět pivovarů"
+msgstr "Taste five breweries"
+
+msgid "pivovarů"
+msgstr "breweries"
+
+msgid "Pět pivovarů, které letos ochutnáváš poprvé."
+msgstr "Five breweries you are tasting for the first time this year."
+
+msgid "Odznak Ochutnávač"
+msgstr "Taster badge"
+
+msgid "Počítá se rozpoznaný pivovar u piva v deníčku."
+msgstr "A recognised brewery on a beer in your diary counts."
+
+msgid "Letos už ochutnaný pivovar se znovu nepočítá."
+msgstr "A brewery you have already tasted this year does not count again."
+
+msgid "Podezřelé záznamy se do výzvy nezapočítají."
+msgstr "Suspicious entries do not count towards the challenge."
+
+msgid "Setkání je jen pro dospělé 18+."
+msgstr "The gathering is for adults 18+ only."
+
+msgid "Začátek musí být aspoň 15 minut dopředu."
+msgstr "The start has to be at least 15 minutes ahead."
+
+msgid "Setkání lze založit nejvýš 60 dní dopředu."
+msgstr "A gathering can be created at most 60 days ahead."
+
+msgid "Setkání musí trvat 1 až 12 hodin."
+msgstr "A gathering has to last 1 to 12 hours."
+
+msgid "Přihlas se, ať je u domácích setkání jasné, kdo přichází."
+msgstr "Sign in so it is clear who is coming to home gatherings."
+
+msgid "Účet už není aktivní."
+msgstr "This account is no longer active."
+
+msgid "Smazaný účet"
+msgstr "Deleted account"
+
+msgid "Tuhle akci nevidím."
+msgstr "I cannot see this event."
+
+msgid "Nejdřív vypni neviditelný režim."
+msgstr "Turn off invisible mode first."
+
+msgid "Setkání už není otevřené."
+msgstr "The gathering is no longer open."
+
+msgid "K tomuhle setkání se nejde přidat."
+msgstr "You cannot join this gathering."
+
+msgid "Pořadatel už u stolu je."
+msgstr "The host is already at the table."
+
+msgid "K tomuhle týmu se nejde přidat."
+msgstr "You cannot join this team."
+
+msgid "Tenhle požadavek už použil někdo jiný."
+msgstr "Someone else has already used this request."
+
+msgid "Už jsi v jiném týmu."
+msgstr "You are already in another team."
+
+msgid "Další tým už se sem nevejde."
+msgstr "There is no room for another team."
+
+msgid "Tenhle tým už má čtyři."
+msgstr "This team already has four."
+
+msgid "Tenhle tým tu není."
+msgstr "This team is not here."
+
+msgid "Kapacita je plná."
+msgstr "The gathering is full."
+
+msgid "Žádost už nejde schválit."
+msgstr "The request can no longer be approved."
+
+msgid "Vlastní setkání nejde nahlásit."
+msgstr "You cannot report your own gathering."
+
+msgid "Payload obsahuje moc položek."
+msgstr "The payload has too many items."
+
+msgid "Payload je moc zanořený."
+msgstr "The payload is nested too deep."
+
+msgid "Klíče payloadu musí být text."
+msgstr "Payload keys have to be text."
+
+msgid "Klíč payloadu je moc dlouhý."
+msgstr "A payload key is too long."
+
+msgid "Pole v payloadu obsahuje moc položek."
+msgstr "An array in the payload has too many items."
+
+msgid "Text v payloadu je moc dlouhý."
+msgstr "Text in the payload is too long."
+
+msgid "Payload není platný JSON."
+msgstr "The payload is not valid JSON."
+
+msgid "Hru musí hrát aspoň dva hráči."
+msgstr "A game needs at least two players."
+
+msgid "Každý hráč smí být v sestavě jen jednou."
+msgstr "Each player can be in the line-up only once."
+
+msgid "Payload musí být objekt."
+msgstr "The payload has to be an object."
+
+msgid "Payload je moc velký."
+msgstr "The payload is too big."
+
+msgid "Payloady v dávce jsou dohromady moc velké."
+msgstr "The payloads in the batch are too big together."
+
+msgid "Smazaný hráč"
+msgstr "Deleted player"
+
+msgid "U tohoto stolu už je maximum lidí."
+msgstr "This table is already full."
+
+msgid "Sestava obsahuje někoho, kdo už u stolu není."
+msgstr "The line-up includes someone who is no longer at the table."
+
+msgid "Tahle hra už má maximum událostí."
+msgstr "This game has hit its event limit."
+
+msgid "Tenhle večer už má maximum herních událostí."
+msgstr "This night has hit its game event limit."
+
+msgid "Akce musí končit po začátku."
+msgstr "The event has to end after it starts."
+
+msgid "Ukončenou akci už nejde navrhnout."
+msgstr "You cannot suggest an event that has already ended."
+
+msgid "Akci lze navrhnout nejvýš 180 dní dopředu."
+msgstr "An event can be suggested at most 180 days ahead."
+
+msgid "Akce může trvat nejvýš 14 dní."
+msgstr "An event can last at most 14 days."
+
+msgid "Zadej platný klíč hospody."
+msgstr "Enter a valid pub key."
+
+msgid "Přihlas se a pak akci navrhni."
+msgstr "Sign in and then suggest the event."
+
+msgid "Návrhy akcí jsou jen pro přihlášené."
+msgstr "Only signed-in accounts can suggest events."
+
+msgid "Pozvánku neznám."
+msgstr "I do not know this invite."
+
+msgid "Žádost přijata"
+msgstr "Request accepted"
+
+#, python-format
+msgid "%(name)s si tě přidal mezi kamarády."
+msgstr "%(name)s added you as a friend."
+
+msgid "Nejdřív potvrď pravidla pro sdílený obsah."
+msgstr "Confirm the rules for shared content first."
+
+msgid "Pravidla pro sdílený obsah se změnila. Potvrď je znovu."
+msgstr "The rules for shared content have changed. Confirm them again."
+
+msgid "Kamarád"
+msgstr "Friend"
+
+msgid "První společné pivo"
+msgstr "First beer together"
+
+msgid "Už máte svůj stůl"
+msgstr "You have your own table"
+
+msgid "Hospodská dvojka"
+msgstr "Pub double act"
+
+msgid "Účet se mezitím změnil."
+msgstr "The account changed in the meantime."
+
+msgid "Přidej nejvýš jednu fotku."
+msgstr "Add at most one photo."
+
+msgid "Neznámý typ přílohy."
+msgstr "Unknown attachment type."
+
+msgid "Účet se mezitím změnil. Zkus nahlášení znovu."
+msgstr "The account changed in the meantime. Try reporting again."
+
+msgid "Nelze nahlásit vlastní profil."
+msgstr "You cannot report your own profile."
+
+msgid "Neplatné parametry žebříčku."
+msgstr "Invalid leaderboard parameters."
+
+msgid "Pozvánka už vypršela."
+msgstr "The invite has expired."
+
+msgid "Profil se nepodařilo najít."
+msgstr "I could not find that profile."
+
+msgid "Sám sobě žádost neposílej. To by bylo moc smutné."
+msgstr "Do not send a request to yourself. That would be too sad."
+
+msgid "Máš nového parťáka"
+msgstr "You have a new mate"
+
+#, python-format
+msgid "%(name)s je v partě přes tvůj kód."
+msgstr "%(name)s joined your crew with your code."
+
+msgid "Nový kámoš na pivo?"
+msgstr "A new mate for a beer?"
+
+#, python-format
+msgid "%(name)s si tě chce přidat mezi kamarády."
+msgstr "%(name)s wants to add you as a friend."
+
+msgid "Žádost neexistuje."
+msgstr "The request does not exist."
+
+msgid "Neznámá akce."
+msgstr "Unknown action."
+
+msgid "Jde se na pivo"
+msgstr "Off for a beer"
+
+#, python-format
+msgid "%(name)s přijal tvoji žádost."
+msgstr "%(name)s accepted your request."
+
+msgid "Tenhle kámoš tu není."
+msgstr "This friend is not here."
+
+msgid "Plán je moc daleko. Zkus dřívější čas."
+msgstr "That plan is too far away. Try an earlier time."
+
+msgid "Vyber aspoň jednoho kámoše z party."
+msgstr "Pick at least one mate from your crew."
+
+msgid "Kamarád plánuje pivo"
+msgstr "A mate is planning a beer"
+
+#, python-format
+msgid "%(name)s plánuje %(pub)s v %(time)s. Přidáš se?"
+msgstr "%(name)s is planning %(pub)s at %(time)s. Coming along?"
+
+msgid "Kamarád je na pivu"
+msgstr "A mate is out for a beer"
+
+#, python-format
+msgid "%(name)s sedí v %(pub)s. Nechceš se přidat?"
+msgstr "%(name)s is sitting in %(pub)s. Fancy joining?"
+
+msgid "Tahle hláška už vyšuměla."
+msgstr "This ping has gone flat."
+
+msgid "Na vlastní cinknutí reagovat nemusíš."
+msgstr "You do not need to answer your own ping."
+
+msgid "Tady se reagovat nedá."
+msgstr "You cannot react here."
+
+msgid "S tímhle člověkem ještě nejste parta."
+msgstr "You are not in a crew with this person yet."
+
+#, python-format
+msgid "%(name)s už jde za tebou"
+msgstr "%(name)s is on the way to you"
+
+msgid "Tuhle reakci neznám."
+msgstr "I do not know this reaction."
+
+msgid "Na vlastní cinknutí si připít nemusíš."
+msgstr "You do not need to raise a glass to your own ping."
+
+msgid "Na zdraví!"
+msgstr "Cheers!"
+
+#, python-format
+msgid "%(name)s ti připil. Na zdraví!"
+msgstr "%(name)s raised a glass to you. Cheers!"
+
+msgid "Na vlastní pivo si připít nemusíš."
+msgstr "You do not need to raise a glass to your own beer."
+
+msgid "Tenhle zápis nevidím."
+msgstr "I cannot see this entry."
+
+msgid "Tento večer se nepodařilo bezpečně spárovat."
+msgstr "I could not match this night safely."
+
+msgid "Tenhle večer nevidím."
+msgstr "I cannot see this night."
+
+msgid "Komentář se nepodařilo bezpečně spárovat."
+msgstr "I could not match the comment safely."
+
+msgid "Tenhle komentář už byl smazaný."
+msgstr "This comment has already been deleted."
+
+msgid "Komentář tu není."
+msgstr "The comment is not here."
+
+msgid "Vlastní rundu si kupovat nemusíš."
+msgstr "You do not need to buy your own round."
+
+msgid "Tuhle fotku nevidím."
+msgstr "I cannot see this photo."
+
+msgid "Tahle fotka už byla smazaná."
+msgstr "This photo has already been deleted."
+
+msgid "Fotodeník je plný. Smaž nejdřív nějakou starší fotku."
+msgstr "Your photo diary is full. Delete an older photo first."
+
+msgid "Chybí soubor s fotkou."
+msgstr "The photo file is missing."
+
+msgid "Fotka je skrytá, soubor ještě uklízíme."
+msgstr "The photo is hidden, I am still clearing up the file."
+
+msgid "Tenhle profil nevidím."
+msgstr "I cannot see this profile."
+
+msgid "Neplatné parametry stránkování."
+msgstr "Invalid paging parameters."
+
+msgid "Nejdřív si nastav přezdívku, ať soutěžíš pod jménem."
+msgstr "Set a nickname first so you compete under a name."
+
+msgid "Tahle soutěžní fotka tu není."
+msgstr "This contest photo is not here."
+
+msgid "Pro vlastní fotku hlasovat nemůžeš."
+msgstr "You cannot vote for your own photo."
+
+msgid "Sám sebe zablokovat nejde."
+msgstr "You cannot block yourself."
+
+msgid "Vyber účet, který chceš sledovat."
+msgstr "Pick the account you want to follow."
+
+msgid "Sám sebe sledovat nemusíš."
+msgstr "You do not need to follow yourself."
+
+msgid "Tenhle profil sledovat nejde."
+msgstr "This profile cannot be followed."
+
+msgid "Soukromý profil sledovat nejde."
+msgstr "A private profile cannot be followed."
+
+msgid "Nastavení se nepodařilo uložit."
+msgstr "I could not save the settings."
+
+msgid "Česko"
+msgstr "Czechia"
+
+msgid "Slovensko"
+msgstr "Slovakia"
+
+msgid "Vybraný bod"
+msgstr "Selected point"
+
+msgid "K účtu nemáme e-mail, kam bychom export poslali."
+msgstr "I have no email on this account to send the export to."
+
+msgid "Export e-mailem pošleme až na ověřený e-mail."
+msgstr "I only send the export to a verified email."
+
+msgid "Export se nepodařilo odeslat e-mailem. Zkus to prosím znovu."
+msgstr "I could not send the export by email. Please try again."
+
+msgid "Účet se mezitím znovu přihlásil. Přihlas se znovu."
+msgstr "The account signed in again in the meantime. Sign in again."
+
+msgid "Neplatný požadavek."
+msgstr "Invalid request."
+
+msgid "operation_id musí být náhodné UUIDv4."
+msgstr "operation_id has to be a random UUIDv4."
+
+msgid ""
+"Účet se mezitím znovu přihlásil. Nejdřív se přihlas znovu a pak zopakuj "
+"smazání."
+msgstr "The account signed in again in the meantime. Sign in again first, then repeat the deletion."
+
+msgid "operation_id už patří jinému požadavku."
+msgstr "operation_id already belongs to another request."
+
+msgid "Chybí soubor s obrázkem."
+msgstr "The image file is missing."
+
+msgid "Fotka je příliš velká."
+msgstr "The photo is too big."
+
+msgid "Skenování menu teď nejede, zkus to za chvíli."
+msgstr "Menu scanning is down right now, try again in a bit."
+
+msgid "Skenování menu má pro dnešek vyčerpaný limit. Zkus to zítra."
+msgstr "Menu scanning has used up its limit for today. Try tomorrow."
+
+msgid "Chybí fotka menu."
+msgstr "The menu photo is missing."
+
+msgid "Chybí parametr 'nickname'."
+msgstr "The 'nickname' parameter is missing."
+
+msgid "Tvůj kód:"
+msgstr "Your code:"
+
+msgid "Na Pivo. Najdi nejbližší pivo."
+msgstr "Na Pivo. Find the nearest beer."
+
+msgid "Otevři aplikaci Na Pivo pro více informací."
+msgstr "Open the Na Pivo app for more."
+
+msgid "Na Pivo: ověř si e-mail"
+msgstr "Na Pivo: verify your email"
+
+msgid ""
+"Čau! Ještě jedna věc, než to roztočíme. Klepni na tlačítko a e-mail ověříme "
+"v prohlížeči. Pak se jen vrať do appky. Platí jen chvíli, tak s tím nečekej."
+msgstr "Hi! One more thing before we get going. Tap the button and I will verify your email in the browser. Then just come back to the app. It only lasts a little while, so do not sit on it."
+
+msgid "Ověř si e-mail"
+msgstr "Verify your email"
+
+msgid "Ověřit e-mail"
+msgstr "Verify email"
+
+#, python-format
+msgid ""
+"Čau!\n"
+"\n"
+"Klepni na odkaz a e-mail ověříme v prohlížeči:\n"
+"\n"
+"%(link)s\n"
+"\n"
+"Pak se vrať do appky Na Pivo. Odkaz platí jen chvíli.\n"
+"\n"
+"Na Pivo"
+msgstr "Hi!\n\nTap the link and I will verify your email in the browser:\n\n%(link)s\n\nThen come back to the Na Pivo app. The link only lasts a little while.\n\nNa Pivo"
+
+msgid "Na Pivo: nové heslo"
+msgstr "Na Pivo: new password"
+
+msgid ""
+"Někdo si řekl o nové heslo k tvému účtu. Snad ty. Klepni na tlačítko, nebo "
+"se vrať do appky a zadej kód.<br><br>Jestli to nebyl ty, klidně to nech být, "
+"nic se nestane."
+msgstr "Someone asked for a new password for your account. Hopefully you. Tap the button, or go back to the app and enter the code.<br><br>If it was not you, just leave it, nothing will happen."
+
+msgid "Nastavit nové heslo"
+msgstr "Set a new password"
+
+#, python-format
+msgid ""
+"Někdo si řekl o nové heslo k tvému účtu. Snad ty.\n"
+"\n"
+"Klepni na odkaz a nastav si nové heslo:\n"
+"\n"
+"%(link)s\n"
+"\n"
+"Nebo se vrať do appky a zadej tenhle kód:\n"
+"\n"
+"    %(code)s\n"
+"\n"
+"Jestli to nebyl ty, nech to být. Kód platí jen chvíli.\n"
+"\n"
+"Na Pivo"
+msgstr "Someone asked for a new password for your account. Hopefully you.\n\nTap the link and set a new password:\n\n%(link)s\n\nOr go back to the app and enter this code:\n\n    %(code)s\n\nIf it was not you, just leave it. The code only lasts a little while.\n\nNa Pivo"
+
+msgid "Na Pivo: mažeme ti účet"
+msgstr "Na Pivo: your account is on its way out"
+
+#, python-format
+msgid ""
+"Dali jsme tvůj účet do fronty na smazání. Po <strong>%(cancel_by)s</strong> "
+"zmizí napořád, i se všemi daty.<br><br>Rozmyslel sis to? Než ten den přijde, "
+"stačí se přihlásit a je to zase tvoje."
+msgstr "I have queued your account for deletion. After <strong>%(cancel_by)s</strong> it is gone for good, along with all its data.<br><br>Changed your mind? Sign in before that day and it is yours again."
+
+msgid "Mažeme ti účet"
+msgstr "Deleting your account"
+
+#, python-format
+msgid ""
+"Dali jsme tvůj účet do fronty na smazání.\n"
+"\n"
+"Po %(cancel_by)s zmizí napořád, i se všemi daty.\n"
+"\n"
+"Rozmyslel sis to? Než ten den přijde, stačí se přihlásit a je to zase "
+"tvoje.\n"
+"\n"
+"Na Pivo"
+msgstr "I have queued your account for deletion.\n\nAfter %(cancel_by)s it is gone for good, along with all its data.\n\nChanged your mind? Sign in before that day and it is yours again.\n\nNa Pivo"
+
+msgid "Na Pivo: účet je pryč"
+msgstr "Na Pivo: your account is gone"
+
+msgid ""
+"A je to. Tvůj účet i všechna data jsme smazali natrvalo.<br><br>Díky, žes s "
+"námi chvíli vydržel. Kdyby ses někdy chtěl vrátit, hospoda je pořád "
+"otevřená. 🍻"
+msgstr "That is that. Your account and all its data are deleted for good.<br><br>Thanks for sticking around a while. If you ever fancy coming back, the pub is still open. 🍻"
+
+msgid "Účet je pryč"
+msgstr "Your account is gone"
+
+msgid ""
+"A je to. Tvůj účet i všechna data jsme smazali natrvalo.\n"
+"\n"
+"Díky, žes s námi chvíli vydržel. Kdyby ses chtěl vrátit, hospoda je pořád "
+"otevřená.\n"
+"\n"
+"Na Pivo"
+msgstr "That is that. Your account and all its data are deleted for good.\n\nThanks for sticking around a while. If you fancy coming back, the pub is still open.\n\nNa Pivo"
+
+msgid "Tvoje data z Na Pivo"
+msgstr "Your Na Pivo data"
+
+msgid ""
+"V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších dat, "
+"která k účtu máme uložená.<br><br>Soubor je ve formátu JSON."
+msgstr "Attached is an export of your account, beer diary, ratings and the other data stored with the account.<br><br>The file is in JSON format."
+
+msgid "Tvoje data"
+msgstr "Your data"
+
+msgid ""
+"V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších dat, "
+"která k účtu máme uložená.\n"
+"\n"
+"Soubor je ve formátu JSON.\n"
+"\n"
+"Na Pivo"
+msgstr "Attached is an export of your account, beer diary, ratings and the other data stored with the account.\n\nThe file is in JSON format.\n\nNa Pivo"
+
+msgid "Příloha je příliš velká."
+msgstr "The attachment is too big."
+
+msgid "Přílohu se nepodařilo načíst."
+msgstr "I could not read the attachment."
+
+msgid "Večer se schází parta"
+msgstr "The crew is meeting tonight"
+
+#, python-format
+msgid "%(pub)s v %(time)s. Nezapomeň se ukázat."
+msgstr "%(pub)s at %(time)s. Do not forget to show up."
+
+msgid "Nováček"
+msgstr "Newcomer"
+
+msgid "Všímálek"
+msgstr "Noticer"
+
+msgid "Štamgast"
+msgstr "Regular"
+
+msgid "Znalec"
+msgstr "Connoisseur"
+
+msgid "Hospodský mudrc"
+msgstr "Pub sage"
+
+msgid "Pivní kartograf"
+msgstr "Beer cartographer"
+
+msgid "Legenda lokálu"
+msgstr "Local legend"
+
+msgid "Fotku se nepodařilo načíst."
+msgstr "I could not read the photo."
+
+msgid "Pivařova mapa"
+msgstr "Pivařova mapa"
+
+msgid "Platba"
+msgstr "Payment"
+
+msgid "Posezení"
+msgstr "Seating"
+
+msgid "Zábava"
+msgstr "Fun"
+
+msgid "Atmosféra"
+msgstr "Atmosphere"
+
+msgid "Praktické"
+msgstr "Practical"
+
+msgid "Zelenáč"
+msgstr "Rookie"
+
+msgid "Ochutnávač"
+msgstr "Taster"
+
+msgid "Pivní tovaryš"
+msgstr "Beer journeyman"
+
+msgid "Výčepní"
+msgstr "Barkeep"
+
+msgid "Sládek"
+msgstr "Brewmaster"
+
+msgid "Pivní mistr"
+msgstr "Beer master"
+
+msgid "Pivní legenda"
+msgstr "Beer legend"
+
+msgid "Tři půllitry si připíjejí. Přidej se k partě."
+msgstr "Three large beers clinking. Join the crew."
+
+msgid "Tři půllitry si připíjejí"
+msgstr "Three large beers clinking"
+
+msgid "Otevřít v appce"
+msgstr "Open in the app"
+
+msgid "Když se nic nestane, nainstaluj nebo aktualizuj Na pivo a klepni znovu."
+msgstr "If nothing happens, install or update Na pivo and tap again."
+
+msgid "Přidej se k partě | Na pivo"
+msgstr "Join the crew | Na pivo"
+
+msgid "Hospoda je lepší s kámoši. Otevři pozvánku v aplikaci Na pivo."
+msgstr "The pub is better with mates. Open the invite in the Na pivo app."
+
+msgid "Kámoš tě zve do party."
+msgstr "A mate is inviting you into their crew."
+
+msgid "Otevři pozvánku v Na pivo a hned budeš vědět, kdy se jde na jedno."
+msgstr "Open the invite in Na pivo and you will know when the next one is on."
+
+msgid "Přisedni ke stolu | Na pivo"
+msgstr "Pull up a chair | Na pivo"
+
+msgid "Kámoši tě zvou ke stolu. Otevři pozvánku v aplikaci Na pivo."
+msgstr "Your mates are saving you a seat. Open the invite in the Na pivo app."
+
+msgid "U stolu je místo."
+msgstr "There is room at the table."
+
+msgid "Otevři Na pivo, potvrď kód a přisedni ke kámošům."
+msgstr "Open Na pivo, confirm the code and sit down with your mates."

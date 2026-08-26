@@ -36,6 +36,7 @@ from django.db import transaction as dj_transaction
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils import timezone as dj_timezone
+from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -46,6 +47,7 @@ from rest_framework.views import APIView
 from pubs import accounts
 from pubs.accounts import AccountError
 from pubs.api.throttling import SharedScopedRateThrottle as ScopedRateThrottle
+from pubs.i18n import current_locale
 from pubs.models import Account, AuthIdentity, PushDevice
 
 from . import auth_serializers as s
@@ -111,7 +113,9 @@ def _log_auth_failure(
 
 
 def _error_response(exc: AccountError) -> Response:
-    return Response({"detail": exc.message, "code": exc.code}, status=exc.http_status)
+    return Response(
+        {"detail": str(exc.message), "code": exc.code}, status=exc.http_status
+    )
 
 
 def _verification_link_base(request: Request) -> str:
@@ -126,13 +130,15 @@ def _verify_email_page(
     success: bool,
     status_code: int,
     action_link: str | None = None,
-    action_label: str = "Otevřít Na Pivo",
+    action_label: str = gettext_lazy("Otevřít Na Pivo"),
 ) -> HttpResponse:
     """Small standalone HTML page for users opening auth links from e-mail."""
     accent = "#46c173" if success else "#d99a2b"
     app_link = action_link or f"{settings.APP_DEEP_LINK_SCHEME}://"
+    lang = current_locale()
+    action_label_text = str(action_label)
     html = f"""<!doctype html>
-<html lang="cs">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -209,7 +215,7 @@ def _verify_email_page(
     <div class="dot" aria-hidden="true"></div>
     <h1>{title}</h1>
     <p>{body}</p>
-    <a href="{app_link}">{action_label}</a>
+    <a href="{app_link}">{action_label_text}</a>
   </main>
 </body>
 </html>"""
@@ -575,8 +581,8 @@ class ResetPasswordLandingView(APIView):
         raw_token = str(request.query_params.get("token") or "").strip()
         if not raw_token:
             return _verify_email_page(
-                title="Tenhle odkaz nefunguje",
-                body=(
+                title=gettext("Tenhle odkaz nefunguje"),
+                body=gettext(
                     "Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, "
                     "nebo si v appce řekni o nový."
                 ),
@@ -589,15 +595,15 @@ class ResetPasswordLandingView(APIView):
             f"{urlencode({'token': raw_token})}"
         )
         return _verify_email_page(
-            title="Nové heslo",
-            body=(
+            title=gettext("Nové heslo"),
+            body=gettext(
                 "Klepni na tlačítko a nastav si nové heslo přímo v appce. "
                 "Otevři tenhle odkaz na telefonu, kde máš Na Pivo nainstalované."
             ),
             success=True,
             status_code=status.HTTP_200_OK,
             action_link=app_link,
-            action_label="Nastavit nové heslo v appce",
+            action_label=gettext("Nastavit nové heslo v appce"),
         )
 
 
@@ -646,8 +652,10 @@ class VerifyEmailView(_AuthView):
         raw_token = str(request.query_params.get("token") or "").strip()
         if not raw_token:
             return _verify_email_page(
-                title="Chybí ověřovací kód",
-                body="Odkaz vypadá neúplně. V appce si nech poslat nový ověřovací e-mail.",
+                title=gettext("Chybí ověřovací kód"),
+                body=gettext(
+                    "Odkaz vypadá neúplně. V appce si nech poslat nový ověřovací e-mail."
+                ),
                 success=False,
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
@@ -656,8 +664,8 @@ class VerifyEmailView(_AuthView):
             accounts.verify_email(raw_token)
         except AccountError:
             return _verify_email_page(
-                title="Ověření se nezdařilo",
-                body=(
+                title=gettext("Ověření se nezdařilo"),
+                body=gettext(
                     "Odkaz už neplatí nebo byl použitý. "
                     "V appce si nech poslat nový ověřovací e-mail."
                 ),
@@ -670,15 +678,17 @@ class VerifyEmailView(_AuthView):
                 type(exc).__name__,
             )
             return _verify_email_page(
-                title="Něco se pokazilo",
-                body="Ověření teď neproběhlo. Zkus odkaz otevřít za chvíli znovu.",
+                title=gettext("Něco se pokazilo"),
+                body=gettext(
+                    "Ověření teď neproběhlo. Zkus odkaz otevřít za chvíli znovu."
+                ),
                 success=False,
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return _verify_email_page(
-            title="E-mail ověřen",
-            body="Hotovo. E-mail máš ověřený, můžeš se vrátit do appky.",
+            title=gettext("E-mail ověřen"),
+            body=gettext("Hotovo. E-mail máš ověřený, můžeš se vrátit do appky."),
             success=True,
             status_code=status.HTTP_200_OK,
         )

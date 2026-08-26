@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 /**
  * Status of the opening-hours lookup for a pub.
@@ -68,7 +68,7 @@ export const OpenStatusChip = memo(function OpenStatusChip({
       <View
         style={styles.chip}
         accessibilityRole="text"
-        accessibilityLabel={cs.compass.detailsLoading}
+        accessibilityLabel={t.compass.detailsLoading}
       >
         <ActivityIndicator size="small" color={Colors.mutedText} />
         <Text
@@ -76,7 +76,7 @@ export const OpenStatusChip = memo(function OpenStatusChip({
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {cs.compass.detailsLoading}
+          {t.compass.detailsLoading}
         </Text>
       </View>
     );
@@ -90,15 +90,15 @@ export const OpenStatusChip = memo(function OpenStatusChip({
   if (isOpenNow === true) {
     // Warm, inviting — the pub is open right now.
     textColor = Colors.open;
-    label = time ? cs.compass.openUntil(time) : cs.compass.openNow;
+    label = time ? t.compass.openUntil(time) : t.compass.openNow;
   } else if (isOpenNow === false) {
     // Calm and muted — closed, but we show when it opens so it's not a dead end.
     textColor = Colors.closed;
-    label = time ? cs.compass.closedUntil(time) : cs.compass.closedNow;
+    label = time ? t.compass.closedUntil(time) : t.compass.closedNow;
   } else {
     // Hours genuinely unknown — keep it subtle.
     textColor = Colors.mutedText;
-    label = cs.compass.hoursUnknown;
+    label = t.compass.hoursUnknown;
   }
 
   return (

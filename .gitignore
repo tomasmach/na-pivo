@@ -67,3 +67,7 @@ expo-env.d.ts
 # @end expo-cli
 store-assets/logs/
 .pubmatch/
+
+# Compiled gettext catalogues: the .po sources are checked in, the .mo files
+# are built by compilemessages (Docker image build, and on demand for tests).
+backend/locale/**/*.mo

@@ -1,7 +1,7 @@
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { cs } from "@/i18n/cs";
+import { t } from "@/i18n";
 import { Colors } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
 import { Radius, Spacing } from "@/theme/layout";
@@ -108,20 +108,20 @@ export function DurableFinishPending({
       {!failed ? <ActivityIndicator color={Colors.amber} /> : null}
       <Text style={styles.text} maxFontSizeMultiplier={FontScaleCap.body}>
         {spectator
-          ? cs.gameHost.waitingForResult
+          ? t.gameHost.waitingForResult
           : failed
-            ? cs.gameHost.resultSaveFailed
-            : cs.gameHost.savingResult}
+            ? t.gameHost.resultSaveFailed
+            : t.gameHost.savingResult}
       </Text>
       {failed ? (
         <Pressable
           onPress={onRetry}
           style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={cs.gameHost.retry}
+          accessibilityLabel={t.gameHost.retry}
         >
           <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.gameHost.retry}
+            {t.gameHost.retry}
           </Text>
         </Pressable>
       ) : null}

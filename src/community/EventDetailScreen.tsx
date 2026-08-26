@@ -29,8 +29,7 @@ import {
   type CommunityEventTeamRoster,
   type CommunityJoinRequest,
 } from '@/data/communityEventsClient';
-import { cs } from '@/i18n/cs';
-import { czechPlural } from '@/i18n/plural';
+import { intlLocale, t } from '@/i18n';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -41,23 +40,14 @@ function displayName(request: CommunityJoinRequest): string {
   return request.account.nickname ? `@${request.account.nickname}` : request.account.displayName;
 }
 
-function attendingLabel(count: number): string {
-  return `${count} ${czechPlural(count, { one: 'pivař', few: 'pivaři', many: 'pivařů' })}`;
-}
-
-function spotsLabel(count: number): string {
-  return `${count} ${czechPlural(count, {
-    one: 'místo zbývá',
-    few: 'místa zbývají',
-    many: 'míst zbývá',
-  })}`;
-}
+const attendingLabel = t.communityEvents.attendingCount;
+const spotsLabel = t.communityEvents.spotsLeft;
 
 function statusLabel(event: CommunityEvent): string {
-  if (event.status === 'cancelled') return cs.communityEvents.statusCancelled;
-  if (event.status === 'ended') return cs.communityEvents.statusEnded;
-  if (event.status === 'live') return cs.communityEvents.statusLive;
-  return cs.communityEvents.statusAdults;
+  if (event.status === 'cancelled') return t.communityEvents.statusCancelled;
+  if (event.status === 'ended') return t.communityEvents.statusEnded;
+  if (event.status === 'live') return t.communityEvents.statusLive;
+  return t.communityEvents.statusAdults;
 }
 
 function TeamCard({
@@ -79,12 +69,12 @@ function TeamCard({
   const full = team.availableSpots === 0;
   const disabled = locked || closed || onAnotherTeam || (!team.isMine && full);
   const actionLabel = team.isMine
-    ? 'Opustit tým'
+    ? t.communityEvents.teamLeave
     : onAnotherTeam
-      ? 'Už jsi v týmu'
+      ? t.communityEvents.teamAlreadyIn
       : full
-        ? 'Tým je plný'
-        : 'Přidat se';
+        ? t.communityEvents.teamFull
+        : t.communityEvents.teamJoin;
 
   return (
     <View style={[styles.teamCard, team.isMine && styles.teamCardMine]}>
@@ -94,13 +84,13 @@ function TeamCard({
             {team.name}
           </Text>
           <Text style={styles.teamCapacity} maxFontSizeMultiplier={FontScaleCap.body}>
-            {team.memberCount} z {team.capacity}
+            {t.communityEvents.teamOf(team.memberCount, team.capacity)}
           </Text>
         </View>
         {team.isMine ? (
           <View style={styles.mineBadge}>
             <CheckIcon size={14} color={Colors.amber} />
-            <Text style={styles.mineBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>Tvůj tým</Text>
+            <Text style={styles.mineBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.teamMine}</Text>
           </View>
         ) : null}
       </View>
@@ -123,7 +113,7 @@ function TeamCard({
           ))}
         </View>
       ) : (
-        <Text style={styles.teamEmpty} maxFontSizeMultiplier={FontScaleCap.body}>Zatím prázdný stůl.</Text>
+        <Text style={styles.teamEmpty} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.teamEmpty}</Text>
       )}
 
       <Pressable
@@ -144,7 +134,7 @@ function TeamCard({
           style={[styles.teamActionText, team.isMine && styles.teamActionLeaveText]}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {busy ? 'Chvilku…' : actionLabel}
+          {busy ? t.communityEvents.busy : actionLabel}
         </Text>
       </Pressable>
     </View>
@@ -176,7 +166,7 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
   const attending = Math.max(1, detail.capacity - detail.availableSpots);
   const startsAt = new Date(detail.startsAt);
   const when = Number.isFinite(startsAt.getTime())
-    ? new Intl.DateTimeFormat('cs-CZ', {
+    ? new Intl.DateTimeFormat(intlLocale, {
         weekday: 'short',
         day: 'numeric',
         month: 'long',
@@ -189,17 +179,17 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
   const pendingRequests = detail.joinRequests.filter((request) => request.status === 'pending');
   const membershipActionLabel = detail.isHost
     ? closed
-      ? 'Tvoje akce skončila'
-      : 'Pořádáš'
+      ? t.communityEvents.hostEnded
+      : t.communityEvents.hosting
     : closed
-      ? 'Akce skončila'
+      ? t.communityEvents.eventEnded
       : membershipBusy
-        ? 'Chvilku…'
+        ? t.communityEvents.busy
         : membership === 'approved'
-          ? 'Jdeš'
+          ? t.communityEvents.going
           : membership === 'pending'
-            ? 'Čeká na schválení'
-            : 'Chci jít';
+            ? t.communityEvents.pending
+            : t.communityEvents.wantToGo;
 
   React.useEffect(() => {
     if (!canSeeTeams || roster !== null) return;
@@ -253,13 +243,13 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
           teamRoster: null,
         }));
         setRoster(null);
-        setNotice('Účast je zrušená.');
+        setNotice(t.communityEvents.leftToast);
       } else {
         setDetail((current) => ({ ...current, membershipStatus: 'pending' }));
-        setNotice('Žádost letí pořadateli.');
+        setNotice(t.communityEvents.joinSent);
       }
     } catch {
-      setMembershipError(cs.communityEvents.actionError);
+      setMembershipError(t.communityEvents.actionError);
     } finally {
       membershipBusyRef.current = false;
       setMembershipBusy(false);
@@ -293,7 +283,11 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
           unassignedCount: roster.unassignedCount + 1,
         });
       }
-      setNotice(action === 'approve' ? `${displayName(request)} jde s vámi.` : 'Žádost je zamítnutá.');
+      setNotice(
+        action === 'approve'
+          ? t.communityEvents.approvedToast(displayName(request))
+          : t.communityEvents.rejectedToast,
+      );
 
       const refreshed = await fetchCommunityEvent(detail.id);
       if (refreshed.ok) {
@@ -301,7 +295,7 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
         setRoster(refreshed.event.teamRoster);
       }
     } catch {
-      setModerationError(cs.communityEvents.actionError);
+      setModerationError(t.communityEvents.actionError);
     } finally {
       moderationBusyRef.current = null;
       setModerationBusy(null);
@@ -329,9 +323,13 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
       setNewTeamName('');
       createAttemptRef.current = null;
       Keyboard.dismiss();
-      setNotice(result.created ? `Tým ${result.team?.name ?? name} je na světě.` : 'Tým už je připravený.');
+      setNotice(
+        result.created
+          ? t.communityEvents.teamCreated(result.team?.name ?? name)
+          : t.communityEvents.teamExists,
+      );
     } catch {
-      setRosterError(cs.communityEvents.actionError);
+      setRosterError(t.communityEvents.actionError);
     } finally {
       teamBusyRef.current = null;
       setTeamBusy(null);
@@ -353,9 +351,9 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
         return;
       }
       setRoster(result.roster);
-      setNotice(team.isMine ? 'Z týmu jsi venku.' : `Jsi v týmu ${team.name}.`);
+      setNotice(team.isMine ? t.communityEvents.teamLeft : t.communityEvents.teamJoined(team.name));
     } catch {
-      setRosterError(cs.communityEvents.actionError);
+      setRosterError(t.communityEvents.actionError);
     } finally {
       teamBusyRef.current = null;
       setTeamBusy(null);
@@ -398,7 +396,7 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
       <View style={styles.goingRow}>
         <UsersIcon size={16} color={Colors.mutedText} />
         <Text style={styles.goingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          Jde {attendingLabel(attending)} · {spotsLabel(detail.availableSpots)}
+          {t.communityEvents.goingLine(attendingLabel(attending), spotsLabel(detail.availableSpots))}
         </Text>
       </View>
 
@@ -412,8 +410,8 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
           detail.isHost
             ? membershipActionLabel
             : joined
-              ? 'Zrušit účast'
-              : 'Požádat o účast'
+              ? t.communityEvents.cancelAttendanceA11y
+              : t.communityEvents.requestJoinA11y
         }
       >
         {joined || detail.isHost ? <CheckIcon size={18} color={Colors.amber} /> : null}
@@ -424,7 +422,7 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
           {membershipActionLabel}
         </Text>
       </Pressable>
-      {membership === 'pending' ? <Text style={styles.pendingHint} maxFontSizeMultiplier={FontScaleCap.body}>Po schválení si vybereš tým.</Text> : null}
+      {membership === 'pending' ? <Text style={styles.pendingHint} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.pendingHint}</Text> : null}
       {membershipError ? <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>{membershipError}</Text> : null}
       {notice ? <Text style={styles.notice} maxFontSizeMultiplier={FontScaleCap.body}>{notice}</Text> : null}
 
@@ -432,7 +430,7 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
         <View style={styles.section}>
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Žádosti o místo
+              {t.communityEvents.requestsHeading}
             </Text>
             <Text style={styles.sectionCount} allowFontScaling={false}>{pendingRequests.length}</Text>
           </View>
@@ -459,11 +457,11 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
                     disabled={moderationBusy !== null}
                     style={({ pressed }) => [styles.rejectButton, pressed && styles.pressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Zamítnout žádost ${displayName(request)}`}
+                    accessibilityLabel={t.communityEvents.rejectRequestA11y(displayName(request))}
                     accessibilityState={{ disabled: moderationBusy !== null }}
                   >
                     <XIcon size={16} color={Colors.mutedText} />
-                    <Text style={styles.rejectButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>Ne</Text>
+                    <Text style={styles.rejectButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{t.communityEvents.rejectShort}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => void decideRequest(request, 'approve')}
@@ -474,20 +472,20 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
                       pressed && styles.pressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Schválit žádost ${displayName(request)}`}
+                    accessibilityLabel={t.communityEvents.approveRequestA11y(displayName(request))}
                     accessibilityState={{ disabled: moderationBusy !== null || detail.availableSpots === 0 }}
                   >
                     {busy ? <ActivityIndicator size="small" color={Colors.stout} /> : <CheckIcon size={16} color={Colors.stout} />}
-                    <Text style={styles.approveButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{busy ? 'Chvilku…' : 'Jo'}</Text>
+                    <Text style={styles.approveButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{busy ? t.communityEvents.busy : t.communityEvents.approveShort}</Text>
                   </Pressable>
                 </View>
               </View>
             );
           }) : (
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>Nikdo teď nečeká.</Text>
+            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.noRequests}</Text>
           )}
           {detail.availableSpots === 0 && pendingRequests.length ? (
-            <Text style={styles.capacityError} maxFontSizeMultiplier={FontScaleCap.body}>Kapacita je plná. Žádost můžeš jen zamítnout.</Text>
+            <Text style={styles.capacityError} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.capacityFull}</Text>
           ) : null}
           {moderationError ? <Text style={styles.errorLeft} maxFontSizeMultiplier={FontScaleCap.body}>{moderationError}</Text> : null}
         </View>
@@ -497,19 +495,19 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
         <View style={styles.section}>
           <View style={styles.sectionHead}>
             <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Týmy
+              {t.communityEvents.teamsTitle}
             </Text>
             {roster ? (
               <Text style={styles.sectionMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                {roster.assignedCount}/{roster.participantCount} v týmech
+                {t.communityEvents.teamsAssigned(roster.assignedCount, roster.participantCount)}
               </Text>
             ) : null}
           </View>
 
           {rosterLoading ? (
-            <View style={styles.loadingRow} accessibilityLabel="Načítám týmy">
+            <View style={styles.loadingRow} accessibilityLabel={t.communityEvents.teamsLoadingA11y}>
               <ActivityIndicator color={Colors.amber} />
-              <Text style={styles.loadingText} maxFontSizeMultiplier={FontScaleCap.body}>Skládám soupisku…</Text>
+              <Text style={styles.loadingText} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.teamsLoading}</Text>
             </View>
           ) : rosterError && !roster ? (
             <View style={styles.loadError}>
@@ -518,16 +516,16 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
                 onPress={() => void refreshRoster()}
                 style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.communityEvents.retry}
+                accessibilityLabel={t.communityEvents.retry}
               >
-                <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.heading}>Zkusit znovu</Text>
+                <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.heading}>{t.communityEvents.retry}</Text>
               </Pressable>
             </View>
           ) : roster ? (
             <>
               {roster.unassignedCount > 0 ? (
                 <Text style={styles.unassigned} maxFontSizeMultiplier={FontScaleCap.body}>
-                  Bez týmu: {attendingLabel(roster.unassignedCount)}.
+                  {t.communityEvents.unassigned(attendingLabel(roster.unassignedCount))}
                 </Text>
               ) : null}
               {roster.teams.length ? roster.teams.map((team) => (
@@ -541,7 +539,7 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
                   onToggle={(row) => void toggleTeam(row)}
                 />
               )) : (
-                <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>Zatím žádný tým. Někdo musí vykopnout první.</Text>
+                <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.teamsEmpty}</Text>
               )}
 
               {!roster.myTeamId && !closed ? (
@@ -552,14 +550,14 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
                       setNewTeamName(value);
                       if (createAttemptRef.current?.name !== value.trim()) createAttemptRef.current = null;
                     }}
-                    placeholder="Název týmu"
+                    placeholder={t.communityEvents.teamNamePlaceholder}
                     placeholderTextColor={MockColors.fieldHint}
                     maxLength={40}
                     returnKeyType="done"
                     onSubmitEditing={() => void createTeam()}
                     editable={teamBusy === null}
                     style={styles.teamInput}
-                    accessibilityLabel="Název nového týmu"
+                    accessibilityLabel={t.communityEvents.teamNameA11y}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   />
                   <Pressable
@@ -571,11 +569,11 @@ export function EventDetailScreen({ event }: { event: CommunityEvent }) {
                       pressed && styles.pressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel="Založit tým"
+                    accessibilityLabel={t.communityEvents.teamCreateA11y}
                     accessibilityState={{ disabled: !newTeamName.trim() || teamBusy !== null }}
                   >
                     {teamBusy === 'create' ? <ActivityIndicator size="small" color={Colors.stout} /> : null}
-                    <Text style={styles.createTeamButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{teamBusy === 'create' ? 'Zakládám…' : 'Založit'}</Text>
+                    <Text style={styles.createTeamButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{teamBusy === 'create' ? t.communityEvents.teamCreating : t.communityEvents.teamCreate}</Text>
                   </Pressable>
                 </View>
               ) : null}

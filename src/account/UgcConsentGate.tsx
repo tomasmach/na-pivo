@@ -35,7 +35,7 @@ import {
   subscribeUgcConsentRequired,
   ugcPolicyHeaders,
 } from '@/data/ugcConsent';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -101,7 +101,7 @@ export function UgcConsentGate() {
   const handleLater = useCallback(() => {
     if (busyRef.current) return;
     close();
-    showToast(cs.ugcConsent.laterHint);
+    showToast(t.ugcConsent.laterHint);
   }, [close, showToast]);
 
   const handleAccept = useCallback(() => {
@@ -125,7 +125,7 @@ export function UgcConsentGate() {
       setBusy(false);
 
       if (!result.ok) {
-        showToast(cs.ugcConsent.error);
+        showToast(t.ugcConsent.error);
         return;
       }
       // Not `close()`: accepting is not a dismissal, so it must not arm the

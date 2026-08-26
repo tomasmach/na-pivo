@@ -19,7 +19,7 @@ import { CameraIcon, ImagesIcon } from '@/components/shared/IconGlyph';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { BeerPhotoSource } from '@/data/beerPhotoPicker';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 
@@ -67,20 +67,20 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
 
             <View style={styles.titleRow}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.photoDiary.sheetTitle}
+                {t.photoDiary.sheetTitle}
               </Text>
-              <CloseButton onPress={onClose} label={cs.a11y.photoViewerClose} />
+              <CloseButton onPress={onClose} label={t.a11y.photoViewerClose} />
             </View>
 
             <View style={styles.options}>
               <OptionRow
                 icon={<CameraIcon size={22} color={Colors.amber} />}
-                label={cs.photoDiary.takePhoto}
+                label={t.photoDiary.takePhoto}
                 onPress={() => pick('camera')}
               />
               <OptionRow
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
-                label={cs.photoDiary.pickFromLibrary}
+                label={t.photoDiary.pickFromLibrary}
                 onPress={() => pick('library')}
               />
             </View>

@@ -51,6 +51,7 @@ from django.db import DatabaseError, IntegrityError, transaction
 from django.db.models import Count, Q
 from django.db.models.deletion import CASCADE
 from django.utils import timezone
+from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
@@ -63,6 +64,7 @@ from pubs.beer_photo_deletions import (
     schedule_beer_photo_file_deletions,
 )
 from pubs.enrichment.normalizer import community_hours_to_osm
+from pubs.i18n import current_locale, locale_for_account, remember_account_locale
 from pubs.models import (
     Account,
     AccountDeletionOperation,
@@ -241,7 +243,7 @@ def validate_password_strength(raw_password: str, *, account: Account | None = N
         validate_password(raw_password, user=account)
     except DjangoValidationError as exc:
         raise AccountError(
-            " ".join(exc.messages) or "Heslo je příliš slabé.",
+            " ".join(exc.messages) or gettext("Heslo je příliš slabé."),
             code="weak_password",
             http_status=400,
         ) from exc
@@ -307,9 +309,9 @@ def validate_nickname(value: str, *, account: Account | None = None) -> str:
     """
     value = (value or "").strip()
     if len(value) < 3:
-        raise AccountError("Přezdívka je příliš krátká.", code="nickname_too_short")
+        raise AccountError(gettext("Přezdívka je příliš krátká."), code="nickname_too_short")
     if len(value) > 20:
-        raise AccountError("Přezdívka je příliš dlouhá.", code="nickname_too_long")
+        raise AccountError(gettext("Přezdívka je příliš dlouhá."), code="nickname_too_long")
     if (
         not _NICKNAME_RE.match(value)
         or ".." in value
@@ -317,18 +319,18 @@ def validate_nickname(value: str, *, account: Account | None = None) -> str:
         or value.endswith(".")
     ):
         raise AccountError(
-            "Přezdívka smí obsahovat jen písmena, číslice, tečku a podtržítko.",
+            gettext("Přezdívka smí obsahovat jen písmena, číslice, tečku a podtržítko."),
             code="nickname_invalid",
         )
     if value.lower() in RESERVED_NICKNAMES:
-        raise AccountError("Tuto přezdívku nelze použít.", code="nickname_reserved")
+        raise AccountError(gettext("Tuto přezdívku nelze použít."), code="nickname_reserved")
 
     taken = Account.objects.filter(nickname__iexact=value)
     if account is not None and account.pk is not None:
         taken = taken.exclude(pk=account.pk)
     if taken.exists():
         raise AccountError(
-            "Tuto přezdívku už někdo používá.", code="nickname_taken", http_status=409
+            gettext("Tuto přezdívku už někdo používá."), code="nickname_taken", http_status=409
         )
     return value
 
@@ -384,7 +386,7 @@ def process_avatar(file_or_bytes) -> ContentFile:
     if size is None and isinstance(file_or_bytes, (bytes, bytearray)):
         size = len(file_or_bytes)
     if size is not None and size > max_bytes:
-        raise AccountError("Obrázek je příliš velký.", code="avatar_too_large", http_status=400)
+        raise AccountError(gettext("Obrázek je příliš velký."), code="avatar_too_large", http_status=400)
 
     if isinstance(file_or_bytes, (bytes, bytearray)):
         raw = bytes(file_or_bytes)
@@ -397,9 +399,9 @@ def process_avatar(file_or_bytes) -> ContentFile:
             pass
         raw = file_or_bytes.read(max_bytes + 1)
     if len(raw) > max_bytes:
-        raise AccountError("Obrázek je příliš velký.", code="avatar_too_large", http_status=400)
+        raise AccountError(gettext("Obrázek je příliš velký."), code="avatar_too_large", http_status=400)
     if not raw:
-        raise AccountError("Obrázek nelze načíst.", code="avatar_invalid", http_status=400)
+        raise AccountError(gettext("Obrázek nelze načíst."), code="avatar_invalid", http_status=400)
 
     # --- decompression-bomb ceiling (before decode) ---
     # Cap the decoded pixel count so a tiny highly-compressed file cannot blow up
@@ -425,7 +427,7 @@ def process_avatar(file_or_bytes) -> ContentFile:
                 )
         except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
             raise AccountError(
-                "Obrázek nelze načíst.", code="avatar_invalid", http_status=400
+                gettext("Obrázek nelze načíst."), code="avatar_invalid", http_status=400
             ) from exc
     finally:
         Image.MAX_IMAGE_PIXELS = previous_limit
@@ -569,7 +571,7 @@ def _validate_account_merge_operation(
         operation.target_account_fingerprint, target_public_id
     ):
         raise AccountError(
-            "Tento pokus o přihlášení už patří jinému účtu. Zkus původní přihlášení.",
+            gettext("Tento pokus o přihlášení už patří jinému účtu. Zkus původní přihlášení."),
             code="merge_operation_target_mismatch",
             http_status=409,
         )
@@ -580,7 +582,7 @@ def _validate_account_merge_operation(
         )
     ):
         raise AccountError(
-            "Tento pokus o přihlášení vznikl na jiném účtu.",
+            gettext("Tento pokus o přihlášení vznikl na jiném účtu."),
             code="merge_operation_source_mismatch",
             http_status=409,
         )
@@ -780,7 +782,7 @@ def _bind_account_merge_operation(
         # A response-loss replay is allowed without it because the committed row
         # above already carries that proof after the source account was deleted.
         raise AccountError(
-            "Původní anonymní účet už nejde bezpečně ověřit. Zkus přihlášení znovu.",
+            gettext("Původní anonymní účet už nejde bezpečně ověřit. Zkus přihlášení znovu."),
             code="merge_operation_source_missing",
             http_status=409,
         )
@@ -795,19 +797,19 @@ def _bind_account_merge_operation(
     )
     if locked_source is None:
         raise AccountError(
-            "Původní anonymní účet už nejde bezpečně ověřit. Zkus přihlášení znovu.",
+            gettext("Původní anonymní účet už nejde bezpečně ověřit. Zkus přihlášení znovu."),
             code="merge_operation_source_missing",
             http_status=409,
         )
     if locked_source.is_claimed:
         raise AccountError(
-            "Původní účet už byl mezitím přihlášen. Zkus pokračovat s tímto účtem.",
+            gettext("Původní účet už byl mezitím přihlášen. Zkus pokračovat s tímto účtem."),
             code="merge_operation_source_claimed",
             http_status=409,
         )
     if locked_source.status != Account.Status.ACTIVE:
         raise AccountError(
-            "Původní účet už není aktivní. Dokonči nejdřív obnovu nebo smazání účtu.",
+            gettext("Původní účet už není aktivní. Dokonči nejdřív obnovu nebo smazání účtu."),
             code="merge_operation_source_inactive",
             http_status=409,
         )
@@ -848,18 +850,18 @@ def set_password(account: Account, raw_password: str, *, email: str | None = Non
 
     if cred is None:
         if not email:
-            raise AccountError("Pro nastavení hesla je potřeba e-mail.", code="email_required")
+            raise AccountError(gettext("Pro nastavení hesla je potřeba e-mail."), code="email_required")
         norm = normalize_email(email)
         if _email_taken_by_other(norm, account=account):
             raise AccountError(
-                "Tento e-mail už používá jiný účet.", code="email_taken", http_status=409
+                gettext("Tento e-mail už používá jiný účet."), code="email_taken", http_status=409
             )
         cred = EmailCredential(account=account, email=norm, email_verified=False)
     elif email:
         norm = normalize_email(email)
         if norm != cred.email and _email_taken_by_other(norm, account=account):
             raise AccountError(
-                "Tento e-mail už používá jiný účet.", code="email_taken", http_status=409
+                gettext("Tento e-mail už používá jiný účet."), code="email_taken", http_status=409
             )
         if norm != cred.email:
             cred.email = norm
@@ -886,7 +888,7 @@ def register_email(
     """
     norm = normalize_email(email)
     if not norm:
-        raise AccountError("Zadej platný e-mail.", code="email_invalid")
+        raise AccountError(gettext("Zadej platný e-mail."), code="email_invalid")
 
     created_credential = False
     with transaction.atomic():
@@ -908,7 +910,7 @@ def register_email(
             )
             if cred is None or not check_password(password, cred.password):
                 raise AccountError(
-                    "Nesprávný e-mail nebo heslo.",
+                    gettext("Nesprávný e-mail nebo heslo."),
                     code="invalid_credentials",
                     http_status=401,
                 )
@@ -920,7 +922,7 @@ def register_email(
         else:
             if current_account is None:
                 raise AccountError(
-                    "Původní anonymní účet už nejde bezpečně ověřit. Zkus registraci znovu.",
+                    gettext("Původní anonymní účet už nejde bezpečně ověřit. Zkus registraci znovu."),
                     code="merge_operation_source_missing",
                     http_status=409,
                 )
@@ -930,13 +932,13 @@ def register_email(
             )
             if account.has_email_credential:
                 raise AccountError(
-                    "Účet už má nastavené heslo.",
+                    gettext("Účet už má nastavené heslo."),
                     code="already_has_password",
                     http_status=409,
                 )
             if EmailCredential.objects.filter(email=norm).exists():
                 raise AccountError(
-                    "Tento e-mail už používá jiný účet.",
+                    gettext("Tento e-mail už používá jiný účet."),
                     code="email_taken",
                     http_status=409,
                 )
@@ -964,6 +966,7 @@ def register_email(
                 target_public_id=account.public_id,
             )
         _reactivate_if_pending(account)
+        remember_account_locale(account, current_locale())
         token = issue_token(account, device_label=display_name)
 
     if created_credential:
@@ -988,7 +991,7 @@ def login_email(
     norm = normalize_email(email)
     cred = EmailCredential.objects.select_related("account").filter(email=norm).first()
     generic = AccountError(
-        "Nesprávný e-mail nebo heslo.", code="invalid_credentials", http_status=401
+        gettext("Nesprávný e-mail nebo heslo."), code="invalid_credentials", http_status=401
     )
     if cred is None or not check_password(password, cred.password):
         raise generic
@@ -1011,6 +1014,7 @@ def login_email(
             target_public_id=account.public_id,
         )
         _merge_anonymous_account(current_account, account)
+        remember_account_locale(account, current_locale())
         token = issue_token(account)
     return account, token
 
@@ -1027,11 +1031,11 @@ def verify_provider_token(provider: str, token: str) -> dict:
             return oauth.verify_apple_identity_token(token)
     except oauth.OAuthError as exc:
         raise AccountError(
-            "Přihlášení u poskytovatele se nepodařilo ověřit.",
+            gettext("Přihlášení u poskytovatele se nepodařilo ověřit."),
             code="oauth_failed",
             http_status=401,
         ) from exc
-    raise AccountError("Neznámý poskytovatel přihlášení.", code="bad_provider")
+    raise AccountError(gettext("Neznámý poskytovatel přihlášení."), code="bad_provider")
 
 
 def apple_refresh_from_code(authorization_code: str) -> str:
@@ -2219,13 +2223,13 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
                 }
         except DatabaseError as exc:
             raise AccountError(
-                "Účet se mezitím změnil. Zkus přihlášení znovu.",
+                gettext("Účet se mezitím změnil. Zkus přihlášení znovu."),
                 code="auth",
                 http_status=409,
             ) from exc
         if set(newly_locked) != missing_account_ids:
             raise AccountError(
-                "Účet se mezitím změnil. Zkus přihlášení znovu.",
+                gettext("Účet se mezitím změnil. Zkus přihlášení znovu."),
                 code="auth",
                 http_status=409,
             )
@@ -2240,7 +2244,7 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     # transaction rolls everything back.
     if source.quorum_trusted_at is not None:
         raise AccountError(
-            "Původní účet nejde bezpečně sloučit. Zkus přihlášení znovu.",
+            gettext("Původní účet nejde bezpečně sloučit. Zkus přihlášení znovu."),
             code="merge_source_suspicious_trust",
             http_status=409,
         )
@@ -2570,7 +2574,7 @@ def resolve_social(
     """
     subject = (claims.get("sub") or "").strip()
     if not subject:
-        raise AccountError("Poskytovatel nevrátil identitu.", code="oauth_failed", http_status=401)
+        raise AccountError(gettext("Poskytovatel nevrátil identitu."), code="oauth_failed", http_status=401)
     email = normalize_email(claims.get("email", ""))
 
     existing = (
@@ -2585,7 +2589,7 @@ def resolve_social(
             and not apple_refresh_token
         ):
             raise AccountError(
-                "Přihlášení přes Apple teď potřebuje nový autorizační kód.",
+                gettext("Přihlášení přes Apple teď potřebuje nový autorizační kód."),
                 code="apple_refresh_required",
                 http_status=400,
             )
@@ -2626,6 +2630,7 @@ def resolve_social(
                 target_public_id=account.public_id,
             )
             _merge_anonymous_account(current_account, account)
+            remember_account_locale(account, current_locale())
             token = issue_token(account)
         _maybe_capture_social_avatar(account, claims, provider)
         return account, token, False
@@ -2646,8 +2651,10 @@ def resolve_social(
             collision = collision.exclude(account=claim_target)
         if collision.exists():
             raise AccountError(
-                "Tento e-mail už používá jiný účet. Přihlas se heslem a propoj "
-                "poskytovatele v nastavení účtu.",
+                gettext(
+                    "Tento e-mail už používá jiný účet. Přihlas se heslem a propoj "
+                    "poskytovatele v nastavení účtu."
+                ),
                 code="email_exists",
                 http_status=409,
             )
@@ -2662,7 +2669,7 @@ def resolve_social(
     ):
         if AuthIdentity.objects.filter(account=email_match_account, provider=provider).exists():
             raise AccountError(
-                "Tenhle poskytovatel už je propojený s jiným účtem.",
+                gettext("Tenhle poskytovatel už je propojený s jiným účtem."),
                 code="provider_already_linked",
                 http_status=409,
             )
@@ -2670,7 +2677,7 @@ def resolve_social(
 
     if provider == AuthIdentity.Provider.APPLE and not apple_refresh_token:
         raise AccountError(
-            "Přihlášení přes Apple teď potřebuje nový autorizační kód.",
+            gettext("Přihlášení přes Apple teď potřebuje nový autorizační kód."),
             code="apple_refresh_required",
             http_status=400,
         )
@@ -2708,6 +2715,7 @@ def resolve_social(
             # not the claims carried an email or flagged it verified.
             community_trust.mark_quorum_trusted(account.pk)
             _merge_anonymous_account(current_account, account)
+            remember_account_locale(account, current_locale())
             token = issue_token(account)
     except IntegrityError:
         # Concurrent first sign-in for the same (provider, subject) — re-resolve.
@@ -2733,6 +2741,7 @@ def resolve_social(
             # verified provider subject, so it stamps like any other proof.
             community_trust.mark_quorum_trusted(account.pk)
             _merge_anonymous_account(current_account, account)
+            remember_account_locale(account, current_locale())
             token = issue_token(account)
         return account, token, False
 
@@ -2760,7 +2769,7 @@ def link_social(
     """
     subject = (claims.get("sub") or "").strip()
     if not subject:
-        raise AccountError("Poskytovatel nevrátil identitu.", code="oauth_failed", http_status=401)
+        raise AccountError(gettext("Poskytovatel nevrátil identitu."), code="oauth_failed", http_status=401)
     email = normalize_email(claims.get("email", ""))
 
     existing = (
@@ -2776,7 +2785,7 @@ def link_social(
                     existing.save(update_fields=["apple_refresh_token"])
                 elif not existing.apple_refresh_token:
                     raise AccountError(
-                        "Propojení přes Apple teď potřebuje nový autorizační kód.",
+                        gettext("Propojení přes Apple teď potřebuje nový autorizační kód."),
                         code="apple_refresh_required",
                         http_status=400,
                     )
@@ -2785,20 +2794,20 @@ def link_social(
             community_trust.mark_quorum_trusted(account.pk)
             return existing  # already linked to this account — idempotent
         raise AccountError(
-            "Tento účet u poskytovatele je už propojený s jiným účtem.",
+            gettext("Tento účet u poskytovatele je už propojený s jiným účtem."),
             code="provider_linked_elsewhere",
             http_status=409,
         )
     if account.identities.filter(provider=provider).exists():
         raise AccountError(
-            "K účtu už je propojený jiný účet tohoto poskytovatele.",
+            gettext("K účtu už je propojený jiný účet tohoto poskytovatele."),
             code="provider_already_linked",
             http_status=409,
         )
 
     if provider == AuthIdentity.Provider.APPLE and not apple_refresh_token:
         raise AccountError(
-            "Propojení přes Apple teď potřebuje nový autorizační kód.",
+            gettext("Propojení přes Apple teď potřebuje nový autorizační kód."),
             code="apple_refresh_required",
             http_status=400,
         )
@@ -2827,11 +2836,13 @@ def unlink(account: Account, *, provider: str) -> None:
     """
     methods = account.auth_methods()
     if provider not in methods:
-        raise AccountError("Tento způsob přihlášení není propojený.", code="not_linked")
+        raise AccountError(gettext("Tento způsob přihlášení není propojený."), code="not_linked")
     if len(methods) <= 1:
         raise AccountError(
-            "Tohle je tvůj jediný způsob přihlášení. Nejdřív přidej heslo nebo "
-            "jiného poskytovatele.",
+            gettext(
+                "Tohle je tvůj jediný způsob přihlášení. Nejdřív přidej heslo nebo "
+                "jiného poskytovatele."
+            ),
             code="last_credential",
             http_status=400,
         )
@@ -2842,7 +2853,7 @@ def unlink(account: Account, *, provider: str) -> None:
 
     identity = account.identities.filter(provider=provider).first()
     if identity is None:
-        raise AccountError("Tento způsob přihlášení není propojený.", code="not_linked")
+        raise AccountError(gettext("Tento způsob přihlášení není propojený."), code="not_linked")
     if provider == AuthIdentity.Provider.APPLE and identity.apple_refresh_token:
         # Revoke at Apple before dropping the identity so we do not lose the only
         # token that can satisfy Apple's deletion/unlink requirement.
@@ -2854,7 +2865,7 @@ def unlink(account: Account, *, provider: str) -> None:
                 type(exc).__name__,
             )
             raise AccountError(
-                "Apple token se nepodařilo odvolat. Zkus to prosím znovu.",
+                gettext("Apple token se nepodařilo odvolat. Zkus to prosím znovu."),
                 code="apple_revoke_failed",
                 http_status=502,
             ) from exc
@@ -2888,7 +2899,7 @@ def _consume_one_time_token(raw_token: str, *, purpose: str) -> Account:
         ).update(used_at=now)
         if consumed != 1:
             raise AccountError(
-                "Odkaz je neplatný nebo vypršel.", code="token_invalid", http_status=400
+                gettext("Odkaz je neplatný nebo vypršel."), code="token_invalid", http_status=400
             )
         ott = OneTimeToken.objects.select_related("account").get(
             token_hash=token_hash,
@@ -2921,7 +2932,9 @@ def request_email_verification(account: Account, *, link_base: str | None = None
         ttl=timedelta(hours=settings.EMAIL_VERIFY_TTL_HOURS),
     )
     link = _append_token(link_base, raw) if link_base else _deep_link("verify", raw)
-    return emailer.send_verification_email(cred.email, link=link, code=raw)
+    return emailer.send_verification_email(
+        cred.email, link=link, code=raw, locale=locale_for_account(account)
+    )
 
 
 def verify_email(raw_token: str) -> Account:
@@ -2956,7 +2969,9 @@ def request_password_reset(email: str, *, link_base: str | None = None) -> None:
         ttl=timedelta(hours=settings.PASSWORD_RESET_TTL_HOURS),
     )
     link = _append_token(link_base, raw) if link_base else _deep_link("reset", raw)
-    emailer.send_password_reset_email(cred.email, link=link, code=raw)
+    emailer.send_password_reset_email(
+        cred.email, link=link, code=raw, locale=locale_for_account(cred.account)
+    )
 
 
 def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
@@ -2979,7 +2994,7 @@ def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
     )
     if candidate_account_id is None:
         raise AccountError(
-            "Odkaz je neplatný nebo vypršel.",
+            gettext("Odkaz je neplatný nebo vypršel."),
             code="token_invalid",
             http_status=400,
         )
@@ -3009,7 +3024,7 @@ def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
             or one_time_token.expires_at <= timezone.now()
         ):
             raise AccountError(
-                "Odkaz je neplatný nebo vypršel.",
+                gettext("Odkaz je neplatný nebo vypršel."),
                 code="token_invalid",
                 http_status=400,
             )
@@ -3022,7 +3037,7 @@ def reset_password(raw_token: str, *, new_password: str) -> tuple[Account, str]:
         )
         if credential is None:
             raise AccountError(
-                "Účet nemá nastavené heslo.",
+                gettext("Účet nemá nastavené heslo."),
                 code="no_password",
                 http_status=400,
             )
@@ -3070,6 +3085,7 @@ def schedule_deletion(account: Account) -> None:
         account.status = locked.status
         account.deleted_at = locked.deleted_at
         email = locked.primary_email
+        locale = locale_for_account(locked)
         if email:
             cancel_by = (
                 locked.deleted_at + timedelta(days=settings.ACCOUNT_DELETION_GRACE_DAYS)
@@ -3079,6 +3095,7 @@ def schedule_deletion(account: Account) -> None:
                 lambda: emailer.send_account_deletion_scheduled_email(
                     email,
                     cancel_by=cancel_by,
+                    locale=locale,
                 ),
             )
 
@@ -3461,6 +3478,7 @@ def _hard_delete_locked(account: Account) -> None:
     """Delete one row while its caller owns the shared-tree lock scope."""
 
     email = account.primary_email
+    locale = locale_for_account(account)
     # Remote cleanup runs before anything irreversible or local. Linear goes
     # FIRST: it is the only remote step that can legitimately fail, and a
     # failure here must roll the whole purge back while the Apple token is
@@ -3532,7 +3550,7 @@ def _hard_delete_locked(account: Account) -> None:
     if email:
         _send_account_email_after_commit(
             "account_deleted",
-            lambda: emailer.send_account_deleted_email(email),
+            lambda: emailer.send_account_deleted_email(email, locale=locale),
         )
 
 
@@ -3644,7 +3662,7 @@ def _revoke_apple_identities(account: Account, *, fail_on_error: bool = False) -
             identity.save(update_fields=["apple_refresh_token"])
     if failed_identity_ids and fail_on_error:
         raise AccountError(
-            "Apple token se nepodařilo odvolat. Zkusíme to znovu.",
+            gettext("Apple token se nepodařilo odvolat. Zkusíme to znovu."),
             code="apple_revoke_failed",
             http_status=502,
         )

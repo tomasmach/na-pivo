@@ -1,6 +1,6 @@
 import type { MenuPhotoPickResult, MenuPhotoSource } from '@/data/menuPhotoPicker';
 import type { MenuScanResult } from '@/data/menuScanClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 export type MenuPhotoPickFeedback =
   | { action: 'continue' }
@@ -22,32 +22,32 @@ export function menuPhotoPickFeedback(
         action: 'toast',
         message:
           source === 'camera'
-            ? cs.contribute.scanMenu.permissionCameraDenied
-            : cs.contribute.scanMenu.permissionLibraryDenied,
+            ? t.contribute.scanMenu.permissionCameraDenied
+            : t.contribute.scanMenu.permissionLibraryDenied,
       };
     case 'denied-permanent':
       return { action: 'settings' };
     case 'error':
-      return { action: 'toast', message: cs.contribute.scanMenu.errorToast };
+      return { action: 'toast', message: t.contribute.scanMenu.errorToast };
   }
 }
 
 export function menuScanFailureCopy(
   status: Exclude<MenuScanResult['status'], 'ok'>,
-  emptyCopy: string = cs.contribute.scanMenu.emptyToast,
+  emptyCopy: string = t.contribute.scanMenu.emptyToast,
 ): string {
   switch (status) {
     case 'empty':
       return emptyCopy;
     case 'unavailable':
-      return cs.contribute.scanMenu.unavailableToast;
+      return t.contribute.scanMenu.unavailableToast;
     case 'daily-cap':
-      return cs.contribute.scanMenu.dailyCapToast;
+      return t.contribute.scanMenu.dailyCapToast;
     case 'rate-limited':
-      return cs.contribute.scanMenu.rateLimitedToast;
+      return t.contribute.scanMenu.rateLimitedToast;
     case 'bad-image':
-      return cs.contribute.scanMenu.badImageToast;
+      return t.contribute.scanMenu.badImageToast;
     case 'error':
-      return cs.contribute.scanMenu.errorToast;
+      return t.contribute.scanMenu.errorToast;
   }
 }

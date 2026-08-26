@@ -15,7 +15,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import { Avatar } from '@/profile/Avatar';
 import type { FriendProfile, FriendStats } from '@/data/friendsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -40,14 +40,14 @@ export function FriendListRow({
 }: FriendListRowProps) {
   const count = stats?.sharedPubCount ?? 0;
   const when = stats?.lastSharedAt ? dayLabel(stats.lastSharedAt) : '';
-  const meta = when ? cs.friends.lastSeenTogether(when) : cs.friends.notTogetherYet;
+  const meta = when ? t.friends.lastSeenTogether(when) : t.friends.notTogetherYet;
 
   return (
     <Pressable
       onPress={() => onOpenProfile(friend.id)}
       onLongPress={() => onLongPress(friend)}
       accessibilityRole="button"
-      accessibilityLabel={`${friendDisplayName(friend)}, ${cs.friends.sharedEvenings(count)}`}
+      accessibilityLabel={`${friendDisplayName(friend)}, ${t.friends.sharedEvenings(count)}`}
       style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.dim]}
     >
       <Avatar

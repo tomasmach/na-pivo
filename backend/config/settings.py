@@ -102,6 +102,10 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "pubs.observability.RequestLogMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # Resolves the request language from Accept-Language ("en" from the new app,
+    # anything else falls back to LANGUAGE_CODE). Must sit after
+    # SessionMiddleware and before CommonMiddleware.
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -175,6 +179,11 @@ PASSWORD_HASHERS = [
 # Internationalization
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "cs"
+LANGUAGES = [
+    ("cs", "Čeština"),
+    ("en", "English"),
+]
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "Europe/Prague"
 USE_I18N = True
 USE_TZ = True

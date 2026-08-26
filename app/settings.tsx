@@ -56,7 +56,7 @@ import {
 } from '@/data/friendsClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import FriendSettingsSheet from '@/friends/FriendSettingsSheet';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import {
   disableBeerCountReminderNotifications,
   enableBeerCountReminderNotifications,
@@ -97,15 +97,15 @@ function formatCzKm(km: number): string {
 
 function distanceReadout(km: number | null): { value: string; unit: string } {
   if (km === null) {
-    return { value: '∞', unit: cs.settings.distance.unlimitedUnit };
+    return { value: '∞', unit: t.settings.distance.unlimitedUnit };
   }
   if (km === 0.5) {
-    return { value: '500', unit: cs.compass.distanceUnitMeters };
+    return { value: '500', unit: t.compass.distanceUnitMeters };
   }
   const singularForm = km === 1 || km === 1.5 || km === 2.5;
   return {
     value: formatCzKm(km),
-    unit: cs.compass.distanceUnitKm(singularForm ? 1 : km),
+    unit: t.compass.distanceUnitKm(singularForm ? 1 : km),
   };
 }
 
@@ -235,7 +235,7 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
           style={styles.sliderTouchArea}
           onLayout={handleLayout}
           accessibilityRole="adjustable"
-          accessibilityLabel={cs.settings.distance.accessibilityLabel}
+          accessibilityLabel={t.settings.distance.accessibilityLabel}
           accessibilityValue={{
             min: 0,
             max: SLIDER_STEPS,
@@ -243,8 +243,8 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
             text: valueLabel,
           }}
           accessibilityActions={[
-            { name: 'increment', label: cs.settings.distance.increase },
-            { name: 'decrement', label: cs.settings.distance.decrease },
+            { name: 'increment', label: t.settings.distance.increase },
+            { name: 'decrement', label: t.settings.distance.decrease },
           ]}
           onAccessibilityAction={handleAccessibilityAction}
           onTouchEnd={(event) => snapFromX(event.nativeEvent.locationX)}
@@ -257,10 +257,10 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
       </GestureDetector>
       <View style={styles.rangeLabels}>
         <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.settings.distance.rangeMin}
+          {t.settings.distance.rangeMin}
         </Text>
         <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.settings.distance.rangeMax}
+          {t.settings.distance.rangeMax}
         </Text>
       </View>
     </View>
@@ -332,11 +332,11 @@ function BeerCountReminderRow({
   return (
     <View style={[styles.beerCountReminder, styles.rowDivider]}>
       <PreferenceRow
-        title={cs.settings.beerCountReminder.title}
-        subtitle={cs.settings.beerCountReminder.subtitle}
+        title={t.settings.beerCountReminder.title}
+        subtitle={t.settings.beerCountReminder.subtitle}
         value={enabled}
         onToggle={onToggle}
-        toggleLabel={`${cs.settings.beerCountReminder.title}: ${enabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+        toggleLabel={`${t.settings.beerCountReminder.title}: ${enabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
         edgeToEdge={false}
       />
       {enabled ? (
@@ -350,7 +350,7 @@ function BeerCountReminderRow({
             style={styles.reminderIntervalLabel}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.settings.beerCountReminder.intervalLabel}
+            {t.settings.beerCountReminder.intervalLabel}
           </Text>
           <View
             style={[
@@ -372,7 +372,7 @@ function BeerCountReminderRow({
                   hitSlop={{ top: 8, bottom: 8 }}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={cs.settings.beerCountReminder.intervalOption(minutes)}
+                  accessibilityLabel={t.settings.beerCountReminder.intervalOption(minutes)}
                 >
                   <Text
                     style={[
@@ -384,7 +384,7 @@ function BeerCountReminderRow({
                     minimumFontScale={0.72}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.settings.beerCountReminder.intervalShort(minutes)}
+                    {t.settings.beerCountReminder.intervalShort(minutes)}
                   </Text>
                 </Pressable>
               );
@@ -498,7 +498,7 @@ export default function SettingsScreen() {
         setFriendSettingsResource({ accountId: requestedAccountId, settings });
         setPrivacyOpenFor(requestedAccountId);
       } else {
-        showToast(cs.friends.settingsError);
+        showToast(t.friends.settingsError);
       }
     }
     if (privacyControllerRef.current === controller) {
@@ -669,14 +669,14 @@ export default function SettingsScreen() {
     () => [
       {
         key: 'home',
-        label: cs.settings.more.homePoint,
-        value: homePoint ? cs.settings.more.configured : cs.settings.more.notConfigured,
+        label: t.settings.more.homePoint,
+        value: homePoint ? t.settings.more.configured : t.settings.more.notConfigured,
         icon: HouseIcon,
         onPress: () => openFromMore('/home-point' as Href),
       },
       {
         key: 'google',
-        label: cs.settings.more.navigateGoogle,
+        label: t.settings.more.navigateGoogle,
         icon: MapPinIcon,
         selected: navigationProvider === 'google',
         accessibilityRole: 'radio',
@@ -688,7 +688,7 @@ export default function SettingsScreen() {
       },
       {
         key: 'mapy',
-        label: cs.settings.more.navigateMapy,
+        label: t.settings.more.navigateMapy,
         icon: MapIcon,
         selected: navigationProvider === 'mapy',
         accessibilityRole: 'radio',
@@ -700,32 +700,32 @@ export default function SettingsScreen() {
       },
       {
         key: 'add-pub',
-        label: cs.settings.addPub,
+        label: t.settings.addPub,
         icon: PlusIcon,
         onPress: () => openFromMore('/add-pub' as Href),
       },
       {
         key: 'my-pubs',
-        label: cs.settings.more.myAddedPubs,
+        label: t.settings.more.myAddedPubs,
         icon: StarIcon,
         onPress: () => openFromMore('/my-added-pubs' as Href),
       },
       {
         key: 'feedback',
-        label: cs.settings.feedback,
+        label: t.settings.feedback,
         icon: MessageSquareIcon,
         onPress: () => openFromMore('/report' as Href),
       },
       {
         key: 'about',
-        label: cs.settings.about.title,
+        label: t.settings.about.title,
         value: appVersionLabel || null,
         icon: InfoIcon,
         onPress: () => openFromMore('/about' as Href),
       },
       {
         key: 'privacy',
-        label: cs.settings.privacy,
+        label: t.settings.privacy,
         icon: ShieldIcon,
         onPress: () => openFromMore('/privacy' as Href),
       },
@@ -740,8 +740,8 @@ export default function SettingsScreen() {
   );
 
   const accountSubLabel = hasAccount
-    ? cs.settings.accountCard.manageDataSubtitle
-    : cs.settings.accountCard.ctaSignedOutSubtitle;
+    ? t.settings.accountCard.manageDataSubtitle
+    : t.settings.accountCard.ctaSignedOutSubtitle;
 
   return (
     <View
@@ -755,7 +755,7 @@ export default function SettingsScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
@@ -766,7 +766,7 @@ export default function SettingsScreen() {
           minimumFontScale={0.8}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {cs.settings.title}
+          {t.settings.title}
         </Text>
         <Pressable
           onPress={() => {
@@ -776,7 +776,7 @@ export default function SettingsScreen() {
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.settings.more.accessibilityLabel}
+          accessibilityLabel={t.settings.more.accessibilityLabel}
         >
           <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
@@ -791,22 +791,22 @@ export default function SettingsScreen() {
             drinking history, and until now there was no door to any of that
             from the place people look for it. The switches themselves already
             exist on the Parta screen — this is a door, not a second copy. */}
-        <SectionLabel>{cs.settings.privacySection}</SectionLabel>
+        <SectionLabel>{t.settings.privacySection}</SectionLabel>
         <View style={styles.notificationsCard}>
           <Pressable
             onPress={() => void openPrivacySettings()}
             disabled={!accountId || privacyBusy}
             style={({ pressed }) => [styles.privacyRow, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={cs.settings.privacyDoor.title}
+            accessibilityLabel={t.settings.privacyDoor.title}
             accessibilityState={{ disabled: !accountId || privacyBusy, busy: privacyBusy }}
           >
             <View style={styles.privacyText}>
               <Text style={styles.privacyTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.settings.privacyDoor.title}
+                {t.settings.privacyDoor.title}
               </Text>
               <Text style={styles.privacySub} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.settings.privacyDoor.subtitle}
+                {t.settings.privacyDoor.subtitle}
               </Text>
             </View>
             {privacyBusy ? (
@@ -817,14 +817,14 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
-        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
+        <SectionLabel spaced>{t.settings.notificationsSection}</SectionLabel>
         <View style={styles.notificationsCard}>
           <PreferenceRow
-            title={cs.settings.pubReminders.title}
-            subtitle={cs.settings.pubReminders.subtitle}
+            title={t.settings.pubReminders.title}
+            subtitle={t.settings.pubReminders.subtitle}
             value={pubReminderEnabled}
             onToggle={() => void togglePubReminders()}
-            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            toggleLabel={`${t.settings.pubReminders.title}: ${pubReminderEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
           />
           <BeerCountReminderRow
             enabled={beerCountReminderEnabled}
@@ -833,35 +833,35 @@ export default function SettingsScreen() {
             onIntervalChange={changeBeerCountReminderInterval}
           />
           <PreferenceRow
-            title={cs.settings.haptics.title}
-            subtitle={cs.settings.haptics.subtitle}
+            title={t.settings.haptics.title}
+            subtitle={t.settings.haptics.subtitle}
             value={hapticEnabled}
             onToggle={toggleHaptic}
-            toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            toggleLabel={`${t.settings.haptics.title}: ${hapticEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
             divider
           />
           <PreferenceRow
-            title={cs.settings.sound.title}
-            subtitle={cs.settings.sound.subtitle}
+            title={t.settings.sound.title}
+            subtitle={t.settings.sound.subtitle}
             value={soundEnabled}
             onToggle={toggleSound}
-            toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            toggleLabel={`${t.settings.sound.title}: ${soundEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
             divider
           />
           <PreferenceRow
-            title={cs.settings.waterNudge.title}
-            subtitle={cs.settings.waterNudge.subtitle}
+            title={t.settings.waterNudge.title}
+            subtitle={t.settings.waterNudge.subtitle}
             value={waterNudgeEnabled}
             onToggle={toggleWaterNudge}
-            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            toggleLabel={`${t.settings.waterNudge.title}: ${waterNudgeEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
             divider
           />
           <PreferenceRow
-            title={cs.settings.marketingEmails.title}
-            subtitle={cs.settings.marketingEmails.subtitle}
+            title={t.settings.marketingEmails.title}
+            subtitle={t.settings.marketingEmails.subtitle}
             value={marketingEmailsEnabled}
             onToggle={toggleMarketingEmails}
-            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            toggleLabel={`${t.settings.marketingEmails.title}: ${marketingEmailsEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
             divider
           />
         </View>
@@ -870,7 +870,7 @@ export default function SettingsScreen() {
             these three toggles are the same filters the Hospody screen already
             has on it — kept here only because deleting a stored preference
             silently changes what shipped users see. */}
-        <SectionLabel spaced>{cs.settings.compassSection}</SectionLabel>
+        <SectionLabel spaced>{t.settings.compassSection}</SectionLabel>
         <View style={styles.distanceCard}>
           <Text
             style={[
@@ -894,32 +894,32 @@ export default function SettingsScreen() {
 
           <DistanceSlider
             positionIndex={sliderIndex}
-            valueLabel={`${readout.value} ${readout.unit.toLocaleLowerCase('cs-CZ')}`}
+            valueLabel={`${readout.value} ${readout.unit.toLocaleLowerCase(intlLocale)}`}
             onSnap={handleSliderSnap}
           />
 
           <View style={styles.distancePreferences}>
             <PreferenceRow
-              title={cs.settings.hideClosed.title}
-              subtitle={cs.settings.hideClosed.subtitle}
+              title={t.settings.hideClosed.title}
+              subtitle={t.settings.hideClosed.subtitle}
               value={hideClosedPubs}
               onToggle={toggleHideClosed}
-              toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+              toggleLabel={`${t.settings.hideClosed.title}: ${hideClosedPubs ? t.a11y.toggleOn : t.a11y.toggleOff}`}
             />
             <PreferenceRow
-              title={cs.settings.preferRated.title}
-              subtitle={cs.settings.preferRated.subtitle}
+              title={t.settings.preferRated.title}
+              subtitle={t.settings.preferRated.subtitle}
               value={preferRatedPubs}
               onToggle={togglePreferRated}
-              toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+              toggleLabel={`${t.settings.preferRated.title}: ${preferRatedPubs ? t.a11y.toggleOn : t.a11y.toggleOff}`}
               divider
             />
             <PreferenceRow
-              title={cs.settings.hidePubNames.title}
-              subtitle={cs.settings.hidePubNames.subtitle}
+              title={t.settings.hidePubNames.title}
+              subtitle={t.settings.hidePubNames.subtitle}
               value={hidePubNames}
               onToggle={toggleHidePubNames}
-              toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+              toggleLabel={`${t.settings.hidePubNames.title}: ${hidePubNames ? t.a11y.toggleOn : t.a11y.toggleOff}`}
               divider
             />
           </View>
@@ -928,13 +928,13 @@ export default function SettingsScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.settings.locationPrivacy}
+            {t.settings.locationPrivacy}
           </Text>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.settings.currency.footer(priceCurrency)}
+            {t.settings.currency.footer(priceCurrency)}
           </Text>
           <Text style={styles.footerTagline} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.settings.footer}
+            {t.settings.footer}
           </Text>
         </View>
       </ScrollView>
@@ -942,8 +942,8 @@ export default function SettingsScreen() {
       <CounterCta
         label={
           hasAccount
-            ? cs.settings.accountCard.ctaManageData
-            : cs.settings.accountCard.signedOutTitle
+            ? t.settings.accountCard.ctaManageData
+            : t.settings.accountCard.signedOutTitle
         }
         subLabel={accountSubLabel}
         onPress={() => {
@@ -951,13 +951,13 @@ export default function SettingsScreen() {
           router.push((hasAccount ? '/account' : '/auth') as Href);
         }}
         accessibilityLabel={
-          hasAccount ? cs.a11y.accountManageData : cs.a11y.profileSignUp
+          hasAccount ? t.a11y.accountManageData : t.a11y.profileSignUp
         }
       />
 
       <MoreSheet
         visible={moreOpen}
-        title={cs.settings.more.title}
+        title={t.settings.more.title}
         rows={moreRows}
         onClose={() => setMoreOpen(false)}
       />

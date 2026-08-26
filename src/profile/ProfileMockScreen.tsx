@@ -54,13 +54,28 @@ import {
   UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-const TABS = ['Statistiky', 'Aktivita'] as const;
-const PERIODS: ProfilePeriod[] = ['Týden', 'Měsíc', 'Rok'];
+/** Stable keys; the visible labels come from t below. */
+const TABS = ['stats', 'activity'] as const;
+const TAB_LABELS: Record<(typeof TABS)[number], string> = {
+  stats: t.profile.tabStats,
+  activity: t.profile.tabActivity,
+};
+const TAB_OPTIONS = TABS.map((key) => TAB_LABELS[key]);
+const tabFromLabel = (label: string) => TABS.find((key) => TAB_LABELS[key] === label) ?? 'stats';
+
+const PERIODS: ProfilePeriod[] = ['week', 'month', 'year'];
+const PERIOD_LABELS: Record<ProfilePeriod, string> = {
+  week: t.profile.periodWeek,
+  month: t.profile.periodMonth,
+  year: t.profile.periodYear,
+};
+const PERIOD_OPTIONS = PERIODS.map((key) => PERIOD_LABELS[key]);
+const periodFromLabel = (label: string) => PERIODS.find((key) => PERIOD_LABELS[key] === label) ?? 'week';
 
 /** Badges shown on the profile: two rows of three, the cabinet is a tap away. */
 const PROFILE_BADGE_TEASER = 6;
@@ -121,8 +136,8 @@ export function ProfileDiaryDoor({ onPress }: { onPress: () => void }) {
     <ProfileDoor
       first
       icon={<HistoryIcon size={20} color={Colors.amber} />}
-      label={cs.profile.privateDiary}
-      accessibilityLabel={cs.a11y.profileDiary}
+      label={t.profile.privateDiary}
+      accessibilityLabel={t.a11y.profileDiary}
       onPress={onPress}
     />
   );
@@ -214,7 +229,7 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
 
   if (loading && !nights) {
     return (
-      <View style={styles.activityLoading} accessibilityLabel="Načítám tvoje večery">
+      <View style={styles.activityLoading} accessibilityLabel={t.profile.myNightsLoadingA11y}>
         <SkeletonBlock width="100%" height={160} reduceMotion={reduceMotion} />
         <SkeletonBlock width="100%" height={160} reduceMotion={reduceMotion} />
       </View>
@@ -225,16 +240,16 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
     return (
       <View style={styles.activityState}>
         <Text style={styles.activityTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {error ? 'Večery se teď nedotáhly' : 'Zatím žádný zveřejněný večer'}
+          {error ? t.profile.nightsError : t.profile.nightsEmpty}
         </Text>
         {error ? (
           <Pressable
             onPress={() => void load()}
             style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Načíst svoje večery znovu"
+            accessibilityLabel={t.profile.myNightsRetryA11y}
           >
-            <Text style={styles.retryText}>Zkusit znovu</Text>
+            <Text style={styles.retryText}>{t.profile.nightsRetry}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -248,9 +263,9 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
           onPress={() => void load()}
           style={({ pressed }) => [styles.activityWarning, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Obnovit svoje večery"
+          accessibilityLabel={t.profile.myNightsRefreshA11y}
         >
-          <Text style={styles.activityWarningText}>Jedeš z posledního načtení · Obnovit</Text>
+          <Text style={styles.activityWarningText}>{t.profile.nightsStale}</Text>
         </Pressable>
       ) : null}
       {nights.map((night, index) => (
@@ -267,9 +282,11 @@ function ProfileActivityContent({ accountId, reduceMotion }: { accountId: string
           disabled={loading || loadingMore}
           style={({ pressed }) => [styles.more, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Načíst starší večery"
+          accessibilityLabel={t.profile.myNightsMoreA11y}
         >
-          <Text style={styles.moreText}>{loadingMore ? 'Dotahuju…' : 'Starší večery'}</Text>
+          <Text style={styles.moreText}>
+            {loadingMore ? t.profile.nightsLoadingMore : t.profile.nightsMore}
+          </Text>
         </Pressable>
       ) : null}
     </View>
@@ -302,8 +319,8 @@ export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const reduceMotion = useReducedMotion();
-  const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
-  const [period, setPeriod] = useState<ProfilePeriod>('Týden');
+  const [tab, setTab] = useState<(typeof TABS)[number]>('stats');
+  const [period, setPeriod] = useState<ProfilePeriod>('week');
   const [scrubbed, setScrubbed] = useState<number | null>(null);
   const { stats, status: statsStatus, retry: retryStats } = useMyStatsState();
   const series = useMemo(() => profileSeries(stats, period), [period, stats]);
@@ -315,7 +332,7 @@ export default function ProfileMockScreen() {
 
   const handle = profile?.nickname
     ? `@${profile.nickname}`
-    : profile?.displayName?.trim() || 'Tvůj profil';
+    : profile?.displayName?.trim() || t.profile.handleFallback;
 
   // One ladder, both counters. Signed out or with nothing earned yet there is no
   // rung to show, so the line disappears rather than announcing a zero.
@@ -385,7 +402,7 @@ export default function ProfileMockScreen() {
         disabled={!signedIn}
         style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
         accessibilityRole={signedIn ? 'button' : 'header'}
-        accessibilityLabel={signedIn ? cs.a11y.profileIdentity : handle}
+        accessibilityLabel={signedIn ? t.a11y.profileIdentity : handle}
         onPress={() => {
           trackUiInteraction('profile_edit_open');
           router.push('/profile/edit' as Href);
@@ -408,11 +425,11 @@ export default function ProfileMockScreen() {
               Zelenáč" is a line announcing a zero, so it waits for the first XP. */}
           {xp && xp.xp > 0 ? (
             <Text style={styles.level} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.profile.levelLine(xp.level, xp.title)}
+              {t.profile.levelLine(xp.level, xp.title)}
             </Text>
           ) : null}
           <Text style={styles.since} maxFontSizeMultiplier={FontScaleCap.body}>
-            {signedIn ? firstDrinkLabel(stats?.firstDrinkAt) : 'Zatím bez účtu'}
+            {signedIn ? firstDrinkLabel(stats?.firstDrinkAt) : t.profile.noAccountNick}
           </Text>
         </View>
         {signedIn ? <PencilIcon size={18} color={Colors.mutedText} /> : null}
@@ -427,13 +444,13 @@ export default function ProfileMockScreen() {
 
       <ProfileDoor
         icon={<UsersIcon size={20} color={Colors.amber} />}
-        label={cs.profile.moreParta}
+        label={t.profile.moreParta}
         value={
           partaCount && partaCount.ownerId === ownerId
-            ? cs.profile.partaCount(partaCount.count)
+            ? t.profile.partaCount(partaCount.count)
             : undefined
         }
-        accessibilityLabel={cs.a11y.profileParta}
+        accessibilityLabel={t.a11y.profileParta}
         onPress={() => {
           trackUiInteraction('profile_friends_manage_open');
           // The people inbox opens OUTSIDE the tabs: pushing the copy inside
@@ -449,11 +466,11 @@ export default function ProfileMockScreen() {
         <Pressable
           style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Založit profil"
+          accessibilityLabel={t.profile.createProfileA11y}
           onPress={() => router.push('/auth' as Href)}
         >
           <Text style={styles.ctaText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Založ si profil
+            {t.profile.ctaSignUp}
           </Text>
         </Pressable>
       )}
@@ -462,16 +479,16 @@ export default function ProfileMockScreen() {
           first a place you check where you stand; Aktivita is the same posts the
           feed shows, so a night looks identical wherever you meet it. */}
       {signedIn ? <UnderlineTabs
-                options={TABS}
-                value={tab}
-                onChange={setTab}
+                options={TAB_OPTIONS}
+                value={TAB_LABELS[tab]}
+                onChange={(label) => setTab(tabFromLabel(label))}
                 inset={MockLayout.screenPad}
               /> : null}
 
-      {signedIn && tab === 'Statistiky' ? (
+      {signedIn && tab === 'stats' ? (
         <>
           {statsStatus === 'loading' && !stats ? (
-            <View style={styles.loading} accessibilityLabel="Načítám statistiky">
+            <View style={styles.loading} accessibilityLabel={t.profile.statsLoadingA11y}>
               <SkeletonBlock width="100%" height={72} reduceMotion={reduceMotion} />
               <SkeletonBlock width="100%" height={150} reduceMotion={reduceMotion} />
             </View>
@@ -481,9 +498,9 @@ export default function ProfileMockScreen() {
               onPress={retryStats}
               style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Načíst statistiky znovu"
+              accessibilityLabel={t.profile.statsRetryA11y}
             >
-              <Text style={styles.retryText}>Statistiky teď nedotekly. Zkusit znovu</Text>
+              <Text style={styles.retryText}>{t.profile.statsRetry}</Text>
             </Pressable>
           ) : null}
           {stats ? <>
@@ -493,7 +510,7 @@ export default function ProfileMockScreen() {
               to see where you stand, not to pick a time window. */}
           <View style={styles.totals}>
             <Text style={styles.window} maxFontSizeMultiplier={FontScaleCap.body}>
-              {point ? point.label : period}
+              {point ? point.label : PERIOD_LABELS[period]}
             </Text>
             <StatGrid columns={4} compact stats={totals} />
           </View>
@@ -503,7 +520,11 @@ export default function ProfileMockScreen() {
           </View>
 
           <View style={styles.periodRow}>
-            <Segmented options={PERIODS} value={period} onChange={setPeriod} />
+            <Segmented
+              options={PERIOD_OPTIONS}
+              value={PERIOD_LABELS[period]}
+              onChange={(label) => setPeriod(periodFromLabel(label))}
+            />
           </View>
 
           {/* The photos belong IN the list, not behind a button to a place. */}
@@ -513,7 +534,7 @@ export default function ProfileMockScreen() {
           <SectionBreak />
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.profile.badgesLink}
+              {t.profile.badgesLink}
             </Text>
             <Pressable
               onPress={() => {
@@ -523,10 +544,10 @@ export default function ProfileMockScreen() {
               hitSlop={8}
               style={({ pressed }) => [styles.sectionLink, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.profileBadges}
+              accessibilityLabel={t.a11y.profileBadges}
             >
               <Text style={styles.sectionLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.profile.badgesAll}
+                {t.profile.badgesAll}
               </Text>
               <ChevronRightIcon size={16} color={Colors.amber} />
             </Pressable>
@@ -541,7 +562,7 @@ export default function ProfileMockScreen() {
           </> : null}
         </>
       ) : null}
-      {signedIn && tab === 'Aktivita' && profile?.id ? (
+      {signedIn && tab === 'activity' && profile?.id ? (
         <ProfileActivity accountId={profile.id} reduceMotion={reduceMotion} />
       ) : null}
     </ScrollView>

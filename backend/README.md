@@ -96,6 +96,28 @@ Tests use an in-memory SQLite database and should not hit the network. Mock exte
 
 ---
 
+## Translations
+
+The API serves Czech and English. Czech is the source language and stays the
+msgid; English lives in `locale/en/LC_MESSAGES/django.po`, which is checked in.
+The compiled `.mo` files are not: the Docker image builds them, and the test
+suite rebuilds them on demand.
+
+```bash
+# after changing or adding a translatable string
+uv run python manage.py makemessages -l en --no-location
+# after editing the .po (needs the gettext tools, brew install gettext)
+uv run python manage.py compilemessages
+```
+
+Per request the language comes from `Accept-Language`. Outside a request (push
+notifications, e-mails, cron) it comes from the locale stored on the account or
+on its push devices; `pubs/i18n.py` holds those helpers. The amenity catalogue
+and release notes are DB-backed content, so their English copy lives in data
+migrations rather than in the `.po`.
+
+---
+
 ## API compatibility
 
 The backend must remain compatible with released mobile app versions. Users cannot all update immediately.

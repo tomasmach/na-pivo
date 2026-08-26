@@ -35,7 +35,7 @@ import {
   syncOwnAddedPubs,
   type AddedPubSubmission,
 } from '@/data/addedPubsQueue';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { usePubStore } from '@/stores/pubStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -175,7 +175,7 @@ export default function MyAddedPubsScreen() {
     if (selectedSubmission === null) return [];
     const editRow: MoreRow = {
       key: 'edit',
-      label: cs.addPub.edit,
+      label: t.addPub.edit,
       icon: PencilIcon,
       onPress: () => runAfterSheetClose(() => handleEdit(selectedSubmission)),
     };
@@ -184,7 +184,7 @@ export default function MyAddedPubsScreen() {
       editRow,
       {
         key: 'retry',
-        label: retryingId === null ? cs.addPub.retry : cs.addPub.retrying,
+        label: retryingId === null ? t.addPub.retry : t.addPub.retrying,
         icon: RefreshCwIcon,
         disabled: retryingId !== null,
         onPress: () => {
@@ -198,30 +198,30 @@ export default function MyAddedPubsScreen() {
 
   const nudge = useMemo<Nudge | null>(() => {
     if (retryingId !== null) {
-      return { kind: 'dopito', label: cs.addPub.retryingAll, onPress: () => undefined };
+      return { kind: 'dopito', label: t.addPub.retryingAll, onPress: () => undefined };
     }
     if (failedSubmissions.length > 0) {
       return {
         kind: 'counted',
-        text: cs.addPub.failedCount(failedSubmissions.length),
-        undoLabel: cs.addPub.retry,
+        text: t.addPub.failedCount(failedSubmissions.length),
+        undoLabel: t.addPub.retry,
         onUndo: () => void handleRetryAll(),
-        actionAccessibilityLabel: cs.addPub.retryAll,
+        actionAccessibilityLabel: t.addPub.retryAll,
       };
     }
     if (loadFailed) {
       return {
         kind: 'counted',
-        text: cs.addPub.loadFailed,
-        undoLabel: cs.addPub.retry,
+        text: t.addPub.loadFailed,
+        undoLabel: t.addPub.retry,
         onUndo: () => void refresh(),
-        actionAccessibilityLabel: cs.addPub.retryLoad,
+        actionAccessibilityLabel: t.addPub.retryLoad,
       };
     }
     if (pendingCount > 0) {
       return {
         kind: 'dopito',
-        label: cs.addPub.pendingCount(pendingCount),
+        label: t.addPub.pendingCount(pendingCount),
         onPress: () => void refresh(),
       };
     }
@@ -230,10 +230,10 @@ export default function MyAddedPubsScreen() {
 
   const heroFact =
     pendingCount > 0
-      ? cs.addPub.pendingCount(pendingCount)
+      ? t.addPub.pendingCount(pendingCount)
       : failedSubmissions.length > 0
-        ? cs.addPub.needsFixCount(failedSubmissions.length)
-        : cs.addPub.allSynced;
+        ? t.addPub.needsFixCount(failedSubmissions.length)
+        : t.addPub.allSynced;
 
   return (
     <View
@@ -250,7 +250,7 @@ export default function MyAddedPubsScreen() {
           onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
@@ -259,7 +259,7 @@ export default function MyAddedPubsScreen() {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {cs.addPub.myPubsTitle}
+          {t.addPub.myPubsTitle}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -280,10 +280,10 @@ export default function MyAddedPubsScreen() {
           <View style={styles.empty}>
             <PinMat count={0} width={96} />
             <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.addPub.emptyTitle}
+              {t.addPub.emptyTitle}
             </Text>
             <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.addPub.emptyBody}
+              {t.addPub.emptyBody}
             </Text>
           </View>
         ) : (
@@ -291,25 +291,25 @@ export default function MyAddedPubsScreen() {
             <AddedPubsCard
               syncedCount={syncedCount}
               totalCount={submissions.length}
-              caption={syncedCount === 0 ? cs.addPub.noneSyncedCaption : cs.addPub.syncedCaption}
+              caption={syncedCount === 0 ? t.addPub.noneSyncedCaption : t.addPub.syncedCaption}
               headline={
-                latestSubmission === null ? null : cs.addPub.latestPub(latestSubmission.name)
+                latestSubmission === null ? null : t.addPub.latestPub(latestSubmission.name)
               }
               factStrong={heroFact}
-              factMuted={cs.addPub.totalCount(submissions.length)}
+              factMuted={t.addPub.totalCount(submissions.length)}
             />
 
             <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.addPub.listLabel}
+              {t.addPub.listLabel}
             </Text>
             <View style={styles.rowsCard}>
               {sortedSubmissions.map((submission, index) => {
                 const status =
                   submission.syncState === 'pending'
-                    ? cs.addPub.statusPending
+                    ? t.addPub.statusPending
                     : submission.syncState === 'failed'
-                      ? cs.addPub.statusFailed
-                      : cs.addPub.statusSynced;
+                      ? t.addPub.statusFailed
+                      : t.addPub.statusSynced;
                 return (
                   <Pressable
                     key={submission.client_id}
@@ -320,7 +320,7 @@ export default function MyAddedPubsScreen() {
                       pressed && styles.rowPressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.addPub.openPubActions(submission.name)}
+                    accessibilityLabel={t.addPub.openPubActions(submission.name)}
                   >
                     <View style={styles.rowCopy}>
                       <Text
@@ -359,10 +359,10 @@ export default function MyAddedPubsScreen() {
 
       <NudgeSlot nudge={nudge} />
       <CounterCta
-        label={submissions.length === 0 ? cs.addPub.addFirstCta : cs.addPub.addCta}
-        subLabel={cs.addPub.addCtaHint}
+        label={submissions.length === 0 ? t.addPub.addFirstCta : t.addPub.addCta}
+        subLabel={t.addPub.addCtaHint}
         onPress={() => router.push('/add-pub')}
-        accessibilityLabel={submissions.length === 0 ? cs.addPub.addFirstCta : cs.addPub.addCta}
+        accessibilityLabel={submissions.length === 0 ? t.addPub.addFirstCta : t.addPub.addCta}
       />
 
       <MoreSheet

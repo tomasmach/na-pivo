@@ -14,7 +14,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { BeerIcon, CheckIcon, XIcon, type IconProps } from '@/components/shared/IconGlyph';
 
 export type Nudge =
@@ -88,7 +88,7 @@ function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> })
         onPress={nudge.onUndo}
         style={({ pressed }) => [styles.ghostPill, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={nudge.actionAccessibilityLabel ?? cs.a11y.counterUndoStrip}
+        accessibilityLabel={nudge.actionAccessibilityLabel ?? t.a11y.counterUndoStrip}
         hitSlop={PILL_HIT_SLOP}
       >
         <Text
@@ -115,7 +115,7 @@ function RapidStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'rapid' }> }) {
         onPress={nudge.onConfirm}
         style={({ pressed }) => [styles.filledPill, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.counterRapidConfirm}
+        accessibilityLabel={t.a11y.counterRapidConfirm}
         hitSlop={PILL_HIT_SLOP}
       >
         <Text
@@ -175,7 +175,7 @@ function CheckinStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'checkin' }> })
         onPress={nudge.onDismiss}
         style={({ pressed }) => [styles.dismissButton, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.counterCheckinDismiss}
+        accessibilityLabel={t.a11y.counterCheckinDismiss}
       >
         <XIcon size={ICON_SIZE} color={Colors.mutedText} />
       </Pressable>

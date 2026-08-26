@@ -5,12 +5,20 @@ import {
   type WeeklyHours,
 } from '@/data/communityHours';
 import type { Pub } from '@/data/pubs';
+import { intlLocale } from '@/i18n';
 import {
   isBeerListOverrideCurrent,
   type CommunityOverride,
 } from '@/stores/communityStore';
 
-const DAY_LABELS = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'] as const;
+/** Short weekday names from Intl. Czech writes them lower case, the table wants
+ *  a capital, and English already arrives capitalised. 1. 1. 2024 was a Monday. */
+const DAY_LABELS = Array.from({ length: 7 }, (_, index) => {
+  const label = new Intl.DateTimeFormat(intlLocale, { weekday: 'short' })
+    .format(new Date(2024, 0, 1 + index, 12))
+    .replace('.', '');
+  return label.charAt(0).toLocaleUpperCase(intlLocale) + label.slice(1);
+});
 
 export interface OpeningHoursRow {
   days: string;

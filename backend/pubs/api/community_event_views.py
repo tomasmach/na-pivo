@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.utils import timezone
+from django.utils.translation import gettext
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -47,19 +48,21 @@ class CommunityEventCreateSerializer(serializers.Serializer):
         now = timezone.now()
         if not attrs["adults_confirmed"]:
             raise serializers.ValidationError(
-                {"adults_confirmed": "Setkání je jen pro dospělé 18+."}
+                {"adults_confirmed": gettext("Setkání je jen pro dospělé 18+.")}
             )
         if attrs["starts_at"] < now + timedelta(minutes=15):
             raise serializers.ValidationError(
-                {"starts_at": "Začátek musí být aspoň 15 minut dopředu."}
+                {"starts_at": gettext("Začátek musí být aspoň 15 minut dopředu.")}
             )
         if attrs["starts_at"] > now + timedelta(days=60):
             raise serializers.ValidationError(
-                {"starts_at": "Setkání lze založit nejvýš 60 dní dopředu."}
+                {"starts_at": gettext("Setkání lze založit nejvýš 60 dní dopředu.")}
             )
         duration = attrs["ends_at"] - attrs["starts_at"]
         if duration < timedelta(hours=1) or duration > timedelta(hours=12):
-            raise serializers.ValidationError({"ends_at": "Setkání musí trvat 1 až 12 hodin."})
+            raise serializers.ValidationError(
+                {"ends_at": gettext("Setkání musí trvat 1 až 12 hodin.")}
+            )
         return attrs
 
 
@@ -71,7 +74,7 @@ class CommunityEventJoinSerializer(serializers.Serializer):
 
     def validate_adults_confirmed(self, value):
         if not value:
-            raise serializers.ValidationError("Setkání je jen pro dospělé 18+.")
+            raise serializers.ValidationError(gettext("Setkání je jen pro dospělé 18+."))
         return value
 
 
@@ -99,7 +102,7 @@ class CommunityEventTeamUpdateSerializer(serializers.Serializer):
 def _claimed_account_error() -> Response:
     return Response(
         {
-            "detail": "Přihlas se, ať je u domácích setkání jasné, kdo přichází.",
+            "detail": gettext("Přihlas se, ať je u domácích setkání jasné, kdo přichází."),
             "code": "claimed_account_required",
         },
         status=status.HTTP_403_FORBIDDEN,
@@ -112,7 +115,7 @@ def _claimed_or_error(request: Request) -> Response | None:
 
 def _inactive_account_error() -> Response:
     return Response(
-        {"detail": "Účet už není aktivní.", "code": "account_inactive"},
+        {"detail": gettext("Účet už není aktivní."), "code": "account_inactive"},
         status=status.HTTP_409_CONFLICT,
     )
 
@@ -133,7 +136,7 @@ def _profile(account: Account | None) -> dict:
         return {
             "id": "deleted",
             "nickname": None,
-            "display_name": "Smazaný účet",
+            "display_name": gettext("Smazaný účet"),
             "avatar_url": None,
         }
     return {
@@ -220,7 +223,7 @@ def _team_access_error(
 ) -> Response | None:
     if event is None:
         return Response(
-            {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+            {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
             status=status.HTTP_404_NOT_FOUND,
         )
     if blocked_account_ids is None:
@@ -239,19 +242,19 @@ def _team_access_error(
         )
     ):
         return Response(
-            {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+            {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
             status=status.HTTP_404_NOT_FOUND,
         )
     if viewer.ghost_mode or (host is not None and host.ghost_mode):
         return Response(
-            {"detail": "Nejdřív vypni neviditelný režim.", "code": "ghost_mode"},
+            {"detail": gettext("Nejdřív vypni neviditelný režim."), "code": "ghost_mode"},
             status=status.HTTP_409_CONFLICT,
         )
     if require_open and (
         event.status != CommunityEvent.Status.ACTIVE or event.ends_at <= timezone.now()
     ):
         return Response(
-            {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+            {"detail": gettext("Setkání už není otevřené."), "code": "event_not_open"},
             status=status.HTTP_409_CONFLICT,
         )
     return None
@@ -596,7 +599,7 @@ class CommunityEventCollectionView(APIView):
             return error
         if request.user.ghost_mode:
             return Response(
-                {"detail": "Nejdřív vypni neviditelný režim.", "code": "ghost_mode"},
+                {"detail": gettext("Nejdřív vypni neviditelný režim."), "code": "ghost_mode"},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = CommunityEventCreateSerializer(data=request.data)
@@ -613,7 +616,7 @@ class CommunityEventCollectionView(APIView):
                 return _claimed_account_error()
             if account.ghost_mode:
                 return Response(
-                    {"detail": "Nejdřív vypni neviditelný režim.", "code": "ghost_mode"},
+                    {"detail": gettext("Nejdřív vypni neviditelný režim."), "code": "ghost_mode"},
                     status=status.HTTP_409_CONFLICT,
                 )
             event, created = CommunityEvent.objects.get_or_create(
@@ -655,7 +658,7 @@ class CommunityEventDetailView(APIView):
         event = _event_queryset(include_teams=True).filter(pk=event_id).first()
         if event is None:
             return Response(
-                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         blocked_ids = _blocked_account_ids(request.user)
@@ -663,7 +666,7 @@ class CommunityEventDetailView(APIView):
         if host is None:
             if not _is_event_participant(event, request.user):
                 return Response(
-                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
         elif (
@@ -677,7 +680,7 @@ class CommunityEventDetailView(APIView):
             )
         ):
             return Response(
-                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(
@@ -727,14 +730,14 @@ class CommunityEventJoinView(APIView):
         optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
         if optimistic_event is None:
             return Response(
-                {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+                {"detail": gettext("Setkání už není otevřené."), "code": "event_not_open"},
                 status=status.HTTP_409_CONFLICT,
             )
         optimistic_host_id = optimistic_event["host_id"]
         if optimistic_host_id is None:
             return Response(
                 {
-                    "detail": "K tomuhle setkání se nejde přidat.",
+                    "detail": gettext("K tomuhle setkání se nejde přidat."),
                     "code": "event_unavailable",
                 },
                 status=status.HTTP_404_NOT_FOUND,
@@ -760,7 +763,7 @@ class CommunityEventJoinView(APIView):
             ):
                 return Response(
                     {
-                        "detail": "K tomuhle setkání se nejde přidat.",
+                        "detail": gettext("K tomuhle setkání se nejde přidat."),
                         "code": "event_unavailable",
                     },
                     status=status.HTTP_404_NOT_FOUND,
@@ -777,20 +780,20 @@ class CommunityEventJoinView(APIView):
                 or event.ends_at <= timezone.now()
             ):
                 return Response(
-                    {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+                    {"detail": gettext("Setkání už není otevřené."), "code": "event_not_open"},
                     status=status.HTTP_409_CONFLICT,
                 )
             if event.host_id != optimistic_host_id:
                 return Response(
                     {
-                        "detail": "K tomuhle setkání se nejde přidat.",
+                        "detail": gettext("K tomuhle setkání se nejde přidat."),
                         "code": "event_unavailable",
                     },
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if event.host_id == account.id:
                 return Response(
-                    {"detail": "Pořadatel už u stolu je.", "code": "host_cannot_join"},
+                    {"detail": gettext("Pořadatel už u stolu je."), "code": "host_cannot_join"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if (
@@ -800,7 +803,7 @@ class CommunityEventJoinView(APIView):
             ):
                 return Response(
                     {
-                        "detail": "K tomuhle setkání se nejde přidat.",
+                        "detail": gettext("K tomuhle setkání se nejde přidat."),
                         "code": "event_unavailable",
                     },
                     status=status.HTTP_404_NOT_FOUND,
@@ -898,7 +901,7 @@ class CommunityEventTeamCollectionView(APIView):
         optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
         if optimistic_event is None or optimistic_event["host_id"] is None:
             return Response(
-                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         optimistic_host_id = optimistic_event["host_id"]
@@ -929,14 +932,17 @@ class CommunityEventTeamCollectionView(APIView):
                 return _claimed_account_error()
             if host is None or host.status != Account.Status.ACTIVE:
                 return Response(
-                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if optimistic_creator_id is not None and (
                 creator is None or creator.status != Account.Status.ACTIVE
             ):
                 return Response(
-                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    {
+                        "detail": gettext("K tomuhle týmu se nejde přidat."),
+                        "code": "team_unavailable",
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
             event = (
@@ -947,7 +953,7 @@ class CommunityEventTeamCollectionView(APIView):
             )
             if event is None or event.host_id != optimistic_host_id:
                 return Response(
-                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             event.host = host
@@ -975,7 +981,7 @@ class CommunityEventTeamCollectionView(APIView):
                 if team.created_by_id != account.id:
                     return Response(
                         {
-                            "detail": "Tenhle požadavek už použil někdo jiný.",
+                            "detail": gettext("Tenhle požadavek už použil někdo jiný."),
                             "code": "team_client_id_conflict",
                         },
                         status=status.HTTP_409_CONFLICT,
@@ -987,13 +993,13 @@ class CommunityEventTeamCollectionView(APIView):
                     account=account,
                 ).exists():
                     return Response(
-                        {"detail": "Už jsi v jiném týmu.", "code": "already_on_team"},
+                        {"detail": gettext("Už jsi v jiném týmu."), "code": "already_on_team"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 if CommunityEventTeam.objects.filter(event=event).count() >= event.capacity:
                     return Response(
                         {
-                            "detail": "Další tým už se sem nevejde.",
+                            "detail": gettext("Další tým už se sem nevejde."),
                             "code": "team_limit_reached",
                         },
                         status=status.HTTP_409_CONFLICT,
@@ -1015,7 +1021,7 @@ class CommunityEventTeamCollectionView(APIView):
                     if team is None or team.created_by_id != account.id:
                         return Response(
                             {
-                                "detail": "Tenhle požadavek už použil někdo jiný.",
+                                "detail": gettext("Tenhle požadavek už použil někdo jiný."),
                                 "code": "team_client_id_conflict",
                             },
                             status=status.HTTP_409_CONFLICT,
@@ -1032,7 +1038,9 @@ class CommunityEventTeamCollectionView(APIView):
                         team.delete()
                     code = "team_full" if seat_error == "team_full" else "already_on_team"
                     detail = (
-                        "Tenhle tým už má čtyři." if code == "team_full" else "Už jsi v jiném týmu."
+                        gettext("Tenhle tým už má čtyři.")
+                        if code == "team_full"
+                        else gettext("Už jsi v jiném týmu.")
                     )
                     return Response(
                         {"detail": detail, "code": code},
@@ -1062,7 +1070,7 @@ class CommunityEventTeamMembershipView(APIView):
         optimistic_event = CommunityEvent.objects.filter(pk=event_id).values("host_id").first()
         if optimistic_event is None or optimistic_event["host_id"] is None:
             return Response(
-                {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         optimistic_host_id = optimistic_event["host_id"]
@@ -1093,14 +1101,17 @@ class CommunityEventTeamMembershipView(APIView):
                 return _claimed_account_error()
             if host is None or host.status != Account.Status.ACTIVE:
                 return Response(
-                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if optimistic_creator_id is not None and (
                 creator is None or creator.status != Account.Status.ACTIVE
             ):
                 return Response(
-                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    {
+                        "detail": gettext("K tomuhle týmu se nejde přidat."),
+                        "code": "team_unavailable",
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
             event = (
@@ -1111,7 +1122,7 @@ class CommunityEventTeamMembershipView(APIView):
             )
             if event is None or event.host_id != optimistic_host_id:
                 return Response(
-                    {"detail": "Tuhle akci nevidím.", "code": "event_not_found"},
+                    {"detail": gettext("Tuhle akci nevidím."), "code": "event_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             event.host = host
@@ -1131,7 +1142,7 @@ class CommunityEventTeamMembershipView(APIView):
             )
             if team is None:
                 return Response(
-                    {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
+                    {"detail": gettext("Tenhle tým tu není."), "code": "team_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if (
@@ -1140,7 +1151,10 @@ class CommunityEventTeamMembershipView(APIView):
                 or creator is None
             ):
                 return Response(
-                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    {
+                        "detail": gettext("K tomuhle týmu se nejde přidat."),
+                        "code": "team_unavailable",
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if (
@@ -1155,7 +1169,10 @@ class CommunityEventTeamMembershipView(APIView):
                 )
             ):
                 return Response(
-                    {"detail": "K tomuhle týmu se nejde přidat.", "code": "team_unavailable"},
+                    {
+                        "detail": gettext("K tomuhle týmu se nejde přidat."),
+                        "code": "team_unavailable",
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -1167,7 +1184,9 @@ class CommunityEventTeamMembershipView(APIView):
             if seat_error is not None:
                 code = "team_full" if seat_error == "team_full" else "already_on_team"
                 detail = (
-                    "Tenhle tým už má čtyři." if code == "team_full" else "Už jsi v jiném týmu."
+                    gettext("Tenhle tým už má čtyři.")
+                    if code == "team_full"
+                    else gettext("Už jsi v jiném týmu.")
                 )
                 return Response(
                     {"detail": detail, "code": code},
@@ -1243,7 +1262,7 @@ class CommunityEventTeamDetailView(APIView):
             )
             if team is None:
                 return Response(
-                    {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
+                    {"detail": gettext("Tenhle tým tu není."), "code": "team_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             team.name = serializer.validated_data["name"]
@@ -1277,7 +1296,7 @@ class CommunityEventTeamDetailView(APIView):
                 team.created_by_id != request.user.id and event.host_id != request.user.id
             ):
                 return Response(
-                    {"detail": "Tenhle tým tu není.", "code": "team_not_found"},
+                    {"detail": gettext("Tenhle tým tu není."), "code": "team_not_found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             team.delete()
@@ -1315,7 +1334,7 @@ class CommunityEventRequestDecisionView(APIView):
             if action == "approve":
                 if event.status != CommunityEvent.Status.ACTIVE or event.ends_at <= timezone.now():
                     return Response(
-                        {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+                        {"detail": gettext("Setkání už není otevřené."), "code": "event_not_open"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 approved_count = event.memberships.filter(
@@ -1323,12 +1342,15 @@ class CommunityEventRequestDecisionView(APIView):
                 ).count()
                 if approved_count >= event.capacity - 1:
                     return Response(
-                        {"detail": "Kapacita je plná.", "code": "capacity_full"},
+                        {"detail": gettext("Kapacita je plná."), "code": "capacity_full"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 if _blocked(event.host, membership.account) or membership.account.ghost_mode:
                     return Response(
-                        {"detail": "Žádost už nejde schválit.", "code": "request_unavailable"},
+                        {
+                            "detail": gettext("Žádost už nejde schválit."),
+                            "code": "request_unavailable",
+                        },
                         status=status.HTTP_409_CONFLICT,
                     )
                 membership.status = CommunityEventMembership.Status.APPROVED
@@ -1388,7 +1410,7 @@ class CommunityEventReportView(APIView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             if event.host_id == reporter.id:
                 return Response(
-                    {"detail": "Vlastní setkání nejde nahlásit.", "code": "self_report"},
+                    {"detail": gettext("Vlastní setkání nejde nahlásit."), "code": "self_report"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             report = ContentReport.objects.create(

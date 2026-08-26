@@ -22,10 +22,10 @@ const FORBIDDEN_TOKENS = [
 
 const REQUIRED_CONTRACTS = [
   'beerCountLabel(person.beers)',
-  "'Piva'",
-  "'Večer'",
-  "'Hospody'",
-  'Vyhrál',
+  't.partyRecap.statBeers',
+  't.partyRecap.statNight',
+  't.partyRecap.statPubs',
+  't.partyRecap.gameWinner',
   'game.result?.scores.map',
   'night.photos.map',
   'NightRoute',

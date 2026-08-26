@@ -31,7 +31,7 @@ import {
   type LeaderboardPeriod,
 } from '@/data/leaderboardsClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { MenuChip } from '@/mocks/MenuChip';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
@@ -40,31 +40,58 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-const SECTIONS = ['Žebříčky', 'Výzvy', 'Akce'] as const;
-const METRICS = ['Hospody', 'Mapér XP'] as const;
-const PERIODS = ['Týden', 'Letos', 'Celkem'] as const;
+// The state keys are stable and language-independent; the chips and tabs get
+// their labels from the maps below, so switching language never reshuffles the
+// board that is loaded.
+const SECTIONS = ['boards', 'challenges', 'events'] as const;
+const METRICS = ['pubs', 'mapper'] as const;
+const PERIODS = ['week', 'year', 'all'] as const;
 
+type Section = (typeof SECTIONS)[number];
 type Metric = (typeof METRICS)[number];
 type Period = (typeof PERIODS)[number];
 
+const SECTION_LABELS: Record<Section, string> = {
+  boards: t.community.sectionBoards,
+  challenges: t.community.sectionChallenges,
+  events: t.community.sectionEvents,
+};
+const METRIC_LABELS: Record<Metric, string> = {
+  pubs: t.community.metricPubs,
+  mapper: t.community.metricMapper,
+};
+const PERIOD_LABELS: Record<Period, string> = {
+  week: t.community.periodWeek,
+  year: t.community.periodYear,
+  all: t.community.periodAll,
+};
+
+const SECTION_TABS = SECTIONS.map((key) => SECTION_LABELS[key]);
+const METRIC_OPTIONS = METRICS.map((key) => METRIC_LABELS[key]);
+const PERIOD_OPTIONS = PERIODS.map((key) => PERIOD_LABELS[key]);
+
+function keyOf<K extends string>(map: Record<K, string>, keys: readonly K[], label: string, fallback: K): K {
+  return keys.find((key) => map[key] === label) ?? fallback;
+}
+
 const CATEGORY: Record<Metric, LeaderboardCategory> = {
-  Hospody: 'pubs',
-  'Mapér XP': 'mapper',
+  pubs: 'pubs',
+  mapper: 'mapper',
 };
 const WINDOW: Record<Period, LeaderboardPeriod> = {
-  Týden: 'week',
-  Letos: 'year',
-  Celkem: 'all',
+  week: 'week',
+  year: 'year',
+  all: 'all',
 };
 export function scoreUnit(metric: Metric, score: number): string {
-  if (metric === 'Hospody') return cs.leaderboards.unitPubs(score);
-  return cs.leaderboards.unitXp;
+  if (metric === 'pubs') return t.leaderboards.unitPubs(score);
+  return t.leaderboards.unitXp;
 }
 
 function eventWhen(value: string): string {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('cs-CZ', {
+  return new Intl.DateTimeFormat(intlLocale, {
     weekday: 'short',
     day: 'numeric',
     month: 'numeric',
@@ -76,7 +103,7 @@ function eventWhen(value: string): string {
 function challengeDeadline(value: string): string {
   const parsed = new Date(`${value}T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'long' }).format(parsed);
+  return new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'long' }).format(parsed);
 }
 
 function Podium({ rows, metric }: { rows: BoardEntry[]; metric: Metric }) {
@@ -118,7 +145,7 @@ function Podium({ rows, metric }: { rows: BoardEntry[]; metric: Metric }) {
 function LoadingRows() {
   const reduceMotion = useReducedMotion();
   return (
-    <View style={styles.loading} accessibilityLabel="Načítám komunitu">
+    <View style={styles.loading} accessibilityLabel={t.community.loading}>
       <SkeletonBlock width="100%" height={92} reduceMotion={reduceMotion} />
       <SkeletonBlock width="100%" height={58} reduceMotion={reduceMotion} />
       <SkeletonBlock width="100%" height={58} reduceMotion={reduceMotion} />
@@ -147,9 +174,9 @@ function CommunityMockScreenContent() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const profile = useAccountStore((state) => state.profile);
-  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Žebříčky');
-  const [metric, setMetric] = React.useState<Metric>('Hospody');
-  const [period, setPeriod] = React.useState<Period>('Týden');
+  const [section, setSection] = React.useState<Section>('boards');
+  const [metric, setMetric] = React.useState<Metric>('pubs');
+  const [period, setPeriod] = React.useState<Period>('week');
   const [board, setBoard] = React.useState<Leaderboard | null>(null);
   const [boardLoading, setBoardLoading] = React.useState(true);
   const [boardFailed, setBoardFailed] = React.useState(false);
@@ -165,7 +192,7 @@ function CommunityMockScreenContent() {
   // Mapér XP is an exact lifetime counter. Its durable ledgers do not preserve
   // every historical bonus amount by timestamp, so pretending that Týden and
   // Letos are different boards would be worse than an honest fixed window.
-  const effectivePeriod: Period = metric === 'Mapér XP' ? 'Celkem' : period;
+  const effectivePeriod: Period = metric === 'mapper' ? 'all' : period;
 
   React.useEffect(() => {
     let active = true;
@@ -271,21 +298,31 @@ function CommunityMockScreenContent() {
       contentInsetAdjustmentBehavior="automatic"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.amber} />}
     >
-      <UnderlineTabs options={SECTIONS} value={section} onChange={setSection} inset={MockLayout.screenPad} />
+      <UnderlineTabs
+        options={SECTION_TABS}
+        value={SECTION_LABELS[section]}
+        onChange={(label) => setSection(keyOf(SECTION_LABELS, SECTIONS, label, 'boards'))}
+        inset={MockLayout.screenPad}
+      />
 
-      {section === 'Žebříčky' ? (
+      {section === 'boards' ? (
         <>
           <View style={styles.chips}>
-            <MenuChip value={metric} options={METRICS} title="Podle čeho" onChange={(value) => setMetric(value as Metric)} />
             <MenuChip
-              value={effectivePeriod}
-              options={metric === 'Mapér XP' ? ['Celkem'] : PERIODS}
-              title="Za jaké období"
-              onChange={(value) => setPeriod(value as Period)}
+              value={METRIC_LABELS[metric]}
+              options={METRIC_OPTIONS}
+              title={t.community.metricChipTitle}
+              onChange={(value) => setMetric(keyOf(METRIC_LABELS, METRICS, value, 'pubs'))}
+            />
+            <MenuChip
+              value={PERIOD_LABELS[effectivePeriod]}
+              options={metric === 'mapper' ? [PERIOD_LABELS.all] : PERIOD_OPTIONS}
+              title={t.community.periodChipTitle}
+              onChange={(value) => setPeriod(keyOf(PERIOD_LABELS, PERIODS, value, 'week'))}
             />
           </View>
           {boardLoading ? <LoadingRows /> : boardFailed ? (
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>Žebříček se teď nedotáhl. Potáhni dolů a zkus to znovu.</Text>
+            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.boardFailed}</Text>
           ) : boardRows.length ? (
             <>
               <Podium rows={boardRows.slice(0, 3)} metric={metric} />
@@ -309,7 +346,7 @@ function CommunityMockScreenContent() {
                     accessibilityRole={openProfile ? 'button' : undefined}
                     accessibilityLabel={
                       openProfile
-                        ? cs.a11y.leaderboardRow(row.rank, handle, row.score, scoreUnit(metric, row.score))
+                        ? t.a11y.leaderboardRow(row.rank, handle, row.score, scoreUnit(metric, row.score))
                         : undefined
                     }
                     style={({ pressed }) => [styles.row, row.isMe && styles.rowMe, pressed && openProfile && styles.pressed]}
@@ -317,7 +354,7 @@ function CommunityMockScreenContent() {
                     <Avatar uri={row.account.avatarUrl} nickname={row.account.nickname} displayName={row.account.displayName} size={34} border="quiet" />
                     <View style={styles.body}>
                       <Text style={[styles.handle, row.isMe && styles.handleMe]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={FontScaleCap.body}>{handle}</Text>
-                      <Text style={styles.rank} allowFontScaling={false}>{row.rank}. místo</Text>
+                      <Text style={styles.rank} allowFontScaling={false}>{t.community.boardRank(row.rank)}</Text>
                     </View>
                     <Text style={styles.score} allowFontScaling={false}>{row.score}<Text style={styles.scoreUnit} allowFontScaling={false}> {scoreUnit(metric, row.score)}</Text></Text>
                   </Pressable>
@@ -325,46 +362,46 @@ function CommunityMockScreenContent() {
               })}
             </>
           ) : (
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>V tomhle žebříčku zatím nikdo není.</Text>
+            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.boardEmpty}</Text>
           )}
         </>
       ) : null}
 
-      {section === 'Výzvy' ? (
+      {section === 'challenges' ? (
         challengesLoading ? <LoadingRows /> : challengesFailed ? (
-          <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>Výzvy se teď nedotáhly. Potáhni dolů a zkus to znovu.</Text>
+          <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.challengesFailed}</Text>
         ) : challenges?.length ? challenges.map((challenge, index) => (
           <Pressable
             key={challenge.id}
             onPress={() => router.push(`/community/challenge/${challenge.id}` as Href)}
             style={({ pressed }) => [styles.challenge, index === 0 && styles.challengeFirst, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.communityChallenge(challenge.title, challenge.done, challenge.goal)}
+            accessibilityLabel={t.a11y.communityChallenge(challenge.title, challenge.done, challenge.goal)}
           >
             <View style={styles.challengeHead}>
               <View style={styles.medallion}><ChallengeGlyphIcon glyph={challenge.glyph} size={17} color={Colors.amber} /></View>
               <View style={styles.grow}>
                 <Text style={styles.handle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={FontScaleCap.body}>{challenge.title}</Text>
-                <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>Do {challengeDeadline(challenge.deadline)} · {challenge.done} z {challenge.goal}</Text>
+                <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.challengeMeta(challengeDeadline(challenge.deadline), challenge.done, challenge.goal)}</Text>
               </View>
               <ChevronRightIcon size={18} color={Colors.mutedText} />
             </View>
             <View style={styles.track}><View style={[styles.fill, { width: `${challenge.progress * 100}%` }]} /></View>
           </Pressable>
-        )) : <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>Teď neběží žádná výzva.</Text>
+        )) : <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.challengesEmpty}</Text>
       ) : null}
 
-      {section === 'Akce' ? (
+      {section === 'events' ? (
         eventsLoading ? <LoadingRows /> : <>
           {eventsAuthRequired ? null : eventsFailed ? (
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>Akce se teď nedotáhly. Potáhni dolů a zkus to znovu.</Text>
+            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.eventsFailed}</Text>
           ) : (events ?? []).map((event) => (
             <Pressable
               key={event.id}
               onPress={() => router.push(`/community/event/${event.id}` as Href)}
               style={({ pressed }) => [styles.event, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.communityEvent(event.title, eventWhen(event.startsAt), event.areaLabel || event.city)}
+              accessibilityLabel={t.a11y.communityEvent(event.title, eventWhen(event.startsAt), event.areaLabel || event.city)}
             >
               <EventCover event={event} height={112} />
               <View style={styles.eventBody}>
@@ -374,14 +411,14 @@ function CommunityMockScreenContent() {
               <ChevronRightIcon size={18} color={Colors.mutedText} />
             </Pressable>
           ))}
-          {!eventsAuthRequired && !eventsFailed && (events?.length ?? 0) === 0 ? <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>V okolí teď žádná akce není.</Text> : null}
+          {!eventsAuthRequired && !eventsFailed && (events?.length ?? 0) === 0 ? <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.community.eventsEmpty}</Text> : null}
           <Pressable
             style={({ pressed }) => [styles.create, pressed && styles.pressed]}
             onPress={() => router.push((eventsAuthRequired ? '/auth' : '/community-events') as Href)}
             accessibilityRole="button"
-            accessibilityLabel={eventsAuthRequired ? 'Přihlásit se pro akce' : 'Moje akce a nové setkání'}
+            accessibilityLabel={eventsAuthRequired ? t.community.eventsSignIn : t.community.eventsMine}
           >
-            <Text style={styles.createText} maxFontSizeMultiplier={FontScaleCap.body}>{eventsAuthRequired ? 'Přihlásit se pro akce' : 'Moje akce a nové setkání'}</Text>
+            <Text style={styles.createText} maxFontSizeMultiplier={FontScaleCap.body}>{eventsAuthRequired ? t.community.eventsSignIn : t.community.eventsMine}</Text>
           </Pressable>
         </>
       ) : null}

@@ -38,7 +38,7 @@ import {
   PrivateAccountMutationFrozenError,
   runPrivateAccountMutation,
 } from '@/data/privateAccountBoundary';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -88,9 +88,9 @@ function fireSuccess(): void {
 }
 
 function labelFor(kind: ActivityResponseKind): string {
-  if (kind === 'going') return cs.friends.rsvpGoing;
-  if (kind === 'maybe') return cs.friends.rsvpMaybe;
-  return cs.friends.rsvpCant;
+  if (kind === 'going') return t.friends.rsvpGoing;
+  if (kind === 'maybe') return t.friends.rsvpMaybe;
+  return t.friends.rsvpCant;
 }
 
 function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) {
@@ -199,18 +199,18 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
           if (seq !== seqRef.current) return;
           if (result === 'rejected' || result === 'storage-error') {
             setSelected(prev);
-            showToast(cs.friends.rsvpError);
+            showToast(t.friends.rsvpError);
             return;
           }
-          if (result === 'queued') showToast(cs.friends.rsvpQueued);
-          else if (clearing) showToast(cs.friends.rsvpClearedToast);
+          if (result === 'queued') showToast(t.friends.rsvpQueued);
+          else if (clearing) showToast(t.friends.rsvpClearedToast);
           if (result === 'delivered') onResponded();
         })
         .catch((error) => {
           if (seq !== seqRef.current) return;
           setSelected(prev);
           if (!(error instanceof PrivateAccountMutationFrozenError)) {
-            showToast(cs.friends.rsvpError);
+            showToast(t.friends.rsvpError);
           }
         })
         .finally(() => {
@@ -241,7 +241,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
       style={styles.track}
       onLayout={onTrackLayout}
       accessibilityRole="radiogroup"
-      accessibilityLabel={cs.a11y.rsvpGroup}
+      accessibilityLabel={t.a11y.rsvpGroup}
     >
       <Animated.View pointerEvents="none" style={[styles.thumb, { width: segW }, thumbStyle]} />
 
@@ -267,7 +267,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
             accessibilityRole="radio"
             accessibilityState={{ selected: isSelected, disabled: submitting }}
             accessibilityLabel={label}
-            accessibilityHint={isSelected ? cs.mapPub.clearHint : undefined}
+            accessibilityHint={isSelected ? t.mapPub.clearHint : undefined}
           >
             <Text
               style={[styles.segmentText, { color: labelColorFor(kind) }]}

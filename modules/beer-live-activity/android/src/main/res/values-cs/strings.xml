@@ -1,0 +1,8 @@
+<resources>
+  <!-- Czech is the default locale for this module; English lives in values-en. -->
+  <string name="beer_live_activity_total_prefix">Celkem %1$s</string>
+  <string name="beer_live_activity_night_running">Večer běží</string>
+  <string name="beer_live_activity_add_beer_action">Zapsat stejné pivo</string>
+  <string name="beer_live_activity_channel_name">Večer na pivu</string>
+  <string name="beer_live_activity_channel_description">Živý počet piv během večera</string>
+</resources>

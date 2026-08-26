@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -53,9 +53,9 @@ export function PasswordSheet({
 
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.account.setPasswordHeader}
+              {t.account.setPasswordHeader}
             </Text>
-            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
           </View>
 
           <KeyboardAwareScrollView
@@ -70,14 +70,14 @@ export function PasswordSheet({
                 style={styles.input}
                 value={email}
                 onChangeText={onChangeEmail}
-                placeholder={cs.account.emailPlaceholder}
+                placeholder={t.account.emailPlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
                 autoComplete="email"
                 textContentType="emailAddress"
-                accessibilityLabel={cs.a11y.authEmailInput}
+                accessibilityLabel={t.a11y.authEmailInput}
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
             ) : null}
@@ -86,14 +86,14 @@ export function PasswordSheet({
               style={styles.input}
               value={password}
               onChangeText={onChangePassword}
-              placeholder={cs.account.passwordPlaceholder}
+              placeholder={t.account.passwordPlaceholder}
               placeholderTextColor={MockColors.fieldHint}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
               autoComplete="new-password"
               textContentType="newPassword"
-              accessibilityLabel={cs.a11y.authNewPasswordInput}
+              accessibilityLabel={t.a11y.authNewPasswordInput}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
 
@@ -106,12 +106,12 @@ export function PasswordSheet({
 
           <View style={styles.footer}>
             <GlowButton
-              label={busy ? cs.account.loading : cs.account.setPasswordSave}
+              label={busy ? t.account.loading : t.account.setPasswordSave}
               onPress={onSave}
               glow="none"
               height={52}
               loading={busy}
-              accessibilityLabel={cs.a11y.accountSetPassword}
+              accessibilityLabel={t.a11y.accountSetPassword}
             />
           </View>
         </View>

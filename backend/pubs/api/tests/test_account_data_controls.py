@@ -161,7 +161,7 @@ def test_verification_email_renders_app_link(monkeypatch):
 
     assert sent is True
     assert captured["to"] == "person@example.com"
-    assert captured["subject"] == "Ověř si e-mail – Na Pivo"
+    assert captured["subject"] == "Na Pivo: ověř si e-mail"
     assert (
         'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured["html"]
     )
@@ -192,7 +192,7 @@ def test_password_reset_email_renders_app_link_and_manual_code(monkeypatch):
 
     assert sent is True
     assert captured["to"] == "person@example.com"
-    assert captured["subject"] == "Nové heslo – Na Pivo"
+    assert captured["subject"] == "Na Pivo: nové heslo"
     assert 'href="napivo://auth/reset?token=reset-token"' in captured["html"]
     assert "Nastavit nové heslo" in captured["html"]
     assert "reset-token" in captured["html"]
@@ -1297,11 +1297,14 @@ def test_account_export_reuses_loaded_auth_relations(client):
 def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
     sent: dict = {}
 
-    def fake_send_account_export_email(to, *, filename, json_bytes, idempotency_key=None):
+    def fake_send_account_export_email(
+        to, *, filename, json_bytes, idempotency_key=None, locale="cs"
+    ):
         sent["to"] = to
         sent["filename"] = filename
         sent["json_bytes"] = json_bytes
         sent["idempotency_key"] = idempotency_key
+        sent["locale"] = locale
         return True
 
     monkeypatch.setattr(emailer, "send_account_export_email", fake_send_account_export_email)

@@ -73,6 +73,7 @@ from django.db.models.functions import (
     TruncDate,
 )
 from django.utils import timezone as dj_timezone
+from django.utils.translation import gettext, gettext_lazy
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.parsers import JSONParser, MultiPartParser
@@ -121,6 +122,14 @@ from pubs.external_api_budget import reserve_external_api_request
 from pubs.feedback_attachments import (
     FeedbackAttachmentError,
     process_feedback_attachment,
+)
+from pubs.i18n import (
+    LocalizedText,
+    current_locale,
+    locale_for_account,
+    normalize_locale,
+    remember_account_locale,
+    render_localized,
 )
 from pubs.identity import (
     normalize_pub_name,
@@ -511,12 +520,12 @@ FRIEND_SHARED_STATS_WINDOW = timedelta(days=365)
 
 def _friend_display_name(account: Account | None) -> str:
     if account is None:
-        return "Kamarád"
+        return gettext_lazy("Kamarád")
     if account.nickname:
         return f"@{account.nickname}"
     if account.display_name:
         return account.display_name
-    return "Kamarád"
+    return gettext_lazy("Kamarád")
 
 
 def _is_active_account(account: Account) -> bool:
@@ -613,11 +622,11 @@ def _shared_pub_stats(
 def _friend_rituals(shared_count: int) -> list[dict[str, str]]:
     rituals: list[dict[str, str]] = []
     if shared_count >= 1:
-        rituals.append({"key": "first_round", "title": "První společné pivo"})
+        rituals.append({"key": "first_round", "title": gettext_lazy("První společné pivo")})
     if shared_count >= 3:
-        rituals.append({"key": "regular_table", "title": "Už máte svůj stůl"})
+        rituals.append({"key": "regular_table", "title": gettext_lazy("Už máte svůj stůl")})
     if shared_count >= 10:
-        rituals.append({"key": "house_crew", "title": "Hospodská dvojka"})
+        rituals.append({"key": "house_crew", "title": gettext_lazy("Hospodská dvojka")})
     return rituals
 
 
@@ -1145,12 +1154,16 @@ def _single_friend_shared(account: Account, friend: Account) -> tuple[list[dict]
     return shared_evenings, shared_dates
 
 
-def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
+def _send_friend_push(account_ids: list[int], title, body, data: dict) -> None:
     """Best-effort Expo push fanout.
 
     Push tokens are secrets. This helper never logs token values, request bodies
     or response payloads; the in-app FriendNotification row is the durable truth
     if Expo is down or the device has disabled pushes.
+
+    ``title``/``body`` may be a plain string or a ``LocalizedText``; devices are
+    grouped by their stored language and each group gets its own rendering, so a
+    Czech and an English phone on the same account both read their own copy.
     """
 
     if not account_ids:
@@ -1171,14 +1184,14 @@ def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict)
     if not deliver_ids:
         return
 
-    tokens = list(
-        PushDevice.objects.filter(
-            account_id__in=deliver_ids,
-            enabled=True,
-            permission_status=PushDevice.PermissionStatus.GRANTED,
-        ).values_list("push_token", flat=True)
-    )
-    if not tokens:
+    tokens_by_locale: dict[str, list[str]] = {}
+    for push_token, device_locale in PushDevice.objects.filter(
+        account_id__in=deliver_ids,
+        enabled=True,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+    ).values_list("push_token", "locale"):
+        tokens_by_locale.setdefault(normalize_locale(device_locale), []).append(push_token)
+    if not tokens_by_locale:
         return
 
     # Expo caps a single /push/send POST at 100 messages; chunk the (now opt-in
@@ -1187,52 +1200,55 @@ def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict)
     # result back to its device and retire tokens Expo reports as unreachable.
     chunk_size = max(1, int(getattr(settings, "EXPO_PUSH_CHUNK_SIZE", 100)))
     dead_tokens: list[str] = []
-    for start in range(0, len(tokens), chunk_size):
-        batch_tokens = tokens[start : start + chunk_size]
-        messages = [
-            {
-                "to": token,
-                "title": title,
-                "body": body,
-                "sound": "default",
-                "data": data,
-            }
-            for token in batch_tokens
-        ]
-        try:
-            response = requests.post(
-                "https://exp.host/--/api/v2/push/send",
-                json=messages,
-                timeout=3,
-            )
-            response.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "friend push delivery failed",
-                extra={
-                    "event": "friend_push_failed",
-                    "observability": {
-                        "recipient_count": len(deliver_ids),
-                        "token_count": len(batch_tokens),
-                        "error": exc.__class__.__name__,
+    for locale, tokens in tokens_by_locale.items():
+        rendered_title = render_localized(title, locale)
+        rendered_body = render_localized(body, locale)
+        for start in range(0, len(tokens), chunk_size):
+            batch_tokens = tokens[start : start + chunk_size]
+            messages = [
+                {
+                    "to": token,
+                    "title": rendered_title,
+                    "body": rendered_body,
+                    "sound": "default",
+                    "data": data,
+                }
+                for token in batch_tokens
+            ]
+            try:
+                response = requests.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    json=messages,
+                    timeout=3,
+                )
+                response.raise_for_status()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "friend push delivery failed",
+                    extra={
+                        "event": "friend_push_failed",
+                        "observability": {
+                            "recipient_count": len(deliver_ids),
+                            "token_count": len(batch_tokens),
+                            "error": exc.__class__.__name__,
+                        },
                     },
-                },
-            )
-            continue
-        # Best-effort ticket parse: a device that uninstalled reports
-        # DeviceNotRegistered, so we disable that token to shrink future fanout.
-        # Never log token values or bodies.
-        try:
-            tickets = response.json().get("data", [])
-        except Exception:  # noqa: BLE001
-            tickets = []
-        for token, ticket in zip(batch_tokens, tickets):
-            if (
-                isinstance(ticket, dict)
-                and ticket.get("status") == "error"
-                and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"
-            ):
-                dead_tokens.append(token)
+                )
+                continue
+            # Best-effort ticket parse: a device that uninstalled reports
+            # DeviceNotRegistered, so we disable that token to shrink future fanout.
+            # Never log token values or bodies.
+            try:
+                tickets = response.json().get("data", [])
+            except Exception:  # noqa: BLE001
+                tickets = []
+            for token, ticket in zip(batch_tokens, tickets):
+                if (
+                    isinstance(ticket, dict)
+                    and ticket.get("status") == "error"
+                    and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"
+                ):
+                    dead_tokens.append(token)
 
     if dead_tokens:
         PushDevice.objects.filter(push_token__in=dead_tokens).update(
@@ -1260,7 +1276,7 @@ def _resolve_pub_input(data: dict):
     )
 
 
-def _run_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
+def _run_friend_push(account_ids: list[int], title, body, data: dict) -> None:
     """Run push delivery outside the request thread with clean DB connections."""
 
     close_old_connections()
@@ -1270,7 +1286,7 @@ def _run_friend_push(account_ids: list[int], title: str, body: str, data: dict) 
         close_old_connections()
 
 
-def _dispatch_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
+def _dispatch_friend_push(account_ids: list[int], title, body, data: dict) -> None:
     """Queue best-effort push without holding the API response open for Expo."""
 
     if not getattr(settings, "FRIEND_PUSH_ASYNC", True):
@@ -1290,19 +1306,24 @@ def _create_friend_notification(
     recipient: Account,
     actor: Account,
     kind: str,
-    title: str,
-    body: str,
+    title,
+    body,
     friendship: Friendship | None = None,
     activity: FriendPubActivity | None = None,
     pub_cache_key: str = "",
     pub_name: str = "",
 ) -> FriendNotification:
+    # The inbox row is stored already rendered, so it is written once in the
+    # recipient's language rather than the sender's. Truncate after rendering:
+    # a translation is free to be longer than the Czech source and the columns
+    # are varchar(120)/varchar(240).
+    locale = locale_for_account(recipient)
     return FriendNotification.objects.create(
         recipient=recipient,
         actor=actor,
         kind=kind,
-        title=title,
-        body=body,
+        title=render_localized(title, locale)[:120],
+        body=render_localized(body, locale)[:240],
         friendship=friendship,
         activity=activity,
         pub_cache_key=pub_cache_key,
@@ -1315,8 +1336,8 @@ def _bulk_create_friend_notifications(
     recipient_ids: list[int],
     actor: Account,
     kind: str,
-    title: str,
-    body: str,
+    title,
+    body,
     activity: FriendPubActivity | None = None,
     pub_cache_key: str = "",
     pub_name: str = "",
@@ -1325,17 +1346,29 @@ def _bulk_create_friend_notifications(
 
     Replaces the per-recipient create loop so a broadcast to a large parta is one
     ``bulk_create`` instead of N queries. The push fan-out is separate.
+
+    Each row is rendered in its own recipient's language; the text is resolved
+    once per language, not once per recipient.
     """
     if not recipient_ids:
         return
+    locales = dict(
+        Account.objects.filter(id__in=recipient_ids).values_list("id", "locale")
+    )
+    rendered: dict[str, tuple[str, str]] = {}
+    for locale in {normalize_locale(locales.get(rid, "")) for rid in recipient_ids}:
+        rendered[locale] = (
+            render_localized(title, locale)[:120],
+            render_localized(body, locale)[:240],
+        )
     FriendNotification.objects.bulk_create(
         [
             FriendNotification(
                 recipient_id=recipient_id,
                 actor=actor,
                 kind=kind,
-                title=title,
-                body=body,
+                title=rendered[normalize_locale(locales.get(recipient_id, ""))][0],
+                body=rendered[normalize_locale(locales.get(recipient_id, ""))][1],
                 activity=activity,
                 pub_cache_key=pub_cache_key,
                 pub_name=pub_name,
@@ -2499,7 +2532,7 @@ class DrinksView(APIView):
                 )
                 if account is None:
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 drink = DrinkLog.objects.filter(
@@ -3032,7 +3065,7 @@ class FeedbackView(APIView):
         ]
         if len(uploads) > 1:
             return Response(
-                {"detail": "Přidej nejvýš jednu fotku.", "code": "attachment_count"},
+                {"detail": gettext("Přidej nejvýš jednu fotku."), "code": "attachment_count"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -3044,7 +3077,7 @@ class FeedbackView(APIView):
         upload = request.FILES.get("attachment")
         if uploads and upload is None:
             return Response(
-                {"detail": "Neznámý typ přílohy.", "code": "attachment_invalid"},
+                {"detail": gettext("Neznámý typ přílohy."), "code": "attachment_invalid"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -3130,7 +3163,7 @@ def _lock_content_report_accounts(account_ids: set[int]) -> dict[int, Account]:
 
 def _content_report_auth_retry() -> Response:
     return Response(
-        {"detail": "Účet se mezitím změnil. Zkus nahlášení znovu.", "code": "auth"},
+        {"detail": gettext("Účet se mezitím změnil. Zkus nahlášení znovu."), "code": "auth"},
         status=status.HTTP_409_CONFLICT,
     )
 
@@ -3296,7 +3329,7 @@ class ContentReportView(APIView):
                 )
             if target.pk == reporter.pk:
                 return Response(
-                    {"detail": "Nelze nahlásit vlastní profil.", "code": "self_report"},
+                    {"detail": gettext("Nelze nahlásit vlastní profil."), "code": "self_report"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -3568,7 +3601,7 @@ class PubVisitView(APIView):
                 )
                 if account is None:
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 existing = (
@@ -3807,6 +3840,7 @@ class PushDeviceView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        locale = data.get("locale") or ""
         try:
             device, _created = PushDevice.objects.update_or_create(
                 push_token=data["push_token"],
@@ -3816,8 +3850,12 @@ class PushDeviceView(APIView):
                     "permission_status": data["permission_status"],
                     "enabled": data["enabled"],
                     "app_version": data.get("app_version") or "",
+                    "locale": locale,
                 },
             )
+            # Mirror onto the account so e-mails and cron jobs, which never see a
+            # device row, render in the same language.
+            remember_account_locale(request.user, locale)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "push-device: unexpected error registering token",
@@ -5240,7 +5278,7 @@ class LeaderboardsView(APIView):
         if not serializer.is_valid():
             return Response(
                 {
-                    "detail": "Neplatné parametry žebříčku.",
+                    "detail": gettext("Neplatné parametry žebříčku."),
                     "code": "invalid_params",
                     "errors": serializer.errors,
                 },
@@ -5340,18 +5378,18 @@ class FriendRequestView(APIView):
             )
             if code_row is None:
                 return Response(
-                    {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                    {"detail": gettext("Pozvánku neznám."), "code": "invite_invalid"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if code_row.revoked or code_row.expires_at <= now:
                 return Response(
-                    {"detail": "Pozvánka už vypršela.", "code": "invite_expired"},
+                    {"detail": gettext("Pozvánka už vypršela."), "code": "invite_expired"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             target = code_row.account if _is_active_account(code_row.account) else None
             if target is None:
                 return Response(
-                    {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                    {"detail": gettext("Pozvánku neznám."), "code": "invite_invalid"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
         elif data.get("target_account_id"):
@@ -5378,18 +5416,18 @@ class FriendRequestView(APIView):
             or (not target.is_public and target.pk not in _accepted_friend_ids(request.user))
         ):
             return Response(
-                {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if via_invite and target is None:
             return Response(
-                {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if target.pk == request.user.pk:
             return Response(
                 {
-                    "detail": "Sám sobě žádost neposílej. To by bylo moc smutné.",
+                    "detail": gettext("Sám sobě žádost neposílej. To by bylo moc smutné."),
                     "code": "self_request",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -5412,7 +5450,7 @@ class FriendRequestView(APIView):
                 target = locked_accounts.get(optimistic_target_id)
                 if requester is None or requester.status != Account.Status.ACTIVE:
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 if target is None:
@@ -5422,16 +5460,16 @@ class FriendRequestView(APIView):
                     ).exists()
                     if identity_moved:
                         return Response(
-                            {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                            {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                             status=status.HTTP_409_CONFLICT,
                         )
                     return Response(
-                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                         status=status.HTTP_404_NOT_FOUND,
                     )
                 if target.status != Account.Status.ACTIVE:
                     return Response(
-                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                         status=status.HTTP_404_NOT_FOUND,
                     )
                 # Search/invite resolution happened before these Account locks.
@@ -5443,7 +5481,7 @@ class FriendRequestView(APIView):
                     | Q(blocker=target, blocked=requester)
                 ).exists():
                     return Response(
-                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                         status=status.HTTP_404_NOT_FOUND,
                     )
                 already_friends = Friendship.objects.filter(
@@ -5453,7 +5491,7 @@ class FriendRequestView(APIView):
                 ).exists()
                 if not via_invite and not target.is_public and not already_friends:
                     return Response(
-                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                         status=status.HTTP_404_NOT_FOUND,
                     )
                 request.user = requester
@@ -5467,8 +5505,11 @@ class FriendRequestView(APIView):
                         reverse.status = Friendship.Status.ACCEPTED
                         reverse.responded_at = now
                         reverse.save(update_fields=["status", "responded_at", "updated_at"])
-                        title = "Žádost přijata"
-                        body = f"{_friend_display_name(requester)} si tě přidal mezi kamarády."
+                        title = LocalizedText(gettext_lazy("Žádost přijata"))
+                        body = LocalizedText(
+                            gettext_lazy("%(name)s si tě přidal mezi kamarády."),
+                            {"name": _friend_display_name(requester)},
+                        )
                         _create_friend_notification(
                             recipient=target,
                             actor=requester,
@@ -5545,13 +5586,19 @@ class FriendRequestView(APIView):
                     # locked. A concurrent login merge must not turn the actor
                     # or recipient FK into a stale post-commit write.
                     if via_invite:
-                        title = "Máš nového parťáka"
-                        body = f"{_friend_display_name(requester)} je v partě přes tvůj kód."
+                        title = LocalizedText(gettext_lazy("Máš nového parťáka"))
+                        body = LocalizedText(
+                            gettext_lazy("%(name)s je v partě přes tvůj kód."),
+                            {"name": _friend_display_name(requester)},
+                        )
                         kind = FriendNotification.Kind.FRIEND_ACCEPTED
                         push_kind = "friend_accepted"
                     else:
-                        title = "Nový kámoš na pivo?"
-                        body = f"{_friend_display_name(requester)} si tě chce přidat mezi kamarády."
+                        title = LocalizedText(gettext_lazy("Nový kámoš na pivo?"))
+                        body = LocalizedText(
+                            gettext_lazy("%(name)s si tě chce přidat mezi kamarády."),
+                            {"name": _friend_display_name(requester)},
+                        )
                         kind = FriendNotification.Kind.FRIEND_REQUEST
                         push_kind = "friend_request"
                     _create_friend_notification(
@@ -5604,12 +5651,12 @@ class FriendRequestActionView(APIView):
         )
         if friendship is None:
             return Response(
-                {"detail": "Žádost neexistuje.", "code": "request_not_found"},
+                {"detail": gettext("Žádost neexistuje."), "code": "request_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if action not in {"accept", "decline"}:
             return Response(
-                {"detail": "Neznámá akce.", "code": "unknown_action"},
+                {"detail": gettext("Neznámá akce."), "code": "unknown_action"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -5620,8 +5667,11 @@ class FriendRequestActionView(APIView):
             friendship.responded_at = friendship.responded_at or now
             friendship.save(update_fields=["status", "responded_at", "updated_at"])
             if created_notification:
-                title = "Jde se na pivo"
-                body = f"{_friend_display_name(request.user)} přijal tvoji žádost."
+                title = LocalizedText(gettext_lazy("Jde se na pivo"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s přijal tvoji žádost."),
+                    {"name": _friend_display_name(request.user)},
+                )
                 _create_friend_notification(
                     recipient=friendship.requester,
                     actor=request.user,
@@ -5772,7 +5822,7 @@ class FriendDetailView(APIView):
         )
         if friend is None or (not is_friend and not can_view_public_profile):
             return Response(
-                {"detail": "Tenhle kámoš tu není.", "code": "friend_not_found"},
+                {"detail": gettext("Tenhle kámoš tu není."), "code": "friend_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -5959,7 +6009,7 @@ class FriendActivityView(APIView):
             if scheduled_for > now + max_ahead:
                 return Response(
                     {
-                        "detail": "Plán je moc daleko. Zkus dřívější čas.",
+                        "detail": gettext("Plán je moc daleko. Zkus dřívější čas."),
                         "code": "invalid_schedule",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -5997,7 +6047,7 @@ class FriendActivityView(APIView):
         )
         if requested_recipient_ids is not None and not target_friend_ids:
             return Response(
-                {"detail": "Vyber aspoň jednoho kámoše z party.", "code": "no_recipients"},
+                {"detail": gettext("Vyber aspoň jednoho kámoše z party."), "code": "no_recipients"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -6128,13 +6178,19 @@ class FriendActivityView(APIView):
             actor = _friend_display_name(request.user)
             if is_plan:
                 local_time = dj_timezone.localtime(scheduled_for, PRAGUE_TZ).strftime("%H:%M")
-                title = "Kamarád plánuje pivo"
-                body = f"{actor} plánuje {activity.name} v {local_time}. Přidáš se?"
+                title = LocalizedText(gettext_lazy("Kamarád plánuje pivo"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s plánuje %(pub)s v %(time)s. Přidáš se?"),
+                    {"name": actor, "pub": activity.name, "time": local_time},
+                )
                 notif_kind = FriendNotification.Kind.FRIEND_PLAN
                 push_kind = "friend_plan"
             else:
-                title = "Kamarád je na pivu"
-                body = f"{actor} sedí v {activity.name}. Nechceš se přidat?"
+                title = LocalizedText(gettext_lazy("Kamarád je na pivu"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s sedí v %(pub)s. Nechceš se přidat?"),
+                    {"name": actor, "pub": activity.name},
+                )
                 notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
                 push_kind = "friend_at_pub"
             _bulk_create_friend_notifications(
@@ -6214,27 +6270,27 @@ class FriendActivityRespondView(APIView):
         activity = self._load_active_activity(activity_id)
         if activity is None:
             return Response(
-                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                {"detail": gettext("Tahle hláška už vyšuměla."), "code": "activity_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if activity.account_id == request.user.pk:
             return Response(
-                {"detail": "Na vlastní cinknutí reagovat nemusíš.", "code": "self_rsvp"},
+                {"detail": gettext("Na vlastní cinknutí reagovat nemusíš."), "code": "self_rsvp"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if activity.account_id in _blocked_account_ids(request.user):
             return Response(
-                {"detail": "Tady se reagovat nedá.", "code": "blocked"},
+                {"detail": gettext("Tady se reagovat nedá."), "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if activity.account_id not in _accepted_friend_ids(request.user):
             return Response(
-                {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
+                {"detail": gettext("S tímhle člověkem ještě nejste parta."), "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if not _friend_activity_visible_to(activity, request.user):
             return Response(
-                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                {"detail": gettext("Tahle hláška už vyšuměla."), "code": "activity_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -6257,7 +6313,7 @@ class FriendActivityRespondView(APIView):
                 )
                 if locked is None:
                     return Response(
-                        {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                        {"detail": gettext("Tahle hláška už vyšuměla."), "code": "activity_not_found"},
                         status=status.HTTP_404_NOT_FOUND,
                     )
                 existing = (
@@ -6278,13 +6334,16 @@ class FriendActivityRespondView(APIView):
         is_going = response_value == FriendActivityResponse.Response.GOING
         newly_going = is_going and previous != FriendActivityResponse.Response.GOING
         if newly_going:
-            title = f"{_friend_display_name(request.user)} už jde za tebou"
+            actor_name = _friend_display_name(request.user)
+            if isinstance(actor_name, str):
+                actor_name = actor_name[:90]
+            title = LocalizedText(gettext_lazy("%(name)s už jde za tebou"), {"name": actor_name})
             body = activity.name[:240]
             _create_friend_notification(
                 recipient=activity.account,
                 actor=request.user,
                 kind=FriendNotification.Kind.FRIEND_RSVP,
-                title=title[:120],
+                title=title,
                 body=body,
                 activity=activity,
                 pub_cache_key=activity.cache_key,
@@ -6292,7 +6351,7 @@ class FriendActivityRespondView(APIView):
             )
             _send_friend_push(
                 [activity.account_id],
-                title[:120],
+                title,
                 body,
                 {
                     "kind": "friend_rsvp",
@@ -6358,7 +6417,7 @@ class FriendActivityReactView(APIView):
         serializer = FriendActivityReactionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                {"detail": "Tuhle reakci neznám.", "code": "invalid_reaction"},
+                {"detail": gettext("Tuhle reakci neznám."), "code": "invalid_reaction"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         reaction_value = serializer.validated_data["reaction"]
@@ -6366,27 +6425,27 @@ class FriendActivityReactView(APIView):
         activity = self._load_activity(activity_id)
         if activity is None:
             return Response(
-                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                {"detail": gettext("Tahle hláška už vyšuměla."), "code": "activity_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if activity.account_id == request.user.pk:
             return Response(
-                {"detail": "Na vlastní cinknutí si připít nemusíš.", "code": "self_reaction"},
+                {"detail": gettext("Na vlastní cinknutí si připít nemusíš."), "code": "self_reaction"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if activity.account_id in _blocked_account_ids(request.user):
             return Response(
-                {"detail": "Tady se reagovat nedá.", "code": "blocked"},
+                {"detail": gettext("Tady se reagovat nedá."), "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if activity.account_id not in _accepted_friend_ids(request.user):
             return Response(
-                {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
+                {"detail": gettext("S tímhle člověkem ještě nejste parta."), "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if not _friend_activity_visible_to(activity, request.user):
             return Response(
-                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                {"detail": gettext("Tahle hláška už vyšuměla."), "code": "activity_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -6414,14 +6473,17 @@ class FriendActivityReactView(APIView):
                 created_at__gte=cooldown,
             ).exists()
             if not already_notified:
-                title = "Na zdraví!"
-                body = f"{_friend_display_name(request.user)} ti připil. Na zdraví!"
+                title = LocalizedText(gettext_lazy("Na zdraví!"))
+                body = LocalizedText(
+                    gettext_lazy("%(name)s ti připil. Na zdraví!"),
+                    {"name": _friend_display_name(request.user)},
+                )
                 _create_friend_notification(
                     recipient=activity.account,
                     actor=request.user,
                     kind=FriendNotification.Kind.FRIEND_CHEERS,
                     title=title,
-                    body=body[:240],
+                    body=body,
                     activity=activity,
                     pub_cache_key=activity.cache_key,
                     pub_name=activity.name[:200],
@@ -6429,7 +6491,7 @@ class FriendActivityReactView(APIView):
                 _send_friend_push(
                     [activity.account_id],
                     title,
-                    body[:240],
+                    body,
                     {
                         "kind": "friend_cheers",
                         "activity_id": str(activity.public_id),
@@ -6622,17 +6684,17 @@ class BeerCheckInReactView(APIView):
     def _can_react(self, request: Request, checkin: BeerCheckIn) -> Response | None:
         if checkin.account_id == request.user.pk:
             return Response(
-                {"detail": "Na vlastní pivo si připít nemusíš.", "code": "self_reaction"},
+                {"detail": gettext("Na vlastní pivo si připít nemusíš."), "code": "self_reaction"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if checkin.account_id in _blocked_account_ids(request.user):
             return Response(
-                {"detail": "Tady se reagovat nedá.", "code": "blocked"},
+                {"detail": gettext("Tady se reagovat nedá."), "code": "blocked"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         if checkin.account_id not in _accepted_friend_ids(request.user):
             return Response(
-                {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
+                {"detail": gettext("S tímhle člověkem ještě nejste parta."), "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return None
@@ -6645,13 +6707,13 @@ class BeerCheckInReactView(APIView):
         serializer = BeerCheckInReactionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                {"detail": "Tuhle reakci neznám.", "code": "invalid_reaction"},
+                {"detail": gettext("Tuhle reakci neznám."), "code": "invalid_reaction"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         checkin = self._load_visible_checkin(request, checkin_id)
         if checkin is None:
             return Response(
-                {"detail": "Tenhle zápis nevidím.", "code": "checkin_not_found"},
+                {"detail": gettext("Tenhle zápis nevidím."), "code": "checkin_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         error = self._can_react(request, checkin)
@@ -6771,7 +6833,7 @@ class PublishedNightView(APIView):
                 )
                 if account is None:
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 # Resolve optional party references only after the Account lock.
@@ -6798,7 +6860,7 @@ class PublishedNightView(APIView):
                     return Response(
                         {
                             "code": "night_identity_conflict",
-                            "detail": "Tento večer se nepodařilo bezpečně spárovat.",
+                            "detail": gettext("Tento večer se nepodařilo bezpečně spárovat."),
                         },
                         status=status.HTTP_409_CONFLICT,
                     )
@@ -6965,7 +7027,7 @@ class PublishedNightDetailView(APIView):
         night = _visible_published_night(request.user, night_id)
         if night is None:
             return Response(
-                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                {"detail": gettext("Tenhle večer nevidím."), "code": "night_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(
@@ -7011,7 +7073,7 @@ class PublishedNightCommentView(APIView):
         night = _visible_published_night(request.user, night_id)
         if night is None:
             return Response(
-                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                {"detail": gettext("Tenhle večer nevidím."), "code": "night_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         rows = list(_visible_night_comments(night, request.user)[:100])
@@ -7030,7 +7092,7 @@ class PublishedNightCommentView(APIView):
         night = _visible_published_night(request.user, night_id)
         if night is None:
             return Response(
-                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                {"detail": gettext("Tenhle večer nevidím."), "code": "night_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         precondition = ugc_consent_precondition(request)
@@ -7049,7 +7111,7 @@ class PublishedNightCommentView(APIView):
         if comment.night_id != night.pk:
             return Response(
                 {
-                    "detail": "Komentář se nepodařilo bezpečně spárovat.",
+                    "detail": gettext("Komentář se nepodařilo bezpečně spárovat."),
                     "code": "comment_identity_conflict",
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -7057,7 +7119,7 @@ class PublishedNightCommentView(APIView):
         if comment.is_removed:
             return Response(
                 {
-                    "detail": "Tenhle komentář už byl smazaný.",
+                    "detail": gettext("Tenhle komentář už byl smazaný."),
                     "code": "comment_removed",
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -7092,7 +7154,7 @@ class PublishedNightCommentDeleteView(APIView):
             comment.night.account_id,
         ):
             return Response(
-                {"detail": "Komentář tu není.", "code": "comment_not_found"},
+                {"detail": gettext("Komentář tu není."), "code": "comment_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if not comment.is_removed:
@@ -7118,12 +7180,12 @@ class PublishedNightReactView(APIView):
         night = self._load_visible_night(request, night_id)
         if night is None:
             return None, Response(
-                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                {"detail": gettext("Tenhle večer nevidím."), "code": "night_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if night.account_id == request.user.pk:
             return None, Response(
-                {"detail": "Vlastní rundu si kupovat nemusíš.", "code": "self_reaction"},
+                {"detail": gettext("Vlastní rundu si kupovat nemusíš."), "code": "self_reaction"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return night, None
@@ -7356,7 +7418,7 @@ def _photo_contest_my_result(contest: PhotoContest, account: Account) -> dict:
 
 def _photo_not_found() -> Response:
     return Response(
-        {"detail": "Tuhle fotku nevidím.", "code": "photo_not_found"},
+        {"detail": gettext("Tuhle fotku nevidím."), "code": "photo_not_found"},
         status=status.HTTP_404_NOT_FOUND,
     )
 
@@ -7441,7 +7503,7 @@ class BeerPhotoView(APIView):
                 )
                 if account is None:
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 # A delete-by-client marker wins over every later native-upload
@@ -7452,7 +7514,7 @@ class BeerPhotoView(APIView):
                 ).exists():
                     return Response(
                         {
-                            "detail": "Tahle fotka už byla smazaná.",
+                            "detail": gettext("Tahle fotka už byla smazaná."),
                             "code": "photo_deleted",
                         },
                         status=status.HTTP_410_GONE,
@@ -7489,7 +7551,7 @@ class BeerPhotoView(APIView):
         ):
             return Response(
                 {
-                    "detail": "Fotodeník je plný. Smaž nejdřív nějakou starší fotku.",
+                    "detail": gettext("Fotodeník je plný. Smaž nejdřív nějakou starší fotku."),
                     "code": "photo_limit_reached",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -7498,7 +7560,7 @@ class BeerPhotoView(APIView):
         upload = request.FILES.get("image")
         if upload is None:
             return Response(
-                {"detail": "Chybí soubor s fotkou.", "code": "photo_missing"},
+                {"detail": gettext("Chybí soubor s fotkou."), "code": "photo_missing"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -7556,7 +7618,7 @@ class BeerPhotoView(APIView):
                 if account is None:
                     _discard_unsaved_file(None)
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 # Serialize against delete-by-client on the same account. If
@@ -7569,7 +7631,7 @@ class BeerPhotoView(APIView):
                     _discard_unsaved_file(account)
                     return Response(
                         {
-                            "detail": "Tahle fotka už byla smazaná.",
+                            "detail": gettext("Tahle fotka už byla smazaná."),
                             "code": "photo_deleted",
                         },
                         status=status.HTTP_410_GONE,
@@ -7688,7 +7750,7 @@ class BeerPhotoView(APIView):
         if cleanup_ids and not retry_beer_photo_file_deletions(cleanup_ids):
             return Response(
                 {
-                    "detail": "Fotka je skrytá, soubor ještě uklízíme.",
+                    "detail": gettext("Fotka je skrytá, soubor ještě uklízíme."),
                     "code": "photo_cleanup_pending",
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -7713,7 +7775,7 @@ class FriendBeerPhotosView(APIView):
     def get(self, request: Request, public_id) -> Response:
         target = Account.objects.filter(public_id=public_id, status=Account.Status.ACTIVE).first()
         not_found = Response(
-            {"detail": "Tenhle profil nevidím.", "code": "profile_not_found"},
+            {"detail": gettext("Tenhle profil nevidím."), "code": "profile_not_found"},
             status=status.HTTP_404_NOT_FOUND,
         )
         if target is None or target.pk == request.user.pk:
@@ -7858,7 +7920,7 @@ class PhotoContestView(APIView):
             rows, page_meta = _optional_snapshot_page(request, base_entries, max_limit=100)
         except ValueError:
             return Response(
-                {"detail": "Neplatné parametry stránkování.", "code": "invalid_params"},
+                {"detail": gettext("Neplatné parametry stránkování."), "code": "invalid_params"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         payload["entries"] = PhotoContestEntrySerializer(rows, many=True, context=context).data
@@ -7895,7 +7957,7 @@ class PhotoContestEntryView(APIView):
         if not request.user.nickname:
             return Response(
                 {
-                    "detail": "Nejdřív si nastav přezdívku, ať soutěžíš pod jménem.",
+                    "detail": gettext("Nejdřív si nastav přezdívku, ať soutěžíš pod jménem."),
                     "code": "nickname_required",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -7907,7 +7969,7 @@ class PhotoContestEntryView(APIView):
         ).first()
         if photo is None:
             return Response(
-                {"detail": "Tuhle fotku nevidím.", "code": "photo_not_found"},
+                {"detail": gettext("Tuhle fotku nevidím."), "code": "photo_not_found"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -7970,12 +8032,12 @@ class PhotoContestVoteView(APIView):
             or entry.account_id in _blocked_account_ids(request.user)
         ):
             return Response(
-                {"detail": "Tahle soutěžní fotka tu není.", "code": "entry_not_found"},
+                {"detail": gettext("Tahle soutěžní fotka tu není."), "code": "entry_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if entry.account_id == request.user.pk:
             return Response(
-                {"detail": "Pro vlastní fotku hlasovat nemůžeš.", "code": "cannot_vote_own"},
+                {"detail": gettext("Pro vlastní fotku hlasovat nemůžeš."), "code": "cannot_vote_own"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -8015,12 +8077,12 @@ class FriendBlockView(APIView):
         target = Account.objects.filter(public_id=serializer.validated_data["account_id"]).first()
         if target is None:
             return Response(
-                {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if target.pk == request.user.pk:
             return Response(
-                {"detail": "Sám sebe zablokovat nejde.", "code": "self_block"},
+                {"detail": gettext("Sám sebe zablokovat nejde."), "code": "self_block"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -8036,12 +8098,12 @@ class FriendBlockView(APIView):
                 target = locked_accounts.get(target.pk)
                 if blocker is None or blocker.status != Account.Status.ACTIVE:
                     return Response(
-                        {"detail": "Účet se mezitím změnil.", "code": "auth"},
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
                 if target is None or target.status != Account.Status.ACTIVE:
                     return Response(
-                        {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                        {"detail": gettext("Profil se nepodařilo najít."), "code": "profile_not_found"},
                         status=status.HTTP_404_NOT_FOUND,
                     )
                 FriendBlock.objects.get_or_create(blocker=blocker, blocked=target)
@@ -8118,7 +8180,7 @@ class FollowView(APIView):
         except TypeError, ValueError, AttributeError:
             return self._error(
                 "invalid_account_id",
-                "Vyber účet, který chceš sledovat.",
+                gettext("Vyber účet, který chceš sledovat."),
                 status.HTTP_400_BAD_REQUEST,
             )
 
@@ -8129,13 +8191,13 @@ class FollowView(APIView):
         if target is None:
             return self._error(
                 "profile_not_found",
-                "Profil se nepodařilo najít.",
+                gettext("Profil se nepodařilo najít."),
                 status.HTTP_404_NOT_FOUND,
             )
         if target.pk == request.user.pk:
             return self._error(
                 "self_follow",
-                "Sám sebe sledovat nemusíš.",
+                gettext("Sám sebe sledovat nemusíš."),
                 status.HTTP_400_BAD_REQUEST,
             )
         with transaction.atomic():
@@ -8150,13 +8212,13 @@ class FollowView(APIView):
             if follower is None or follower.status != Account.Status.ACTIVE:
                 return self._error(
                     "auth",
-                    "Účet se mezitím změnil.",
+                    gettext("Účet se mezitím změnil."),
                     status.HTTP_409_CONFLICT,
                 )
             if target is None or target.status != Account.Status.ACTIVE:
                 return self._error(
                     "profile_not_found",
-                    "Profil se nepodařilo najít.",
+                    gettext("Profil se nepodařilo najít."),
                     status.HTTP_404_NOT_FOUND,
                 )
             if FriendBlock.objects.filter(
@@ -8164,13 +8226,13 @@ class FollowView(APIView):
             ).exists():
                 return self._error(
                     "blocked",
-                    "Tenhle profil sledovat nejde.",
+                    gettext("Tenhle profil sledovat nejde."),
                     status.HTTP_403_FORBIDDEN,
                 )
             if not target.is_public:
                 return self._error(
                     "private_profile",
-                    "Soukromý profil sledovat nejde.",
+                    gettext("Soukromý profil sledovat nejde."),
                     status.HTTP_403_FORBIDDEN,
                 )
             Follow.objects.get_or_create(follower=follower, target=target)
@@ -8253,18 +8315,18 @@ class FriendInviteResolveView(APIView):
         code_row = FriendInviteCode.objects.select_related("account").filter(code=code).first()
         if code_row is None:
             return Response(
-                {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                {"detail": gettext("Pozvánku neznám."), "code": "invite_invalid"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         inviter = code_row.account
         if not _is_active_account(inviter) or inviter.id in _blocked_account_ids(request.user):
             return Response(
-                {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                {"detail": gettext("Pozvánku neznám."), "code": "invite_invalid"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         if code_row.revoked or code_row.expires_at <= now:
             return Response(
-                {"detail": "Pozvánka už vypršela.", "code": "invite_expired"},
+                {"detail": gettext("Pozvánka už vypršela."), "code": "invite_expired"},
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(
@@ -8300,7 +8362,7 @@ class FriendSettingsView(APIView):
                 else "invalid_settings"
             )
             return Response(
-                {"detail": "Nastavení se nepodařilo uložit.", "code": code},
+                {"detail": gettext("Nastavení se nepodařilo uložit."), "code": code},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -9133,15 +9195,21 @@ def _pub_directory_item(row: PubDirectory) -> dict:
         regional_structure.append({"name": row.city, "type": "regional.municipality"})
     regional_structure.append(
         {
-            "name": "Česko" if country_code == "cz" else "Slovensko",
+            "name": gettext("Česko") if country_code == "cz" else gettext("Slovensko"),
             "type": "regional.country",
             "isoCode": country_code.upper(),
         }
     )
     item = {
         "name": row.name,
+        # NOT translatable. "label" is the Mapy.cz category enum and the client
+        # matches it against a hardcoded Czech allow-list (ALLOWED_LABELS /
+        # TRUSTED_PUB_LABELS in src/data/mapyClient.ts). Translating it would
+        # make every pub fall out of the parser for an English user.
         "label": (
-            "Hospoda" if row.venue_kind == PubHours.VenueKind.PUB else "Restaurace a pohostinství"
+            "Hospoda"
+            if row.venue_kind == PubHours.VenueKind.PUB
+            else "Restaurace a pohostinství"
         ),
         "position": {"lat": row.lat, "lon": row.lng},
         "regionalStructure": regional_structure,
@@ -9831,7 +9899,8 @@ class PubLocationReverseGeocodeView(APIView):
                         ),
                         "provider": "google",
                         "providerPlaceId": candidate.place_id,
-                        "name": candidate.address or candidate.city or "Vybraný bod",
+                        "name": candidate.address or candidate.city or gettext("Vybraný bod"),
+                        # Category enum, same contract as the directory "label".
                         "label": "Adresa",
                         "position": {"lat": candidate.lat, "lon": candidate.lng},
                         "type": "regional.address",
@@ -11002,6 +11071,7 @@ def _send_account_export(
         filename=filename,
         json_bytes=json_bytes,
         idempotency_key=idempotency_key,
+        locale=locale_for_account(account),
     )
 
 
@@ -11085,7 +11155,7 @@ class AccountExportView(APIView):
             return Response(
                 {
                     "code": "missing_email",
-                    "detail": "K účtu nemáme e-mail, kam bychom export poslali.",
+                    "detail": gettext("K účtu nemáme e-mail, kam bychom export poslali."),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -11093,7 +11163,7 @@ class AccountExportView(APIView):
             return Response(
                 {
                     "code": "email_unverified",
-                    "detail": "Export e-mailem pošleme až na ověřený e-mail.",
+                    "detail": gettext("Export e-mailem pošleme až na ověřený e-mail."),
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
@@ -11104,7 +11174,7 @@ class AccountExportView(APIView):
             return Response(
                 {
                     "code": "email_failed",
-                    "detail": "Export se nepodařilo odeslat e-mailem. Zkus to prosím znovu.",
+                    "detail": gettext("Export se nepodařilo odeslat e-mailem. Zkus to prosím znovu."),
                 },
                 status=status.HTTP_502_BAD_GATEWAY,
             )
@@ -11213,7 +11283,7 @@ class AccountView(APIView):
                         return Response(
                             {
                                 "code": "stale_account_session",
-                                "detail": "Účet se mezitím znovu přihlásil. Přihlas se znovu.",
+                                "detail": gettext("Účet se mezitím znovu přihlásil. Přihlas se znovu."),
                             },
                             status=status.HTTP_409_CONFLICT,
                         )
@@ -11275,7 +11345,7 @@ def _first_error_detail_and_code(errors) -> tuple[str, str | None]:
             if isinstance(code, str) and code.startswith("nickname_"):
                 return str(item), code
             return str(item), None
-    return "Neplatný požadavek.", None
+    return gettext("Neplatný požadavek."), None
 
 
 class AccountMeView(APIView):
@@ -11369,7 +11439,7 @@ class AccountMeView(APIView):
                 # DB UniqueConstraint backstop for a nickname TOCTOU race.
                 return Response(
                     {
-                        "detail": "Tuto přezdívku už někdo používá.",
+                        "detail": gettext("Tuto přezdívku už někdo používá."),
                         "code": "nickname_taken",
                     },
                     status=status.HTTP_409_CONFLICT,
@@ -11378,6 +11448,9 @@ class AccountMeView(APIView):
                 return _coded_error(exc)
         else:
             account = request.user
+        # Remember the app language so push, e-mail and cron code paths (which
+        # have no Accept-Language header) can write in the reader's language.
+        remember_account_locale(account, current_locale())
         return Response(
             AccountMeSerializer(account, context={"request": request}).data,
             status=status.HTTP_200_OK,
@@ -11398,7 +11471,7 @@ class AccountMeView(APIView):
         if not operation_id_valid:
             return Response(
                 {
-                    "detail": "operation_id musí být náhodné UUIDv4.",
+                    "detail": gettext("operation_id musí být náhodné UUIDv4."),
                     "code": "invalid_operation_id",
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -11423,7 +11496,7 @@ class AccountMeView(APIView):
                 if authenticated_deletion_epoch != account.deletion_epoch:
                     return Response(
                         {
-                            "detail": (
+                            "detail": gettext(
                                 "Účet se mezitím znovu přihlásil. Nejdřív se "
                                 "přihlas znovu a pak zopakuj smazání."
                             ),
@@ -11474,7 +11547,7 @@ class AccountMeView(APIView):
         if operation_conflict:
             return Response(
                 {
-                    "detail": "operation_id už patří jinému požadavku.",
+                    "detail": gettext("operation_id už patří jinému požadavku."),
                     "code": "operation_id_reused",
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -11507,7 +11580,7 @@ class AccountUGCConsentView(APIView):
             return Response(
                 {
                     "code": "ugc_policy_update_required",
-                    "detail": "Pravidla pro sdílený obsah se změnila. Potvrď je znovu.",
+                    "detail": gettext("Pravidla pro sdílený obsah se změnila. Potvrď je znovu."),
                 },
                 status=status.HTTP_409_CONFLICT,
             )
@@ -11672,7 +11745,7 @@ class AccountAvatarView(APIView):
         upload = request.FILES.get("avatar")
         if upload is None:
             return Response(
-                {"detail": "Chybí soubor s obrázkem.", "code": "avatar_missing"},
+                {"detail": gettext("Chybí soubor s obrázkem."), "code": "avatar_missing"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -11741,7 +11814,7 @@ class _MenuScanUploadLimitHandler(FileUploadHandler):
 
 def _menu_scan_too_large_response() -> Response:
     return Response(
-        {"detail": "Fotka je příliš velká.", "code": "image_too_large"},
+        {"detail": gettext("Fotka je příliš velká."), "code": "image_too_large"},
         status=status.HTTP_400_BAD_REQUEST,
     )
 
@@ -11749,7 +11822,7 @@ def _menu_scan_too_large_response() -> Response:
 def _menu_scan_vision_unavailable() -> Response:
     return Response(
         {
-            "detail": "Skenování menu teď nejede, zkus to za chvíli.",
+            "detail": gettext("Skenování menu teď nejede, zkus to za chvíli."),
             "code": "vision_unavailable",
         },
         status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -11759,7 +11832,7 @@ def _menu_scan_vision_unavailable() -> Response:
 def _menu_scan_daily_cap_response() -> Response:
     return Response(
         {
-            "detail": "Skenování menu má pro dnešek vyčerpaný limit. Zkus to zítra.",
+            "detail": gettext("Skenování menu má pro dnešek vyčerpaný limit. Zkus to zítra."),
             "code": "daily_cap",
         },
         status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -11832,7 +11905,7 @@ class MenuScanView(APIView):
             return _menu_scan_too_large_response()
         if upload is None:
             return Response(
-                {"detail": "Chybí fotka menu.", "code": "image_missing"},
+                {"detail": gettext("Chybí fotka menu."), "code": "image_missing"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -11897,7 +11970,7 @@ class NicknameAvailableView(APIView):
         nickname = request.query_params.get("nickname")
         if nickname is None or not nickname.strip():
             return Response(
-                {"detail": "Chybí parametr 'nickname'.", "code": "nickname_missing"},
+                {"detail": gettext("Chybí parametr 'nickname'."), "code": "nickname_missing"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         nickname = nickname.strip()

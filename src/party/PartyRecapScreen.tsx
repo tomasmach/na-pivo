@@ -1,12 +1,13 @@
 /** Finished shared evening, derived only from NightRecord. */
 
 import React from 'react';
+import { gameDisplayName } from './gameCatalog';
 import { ActivityIndicator, Image, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
-import { beerCountLabel } from '@/i18n/plural';
+import { beerCountLabel, intlLocale, t } from '@/i18n';
 import { Share2Icon } from '@/components/shared/IconGlyph';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -14,6 +15,7 @@ import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { NightRoute } from '@/mocks/NightRoute';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { StatGrid } from '@/mocks/StatGrid';
+import { displayPersonName } from '@/party/nightBuilder';
 import {
   nightByBeer,
   nightMinutes,
@@ -73,8 +75,10 @@ export default function PartyRecapScreen() {
   const byBeer = nightByBeer(night);
   const games = night.games.filter((game) => game.result);
   const route = stops.map((stop) => stop.pubName).join('  →  ');
-  const title = stops[0]?.pubName ? `Večer v ${stops[0].pubName}` : 'Pivní večer';
-  const dateLabel = new Intl.DateTimeFormat('cs-CZ', {
+  const title = stops[0]?.pubName
+    ? t.party.nightTitleAtPub(stops[0].pubName)
+    : t.party.nightTitleFallback;
+  const dateLabel = new Intl.DateTimeFormat(intlLocale, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -102,14 +106,12 @@ export default function PartyRecapScreen() {
           <>
             <ActivityIndicator color={Colors.amber} />
             <Text style={styles.recoveryText} maxFontSizeMultiplier={FontScaleCap.body}>
-              Tahám poslední večer…
+              {t.partyRecap.recovering}
             </Text>
           </>
         ) : (
           <Text style={styles.recoveryText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {recoveryState === 'empty'
-              ? 'Zatím nemáš dokončený večer.'
-              : 'Ten večer teď nenačtu.'}
+            {recoveryState === 'empty' ? t.partyRecap.empty : t.partyRecap.failed}
           </Text>
         )}
       </View>
@@ -126,7 +128,7 @@ export default function PartyRecapScreen() {
   return (
     <View style={styles.screen}>
       <View style={[styles.shareFloat, { top: insets.top + Spacing.sm }]}>
-        <GlassIconButton size={40} accessibilityLabel="Sdílet večer" onPress={share}>
+        <GlassIconButton size={40} accessibilityLabel={t.partyRecap.a11yShare} onPress={share}>
           <SymbolView
             name="square.and.arrow.up"
             size={20}
@@ -165,7 +167,7 @@ export default function PartyRecapScreen() {
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {night.people.map((person) => person.name).join(', ')}
+              {night.people.map((person) => displayPersonName(person.name)).join(', ')}
             </Text>
           </View>
         ) : null}
@@ -199,16 +201,16 @@ export default function PartyRecapScreen() {
             columns={3}
             hero
             stats={[
-              { label: 'Piva', value: String(tally.beers) },
-              { label: 'Večer', value: formatElapsed(minutes) },
-              { label: 'Hospody', value: String(stops.length) },
+              { label: t.partyRecap.statBeers, value: String(tally.beers) },
+              { label: t.partyRecap.statNight, value: formatElapsed(minutes) },
+              { label: t.partyRecap.statPubs, value: String(stops.length) },
             ]}
           />
         </View>
 
         {people.length > 0 ? (
           <View style={styles.section}>
-            <SectionTitle>Kdo tam byl</SectionTitle>
+            <SectionTitle>{t.partyRecap.sectionPeople}</SectionTitle>
             <View style={styles.peopleList}>
               {people.map((person) => (
                 <View key={person.id} style={styles.personRow}>
@@ -223,7 +225,7 @@ export default function PartyRecapScreen() {
                     numberOfLines={1}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {person.name}
+                    {displayPersonName(person.name)}
                   </Text>
                   <Text style={styles.personScore} maxFontSizeMultiplier={FontScaleCap.body}>
                     {beerCountLabel(person.beers)}
@@ -236,7 +238,7 @@ export default function PartyRecapScreen() {
 
         {stops.length > 0 ? (
           <View style={styles.section}>
-            <SectionTitle>Štace</SectionTitle>
+            <SectionTitle>{t.partyRecap.sectionStops}</SectionTitle>
             {routeStops.length > 0 ? (
               <View style={styles.map}>
                 <NightRoute stops={routeStops} height={168} caption={false} />
@@ -268,7 +270,7 @@ export default function PartyRecapScreen() {
 
         {byBeer.length > 0 ? (
           <View style={styles.section}>
-            <SectionTitle>Jak to šlo</SectionTitle>
+            <SectionTitle>{t.partyRecap.sectionChart}</SectionTitle>
             <NightChart
               rows={byBeer.map((row) => ({ label: row.beer, value: row.count }))}
               shape={shape}
@@ -279,23 +281,23 @@ export default function PartyRecapScreen() {
 
         {games.length > 0 ? (
           <View style={styles.section}>
-            <SectionTitle>Hry</SectionTitle>
+            <SectionTitle>{t.partyRecap.sectionGames}</SectionTitle>
             {games.map((game) => (
               <View key={`${game.key}:${game.startedAt}`} style={styles.game}>
                 <Text style={styles.gameName} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {game.name}
+                  {gameDisplayName(game)}
                 </Text>
                 <Text style={styles.gameResult} maxFontSizeMultiplier={FontScaleCap.body}>
                   {game.result?.paying
-                    ? `Platí ${game.result.paying}`
+                    ? t.partyRecap.gamePaying(displayPersonName(game.result.paying))
                     : game.result?.winner
-                      ? `Vyhrál ${game.result.winner}`
-                      : 'Odehráno'}
+                      ? t.partyRecap.gameWinner(displayPersonName(game.result.winner))
+                      : t.partyRecap.gamePlayed}
                 </Text>
                 {game.result?.scores.map((score, index) => (
                   <View key={`${score.name}:${index}`} style={styles.scoreRow}>
                     <Text style={styles.scoreName} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {score.name}
+                      {displayPersonName(score.name)}
                     </Text>
                     <Text style={styles.scoreValue} allowFontScaling={false}>
                       {score.score}

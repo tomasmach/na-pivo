@@ -28,7 +28,7 @@ import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { countNumeralSize } from '@/counter/CoasterCard';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { StatGrid, type Stat } from '@/mocks/StatGrid';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -124,7 +124,7 @@ export function NightCard({
           {count}
         </Text>
         <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {count > 0 ? nounLabel : cs.diary.emptyNoun}
+          {count > 0 ? nounLabel : t.diary.emptyNoun}
         </Text>
       </View>
 

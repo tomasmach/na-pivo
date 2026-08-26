@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 import { create } from 'zustand';
 
 import { exportMyAccountData } from '@/data/accountExport';
@@ -551,7 +553,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
           return {
             ok: false as const,
             code: 'account_changed',
-            detail: 'Účet se mezitím změnil. Smazání potvrď znovu.',
+            detail: t.clientErrors.accountChangedDelete,
           };
         }
         bumpAccountBoundary();

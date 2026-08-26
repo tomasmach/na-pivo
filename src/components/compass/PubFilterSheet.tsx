@@ -51,7 +51,7 @@ import {
   suggestBeerBrands,
   type BeerBrandSuggestion,
 } from '@/data/beerSuggestionsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -76,7 +76,7 @@ const AMENITY_ICONS: Record<AmenityKey, Glyph> = {
 };
 
 const SECTION_ORDER = ['fun', 'practical', 'seating'] as const;
-const SECTION_LABELS = cs.compass.amenityFilterSections;
+const SECTION_LABELS = t.compass.amenityFilterSections;
 
 const FILTERABLE_AMENITIES = AMENITIES.filter((amenity) => amenity.mapFilterable);
 
@@ -215,9 +215,9 @@ export function PubFilterSheet({
           <View style={styles.grabber} />
           <View style={styles.titleRow}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.compass.pubFilterTitle}
+              {t.compass.pubFilterTitle}
             </Text>
-            <CloseButton onPress={onClose} label={cs.a11y.closePubFilters} />
+            <CloseButton onPress={onClose} label={t.a11y.closePubFilters} />
           </View>
 
           <KeyboardAwareScrollView
@@ -228,21 +228,21 @@ export function PubFilterSheet({
             showsVerticalScrollIndicator={false}
           >
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.compass.beerFilterSection}
+              {t.compass.beerFilterSection}
             </Text>
             <View style={styles.searchRow}>
               <SearchIcon size={16} color={Colors.mutedText} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder={draft.beerBrand?.label ?? cs.compass.beerFilterSearchPlaceholder}
+                placeholder={draft.beerBrand?.label ?? t.compass.beerFilterSearchPlaceholder}
                 placeholderTextColor={draft.beerBrand ? Colors.foam : Colors.mutedText}
                 style={styles.searchInput}
                 autoCapitalize="words"
                 autoCorrect={false}
                 returnKeyType="search"
                 maxFontSizeMultiplier={FontScaleCap.body}
-                accessibilityLabel={cs.a11y.beerBrandFilterInput}
+                accessibilityLabel={t.a11y.beerBrandFilterInput}
               />
               {(query.length > 0 || draft.beerBrand) && (
                 <Pressable
@@ -250,7 +250,7 @@ export function PubFilterSheet({
                   hitSlop={10}
                   style={styles.searchClear}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.clearBeerBrandFilter}
+                  accessibilityLabel={t.a11y.clearBeerBrandFilter}
                 >
                   <XIcon size={15} color={Colors.foamMuted} />
                 </Pressable>
@@ -262,8 +262,8 @@ export function PubFilterSheet({
                 {suggestionsPending || visibleSuggestions.length === 0 ? (
                   <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
                     {suggestionsPending
-                      ? cs.compass.beerFilterSearching
-                      : cs.compass.beerFilterNoResults}
+                      ? t.compass.beerFilterSearching
+                      : t.compass.beerFilterNoResults}
                   </Text>
                 ) : (
                   visibleSuggestions.map((suggestion, index) => (
@@ -272,7 +272,7 @@ export function PubFilterSheet({
                       onPress={() => chooseSuggestion(suggestion)}
                       style={[styles.resultRow, index > 0 && styles.resultRowDivider]}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.a11y.beerBrandFilterSuggestion(suggestion.name)}
+                      accessibilityLabel={t.a11y.beerBrandFilterSuggestion(suggestion.name)}
                     >
                       <BeerIcon size={15} color={Colors.mutedText} />
                       <Text
@@ -297,7 +297,7 @@ export function PubFilterSheet({
                       active={active}
                       icon={BeerIcon}
                       onPress={() => chooseBrand(active ? null : { key: brand.key, label: brand.short })}
-                      accessibilityLabel={cs.a11y.selectBeerBrand(brand.label)}
+                      accessibilityLabel={t.a11y.selectBeerBrand(brand.label)}
                     />
                   );
                 })}
@@ -308,7 +308,7 @@ export function PubFilterSheet({
               <View style={styles.rotatingFilterHint}>
                 <RefreshCwIcon size={14} color={Colors.amber} />
                 <Text style={styles.rotatingFilterHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.compass.beerFilterRotatingHint}
+                  {t.compass.beerFilterRotatingHint}
                 </Text>
               </View>
             ) : null}
@@ -321,11 +321,11 @@ export function PubFilterSheet({
             />
 
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.compass.otherPlacesSection}
+              {t.compass.otherPlacesSection}
             </Text>
             <View style={styles.chipsWrap}>
               <FilterChip
-                label={cs.compass.otherPlacesFilter}
+                label={t.compass.otherPlacesFilter}
                 active={draft.includeOtherPlaces === true}
                 icon={MapPinnedIcon}
                 onPress={() =>
@@ -334,7 +334,7 @@ export function PubFilterSheet({
                     includeOtherPlaces: current.includeOtherPlaces !== true,
                   }))
                 }
-                accessibilityLabel={cs.a11y.toggleOtherTapPlaces}
+                accessibilityLabel={t.a11y.toggleOtherTapPlaces}
               />
             </View>
             {groupedAmenities.map(({ section, items }) => (
@@ -361,8 +361,8 @@ export function PubFilterSheet({
               accessibilityLiveRegion="polite"
             >
               {limitReached
-                ? cs.compass.pubFilterLimit(MAX_AMENITY_FILTERS)
-                : cs.compass.pubFilterMatchAll}
+                ? t.compass.pubFilterLimit(MAX_AMENITY_FILTERS)
+                : t.compass.pubFilterMatchAll}
             </Text>
           </KeyboardAwareScrollView>
 
@@ -372,13 +372,13 @@ export function PubFilterSheet({
                 onPress={clear}
                 style={styles.secondaryButton}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.clearPubFilters}
+                accessibilityLabel={t.a11y.clearPubFilters}
               >
                 <Text
                   style={styles.secondaryButtonText}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.compass.pubFilterClear}
+                  {t.compass.pubFilterClear}
                 </Text>
               </Pressable>
             ) : null}
@@ -386,13 +386,13 @@ export function PubFilterSheet({
               onPress={apply}
               style={styles.primaryButton}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.applyPubFilters}
+              accessibilityLabel={t.a11y.applyPubFilters}
             >
               <Text
                 style={styles.primaryButtonText}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.compass.pubFilterApply}
+                {t.compass.pubFilterApply}
               </Text>
             </Pressable>
           </View>
@@ -518,12 +518,12 @@ function PriceFilterSection({
 
   const minValueLabel =
     priceMinCzk === null
-      ? cs.compass.priceFilterFromLowest
-      : cs.compass.priceFilterFrom(formatPrice(priceMinCzk, priceCurrency));
+      ? t.compass.priceFilterFromLowest
+      : t.compass.priceFilterFrom(formatPrice(priceMinCzk, priceCurrency));
   const maxValueLabel =
     priceMaxCzk === null
-      ? cs.compass.priceFilterNoLimit
-      : cs.compass.priceFilterMax(formatPrice(priceMaxCzk, priceCurrency));
+      ? t.compass.priceFilterNoLimit
+      : t.compass.priceFilterMax(formatPrice(priceMaxCzk, priceCurrency));
 
   const onMinAccessibilityAction = useCallback(
     (event: { nativeEvent: { actionName: string } }) => {
@@ -550,10 +550,10 @@ function PriceFilterSection({
     return (
       <View>
         <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.compass.priceFilterLabel}
+          {t.compass.priceFilterLabel}
         </Text>
         <Text style={styles.priceNoData} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.priceFilterNoData}
+          {t.compass.priceFilterNoData}
         </Text>
       </View>
     );
@@ -568,11 +568,11 @@ function PriceFilterSection({
     <View>
       <View style={styles.priceHeaderRow}>
         <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.compass.priceFilterLabel}
+          {t.compass.priceFilterLabel}
         </Text>
         {rangeActive && (
           <Text style={styles.priceCount} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.compass.priceFilterPubCount(matchCount)}
+            {t.compass.priceFilterPubCount(matchCount)}
           </Text>
         )}
       </View>
@@ -623,7 +623,7 @@ function PriceFilterSection({
             style={[styles.priceThumb, { transform: [{ translateX: minFraction * thumbTravel }] }]}
             accessible
             accessibilityRole="adjustable"
-            accessibilityLabel={cs.a11y.priceFilterMinSlider}
+            accessibilityLabel={t.a11y.priceFilterMinSlider}
             accessibilityValue={{ text: minValueLabel }}
             accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
             onAccessibilityAction={onMinAccessibilityAction}
@@ -632,7 +632,7 @@ function PriceFilterSection({
             style={[styles.priceThumb, { transform: [{ translateX: maxFraction * thumbTravel }] }]}
             accessible
             accessibilityRole="adjustable"
-            accessibilityLabel={cs.a11y.priceFilterMaxSlider}
+            accessibilityLabel={t.a11y.priceFilterMaxSlider}
             accessibilityValue={{ text: maxValueLabel }}
             accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
             onAccessibilityAction={onMaxAccessibilityAction}
@@ -653,7 +653,7 @@ function PriceFilterSection({
       </View>
       {rangeActive && (
         <Text style={styles.priceHint} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.priceFilterHidesUnknown}
+          {t.compass.priceFilterHidesUnknown}
         </Text>
       )}
     </View>
@@ -713,7 +713,7 @@ function AmenityChip({
       active={active}
       icon={Icon}
       onPress={onPress}
-      accessibilityLabel={cs.a11y.togglePubAmenityFilter(amenity.label)}
+      accessibilityLabel={t.a11y.togglePubAmenityFilter(amenity.label)}
     />
   );
 }

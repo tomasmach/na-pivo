@@ -147,9 +147,9 @@ describe('CommunityMockScreen', () => {
   });
 
   it('uses Czech score forms in the leaderboard', () => {
-    expect(scoreUnit('Hospody', 3)).toBe('hospody');
-    expect(scoreUnit('Hospody', 5)).toBe('hospod');
-    expect(scoreUnit('Mapér XP', 3)).toBe('XP');
+    expect(scoreUnit('pubs', 3)).toBe('hospody');
+    expect(scoreUnit('pubs', 5)).toBe('hospod');
+    expect(scoreUnit('mapper', 3)).toBe('XP');
   });
 
   it('offers only alcohol-safe metrics and defaults to pubs', async () => {

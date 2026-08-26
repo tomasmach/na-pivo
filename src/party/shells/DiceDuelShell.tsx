@@ -46,6 +46,8 @@ import {
   type GameHostHandle,
 } from "@/games/GameHost";
 import { GameResult } from "@/games/GameResult";
+import { t } from "@/i18n";
+import { displayPersonName, ME_NAME } from "@/party/nightBuilder";
 import { DurableFinishPending, useDurableFinish } from "@/party/shells/DurableFinish";
 import {
   isOver,
@@ -92,9 +94,9 @@ function throwDice(): [number, number] {
  * is how a game starts feeling like a slot machine.
  */
 function callFor(name: string, sum: number): string | null {
-  if (sum === 12) return `${name} má dvanáct!`;
-  if (sum === 2) return `${name}… dvě. Au.`;
-  if (sum >= 10) return `${name} ${sum}`;
+  if (sum === 12) return t.gameShell.diceTwelve(name);
+  if (sum === 2) return t.gameShell.diceSnakeEyes(name);
+  if (sum >= 10) return t.gameShell.diceHigh(name, sum);
   return null;
 }
 
@@ -173,7 +175,7 @@ export function DiceDuelShell({
           ...row,
           name:
             players.find((player) => player.id === row.playerId)?.name ??
-            "Hráč",
+            t.gameShell.unknownPlayer,
         })),
       }
     : null;
@@ -243,7 +245,7 @@ export function DiceDuelShell({
       (candidate) => candidate.id === payload.playerId,
     );
     if (cheerTimer.current) clearTimeout(cheerTimer.current);
-    setCheer(callFor(player?.name ?? "Hráč", sum));
+    setCheer(callFor(displayPersonName(player?.name ?? t.gameShell.unknownPlayer), sum));
     if (controlled && payload.dice.length === 2) {
       const left = payload.dice[0];
       const right = payload.dice[1];
@@ -269,25 +271,28 @@ export function DiceDuelShell({
   const playerOf = (playerId: string | null) =>
     players.find((player) => player.id === playerId) ?? null;
   const tintOf = (playerId: string) => playerOf(playerId)?.tint ?? Colors.amber;
+  /** For the screen only: the finish result keeps the stored name. */
   const nameOf = (playerId: string | null) =>
-    playerOf(playerId)?.name ?? "Hráč";
+    displayPersonName(playerOf(playerId)?.name ?? t.gameShell.unknownPlayer);
   const winners = roundWinners(state);
   const loser = roundLoser(state);
   // Derived once, read twice: the screen shows the pieces, VoiceOver hears
   // them joined into a single round announcement.
   const verdictLine =
     winners.length > 1
-      ? `${winners.map(nameOf).join(" a ")} berou kolo`
-      : `${nameOf(winners[0] ?? null)} bere kolo`;
+      ? t.gameShell.roundWinners(winners.map(nameOf).join(t.gameShell.nameJoiner))
+      : t.gameShell.roundWinner(nameOf(winners[0] ?? null));
   const loserLine =
     loser && !winners.includes(loser)
-      ? `Nejmíň hodil ${nameOf(loser)}.`
+      ? t.gameShell.lowestRoll(nameOf(loser))
       : null;
   const roundAnnouncement = loserLine
     ? `${verdictLine} ${loserLine}`
     : verdictLine;
   const turnLine =
-    playerOf(turn)?.name === "Ty" ? "Házíš ty" : `${nameOf(turn)} hází`;
+    playerOf(turn)?.name === ME_NAME
+      ? t.gameShell.yourTurnRoll
+      : t.gameShell.turnRoll(nameOf(turn));
 
   const announcedTurn = React.useRef(turn);
   React.useEffect(() => {
@@ -512,12 +517,12 @@ export function DiceDuelShell({
 
       <View style={styles.dock}>
         <StagePill
-          label={roundDone ? "Další kolo" : rolling ? "…" : "Hoď"}
+          label={roundDone ? t.gameShell.nextRound : rolling ? "…" : t.gameShell.roll}
           onPress={roundDone ? nextRound : roll}
           disabled={spectator || (!roundDone && rolling)}
           tone={spectator ? "muted" : "primary"}
           accessibilityLabel={
-            roundDone ? "Další kolo" : `Hodit za ${nameOf(turn)}`
+            roundDone ? t.gameShell.nextRound : t.gameShell.rollFor(nameOf(turn))
           }
         />
       </View>

@@ -26,6 +26,7 @@ from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Lower
 from django.utils import timezone
+from django.utils.translation import gettext_lazy
 
 from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name
@@ -671,6 +672,15 @@ class Account(models.Model):
     )
 
     # ---------- preferences ----------
+    locale = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        help_text=(
+            "Last known app language ('cs' or 'en'). Empty means unknown, which "
+            "renders Czech. Used out of request context (push, e-mail, cron)."
+        ),
+    )
     hide_pub_names = models.BooleanField(
         default=False,
         help_text="Whether the app should hide pub names behind the reveal interaction.",
@@ -1117,6 +1127,15 @@ class PushDevice(models.Model):
     )
     enabled = models.BooleanField(default=True, db_index=True)
     app_version = models.CharField(max_length=64, blank=True, default="")
+    locale = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        help_text=(
+            "App language of this device ('cs' or 'en'). Empty means unknown, "
+            "which renders Czech. Released app versions never send it."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     last_registered_at = models.DateTimeField(auto_now=True, db_index=True)
@@ -2721,8 +2740,19 @@ class ReleaseNote(models.Model):
     )
     title = models.CharField(
         max_length=120,
+        # NOT lazy: this default is written into the Czech column at save time,
+        # so a lazy proxy would store whatever language the admin was browsing in.
         default="Co je nového",
         help_text="Headline shown at the top of the popup.",
+    )
+    title_en = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text=(
+            "English headline. Blank means this note has no English copy and the "
+            "app hides the popup for English users."
+        ),
     )
     is_published = models.BooleanField(
         default=False,
@@ -2772,6 +2802,12 @@ class ReleaseNoteItem(models.Model):
     text = models.CharField(
         max_length=280,
         help_text="One change in plain Czech, e.g. 'Přidali jsme otevírací dobu hospod.'",
+    )
+    text_en = models.CharField(
+        max_length=280,
+        blank=True,
+        default="",
+        help_text="The same change in English. Blank means no English copy for this bullet.",
     )
     order = models.PositiveIntegerField(
         default=0,
@@ -3234,7 +3270,7 @@ class PubExternalBeerMenu(models.Model):
     """
 
     class Source(models.TextChoices):
-        PIVAROVA_MAPA = "pivarova_mapa", "Pivařova mapa"
+        PIVAROVA_MAPA = "pivarova_mapa", gettext_lazy("Pivařova mapa")
 
     cache_key = models.CharField(max_length=12, db_index=True)
     name = models.CharField(max_length=255)
@@ -4108,11 +4144,11 @@ class AmenityKind(models.Model):
     """
 
     class Group(models.TextChoices):
-        PAYMENT = "payment", "Platba"
-        SEATING = "seating", "Posezení"
-        GAMES = "games", "Zábava"
-        ATMOSPHERE = "atmosphere", "Atmosféra"
-        PRACTICAL = "practical", "Praktické"
+        PAYMENT = "payment", gettext_lazy("Platba")
+        SEATING = "seating", gettext_lazy("Posezení")
+        GAMES = "games", gettext_lazy("Zábava")
+        ATMOSPHERE = "atmosphere", gettext_lazy("Atmosféra")
+        PRACTICAL = "practical", gettext_lazy("Praktické")
 
     key = models.SlugField(
         max_length=40,
@@ -4126,6 +4162,18 @@ class AmenityKind(models.Model):
         blank=True,
         default="",
         help_text="Optional compact chip label.",
+    )
+    label_en = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        help_text="English display label, e.g. 'Card payment'. Falls back to label when blank.",
+    )
+    short_label_en = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        help_text="Optional compact English chip label.",
     )
     icon = models.CharField(
         max_length=40,

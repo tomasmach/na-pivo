@@ -11,6 +11,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, time, timedelta
 
 from django.db.models import Exists, OuterRef, Q
+from django.utils.translation import gettext_lazy
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -50,18 +51,20 @@ def _challenge(
     reward: str,
     rules: list[str],
 ) -> dict:
+    # The catalogue below holds lazy msgids; render them HERE so the copy comes
+    # out in the language of the request being served, not the import-time one.
     return {
         "id": key,
-        "title": title,
+        "title": str(title),
         "glyph": glyph,
         "done": done,
         "goal": goal,
-        "unit": unit,
+        "unit": str(unit),
         "progress": min(1, done / goal) if goal else 0,
-        "blurb": blurb,
+        "blurb": str(blurb),
         "deadline": deadline.isoformat(),
-        "reward": reward,
-        "rules": rules,
+        "reward": str(reward),
+        "rules": [str(rule) for rule in rules],
     }
 
 
@@ -175,50 +178,50 @@ def _challenge_rows(progress: dict[str, int], *, deadline: date) -> list[dict]:
     return [
         _challenge(
             key="new-pubs-month",
-            title="Deset nových hospod",
+            title=gettext_lazy("Deset nových hospod"),
             glyph="places",
             done=progress["new-pubs-month"],
             goal=10,
-            unit="hospod",
-            blurb="Deset podniků, kde jsi před tímhle měsícem ještě neseděl.",
+            unit=gettext_lazy("hospod"),
+            blurb=gettext_lazy("Deset podniků, kde jsi před tímhle měsícem ještě neseděl."),
             deadline=deadline,
-            reward="Odznak Objevitel",
+            reward=gettext_lazy("Odznak Objevitel"),
             rules=[
-                "Počítá se potvrzená návštěva hospody v tomhle měsíci.",
-                "Podnik, kde už jsi byl dřív, se nepočítá.",
-                "Každá hospoda se započítá jen jednou.",
+                gettext_lazy("Počítá se potvrzená návštěva hospody v tomhle měsíci."),
+                gettext_lazy("Podnik, kde už jsi byl dřív, se nepočítá."),
+                gettext_lazy("Každá hospoda se započítá jen jednou."),
             ],
         ),
         _challenge(
             key="thursday-streak",
-            title="Tři čtvrtky po sobě",
+            title=gettext_lazy("Tři čtvrtky po sobě"),
             glyph="rhythm",
             done=progress["thursday-streak"],
             goal=3,
-            unit="čtvrtků",
-            blurb="Tři čtvrteční večery v podniku bez vynechání.",
+            unit=gettext_lazy("čtvrtků"),
+            blurb=gettext_lazy("Tři čtvrteční večery v podniku bez vynechání."),
             deadline=deadline,
-            reward="Odznak Čtvrtkař",
+            reward=gettext_lazy("Odznak Čtvrtkař"),
             rules=[
-                "Počítá se pijácký den, který začne ve čtvrtek.",
-                "Musí u něj být potvrzená návštěva podniku.",
-                "Vynechaný čtvrtek sérii ukončí.",
+                gettext_lazy("Počítá se pijácký den, který začne ve čtvrtek."),
+                gettext_lazy("Musí u něj být potvrzená návštěva podniku."),
+                gettext_lazy("Vynechaný čtvrtek sérii ukončí."),
             ],
         ),
         _challenge(
             key="new-breweries-month",
-            title="Ochutnej pět pivovarů",
+            title=gettext_lazy("Ochutnej pět pivovarů"),
             glyph="taste",
             done=progress["new-breweries-month"],
             goal=5,
-            unit="pivovarů",
-            blurb="Pět pivovarů, které letos ochutnáváš poprvé.",
+            unit=gettext_lazy("pivovarů"),
+            blurb=gettext_lazy("Pět pivovarů, které letos ochutnáváš poprvé."),
             deadline=deadline,
-            reward="Odznak Ochutnávač",
+            reward=gettext_lazy("Odznak Ochutnávač"),
             rules=[
-                "Počítá se rozpoznaný pivovar u piva v deníčku.",
-                "Letos už ochutnaný pivovar se znovu nepočítá.",
-                "Podezřelé záznamy se do výzvy nezapočítají.",
+                gettext_lazy("Počítá se rozpoznaný pivovar u piva v deníčku."),
+                gettext_lazy("Letos už ochutnaný pivovar se znovu nepočítá."),
+                gettext_lazy("Podezřelé záznamy se do výzvy nezapočítají."),
             ],
         ),
     ]

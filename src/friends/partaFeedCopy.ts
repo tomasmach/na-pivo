@@ -17,46 +17,68 @@
  * Pure functions only — every branch here is unit-tested.
  */
 
+import { intlLocale, plural, t } from '@/i18n';
+
 import type { PartaFeedDrink, PartaFeedSitting } from '@/data/partaFeedClient';
 
-/** Czech counts split at 1 / 2–4 / 5+ (and 0 takes the 5+ form). */
-export interface CzechPlural {
-  one: string;
-  few: string;
-  many: string;
+/**
+ * A counted noun in both languages: Czech splits at 1 / 2–4 / 5+, English at
+ * 1 / everything else. `plural` picks the shape for the language in use.
+ */
+export interface DrinkNoun {
+  cs: { one: string; few: string; many: string };
+  en: { one: string; other: string };
 }
 
-export function pluralize(count: number, forms: CzechPlural): string {
-  const n = Math.abs(Math.floor(count));
-  if (n === 1) return forms.one;
-  if (n >= 2 && n <= 4) return forms.few;
-  return forms.many;
+export function pluralize(count: number, forms: DrinkNoun): string {
+  return plural(Math.abs(Math.floor(count)), forms);
 }
 
-const BEER_PLAIN: CzechPlural = { one: 'pivo', few: 'piva', many: 'piv' };
+const BEER_PLAIN: DrinkNoun = {
+  cs: { one: 'pivo', few: 'piva', many: 'piv' },
+  en: { one: 'beer', other: 'beers' },
+};
 
 /**
  * Beer nouns by how it was served. Draft is deliberately absent: it is the
  * default in a Czech pub, so naming it would be noise on almost every row.
  */
-const BEER_BY_SERVING: Record<string, CzechPlural> = {
-  bottle: { one: 'lahváč', few: 'lahváče', many: 'lahváčů' },
-  can: { one: 'plechovka', few: 'plechovky', many: 'plechovek' },
-  plastic_bottle: { one: 'petka', few: 'petky', many: 'petek' },
+const BEER_BY_SERVING: Record<string, DrinkNoun> = {
+  bottle: {
+    cs: { one: 'lahváč', few: 'lahváče', many: 'lahváčů' },
+    en: { one: 'bottle', other: 'bottles' },
+  },
+  can: {
+    cs: { one: 'plechovka', few: 'plechovky', many: 'plechovek' },
+    en: { one: 'can', other: 'cans' },
+  },
+  plastic_bottle: {
+    cs: { one: 'petka', few: 'petky', many: 'petek' },
+    en: { one: 'plastic bottle', other: 'plastic bottles' },
+  },
 };
 
-const SHOT: CzechPlural = { one: 'panák', few: 'panáky', many: 'panáků' };
-const WINE: CzechPlural = { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' };
+const SHOT: DrinkNoun = {
+  cs: { one: 'panák', few: 'panáky', many: 'panáků' },
+  en: { one: 'shot', other: 'shots' },
+};
+const WINE: DrinkNoun = {
+  cs: { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' },
+  en: { one: 'glass of wine', other: 'glasses of wine' },
+};
 
 /** "+ 1 další" / "+ 3 další" / "+ 6 dalších" — the tail of a mixed sitting. */
-const MORE: CzechPlural = { one: 'další', few: 'další', many: 'dalších' };
+const MORE: DrinkNoun = {
+  cs: { one: 'další', few: 'další', many: 'dalších' },
+  en: { one: 'more', other: 'more' },
+};
 
 /**
  * The counted noun for one drink line, or null when the drink has no natural
  * Czech noun and the row should fall back to "3× Kofola". Soft drinks land here
  * on purpose — "3 nealka" is not a thing anyone says.
  */
-export function drinkNoun(drink: PartaFeedDrink): CzechPlural | null {
+export function drinkNoun(drink: PartaFeedDrink): DrinkNoun | null {
   if (drink.drinkType === 'beer') {
     return BEER_BY_SERVING[drink.servingType] ?? BEER_PLAIN;
   }
@@ -71,7 +93,7 @@ export function describeDrink(drink: PartaFeedDrink): string {
   const name = drink.name.trim();
   if (!noun) {
     const counted = drink.count > 1 ? `${drink.count}× ` : '';
-    return name ? `${counted}${name}` : `${counted}nápoj`.trim();
+    return name ? `${counted}${name}` : `${counted}${t.partaFeed.drinkFallback}`.trim();
   }
   const head = `${drink.count} ${pluralize(drink.count, noun)}`;
   return name ? `${head} ${name}` : head;
@@ -105,16 +127,16 @@ export function sittingDetail(sitting: PartaFeedSitting): string {
 }
 
 const PLACE_LABELS: Record<string, string> = {
-  private: 'U někoho doma',
-  outdoors: 'Venku',
-  other: 'Mimo hospodu',
+  private: t.partaFeed.placePrivate,
+  outdoors: t.partaFeed.placeOutdoors,
+  other: t.vycep.outsidePub,
 };
 
 /** Where it happened: the pub's name, or an honest label when it was not one. */
 export function sittingPlace(sitting: PartaFeedSitting): string {
   const name = sitting.pubName.trim();
   if (name) return name;
-  return PLACE_LABELS[sitting.placeContext] ?? 'Mimo hospodu';
+  return PLACE_LABELS[sitting.placeContext] ?? t.vycep.outsidePub;
 }
 
 const DAY_MS = 86_400_000;
@@ -138,9 +160,9 @@ export function dayLabel(iso: string, now: number = Date.now()): string {
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return '';
   const days = Math.round((drinkingDayStart(now) - drinkingDayStart(at)) / DAY_MS);
-  if (days <= 0) return 'dneska';
-  if (days === 1) return 'včera';
-  if (days === 2) return 'předevčírem';
-  if (days <= 6) return `před ${days} dny`;
-  return new Date(at).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
+  if (days <= 0) return t.relativeTime.today;
+  if (days === 1) return t.relativeTime.yesterday;
+  if (days === 2) return t.relativeTime.dayBeforeYesterday;
+  if (days <= 6) return t.relativeTime.daysAgoLong(days);
+  return new Date(at).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }

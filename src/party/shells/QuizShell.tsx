@@ -37,6 +37,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckIcon } from "@/components/shared/IconGlyph";
 import { GameResult } from "@/games/GameResult";
+import { t } from "@/i18n";
+import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
   StageCard,
@@ -158,14 +160,14 @@ export function QuizShell({
   /** Teams still thinking. Named, because "3 čekají" makes nobody hurry. */
   const waiting = state.standings
     .filter((row) => !state.answered.includes(row.teamId))
-    .map((row) => row.teamName);
+    .map((row) => displayPersonName(row.teamName));
   const waitingLine = question
-    ? `Zamknuto. Chybí ${waiting.join(", ")}`
+    ? t.gameShell.quizWaiting(waiting.join(", "))
     : null;
   const shownWaitingLine = locked && !revealed ? waitingLine : null;
   const correctLabel =
     question && revealed
-      ? `${question.options[question.answer]}, správně`
+      ? t.gameShell.quizCorrect(question.options[question.answer] ?? "")
       : null;
 
   // accessibilityLiveRegion never fires on iOS, so the same beats are announced
@@ -341,7 +343,7 @@ export function QuizShell({
           <StageChips
             players={visibleStandings.map((row) => ({
               id: row.teamId,
-              name: row.teamName,
+              name: displayPersonName(row.teamName),
               tint: tintOf(row.teamId),
               score: row.score,
             }))}
@@ -353,20 +355,22 @@ export function QuizShell({
               be unblocked by a person who left is a quiz that ends there. */}
           {locked && !revealed && !spectator ? (
             <StagePill
-              label="Nečekat"
+              label={t.gameShell.quizSkipWait}
               tone="quiet"
               onPress={onReveal}
-              accessibilityLabel="Ukázat odpověď bez čekání"
+              accessibilityLabel={t.gameShell.quizSkipWaitA11y}
             />
           ) : null}
 
           {revealed && !spectator ? (
             <StagePill
               label={
-                index + 1 >= QUIZ_QUESTIONS.length ? "Výsledky" : "Další otázka"
+                index + 1 >= QUIZ_QUESTIONS.length
+                  ? t.gameShell.quizResults
+                  : t.gameShell.quizNextQuestion
               }
               onPress={onNext}
-              accessibilityLabel="Další otázka"
+              accessibilityLabel={t.gameShell.quizNextQuestion}
             />
           ) : null}
         </View>

@@ -49,7 +49,7 @@ import {
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { CounterCta } from '@/counter/CounterCta';
 import { OnboardingPreview } from '@/onboarding/OnboardingPreview';
 import { useOnboardingStore } from '@/stores/onboardingStore';
@@ -76,25 +76,25 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     key: 'compass',
-    title: cs.onboarding.slide1Title,
-    body: cs.onboarding.slide1Body,
-    bullets: cs.onboarding.slide1Bullets,
+    title: t.onboarding.slide1Title,
+    body: t.onboarding.slide1Body,
+    bullets: t.onboarding.slide1Bullets,
     icons: [CompassIcon, BeerIcon, ChartColumnIcon],
     preview: 'compass',
   },
   {
     key: 'diary',
-    title: cs.onboarding.slide2Title,
-    body: cs.onboarding.slide2Body,
-    bullets: cs.onboarding.slide2Bullets,
+    title: t.onboarding.slide2Title,
+    body: t.onboarding.slide2Body,
+    bullets: t.onboarding.slide2Bullets,
     icons: [UsersIcon, DicesIcon, CameraIcon],
     preview: 'diary',
   },
   {
     key: 'account',
-    title: cs.onboarding.slide3Title,
-    body: cs.onboarding.slide3Body,
-    bullets: cs.onboarding.slide3Bullets,
+    title: t.onboarding.slide3Title,
+    body: t.onboarding.slide3Body,
+    bullets: t.onboarding.slide3Bullets,
     icons: [RefreshCwIcon, TrophyIcon, ShieldIcon],
     preview: 'account',
   },
@@ -113,13 +113,13 @@ function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
       </Text>
       <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
         {item.key === 'account' && Platform.OS === 'android'
-          ? cs.onboarding.slide3BodyAndroid
+          ? t.onboarding.slide3BodyAndroid
           : item.body}
       </Text>
 
       <View style={styles.bullets}>
         {(item.key === 'account' && Platform.OS === 'android'
-          ? cs.onboarding.slide3BulletsAndroid
+          ? t.onboarding.slide3BulletsAndroid
           : item.bullets
         ).map((line, index) => {
           const Icon = item.icons[index] ?? BeerIcon;
@@ -225,7 +225,7 @@ export default function OnboardingScreen() {
         <View
           style={styles.dots}
           accessibilityRole="text"
-          accessibilityLabel={cs.a11y.onboardingStep(index + 1, SLIDES.length)}
+          accessibilityLabel={t.a11y.onboardingStep(index + 1, SLIDES.length)}
         >
           {SLIDES.map((slide, i) => (
             <View
@@ -253,9 +253,9 @@ export default function OnboardingScreen() {
 
       <View style={styles.ctaWrap}>
         <CounterCta
-          label={isLast ? cs.onboarding.slide3Cta : cs.onboarding.next}
+          label={isLast ? t.onboarding.slide3Cta : t.onboarding.next}
           onPress={isLast ? handleOpenAuth : handleNext}
-          accessibilityLabel={isLast ? cs.onboarding.slide3Cta : cs.onboarding.next}
+          accessibilityLabel={isLast ? t.onboarding.slide3Cta : t.onboarding.next}
         />
       </View>
 
@@ -267,11 +267,11 @@ export default function OnboardingScreen() {
           }}
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}
+          accessibilityLabel={isLast ? t.onboarding.slide3Later : t.onboarding.skip}
           hitSlop={8}
         >
           <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}
+            {isLast ? t.onboarding.slide3Later : t.onboarding.skip}
           </Text>
         </Pressable>
       </View>

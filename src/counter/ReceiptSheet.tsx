@@ -16,7 +16,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MinusIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -31,7 +31,7 @@ export interface ReceiptItem {
 
 export interface ReceiptSheetProps {
   visible: boolean;
-  /** Pre-composed cs.counter.receiptStarted('19:40'). */
+  /** Pre-composed t.counter.receiptStarted('19:40'). */
   startedAtLabel: string | null;
   beerItems: ReceiptItem[];
   otherItems: ReceiptItem[];
@@ -43,7 +43,7 @@ export interface ReceiptSheetProps {
 }
 
 function ReceiptRow({ item, onRemove }: { item: ReceiptItem; onRemove: (item: ReceiptItem) => void }) {
-  const countLine = `${cs.counter.perBeerCount(item.count)}${item.meta ? ' · ' + item.meta : ''}`;
+  const countLine = `${t.counter.perBeerCount(item.count)}${item.meta ? ' · ' + item.meta : ''}`;
 
   return (
     <View style={styles.row}>
@@ -64,7 +64,7 @@ function ReceiptRow({ item, onRemove }: { item: ReceiptItem; onRemove: (item: Re
         onPress={() => onRemove(item)}
         style={({ pressed }) => [styles.minusButton, pressed && styles.pressedDim]}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.counterRemoveIdentity(item.name)}
+        accessibilityLabel={t.a11y.counterRemoveIdentity(item.name)}
       >
         <MinusIcon size={18} color={Colors.foam} />
       </Pressable>
@@ -99,9 +99,9 @@ export function ReceiptSheet({
 
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.counter.receiptTitle}
+                {t.counter.receiptTitle}
               </Text>
-              <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+              <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
             </View>
 
             {startedAtLabel != null && (
@@ -134,7 +134,7 @@ export function ReceiptSheet({
             {totalLabel != null && hasItems && (
               <View style={styles.totalRow}>
                 <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.counter.receiptTotal}
+                  {t.counter.receiptTotal}
                 </Text>
                 <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {totalLabel}
@@ -144,11 +144,11 @@ export function ReceiptSheet({
 
             <View style={styles.footer}>
               <GlowButton
-                label={cs.counter.receiptClose}
+                label={t.counter.receiptClose}
                 variant="secondary"
                 glow="none"
                 onPress={onDone}
-                accessibilityLabel={cs.a11y.counterDone}
+                accessibilityLabel={t.a11y.counterDone}
               />
             </View>
           </View>

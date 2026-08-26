@@ -23,7 +23,7 @@ it('keeps the no-account limit in its own sentence', () => {
 
 it('appends the no-account sentence only when nobody is signed in', () => {
   expect(source).toContain('export function statsFooterCopy(signedIn: boolean)');
-  expect(source).toContain('signedIn\n    ? cs.diary.statsFooter');
-  expect(source).toContain('${cs.diary.statsFooter} ${cs.diary.statsFooterNoAccount}');
+  expect(source).toContain('signedIn\n    ? t.diary.statsFooter');
+  expect(source).toContain('${t.diary.statsFooter} ${t.diary.statsFooterNoAccount}');
   expect(source).toContain('footer={statsFooterCopy(signedIn)}');
 });

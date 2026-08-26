@@ -1,6 +1,7 @@
 /** Review and publish the real shared night. */
 
 import React from 'react';
+import { gameDisplayName } from './gameCatalog';
 import {
   BackHandler,
   Image,
@@ -29,6 +30,7 @@ import {
   nightPhotoReferences,
   nightPublishPayload,
 } from '@/party/nightPublish';
+import { displayPersonName } from '@/party/nightBuilder';
 import { nightByBeer, nightMe, nightMinutes, nightTally } from '@/party/nightRecord';
 import { rememberNightRecord, useNightRecord } from '@/party/useNightRecord';
 import { finishPartyToRecap } from '@/party/partyRouting';
@@ -43,7 +45,7 @@ import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 function currentTime(): number {
   return Date.now();
@@ -143,11 +145,11 @@ export default function FinishNightScreen() {
     setError(
       published
         ? isHost
-          ? 'Příspěvek je uložený, ale stůl se nepodařilo zavřít. Zkus to znovu.'
-          : 'Příspěvek je uložený, ale od stolu se nepodařilo odejít. Zkus to znovu.'
+          ? t.finishNight.errorCloseTablePublished
+          : t.finishNight.errorLeaveTablePublished
         : isHost
-          ? 'Stůl se nepodařilo zavřít. Zkus to znovu.'
-          : 'Od stolu se nepodařilo odejít. Zkus to znovu.',
+          ? t.finishNight.errorCloseTable
+          : t.finishNight.errorLeaveTable,
     );
     return false;
   };
@@ -200,7 +202,7 @@ export default function FinishNightScreen() {
         if (isRetriableNightError(result)) {
           const queued = await enqueueNightOp({ op: 'publish', payload });
           if (!queued) {
-            setError('Příspěvek se nepodařilo uložit. Zkus to znovu.');
+            setError(t.finishNight.errorSavePost);
             return;
           }
         } else {
@@ -216,7 +218,7 @@ export default function FinishNightScreen() {
       }
       await finishLocally(payload.endedAt);
     } catch {
-      setError('Večer se nepodařilo dokončit. Zkus to znovu.');
+      setError(t.finishNight.errorFinish);
     } finally {
       publishingRef.current = false;
       setPublishing(false);
@@ -232,7 +234,7 @@ export default function FinishNightScreen() {
       if (!(await closeSharedEvening(false))) return;
       await finishLocally(new Date(currentTime()).toISOString());
     } catch {
-      setError('Večer se nepodařilo dokončit. Zkus to znovu.');
+      setError(t.finishNight.errorFinish);
     } finally {
       publishingRef.current = false;
       setPublishing(false);
@@ -251,14 +253,14 @@ export default function FinishNightScreen() {
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Zpátky do večera"
+          accessibilityLabel={t.finishNight.a11yBack}
           accessibilityState={{ disabled: publishing }}
           hitSlop={8}
         >
           <XIcon size={18} color={Colors.foam} />
         </Pressable>
         <Text style={styles.topTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          Ukončit večer
+          {t.finishNight.title}
         </Text>
       </View>
 
@@ -270,16 +272,16 @@ export default function FinishNightScreen() {
           columns={4}
           compact
           stats={[
-            { label: 'Piva', value: String(tally.beers) },
-            { label: 'Večer', value: formatElapsed(minutes) },
-            { label: 'U stolu', value: String(activePeopleCount) },
-            { label: 'Druhů', value: String(byType.length) },
+            { label: t.finishNight.statBeers, value: String(tally.beers) },
+            { label: t.finishNight.statNight, value: formatElapsed(minutes) },
+            { label: t.finishNight.statAtTable, value: String(activePeopleCount) },
+            { label: t.finishNight.statKinds, value: String(byType.length) },
           ]}
         />
 
         <View style={styles.field}>
           <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-            Fotky
+            {t.finishNight.photosLabel}
           </Text>
           <ScrollView
             horizontal
@@ -290,7 +292,7 @@ export default function FinishNightScreen() {
               onPress={() => setPhotoOpen(true)}
               style={({ pressed }) => [styles.addPhoto, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Přidat fotku"
+              accessibilityLabel={t.finishNight.a11yAddPhoto}
             >
               <CameraIcon size={20} color={Colors.stout} />
             </Pressable>
@@ -303,7 +305,7 @@ export default function FinishNightScreen() {
         {played.length > 0 ? (
           <View style={styles.field}>
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              Hry
+              {t.finishNight.gamesLabel}
             </Text>
             {played.map((game) => (
               <Text
@@ -312,10 +314,10 @@ export default function FinishNightScreen() {
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
                 {game.result?.paying
-                  ? `${game.name} · platí ${game.result.paying}`
+                  ? t.finishNight.gamePaying(gameDisplayName(game), displayPersonName(game.result.paying))
                   : game.result?.winner
-                    ? `${game.name} · vyhrál ${game.result.winner}`
-                    : `${game.name} · odehráno`}
+                    ? t.finishNight.gameWinner(gameDisplayName(game), displayPersonName(game.result.winner))
+                    : t.finishNight.gamePlayed(gameDisplayName(game))}
               </Text>
             ))}
           </View>
@@ -324,7 +326,7 @@ export default function FinishNightScreen() {
         <View style={styles.field}>
           <View style={styles.roastRow}>
             <Text style={styles.roastLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              Roast večera
+              {t.finishNight.roastLabel}
             </Text>
             <Switch
               value={roastEnabled && roast !== null}
@@ -332,7 +334,7 @@ export default function FinishNightScreen() {
               onValueChange={setRoastEnabled}
               trackColor={{ false: withAlpha(Colors.foam, 0.14), true: Colors.amber }}
               thumbColor={Colors.foam}
-              accessibilityLabel="Přidat roast k příspěvku"
+              accessibilityLabel={t.finishNight.a11yRoastSwitch}
             />
           </View>
           {roastEnabled && roast ? (
@@ -349,10 +351,10 @@ export default function FinishNightScreen() {
               value={customTitle}
               onChangeText={setCustomTitle}
               maxLength={120}
-              placeholder="Jak to nazveš"
+              placeholder={t.finishNight.titlePlaceholder}
               placeholderTextColor={Colors.mutedText}
               style={styles.titleInput}
-              accessibilityLabel="Název večera"
+              accessibilityLabel={t.finishNight.a11yTitleInput}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
           )}
@@ -360,7 +362,7 @@ export default function FinishNightScreen() {
 
         <View style={styles.field}>
           <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-            Takhle to půjde ven
+            {t.finishNight.previewLabel}
           </Text>
           <View style={styles.postPreview}>
             <Text style={styles.postPreviewTitle} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -376,7 +378,7 @@ export default function FinishNightScreen() {
 
         <View style={styles.visibility}>
           <Text style={styles.visibilityTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-            Uvidí tvoje parta
+            {t.finishNight.visibility}
           </Text>
         </View>
       </KeyboardAwareScrollView>
@@ -398,11 +400,11 @@ export default function FinishNightScreen() {
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Ukončit a zveřejnit večer"
+              accessibilityLabel={t.finishNight.a11yPublish}
               accessibilityState={{ disabled: publishing, busy: publishing }}
             >
               <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {publishing ? 'Ukládám…' : 'Ukončit a zveřejnit'}
+                {publishing ? t.finishNight.publishing : t.finishNight.publish}
               </Text>
             </Pressable>
             <Pressable
@@ -414,18 +416,18 @@ export default function FinishNightScreen() {
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Ukončit večer bez zveřejnění"
+              accessibilityLabel={t.finishNight.a11yFinishPrivate}
               accessibilityState={{ disabled: publishing }}
             >
               <Text style={styles.privateFinishText} maxFontSizeMultiplier={FontScaleCap.body}>
-                Ukončit bez zveřejnění
+                {t.finishNight.finishPrivate}
               </Text>
             </Pressable>
           </>
         ) : (
           <>
             <Text style={styles.reason} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.party.nothingToPublish}
+              {t.party.nothingToPublish}
             </Text>
             <Pressable
               onPress={() => void finishPrivately()}
@@ -436,11 +438,11 @@ export default function FinishNightScreen() {
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Ukončit večer bez zveřejnění"
+              accessibilityLabel={t.finishNight.a11yFinishPrivate}
               accessibilityState={{ disabled: publishing, busy: publishing }}
             >
               <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {publishing ? 'Ukládám…' : 'Ukončit bez zveřejnění'}
+                {publishing ? t.finishNight.publishing : t.finishNight.finishPrivate}
               </Text>
             </Pressable>
           </>

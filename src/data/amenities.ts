@@ -17,6 +17,8 @@
  * match the backend seed exactly.
  */
 
+import { t } from '@/i18n';
+
 /**
  * Stable, group-prefixed wire slug. NEVER rename — persisted, sent over the wire,
  * future map-filter key. Add only.
@@ -48,9 +50,9 @@ export interface AmenityDef {
   key: AmenityKey;
   /** Group value — note the locked asymmetry: prefix `game_` maps to group `games`. */
   group: AmenityGroup;
-  /** Full Czech label (e.g. "Platba kartou"). */
+  /** Full localized label (e.g. "Platba kartou"). */
   label: string;
-  /** Short Czech chip label (e.g. "Karta"). */
+  /** Short localized chip label (e.g. "Karta"). */
   shortLabel: string;
   /** IconGlyph export name; the glyph must exist before the amenity ships. */
   icon: string;
@@ -83,21 +85,21 @@ export interface ReservedAmenityDef {
  */
 export const AMENITIES: readonly AmenityDef[] = [
   // — payment —
-  { key: 'payment_card', group: 'payment', label: 'Platba kartou', shortLabel: 'Karta', icon: 'CreditCardIcon', mapFilterable: true, order: 10 },
+  { key: 'payment_card', group: 'payment', label: t.mapPub.amenities.payment_card.label, shortLabel: t.mapPub.amenities.payment_card.short, icon: 'CreditCardIcon', mapFilterable: true, order: 10 },
   // — seating —
-  { key: 'seating_garden', group: 'seating', label: 'Zahrádka / terasa', shortLabel: 'Zahrádka', icon: 'TreePineIcon', mapFilterable: true, order: 30 },
-  { key: 'seating_barrier_free', group: 'seating', label: 'Bezbariérový přístup', shortLabel: 'Bezbariér', icon: 'AccessibilityIcon', mapFilterable: true, order: 40 },
+  { key: 'seating_garden', group: 'seating', label: t.mapPub.amenities.seating_garden.label, shortLabel: t.mapPub.amenities.seating_garden.short, icon: 'TreePineIcon', mapFilterable: true, order: 30 },
+  { key: 'seating_barrier_free', group: 'seating', label: t.mapPub.amenities.seating_barrier_free.label, shortLabel: t.mapPub.amenities.seating_barrier_free.short, icon: 'AccessibilityIcon', mapFilterable: true, order: 40 },
   // — games —
-  { key: 'game_darts', group: 'games', label: 'Šipky', shortLabel: 'Šipky', icon: 'TargetIcon', mapFilterable: true, order: 60 },
-  { key: 'game_billiards', group: 'games', label: 'Kulečník', shortLabel: 'Kulečník', icon: 'CircleDotIcon', mapFilterable: true, order: 70 },
-  { key: 'game_foosball', group: 'games', label: 'Stolní fotbal', shortLabel: 'Fotbálek', icon: 'SoccerBallIcon', mapFilterable: true, order: 80 },
-  { key: 'game_jukebox', group: 'games', label: 'Jukebox', shortLabel: 'Jukebox', icon: 'RadioIcon', mapFilterable: false, order: 90 },
+  { key: 'game_darts', group: 'games', label: t.mapPub.amenities.game_darts.label, shortLabel: t.mapPub.amenities.game_darts.short, icon: 'TargetIcon', mapFilterable: true, order: 60 },
+  { key: 'game_billiards', group: 'games', label: t.mapPub.amenities.game_billiards.label, shortLabel: t.mapPub.amenities.game_billiards.short, icon: 'CircleDotIcon', mapFilterable: true, order: 70 },
+  { key: 'game_foosball', group: 'games', label: t.mapPub.amenities.game_foosball.label, shortLabel: t.mapPub.amenities.game_foosball.short, icon: 'SoccerBallIcon', mapFilterable: true, order: 80 },
+  { key: 'game_jukebox', group: 'games', label: t.mapPub.amenities.game_jukebox.label, shortLabel: t.mapPub.amenities.game_jukebox.short, icon: 'RadioIcon', mapFilterable: false, order: 90 },
   // — atmosphere —
-  { key: 'atmosphere_live_music', group: 'atmosphere', label: 'Živá hudba', shortLabel: 'Živá hudba', icon: 'MicIcon', mapFilterable: false, order: 100 },
-  { key: 'atmosphere_sports_tv', group: 'atmosphere', label: 'Sport v televizi', shortLabel: 'Sport v TV', icon: 'TvIcon', mapFilterable: true, order: 110 },
+  { key: 'atmosphere_live_music', group: 'atmosphere', label: t.mapPub.amenities.atmosphere_live_music.label, shortLabel: t.mapPub.amenities.atmosphere_live_music.short, icon: 'MicIcon', mapFilterable: false, order: 100 },
+  { key: 'atmosphere_sports_tv', group: 'atmosphere', label: t.mapPub.amenities.atmosphere_sports_tv.label, shortLabel: t.mapPub.amenities.atmosphere_sports_tv.short, icon: 'TvIcon', mapFilterable: true, order: 110 },
   // — practical —
-  { key: 'practical_wifi', group: 'practical', label: 'Wi-Fi', shortLabel: 'Wi-Fi', icon: 'WifiIcon', mapFilterable: true, order: 140 },
-  { key: 'practical_parking', group: 'practical', label: 'Parkování', shortLabel: 'Parkování', icon: 'SquareParkingIcon', mapFilterable: true, order: 150 },
+  { key: 'practical_wifi', group: 'practical', label: t.mapPub.amenities.practical_wifi.label, shortLabel: t.mapPub.amenities.practical_wifi.short, icon: 'WifiIcon', mapFilterable: true, order: 140 },
+  { key: 'practical_parking', group: 'practical', label: t.mapPub.amenities.practical_parking.label, shortLabel: t.mapPub.amenities.practical_parking.short, icon: 'SquareParkingIcon', mapFilterable: true, order: 150 },
 ];
 
 /**
@@ -107,8 +109,8 @@ export const AMENITIES: readonly AmenityDef[] = [
  * keeps BeerIcon for the day it is activated.
  */
 export const RESERVED_AMENITIES: readonly ReservedAmenityDef[] = [
-  { key: 'practical_outdoor_tap', group: 'practical', label: 'Venkovní výčep', shortLabel: 'Výčep', mapFilterable: false, order: 170 },
-  { key: 'practical_tank_beer', group: 'practical', label: 'Tankové pivo', shortLabel: 'Tank', icon: 'BeerIcon', mapFilterable: true, order: 180 },
+  { key: 'practical_outdoor_tap', group: 'practical', label: t.amenities.outdoorTap.label, shortLabel: t.amenities.outdoorTap.short, mapFilterable: false, order: 170 },
+  { key: 'practical_tank_beer', group: 'practical', label: t.amenities.tankBeer.label, shortLabel: t.amenities.tankBeer.short, icon: 'BeerIcon', mapFilterable: true, order: 180 },
 ];
 
 /** Group display order (GET /v1/pub-amenities/kinds + wire order). */

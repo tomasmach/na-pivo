@@ -10,7 +10,7 @@ import {
   pubInfoFromPub,
 } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
-import { formatVolume, cs } from '@/i18n/cs';
+import { formatVolume, t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import {
   fetchPubNightsFeed,
@@ -102,7 +102,13 @@ function EmptyEditRow({ label, onPress }: { label: string; onPress: () => void }
   );
 }
 
-const TABS = cs.pubDetail.tabs;
+const TABS = t.pubDetail.tabs;
+/** Stable keys; TABS holds the labels in the same order. */
+const TAB_KEYS = ['info', 'activity'] as const;
+type PubDetailTab = (typeof TAB_KEYS)[number];
+const tabLabel = (key: PubDetailTab) => TABS[TAB_KEYS.indexOf(key)];
+const tabFromLabel = (label: string): PubDetailTab =>
+  TAB_KEYS[(TABS as readonly string[]).indexOf(label)] ?? 'info';
 
 type ActivityState =
   | { status: 'loading'; nights: PublishedNight[]; nextCursor: null }
@@ -136,7 +142,7 @@ export function PubDetailBody({
   // with. A local rename changes the display name immediately, but must not
   // silently create a second amenity identity for the same open detail.
   const [amenityIdentityName] = React.useState(() => initialPub.pub.name);
-  const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
+  const [tab, setTab] = React.useState<PubDetailTab>('info');
   const [renamed, setRenamed] = React.useState<{ id: string; name: string | null }>({
     id: initialPub.pub.id,
     name: null,
@@ -209,15 +215,15 @@ export function PubDetailBody({
     };
   }, [activityNonce, initialPub.name, viewerAccountId]);
 
-  const primaryLabel = picking ? cs.pubDetail.chooseHere : cs.pubDetail.startHere;
-  const houseBeer = pub.featuredTap?.name ?? cs.pubDetail.beerFallback;
+  const primaryLabel = picking ? t.pubDetail.chooseHere : t.pubDetail.startHere;
+  const houseBeer = pub.featuredTap?.name ?? t.pubDetail.beerFallback;
   const pubKey = geohash8(pub.pub.lat, pub.pub.lng);
   const communityOverride = useCommunityStore((state) => state.overrides[pubKey]);
   const weeklyHours = isHoursOverrideCurrent(communityOverride, pub.pub.hoursUpdatedAt)
     ? communityOverride?.hours ?? null
     : pub.pub.communityHours ?? null;
   const openingRows = React.useMemo(
-    () => buildOpeningHoursRows(weeklyHours, pub.pub.openingHours, cs.pubDetail.openingClosed),
+    () => buildOpeningHoursRows(weeklyHours, pub.pub.openingHours, t.pubDetail.openingClosed),
     [pub.pub.openingHours, weeklyHours],
   );
   const taps = React.useMemo(
@@ -367,7 +373,7 @@ export function PubDetailBody({
           onRenamed={(name) => setRenamed({ id: pub.pub.id, name })}
           onReported={closeAfterReport}
         />
-        {onClose ? <CloseButton onPress={onClose} label={cs.pubDetail.closeA11y} /> : null}
+        {onClose ? <CloseButton onPress={onClose} label={t.pubDetail.closeA11y} /> : null}
       </View>
 
       <View style={styles.metaRow}>
@@ -392,7 +398,7 @@ export function PubDetailBody({
 
       <View style={styles.actions}>
         <PillAction
-          label={cs.pubDetail.navigate}
+          label={t.pubDetail.navigate}
           onPress={() => {
             void openPubInMaps(pub.pub).catch(() => undefined);
           }}
@@ -406,17 +412,17 @@ export function PubDetailBody({
 
       <UnderlineTabs
         options={TABS}
-        value={tab}
-        onChange={setTab}
+        value={tabLabel(tab)}
+        onChange={(label) => setTab(tabFromLabel(label))}
         inset={MockLayout.screenPad}
       />
 
-      {tab === 'Info' ? (
+      {tab === 'info' ? (
         <View>
           <SectionBreak
-            title={cs.pubDetail.openingTitle}
+            title={t.pubDetail.openingTitle}
             onPress={openingRows.length > 0 ? () => openContribution('hours') : undefined}
-            accessibilityLabel={cs.pubDetail.openingEditA11y}
+            accessibilityLabel={t.pubDetail.openingEditA11y}
           />
           {openingRows.length > 0 ? (
             openingRows.map((row, index) => (
@@ -438,13 +444,13 @@ export function PubDetailBody({
               </View>
             ))
           ) : (
-            <EmptyEditRow label={cs.pubDetail.openingAdd} onPress={() => openContribution('hours')} />
+            <EmptyEditRow label={t.pubDetail.openingAdd} onPress={() => openContribution('hours')} />
           )}
 
           <SectionBreak
-            title={cs.pubDetail.tapsTitle}
+            title={t.pubDetail.tapsTitle}
             onPress={taps.length > 0 || !!pub.pub.price ? () => openContribution('beers') : undefined}
-            accessibilityLabel={cs.pubDetail.tapsEditA11y}
+            accessibilityLabel={t.pubDetail.tapsEditA11y}
           />
           {taps.map((tap, index) => (
             <View
@@ -463,25 +469,25 @@ export function PubDetailBody({
               </View>
               {typeof tap.priceCzk === 'number' ? (
                 <Text style={styles.tapPrice} allowFontScaling={false}>
-                  {tap.priceCzk} Kč
+                  {t.pubDetail.priceValue(tap.priceCzk)}
                 </Text>
               ) : null}
             </View>
           ))}
           {taps.length === 0 && pub.pub.price ? (
             <View style={styles.tapRow}>
-              <Text style={styles.tapName}>{cs.pubDetail.beerFrom}</Text>
+              <Text style={styles.tapName}>{t.pubDetail.beerFrom}</Text>
               <Text style={styles.tapPrice} allowFontScaling={false}>
-                {pub.pub.price.czk} Kč
+                {t.pubDetail.priceValue(pub.pub.price.czk)}
               </Text>
             </View>
           ) : null}
           {taps.length === 0 && !pub.pub.price ? (
-            <EmptyEditRow label={cs.pubDetail.tapsAdd} onPress={() => openContribution('beers')} />
+            <EmptyEditRow label={t.pubDetail.tapsAdd} onPress={() => openContribution('beers')} />
           ) : null}
 
           <PubEventsSection
-            visible={tab === 'Info'}
+            visible={tab === 'info'}
             pubKey={pubKey}
             pubName={pub.name}
             info={pubInfo}
@@ -490,27 +496,27 @@ export function PubDetailBody({
 
           {pub.visitCount > 0 ? (
             <View>
-              <SectionBreak title={cs.pubDetail.visitsTitle} />
+              <SectionBreak title={t.pubDetail.visitsTitle} />
               <StatGrid
                 columns={2}
                 compact
                 stats={[
-                  { label: cs.pubDetail.visits, value: `${pub.visitCount}×` },
-                  { label: cs.pubDetail.lastVisit, value: formatLastVisit(pub.lastVisitedAt) },
+                  { label: t.pubDetail.visits, value: `${pub.visitCount}×` },
+                  { label: t.pubDetail.lastVisit, value: formatLastVisit(pub.lastVisitedAt) },
                 ]}
               />
             </View>
           ) : null}
 
           <PubAmenitySection
-            visible={tab === 'Info'}
+            visible={tab === 'info'}
             pubKey={pubKey}
             pubName={amenityIdentityName}
           />
         </View>
       ) : null}
 
-      {tab === 'Aktivita' ? (
+      {tab === 'activity' ? (
         <View style={styles.feed}>
           {activity.status === 'loading' ? (
             <ActivityIndicator color={Colors.amber} />
@@ -518,14 +524,14 @@ export function PubDetailBody({
           {activity.status === 'error' ? (
             <View style={styles.activityState}>
               <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.pubDetail.activityLoadError}
+                {t.pubDetail.activityLoadError}
               </Text>
               <Pressable
                 onPress={retryActivity}
                 style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
                 accessibilityRole="button"
               >
-                <Text style={styles.retryText}>{cs.pubDetail.activityRetry}</Text>
+                <Text style={styles.retryText}>{t.pubDetail.activityRetry}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -556,7 +562,7 @@ export function PubDetailBody({
             : null}
           {activity.status === 'ready' && activity.nights.length === 0 ? (
             <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.pubDetail.activityEmpty}
+              {t.pubDetail.activityEmpty}
             </Text>
           ) : null}
           {activity.status === 'ready' && activity.nextCursor ? (
@@ -565,15 +571,15 @@ export function PubDetailBody({
               disabled={activityLoadingMore}
               style={({ pressed }) => [styles.loadMore, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.pubDetail.activityLoadMoreA11y}
+              accessibilityLabel={t.pubDetail.activityLoadMoreA11y}
             >
               {activityLoadingMore ? (
                 <ActivityIndicator color={Colors.amber} />
               ) : (
                 <Text style={styles.retryText}>
                   {activityMoreError
-                    ? cs.pubDetail.activityLoadMoreRetry
-                    : cs.pubDetail.activityLoadMore}
+                    ? t.pubDetail.activityLoadMoreRetry
+                    : t.pubDetail.activityLoadMore}
                 </Text>
               )}
             </Pressable>

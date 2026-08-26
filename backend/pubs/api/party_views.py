@@ -10,6 +10,7 @@ from django.db import IntegrityError, close_old_connections, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
+from django.utils.translation import gettext
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated
@@ -176,7 +177,7 @@ def _profile(account: Account | None) -> dict:
         return {
             "id": "deleted",
             "nickname": None,
-            "display_name": "Smazaný hráč",
+            "display_name": gettext("Smazaný hráč"),
             "avatar_url": None,
         }
     avatar_url = account.avatar.url if account.avatar else None
@@ -672,7 +673,7 @@ class PartyEveningJoinView(APIView):
             ):
                 return Response(
                     {
-                        "detail": "U tohoto stolu už je maximum lidí.",
+                        "detail": gettext("U tohoto stolu už je maximum lidí."),
                         "code": "party_full",
                     },
                     status=status.HTTP_409_CONFLICT,
@@ -1618,7 +1619,7 @@ class PartyGameCollectionView(APIView):
                 if missing_roster_ids:
                     return Response(
                         {
-                            "detail": "Sestava obsahuje někoho, kdo už u stolu není.",
+                            "detail": gettext("Sestava obsahuje někoho, kdo už u stolu není."),
                             "code": "roster_member_not_active",
                         },
                         status=status.HTTP_409_CONFLICT,
@@ -1658,7 +1659,7 @@ class PartyGameCollectionView(APIView):
                     if unknown_ids:
                         return Response(
                             {
-                                "detail": "Sestava obsahuje někoho, kdo už u stolu není.",
+                                "detail": gettext("Sestava obsahuje někoho, kdo už u stolu není."),
                                 "code": "roster_member_not_active",
                             },
                             status=status.HTTP_409_CONFLICT,
@@ -1715,7 +1716,7 @@ class PartyGameCollectionView(APIView):
                     if unknown_ids:
                         return Response(
                             {
-                                "detail": "Sestava obsahuje někoho, kdo už u stolu není.",
+                                "detail": gettext("Sestava obsahuje někoho, kdo už u stolu není."),
                                 "code": "roster_member_not_active",
                             },
                             status=status.HTTP_409_CONFLICT,
@@ -2038,7 +2039,7 @@ class PartyGameEventView(APIView):
             ):
                 return Response(
                     {
-                        "detail": "Tahle hra už má maximum událostí.",
+                        "detail": gettext("Tahle hra už má maximum událostí."),
                         "code": "game_event_limit_reached",
                     },
                     status=status.HTTP_409_CONFLICT,
@@ -2052,7 +2053,7 @@ class PartyGameEventView(APIView):
             ):
                 return Response(
                     {
-                        "detail": "Tenhle večer už má maximum herních událostí.",
+                        "detail": gettext("Tenhle večer už má maximum herních událostí."),
                         "code": "evening_event_limit_reached",
                     },
                     status=status.HTTP_409_CONFLICT,

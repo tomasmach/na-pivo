@@ -38,7 +38,7 @@ import {
   runPrivateAccountMutation,
 } from '@/data/privateAccountBoundary';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -180,7 +180,7 @@ function CheersPillBase({
         pendingRef.current = false;
         if (result === 'delivered') {
           trackUiInteraction('parta_reaction_add', 'success');
-          showToast(turningOn ? cs.friends.cheersDone : cs.friends.cheersUndone, {
+          showToast(turningOn ? t.friends.cheersDone : t.friends.cheersUndone, {
             icon: <BeerIcon size={20} color={Colors.amber} />,
           });
           onChanged?.();
@@ -188,7 +188,7 @@ function CheersPillBase({
         }
         if (result === 'queued') {
           trackUiInteraction('parta_reaction_add', 'success');
-          showToast(cs.friends.reactQueued, {
+          showToast(t.friends.reactQueued, {
             icon: <BeerIcon size={20} color={Colors.amber} />,
           });
           return;
@@ -196,7 +196,7 @@ function CheersPillBase({
         trackUiInteraction('parta_reaction_add', 'failure');
         setActive(prevActive);
         setDisplayCount(prevCount);
-        showToast(cs.friends.reactError, {
+        showToast(t.friends.reactError, {
           icon: <BeerIcon size={20} color={Colors.amber} />,
         });
       })
@@ -206,7 +206,7 @@ function CheersPillBase({
         setActive(prevActive);
         setDisplayCount(prevCount);
         if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(cs.friends.reactError, {
+          showToast(t.friends.reactError, {
             icon: <BeerIcon size={20} color={Colors.amber} />,
           });
         }
@@ -218,8 +218,8 @@ function CheersPillBase({
     displayCount > 0
       ? compact
         ? String(displayCount)
-        : cs.friends.cheersCount(displayCount)
-      : cs.friends.cheers;
+        : t.friends.cheersCount(displayCount)
+      : t.friends.cheers;
 
   return (
     <Pressable
@@ -227,7 +227,7 @@ function CheersPillBase({
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={cs.friends.cheersA11y(ownerName ?? cs.friends.cheers)}
+      accessibilityLabel={t.friends.cheersA11y(ownerName ?? t.friends.cheers)}
       style={({ pressed }) => [
         compact ? styles.pillCompact : styles.pill,
         active && styles.pillActive,

@@ -9,7 +9,7 @@ import MapView, {
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
-import { pubCountLabel } from '@/i18n/plural';
+import { pubCountLabel, t } from '@/i18n';
 import { buildPubsMapClusters, pubsMapGrid } from '@/pubs/pubsMapModel';
 import { Colors, withAlpha } from '@/theme/colors';
 
@@ -171,7 +171,7 @@ function ClusterMarker({
       onPress={onPress}
       tracksViewChanges={tracksViewChanges}
       anchor={CENTER_ANCHOR}
-      accessibilityLabel={`${pubCountLabel(count)}. Přiblížit`}
+      accessibilityLabel={t.pubList.clusterA11y(pubCountLabel(count))}
     >
       <View collapsable={false} testID="pub-map-cluster" style={styles.clusterPin}>
         <Text style={styles.clusterText} allowFontScaling={false}>

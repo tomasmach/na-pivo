@@ -1,5 +1,6 @@
 import json
 
+from django.utils.translation import gettext
 from rest_framework import serializers
 
 # Game payloads are intentionally opaque to the API, but they still need a
@@ -32,30 +33,30 @@ def _validate_json_shape(value) -> None:
         nonlocal item_count
         item_count += 1
         if item_count > PARTY_GAME_PAYLOAD_MAX_TOTAL_ITEMS:
-            raise serializers.ValidationError("Payload obsahuje moc položek.")
+            raise serializers.ValidationError(gettext("Payload obsahuje moc položek."))
         if depth > PARTY_GAME_PAYLOAD_MAX_DEPTH:
-            raise serializers.ValidationError("Payload je moc zanořený.")
+            raise serializers.ValidationError(gettext("Payload je moc zanořený."))
 
         if isinstance(item, dict):
             if len(item) > PARTY_GAME_PAYLOAD_MAX_OBJECT_ITEMS:
-                raise serializers.ValidationError("Payload obsahuje moc položek.")
+                raise serializers.ValidationError(gettext("Payload obsahuje moc položek."))
             for key, child in item.items():
                 if not isinstance(key, str):
-                    raise serializers.ValidationError("Klíče payloadu musí být text.")
+                    raise serializers.ValidationError(gettext("Klíče payloadu musí být text."))
                 if len(key) > PARTY_GAME_PAYLOAD_MAX_KEY_CHARS:
-                    raise serializers.ValidationError("Klíč payloadu je moc dlouhý.")
+                    raise serializers.ValidationError(gettext("Klíč payloadu je moc dlouhý."))
                 walk(child, depth=depth + 1)
             return
 
         if isinstance(item, list):
             if len(item) > PARTY_GAME_PAYLOAD_MAX_ARRAY_ITEMS:
-                raise serializers.ValidationError("Pole v payloadu obsahuje moc položek.")
+                raise serializers.ValidationError(gettext("Pole v payloadu obsahuje moc položek."))
             for child in item:
                 walk(child, depth=depth + 1)
             return
 
         if isinstance(item, str) and len(item) > PARTY_GAME_PAYLOAD_MAX_STRING_CHARS:
-            raise serializers.ValidationError("Text v payloadu je moc dlouhý.")
+            raise serializers.ValidationError(gettext("Text v payloadu je moc dlouhý."))
 
     walk(value, depth=1)
 
@@ -69,7 +70,7 @@ def _serialized_payload_size(value) -> int:
             separators=(",", ":"),
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise serializers.ValidationError("Payload není platný JSON.") from exc
+        raise serializers.ValidationError(gettext("Payload není platný JSON.")) from exc
     return len(encoded)
 
 
@@ -121,9 +122,9 @@ class PartyGameCreateSerializer(serializers.Serializer):
         # picked its players yet". Omitting the field keeps released clients'
         # behaviour: the server snapshots everyone currently at the table.
         if len(value) == 1:
-            raise serializers.ValidationError("Hru musí hrát aspoň dva hráči.")
+            raise serializers.ValidationError(gettext("Hru musí hrát aspoň dva hráči."))
         if len(set(value)) != len(value):
-            raise serializers.ValidationError("Každý hráč smí být v sestavě jen jednou.")
+            raise serializers.ValidationError(gettext("Každý hráč smí být v sestavě jen jednou."))
         return value
 
 
@@ -149,12 +150,12 @@ class PartyGameEventSerializer(serializers.Serializer):
 
     def validate_payload(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("Payload musí být objekt.")
+            raise serializers.ValidationError(gettext("Payload musí být objekt."))
         if len(value) > 12:
-            raise serializers.ValidationError("Payload je moc velký.")
+            raise serializers.ValidationError(gettext("Payload je moc velký."))
         _validate_json_shape(value)
         if _serialized_payload_size(value) > PARTY_GAME_PAYLOAD_MAX_BYTES:
-            raise serializers.ValidationError("Payload je moc velký.")
+            raise serializers.ValidationError(gettext("Payload je moc velký."))
         return value
 
 
@@ -171,5 +172,5 @@ class PartyGameEventBatchSerializer(serializers.Serializer):
     def validate_events(self, value):
         payload_bytes = sum(_serialized_payload_size(item.get("payload") or {}) for item in value)
         if payload_bytes > PARTY_GAME_EVENT_BATCH_MAX_PAYLOAD_BYTES:
-            raise serializers.ValidationError("Payloady v dávce jsou dohromady moc velké.")
+            raise serializers.ValidationError(gettext("Payloady v dávce jsou dohromady moc velké."))
         return value

@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { useAccountStore } from '@/stores/accountStore';
 
@@ -95,26 +95,26 @@ export default function VerifyEmailScreen() {
           <>
             <ActivityIndicator size="large" color={Colors.amber} />
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.account.verifyLoading}
+              {t.account.verifyLoading}
             </Text>
           </>
         ) : (
           <>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {state === 'success' ? cs.account.verifySuccessTitle : cs.account.verifyErrorTitle}
+              {state === 'success' ? t.account.verifySuccessTitle : t.account.verifyErrorTitle}
             </Text>
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
               {state === 'success'
-                ? cs.account.verifySuccessBody
+                ? t.account.verifySuccessBody
                 : state === 'invalid'
-                  ? cs.account.verifyInvalidBody
-                  : cs.account.verifyErrorBody}
+                  ? t.account.verifyInvalidBody
+                  : t.account.verifyErrorBody}
             </Text>
             <View style={styles.button}>
               <GlowButton
-                label={cs.account.verifyDoneCta}
+                label={t.account.verifyDoneCta}
                 onPress={leave}
-                accessibilityLabel={cs.account.verifyDoneCta}
+                accessibilityLabel={t.account.verifyDoneCta}
               />
             </View>
           </>

@@ -20,8 +20,7 @@ import { HandPlatterIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { isRetriableNightError, publishNight, type NightVisibility } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel } from '@/i18n/plural';
+import { t , beerCountLabel } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import SegmentedControl from '@/friends/SegmentedControl';
@@ -84,8 +83,8 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
       dialogTimer.current = setTimeout(() => {
         dialogTimer.current = null;
         showAppDialog({
-          title: cs.vycep.nicknameNeededTitle,
-          message: cs.vycep.nicknameNeededBody,
+          title: t.vycep.nicknameNeededTitle,
+          message: t.vycep.nicknameNeededBody,
         });
       }, SHEET_DISMISS_MS);
       return;
@@ -114,7 +113,7 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
         setBusy(false);
         trackUiInteraction('night_publish', 'success');
         markPublished(night.clientKey, visibility);
-        showToast(cs.vycep.publishedToast, {
+        showToast(t.vycep.publishedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onPublished?.();
@@ -127,12 +126,12 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
         setBusy(false);
         if (!queued) {
           trackUiInteraction('night_publish', 'failure');
-          showToast(cs.vycep.publishErrorToast);
+          showToast(t.vycep.publishErrorToast);
           return;
         }
         trackUiInteraction('night_publish', 'success');
         markPublished(night.clientKey, visibility);
-        showToast(cs.vycep.publishQueuedToast, {
+        showToast(t.vycep.publishQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onPublished?.();
@@ -152,9 +151,9 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.vycep.publishTitle}
+              {t.vycep.publishTitle}
             </Text>
-            <CloseButton onPress={onClose} label={cs.common.cancel} />
+            <CloseButton onPress={onClose} label={t.common.cancel} />
           </View>
 
           <ScrollView
@@ -190,22 +189,22 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
             </View>
 
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.vycep.publishBody}
+              {t.vycep.publishBody}
             </Text>
 
             <Text style={styles.visibilityLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.vycep.visibilityLabel}
+              {t.vycep.visibilityLabel}
             </Text>
             <SegmentedControl
-              options={[cs.vycep.scopeParta, cs.vycep.scopeWorld]}
+              options={[t.vycep.scopeParta, t.vycep.scopeWorld]}
               value={visibilityIndex}
               onChange={setVisibilityIndex}
-              accessibilityLabel={cs.vycep.visibilityLabel}
+              accessibilityLabel={t.vycep.visibilityLabel}
             />
             <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
               {visibility === 'public'
-                ? cs.vycep.visibilityWorldHint
-                : cs.vycep.visibilityFriendsHint}
+                ? t.vycep.visibilityWorldHint
+                : t.vycep.visibilityFriendsHint}
             </Text>
           </ScrollView>
 
@@ -214,7 +213,7 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
               onPress={handlePublish}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.publishNightButton}
+              accessibilityLabel={t.a11y.publishNightButton}
               style={({ pressed }) => [
                 styles.publishButton,
                 (pressed || busy) && styles.publishButtonPressed,
@@ -222,7 +221,7 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
             >
               <HandPlatterIcon size={18} color={Colors.stout} />
               <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishCta}
+                {publishedRecord ? t.vycep.updateCta : t.vycep.publishCta}
               </Text>
             </Pressable>
           </View>

@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { AccountSession } from './account';
@@ -240,7 +242,7 @@ export function resetPrivateAccountMemory(): void {
     useLivePartyStore.setState({
       live: false,
       pubName: '',
-      houseBeer: 'Pivo',
+      houseBeer: t.common.beerFallback,
       pubTaps: [],
       pubKey: null,
       pubVisits: [],

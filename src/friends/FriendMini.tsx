@@ -11,13 +11,14 @@ import { Avatar } from '@/profile/Avatar';
 import type { FriendProfile } from '@/data/friendsClient';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
+import { t } from '@/i18n';
 import { Spacing } from '@/theme/layout';
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 export function friendDisplayName(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kámoš';
+  if (!profile) return t.friends.fallbackName;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kámoš';
+  return profile.displayName || t.friends.fallbackName;
 }
 
 export function FriendMini({ profile }: { profile: FriendProfile }) {

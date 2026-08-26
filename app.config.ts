@@ -122,6 +122,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     ],
     'expo-notifications',
+    'expo-localization',
     // Camera stays on (menu OCR, beer photos) but never touches the
     // microphone: recordAudioAndroid:false keeps expo-camera from requesting
     // RECORD_AUDIO and microphonePermission:false drops NSMicrophoneUsageDescription.
@@ -243,12 +244,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // as keyboards and anchored menus on the same dark stout canvas as the app.
     userInterfaceStyle: 'dark',
     assetBundlePatterns: ['**/*'],
-    // Czech-only app: declare the native localization so the store and iOS
-    // system permission dialogs render Czech instead of English. The locale
-    // JSON reuses the exact strings from infoPlist below (parity is asserted
-    // in app/__tests__/app-config.test.ts).
+    // Native localizations: Czech is the development language (infoPlist
+    // below holds the Czech strings) and English is the second one. Both
+    // locale JSONs must carry exactly the keys declared in infoPlist (parity
+    // is asserted in app/__tests__/app-config.test.ts). The app's own copy
+    // is picked in src/i18n/locale.ts from the same device language.
     locales: {
       cs: './locales/cs.json',
+      // Slovak devices keep reading the Czech copy, like the app itself.
+      sk: './locales/cs.json',
+      en: './locales/en.json',
     },
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
@@ -374,8 +379,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
       infoPlist: {
         CFBundleDisplayName: 'Na pivo',
-        // Czech is the only bundled localization; this lets the Czech
-        // InfoPlist.strings apply even on devices with other system locales.
+        // Lets the bundled InfoPlist.strings apply on any device locale and
+        // makes iOS offer the per-app language switch in Settings.
         CFBundleAllowMixedLocalizations: true,
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSLocationAlwaysAndWhenInUseUsageDescription: BACKGROUND_LOCATION_REASON,

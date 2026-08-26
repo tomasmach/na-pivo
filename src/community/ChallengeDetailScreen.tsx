@@ -31,6 +31,7 @@ import {
   useCollapsingHeader,
 } from '@/components/shared/CollapsingHeader';
 import { CheckIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import { intlLocale, t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Avatar } from '@/profile/Avatar';
@@ -43,7 +44,9 @@ import type { Challenge } from '@/data/challengesClient';
 function deadlineLabel(value: string): string {
   const parsed = new Date(`${value}T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return `Do ${new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'long' }).format(parsed)}`;
+  return t.community.challengeDeadline(
+    new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'long' }).format(parsed),
+  );
 }
 
 export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
@@ -79,7 +82,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
           {challenge.done}
           <Text style={styles.countRest}>
             {' '}
-            z {challenge.goal} {challenge.unit}
+            {t.community.challengeGoal(challenge.goal, challenge.unit)}
           </Text>
         </Text>
         <View style={styles.track}>
@@ -99,7 +102,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
       </View>
 
       <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-        Co se počítá
+        {t.community.challengeRules}
       </Text>
       {challenge.rules.map((rule) => (
         <View key={rule} style={styles.rule}>
@@ -113,7 +116,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
       {challenge.friends.length > 0 ? (
         <>
           <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Kdo ještě jede
+            {t.community.challengeRivals}
           </Text>
           {challenge.friends.map((friend) => {
             const person = friend.account;
@@ -137,7 +140,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
                 <View style={styles.rivalProgress}>
                   <Text style={styles.rivalScore} allowFontScaling={false}>
                     {friend.done}
-                    <Text style={styles.rivalGoal}> z {challenge.goal}</Text>
+                    <Text style={styles.rivalGoal}> {t.community.challengeGoalShort(challenge.goal)}</Text>
                   </Text>
                   <View style={styles.trackThin}>
                     <View

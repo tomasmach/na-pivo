@@ -20,9 +20,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon } from '@/components/shared/IconGlyph';
+import { t } from '@/i18n';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { GameCover } from '@/party/GameCover';
-import type { GameDef } from '@/party/gameCatalog';
+
+import { displayPersonName } from '@/party/nightBuilder';import type { GameDef } from '@/party/gameCatalog';
 import {
   GameStage,
   STAGE_FILL,
@@ -97,7 +99,7 @@ export function GameLobby({
           maxFontSizeMultiplier={FontScaleCap.heading}
           accessibilityRole="header"
         >
-          {def?.name ?? 'Hra'}
+          {def?.name ?? t.gameShell.fallbackTitle}
         </Text>
 
         <Text
@@ -105,7 +107,7 @@ export function GameLobby({
           maxFontSizeMultiplier={FontScaleCap.body}
           accessibilityRole="header"
         >
-          Kdo hraje
+          {t.gameShell.whoPlays}
         </Text>
 
         {/* Chips, not rows: the roster is one glance, and a ticked chip reads
@@ -125,15 +127,15 @@ export function GameLobby({
                 ]}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: isIn }}
-                accessibilityLabel={person.name}
+                accessibilityLabel={displayPersonName(person.name)}
               >
-                <PersonAvatar name={person.name} tint={person.tint} size={26} />
+                <PersonAvatar name={displayPersonName(person.name)} tint={person.tint} size={26} />
                 <Text
                   style={[styles.name, !isIn && styles.nameOut]}
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {person.name}
+                  {displayPersonName(person.name)}
                 </Text>
                 {isIn ? <CheckIcon size={15} color={Colors.amber} /> : null}
               </Pressable>
@@ -146,10 +148,10 @@ export function GameLobby({
             onPress={onInvite}
             style={({ pressed }) => [styles.invite, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Přizvat ke stolu"
+            accessibilityLabel={t.gameShell.invite}
           >
             <Text style={styles.inviteText} maxFontSizeMultiplier={FontScaleCap.body}>
-              Přizvat ke stolu
+              {t.gameShell.invite}
             </Text>
           </Pressable>
         ) : null}
@@ -159,14 +161,14 @@ export function GameLobby({
         <StagePill
           label={
             enough
-              ? `Začít, hraje vás ${playing.length}`
-              : 'Aspoň dva, jinak to není hra'
+              ? t.gameShell.startWithCount(playing.length)
+              : t.gameShell.needTwo
           }
           onPress={() => enough && onStart(playing)}
           disabled={!enough}
           tone={enough ? 'primary' : 'quiet'}
           accessibilityLabel={
-            enough ? `Začít, hraje ${playing.length}` : 'Potřebuješ aspoň dva hráče'
+            enough ? t.gameShell.startWithCountA11y(playing.length) : t.gameShell.needTwoA11y
           }
         />
       </View>

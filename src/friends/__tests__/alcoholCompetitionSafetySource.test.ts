@@ -36,8 +36,18 @@ describe("Apple alcohol competition safety (source-level)", () => {
   it("keeps the account preview on pub mapping rather than beer competition", () => {
     const source = read("src", "onboarding", "OnboardingPreview.tsx");
     expect(source).not.toContain('unit="piv"');
-    expect(source).toContain("Mapéři tenhle měsíc");
-    expect(source).toMatch(/unit\s*=\s*["']hospod["']/);
+    // The board copy moved into i18n; the preview must still pull the mapper
+    // board, and the strings behind those keys are checked below.
+    expect(source).toContain("t.onboarding.previewBoardTitle");
+    expect(source).toContain("t.onboarding.previewBoardUnit");
+
+    const strings = read("src", "i18n", "cs.ts");
+    const onboarding = strings.slice(
+      strings.indexOf("onboarding: {"),
+      strings.indexOf("celebration: {"),
+    );
+    expect(onboarding).toContain("Mapéři tenhle měsíc");
+    expect(onboarding).toMatch(/previewBoardUnit:\s*["']hospod["']/);
   });
 
   it("onboarding copy avoids alcohol competition stats and keeps pub mapping framing", () => {

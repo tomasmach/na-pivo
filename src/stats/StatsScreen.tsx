@@ -20,8 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, beerNoun } from '@/i18n/plural';
+import { t , beerCountLabel, beerNoun, intlLocale } from '@/i18n';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { formatPrice } from '@/utils/currency';
 import {
@@ -55,11 +54,11 @@ import { useMyStats } from '@/stats/useMyStats';
 import type { PriceCurrency } from '@/utils/currency';
 
 const TONE_LINE: Record<LastPerformance['tone'], string> = {
-  start: cs.stats.toneStart,
-  warmup: cs.stats.toneWarmup,
-  solid: cs.stats.toneSolid,
-  big: cs.stats.toneBig,
-  huge: cs.stats.toneHuge,
+  start: t.stats.toneStart,
+  warmup: t.stats.toneWarmup,
+  solid: t.stats.toneSolid,
+  big: t.stats.toneBig,
+  huge: t.stats.toneHuge,
 };
 
 // ─── Section header ─────────────────────────────────────────────────────────
@@ -88,7 +87,7 @@ function PerformanceHero({
       <View style={styles.heroEyebrowRow}>
         <SparklesIcon size={13} color={Colors.amber} />
         <Text style={styles.heroEyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-          {perf.relation === 'today' ? cs.stats.heroToday : cs.stats.heroYesterday}
+          {perf.relation === 'today' ? t.stats.heroToday : t.stats.heroYesterday}
         </Text>
       </View>
 
@@ -119,20 +118,20 @@ function PerformanceHero({
           <View style={styles.heroMicroRow}>
             <MicroStat
               icon={<ClockIcon size={16} color={Colors.amber} />}
-              value={cs.stats.span(perf.durationMs)}
-              caption={cs.stats.heroDuration}
+              value={t.stats.span(perf.durationMs)}
+              caption={t.stats.heroDuration}
             />
             <View style={styles.heroMicroSep} />
             <MicroStat
               icon={<BeerIcon size={16} color={Colors.amber} />}
-              value={cs.stats.pace(perf.avgGapMs as number)}
-              caption={cs.stats.heroAvg}
+              value={t.stats.pace(perf.avgGapMs as number)}
+              caption={t.stats.heroAvg}
             />
             <View style={styles.heroMicroSep} />
             <MicroStat
               icon={<FlameIcon size={16} color={Colors.amber} />}
-              value={cs.stats.pace(perf.fastestGapMs as number)}
-              caption={cs.stats.heroFastest}
+              value={t.stats.pace(perf.fastestGapMs as number)}
+              caption={t.stats.heroFastest}
             />
           </View>
         </>
@@ -193,33 +192,33 @@ function RecordRow({
 function RecordsCard({ records }: { records: PersonalRecords }) {
   const mostBeers =
     records.mostBeersInEvening > 0
-      ? cs.stats.recordMostBeersValue(
+      ? t.stats.recordMostBeersValue(
           beerCountLabel(records.mostBeersInEvening),
           records.mostBeersPubName,
         )
-      : cs.stats.recordEmpty;
+      : t.stats.recordEmpty;
   const fastest =
-    records.fastestBeerMs != null ? cs.stats.pace(records.fastestBeerMs) : cs.stats.recordEmpty;
+    records.fastestBeerMs != null ? t.stats.pace(records.fastestBeerMs) : t.stats.recordEmpty;
   const longest =
-    records.longestEveningMs != null ? cs.stats.span(records.longestEveningMs) : cs.stats.recordEmpty;
+    records.longestEveningMs != null ? t.stats.span(records.longestEveningMs) : t.stats.recordEmpty;
 
   return (
     <View style={styles.card}>
       <RecordRow
         icon={<TrophyIcon size={17} color={Colors.amber} />}
-        label={cs.stats.recordMostBeers}
+        label={t.stats.recordMostBeers}
         value={mostBeers}
       />
       <View style={styles.rowBorder} />
       <RecordRow
         icon={<FlameIcon size={17} color={Colors.amber} />}
-        label={cs.stats.recordFastest}
+        label={t.stats.recordFastest}
         value={fastest}
       />
       <View style={styles.rowBorder} />
       <RecordRow
         icon={<ClockIcon size={17} color={Colors.amber} />}
-        label={cs.stats.recordLongest}
+        label={t.stats.recordLongest}
         value={longest}
       />
     </View>
@@ -251,7 +250,7 @@ function TotalsCard({
             {lifetime.totalBeers}
           </Text>
           <Text style={styles.heroStatCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.stats.totalBeers}
+            {t.stats.totalBeers}
           </Text>
         </View>
       </View>
@@ -260,17 +259,17 @@ function TotalsCard({
         <StatTile
           icon={<HistoryIcon size={18} color={Colors.amber} />}
           value={String(lifetime.totalEvenings)}
-          caption={cs.stats.totalEvenings}
+          caption={t.stats.totalEvenings}
         />
         <StatTile
           icon={<MapPinnedIcon size={18} color={Colors.amber} />}
           value={String(lifetime.distinctPubs)}
-          caption={cs.stats.totalPubs}
+          caption={t.stats.totalPubs}
         />
         <StatTile
           icon={<CoinsIcon size={18} color={Colors.amber} />}
           value={formatPrice(lifetime.totalSpentCzk, priceCurrency)}
-          caption={cs.stats.totalSpent}
+          caption={t.stats.totalSpent}
         />
       </View>
     </View>
@@ -306,21 +305,24 @@ function StatTile({
 
 // ─── Months and years ──────────────────────────────────────────────────────
 
-const MONTH_SHORT = ['led', 'úno', 'bře', 'dub', 'kvě', 'čer', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro'];
-const MONTH_LONG = [
-  'Leden',
-  'Únor',
-  'Březen',
-  'Duben',
-  'Květen',
-  'Červen',
-  'Červenec',
-  'Srpen',
-  'Září',
-  'Říjen',
-  'Listopad',
-  'Prosinec',
-];
+/** Month names come from Intl, so the chart speaks whatever language the app does. */
+function monthDate(year: number, month: number): Date {
+  return new Date(year, month - 1, 1, 12);
+}
+
+function monthShort(year: number, month: number): string {
+  return new Intl.DateTimeFormat(intlLocale, { month: 'short' })
+    .format(monthDate(year, month))
+    .replace('.', '');
+}
+
+function monthAndYear(year: number, month: number): string {
+  const text = new Intl.DateTimeFormat(intlLocale, { month: 'long', year: 'numeric' }).format(
+    monthDate(year, month),
+  );
+  // Czech writes month names in lower case; the card heading wants a capital.
+  return text.charAt(0).toLocaleUpperCase(intlLocale) + text.slice(1);
+}
 
 function monthParts(period: string): { year: number; month: number } | null {
   const match = /^(\d{4})-(\d{2})$/.exec(period);
@@ -363,10 +365,10 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
       <View style={styles.periodCurrentRow}>
         <View style={styles.flex}>
           <Text style={styles.periodTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {currentParts ? `${MONTH_LONG[currentParts.month - 1]} ${currentParts.year}` : current.period}
+            {currentParts ? monthAndYear(currentParts.year, currentParts.month) : current.period}
           </Text>
           <Text style={styles.periodMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.stats.periodEvenings(current.evenings)}
+            {t.stats.periodEvenings(current.evenings)}
           </Text>
         </View>
         <View style={styles.periodCurrentValueWrap}>
@@ -374,19 +376,19 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
             {current.beers}
           </Text>
           <Text style={styles.periodCurrentUnit} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.stats.periodBeers}
+            {t.stats.periodBeers}
           </Text>
         </View>
       </View>
       <Text style={styles.periodAverage} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.stats.periodAverage(current.averageBeersPerEvening)}
+        {t.stats.periodAverage(current.averageBeersPerEvening)}
       </Text>
 
       <View style={styles.chartDivider} />
       <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.stats.monthsHeader}
+        {t.stats.monthsHeader}
       </Text>
-      <View style={styles.monthChart} accessibilityLabel={cs.stats.monthsA11y}>
+      <View style={styles.monthChart} accessibilityLabel={t.stats.monthsA11y}>
         {chartMonths.map((period) => {
           const parts = monthParts(period.period);
           const height = period.beers === 0 ? 3 : Math.max(8, Math.round((period.beers / maxBeers) * 68));
@@ -395,7 +397,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
               key={period.period}
               style={styles.monthColumn}
               accessible
-              accessibilityLabel={cs.stats.monthA11y(period.period, period.beers)}
+              accessibilityLabel={t.stats.monthA11y(period.period, period.beers)}
             >
               <Text style={styles.monthValue} maxFontSizeMultiplier={FontScaleCap.body}>
                 {period.beers > 0 ? period.beers : ''}
@@ -404,7 +406,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
                 <View style={[styles.monthBar, period.beers === 0 && styles.monthBarEmpty, { height }]} />
               </View>
               <Text style={styles.monthLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {parts ? MONTH_SHORT[parts.month - 1] : ''}
+                {parts ? monthShort(parts.year, parts.month) : ''}
               </Text>
             </View>
           );
@@ -415,7 +417,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
         <>
           <View style={styles.chartDivider} />
           <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.stats.yearsHeader}
+            {t.stats.yearsHeader}
           </Text>
           {visibleYears.map((year, index) => (
             <View key={year.period} style={[styles.yearRow, index > 0 && styles.yearRowBorder]}>
@@ -423,7 +425,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
                 {year.period}
               </Text>
               <Text style={styles.yearMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.stats.yearSummary(year.beers, year.averageBeersPerEvening)}
+                {t.stats.yearSummary(year.beers, year.averageBeersPerEvening)}
               </Text>
             </View>
           ))}
@@ -559,7 +561,7 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
       {!embedded && (
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.beer.segmentStats}
+            {t.beer.segmentStats}
           </Text>
         </View>
       )}
@@ -570,10 +572,10 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
             <TrophyIcon size={52} color={Colors.amber} />
           </View>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.stats.emptyTitle}
+            {t.stats.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.stats.emptyBody}
+            {t.stats.emptyBody}
           </Text>
         </View>
       ) : (
@@ -584,21 +586,21 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
         >
           {last && <PerformanceHero perf={last} priceCurrency={priceCurrency} />}
 
-          <SectionLabel>{cs.stats.recordsHeader}</SectionLabel>
+          <SectionLabel>{t.stats.recordsHeader}</SectionLabel>
           <RecordsCard records={records} />
 
-          <SectionLabel>{cs.stats.totalsHeader}</SectionLabel>
+          <SectionLabel>{t.stats.totalsHeader}</SectionLabel>
           <TotalsCard lifetime={lifetime} priceCurrency={priceCurrency} />
 
-          <SectionLabel>{cs.stats.periodsHeader}</SectionLabel>
+          <SectionLabel>{t.stats.periodsHeader}</SectionLabel>
           <PeriodOverview months={periodMonths} years={periodYears} now={now} />
 
           {topPubs.length > 0 && (
             <>
               <View style={styles.pubsHeaderRow}>
-                <SectionLabel>{cs.stats.pubsHeader}</SectionLabel>
+                <SectionLabel>{t.stats.pubsHeader}</SectionLabel>
                 <Text style={styles.pubsSubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.stats.pubsSubtitle}
+                  {t.stats.pubsSubtitle}
                 </Text>
               </View>
               <TopPubsCard pubs={topPubs} />

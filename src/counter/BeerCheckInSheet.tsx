@@ -31,7 +31,7 @@ import {
 } from '@/data/privateAccountBoundary';
 import type { Pub } from '@/data/pubs';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -47,7 +47,7 @@ const SUGGEST_DEBOUNCE_MS = 220;
 function shortDate(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString('cs-CZ', {
+  return new Date(ms).toLocaleDateString(intlLocale, {
     day: 'numeric',
     month: 'numeric',
   });
@@ -82,7 +82,7 @@ function RatingChip({
       ]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={cs.beerCheckins.ratingA11y(value)}
+      accessibilityLabel={t.beerCheckins.ratingA11y(value)}
     >
       <StarIcon size={15} color={active ? Colors.stout : Colors.amber} />
       <Text style={[styles.ratingText, active && styles.ratingTextActive]} allowFontScaling={false}>
@@ -93,7 +93,7 @@ function RatingChip({
 }
 
 function TagChip({ tag, active, onPress }: { tag: BeerTag; active: boolean; onPress: () => void }) {
-  const label = cs.beerCheckins.tags[tag];
+  const label = t.beerCheckins.tags[tag];
   return (
     <Pressable
       onPress={onPress}
@@ -105,7 +105,7 @@ function TagChip({ tag, active, onPress }: { tag: BeerTag; active: boolean; onPr
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={
-        active ? cs.beerCheckins.tagRemoveA11y(label) : cs.beerCheckins.tagAddA11y(label)
+        active ? t.beerCheckins.tagRemoveA11y(label) : t.beerCheckins.tagAddA11y(label)
       }
     >
       <Text
@@ -172,14 +172,14 @@ export function BeerCheckInSheet({
   useEffect(() => {
     if (visible) return;
     submittingRef.current = false;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setSubmitting(false);
       setTags([]);
       setMemory(null);
       setMemoryLoading(false);
       setSuggestions([]);
     }, 0);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [visible]);
 
   // Memory strip: fetch on open (near-immediate), debounce subsequent
@@ -282,7 +282,7 @@ export function BeerCheckInSheet({
         if (generationRef.current !== generation) return;
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.beerCheckins.saveError, {
+        showToast(t.beerCheckins.saveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
         return;
@@ -312,7 +312,7 @@ export function BeerCheckInSheet({
       if (result === 'storage-error') {
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.beerCheckins.saveError, {
+        showToast(t.beerCheckins.saveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
         return;
@@ -320,7 +320,7 @@ export function BeerCheckInSheet({
       if (!(await removeBeerCheckInActionTicket(actionKey))) {
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.beerCheckins.saveError, {
+        showToast(t.beerCheckins.saveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
         return;
@@ -331,7 +331,7 @@ export function BeerCheckInSheet({
       }
       submittingRef.current = false;
       setSubmitting(false);
-      showToast(cs.beerCheckins.saved, {
+      showToast(t.beerCheckins.saved, {
         icon: <BeerIcon size={20} color={Colors.amber} />,
       });
       onSubmitted();
@@ -341,7 +341,7 @@ export function BeerCheckInSheet({
         if (generationRef.current !== generation) return;
         submittingRef.current = false;
         setSubmitting(false);
-        showToast(cs.beerCheckins.saveError, {
+        showToast(t.beerCheckins.saveError, {
           icon: <BeerIcon size={20} color={Colors.foamMuted} />,
         });
       });
@@ -374,7 +374,7 @@ export function BeerCheckInSheet({
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {cs.beerCheckins.sheetTitle}
+                {t.beerCheckins.sheetTitle}
               </Text>
               <Text
                 style={styles.subtitle}
@@ -384,7 +384,7 @@ export function BeerCheckInSheet({
                 {pub.name}
               </Text>
             </View>
-            <CloseButton onPress={closeSheet} label={cs.common.cancel} />
+            <CloseButton onPress={closeSheet} label={t.common.cancel} />
           </View>
 
           <KeyboardAwareScrollView
@@ -401,10 +401,10 @@ export function BeerCheckInSheet({
             ) : memory && memory.myCount > 0 ? (
               <View style={styles.memoryStrip}>
                 <Text style={styles.memoryLead} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.beerCheckins.memoryKnownLead}
+                  {t.beerCheckins.memoryKnownLead}
                 </Text>
                 <Text style={styles.memoryMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.beerCheckins.memoryKnown({
+                  {t.beerCheckins.memoryKnown({
                     count: memory.myCount,
                     lastDate: shortDate(memory.lastCheckedInAt ?? ''),
                     lastPub: memory.lastPubName,
@@ -416,13 +416,13 @@ export function BeerCheckInSheet({
             ) : memory ? (
               <View style={styles.memoryStrip}>
                 <Text style={styles.memoryFirst} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.beerCheckins.memoryFirstTime}
+                  {t.beerCheckins.memoryFirstTime}
                 </Text>
               </View>
             ) : null}
 
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.beerCheckins.beerLabel}
+              {t.beerCheckins.beerLabel}
             </Text>
             <TextInput
               value={name}
@@ -430,7 +430,7 @@ export function BeerCheckInSheet({
                 pickedSuggestionRef.current = '';
                 setName(value);
               }}
-              placeholder={cs.beerCheckins.beerPlaceholder}
+              placeholder={t.beerCheckins.beerPlaceholder}
               placeholderTextColor={MockColors.fieldHint}
               style={styles.input}
               maxLength={120}
@@ -444,7 +444,7 @@ export function BeerCheckInSheet({
                     onPress={() => selectSuggestion(suggestion)}
                     style={[styles.suggestionRow, index > 0 && styles.suggestionDivider]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.beerCheckins.useSuggestion(suggestion.name)}
+                    accessibilityLabel={t.beerCheckins.useSuggestion(suggestion.name)}
                   >
                     <Text
                       style={styles.suggestionName}
@@ -470,7 +470,7 @@ export function BeerCheckInSheet({
             <View style={[styles.twoCols, fontScale > 1.15 && styles.twoColsStacked]}>
               <View style={styles.col}>
                 <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.beerCheckins.breweryLabel}
+                  {t.beerCheckins.breweryLabel}
                 </Text>
                 <TextInput
                   value={brewery}
@@ -478,7 +478,7 @@ export function BeerCheckInSheet({
                     pickedSuggestionRef.current = '';
                     setBrewery(value);
                   }}
-                  placeholder={cs.beerCheckins.optionalPlaceholder}
+                  placeholder={t.beerCheckins.optionalPlaceholder}
                   placeholderTextColor={MockColors.fieldHint}
                   style={styles.input}
                   maxLength={120}
@@ -487,12 +487,12 @@ export function BeerCheckInSheet({
               </View>
               <View style={styles.col}>
                 <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.beerCheckins.styleLabel}
+                  {t.beerCheckins.styleLabel}
                 </Text>
                 <TextInput
                   value={style}
                   onChangeText={setStyle}
-                  placeholder={cs.beerCheckins.optionalPlaceholder}
+                  placeholder={t.beerCheckins.optionalPlaceholder}
                   placeholderTextColor={MockColors.fieldHint}
                   style={styles.input}
                   maxLength={80}
@@ -502,7 +502,7 @@ export function BeerCheckInSheet({
             </View>
 
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.beerCheckins.ratingLabel}
+              {t.beerCheckins.ratingLabel}
             </Text>
             <View style={styles.ratingRow}>
               {ratingValues.map((value) => (
@@ -516,7 +516,7 @@ export function BeerCheckInSheet({
             </View>
 
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.beerCheckins.tagsLabel}
+              {t.beerCheckins.tagsLabel}
             </Text>
             <View style={styles.ratingRow}>
               {BEER_TAGS.map((tag) => (
@@ -530,12 +530,12 @@ export function BeerCheckInSheet({
             </View>
 
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.beerCheckins.noteLabel}
+              {t.beerCheckins.noteLabel}
             </Text>
             <TextInput
               value={note}
               onChangeText={setNote}
-              placeholder={cs.beerCheckins.notePlaceholder}
+              placeholder={t.beerCheckins.notePlaceholder}
               placeholderTextColor={MockColors.fieldHint}
               style={[styles.input, styles.noteInput]}
               multiline
@@ -544,7 +544,7 @@ export function BeerCheckInSheet({
             />
 
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.beerCheckins.visibilityLabel}
+              {t.beerCheckins.visibilityLabel}
             </Text>
             <View style={styles.visibilityRow}>
               <Pressable
@@ -567,7 +567,7 @@ export function BeerCheckInSheet({
                   ]}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.beerCheckins.visibilityPrivate}
+                  {t.beerCheckins.visibilityPrivate}
                 </Text>
               </Pressable>
               <Pressable
@@ -590,7 +590,7 @@ export function BeerCheckInSheet({
                   ]}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.beerCheckins.visibilityFriends}
+                  {t.beerCheckins.visibilityFriends}
                 </Text>
               </Pressable>
             </View>
@@ -607,7 +607,7 @@ export function BeerCheckInSheet({
             accessibilityState={{ disabled: !canSubmit || submitting }}
           >
             <Text style={styles.submitText} maxFontSizeMultiplier={FontScaleCap.display}>
-              {cs.beerCheckins.submit}
+              {t.beerCheckins.submit}
             </Text>
           </Pressable>
         </View>

@@ -8,7 +8,7 @@ import { LinkIcon } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { fetchFriendInviteCode, type FriendInvite } from '@/data/friendsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout } from '@/mocks/mockTheme';
 import { selectNeedsNickname, selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -51,17 +51,17 @@ export default function PartaAddScreen() {
   const shareInvite = useCallback(async () => {
     const link = invite?.webUrl || invite?.url || '';
     if (!link) {
-      showToast(cs.friends.codeOffline);
+      showToast(t.friends.codeOffline);
       return;
     }
-    await Share.share({ message: cs.friends.shareMessage(link) });
+    await Share.share({ message: t.friends.shareMessage(link) });
   }, [invite, showToast]);
 
   const link = invite?.webUrl || invite?.url || '';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
-      <PartaScreenHeader title={cs.friends.addPeopleTitle} />
+      <PartaScreenHeader title={t.friends.addPeopleTitle} />
       <KeyboardAwareScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + TAB_CHROME }]}
         keyboardShouldPersistTaps="handled"
@@ -70,7 +70,7 @@ export default function PartaAddScreen() {
         {nickname ? (
           <>
             <Text style={styles.codeTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.codeSheetTitle}
+              {t.friends.codeSheetTitle}
             </Text>
             <View style={styles.qrWrap}>
               {loadingInvite ? (
@@ -81,7 +81,7 @@ export default function PartaAddScreen() {
                 </View>
               ) : (
                 <GlowButton
-                  label={cs.friends.retry}
+                  label={t.friends.retry}
                   onPress={() => void loadInvite()}
                   variant="secondary"
                   glow="none"
@@ -90,7 +90,7 @@ export default function PartaAddScreen() {
               )}
             </View>
             <GlowButton
-              label={cs.friends.codeShare}
+              label={t.friends.codeShare}
               onPress={() => void shareInvite()}
               variant="primary"
               glow="none"

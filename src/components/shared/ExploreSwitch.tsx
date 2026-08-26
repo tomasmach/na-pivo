@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassIcon, MapIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -35,18 +35,18 @@ export function ExploreSwitch({
       <Segment
         active={activeView === 'compass'}
         icon="compass"
-        label={cs.map.compass}
+        label={t.map.compass}
         accessibilityLabel={
-          activeView === 'compass' ? cs.a11y.mapSwitchCompassSelected : cs.a11y.mapSwitchCompass
+          activeView === 'compass' ? t.a11y.mapSwitchCompassSelected : t.a11y.mapSwitchCompass
         }
         onPress={onSelectCompass}
       />
       <Segment
         active={activeView === 'map'}
         icon="map"
-        label={cs.map.map}
+        label={t.map.map}
         accessibilityLabel={
-          activeView === 'map' ? cs.a11y.mapSwitchMap : cs.a11y.mapSwitchToMap
+          activeView === 'map' ? t.a11y.mapSwitchMap : t.a11y.mapSwitchToMap
         }
         onPress={onSelectMap}
       />

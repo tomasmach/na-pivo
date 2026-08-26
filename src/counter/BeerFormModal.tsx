@@ -30,7 +30,7 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import { CameraIcon } from '@/components/shared/IconGlyph';
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 import { isAllowedBeerVolume, type CommunityBeer } from '@/data/communityHours';
 import type { DrinkType, PlaceContext, ServingType } from '@/drinks/drinkTypes';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
@@ -262,9 +262,9 @@ function BeerFormBody({
   const nameValid = nameLocked || trimmedName.length > 0;
   const canSubmit = priceValid && nameValid;
   const placeholder = menuMode
-    ? cs.contribute.beerPriceOptional
+    ? t.contribute.beerPriceOptional
     : outside
-      ? cs.counter.outsidePricePlaceholder
+      ? t.counter.outsidePricePlaceholder
       : pricePlaceholder(priceCurrency);
 
   // Debounced beer-name suggestions: fetch once the name is 2+ chars and was
@@ -307,22 +307,22 @@ function BeerFormBody({
   const title =
     titleOverride ??
     (mode === 'add'
-      ? cs.counter.addDrinkModalTitle(drinkType)
+      ? t.counter.addDrinkModalTitle(drinkType)
       : mode === 'edit'
-        ? cs.counter.editModalTitle
+        ? t.counter.editModalTitle
         : mode === 'menu'
           ? beer
-            ? cs.contribute.editBeerSheetTitle
-            : cs.contribute.addBeerSheetTitle
-          : cs.counter.priceModalTitle);
+            ? t.contribute.editBeerSheetTitle
+            : t.contribute.addBeerSheetTitle
+          : t.counter.priceModalTitle);
 
   const submitLabel =
     submitLabelOverride ??
     (mode === 'edit'
-      ? cs.counter.confirmSave
+      ? t.counter.confirmSave
       : mode === 'menu'
-        ? cs.contribute.done
-        : cs.counter.confirmDrink(drinkType));
+        ? t.contribute.done
+        : t.counter.confirmDrink(drinkType));
 
   const selectPreset = (value: number) => {
     Keyboard.dismiss();
@@ -363,7 +363,7 @@ function BeerFormBody({
           <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
             {title}
           </Text>
-          <CloseButton onPress={onCancel} label={cs.counter.cancel} />
+          <CloseButton onPress={onCancel} label={t.counter.cancel} />
         </View>
 
         <KeyboardAwareScrollView
@@ -386,13 +386,13 @@ function BeerFormBody({
                     style={[styles.typePill, selected && styles.typePillSelected]}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
-                    accessibilityLabel={cs.counter.drinkTypeLabel(type)}
+                    accessibilityLabel={t.counter.drinkTypeLabel(type)}
                   >
                     <Text
                       style={[styles.typePillText, selected && styles.typePillTextSelected]}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.counter.drinkTypeLabel(type)}
+                      {t.counter.drinkTypeLabel(type)}
                     </Text>
                   </Pressable>
                 );
@@ -413,11 +413,11 @@ function BeerFormBody({
               style={styles.nameInput}
               value={name}
               onChangeText={onChangeName}
-              placeholder={cs.counter.drinkNamePlaceholder(drinkType)}
+              placeholder={t.counter.drinkNamePlaceholder(drinkType)}
               placeholderTextColor={MockColors.fieldHint}
               maxLength={80}
               autoFocus={mode !== 'edit'}
-              accessibilityLabel={cs.counter.drinkNamePlaceholder(drinkType)}
+              accessibilityLabel={t.counter.drinkNamePlaceholder(drinkType)}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
           )}
@@ -443,7 +443,7 @@ function BeerFormBody({
               ))}
               {suggestionsLoading && suggestions.length === 0 ? (
                 <Text style={styles.suggestionsLoading} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.contribute.beerSuggestionsLoading}
+                  {t.contribute.beerSuggestionsLoading}
                 </Text>
               ) : null}
             </View>
@@ -458,11 +458,11 @@ function BeerFormBody({
               }}
               style={({ pressed }) => [styles.scanShortcut, pressed && styles.scanShortcutPressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.counter.scanMenuShortcut}
+              accessibilityLabel={t.counter.scanMenuShortcut}
             >
               <CameraIcon size={16} color={Colors.amber} />
               <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.scanMenuShortcut}
+                {t.counter.scanMenuShortcut}
               </Text>
               <BetaBadge tone="muted" />
             </Pressable>
@@ -471,7 +471,7 @@ function BeerFormBody({
           {outside && drinkType === 'beer' ? (
             <>
               <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.servingLabel}
+                {t.counter.servingLabel}
               </Text>
               <View style={styles.volumeGroup}>
                 {OUTSIDE_SERVING_TYPES.map((value) => {
@@ -484,13 +484,13 @@ function BeerFormBody({
                       hitSlop={4}
                       accessibilityRole="button"
                       accessibilityState={{ selected: isSelected }}
-                      accessibilityLabel={cs.counter.servingTypeLabel(value)}
+                      accessibilityLabel={t.counter.servingTypeLabel(value)}
                     >
                       <Text
                         style={[styles.volumePillText, isSelected && styles.volumePillTextSelected]}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {cs.counter.servingTypeLabel(value)}
+                        {t.counter.servingTypeLabel(value)}
                       </Text>
                     </Pressable>
                   );
@@ -520,7 +520,7 @@ function BeerFormBody({
           </View>
 
           <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.counter.priceLabel}
+            {t.counter.priceLabel}
           </Text>
           <View style={styles.volumeGroup}>
             {initialPresets.map((value) => {
@@ -550,13 +550,13 @@ function BeerFormBody({
               hitSlop={4}
               accessibilityRole="button"
               accessibilityState={{ selected: customActive }}
-              accessibilityLabel={cs.counter.volumeOther}
+              accessibilityLabel={t.counter.volumeOther}
             >
               <Text
                 style={[styles.volumePillText, customActive && styles.volumePillTextSelected]}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.counter.volumeOther}
+                {t.counter.volumeOther}
               </Text>
             </Pressable>
           </View>
@@ -567,16 +567,16 @@ function BeerFormBody({
                 style={styles.customInput}
                 value={customMl}
                 onChangeText={(value) => setCustomMl(value.replace(/[^0-9]/g, '').slice(0, 4))}
-                placeholder={cs.counter.volumeCustomPlaceholder}
+                placeholder={t.counter.volumeCustomPlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 keyboardType="number-pad"
                 maxLength={4}
                 autoFocus
-                accessibilityLabel={cs.counter.volumeCustomPlaceholder}
+                accessibilityLabel={t.counter.volumeCustomPlaceholder}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               />
               <Text style={styles.customSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.counter.volumeUnitMl}
+                {t.counter.volumeUnitMl}
               </Text>
             </View>
           ) : null}

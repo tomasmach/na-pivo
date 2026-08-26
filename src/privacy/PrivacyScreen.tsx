@@ -19,7 +19,7 @@ import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 
 // Same complete policy the auth screen links to (app/auth/index.tsx).
@@ -30,7 +30,7 @@ export default function PrivacyScreen() {
   const insets = useSafeAreaInsets();
 
   function handleEmail() {
-    void Linking.openURL(`mailto:${cs.privacy.contactEmail}`);
+    void Linking.openURL(`mailto:${t.privacy.contactEmail}`);
   }
 
   // The complete policy lives on the same GitHub Pages site the auth screen
@@ -47,12 +47,12 @@ export default function PrivacyScreen() {
           onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={8}
         >
           <Text style={styles.backChevron}>‹</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>{cs.privacy.title}</Text>
+        <Text style={styles.headerTitle}>{t.privacy.title}</Text>
         {/* Spacer to keep title centered */}
         <View style={styles.backButton} />
       </View>
@@ -64,7 +64,7 @@ export default function PrivacyScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {cs.privacy.body.map((paragraph, index) => (
+        {t.privacy.body.map((paragraph, index) => (
           <Text key={index} style={styles.paragraph}>
             {paragraph}
           </Text>
@@ -72,9 +72,9 @@ export default function PrivacyScreen() {
 
         {/* Contact */}
         <View style={styles.contactRow}>
-          <Text style={styles.contactLabel}>{cs.privacy.contactLabel}: </Text>
+          <Text style={styles.contactLabel}>{t.privacy.contactLabel}: </Text>
           <Pressable onPress={handleEmail} accessibilityRole="link">
-            <Text style={styles.contactEmail}>{cs.privacy.contactEmail}</Text>
+            <Text style={styles.contactEmail}>{t.privacy.contactEmail}</Text>
           </Pressable>
         </View>
 
@@ -83,11 +83,11 @@ export default function PrivacyScreen() {
           onPress={handleFullPolicy}
           style={({ pressed }) => [styles.fullPolicyButton, pressed && styles.pressed]}
           accessibilityRole="link"
-          accessibilityLabel={cs.privacy.fullPolicyLink}
+          accessibilityLabel={t.privacy.fullPolicyLink}
           hitSlop={8}
         >
           <Text style={styles.fullPolicyText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.privacy.fullPolicyLink}
+            {t.privacy.fullPolicyLink}
           </Text>
         </Pressable>
       </ScrollView>

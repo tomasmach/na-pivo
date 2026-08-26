@@ -28,7 +28,8 @@ deletion). Sending an e-mail must never break the surrounding API request, so
 every function swallows its own exceptions and reports failure via a ``False``
 return value plus an error log -- it never propagates an exception to the caller.
 
-All user-facing copy is Czech (the app is Czech).
+All user-facing copy is written in Czech and translated through gettext; the
+recipient's language is passed in per send.
 """
 
 from __future__ import annotations
@@ -38,6 +39,10 @@ import logging
 from collections.abc import Sequence
 
 from django.conf import settings
+from django.utils import translation
+from django.utils.translation import gettext, gettext_lazy
+
+from pubs.i18n import current_locale
 
 logger = logging.getLogger("pubs.emailer")
 
@@ -65,7 +70,7 @@ def _render(
     message_html: str,
     *,
     code: str | None = None,
-    code_label: str = "Tvůj kód:",
+    code_label: str = gettext_lazy("Tvůj kód:"),
     link: str | None = None,
     link_label: str | None = None,
 ) -> str:
@@ -80,7 +85,7 @@ def _render(
         code_block = (
             '<tr><td align="center" style="padding:0 0 20px 0;">'
             f'<div style="color:{_MUTED};font-size:13px;margin-bottom:10px;">'
-            f"{code_label}</div>"
+            f"{str(code_label)}</div>"
             f'<div style="display:inline-block;background:{_BG};'
             f"border:1px solid {_BORDER};border-radius:12px;padding:16px 26px;"
             f"font-family:Menlo,Consolas,monospace;font-size:28px;font-weight:700;"
@@ -99,8 +104,10 @@ def _render(
             f"{link_label}</a></td></tr>"
         )
 
+    lang = current_locale()
+    footer = gettext("Na Pivo. Najdi nejbližší pivo.")
     return (
-        '<!DOCTYPE html><html lang="cs"><head>'
+        f'<!DOCTYPE html><html lang="{lang}"><head>'
         '<meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{title}</title></head>"
@@ -130,7 +137,7 @@ def _render(
         f'<tr><td align="center" style="padding:8px 32px 28px 32px;'
         f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
         f'font-size:12px;color:{_BORDER};border-top:1px solid {_BORDER};'
-        f'padding-top:20px;">Na Pivo — najdi nejbližší pivo</td></tr>'
+        f'padding-top:20px;">{footer}</td></tr>'
         "</table></td></tr></table></body></html>"
     )
 
@@ -185,10 +192,10 @@ def send_email(
 
 def _html_to_text_fallback(subject: str) -> str:
     """Minimal plain-text body used when no explicit ``text`` is supplied."""
-    return f"{subject}\n\nOtevři aplikaci Na Pivo pro více informací."
+    return f"{subject}\n\n" + gettext("Otevři aplikaci Na Pivo pro více informací.")
 
 
-def send_verification_email(to: str, *, link: str, code: str) -> bool:
+def send_verification_email(to: str, *, link: str, code: str, locale: str = "cs") -> bool:
     """Send the e-mail verification message.
 
     The HTTPS verification link is the primary action. The raw one-time token is
@@ -196,91 +203,97 @@ def send_verification_email(to: str, *, link: str, code: str) -> bool:
     it is intentionally not rendered because the app has no manual-entry screen
     for verification codes.
     """
-    subject = "Ověř si e-mail – Na Pivo"
-    message = (
-        "Čau! Ještě jedna věc, než to roztočíme. "
-        "Klepni na tlačítko a e-mail ověříme v prohlížeči. "
-        "Pak se jen vrať do appky. Platí jen chvíli, tak s tím nečekej."
-    )
-    html = _render(
-        "Ověř si e-mail",
-        message,
-        link=link,
-        link_label="Ověřit e-mail",
-    )
-    text = (
-        "Čau!\n\n"
-        "Klepni na odkaz a e-mail ověříme v prohlížeči:\n\n"
-        f"{link}\n\n"
-        "Pak se vrať do appky Na Pivo. Odkaz platí jen chvíli.\n\nNa Pivo"
-    )
-    return send_email(to, subject, html, text=text)
+    with translation.override(locale):
+        subject = gettext("Na Pivo: ověř si e-mail")
+        message = gettext(
+            "Čau! Ještě jedna věc, než to roztočíme. "
+            "Klepni na tlačítko a e-mail ověříme v prohlížeči. "
+            "Pak se jen vrať do appky. Platí jen chvíli, tak s tím nečekej."
+        )
+        html = _render(
+            gettext("Ověř si e-mail"),
+            message,
+            link=link,
+            link_label=gettext("Ověřit e-mail"),
+        )
+        text = gettext(
+            "Čau!\n\n"
+            "Klepni na odkaz a e-mail ověříme v prohlížeči:\n\n"
+            "%(link)s\n\n"
+            "Pak se vrať do appky Na Pivo. Odkaz platí jen chvíli.\n\nNa Pivo"
+        ) % {"link": link}
+        return send_email(to, subject, html, text=text)
 
 
-def send_password_reset_email(to: str, *, link: str, code: str) -> bool:
+def send_password_reset_email(to: str, *, link: str, code: str, locale: str = "cs") -> bool:
     """Send the password-reset message.
 
     The app link is the quickest path, while the code remains available for
     manual entry when an e-mail client refuses to open custom URL schemes.
     """
-    subject = "Nové heslo – Na Pivo"
-    message = (
-        "Někdo si řekl o nové heslo k tvému účtu. Snad ty. "
-        "Klepni na tlačítko, nebo se vrať do appky a zadej kód.<br><br>"
-        "Jestli to nebyl ty, klidně to nech být, nic se nestane."
-    )
-    html = _render(
-        "Nové heslo",
-        message,
-        code=code,
-        link=link,
-        link_label="Nastavit nové heslo",
-    )
-    text = (
-        "Někdo si řekl o nové heslo k tvému účtu. Snad ty.\n\n"
-        "Klepni na odkaz a nastav si nové heslo:\n\n"
-        f"{link}\n\n"
-        "Nebo se vrať do appky a zadej tenhle kód:\n\n"
-        f"    {code}\n\n"
-        "Jestli to nebyl ty, nech to být. Kód platí jen chvíli.\n\nNa Pivo"
-    )
-    return send_email(to, subject, html, text=text)
+    with translation.override(locale):
+        subject = gettext("Na Pivo: nové heslo")
+        message = gettext(
+            "Někdo si řekl o nové heslo k tvému účtu. Snad ty. "
+            "Klepni na tlačítko, nebo se vrať do appky a zadej kód.<br><br>"
+            "Jestli to nebyl ty, klidně to nech být, nic se nestane."
+        )
+        html = _render(
+            gettext("Nové heslo"),
+            message,
+            code=code,
+            link=link,
+            link_label=gettext("Nastavit nové heslo"),
+        )
+        text = gettext(
+            "Někdo si řekl o nové heslo k tvému účtu. Snad ty.\n\n"
+            "Klepni na odkaz a nastav si nové heslo:\n\n"
+            "%(link)s\n\n"
+            "Nebo se vrať do appky a zadej tenhle kód:\n\n"
+            "    %(code)s\n\n"
+            "Jestli to nebyl ty, nech to být. Kód platí jen chvíli.\n\nNa Pivo"
+        ) % {"link": link, "code": code}
+        return send_email(to, subject, html, text=text)
 
 
-def send_account_deletion_scheduled_email(to: str, *, cancel_by: str) -> bool:
+def send_account_deletion_scheduled_email(
+    to: str, *, cancel_by: str, locale: str = "cs"
+) -> bool:
     """Notify the user that their account is scheduled for deletion."""
-    subject = "Mažeme ti účet – Na Pivo"
-    message = (
-        "Dali jsme tvůj účet do fronty na smazání. "
-        f"Po <strong>{cancel_by}</strong> zmizí napořád, i se všemi daty.<br><br>"
-        "Rozmyslel sis to? Než ten den přijde, stačí se přihlásit "
-        "a je to zase tvoje."
-    )
-    html = _render("Mažeme ti účet", message)
-    text = (
-        "Dali jsme tvůj účet do fronty na smazání.\n\n"
-        f"Po {cancel_by} zmizí napořád, i se všemi daty.\n\n"
-        "Rozmyslel sis to? Než ten den přijde, stačí se přihlásit "
-        "a je to zase tvoje.\n\nNa Pivo"
-    )
-    return send_email(to, subject, html, text=text)
+    with translation.override(locale):
+        subject = gettext("Na Pivo: mažeme ti účet")
+        message = gettext(
+            "Dali jsme tvůj účet do fronty na smazání. "
+            "Po <strong>%(cancel_by)s</strong> zmizí napořád, i se všemi daty.<br><br>"
+            "Rozmyslel sis to? Než ten den přijde, stačí se přihlásit "
+            "a je to zase tvoje."
+        ) % {"cancel_by": cancel_by}
+        html = _render(gettext("Mažeme ti účet"), message)
+        text = gettext(
+            "Dali jsme tvůj účet do fronty na smazání.\n\n"
+            "Po %(cancel_by)s zmizí napořád, i se všemi daty.\n\n"
+            "Rozmyslel sis to? Než ten den přijde, stačí se přihlásit "
+            "a je to zase tvoje.\n\nNa Pivo"
+        ) % {"cancel_by": cancel_by}
+        return send_email(to, subject, html, text=text)
 
 
-def send_account_deleted_email(to: str) -> bool:
+def send_account_deleted_email(to: str, *, locale: str = "cs") -> bool:
     """Confirm to the user that their account and data have been deleted."""
-    subject = "Účet je pryč – Na Pivo"
-    message = (
-        "A je to. Tvůj účet i všechna data jsme smazali natrvalo.<br><br>"
-        "Díky, žes s námi chvíli vydržel. Kdyby ses někdy chtěl vrátit, "
-        "hospoda je pořád otevřená. \U0001f37b"
-    )
-    html = _render("Účet je pryč", message)
-    text = (
-        "A je to. Tvůj účet i všechna data jsme smazali natrvalo.\n\n"
-        "Díky, žes s námi chvíli vydržel. Kdyby ses chtěl vrátit, "
-        "hospoda je pořád otevřená.\n\nNa Pivo"
-    )
-    return send_email(to, subject, html, text=text)
+    with translation.override(locale):
+        subject = gettext("Na Pivo: účet je pryč")
+        message = gettext(
+            "A je to. Tvůj účet i všechna data jsme smazali natrvalo.<br><br>"
+            "Díky, žes s námi chvíli vydržel. Kdyby ses někdy chtěl vrátit, "
+            "hospoda je pořád otevřená. \U0001f37b"
+        )
+        html = _render(gettext("Účet je pryč"), message)
+        text = gettext(
+            "A je to. Tvůj účet i všechna data jsme smazali natrvalo.\n\n"
+            "Díky, žes s námi chvíli vydržel. Kdyby ses chtěl vrátit, "
+            "hospoda je pořád otevřená.\n\nNa Pivo"
+        )
+        return send_email(to, subject, html, text=text)
 
 
 def send_account_export_email(
@@ -289,23 +302,25 @@ def send_account_export_email(
     filename: str,
     json_bytes: bytes,
     idempotency_key: str | None = None,
+    locale: str = "cs",
 ) -> bool:
     """Send a GDPR-style account export as a JSON attachment."""
-    subject = "Tvoje data z Na Pivo"
-    message = (
-        "V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších "
-        "dat, která k účtu máme uložená.<br><br>"
-        "Soubor je ve formátu JSON."
-    )
-    html = _render("Tvoje data", message)
-    text = (
-        "V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších "
-        "dat, která k účtu máme uložená.\n\nSoubor je ve formátu JSON.\n\nNa Pivo"
-    )
-    attachment = {
-        "filename": filename,
-        "content": base64.b64encode(json_bytes).decode("ascii"),
-        "content_type": "application/json",
-    }
-    kwargs = {"idempotency_key": idempotency_key} if idempotency_key else {}
-    return send_email(to, subject, html, text=text, attachments=[attachment], **kwargs)
+    with translation.override(locale):
+        subject = gettext("Tvoje data z Na Pivo")
+        message = gettext(
+            "V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších "
+            "dat, která k účtu máme uložená.<br><br>"
+            "Soubor je ve formátu JSON."
+        )
+        html = _render(gettext("Tvoje data"), message)
+        text = gettext(
+            "V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších "
+            "dat, která k účtu máme uložená.\n\nSoubor je ve formátu JSON.\n\nNa Pivo"
+        )
+        attachment = {
+            "filename": filename,
+            "content": base64.b64encode(json_bytes).decode("ascii"),
+            "content_type": "application/json",
+        }
+        kwargs = {"idempotency_key": idempotency_key} if idempotency_key else {}
+        return send_email(to, subject, html, text=text, attachments=[attachment], **kwargs)

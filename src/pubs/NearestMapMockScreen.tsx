@@ -9,6 +9,7 @@ import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import { ChevronLeftIcon, LocateFixedIcon } from '@/components/shared/IconGlyph';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { useCompass } from '@/hooks/useCompass';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { presentPub } from '@/pubs/pubPresentation';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -70,7 +71,7 @@ export default function NearestMapMockScreen() {
             onPress={() => leaveRoute(router)}
             style={({ pressed }) => [styles.round, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Zpátky"
+            accessibilityLabel={t.nearestMap.backA11y}
           >
             <ChevronLeftIcon size={22} color={Colors.foam} />
           </Pressable>
@@ -81,10 +82,10 @@ export default function NearestMapMockScreen() {
           ) : null}
           <Text style={styles.stateText} maxFontSizeMultiplier={FontScaleCap.body}>
             {compass.permissionState === 'denied'
-              ? 'Povol polohu a ukážu ti nejbližší hospodu.'
+              ? t.nearestMap.permissionDenied
               : compass.searchFailed
-                ? 'Hospodu jsem teď nenačetl.'
-                : 'Hledám nejbližší hospodu…'}
+                ? t.nearestMap.loadFailed
+                : t.nearestMap.searching}
           </Text>
           {compass.permissionState === 'denied' ? (
             <Pressable
@@ -92,7 +93,7 @@ export default function NearestMapMockScreen() {
               style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
               accessibilityRole="button"
             >
-              <Text style={styles.stateButtonText}>Povolit polohu</Text>
+              <Text style={styles.stateButtonText}>{t.nearestMap.allowLocation}</Text>
             </Pressable>
           ) : compass.searchFailed ? (
             <Pressable
@@ -100,7 +101,7 @@ export default function NearestMapMockScreen() {
               style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
               accessibilityRole="button"
             >
-              <Text style={styles.stateButtonText}>Zkusit znovu</Text>
+              <Text style={styles.stateButtonText}>{t.nearestMap.retry}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -145,7 +146,7 @@ export default function NearestMapMockScreen() {
           onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.round, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Zpátky"
+          accessibilityLabel={t.nearestMap.backA11y}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
@@ -154,7 +155,7 @@ export default function NearestMapMockScreen() {
           onPress={recentre}
           style={({ pressed }) => [styles.round, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Vycentrovat na hospodu"
+          accessibilityLabel={t.nearestMap.recentreA11y}
         >
           <LocateFixedIcon size={20} color={Colors.foam} />
         </Pressable>
@@ -171,7 +172,7 @@ export default function NearestMapMockScreen() {
         </View>
         <View style={styles.badge}>
           <Text style={styles.badgeText} allowFontScaling={false}>
-            Nejbližší
+            {t.compass.modeNearest}
           </Text>
         </View>
       </View>

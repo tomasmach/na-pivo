@@ -6,7 +6,7 @@ import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { CameraIcon, HistoryIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import type { DrinkType } from '@/drinks/drinkTypes';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -44,7 +44,7 @@ export interface PartyDrinkSource {
  */
 function drinkNameIdentity(name: string): string {
   return name
-    .toLocaleLowerCase('cs-CZ')
+    .toLocaleLowerCase(intlLocale)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     // "12°", "11 °" — the degree belongs to the same tap.
@@ -122,7 +122,7 @@ export function PartyDrinkSheet({
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Co si dáš?
+              {t.partyDrinkSheet.title}
             </Text>
             <CloseButton onPress={onClose} />
           </View>
@@ -141,7 +141,7 @@ export function PartyDrinkSheet({
                     style={[styles.tabText, selected && styles.tabTextSelected]}
                     allowFontScaling={false}
                   >
-                    {cs.counter.drinkTypeLabel(value)}
+                    {t.counter.drinkTypeLabel(value)}
                   </Text>
                 </Pressable>
               );
@@ -189,7 +189,7 @@ export function PartyDrinkSheet({
             >
               <PlusIcon size={17} color={Colors.amber} />
               <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.body}>
-                Nový nápoj
+                {t.partyDrinkSheet.newDrink}
               </Text>
             </Pressable>
             {onBackdate ? (
@@ -197,11 +197,11 @@ export function PartyDrinkSheet({
                 onPress={() => finish(() => onBackdate(Date.now()))}
                 style={({ pressed }) => [styles.action, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.counter.backdateLink}
+                accessibilityLabel={t.counter.backdateLink}
               >
                 <HistoryIcon size={17} color={Colors.amber} />
                 <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.counter.backdateLink}
+                  {t.counter.backdateLink}
                 </Text>
               </Pressable>
             ) : null}
@@ -211,7 +211,7 @@ export function PartyDrinkSheet({
             >
               <CameraIcon size={17} color={Colors.amber} />
               <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.body}>
-                Naskenovat lístek
+                {t.partyDrinkSheet.scanMenu}
               </Text>
             </Pressable>
           </View>

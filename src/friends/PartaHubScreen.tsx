@@ -16,7 +16,7 @@ import {
   UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout } from '@/mocks/mockTheme';
 import {
   selectIsSignedIn,
@@ -95,14 +95,14 @@ export default function PartaHubScreen() {
   );
 
   const primaryLabel = !isSignedIn
-    ? cs.friends.ctaSignIn
+    ? t.friends.ctaSignIn
     : needsNickname
-      ? cs.friends.ctaNickname
+      ? t.friends.ctaNickname
       : dashboard?.myActiveActivity
-        ? cs.friends.ctaWhoIsComing
+        ? t.friends.ctaWhoIsComing
         : (dashboard?.friends.length ?? 0) === 0
-          ? cs.friends.ctaAddFriend
-        : cs.friends.ctaPing;
+          ? t.friends.ctaAddFriend
+        : t.friends.ctaPing;
 
   const primaryAction = useCallback(() => {
     if (!isSignedIn) router.push('/auth' as Href);
@@ -123,12 +123,12 @@ export default function PartaHubScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
       <PartaScreenHeader
-        title={cs.friends.hubTitle}
+        title={t.friends.hubTitle}
         trailing={
           <Pressable
             onPress={() => openPeople()}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.peopleTitle}
+            accessibilityLabel={t.friends.peopleTitle}
             style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
           >
             <UsersIcon size={21} color={Colors.foam} />
@@ -161,7 +161,7 @@ export default function PartaHubScreen() {
           <View onLayout={(event) => { presenceYRef.current = event.nativeEvent.layout.y; }}>
           <SectionBreak />
           <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.presenceHeader}
+            {t.friends.presenceHeader}
           </Text>
           {dashboard?.myActiveActivity ? (
             <View style={dashboard.myActiveActivity.id === activityId ? styles.targetRow : undefined}>
@@ -183,7 +183,7 @@ export default function PartaHubScreen() {
           />
           {!hasPresence ? (
             <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.presenceEmpty}
+              {t.friends.presenceEmpty}
             </Text>
           ) : null}
           </View>
@@ -191,7 +191,7 @@ export default function PartaHubScreen() {
           <View onLayout={(event) => { plansYRef.current = event.nativeEvent.layout.y; }}>
           <SectionBreak />
           <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.plansHeader}
+            {t.friends.plansHeader}
           </Text>
           {plans.map(({ activity, mine }) => (
             <View
@@ -203,19 +203,19 @@ export default function PartaHubScreen() {
           ))}
           {plans.length === 0 ? (
             <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.plansEmpty}
+              {t.friends.plansEmpty}
             </Text>
           ) : null}
           {isSignedIn && !needsNickname && (dashboard?.friends.length ?? 0) > 0 ? (
             <Pressable
               onPress={() => setComposeIntent('plan')}
               accessibilityRole="button"
-              accessibilityLabel={cs.friends.planComposeTitle}
+              accessibilityLabel={t.friends.planComposeTitle}
               style={({ pressed }) => [styles.planAction, pressed && styles.pressed]}
             >
               <ClockIcon size={19} color={Colors.foamMuted} />
               <Text style={styles.planActionText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.planComposeTitle}
+                {t.friends.planComposeTitle}
               </Text>
               <ChevronRightIcon size={18} color={Colors.mutedText} />
             </Pressable>

@@ -45,7 +45,7 @@ import {
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -66,25 +66,25 @@ function defaultEventStart(now = new Date()): { dayOffset: 0 | 1; hour: number }
 }
 
 function eventStatusLabel(event: CommunityEvent): string {
-  if (event.status === 'cancelled') return cs.communityEvents.statusCancelled;
-  if (event.status === 'ended') return cs.communityEvents.statusEnded;
-  if (event.status === 'live') return cs.communityEvents.statusLive;
-  return cs.communityEvents.statusAdults;
+  if (event.status === 'cancelled') return t.communityEvents.statusCancelled;
+  if (event.status === 'ended') return t.communityEvents.statusEnded;
+  if (event.status === 'live') return t.communityEvents.statusLive;
+  return t.communityEvents.statusAdults;
 }
 
 function hostName(event: CommunityEvent): string {
-  return event.host.nickname ? `@${event.host.nickname}` : event.host.displayName || 'Pořadatel';
+  return event.host.nickname ? `@${event.host.nickname}` : event.host.displayName || t.communityEvents.hostFallback;
 }
 
 function formatTime(event: CommunityEvent): string {
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
-  const day = start.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric' });
-  return `${day} · ${start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}-${end.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`;
+  const day = start.toLocaleDateString(intlLocale, { weekday: 'short', day: 'numeric', month: 'numeric' });
+  return `${day} · ${start.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' })}-${end.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function distanceLabel(value: DistanceBand | null): string {
-  return value ? cs.communityEvents.distance[value] : '';
+  return value ? t.communityEvents.distance[value] : '';
 }
 
 function Button({
@@ -134,7 +134,7 @@ function Stepper({ value, onChange, min, max }: { value: number; onChange: (valu
         disabled={atMin}
         style={[styles.stepButton, atMin && styles.controlDisabled]}
         accessibilityRole="button"
-        accessibilityLabel="Snížit"
+        accessibilityLabel={t.communityEvents.stepperDecrease}
         accessibilityState={{ disabled: atMin }}
       >
         <MinusIcon size={18} color={Colors.foam} />
@@ -145,7 +145,7 @@ function Stepper({ value, onChange, min, max }: { value: number; onChange: (valu
         disabled={atMax}
         style={[styles.stepButton, atMax && styles.controlDisabled]}
         accessibilityRole="button"
-        accessibilityLabel="Zvýšit"
+        accessibilityLabel={t.communityEvents.stepperIncrease}
         accessibilityState={{ disabled: atMax }}
       >
         <PlusIcon size={18} color={Colors.foam} />
@@ -180,11 +180,11 @@ function EventCard({
     try {
       const result = await action();
       trackUiInteraction(target, result.ok ? 'success' : 'failure');
-      showToast(result.ok ? success : result.detail || cs.communityEvents.loadError);
+      showToast(result.ok ? success : result.detail || t.communityEvents.loadError);
       if (result.ok) await reload();
     } catch {
       trackUiInteraction(target, 'failure');
-      showToast(cs.communityEvents.loadError);
+      showToast(t.communityEvents.loadError);
     } finally {
       actionInFlightRef.current = false;
       setActing(false);
@@ -196,16 +196,16 @@ function EventCard({
   const cancel = () => {
     if (disabled) return;
     showAppDialog({
-      title: cs.communityEvents.cancelConfirmTitle,
+      title: t.communityEvents.cancelConfirmTitle,
       message: event.title,
       buttons: [
-        { text: cs.communityEvents.cancelConfirmBack, style: 'cancel' },
+        { text: t.communityEvents.cancelConfirmBack, style: 'cancel' },
         {
-          text: cs.communityEvents.cancelEvent,
+          text: t.communityEvents.cancelEvent,
           style: 'destructive',
           onPress: () => void run(
             () => cancelCommunityEvent(event.id),
-            cs.communityEvents.cancelled,
+            t.communityEvents.cancelled,
             'community_cancel_event',
             'cancel',
           ),
@@ -217,16 +217,16 @@ function EventCard({
   const report = () => {
     if (disabled) return;
     showAppDialog({
-      title: cs.communityEvents.reportTitle,
+      title: t.communityEvents.reportTitle,
       message: event.title,
       buttons: [
-      { text: cs.communityEvents.reportCancel, style: 'cancel' },
+      { text: t.communityEvents.reportCancel, style: 'cancel' },
       {
-        text: cs.communityEvents.report,
+        text: t.communityEvents.report,
         style: 'destructive',
         onPress: () => void run(
           () => reportCommunityEvent(event.id),
-          cs.communityEvents.reported,
+          t.communityEvents.reported,
           'community_report',
         ),
       },
@@ -253,71 +253,71 @@ function EventCard({
       </View>
       <View style={styles.metaRow}>
         <UsersIcon size={15} color={Colors.mutedText} />
-        <Text style={styles.metaText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.spots(event.availableSpots)} · {cs.communityEvents.host(hostName(event))}</Text>
+        <Text style={styles.metaText} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.spots(event.availableSpots)} · {t.communityEvents.host(hostName(event))}</Text>
       </View>
       {event.exactAddress ? (
         <View style={styles.addressStrip}>
-          <Text style={styles.addressLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.addressApproved}</Text>
+          <Text style={styles.addressLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.addressApproved}</Text>
           <Text style={styles.addressText} maxFontSizeMultiplier={FontScaleCap.body}>{event.exactAddress}</Text>
         </View>
       ) : (
-        <Text style={styles.hiddenAddress} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.addressHidden}</Text>
+        <Text style={styles.hiddenAddress} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.addressHidden}</Text>
       )}
 
       {!event.isHost && isOpen ? (
         event.membershipStatus === 'approved' ? (
-          <Button label={cs.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.leave, 'community_leave')} />
+          <Button label={t.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), t.communityEvents.leave, 'community_leave')} />
         ) : event.membershipStatus === 'pending' ? (
-          <Button label={cs.communityEvents.cancelRequest} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.cancelRequest, 'community_cancel_request', 'cancel')} />
+          <Button label={t.communityEvents.cancelRequest} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), t.communityEvents.cancelRequest, 'community_cancel_request', 'cancel')} />
         ) : (
           <>
             <TextInput
               value={joinMessage}
               onChangeText={setJoinMessage}
-              placeholder={cs.communityEvents.requestPlaceholder}
+              placeholder={t.communityEvents.requestPlaceholder}
               placeholderTextColor={Colors.mutedText}
               style={styles.input}
               maxLength={240}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
-            <Button label={cs.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), cs.communityEvents.joinSent, 'community_join_request')} />
+            <Button label={t.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), t.communityEvents.joinSent, 'community_join_request')} />
           </>
         )
       ) : null}
 
       {event.isHost && event.joinRequests.length > 0 ? (
         <View style={styles.requests}>
-          <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.requests}</Text>
+          <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.requests}</Text>
           {event.joinRequests.map((request) => (
             <View key={request.id} style={styles.requestRow}>
               <View style={styles.requestCopy}>
-                <Text style={styles.requestName} maxFontSizeMultiplier={FontScaleCap.body}>{request.account.nickname ? `@${request.account.nickname}` : request.account.displayName || 'Návštěvník'}</Text>
+                <Text style={styles.requestName} maxFontSizeMultiplier={FontScaleCap.body}>{request.account.nickname ? `@${request.account.nickname}` : request.account.displayName || t.communityEvents.guestFallback}</Text>
                 {request.message ? <Text style={styles.requestMessage} maxFontSizeMultiplier={FontScaleCap.body}>{request.message}</Text> : null}
               </View>
               {request.status === 'pending' ? (
                 <View style={styles.requestActions}>
                   <Pressable
-                    onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), cs.communityEvents.reject, 'community_request_decline', 'decline')}
+                    onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), t.communityEvents.reject, 'community_request_decline', 'decline')}
                     disabled={disabled}
                     style={[styles.iconButton, disabled && styles.controlDisabled]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.communityEvents.reject}
+                    accessibilityLabel={t.communityEvents.reject}
                     accessibilityState={{ disabled, busy: acting }}
                   >
                     <XIcon size={18} color={Colors.mutedText} />
                   </Pressable>
                   <Pressable
-                    onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), cs.communityEvents.approve, 'community_request_accept', 'accept')}
+                    onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), t.communityEvents.approve, 'community_request_accept', 'accept')}
                     disabled={disabled}
                     style={[styles.iconButton, styles.approveButton, disabled && styles.controlDisabled]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.communityEvents.approve}
+                    accessibilityLabel={t.communityEvents.approve}
                     accessibilityState={{ disabled, busy: acting }}
                   >
                     <CheckIcon size={18} color={Colors.stout} />
                   </Pressable>
                 </View>
-              ) : <Text style={styles.approvedLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.approved}</Text>}
+              ) : <Text style={styles.approvedLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.approved}</Text>}
             </View>
           ))}
         </View>
@@ -332,7 +332,7 @@ function EventCard({
             accessibilityRole="button"
             accessibilityState={{ disabled, busy: acting }}
           >
-            <Text style={styles.dangerAction} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.cancelEvent}</Text>
+            <Text style={styles.dangerAction} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.cancelEvent}</Text>
           </Pressable>
         ) : !event.isHost ? (
           <Pressable
@@ -340,11 +340,11 @@ function EventCard({
             disabled={disabled}
             style={[styles.reportAction, disabled && styles.controlDisabled]}
             accessibilityRole="button"
-            accessibilityLabel={cs.communityEvents.report}
+            accessibilityLabel={t.communityEvents.report}
             accessibilityState={{ disabled, busy: acting }}
           >
             <FlagIcon size={14} color={Colors.mutedText} />
-            <Text style={styles.reportText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.report}</Text>
+            <Text style={styles.reportText} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.report}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -388,12 +388,12 @@ export default function CommunityEventsScreen() {
       if (result.ok) {
         setDashboard(result.dashboard);
       } else {
-        const message = result.code === 'auth' ? cs.communityEvents.authError : result.detail;
-        setLoadError(message || cs.communityEvents.loadError);
+        const message = result.code === 'auth' ? t.communityEvents.authError : result.detail;
+        setLoadError(message || t.communityEvents.loadError);
       }
     } catch {
       if (requestId !== loadRequestRef.current) return;
-      setLoadError(cs.communityEvents.loadError);
+      setLoadError(t.communityEvents.loadError);
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
@@ -412,7 +412,7 @@ export default function CommunityEventsScreen() {
     try {
       const permission = await ensureLocationPermission();
       if (permission !== 'granted') {
-        showToast(cs.addPub.locationPermissionDenied);
+        showToast(t.addPub.locationPermissionDenied);
         if (permission === 'denied') await openSystemSettings();
         return;
       }
@@ -424,7 +424,7 @@ export default function CommunityEventsScreen() {
         await load(coords);
       }
     } catch {
-      showToast(cs.addPub.locationUnavailable);
+      showToast(t.addPub.locationUnavailable);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -434,15 +434,15 @@ export default function CommunityEventsScreen() {
   const create = useCallback(async () => {
     if (busyRef.current) return;
     const validationError = !title.trim()
-      ? cs.communityEvents.titleRequired
+      ? t.communityEvents.titleRequired
       : !city.trim()
-        ? cs.communityEvents.cityRequired
+        ? t.communityEvents.cityRequired
         : !address.trim()
-          ? cs.communityEvents.addressRequired
+          ? t.communityEvents.addressRequired
           : !eventLocation
-            ? cs.communityEvents.locationRequired
+            ? t.communityEvents.locationRequired
             : !adultsConfirmed
-              ? cs.communityEvents.adultsRequired
+              ? t.communityEvents.adultsRequired
               : null;
     if (validationError) {
       trackUiInteraction('community_publish', 'submit');
@@ -456,7 +456,7 @@ export default function CommunityEventsScreen() {
     if (starts.getTime() <= Date.now()) {
       trackUiInteraction('community_publish', 'submit');
       trackUiInteraction('community_publish', 'failure');
-      showToast(cs.communityEvents.startPastError);
+      showToast(t.communityEvents.startPastError);
       return;
     }
     const confirmedLocation = eventLocation;
@@ -498,12 +498,12 @@ export default function CommunityEventsScreen() {
       setDuration(4);
       setCapacity(6);
       setAdultsConfirmed(false);
-      showToast(cs.communityEvents.created);
+      showToast(t.communityEvents.created);
       setMode('mine');
       await load(location);
     } catch {
       trackUiInteraction('community_publish', 'failure');
-      showToast(cs.communityEvents.loadError);
+      showToast(t.communityEvents.loadError);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -518,15 +518,15 @@ export default function CommunityEventsScreen() {
       <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
         <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top, paddingBottom: insets.bottom + Spacing.xl }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <Pressable onPress={() => leaveRoute(router)} accessibilityRole="button" accessibilityLabel={cs.a11y.backButton} style={styles.backButton}>
+            <Pressable onPress={() => leaveRoute(router)} accessibilityRole="button" accessibilityLabel={t.a11y.backButton} style={styles.backButton}>
               <ChevronLeftIcon size={24} color={Colors.foam} />
             </Pressable>
             <View style={styles.headerCopy}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.communityEvents.title}</Text>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.communityEvents.title}</Text>
             </View>
           </View>
-          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.communityEvents.intro}</Text>
-          <View style={styles.safetyStrip}><Text style={styles.safetyText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.safety}</Text></View>
+          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.heading}>{t.communityEvents.intro}</Text>
+          <View style={styles.safetyStrip}><Text style={styles.safetyText} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.safety}</Text></View>
 
           <View style={styles.tabs}>
             {(['nearby', 'mine', 'create'] as Mode[]).map((item) => (
@@ -545,59 +545,59 @@ export default function CommunityEventsScreen() {
                 }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: mode === item }}
-                accessibilityLabel={item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}
+                accessibilityLabel={item === 'nearby' ? t.communityEvents.nearby : item === 'mine' ? t.communityEvents.mine : t.communityEvents.create}
                 style={[styles.tab, mode === item && styles.tabActive]}
               >
-                <Text style={[styles.tabText, mode === item && styles.tabTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}</Text>
+                <Text style={[styles.tabText, mode === item && styles.tabTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{item === 'nearby' ? t.communityEvents.nearby : item === 'mine' ? t.communityEvents.mine : t.communityEvents.create}</Text>
               </Pressable>
             ))}
           </View>
 
           {mode === 'create' ? (
             <View style={styles.form}>
-              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.formTitle}</Text>
-              <TextInput value={title} onChangeText={setTitle} placeholder={cs.communityEvents.formTitlePlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
-              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.description}</Text>
-              <TextInput value={description} onChangeText={setDescription} placeholder={cs.communityEvents.descriptionPlaceholder} placeholderTextColor={Colors.mutedText} style={[styles.input, styles.multiline]} multiline maxLength={800} maxFontSizeMultiplier={FontScaleCap.body} />
-              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.city}</Text>
-              <TextInput value={city} onChangeText={setCity} placeholder={cs.communityEvents.cityPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
-              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.area}</Text>
-              <TextInput value={area} onChangeText={setArea} placeholder={cs.communityEvents.areaPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
-              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.exactAddress}</Text>
-              <TextInput value={address} onChangeText={setAddress} placeholder={cs.communityEvents.exactAddressPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={300} maxFontSizeMultiplier={FontScaleCap.body} />
-              <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.exactAddressHint}</Text>
-              <Button label={eventLocation ? cs.communityEvents.locationReady : cs.communityEvents.useLocation} secondary onPress={() => void locate(true)} disabled={busy} icon={<MapPinIcon size={18} color={Colors.amber} />} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.formTitle}</Text>
+              <TextInput value={title} onChangeText={setTitle} placeholder={t.communityEvents.formTitlePlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.description}</Text>
+              <TextInput value={description} onChangeText={setDescription} placeholder={t.communityEvents.descriptionPlaceholder} placeholderTextColor={Colors.mutedText} style={[styles.input, styles.multiline]} multiline maxLength={800} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.city}</Text>
+              <TextInput value={city} onChangeText={setCity} placeholder={t.communityEvents.cityPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.area}</Text>
+              <TextInput value={area} onChangeText={setArea} placeholder={t.communityEvents.areaPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.inputLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.exactAddress}</Text>
+              <TextInput value={address} onChangeText={setAddress} placeholder={t.communityEvents.exactAddressPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={300} maxFontSizeMultiplier={FontScaleCap.body} />
+              <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.exactAddressHint}</Text>
+              <Button label={eventLocation ? t.communityEvents.locationReady : t.communityEvents.useLocation} secondary onPress={() => void locate(true)} disabled={busy} icon={<MapPinIcon size={18} color={Colors.amber} />} />
 
               <View style={styles.formGroup}>
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.start}</Text>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.start}</Text>
                 <View style={styles.choiceRow}>
-                  {([0, 1] as const).map((value) => <Pressable key={value} onPress={() => setDayOffset(value)} accessibilityRole="tab" accessibilityState={{ selected: dayOffset === value }} style={[styles.choice, dayOffset === value && styles.choiceActive]}><Text style={[styles.choiceText, dayOffset === value && styles.choiceTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{value === 0 ? cs.communityEvents.today : cs.communityEvents.tomorrow}</Text></Pressable>)}
+                  {([0, 1] as const).map((value) => <Pressable key={value} onPress={() => setDayOffset(value)} accessibilityRole="tab" accessibilityState={{ selected: dayOffset === value }} style={[styles.choice, dayOffset === value && styles.choiceActive]}><Text style={[styles.choiceText, dayOffset === value && styles.choiceTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{value === 0 ? t.communityEvents.today : t.communityEvents.tomorrow}</Text></Pressable>)}
                 </View>
                 <Stepper value={hour} onChange={setHour} min={0} max={23} />
               </View>
               <View style={styles.formGroup}>
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.duration}</Text>
-                <View style={styles.choiceRow}>{[2, 4, 6].map((value) => <Pressable key={value} onPress={() => setDuration(value)} accessibilityRole="tab" accessibilityState={{ selected: duration === value }} style={[styles.choice, duration === value && styles.choiceActive]}><Text style={[styles.choiceText, duration === value && styles.choiceTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.durationHours(value)}</Text></Pressable>)}</View>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.duration}</Text>
+                <View style={styles.choiceRow}>{[2, 4, 6].map((value) => <Pressable key={value} onPress={() => setDuration(value)} accessibilityRole="tab" accessibilityState={{ selected: duration === value }} style={[styles.choice, duration === value && styles.choiceActive]}><Text style={[styles.choiceText, duration === value && styles.choiceTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.durationHours(value)}</Text></Pressable>)}</View>
               </View>
-              <View style={styles.formGroup}><Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.capacity}</Text><Stepper value={capacity} onChange={setCapacity} min={2} max={20} /></View>
+              <View style={styles.formGroup}><Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.capacity}</Text><Stepper value={capacity} onChange={setCapacity} min={2} max={20} /></View>
               <Pressable onPress={() => setAdultsConfirmed((value) => !value)} style={styles.confirmRow} accessibilityRole="checkbox" accessibilityState={{ checked: adultsConfirmed }}>
                 <View style={[styles.checkbox, adultsConfirmed && styles.checkboxActive]}>{adultsConfirmed ? <CheckIcon size={16} color={Colors.stout} /> : null}</View>
-                <Text style={styles.confirmText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.communityEvents.adultsConfirm}</Text>
+                <Text style={styles.confirmText} maxFontSizeMultiplier={FontScaleCap.body}>{t.communityEvents.adultsConfirm}</Text>
               </Pressable>
-              <Button label={cs.communityEvents.publish} onPress={() => void create()} disabled={busy} icon={<HouseIcon size={18} color={Colors.stout} />} />
+              <Button label={t.communityEvents.publish} onPress={() => void create()} disabled={busy} icon={<HouseIcon size={18} color={Colors.stout} />} />
             </View>
           ) : loading ? <ActivityIndicator color={Colors.amber} style={styles.loader} /> : loadError ? (
             <View style={styles.errorState}>
               <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{loadError}</Text>
-              <Button label={cs.communityEvents.retry} onPress={() => {
+              <Button label={t.communityEvents.retry} onPress={() => {
                 setLoading(true);
                 void load(location);
               }} />
             </View>
           ) : (
             <View style={styles.list}>
-              {mode === 'nearby' && !location ? <Button label={busy ? cs.communityEvents.locating : cs.communityEvents.locate} onPress={() => void locate(false)} disabled={busy} secondary icon={<MapPinIcon size={18} color={Colors.amber} />} /> : null}
-              {events.length === 0 ? <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{mode === 'nearby' ? cs.communityEvents.noNearby : cs.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
+              {mode === 'nearby' && !location ? <Button label={busy ? t.communityEvents.locating : t.communityEvents.locate} onPress={() => void locate(false)} disabled={busy} secondary icon={<MapPinIcon size={18} color={Colors.amber} />} /> : null}
+              {events.length === 0 ? <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{mode === 'nearby' ? t.communityEvents.noNearby : t.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
             </View>
           )}
         </KeyboardAwareScrollView>

@@ -5,7 +5,7 @@ import { useRouter, type Href } from 'expo-router';
 import type { PubInfoContext } from '@/components/amenities/pubInfoContext';
 import { BadgeCheckIcon, ChevronRightIcon, ClockIcon } from '@/components/shared/IconGlyph';
 import { fetchActivePubEvents, isPubEventActive, type PubEvent } from '@/data/pubEventsClient';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -36,8 +36,9 @@ function formatEventValidity(event: PubEvent, now = new Date()): string {
     start.getMonth() === now.getMonth() &&
     start.getDate() === now.getDate();
   const time = (date: Date) => `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
-  if (startsToday && sameDay) return `Dnes ${time(start)}-${time(end)}`;
-  const date = (value: Date) => `${value.getDate()}. ${value.getMonth() + 1}.`;
+  if (startsToday && sameDay) return t.pubDetail.eventToday(`${time(start)}-${time(end)}`);
+  const date = (value: Date) =>
+    new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'numeric' }).format(value);
   return sameDay
     ? `${date(start)} ${time(start)}-${time(end)}`
     : `${date(start)} ${time(start)} - ${date(end)} ${time(end)}`;
@@ -118,10 +119,10 @@ export function PubEventsSection({
     <View>
       {showSuggestion ? (
         <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.pubDetail.eventsTitle}
+          {t.pubDetail.eventsTitle}
         </Text>
       ) : (
-        <SectionBreak title={cs.pubDetail.eventsTitle} />
+        <SectionBreak title={t.pubDetail.eventsTitle} />
       )}
       {activeEvents.map((event) => (
         <View key={event.id} style={styles.eventRow} accessibilityLabel={`${event.title}. ${formatEventValidity(event)}`}>
@@ -141,7 +142,7 @@ export function PubEventsSection({
             <View style={styles.verifiedRow}>
               <BadgeCheckIcon size={14} color={Colors.success} />
               <Text style={styles.verified} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.pubDetail.eventVerified}
+                {t.pubDetail.eventVerified}
               </Text>
             </View>
           </View>
@@ -153,7 +154,7 @@ export function PubEventsSection({
           style={({ pressed }) => [styles.suggestRow, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={
-            isSignedIn ? cs.pubDetail.eventSuggest : cs.pubDetail.eventSuggestSignedOut
+            isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut
           }
         >
           <View style={styles.suggestIcon}>
@@ -161,10 +162,10 @@ export function PubEventsSection({
           </View>
           <View style={styles.eventCopy}>
             <Text style={styles.suggestTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-              {isSignedIn ? cs.pubDetail.eventSuggest : cs.pubDetail.eventSuggestSignedOut}
+              {isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut}
             </Text>
             <Text style={styles.details} maxFontSizeMultiplier={FontScaleCap.body}>
-              Po kontrole ji ukážeme ostatním.
+              {t.pubDetail.eventSuggestHint}
             </Text>
           </View>
           <ChevronRightIcon size={20} color={Colors.mutedText} />

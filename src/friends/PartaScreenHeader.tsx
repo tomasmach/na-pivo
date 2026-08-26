@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
@@ -15,7 +15,7 @@ export function PartaScreenHeader({ title, trailing }: { title: string; trailing
       <Pressable
         onPress={() => (router.canGoBack() ? router.back() : router.replace('/friends'))}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.backButton}
+        accessibilityLabel={t.a11y.backButton}
         hitSlop={8}
         style={({ pressed }) => [styles.side, pressed && styles.pressed]}
       >

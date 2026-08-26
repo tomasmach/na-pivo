@@ -1,5 +1,7 @@
 /** Durable, owner-scoped placement of a catalogue game onto one shared table. */
 
+import { t } from '@/i18n';
+
 import { ensureAccount } from './account';
 import {
   isRetriablePartyGamesError,
@@ -113,7 +115,7 @@ async function deliver(
   const abort = combinePartyGameSignals(snapshot.signal, operationSignal);
   try {
     if (!isPartyGameBoundaryCurrent(snapshot) || abort.signal.aborted) {
-      return deliveryFailure('account', 'Účet se mezitím změnil.');
+      return deliveryFailure('account', t.clientErrors.accountChanged);
     }
     // Bind the request before bearer acquisition. A clear/merge abort resolves
     // this wait and no old start can continue with a newly installed session.
@@ -124,7 +126,7 @@ async function deliver(
       !isPartyGameBoundaryCurrent(snapshot) ||
       abort.signal.aborted
     ) {
-      return deliveryFailure('account', 'Účet se mezitím změnil.');
+      return deliveryFailure('account', t.clientErrors.accountChanged);
     }
 
     const result = await startPartyGame(
@@ -134,7 +136,7 @@ async function deliver(
       ownerAccountId,
     );
     if (!isPartyGameBoundaryCurrent(snapshot) || abort.signal.aborted) {
-      return deliveryFailure('account', 'Účet se mezitím změnil.');
+      return deliveryFailure('account', t.clientErrors.accountChanged);
     }
     if (result.ok) {
       const remapped = await remapQueuedPartyGameEvents(
@@ -144,7 +146,7 @@ async function deliver(
         ownerAccountId,
       );
       if (!remapped || !isPartyGameBoundaryCurrent(snapshot) || abort.signal.aborted) {
-        return deliveryFailure('storage', 'Rozehranou hru se nepodařilo uložit.');
+        return deliveryFailure('storage', t.clientErrors.gameSaveFailed);
       }
       await remove(item.input.clientId, ownerAccountId, snapshot);
       return { ok: true, game: result.game };
@@ -162,7 +164,7 @@ async function deliver(
       if (discarded.ok) await remove(item.input.clientId, ownerAccountId, snapshot);
       return deliveryFailure(
         result.code,
-        result.detail || 'Server sdílení hry odmítl.',
+        result.detail || t.clientErrors.gameShareRejected,
         true,
         discarded.discarded,
       );

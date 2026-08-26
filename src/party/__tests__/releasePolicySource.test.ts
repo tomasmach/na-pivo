@@ -51,8 +51,12 @@ describe('release policy: retired evening copy', () => {
 describe('release policy: live activity sources', () => {
   it('iOS BeerEveningLiveActivity has exactly two Zapsat stejné actions and no retired copy', () => {
     const text = read('src', 'liveActivity', 'BeerEveningLiveActivity.tsx');
-    expect(text.match(/label="Zapsat stejné"/g) ?? []).toHaveLength(2);
-    expect(text.match(/accessibilityLabel\('Zapsat stejné pivo'\)/g) ?? []).toHaveLength(2);
+    // The widget renders pre-formatted labels; the Czech copy lives in cs.ts.
+    expect(text.match(/label=\{props\.addBeerLabel\}/g) ?? []).toHaveLength(2);
+    expect(text.match(/accessibilityLabel\(props\.addBeerA11yLabel\)/g) ?? []).toHaveLength(2);
+    const strings = read('src', 'i18n', 'cs.ts');
+    expect(strings).toContain("addBeer: 'Zapsat stejné'");
+    expect(strings).toContain("addBeerA11y: 'Zapsat stejné pivo'");
     expect(text).not.toContain('Přidat další');
     expect(text).not.toContain('Přidat stejné pivo');
   });
@@ -70,8 +74,20 @@ describe('release policy: live activity sources', () => {
       'beerliveactivity',
       'BeerLiveActivityNotification.kt',
     );
-    expect(text).toContain('"Zapsat stejné pivo"');
+    expect(text).toContain('R.string.beer_live_activity_add_beer_action');
+    const czech = read(
+      'modules',
+      'beer-live-activity',
+      'android',
+      'src',
+      'main',
+      'res',
+      'values-cs',
+      'strings.xml',
+    );
+    expect(czech).toContain('>Zapsat stejné pivo<');
     expect(text).not.toContain('Přidat další');
+    expect(czech).not.toContain('Přidat další');
   });
 });
 

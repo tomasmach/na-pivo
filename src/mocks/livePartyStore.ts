@@ -34,6 +34,8 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { generateUuidV4 } from '@/data/account';
 import AsyncStorage from '@/data/privateAccountStorage';
 import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
+import { intlLocale, t } from '@/i18n';
+import { OUTSIDE_PUB_NAME } from '@/party/nightBuilder';
 
 export interface GameResult {
   game: string;
@@ -96,7 +98,7 @@ export function partyTapOptions(...groups: PartyTap[][]): PartyTap[] {
   for (const tap of groups.flat()) {
     const name = tap.name.trim();
     if (!name) continue;
-    const key = name.toLocaleLowerCase('cs-CZ');
+    const key = name.toLocaleLowerCase(intlLocale);
     const previous = taps.get(key);
     taps.set(key, {
       name: previous?.name ?? name,
@@ -161,10 +163,23 @@ interface LivePartyState {
   end: () => void;
 }
 
+/**
+ * The nameless beer, as it is written down.
+ *
+ * A stored beer NAME, not UI copy: it travels to the server, into the diary and
+ * into other people's threads, so it stays Czech in every language.
+ */
+export const DEFAULT_HOUSE_BEER = 'Pivo';
+
+/** The stored default stays 'Pivo'; only what the user sees follows the UI language. */
+export function displayHouseBeer(name: string): string {
+  return name === DEFAULT_HOUSE_BEER ? t.common.beerFallback : name;
+}
+
 const EMPTY = {
   live: false,
   pubName: '',
-  houseBeer: 'Pivo',
+  houseBeer: DEFAULT_HOUSE_BEER,
   pubTaps: [] as PartyTap[],
   pubKey: null as string | null,
   pickingPub: false,
@@ -246,7 +261,7 @@ function mergePersistedState(
     live: saved.live === true,
     pubName: typeof saved.pubName === 'string' ? saved.pubName : '',
     pickingPub: false,
-    houseBeer: typeof saved.houseBeer === 'string' ? saved.houseBeer : 'Pivo',
+    houseBeer: typeof saved.houseBeer === 'string' ? saved.houseBeer : DEFAULT_HOUSE_BEER,
     pubTaps,
     pubKey: typeof saved.pubKey === 'string' ? saved.pubKey : null,
     startedAt,
@@ -300,7 +315,7 @@ export const useLivePartyStore = create<LivePartyState>()(
       resume: (pubName, startedAt) =>
         set((state) => ({
           live: true,
-          pubName: pubName || state.pubName || 'Mimo hospodu',
+          pubName: pubName || state.pubName || OUTSIDE_PUB_NAME,
           startedAt: Number.isFinite(Date.parse(startedAt)) ? Date.parse(startedAt) : Date.now(),
         })),
 

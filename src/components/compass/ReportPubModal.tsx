@@ -7,7 +7,7 @@ import { showAppDialog } from '@/components/shared/AppDialog';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { FlagIcon, MapPinPlusIcon, PencilIcon, Trash2Icon } from '@/components/shared/IconGlyph';
 import type { PubReportReason } from '@/data/pubReportsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -64,36 +64,36 @@ export function ReportPubModal({
             </View>
             <View style={styles.titleWrap}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.compass.reportTitle}
+                {t.compass.reportTitle}
               </Text>
             </View>
-            <CloseButton onPress={onClose} label={cs.common.cancel} />
+            <CloseButton onPress={onClose} label={t.common.cancel} />
           </View>
 
           <View style={styles.actions}>
             <ActionButton
               first
-              label={cs.compass.reportAddMissing}
+              label={t.compass.reportAddMissing}
               icon={<MapPinPlusIcon size={18} color={Colors.foam} />}
               onPress={() => runAfterClose(onAddPub)}
             />
             <ActionButton
-              label={cs.compass.reportRename}
+              label={t.compass.reportRename}
               icon={<PencilIcon size={18} color={Colors.foam} />}
               onPress={() => runAfterClose(onRename)}
             />
             <ActionButton
-              label={cs.compass.reportNotPub}
+              label={t.compass.reportNotPub}
               icon={<Trash2Icon size={18} color={Colors.amberLight} />}
               onPress={() =>
                 runAfterClose(() =>
                   showAppDialog({
-                    title: cs.compass.reportConfirmTitle(pubName),
-                    message: cs.compass.reportConfirmBody,
+                    title: t.compass.reportConfirmTitle(pubName),
+                    message: t.compass.reportConfirmBody,
                     buttons: [
-                      { text: cs.compass.reportConfirmCancel, style: 'cancel' },
+                      { text: t.compass.reportConfirmCancel, style: 'cancel' },
                       {
-                        text: cs.compass.reportConfirmAction,
+                        text: t.compass.reportConfirmAction,
                         style: 'destructive',
                         onPress: () => onReportReason('not_pub'),
                       },

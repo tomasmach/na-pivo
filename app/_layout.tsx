@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
+import { t } from '@/i18n';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
@@ -117,6 +118,10 @@ import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
+import { installBackendLocaleHeader } from '@/data/localeHeader';
+
+// Every backend request carries Accept-Language from the first render on.
+installBackendLocaleHeader();
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -229,10 +234,8 @@ function StartupBoundaryRecovery({
       <SafeAreaProvider>
         <StatusBar style="light" />
         <View style={styles.startupRecoveryContent}>
-          <Text style={styles.startupRecoveryTitle}>Telefon teď nepustil účet</Text>
-          <Text style={styles.startupRecoveryBody}>
-            Odemkni ho a zkus to znovu. Tvoje data zatím nechávám zamčená.
-          </Text>
+          <Text style={styles.startupRecoveryTitle}>{t.startup.lockedTitle}</Text>
+          <Text style={styles.startupRecoveryBody}>{t.startup.lockedBody}</Text>
           <Pressable
             accessibilityRole="button"
             disabled={loading}
@@ -245,7 +248,7 @@ function StartupBoundaryRecovery({
             {loading ? (
               <ActivityIndicator color={Colors.stout} />
             ) : (
-              <Text style={styles.startupRecoveryButtonText}>Zkusit znovu</Text>
+              <Text style={styles.startupRecoveryButtonText}>{t.startup.lockedRetry}</Text>
             )}
           </Pressable>
         </View>

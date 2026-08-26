@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 
 /**
@@ -33,7 +34,7 @@ export default function FeedLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Na pivo',
+          title: t.appName,
           // No bar at all on the home screen. The logo is content, not chrome:
           // it sits at the top of the feed and scrolls away with it, the way
           // the large title used to. A pinned wordmark is a band that eats

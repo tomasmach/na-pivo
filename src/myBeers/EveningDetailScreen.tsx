@@ -31,7 +31,7 @@ import { StatGrid, type Stat } from '@/mocks/StatGrid';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { formatPrice } from '@/utils/currency';
 import {
@@ -193,15 +193,15 @@ export default function EveningDetailScreen() {
     const others = counts.wine + counts.shot + counts.soft_drink;
     const spentCzk = sessionTotalCzk(session);
     const spanMs = sessionSpanMs(session);
-    const stats: Stat[] = [{ label: cs.myBeers.statBeers, value: String(counts.beer) }];
-    if (others > 0) stats.push({ label: cs.myBeers.statOther, value: String(others) });
+    const stats: Stat[] = [{ label: t.myBeers.statBeers, value: String(counts.beer) }];
+    if (others > 0) stats.push({ label: t.myBeers.statOther, value: String(others) });
     stats.push({
-      label: cs.diary.factSpent,
-      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : cs.diary.factEmpty,
+      label: t.diary.factSpent,
+      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : t.diary.factEmpty,
     });
     stats.push({
-      label: cs.diary.factSpan,
-      value: spanMs > 0 ? cs.stats.span(spanMs) : cs.diary.factEmpty,
+      label: t.diary.factSpan,
+      value: spanMs > 0 ? t.stats.span(spanMs) : t.diary.factEmpty,
     });
     return stats;
   }, [priceCurrency, session]);
@@ -221,8 +221,8 @@ export default function EveningDetailScreen() {
     const trimmed = beerName.trim();
     if (!trimmed) {
       showAppDialog({
-        title: cs.myBeers.editDrinkTitle,
-        message: cs.myBeers.editDrinkEmpty,
+        title: t.myBeers.editDrinkTitle,
+        message: t.myBeers.editDrinkEmpty,
       });
       return;
     }
@@ -241,7 +241,7 @@ export default function EveningDetailScreen() {
               beer_name: trimmed,
             })) === 'storage-error'
           ) {
-            showToast(cs.friends.queueSaveError);
+            showToast(t.friends.queueSaveError);
             return;
           }
         }
@@ -257,7 +257,7 @@ export default function EveningDetailScreen() {
       if (nextSession) void syncVisit(nextSession, new Date().toISOString());
       setEditingGroup(null);
     } catch {
-      showToast(cs.friends.queueSaveError);
+      showToast(t.friends.queueSaveError);
     } finally {
       savingDrinkNamesRef.current = false;
     }
@@ -266,19 +266,19 @@ export default function EveningDetailScreen() {
   const handleDeleteDrink = (drink: TallyDrink) => {
     if (!session) return;
     showAppDialog({
-      title: cs.myBeers.deleteDrinkTitle,
-      message: cs.myBeers.deleteDrinkBody,
+      title: t.myBeers.deleteDrinkTitle,
+      message: t.myBeers.deleteDrinkBody,
       buttons: [
-        { text: cs.myBeers.deleteDrinkCancel, style: 'cancel' },
+        { text: t.myBeers.deleteDrinkCancel, style: 'cancel' },
         {
-          text: cs.myBeers.deleteDrinkConfirm,
+          text: t.myBeers.deleteDrinkConfirm,
           style: 'destructive',
           onPress: () => {
             if (deletingDrinkIdsRef.current.has(drink.id)) return;
             deletingDrinkIdsRef.current.add(drink.id);
             void (async () => {
               if ((await prepareDrinkDeletion(drink.id)) === 'storage-error') {
-                showToast(cs.friends.queueSaveError);
+                showToast(t.friends.queueSaveError);
                 return;
               }
               const removed = removeDrinkFromSession(session.startedAt, drink.id);
@@ -294,7 +294,7 @@ export default function EveningDetailScreen() {
                 void deleteVisitByClientId(removed.sessionClientId);
               }
             })()
-              .catch(() => showToast(cs.friends.queueSaveError))
+              .catch(() => showToast(t.friends.queueSaveError))
               .finally(() => deletingDrinkIdsRef.current.delete(drink.id));
           },
         },
@@ -368,7 +368,7 @@ export default function EveningDetailScreen() {
     );
     void runPrivateAccountMutation(async (scope) => {
       if ((await prepareDrinkAddition(entry, prospectiveSession)) === 'storage-error') {
-        showToast(cs.friends.queueSaveError);
+        showToast(t.friends.queueSaveError);
         return;
       }
       if (!isPrivateAccountMutationScopeCurrent(scope)) {
@@ -392,13 +392,13 @@ export default function EveningDetailScreen() {
           ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
         },
       });
-      showToast(cs.myBeers.addDrinkToEveningSaved, {
+      showToast(t.myBeers.addDrinkToEveningSaved, {
         icon: <BeerIcon size={20} color={Colors.amber} />,
       });
     })
       .catch((error) => {
         if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(cs.friends.queueSaveError);
+          showToast(t.friends.queueSaveError);
         }
       })
       .finally(() => {
@@ -421,7 +421,7 @@ export default function EveningDetailScreen() {
       <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
         <GlassIconButton
           size={HitArea.min}
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           onPress={() => leaveRoute(router)}
         >
           <ChevronLeftIcon size={20} color={Colors.foam} />
@@ -431,7 +431,7 @@ export default function EveningDetailScreen() {
       {!session ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.eveningGoneTitle}
+            {t.myBeers.eveningGoneTitle}
           </Text>
         </View>
       ) : (
@@ -451,7 +451,7 @@ export default function EveningDetailScreen() {
               numberOfLines={2}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {session.pubName || cs.diary.noPub}
+              {session.pubName || t.diary.noPub}
             </Text>
           </View>
           {/* Four columns only when there genuinely is a fourth number —
@@ -467,7 +467,7 @@ export default function EveningDetailScreen() {
 
           {/* One list, not two. Each row is what you drank, how many and what it
               cost, and carries the two controls that fix it. */}
-          <SectionBreak title={cs.myBeers.breakdownTitle} inset={MockLayout.screenPad} />
+          <SectionBreak title={t.myBeers.breakdownTitle} inset={MockLayout.screenPad} />
           {drinkActionGroups.map((group, index) => (
             <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowDivider]}>
               <View style={styles.drinkInfo}>
@@ -478,21 +478,21 @@ export default function EveningDetailScreen() {
                 >
                   {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
                   {group.drinkType !== 'beer'
-                    ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}`
+                    ? ` · ${t.counter.drinkTypeLabel(group.drinkType)}`
                     : ''}
                   {group.count > 1 ? ` · ${group.count}×` : ''}
                 </Text>
                 <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
                   {[
-                    group.servingType ? cs.counter.servingTypeLabel(group.servingType) : null,
+                    group.servingType ? t.counter.servingTypeLabel(group.servingType) : null,
                     group.pricedCount === group.count
                       ? group.count > 1
-                        ? cs.myBeers.drinkGroupTotal(formatPrice(group.totalCzk, priceCurrency))
+                        ? t.myBeers.drinkGroupTotal(formatPrice(group.totalCzk, priceCurrency))
                         : formatPrice(group.totalCzk, priceCurrency)
                       : null,
                   ]
                     .filter(Boolean)
-                    .join(' · ') || cs.diary.factEmpty}
+                    .join(' · ') || t.diary.factEmpty}
                 </Text>
               </View>
               {/* Bare glyphs on 44pt targets. Two bordered discs inside a
@@ -505,7 +505,7 @@ export default function EveningDetailScreen() {
                     onPress={() => setEditingGroup(group)}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.myBeers.editDrink}
+                    accessibilityLabel={t.myBeers.editDrink}
                   >
                     <PencilIcon size={18} color={Colors.foamMuted} />
                   </Pressable>
@@ -513,7 +513,7 @@ export default function EveningDetailScreen() {
                     onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.myBeers.deleteDrink}
+                    accessibilityLabel={t.myBeers.deleteDrink}
                   >
                     <MinusIcon size={18} color={Colors.mutedText} />
                   </Pressable>
@@ -524,7 +524,7 @@ export default function EveningDetailScreen() {
 
           <View style={[styles.drinkRow, styles.totalRow]}>
             <Text style={styles.totalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.myBeers.totalLabel}
+              {t.myBeers.totalLabel}
             </Text>
             <Text style={styles.totalValue} allowFontScaling={false}>
               {formatPrice(sessionTotalCzk(session), priceCurrency)}
@@ -536,11 +536,11 @@ export default function EveningDetailScreen() {
               onPress={openAddDrink}
               style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
+              accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
             >
               <PlusIcon size={16} color={Colors.amber} />
               <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.addDrinkToEvening}
+                {t.myBeers.addDrinkToEvening}
               </Text>
             </Pressable>
           ) : null}
@@ -549,16 +549,16 @@ export default function EveningDetailScreen() {
               Only a night with something on it qualifies. */}
           {nightSummary ? (
             <>
-              <SectionBreak title={cs.vycep.sectionTitle} inset={MockLayout.screenPad} />
+              <SectionBreak title={t.vycep.sectionTitle} inset={MockLayout.screenPad} />
               <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.vycep.publishEntryBody}
+                {t.vycep.publishEntryBody}
               </Text>
               {publishedRecord ? (
                 <Text style={styles.publishedState} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.vycep.publishedState(
+                  {t.vycep.publishedState(
                     publishedRecord.visibility === 'public'
-                      ? cs.vycep.visibilityChipWorld
-                      : cs.vycep.visibilityChipFriends,
+                      ? t.vycep.visibilityChipWorld
+                      : t.vycep.visibilityChipFriends,
                   )}
                 </Text>
               ) : null}
@@ -567,18 +567,18 @@ export default function EveningDetailScreen() {
               <Pressable
                 onPress={() => setPublishSheetVisible(true)}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.publishNightButton}
+                accessibilityLabel={t.a11y.publishNightButton}
                 style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
               >
                 <HandPlatterIcon size={17} color={Colors.stout} />
                 <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishEntryTitle}
+                  {publishedRecord ? t.vycep.updateCta : t.vycep.publishEntryTitle}
                 </Text>
               </Pressable>
               <Pressable
                 onPress={() => setShareModalVisible(true)}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.shareNightButton}
+                accessibilityLabel={t.a11y.shareNightButton}
                 style={({ pressed }) => [
                   styles.secondary,
                   styles.secondaryTight,
@@ -587,7 +587,7 @@ export default function EveningDetailScreen() {
               >
                 <Share2Icon size={16} color={Colors.amber} />
                 <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.vycep.shareNightCta}
+                  {t.vycep.shareNightCta}
                 </Text>
               </Pressable>
             </>
@@ -639,8 +639,8 @@ export default function EveningDetailScreen() {
         )}
         initialServingType={session?.drinks[session.drinks.length - 1]?.servingType}
         formKey={addDrinkFormNonce}
-        titleOverride={cs.myBeers.addDrinkToEveningTitle}
-        submitLabelOverride={cs.myBeers.addDrinkToEveningSubmit}
+        titleOverride={t.myBeers.addDrinkToEveningTitle}
+        submitLabelOverride={t.myBeers.addDrinkToEveningSubmit}
         onCancel={() => setAddingDrink(false)}
         onSubmit={handleAddDrink}
       />
@@ -677,12 +677,12 @@ function EditDrinkNameForm({
   return (
     <RenamePromptSheet
       visible
-      title={cs.myBeers.editDrinkGroupTitle(group.count)}
+      title={t.myBeers.editDrinkGroupTitle(group.count)}
       value={name}
-      placeholder={cs.myBeers.editDrinkPlaceholder}
-      inputLabel={cs.myBeers.editDrinkPlaceholder}
-      cancelLabel={cs.myBeers.editDrinkCancel}
-      saveLabel={cs.myBeers.editDrinkSave}
+      placeholder={t.myBeers.editDrinkPlaceholder}
+      inputLabel={t.myBeers.editDrinkPlaceholder}
+      cancelLabel={t.myBeers.editDrinkCancel}
+      saveLabel={t.myBeers.editDrinkSave}
       maxLength={80}
       canSubmit={canSubmit}
       onChange={setName}

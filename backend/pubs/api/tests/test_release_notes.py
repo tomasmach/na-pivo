@@ -124,7 +124,9 @@ def test_no_version_returns_all_published_notes(client):
     # Each note keeps the full single-note shape (title + ordered items).
     by_version = {note["version"]: note for note in body["notes"]}
     mine = by_version["9.0.0"]
-    assert set(mine.keys()) == {"version", "title", "items"}
+    # title_en is additive and blank for notes with no English copy.
+    assert set(mine.keys()) == {"version", "title", "title_en", "items"}
+    assert mine["title_en"] == ""
     assert [it["text"] for it in mine["items"]] == ["První novinka", "Druhá novinka"]
 
 

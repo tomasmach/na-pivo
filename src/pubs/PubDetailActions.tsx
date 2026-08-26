@@ -30,7 +30,7 @@ import { persistPubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { clearPubsSnapshot, renameLocalPub, type Pub } from '@/data/pubs';
 import { geohash8 } from '@/data/geohash';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -141,20 +141,20 @@ export function PubDetailActions({
         }
         setRenameOpen(false);
         setRenameSubmitting(false);
-        showToast(cs.compass.renameQueuedToast);
+        showToast(t.compass.renameQueuedToast);
         void queued.sync.then((result) => {
           if (result !== 'rejected' && result !== 'storage-error') return;
           renameLocalPub(pub.id, displayName);
           usePubStore.getState().bumpCatalogRevision();
           onRenamed(displayName);
-          showToast(cs.pubDetail.saveFailed);
+          showToast(t.pubDetail.saveFailed);
         }).catch(() => undefined);
       })
       .catch(() => {
         renameLocalPub(pub.id, displayName);
         usePubStore.getState().bumpCatalogRevision();
         onRenamed(displayName);
-        showToast(cs.pubDetail.saveFailed);
+        showToast(t.pubDetail.saveFailed);
       })
       .finally(() => setRenameSubmitting(false));
   }, [displayName, onRenamed, pub, renameDraft, renameSubmitting, showToast]);
@@ -167,17 +167,17 @@ export function PubDetailActions({
         .then((persisted) => {
           setReportSubmitting(false);
           if (!persisted) {
-            showToast(cs.pubDetail.saveFailed);
+            showToast(t.pubDetail.saveFailed);
             return;
           }
           setReportOpen(false);
           addReportedPub(pub.id, geohash8(pub.lat, pub.lng));
-          showToast(cs.pubDetail.reportQueued);
+          showToast(t.pubDetail.reportQueued);
           onReported();
         })
         .catch(() => {
           setReportSubmitting(false);
-          showToast(cs.pubDetail.saveFailed);
+          showToast(t.pubDetail.saveFailed);
         });
     },
     [addReportedPub, onReported, pub, reportSubmitting, showToast],
@@ -190,12 +190,12 @@ export function PubDetailActions({
       actionTimer.current = setTimeout(() => {
         actionTimer.current = null;
         showAppDialog({
-          title: cs.pubDetail.reportConfirmTitle(displayName),
-          message: cs.pubDetail.reportConfirmBody,
+          title: t.pubDetail.reportConfirmTitle(displayName),
+          message: t.pubDetail.reportConfirmBody,
           buttons: [
-            { text: cs.pubDetail.reportConfirmCancel, style: 'cancel' },
+            { text: t.pubDetail.reportConfirmCancel, style: 'cancel' },
             {
-              text: cs.pubDetail.reportConfirmAction,
+              text: t.pubDetail.reportConfirmAction,
               style: 'destructive',
               onPress: () => submitReport(reason),
             },
@@ -210,26 +210,26 @@ export function PubDetailActions({
     () => [
       {
         key: 'suggest-event',
-        label: isSignedIn ? cs.pubDetail.eventSuggest : cs.pubDetail.eventSuggestSignedOut,
+        label: isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut,
         icon: ClockIcon,
         onPress: openSuggestEvent,
       },
       pub.userAddedClientId
         ? {
             key: 'edit-owned',
-            label: cs.pubDetail.editOwnedAction,
+            label: t.pubDetail.editOwnedAction,
             icon: PencilIcon,
             onPress: openEditOwned,
           }
         : {
             key: 'rename',
-            label: cs.pubDetail.renameAction,
+            label: t.pubDetail.renameAction,
             icon: PencilIcon,
             onPress: openRename,
           },
       {
         key: 'report',
-        label: cs.pubDetail.reportAction,
+        label: t.pubDetail.reportAction,
         icon: FlagIcon,
         onPress: () => afterMoreCloses(() => setReportOpen(true)),
       },
@@ -244,14 +244,14 @@ export function PubDetailActions({
     <>
       <GlassIconButton
         size={44}
-        accessibilityLabel={cs.pubDetail.moreA11y}
+        accessibilityLabel={t.pubDetail.moreA11y}
         onPress={() => setMoreOpen(true)}
       >
         <EllipsisIcon size={21} color={Colors.foam} />
       </GlassIconButton>
       <MoreSheet
         visible={moreOpen}
-        title={cs.pubDetail.moreTitle}
+        title={t.pubDetail.moreTitle}
         rows={rows}
         onClose={() => setMoreOpen(false)}
       />
@@ -332,7 +332,7 @@ function RenameSheet({
         pointerEvents="box-none"
       >
         <SheetFrame
-          title={cs.pubDetail.renameTitle}
+          title={t.pubDetail.renameTitle}
           onClose={onClose}
           footer={
             <Pressable
@@ -346,7 +346,7 @@ function RenameSheet({
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSubmit, busy: submitting }}
             >
-              <Text style={styles.submitText}>{cs.pubDetail.renameSave}</Text>
+              <Text style={styles.submitText}>{t.pubDetail.renameSave}</Text>
             </Pressable>
           }
         >
@@ -357,13 +357,13 @@ function RenameSheet({
             keyboardAvoidedExternally
           >
             <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.pubDetail.renameLabel}
+              {t.pubDetail.renameLabel}
             </Text>
             <TextInput
               value={value}
               onChangeText={onChange}
               style={styles.input}
-              accessibilityLabel={cs.pubDetail.renameLabel}
+              accessibilityLabel={t.pubDetail.renameLabel}
               autoFocus
               autoCapitalize="words"
               returnKeyType="done"
@@ -390,12 +390,12 @@ function ReportSheet({
   onSelect: (reason: PubReportReason) => void;
 }) {
   const rows = [
-    { reason: 'closed' as const, label: cs.pubDetail.reportClosed, icon: ClockIcon },
-    { reason: 'not_pub' as const, label: cs.pubDetail.reportNotPub, icon: TriangleAlertIcon },
+    { reason: 'closed' as const, label: t.pubDetail.reportClosed, icon: ClockIcon },
+    { reason: 'not_pub' as const, label: t.pubDetail.reportNotPub, icon: TriangleAlertIcon },
   ];
   return (
     <BottomSheetModal visible={visible} onClose={onClose}>
-      <SheetFrame title={cs.pubDetail.reportTitle} onClose={onClose}>
+      <SheetFrame title={t.pubDetail.reportTitle} onClose={onClose}>
         {rows.map(({ reason, label, icon: Icon }, index) => (
           <Pressable
             key={reason}

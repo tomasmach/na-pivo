@@ -9,6 +9,7 @@
 import React, { memo } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 
+import { intlLocale } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -25,7 +26,7 @@ export interface SectionHeaderProps {
 }
 
 function SectionHeaderComponent({ label, live = false, stale = false }: SectionHeaderProps) {
-  const compactCaption = label.length <= 4 && label === label.toLocaleUpperCase('cs-CZ');
+  const compactCaption = label.length <= 4 && label === label.toLocaleUpperCase(intlLocale);
 
   return (
     <View style={styles.row}>

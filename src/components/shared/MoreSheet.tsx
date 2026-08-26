@@ -33,7 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckIcon } from '@/components/shared/IconGlyph';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -79,9 +79,9 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {title ?? cs.compass.moreTitle}
+              {title ?? t.compass.moreTitle}
             </Text>
-            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
           </View>
 
           <ScrollView

@@ -16,7 +16,7 @@ import {
 import { AchievementGrid } from '@/profile/AchievementGrid';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper } from '@/data/auth';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 
 function MapperStat({
@@ -59,7 +59,7 @@ function MapperSection({
   return (
     <View style={styles.mapperSection}>
       <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.mapPub.mapperHeader}
+        {t.mapPub.mapperHeader}
       </Text>
       {mapper ? (
         <>
@@ -67,27 +67,27 @@ function MapperSection({
             <MapperStat
               icon={<MapPinnedIcon size={18} color={Colors.amber} />}
               value={String(mapper.distinctMappedPubs)}
-              caption={cs.mapPub.mapperStatMappedPubs}
+              caption={t.mapPub.mapperStatMappedPubs}
             />
             <MapperStat
               icon={<CompassIcon size={18} color={Colors.amber} />}
               value={String(mapper.amenityVotesCount)}
-              caption={cs.mapPub.mapperStatAnswers}
+              caption={t.mapPub.mapperStatAnswers}
             />
             <MapperStat
               icon={<SproutIcon size={18} color={Colors.amber} />}
               value={String(mapper.firstMapperCount)}
-              caption={cs.mapPub.mapperStatFirstMaps}
+              caption={t.mapPub.mapperStatFirstMaps}
             />
             <MapperStat
               icon={<StarIcon size={18} color={Colors.amber} />}
               value={String(mapper.completedPubsCount)}
-              caption={cs.mapPub.mapperStatCompleted}
+              caption={t.mapPub.mapperStatCompleted}
             />
           </View>
           {!signedIn ? (
             <Text style={styles.mapperHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.mapPub.mapperSignedOut}
+              {t.mapPub.mapperSignedOut}
             </Text>
           ) : null}
         </>
@@ -97,7 +97,7 @@ function MapperSection({
             <SproutIcon size={22} color={Colors.amber} />
           </View>
           <Text style={styles.mapperEmptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {signedIn ? cs.mapPub.mapperEmpty : cs.mapPub.mapperSignedOut}
+            {signedIn ? t.mapPub.mapperEmpty : t.mapPub.mapperSignedOut}
           </Text>
         </View>
       )}
@@ -118,16 +118,16 @@ export default function BadgesScreen() {
           onPress={() => leaveRoute(router)}
           style={styles.back}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <View style={styles.headerText}>
           <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.profile.achievementsHeader}
+            {t.profile.achievementsHeader}
           </Text>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.profile.badgeCollectionTitle}
+            {t.profile.badgeCollectionTitle}
           </Text>
         </View>
       </View>
@@ -140,7 +140,7 @@ export default function BadgesScreen() {
       >
         <MapperSection mapper={profile?.mapper} signedIn={signedIn} />
         <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.profile.badgeCollectionIntro}
+          {t.profile.badgeCollectionIntro}
         </Text>
         <AchievementGrid
           mapper={profile?.mapper}

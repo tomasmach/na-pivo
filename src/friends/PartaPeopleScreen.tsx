@@ -41,7 +41,7 @@ import { CheckIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { cancelFriendRequest, respondFriendRequest } from '@/data/friendsClient';
 import { runPrivateAccountMutation } from '@/data/privateAccountBoundary';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { Colors } from '@/theme/colors';
@@ -150,10 +150,10 @@ function PartaPeopleScreenContent() {
       respondingRef.current = next;
       setResponding(next);
       if (!result.ok) {
-        showToast(result.detail || cs.friends.requestActionError);
+        showToast(result.detail || t.friends.requestActionError);
         return;
       }
-      showToast(action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined);
+      showToast(action === 'accept' ? t.friends.requestAccepted : t.friends.requestDeclined);
       reload();
     },
     [reload, showToast],
@@ -162,11 +162,11 @@ function PartaPeopleScreenContent() {
   const confirmCancel = useCallback(
     (requestId: string, recipientId: string) => {
       showAppDialog({
-        title: cs.friends.cancelInviteTitle,
+        title: t.friends.cancelInviteTitle,
         buttons: [
-          { text: cs.common.cancel, style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: cs.friends.cancelInviteConfirm,
+            text: t.friends.cancelInviteConfirm,
             style: 'destructive',
             onPress: () => {
               if (cancelingRef.current) return;
@@ -177,10 +177,10 @@ function PartaPeopleScreenContent() {
                 cancelingRef.current = null;
                 setCanceling(null);
                 if (!result.ok) {
-                  showToast(result.detail || cs.friends.requestActionError);
+                  showToast(result.detail || t.friends.requestActionError);
                   return;
                 }
-                showToast(cs.friends.inviteCanceled);
+                showToast(t.friends.inviteCanceled);
                 reload();
               });
             },
@@ -193,7 +193,7 @@ function PartaPeopleScreenContent() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
-      <PartaScreenHeader title={cs.friends.peopleTitle} />
+      <PartaScreenHeader title={t.friends.peopleTitle} />
       {loading && !dashboard ? <FriendsSkeleton /> : (
         <ScrollView
           ref={scrollRef}
@@ -210,7 +210,7 @@ function PartaPeopleScreenContent() {
               }}
             >
               <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.friends.requestsHeader}
+                {t.friends.requestsHeader}
               </Text>
               <View style={styles.requests}>
                 {incomingRequests.map((request, index) => (
@@ -224,7 +224,7 @@ function PartaPeopleScreenContent() {
                         onPress={() => void respond(request.id, 'decline')}
                         disabled={responding[request.id] != null}
                         accessibilityRole="button"
-                        accessibilityLabel={cs.friends.decline}
+                        accessibilityLabel={t.friends.decline}
                         accessibilityState={{
                           disabled: responding[request.id] != null,
                           busy: responding[request.id] != null,
@@ -244,7 +244,7 @@ function PartaPeopleScreenContent() {
                         onPress={() => void respond(request.id, 'accept')}
                         disabled={responding[request.id] != null}
                         accessibilityRole="button"
-                        accessibilityLabel={cs.friends.accept}
+                        accessibilityLabel={t.friends.accept}
                         accessibilityState={{
                           disabled: responding[request.id] != null,
                           busy: responding[request.id] != null,
@@ -265,17 +265,17 @@ function PartaPeopleScreenContent() {
                   </View>
                 ))}
               </View>
-              <SectionBreak title={cs.friends.togetherHeader} />
+              <SectionBreak title={t.friends.togetherHeader} />
             </View>
           ) : null}
 
           {incomingRequests.length === 0 ? (
             <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.togetherHeader}
+              {t.friends.togetherHeader}
             </Text>
           ) : null}
           {friends.length === 0 ? (
-            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{cs.friends.togetherEmpty}</Text>
+            <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>{t.friends.togetherEmpty}</Text>
           ) : friends.map((friend, index) => (
             <FriendListRow
               key={friend.id}
@@ -293,7 +293,7 @@ function PartaPeopleScreenContent() {
                 outgoingYRef.current = event.nativeEvent.layout.y;
               }}
             >
-              <SectionBreak title={cs.friends.outgoingHeader} />
+              <SectionBreak title={t.friends.outgoingHeader} />
               <View style={styles.requests}>
                 {outgoingRequests.map((request, index) => (
                   <View
@@ -306,7 +306,7 @@ function PartaPeopleScreenContent() {
                       disabled={canceling != null}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel={`${cs.friends.cancelInviteConfirm}: ${friendDisplayName(request.recipient)}`}
+                      accessibilityLabel={`${t.friends.cancelInviteConfirm}: ${friendDisplayName(request.recipient)}`}
                       accessibilityState={{
                         disabled: canceling != null,
                         busy: canceling === request.id,
@@ -320,7 +320,7 @@ function PartaPeopleScreenContent() {
                           style={styles.cancelInvite}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {cs.common.cancel}
+                          {t.common.cancel}
                         </Text>
                       )}
                     </Pressable>
@@ -332,7 +332,7 @@ function PartaPeopleScreenContent() {
 
           {following.length > 0 ? (
             <>
-              <SectionBreak title={cs.friends.followingHeader} />
+              <SectionBreak title={t.friends.followingHeader} />
               {following.map((profile, index) => (
                 <FollowingRow
                   key={profile.id}
@@ -347,12 +347,12 @@ function PartaPeopleScreenContent() {
           <Pressable
             onPress={() => router.push('/friends/parta/add' as Href)}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.addPersonCta}
+            accessibilityLabel={t.friends.addPersonCta}
             style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}
           >
             <PlusIcon size={20} color={Colors.stout} />
             <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.addPersonCta}
+              {t.friends.addPersonCta}
             </Text>
           </Pressable>
         </ScrollView>

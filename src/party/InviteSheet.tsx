@@ -34,6 +34,7 @@ import QRCode from 'react-native-qrcode-svg';
 
 import { CheckIcon, CopyIcon } from '@/components/shared/IconGlyph';
 import { fetchFriendsDashboard, type FriendProfile } from '@/data/friendsClient';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { useToastStore } from '@/stores/toastStore';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -102,8 +103,8 @@ export function InviteSheet({
   const inviteMessage = React.useMemo(() => {
     if (!code) return null;
     return link
-      ? `Přisedni si ke stolu v Na pivu: ${link}\nKód: ${code}`
-      : `Přisedni si ke stolu v Na pivu. Kód: ${code}`;
+      ? t.partyInvite.shareWithLink(link, code)
+      : t.partyInvite.shareWithoutLink(code);
   }, [code, link]);
 
   const shareLink = React.useCallback(
@@ -119,7 +120,7 @@ export function InviteSheet({
 
   const copyLink = React.useCallback(() => {
     if (!link) return;
-    void Clipboard.setStringAsync(link).then(() => showToast('Odkaz je ve schránce.'));
+    void Clipboard.setStringAsync(link).then(() => showToast(t.partyInvite.linkCopied));
   }, [link, showToast]);
 
   return (
@@ -129,7 +130,7 @@ export function InviteSheet({
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Přizvat ke stolu
+              {t.partyInvite.title}
             </Text>
             <CloseButton onPress={onClose} />
           </View>
@@ -153,12 +154,12 @@ export function InviteSheet({
                     {code}
                   </Text>
                   <Text style={styles.codeHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {link ? 'Naskenuj kód, nebo ho přečti nahlas.' : 'Přečti kód nahlas.'}
+                    {link ? t.partyInvite.hintScanOrRead : t.partyInvite.hintReadAloud}
                   </Text>
                 </>
               ) : (
                 <Text style={styles.codeHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                  Zakládám kód. Chvilku.
+                  {t.partyInvite.creatingCode}
                 </Text>
               )}
             </View>
@@ -168,7 +169,7 @@ export function InviteSheet({
                 onPress={copyLink}
                 style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel="Zkopírovat odkaz"
+                accessibilityLabel={t.partyInvite.a11yCopyLink}
               >
                 <Text style={styles.link} numberOfLines={1} allowFontScaling={false}>
                   {link}
@@ -178,7 +179,7 @@ export function InviteSheet({
             ) : null}
 
             <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Kamarádi
+              {t.partyInvite.friendsSection}
             </Text>
             {loading && friends.length === 0 ? (
               <ActivityIndicator color={Colors.amber} style={styles.loader} />
@@ -189,11 +190,11 @@ export function InviteSheet({
                 style={styles.retry}
                 accessibilityRole="button"
               >
-                <Text style={styles.retryText}>Načíst znovu</Text>
+                <Text style={styles.retryText}>{t.partyInvite.retry}</Text>
               </Pressable>
             ) : null}
             {!loading && !failed && friends.length === 0 ? (
-              <Text style={styles.empty}>V partě zatím nikdo není.</Text>
+              <Text style={styles.empty}>{t.partyInvite.emptyFriends}</Text>
             ) : null}
             {friends.map((friend) => {
               const here = present.includes(friend.id);
@@ -201,7 +202,8 @@ export function InviteSheet({
               // A friend who never picked a nickname rendered as a blank row.
               // Same fallback the feed uses, so a person looks like a person
               // wherever you meet them.
-              const name = friend.nickname || friend.displayName.trim() || 'Pivař';
+              const name =
+                friend.nickname || friend.displayName.trim() || t.partyInvite.friendFallbackName;
               return (
                 <View key={friend.id} style={styles.friendRow}>
                   <Avatar
@@ -222,14 +224,14 @@ export function InviteSheet({
                     <View style={styles.hereRow}>
                       <CheckIcon size={15} color={Colors.amber} />
                       <Text style={styles.here} allowFontScaling={false}>
-                        U stolu
+                        {t.partyInvite.atTable}
                       </Text>
                     </View>
                   ) : sent ? (
                     <View style={styles.hereRow}>
                       <CheckIcon size={15} color={Colors.mutedText} />
                       <Text style={styles.here} allowFontScaling={false}>
-                        Posláno
+                        {t.partyInvite.sent}
                       </Text>
                     </View>
                   ) : (
@@ -237,10 +239,10 @@ export function InviteSheet({
                       onPress={() => shareLink(friend.id)}
                       style={({ pressed }) => [styles.invite, pressed && styles.pressed]}
                       accessibilityRole="button"
-                      accessibilityLabel={`Poslat kód: ${name}`}
+                      accessibilityLabel={t.partyInvite.a11ySendCode(name)}
                     >
                       <Text style={styles.inviteText} allowFontScaling={false}>
-                        Poslat kód
+                        {t.partyInvite.sendCode}
                       </Text>
                     </Pressable>
                   )}

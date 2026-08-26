@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
@@ -40,9 +40,9 @@ export function CompassCell({
   const hidePubNames = useSettingsStore((state) => state.hidePubNames);
   const [revealedId, setRevealedId] = React.useState<string | null>(null);
   const hidden = hidePubNames && revealedId !== pub.id;
-  const name = hidden ? cs.compass.hiddenPubName : pub.name;
+  const name = hidden ? t.compass.hiddenPubName : pub.name;
   const meta = hidden
-    ? cs.compass.hiddenPubHint
+    ? t.compass.hiddenPubHint
     : [pub.openLabel, pub.beerLine].filter(Boolean).join(' · ');
 
   return (
@@ -50,7 +50,7 @@ export function CompassCell({
       onPress={hidden ? () => setRevealedId(pub.id) : onPress}
       style={({ pressed }) => [styles.cell, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`${badge} hospoda ${name}, ${pub.distanceLabel ?? 'vzdálenost neznámá'}`}
+      accessibilityLabel={t.pubList.cellA11y(badge, name, pub.distanceLabel ?? t.pubList.distanceUnknown)}
     >
       <CompassContainer rotation={rotation} size={DIAL} />
 
@@ -81,7 +81,7 @@ export function CompassCell({
           onPress={onClose}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={cs.compass.backToNearest}
+          accessibilityLabel={t.compass.backToNearest}
           style={({ pressed }) => [styles.close, pressed && styles.pressed]}
         >
           <XIcon size={16} color={Colors.mutedText} />

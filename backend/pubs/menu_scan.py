@@ -21,6 +21,7 @@ from __future__ import annotations
 import io
 
 from django.conf import settings
+from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
@@ -82,7 +83,7 @@ def validate_and_prepare_image(uploaded_file) -> bytes:
     if size is None and isinstance(uploaded_file, (bytes, bytearray)):
         size = len(uploaded_file)
     if size is not None and size > max_bytes:
-        raise MenuScanError("Fotka je příliš velká.", code="image_too_large")
+        raise MenuScanError(gettext("Fotka je příliš velká."), code="image_too_large")
 
     if isinstance(uploaded_file, (bytes, bytearray)):
         raw = bytes(uploaded_file)
@@ -95,9 +96,9 @@ def validate_and_prepare_image(uploaded_file) -> bytes:
             pass
         raw = uploaded_file.read(max_bytes + 1)
     if len(raw) > max_bytes:
-        raise MenuScanError("Fotka je příliš velká.", code="image_too_large")
+        raise MenuScanError(gettext("Fotka je příliš velká."), code="image_too_large")
     if not raw:
-        raise MenuScanError("Fotku se nepodařilo načíst.", code="image_invalid")
+        raise MenuScanError(gettext("Fotku se nepodařilo načíst."), code="image_invalid")
 
     # --- decompression-bomb ceiling (before decode), restored in finally ---
     max_edge = settings.MENU_SCAN_IMAGE_PX
@@ -121,7 +122,7 @@ def validate_and_prepare_image(uploaded_file) -> bytes:
                 )
         except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
             raise MenuScanError(
-                "Fotku se nepodařilo načíst.", code="image_invalid"
+                gettext("Fotku se nepodařilo načíst."), code="image_invalid"
             ) from exc
     finally:
         Image.MAX_IMAGE_PIXELS = previous_limit

@@ -26,7 +26,7 @@ import { HandPlatterIcon } from '@/components/shared/IconGlyph';
 import { clearNightReaction, isRetriableNightError, reactToNight } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -126,7 +126,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
       if (res.ok) {
         pendingRef.current = false;
         trackUiInteraction('night_react', 'success');
-        showToast(turningOn ? cs.vycep.roundSentToast : cs.vycep.roundUndoneToast, {
+        showToast(turningOn ? t.vycep.roundSentToast : t.vycep.roundUndoneToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onChanged?.();
@@ -142,13 +142,13 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
           trackUiInteraction('night_react', 'failure');
           setActive(prevActive);
           setDisplayCount(prevCount);
-          showToast(cs.vycep.roundErrorToast, {
+          showToast(t.vycep.roundErrorToast, {
             icon: <HandPlatterIcon size={20} color={Colors.amber} />,
           });
           return;
         }
         trackUiInteraction('night_react', 'success');
-        showToast(cs.vycep.roundQueuedToast, {
+        showToast(t.vycep.roundQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         return;
@@ -158,14 +158,14 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
       // Hard reject: revert.
       setActive(prevActive);
       setDisplayCount(prevCount);
-      showToast(cs.vycep.roundErrorToast, {
+      showToast(t.vycep.roundErrorToast, {
         icon: <HandPlatterIcon size={20} color={Colors.amber} />,
       });
     });
   }, [active, busy, displayCount, nightId, showToast, onChanged]);
 
   const glyphColor = active ? Colors.amber : Colors.mutedText;
-  const label = displayCount > 0 ? cs.vycep.roundCount(displayCount) : cs.vycep.round;
+  const label = displayCount > 0 ? t.vycep.roundCount(displayCount) : t.vycep.round;
 
   return (
     <Pressable
@@ -173,7 +173,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={cs.a11y.roundButton(ownerName ?? cs.vycep.round)}
+      accessibilityLabel={t.a11y.roundButton(ownerName ?? t.vycep.round)}
       style={({ pressed }) => [styles.pill, active && styles.pillActive, pressed && styles.pressed]}
     >
       <HandPlatterIcon size={17} color={glyphColor} />

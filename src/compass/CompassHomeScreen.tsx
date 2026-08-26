@@ -83,7 +83,7 @@ import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 
 // Android's heading samples arrive as discrete jumps (see the rotation
 // reaction in CompassScreen); animate between them. The spring is essentially
@@ -116,28 +116,28 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
         </View>
 
         <Text style={styles.permTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.permissions.title}
+          {t.permissions.title}
         </Text>
         <Text style={styles.permBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.permissions.body}
+          {t.permissions.body}
         </Text>
 
         <GlowButton
-          label={cs.permissions.cta}
+          label={t.permissions.cta}
           onPress={requestPermission}
           glow="soft"
-          accessibilityLabel={cs.permissions.cta}
+          accessibilityLabel={t.permissions.cta}
         />
 
         {permissionState === 'denied' && (
           <View style={styles.permSecondaryWrap}>
             <GlowButton
-              label={cs.permissions.openSettings}
+              label={t.permissions.openSettings}
               onPress={() => Linking.openSettings()}
               variant="secondary"
               glow="none"
               height={50}
-              accessibilityLabel={cs.permissions.openSettings}
+              accessibilityLabel={t.permissions.openSettings}
             />
           </View>
         )}
@@ -146,10 +146,10 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
           onPress={onShowMap}
           style={({ pressed }) => [styles.permissionMapButton, pressed && { opacity: 0.72 }]}
           accessibilityRole="button"
-          accessibilityLabel={cs.map.openWithoutLocation}
+          accessibilityLabel={t.map.openWithoutLocation}
         >
           <MapIcon size={18} color={Colors.amber} />
-          <Text style={styles.permissionMapText}>{cs.map.openWithoutLocation}</Text>
+          <Text style={styles.permissionMapText}>{t.map.openWithoutLocation}</Text>
         </Pressable>
       </View>
     </View>
@@ -209,15 +209,15 @@ function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
         showDetailLink={false}
         reserveFooter
         onPressFooter={() => undefined}
-        accessibilityLabel={cs.a11y.compassLoading}
+        accessibilityLabel={t.a11y.compassLoading}
       />
 
       <CounterCta
-        label={cs.compass.navigateCta}
-        subLabel={cs.compass.searchingCtaSub}
+        label={t.compass.navigateCta}
+        subLabel={t.compass.searchingCtaSub}
         onPress={() => undefined}
         disabled
-        accessibilityLabel={cs.a11y.compassLoading}
+        accessibilityLabel={t.a11y.compassLoading}
       />
       {/* Holds the quiet twin's room so the card does not resize the moment the
           pub arrives and "Dej mi jinou" appears under the button. */}
@@ -248,20 +248,20 @@ function EmptyScreen({
   onClearFilters,
 }: EmptyScreenProps) {
   const headlineLine1 = searchFailed
-    ? cs.empty.searchFailedHeadlineLine1
+    ? t.empty.searchFailedHeadlineLine1
     : filtersActive
-      ? cs.empty.filteredHeadlineLine1
-    : cs.empty.headlineLine1;
+      ? t.empty.filteredHeadlineLine1
+    : t.empty.headlineLine1;
   const headlineLine2 = searchFailed
-    ? cs.empty.searchFailedHeadlineLine2
+    ? t.empty.searchFailedHeadlineLine2
     : filtersActive
-      ? cs.empty.filteredHeadlineLine2
-    : cs.empty.headlineLine2;
+      ? t.empty.filteredHeadlineLine2
+    : t.empty.headlineLine2;
   const body = searchFailed
-    ? cs.empty.searchFailedBody
+    ? t.empty.searchFailedBody
     : filtersActive
-      ? cs.empty.filteredBody
-      : cs.empty.body;
+      ? t.empty.filteredBody
+      : t.empty.body;
 
   return (
     <View style={styles.emptyContainer}>
@@ -289,7 +289,7 @@ function EmptyScreen({
       <View style={styles.emptyBottomGroup}>
         <View style={styles.emptyButtonWrap}>
           <GlowButton
-            label={searchFailed ? cs.empty.retry : filtersActive ? cs.empty.editFilters : cs.empty.addPub}
+            label={searchFailed ? t.empty.retry : filtersActive ? t.empty.editFilters : t.empty.addPub}
             onPress={searchFailed ? onRetry : filtersActive ? onEditFilters : onAddPub}
             icon={searchFailed
               ? <RefreshCwIcon size={20} color={Colors.stout} />
@@ -299,10 +299,10 @@ function EmptyScreen({
             glow="soft"
             accessibilityLabel={
               searchFailed
-                ? cs.empty.retry
+                ? t.empty.retry
                 : filtersActive
-                  ? cs.empty.editFilters
-                  : cs.a11y.addPubButton
+                  ? t.empty.editFilters
+                  : t.a11y.addPubButton
             }
           />
         </View>
@@ -313,12 +313,12 @@ function EmptyScreen({
               onPress={onClearFilters}
               style={styles.emptyRetry}
               hitSlop={12}
-              accessibilityLabel={cs.empty.clearFilters}
+              accessibilityLabel={t.empty.clearFilters}
               accessibilityRole="button"
             >
               <XIcon size={16} color={Colors.mutedText} />
               <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.empty.clearFilters}
+                {t.empty.clearFilters}
               </Text>
             </Pressable>
           ) : null}
@@ -327,12 +327,12 @@ function EmptyScreen({
               onPress={onSettings}
               style={styles.emptyRetry}
               hitSlop={12}
-              accessibilityLabel={cs.empty.openSettings}
+              accessibilityLabel={t.empty.openSettings}
               accessibilityRole="button"
             >
               <SettingsIcon size={16} color={Colors.mutedText} />
               <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.empty.openSettings}
+                {t.empty.openSettings}
               </Text>
             </Pressable>
           ) : null}
@@ -342,12 +342,12 @@ function EmptyScreen({
               onPress={onRetry}
               style={styles.emptyRetry}
               hitSlop={12}
-              accessibilityLabel={cs.empty.retry}
+              accessibilityLabel={t.empty.retry}
               accessibilityRole="button"
             >
               <RefreshCwIcon size={16} color={Colors.mutedText} />
               <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.empty.retry}
+                {t.empty.retry}
               </Text>
             </Pressable>
           ) : null}
@@ -411,17 +411,17 @@ function formatBeerLine(
         ? ` / ${formatVolume(displayedVolume)}`
         : '';
     const approx = isPriceApproximate(observedAt);
-    base = cs.compass.beerWithPrice(
-      freshReference && !matchingReference ? cs.compass.referenceBeer : lead.name,
-      `${approx ? cs.compass.priceApprox(formatted) : formatted}${volume}`,
+    base = t.compass.beerWithPrice(
+      freshReference && !matchingReference ? t.compass.referenceBeer : lead.name,
+      `${approx ? t.compass.priceApprox(formatted) : formatted}${volume}`,
     );
     const age = compact ? null : priceAgeLabel(observedAt);
     if (age) base = `${base} · ${age}`;
   } else {
-    base = cs.compass.beerNoPrice(lead.name);
+    base = t.compass.beerNoPrice(lead.name);
   }
   if (compact) return base;
-  return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
+  return beers.length > 1 ? `${base} · ${t.compass.beerAndMore}` : base;
 }
 
 // ─── Tácek helpers ────────────────────────────────────────────────────────────
@@ -434,14 +434,14 @@ function formatBeerLine(
 function splitDistance(formatted: string | null): { value: string; unit: string } | null {
   if (!formatted) return null;
   const spaceIdx = formatted.lastIndexOf(' ');
-  if (spaceIdx === -1) return { value: formatted, unit: cs.compass.distanceUnitMeters };
+  if (spaceIdx === -1) return { value: formatted, unit: t.compass.distanceUnitMeters };
   const value = formatted.slice(0, spaceIdx);
   const rawUnit = formatted.slice(spaceIdx + 1);
   if (rawUnit === 'km') {
     const numeric = Number(value.replace(',', '.'));
-    return { value, unit: cs.compass.distanceUnitKm(numeric) };
+    return { value, unit: t.compass.distanceUnitKm(numeric) };
   }
-  return { value, unit: cs.compass.distanceUnitMeters };
+  return { value, unit: t.compass.distanceUnitMeters };
 }
 
 /**
@@ -460,12 +460,12 @@ function pubHoursLine(pub: Pub): { label: string | null; tone: 'open' | 'closed'
 
   const time = hoursTimeFromIso(pub.nextChange);
   if (pub.isOpenNow === true) {
-    return { label: time ? cs.compass.openUntil(time) : cs.compass.openNow, tone: 'open' };
+    return { label: time ? t.compass.openUntil(time) : t.compass.openNow, tone: 'open' };
   }
   if (pub.isOpenNow === false) {
-    return { label: time ? cs.compass.closedUntil(time) : cs.compass.closedNow, tone: 'closed' };
+    return { label: time ? t.compass.closedUntil(time) : t.compass.closedNow, tone: 'closed' };
   }
-  return { label: cs.compass.hoursUnknown, tone: 'unknown' };
+  return { label: t.compass.hoursUnknown, tone: 'unknown' };
 }
 
 /** `HH:MM` straight out of a Europe/Prague ISO stamp — no `Intl`, see OpenStatusChip. */
@@ -665,9 +665,9 @@ export default function CompassScreen() {
     reportCurrentPub(reason)
       .then((persisted) => {
         if (persisted) setReportOpen(false);
-        else showToast(cs.pubDetail.saveFailed);
+        else showToast(t.pubDetail.saveFailed);
       })
-      .catch(() => showToast(cs.pubDetail.saveFailed));
+      .catch(() => showToast(t.pubDetail.saveFailed));
   }, [reportCurrentPub, showToast]);
 
   const handleReportClose = useCallback(() => {
@@ -695,9 +695,9 @@ export default function CompassScreen() {
     renameCurrentPub(trimmedName)
       .then((synced) => {
         setRenameOpen(false);
-        showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
+        showToast(synced ? t.compass.renameSavedToast : t.compass.renameQueuedToast);
       })
-      .catch(() => showToast(cs.pubDetail.saveFailed))
+      .catch(() => showToast(t.pubDetail.saveFailed))
       .finally(() => setRenameSubmitting(false));
   }, [pub, renameCurrentPub, renameDraft, renameSubmitting, showToast]);
 
@@ -759,23 +759,23 @@ export default function CompassScreen() {
   // not, so the button below it never moves under the thumb.
   const compassNudge: Nudge | null = useMemo(() => {
     if (isHeadingAccuracyLow(headingAccuracy, Platform.OS)) {
-      return { kind: 'dopito', label: cs.compass.nudgeCalibrate, onPress: () => undefined };
+      return { kind: 'dopito', label: t.compass.nudgeCalibrate, onPress: () => undefined };
     }
     if (activeFilterCount > 0) {
       return {
         kind: 'rapid',
-        text: cs.compass.nudgeFilters(activeFilterCount),
-        confirmLabel: cs.compass.nudgeFiltersClear,
+        text: t.compass.nudgeFilters(activeFilterCount),
+        confirmLabel: t.compass.nudgeFiltersClear,
         onConfirm: () => setPubFilters(EMPTY_PUB_SEARCH_FILTERS),
       };
     }
     if (focusedPub) {
-      return { kind: 'dopito', label: cs.compass.nudgeFocused, onPress: () => undefined };
+      return { kind: 'dopito', label: t.compass.nudgeFocused, onPress: () => undefined };
     }
     // Surprise mode speaks for itself through "Dej mi jinou" in the thumb arc,
     // so it gets no strip of its own; the way back is the overflow sheet.
     if (hasMagnetometer === false) {
-      return { kind: 'dopito', label: cs.compass.nudgeNoMagnetometer, onPress: () => undefined };
+      return { kind: 'dopito', label: t.compass.nudgeNoMagnetometer, onPress: () => undefined };
     }
     return null;
   }, [activeFilterCount, focusedPub, hasMagnetometer, headingAccuracy]);
@@ -786,26 +786,26 @@ export default function CompassScreen() {
     const rows: MoreRow[] = [
       {
         key: 'filters',
-        label: cs.compass.moreFilters,
-        value: activeFilterCount > 0 ? cs.compass.moreFiltersActive(activeFilterCount) : null,
+        label: t.compass.moreFilters,
+        value: activeFilterCount > 0 ? t.compass.moreFiltersActive(activeFilterCount) : null,
         icon: ListFilterIcon,
         onPress: () => runAfterMoreClose(handleOpenFilter),
       },
     ];
     if (homePoint) {
-      rows.push({ key: 'home', label: cs.compass.moreHome, icon: HouseIcon, onPress: () => { setMoreOpen(false); handleNavigateHome(); } });
+      rows.push({ key: 'home', label: t.compass.moreHome, icon: HouseIcon, onPress: () => { setMoreOpen(false); handleNavigateHome(); } });
     }
     rows.push(
       {
         key: 'nearest',
-        label: cs.compass.moreModeNearest,
+        label: t.compass.moreModeNearest,
         icon: TargetIcon,
         selected: mode === 'nearest',
         onPress: () => { setMoreOpen(false); handleModeChange('nearest'); },
       },
       {
         key: 'surprise',
-        label: cs.compass.moreModeSurprise,
+        label: t.compass.moreModeSurprise,
         icon: SparklesIcon,
         selected: mode === 'surprise',
         onPress: () => { setMoreOpen(false); handleModeChange('surprise'); },
@@ -813,12 +813,12 @@ export default function CompassScreen() {
     );
     rows.push({
       key: 'add-pub',
-      label: cs.compass.moreAddPub,
+      label: t.compass.moreAddPub,
       icon: MapPinPlusIcon,
       onPress: () => runAfterMoreClose(handleAddPub),
     });
     if (targetPub && !focusedPub) {
-      rows.push({ key: 'report', label: cs.compass.moreReport, icon: FlagIcon, onPress: () => runAfterMoreClose(handleReport) });
+      rows.push({ key: 'report', label: t.compass.moreReport, icon: FlagIcon, onPress: () => runAfterMoreClose(handleReport) });
     }
     return rows;
   }, [
@@ -933,7 +933,7 @@ export default function CompassScreen() {
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.compassMore}
+          accessibilityLabel={t.a11y.compassMore}
         >
           <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
@@ -954,16 +954,16 @@ export default function CompassScreen() {
         onPressFooter={handleCardFooterPress}
         accessibilityLabel={
           showPubDetails
-            ? cs.a11y.compassCard(
+            ? t.a11y.compassCard(
                 targetPub?.name ?? '',
                 distanceFormatted ?? '',
                 [
                   hours.label,
-                  pub?.beerMenuRotates ? cs.counter.rotatingMenuBadge : null,
+                  pub?.beerMenuRotates ? t.counter.rotatingMenuBadge : null,
                   beerLine,
                 ].filter(Boolean).join(' · '),
               )
-            : cs.a11y.compassCardHidden
+            : t.a11y.compassCardHidden
         }
       />
 
@@ -975,24 +975,24 @@ export default function CompassScreen() {
       <NudgeSlot nudge={compassNudge} collapseWhenEmpty />
 
       <CounterCta
-        label={cs.compass.navigateCta}
-        subLabel={cs.compass.navigateCtaSub}
+        label={t.compass.navigateCta}
+        subLabel={t.compass.navigateCtaSub}
         onPress={handleOpenMaps}
-        accessibilityLabel={cs.a11y.compassNavigate(targetPub?.name ?? '')}
+        accessibilityLabel={t.a11y.compassNavigate(targetPub?.name ?? '')}
       />
 
       {focusedPub ? (
         <CounterSecondary
-          label={cs.compass.backToNearest}
+          label={t.compass.backToNearest}
           onPress={() => {
             trackUiInteraction('compass_focus_clear');
             clearFocusedPub();
           }}
-          accessibilityLabel={cs.a11y.compassBackToNearest}
+          accessibilityLabel={t.a11y.compassBackToNearest}
         />
       ) : (
         <CounterSecondary
-          label={cs.compass.anotherPub}
+          label={t.compass.anotherPub}
           onPress={() => {
             if (mode === 'surprise') {
               trackUiInteraction('compass_reroll');
@@ -1002,7 +1002,7 @@ export default function CompassScreen() {
               skip();
             }
           }}
-          accessibilityLabel={cs.a11y.compassAnother}
+          accessibilityLabel={t.a11y.compassAnother}
         />
       )}
 
@@ -1041,13 +1041,13 @@ export default function CompassScreen() {
       {pub ? (
         <RenamePromptSheet
           visible={renameOpen}
-          title={cs.compass.renameTitle}
+          title={t.compass.renameTitle}
           value={renameDraft}
-          placeholder={cs.compass.renamePlaceholder}
-          inputLabel={cs.a11y.renamePubInput}
-          cancelLabel={cs.common.cancel}
-          saveLabel={cs.compass.renameSave}
-          savingLabel={cs.compass.renameSaving}
+          placeholder={t.compass.renamePlaceholder}
+          inputLabel={t.a11y.renamePubInput}
+          cancelLabel={t.common.cancel}
+          saveLabel={t.compass.renameSave}
+          savingLabel={t.compass.renameSaving}
           submitting={renameSubmitting}
           canSubmit={
             renameDraft.trim().length > 0 &&

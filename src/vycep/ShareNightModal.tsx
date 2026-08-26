@@ -35,7 +35,7 @@ import Svg, {
 
 import { CloseButton } from '@/components/shared/CloseButton';
 import { CopyIcon, Share2Icon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { useToastStore } from '@/stores/toastStore';
 import { useModalPresentation } from '@/stores/launchModalMutex';
@@ -149,12 +149,12 @@ function ShareNightModalBase({
         if (
           generation === exportGenerationRef.current &&
           requestedVisibleRef.current
-        ) showToast(cs.vycep.storyCopied);
+        ) showToast(t.vycep.storyCopied);
       } catch {
         if (
           generation === exportGenerationRef.current &&
           requestedVisibleRef.current
-        ) showToast(cs.vycep.storyShareError);
+        ) showToast(t.vycep.storyShareError);
       } finally {
         if (generation === exportGenerationRef.current) {
           exportBusyRef.current = false;
@@ -186,7 +186,7 @@ function ShareNightModalBase({
           await Sharing.shareAsync(fileUri, {
             mimeType: 'image/png',
             UTI: 'public.png',
-            dialogTitle: cs.vycep.storyModalTitle,
+            dialogTitle: t.vycep.storyModalTitle,
           });
         } else {
           await Share.share({ url: fileUri, message: '' });
@@ -195,7 +195,7 @@ function ShareNightModalBase({
         if (
           generation === exportGenerationRef.current &&
           requestedVisibleRef.current
-        ) showToast(cs.vycep.storyShareError);
+        ) showToast(t.vycep.storyShareError);
       } finally {
         if (generation === exportGenerationRef.current) {
           exportBusyRef.current = false;
@@ -235,9 +235,9 @@ function ShareNightModalBase({
       >
         <View style={styles.topRow}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.vycep.storyModalTitle}
+            {t.vycep.storyModalTitle}
           </Text>
-          <CloseButton onPress={handleClose} label={cs.common.cancel} />
+          <CloseButton onPress={handleClose} label={t.common.cancel} />
         </View>
 
         <View style={styles.previewArea}>
@@ -286,7 +286,7 @@ function ShareNightModalBase({
             onPress={handleCopy}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={cs.vycep.storyCopyCta}
+            accessibilityLabel={t.vycep.storyCopyCta}
             accessibilityState={{ disabled: busy, busy: exportAction === 'copy' }}
             style={({ pressed }) => [
               styles.primaryButton,
@@ -299,14 +299,14 @@ function ShareNightModalBase({
               <CopyIcon size={18} color={Colors.stout} />
             )}
             <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
-              {exportAction === 'copy' ? cs.vycep.storyPreparing : cs.vycep.storyCopyCta}
+              {exportAction === 'copy' ? t.vycep.storyPreparing : t.vycep.storyCopyCta}
             </Text>
           </Pressable>
           <Pressable
             onPress={handleShare}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.shareNightButton}
+            accessibilityLabel={t.a11y.shareNightButton}
             accessibilityState={{ disabled: busy, busy: exportAction === 'share' }}
             style={({ pressed }) => [
               styles.secondaryButton,
@@ -319,7 +319,7 @@ function ShareNightModalBase({
               <Share2Icon size={17} color={Colors.foam} />
             )}
             <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {exportAction === 'share' ? cs.vycep.storyPreparing : cs.vycep.storyShareCta}
+              {exportAction === 'share' ? t.vycep.storyPreparing : t.vycep.storyShareCta}
             </Text>
           </Pressable>
         </View>

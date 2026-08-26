@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 
+import { t } from '@/i18n';
 import { BeerList } from '@/party/BeerList';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -28,8 +29,8 @@ export function BeerSheet({
   visible,
   rows,
   onTaps,
-  title = 'Co piješ',
-  subtitle = 'Uprav počty nebo si dej něco jiného.',
+  title = t.partyBeers.sheetTitle,
+  subtitle = t.partyBeers.sheetSubtitle,
   onClose,
   onAdd,
 }: {

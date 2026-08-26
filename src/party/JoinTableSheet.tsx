@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { cleanJoinCode, JOIN_CODE_LENGTH } from '@/data/joinCode';
+import { t } from '@/i18n';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -81,7 +82,7 @@ export function JoinTableSheet({
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Přisednout ke stolu
+              {t.partyInvite.joinTitle}
             </Text>
             <CloseButton onPress={onClose} />
           </View>
@@ -122,7 +123,7 @@ export function JoinTableSheet({
               style={styles.field}
               onSubmitEditing={() => complete && onJoin(code)}
               returnKeyType="go"
-              accessibilityLabel="Kód stolu"
+              accessibilityLabel={t.partyInvite.a11yCodeField}
               accessibilityValue={{ text: code }}
             />
           </View>
@@ -143,10 +144,10 @@ export function JoinTableSheet({
             ]}
             accessibilityRole="button"
             accessibilityState={{ disabled: !complete || busy }}
-            accessibilityLabel="Přisednout"
+            accessibilityLabel={t.partyInvite.a11yJoin}
           >
             <Text style={styles.actionText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {busy ? 'Připojuju…' : 'Přisednout'}
+              {busy ? t.partyInvite.joining : t.partyInvite.join}
             </Text>
           </Pressable>
         </View>

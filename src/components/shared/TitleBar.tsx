@@ -5,7 +5,7 @@ import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { BeerIcon } from './IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 interface TitleBarProps {
   align?: 'center' | 'left';
@@ -56,7 +56,7 @@ export const TitleBar = memo(function TitleBar({
       >
         <BeerIcon size={20} color={Colors.amber} />
         <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.compass.headerTitle}
+          {t.compass.headerTitle}
         </Text>
       </Pressable>
 
@@ -77,7 +77,7 @@ export const TitleBar = memo(function TitleBar({
           onLongPress={onSettingsLongPress}
           style={[styles.gearTouchable, isLeftAligned && styles.gearTouchableLeft]}
           hitSlop={12}
-          accessibilityLabel={cs.a11y.settingsButton}
+          accessibilityLabel={t.a11y.settingsButton}
           accessibilityRole="button"
         >
           <GearIcon size={20} color={Colors.foamMuted} />

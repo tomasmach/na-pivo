@@ -34,7 +34,7 @@ import Animated, {
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 
@@ -193,7 +193,7 @@ export function CoasterCard({
           </Text>
         </Animated.View>
         <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {(count > 0 ? nounLabel : cs.counter.coasterEmpty).toUpperCase()}
+          {(count > 0 ? nounLabel : t.counter.coasterEmpty).toUpperCase()}
         </Text>
       </View>
 
@@ -217,11 +217,11 @@ export function CoasterCard({
             onPress={onOpenReceipt}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.counterReceiptChip}
+            accessibilityLabel={t.a11y.counterReceiptChip}
             style={({ pressed }) => [styles.receiptLink, pressed && styles.pressed]}
           >
             <Text style={styles.receiptLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.receiptChip}
+              {t.counter.receiptChip}
             </Text>
             <ChevronRightIcon size={15} color={Colors.amber} />
           </Pressable>

@@ -7,7 +7,7 @@ import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { BellRingIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
 import { enablePubReminderNotifications } from '@/notifications/pubReminderNotifications';
@@ -63,28 +63,28 @@ export function PubReminderBackgroundLocationDisclosure({
         <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
           <View style={styles.grabber} />
           <Text style={styles.disclosureTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.pubReminderOnboarding.backgroundDisclosureTitle}
+            {t.pubReminderOnboarding.backgroundDisclosureTitle}
           </Text>
           <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
             <Text style={styles.disclosureBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.pubReminderOnboarding.backgroundDisclosureBody}
+              {t.pubReminderOnboarding.backgroundDisclosureBody}
             </Text>
           </ScrollView>
           <View style={styles.actions}>
             <Pressable
               onPress={onAllow}
               accessibilityRole="button"
-              accessibilityLabel={cs.pubReminderOnboarding.backgroundDisclosureConfirm}
+              accessibilityLabel={t.pubReminderOnboarding.backgroundDisclosureConfirm}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryPressed]}
             >
               <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
-                {cs.pubReminderOnboarding.backgroundDisclosureConfirm}
+                {t.pubReminderOnboarding.backgroundDisclosureConfirm}
               </Text>
             </Pressable>
             <Pressable
               onPress={onDeny}
               accessibilityRole="button"
-              accessibilityLabel={cs.pubReminderOnboarding.backgroundDisclosureDeny}
+              accessibilityLabel={t.pubReminderOnboarding.backgroundDisclosureDeny}
               hitSlop={{ top: 8, bottom: 8 }}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
             >
@@ -92,7 +92,7 @@ export function PubReminderBackgroundLocationDisclosure({
                 style={styles.secondaryText}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.pubReminderOnboarding.backgroundDisclosureDeny}
+                {t.pubReminderOnboarding.backgroundDisclosureDeny}
               </Text>
             </Pressable>
           </View>
@@ -226,9 +226,9 @@ export function PubReminderOnboardingModal() {
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.pubReminderOnboarding.title}
+              {t.pubReminderOnboarding.title}
             </Text>
-            <CloseButton onPress={() => void closeAsSeen()} label={cs.pubReminderOnboarding.skip} />
+            <CloseButton onPress={() => void closeAsSeen()} label={t.pubReminderOnboarding.skip} />
           </View>
 
           <ScrollView
@@ -240,15 +240,15 @@ export function PubReminderOnboardingModal() {
             <ReasonRow
               first
               icon={<BellRingIcon size={20} color={Colors.amber} />}
-              title={cs.pubReminderOnboarding.notificationTitle}
+              title={t.pubReminderOnboarding.notificationTitle}
             />
             <ReasonRow
               icon={<MapPinIcon size={20} color={Colors.amber} />}
-              title={cs.pubReminderOnboarding.locationTitle}
+              title={t.pubReminderOnboarding.locationTitle}
             />
             <ReasonRow
               icon={<ShieldIcon size={20} color={Colors.amber} />}
-              title={cs.pubReminderOnboarding.privacyTitle}
+              title={t.pubReminderOnboarding.privacyTitle}
             />
           </ScrollView>
 
@@ -257,7 +257,7 @@ export function PubReminderOnboardingModal() {
               onPress={() => void handleEnable()}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel={cs.pubReminderOnboarding.cta}
+              accessibilityLabel={t.pubReminderOnboarding.cta}
               style={({ pressed }) => [
                 styles.primaryButton,
                 busy && styles.primaryDisabled,
@@ -265,7 +265,7 @@ export function PubReminderOnboardingModal() {
               ]}
             >
               <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
-                {busy ? cs.pubReminderOnboarding.ctaBusy : cs.pubReminderOnboarding.cta}
+                {busy ? t.pubReminderOnboarding.ctaBusy : t.pubReminderOnboarding.cta}
               </Text>
             </Pressable>
           </View>

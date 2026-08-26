@@ -3,8 +3,10 @@ import type {
   RemoteTimelineStat,
   RemoteTimelineWindow,
 } from '@/data/statsClient';
+import { intlLocale, t } from '@/i18n';
 
-export type ProfilePeriod = 'Týden' | 'Měsíc' | 'Rok';
+/** Stable keys, not the labels: the chart segment shows t.profile.period*. */
+export type ProfilePeriod = 'week' | 'month' | 'year';
 
 export interface ProfileStatPoint {
   label: string;
@@ -39,10 +41,10 @@ function formatDuration(seconds: number | null): string {
 
 function statsOf(value: RemoteTimelineWindow): ProfileStat[] {
   return [
-    { label: 'Piv', value: String(value.beers) },
-    { label: 'Večerů', value: String(value.evenings) },
-    { label: 'Hospod', value: String(value.distinctPubs) },
-    { label: 'Nejdelší', value: formatDuration(value.longestEveningSeconds) },
+    { label: t.profile.chartStatBeers, value: String(value.beers) },
+    { label: t.profile.chartStatEvenings, value: String(value.evenings) },
+    { label: t.profile.chartStatPubs, value: String(value.distinctPubs) },
+    { label: t.profile.chartStatLongest, value: formatDuration(value.longestEveningSeconds) },
   ];
 }
 
@@ -58,7 +60,7 @@ function timelineWindow(row: RemoteTimelineStat): RemoteTimelineWindow {
 function shortDay(value: string): string {
   const parsed = new Date(`${value}T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('cs-CZ', { weekday: 'short' })
+  return new Intl.DateTimeFormat(intlLocale, { weekday: 'short' })
     .format(parsed)
     .replace('.', '');
 }
@@ -66,15 +68,27 @@ function shortDay(value: string): string {
 function shortDate(value: string): string {
   const parsed = new Date(`${value}T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('cs-CZ', { day: 'numeric', month: 'numeric' }).format(parsed);
+  return new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'numeric' }).format(parsed);
 }
 
 function shortMonth(value: string): string {
   const parsed = new Date(`${value}-01T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('cs-CZ', { month: 'short' })
+  return new Intl.DateTimeFormat(intlLocale, { month: 'short' })
     .format(parsed)
     .replace('.', '');
+}
+
+/** Weekday and month names come from Intl so the empty chart reads like a full one. */
+function weekdayLabels(): string[] {
+  const format = new Intl.DateTimeFormat(intlLocale, { weekday: 'short' });
+  // 1. 1. 2024 was a Monday, and the chart starts the week there.
+  return Array.from({ length: 7 }, (_, i) => format.format(new Date(2024, 0, 1 + i, 12)).replace('.', ''));
+}
+
+function monthLabels(): string[] {
+  const format = new Intl.DateTimeFormat(intlLocale, { month: 'short' });
+  return Array.from({ length: 12 }, (_, i) => format.format(new Date(2024, i, 1, 12)).replace('.', ''));
 }
 
 function emptySeries(length: number, labels: string[]): ProfileStatSeries {
@@ -104,15 +118,15 @@ export function profileTimelineSeries(
   period: ProfilePeriod,
 ): ProfileStatSeries {
   if (!timeline?.windows) {
-    if (period === 'Týden') return emptySeries(7, ['po', 'út', 'st', 'čt', 'pá', 'so', 'ne']);
-    if (period === 'Měsíc') return emptySeries(5, ['1.', '2.', '3.', '4.', '5.']);
-    return emptySeries(12, ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro']);
+    if (period === 'week') return emptySeries(7, weekdayLabels());
+    if (period === 'month') return emptySeries(5, ['1.', '2.', '3.', '4.', '5.']);
+    return emptySeries(12, monthLabels());
   }
 
   const config =
-    period === 'Týden'
+    period === 'week'
       ? { rows: timeline.days, window: timeline.windows.week, label: shortDay, take: 7 }
-      : period === 'Měsíc'
+      : period === 'month'
         ? { rows: timeline.weeks, window: timeline.windows.month, label: shortDate, take: 5 }
         : { rows: timeline.months, window: timeline.windows.year, label: shortMonth, take: 12 };
   return {
@@ -129,7 +143,7 @@ function formatDate(value: string | null): string {
   if (!value) return '';
   const parsed = new Date(`${value}T12:00:00`);
   if (!Number.isFinite(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat('cs-CZ', {
+  return new Intl.DateTimeFormat(intlLocale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -148,7 +162,7 @@ export function profileRecords(stats: RemoteStats | null): ProfileRecord[] {
       ].filter(Boolean);
       records.push({
         id: 'longest-evening',
-        title: 'Délka večera',
+        title: t.profile.recordEveningLength,
         value: formatDuration(stats.nightRecords.longestSeconds),
         when: context.join(' · '),
       });
@@ -162,7 +176,7 @@ export function profileRecords(stats: RemoteStats | null): ProfileRecord[] {
     ].filter(Boolean);
     records.push({
       id: 'longest-evening',
-      title: 'Délka večera',
+      title: t.profile.recordEveningLength,
       value: formatDuration(stats.records.longestEveningSeconds),
       when: context.join(' · '),
     });
@@ -171,11 +185,13 @@ export function profileRecords(stats: RemoteStats | null): ProfileRecord[] {
 }
 
 export function firstDrinkLabel(firstDrinkAt: string | null | undefined): string {
-  if (!firstDrinkAt) return 'Zatím bez zápisu';
+  if (!firstDrinkAt) return t.profile.firstEntryNone;
   const parsed = new Date(firstDrinkAt);
-  if (!Number.isFinite(parsed.getTime())) return 'První zápis už je v deníčku';
-  return `První zápis ${new Intl.DateTimeFormat('cs-CZ', {
-    month: 'long',
-    year: 'numeric',
-  }).format(parsed)}`;
+  if (!Number.isFinite(parsed.getTime())) return t.profile.firstEntryUnknown;
+  return t.profile.firstEntrySince(
+    new Intl.DateTimeFormat(intlLocale, {
+      month: 'long',
+      year: 'numeric',
+    }).format(parsed),
+  );
 }

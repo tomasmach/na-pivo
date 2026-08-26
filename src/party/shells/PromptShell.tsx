@@ -37,6 +37,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { t } from "@/i18n";
 import {
   GameStage,
   STAGE_FILL,
@@ -238,7 +239,7 @@ export function PromptShell({
           style={styles.stageWrap}
           accessibilityRole="button"
           accessibilityLiveRegion="polite"
-          accessibilityLabel={`${deck[index] ?? ""} Ťukni pro další.`}
+          accessibilityLabel={t.gameShell.promptA11y(deck[index] ?? "")}
         >
           {stage}
         </Pressable>
@@ -246,7 +247,7 @@ export function PromptShell({
 
       {single || spectator ? null : (
         <View style={styles.dock}>
-          <StagePill label="Další" onPress={next} />
+          <StagePill label={t.gameShell.next} onPress={next} />
         </View>
       )}
     </View>

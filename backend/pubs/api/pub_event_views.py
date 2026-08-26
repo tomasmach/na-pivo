@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.utils import timezone
+from django.utils.translation import gettext
 from rest_framework import serializers, status
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import AllowAny
@@ -34,13 +35,13 @@ class PubEventSuggestionSerializer(serializers.Serializer):
         ends_at = attrs["ends_at"]
         now = timezone.now()
         if ends_at <= starts_at:
-            raise serializers.ValidationError({"ends_at": "Akce musí končit po začátku."})
+            raise serializers.ValidationError({"ends_at": gettext("Akce musí končit po začátku.")})
         if ends_at <= now:
-            raise serializers.ValidationError({"ends_at": "Ukončenou akci už nejde navrhnout."})
+            raise serializers.ValidationError({"ends_at": gettext("Ukončenou akci už nejde navrhnout.")})
         if starts_at > now + timedelta(days=180):
-            raise serializers.ValidationError({"starts_at": "Akci lze navrhnout nejvýš 180 dní dopředu."})
+            raise serializers.ValidationError({"starts_at": gettext("Akci lze navrhnout nejvýš 180 dní dopředu.")})
         if ends_at - starts_at > timedelta(days=14):
-            raise serializers.ValidationError({"ends_at": "Akce může trvat nejvýš 14 dní."})
+            raise serializers.ValidationError({"ends_at": gettext("Akce může trvat nejvýš 14 dní.")})
         return attrs
 
 
@@ -56,7 +57,7 @@ class PubEventView(APIView):
         cache_key = (request.query_params.get("cache_key") or "").strip()
         if not cache_key or len(cache_key) > 12:
             return Response(
-                {"cache_key": ["Zadej platný klíč hospody."]},
+                {"cache_key": [gettext("Zadej platný klíč hospody.")]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -87,12 +88,18 @@ class PubEventView(APIView):
         account = request.user
         if not getattr(account, "is_authenticated", False):
             return Response(
-                {"detail": "Přihlas se a pak akci navrhni.", "code": "authentication_required"},
+                {
+                    "detail": gettext("Přihlas se a pak akci navrhni."),
+                    "code": "authentication_required",
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         if not account.is_claimed:
             return Response(
-                {"detail": "Návrhy akcí jsou jen pro přihlášené.", "code": "claimed_account_required"},
+                {
+                    "detail": gettext("Návrhy akcí jsou jen pro přihlášené."),
+                    "code": "claimed_account_required",
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 

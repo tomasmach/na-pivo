@@ -39,7 +39,7 @@ import {
   type ServingType,
 } from '@/drinks/drinkTypes';
 import { useToastStore } from '@/stores/toastStore';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { notePivarSnapshot } from './pivarXp';
 
 export type { CommunityBeer };
@@ -211,7 +211,7 @@ function showDrinkLimitedToast(): void {
   const now = Date.now();
   if (now - lastDrinkLimitedToastAt < DRINK_LIMITED_TOAST_GAP_MS) return;
   lastDrinkLimitedToastAt = now;
-  useToastStore.getState().show(cs.counter.drinkLimitedToast);
+  useToastStore.getState().show(t.counter.drinkLimitedToast);
 }
 
 type DrinkSyncOperation = 'submit_drink' | 'delete_drink' | 'update_drink';

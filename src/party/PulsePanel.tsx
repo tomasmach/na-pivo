@@ -19,6 +19,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { t } from '@/i18n';
 import { formatStopwatch, useNightSeconds } from '@/mocks/livePartyStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -93,7 +94,7 @@ export function PulsePanel({
           <Stopwatch startedAt={startedAt} />
         )}
         <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-          večer
+          {t.liveParty.clockUnit}
         </Text>
       </View>
     </View>

@@ -27,7 +27,7 @@ import { CopyIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { fetchFriendInviteCode, type FriendInvite } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { selectNickname, useAccountStore } from '@/stores/accountStore';
@@ -84,8 +84,8 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
   useEffect(() => {
     // Defer off the synchronous effect pass (load()'s first setState resolves in
     // a scheduled task) so the compiler doesn't read it as a cascading render.
-    const t = setTimeout(() => void load(), 0);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => void load(), 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const [closing, setClosing] = useState(false);
@@ -107,9 +107,9 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
   const handleQuickSend = useCallback(() => {
     if (!link) return;
     trackUiInteraction('friend_invite_share', 'share');
-    void Share.share({ message: cs.friends.shareMessage(link) }).catch(() => {
+    void Share.share({ message: t.friends.shareMessage(link) }).catch(() => {
       if (!mountedRef.current) return;
-      showToast(cs.friends.shareError, {
+      showToast(t.friends.shareError, {
         icon: <CopyIcon size={20} color={Colors.amber} />,
       });
     });
@@ -127,7 +127,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {cs.friends.codeSheetTitle}
+              {t.friends.codeSheetTitle}
             </Text>
             <CloseButton onPress={() => requestClose()} />
           </View>
@@ -152,7 +152,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
               ) : (
                 <View style={styles.noNick}>
                   <Text style={styles.noNickText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.codeNoNick}
+                    {t.friends.codeNoNick}
                   </Text>
                   <Pressable
                     onPress={() => {
@@ -160,10 +160,10 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
                     }}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.friends.codeNoNickCta}
+                    accessibilityLabel={t.friends.codeNoNickCta}
                   >
                     <Text style={styles.noNickCta} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.codeNoNickCta}
+                      {t.friends.codeNoNickCta}
                     </Text>
                   </Pressable>
                 </View>
@@ -191,16 +191,16 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
               ) : failed || !link ? (
                 <View style={styles.qrFallback}>
                   <Text style={styles.offlineText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.codeOffline}
+                    {t.friends.codeOffline}
                   </Text>
                   <Pressable
                     onPress={() => void load()}
                     style={({ pressed }) => [styles.retryPill, pressed && styles.pressedDim]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.friends.retry}
+                    accessibilityLabel={t.friends.retry}
                   >
                     <Text style={styles.retryLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.friends.retry}
+                      {t.friends.retry}
                     </Text>
                   </Pressable>
                 </View>
@@ -217,7 +217,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
             </View>
 
             <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.codeSheetHint}
+              {t.friends.codeSheetHint}
             </Text>
           </ScrollView>
 
@@ -227,7 +227,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
               disabled={!link}
               style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
               accessibilityRole="button"
-              accessibilityLabel={cs.friends.codeShare}
+              accessibilityLabel={t.friends.codeShare}
               accessibilityState={{ disabled: !link }}
             >
               <CopyIcon size={18} color={Colors.stout} />
@@ -236,7 +236,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.friends.codeShare}
+                {t.friends.codeShare}
               </Text>
             </Pressable>
           </View>

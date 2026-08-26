@@ -30,6 +30,7 @@ import type { WebView as WebViewType, WebViewMessageEvent } from 'react-native-w
 import { Asset } from 'expo-asset';
 
 import {
+  GAME_ERROR_PROTOCOL_MISMATCH,
   GAME_PROTOCOL_VERSION,
   parseFromGame,
   type FromGame,
@@ -38,7 +39,7 @@ import {
   type ToGame,
 } from '@/games/protocol';
 import { createGameCommandQueue } from '@/games/commandQueue';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -105,7 +106,7 @@ export const GameHost = React.forwardRef<
   const [uri, setUri] = React.useState<string | null>(null);
   const [attempt, setAttempt] = React.useState(0);
   const [status, setStatus] = React.useState<'loading' | 'ready' | 'error'>('loading');
-  const [message, setMessage] = React.useState<string>(cs.gameHost.loading);
+  const [message, setMessage] = React.useState<string>(t.gameHost.loading);
   const errorRef = React.useRef(onError);
   errorRef.current = onError;
   // One init per page attempt: a duplicate ready must not inject init twice
@@ -127,7 +128,7 @@ export const GameHost = React.forwardRef<
   // a visible non-ready message is announced imperatively on iOS exactly once
   // per genuinely new message. The ref resets at ready, so a repeated failure
   // after a reconnect announces again. Android stays declarative only.
-  const announcedRef = React.useRef<string | null>(cs.gameHost.loading);
+  const announcedRef = React.useRef<string | null>(t.gameHost.loading);
   React.useEffect(() => {
     if (status === 'ready') {
       announcedRef.current = null;
@@ -145,16 +146,16 @@ export const GameHost = React.forwardRef<
     rosterRef.current = new Set();
     setUri(null);
     setStatus('loading');
-    setMessage(cs.gameHost.loading);
+    setMessage(t.gameHost.loading);
     if (!WebView) {
-      fail(cs.gameHost.unavailable);
+      fail(t.gameHost.unavailable);
       return () => {
         alive = false;
       };
     }
     const page = GAME_PAGES[game];
     if (!page) {
-      fail(cs.gameHost.unavailable);
+      fail(t.gameHost.unavailable);
       return () => {
         alive = false;
       };
@@ -164,10 +165,10 @@ export const GameHost = React.forwardRef<
       .then((asset) => {
         if (!alive) return;
         if (asset.localUri) setUri(asset.localUri);
-        else fail(cs.gameHost.loadFailed);
+        else fail(t.gameHost.loadFailed);
       })
       .catch(() => {
-        if (alive) fail(cs.gameHost.loadFailed);
+        if (alive) fail(t.gameHost.loadFailed);
       });
     return () => {
       alive = false;
@@ -179,7 +180,7 @@ export const GameHost = React.forwardRef<
     // the bundled HTML. Asset.downloadAsync can hang too, and otherwise this
     // screen would stay on "Načítám" forever without exposing Retry.
     if (status !== 'loading') return undefined;
-    const timer = setTimeout(() => fail(cs.gameHost.timeout), 8000);
+    const timer = setTimeout(() => fail(t.gameHost.timeout), 8000);
     return () => clearTimeout(timer);
   }, [fail, status]);
 
@@ -206,7 +207,7 @@ export const GameHost = React.forwardRef<
   // fails a game that is merely loading slowly — buffering is our job here.
   const queue = React.useMemo(
     () =>
-      createGameCommandQueue(postTracked, () => fail(cs.gameHost.timeout), HOST_READY_GRACE_MS),
+      createGameCommandQueue(postTracked, () => fail(t.gameHost.timeout), HOST_READY_GRACE_MS),
     // A changed asset is a new bridge even though the writer function is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [attempt, fail, game, postTracked],
@@ -274,7 +275,7 @@ export const GameHost = React.forwardRef<
             known.has(message.payingId)) &&
           message.scores.every((score) => known.has(score.playerId));
         if (!identitiesKnown) {
-          fail(cs.gameHost.stopped);
+          fail(t.gameHost.stopped);
           break;
         }
         onResult?.({
@@ -285,7 +286,13 @@ export const GameHost = React.forwardRef<
         break;
       }
       case 'error':
-        fail(message.message);
+        // The page raises codes, not sentences (see protocol.ts); a game that
+        // still sends prose gets it shown as written.
+        fail(
+          message.message === GAME_ERROR_PROTOCOL_MISMATCH
+            ? t.gameHost.protocolMismatch
+            : message.message,
+        );
         break;
     }
   };
@@ -313,9 +320,9 @@ export const GameHost = React.forwardRef<
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
           onMessage={handleMessage}
-          onError={() => fail(cs.gameHost.loadFailed)}
-          onContentProcessDidTerminate={() => fail(cs.gameHost.stopped)}
-          onRenderProcessGone={() => fail(cs.gameHost.stopped)}
+          onError={() => fail(t.gameHost.loadFailed)}
+          onContentProcessDidTerminate={() => fail(t.gameHost.stopped)}
+          onRenderProcessGone={() => fail(t.gameHost.stopped)}
           androidLayerType="hardware"
         />
       ) : null}
@@ -335,10 +342,10 @@ export const GameHost = React.forwardRef<
               onPress={() => setAttempt((value) => value + 1)}
               style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.gameHost.retry}
+              accessibilityLabel={t.gameHost.retry}
             >
               <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.gameHost.retry}
+                {t.gameHost.retry}
               </Text>
             </Pressable>
           ) : null}

@@ -1,10 +1,13 @@
 from django.conf import settings
+from django.utils.translation import gettext_lazy
 from rest_framework.response import Response
 
 UGC_POLICY_HEADER = "X-Na-Pivo-UGC-Policy-Version"
 
-_UGC_CONSENT_REQUIRED_DETAIL = "Nejdřív potvrď pravidla pro sdílený obsah."
-_UGC_POLICY_UPDATE_DETAIL = "Pravidla pro sdílený obsah se změnila. Potvrď je znovu."
+_UGC_CONSENT_REQUIRED_DETAIL = gettext_lazy("Nejdřív potvrď pravidla pro sdílený obsah.")
+_UGC_POLICY_UPDATE_DETAIL = gettext_lazy(
+    "Pravidla pro sdílený obsah se změnila. Potvrď je znovu."
+)
 
 
 def ugc_consent_snapshot(account):

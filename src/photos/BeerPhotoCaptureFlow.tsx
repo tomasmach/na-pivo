@@ -16,7 +16,7 @@ import { showAppDialog } from '@/components/shared/AppDialog';
 import { CameraIcon, InfoIcon } from '@/components/shared/IconGlyph';
 import { openSystemSettings } from '@/compass/permissions';
 import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoPicker';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { BeerPhotoComposeSheet } from '@/photos/BeerPhotoComposeSheet';
 import { BeerPhotoSourceSheet } from '@/photos/BeerPhotoSourceSheet';
 import { useToastStore } from '@/stores/toastStore';
@@ -71,25 +71,25 @@ export function BeerPhotoCaptureFlow({
         if (picked.status === 'denied') {
           showToast(
             source === 'camera'
-              ? cs.photoDiary.permissionCameraBody
-              : cs.photoDiary.permissionLibraryBody,
+              ? t.photoDiary.permissionCameraBody
+              : t.photoDiary.permissionLibraryBody,
             { icon: <CameraIcon size={18} color={Colors.amber} /> },
           );
           return;
         }
         if (picked.status === 'denied-permanent') {
           showAppDialog({
-            title: cs.photoDiary.title,
-            message: cs.photoDiary.permissionBlockedBody,
+            title: t.photoDiary.title,
+            message: t.photoDiary.permissionBlockedBody,
             buttons: [
-              { text: cs.common.cancel, style: 'cancel' },
-              { text: cs.photoDiary.openSettings, onPress: () => void openSystemSettings() },
+              { text: t.common.cancel, style: 'cancel' },
+              { text: t.photoDiary.openSettings, onPress: () => void openSystemSettings() },
             ],
           });
           return;
         }
         if (picked.status === 'error') {
-          showToast(cs.photoDiary.errorPick, {
+          showToast(t.photoDiary.errorPick, {
             icon: <InfoIcon size={18} color={Colors.foamMuted} />,
           });
           return;
@@ -130,7 +130,7 @@ export function BeerPhotoCaptureFlow({
           onSaved={({ clientId, contestRequested, completion }) => {
             setComposeUri(null);
             showToast(
-              contestRequested ? cs.photoDiary.savedForContest : cs.photoDiary.saved,
+              contestRequested ? t.photoDiary.savedForContest : t.photoDiary.saved,
               {
               icon: <CameraIcon size={18} color={Colors.amber} />,
               },
@@ -142,12 +142,12 @@ export function BeerPhotoCaptureFlow({
                 .getState()
                 .photos.find((item) => item.clientId === clientId);
               if (photo?.inContest) {
-                showToast(cs.photoContest.enteredToast, {
+                showToast(t.photoContest.enteredToast, {
                   icon: <CameraIcon size={18} color={Colors.amber} />,
                 });
                 onContestEntered?.();
               } else if (photo?.syncState === 'synced') {
-                showToast(cs.photoDiary.contestEntryFailed, {
+                showToast(t.photoDiary.contestEntryFailed, {
                   icon: <InfoIcon size={18} color={Colors.foamMuted} />,
                 });
               }

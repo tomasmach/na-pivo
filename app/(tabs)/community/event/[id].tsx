@@ -6,6 +6,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { EventDetailScreen } from '@/community/EventDetailScreen';
 import { fetchCommunityEvent, type CommunityEvent } from '@/data/communityEventsClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -62,7 +63,7 @@ export default function EventRoute() {
 
   if (loading) {
     return (
-      <View style={styles.loading} accessibilityLabel="Načítám akci">
+      <View style={styles.loading} accessibilityLabel={t.communityEvents.detailLoading}>
         <SkeletonBlock width="100%" height={160} reduceMotion={reduceMotion} />
         <SkeletonBlock width="72%" height={32} reduceMotion={reduceMotion} />
         <SkeletonBlock width="90%" height={68} reduceMotion={reduceMotion} />
@@ -74,15 +75,15 @@ export default function EventRoute() {
     return (
       <View style={styles.missing}>
         <Text style={styles.missingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {error ?? 'Tuhle akci už nenajdu.'}
+          {error ?? t.communityEvents.detailMissing}
         </Text>
         <Pressable
           onPress={() => setRevision((value) => value + 1)}
           style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Zkusit načíst akci znovu"
+          accessibilityLabel={t.communityEvents.detailRetryA11y}
         >
-          <Text style={styles.retryText}>Zkusit znovu</Text>
+          <Text style={styles.retryText}>{t.communityEvents.retry}</Text>
         </Pressable>
       </View>
     );

@@ -11,15 +11,16 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import type { CommunityEvent } from '@/data/communityEventsClient';
+import { intlLocale } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 
 export function EventCover({ event, height }: { event: CommunityEvent; height: number }) {
   const parsed = new Date(event.startsAt);
   const day = Number.isFinite(parsed.getTime())
-    ? new Intl.DateTimeFormat('cs-CZ', { day: 'numeric' }).format(parsed)
+    ? new Intl.DateTimeFormat(intlLocale, { day: 'numeric' }).format(parsed)
     : '?';
   const month = Number.isFinite(parsed.getTime())
-    ? new Intl.DateTimeFormat('cs-CZ', { month: 'short' }).format(parsed).replace('.', '')
+    ? new Intl.DateTimeFormat(intlLocale, { month: 'short' }).format(parsed).replace('.', '')
     : '';
   const cover = event.status === 'live' ? ['#8A5A18', '#2E1D0E'] : ['#5E421C', '#24170B'];
 

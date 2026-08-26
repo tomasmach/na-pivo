@@ -63,7 +63,7 @@ import {
   type Pub,
 } from '@/data/pubs';
 import { useCompass } from '@/hooks/useCompass';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MenuChip } from '@/mocks/MenuChip';
@@ -115,21 +115,31 @@ const VIEWPORT_DEBOUNCE_MS = 650;
  * somewhere and asking "where do I go" is the whole job of this screen;
  * "Vše" was never an answer to anything.
  */
-const SORTS = ['Nejbližší', 'Nejlépe hodnocené', 'Náhodně v okolí'] as const;
+const SORTS = ['nearest', 'rating', 'random'] as const;
 type Sort = (typeof SORTS)[number];
+
+/** Menu labels for the sort keys, in the order the menu lists them. */
+const SORT_LABELS: Record<Sort, string> = {
+  nearest: t.pubList.sortNearest,
+  rating: t.pubList.sortRating,
+  random: t.pubList.sortRandom,
+};
+const SORT_OPTIONS = SORTS.map((key) => SORT_LABELS[key]);
+const sortFromLabel = (label: string): Sort =>
+  SORTS.find((key) => SORT_LABELS[key] === label) ?? 'nearest';
 
 /** What the head cell's badge says, per sort — it has to explain why THIS pub
  *  is the one the compass points at. */
 const BADGE: Record<Sort, string> = {
-  'Nejbližší': 'Nejbližší',
-  'Nejlépe hodnocené': 'Nejlíp hodnocená',
-  'Náhodně v okolí': 'Náhodná',
+  nearest: t.pubList.badgeNearest,
+  rating: t.pubList.badgeRating,
+  random: t.pubList.badgeRandom,
 };
 
 const SORT_KEY: Record<Sort, PubSort> = {
-  'Nejbližší': 'nearest',
-  'Nejlépe hodnocené': 'rating',
-  'Náhodně v okolí': 'random',
+  nearest: 'nearest',
+  rating: 'rating',
+  random: 'random',
 };
 
 /**
@@ -138,7 +148,12 @@ const SORT_KEY: Record<Sort, PubSort> = {
  * (`practical_tank_beer`, `seating_garden`) plus the open-now state — not
  * invented labels.
  */
-const TOGGLES = ['Otevřeno', 'Tank', 'Zahrádka'] as const;
+const TOGGLES = ['open', 'tank', 'garden'] as const;
+const TOGGLE_LABELS: Record<(typeof TOGGLES)[number], string> = {
+  open: t.pubList.toggleOpen,
+  tank: t.pubList.toggleTank,
+  garden: t.pubList.toggleGarden,
+};
 
 function FilterChips({
   sort,
@@ -163,20 +178,20 @@ function FilterChips({
   const selectedLabels = filters.beers.map((key) => labelByKey.get(key) ?? key);
   const beerLabel =
     filters.beers.length === 0
-      ? 'Pivo'
+      ? t.pubList.beerChip
       : filters.beers.length === 1
         ? selectedLabels[0]
-        : `Pivo (${filters.beers.length})`;
+        : t.pubList.beerChipCount(filters.beers.length);
 
-  const activeToggle = (label: (typeof TOGGLES)[number]) => {
-    if (label === 'Otevřeno') return filters.openOnly;
-    if (label === 'Tank') return filters.tankOnly;
+  const activeToggle = (key: (typeof TOGGLES)[number]) => {
+    if (key === 'open') return filters.openOnly;
+    if (key === 'tank') return filters.tankOnly;
     return filters.gardenOnly;
   };
 
-  const toggle = (label: (typeof TOGGLES)[number]) => {
-    if (label === 'Otevřeno') onFilters({ ...filters, openOnly: !filters.openOnly });
-    else if (label === 'Tank') onFilters({ ...filters, tankOnly: !filters.tankOnly });
+  const toggle = (key: (typeof TOGGLES)[number]) => {
+    if (key === 'open') onFilters({ ...filters, openOnly: !filters.openOnly });
+    else if (key === 'tank') onFilters({ ...filters, tankOnly: !filters.tankOnly });
     else onFilters({ ...filters, gardenOnly: !filters.gardenOnly });
   };
 
@@ -196,10 +211,10 @@ function FilterChips({
           of the problem — `@expo/ui` ships SwiftUI's own Menu and was already in
           the Podfile. */}
       <MenuChip
-        value={sort}
-        options={SORTS}
-        title="Seřadit"
-        onChange={(next) => onSort(next as Sort)}
+        value={SORT_LABELS[sort]}
+        options={SORT_OPTIONS}
+        title={t.pubList.sortTitle}
+        onChange={(next) => onSort(sortFromLabel(next))}
       />
 
       {/* Beer is an ANY-of multi-select backed by canonical server brand keys. */}
@@ -214,7 +229,9 @@ function FilterChips({
             ]}
             accessibilityRole="button"
             accessibilityLabel={
-              filters.beers.length > 0 ? `Pivo: ${selectedLabels.join(', ')}` : 'Vybrat piva'
+              filters.beers.length > 0
+                ? t.pubList.beerChipA11y(selectedLabels.join(', '))
+                : t.pubList.beerChipPick
             }
           >
             <Text
@@ -242,12 +259,13 @@ function FilterChips({
         </>
       ) : null}
 
-      {TOGGLES.map((label) => {
-        const active = activeToggle(label);
+      {TOGGLES.map((key) => {
+        const active = activeToggle(key);
+        const label = TOGGLE_LABELS[key];
         return (
           <Pressable
-            key={label}
-            onPress={() => toggle(label)}
+            key={key}
+            onPress={() => toggle(key)}
             style={({ pressed }) => [
               styles.chip,
               active && styles.chipActive,
@@ -328,7 +346,7 @@ const PubRow = React.memo(function PubRow({
               detail-screen answer, and spelling it out on every row was a
               second sentence competing with the ones you actually scan. */}
           {pub.visitCount > 0 ? (
-            <View accessible accessibilityLabel="Tuhle hospodu už znáš">
+            <View accessible accessibilityLabel={t.pubList.visitedA11y}>
               <HeartIcon size={13} color={Colors.amber} />
             </View>
           ) : null}
@@ -477,7 +495,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     };
   });
   const [selectedPub, setSelectedPub] = React.useState<string | null>(null);
-  const [sort, setSort] = React.useState<Sort>('Nejbližší');
+  const [sort, setSort] = React.useState<Sort>('nearest');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
   const [carouselHeight, setCarouselHeight] = React.useState(CAROUSEL_H);
   // The detail opens INSIDE the sheet rather than as a push: the map behind is
@@ -542,6 +560,8 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   // "mimo hospodu" (`ctx:other`) by the hub, so choosing it here is the same
   // store move a pub detail makes — minus the pub.
   const pickOutside = React.useCallback(() => {
+    // Persisted sentinels, not display copy: the hub compares and stores these
+    // exact strings, so they never move into t.
     setPartyPub('Mimo hospodu', 'Pivo', null, []);
     closePicker();
   }, [closePicker, setPartyPub]);
@@ -779,7 +799,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   const pickSort = React.useCallback(
     (next: Sort) => {
       setSort(next);
-      if (next === 'Náhodně v okolí') setShuffleSeed((n) => n + 1);
+      if (next === 'random') setShuffleSeed((n) => n + 1);
       // Picking a sort is asking the head cell a new question, so the borrowed
       // needle goes back to the list — the same "Zpět na nejbližší" move the
       // 2.x compass had as its own button.
@@ -887,7 +907,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
         <View style={[styles.places, { bottom: controlsBottom }]}>
         {/* Labelled, not a bare glyph. A list icon alone on a map is a guess;
             the two words cost nothing and the pill still floats. */}
-        <GlassPill accessibilityLabel="Seznam hospod" onPress={() => moveSheet('half')}>
+        <GlassPill accessibilityLabel={t.pubList.placesList} onPress={() => moveSheet('half')}>
           <SymbolView
             name="list.bullet"
             size={17}
@@ -896,7 +916,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
             fallback={<ChevronRightIcon size={18} color={Colors.foam} />}
           />
           <Text style={styles.placesLabel} allowFontScaling={false}>
-            Seznam hospod
+            {t.pubList.placesList}
           </Text>
         </GlassPill>
         </View>
@@ -910,7 +930,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
         <View style={[styles.pickerClose, { top: insets.top + Spacing.sm }]}>
           <GlassIconButton
             size={44}
-            accessibilityLabel={cs.pubPicker.closeA11y}
+            accessibilityLabel={t.pubPicker.closeA11y}
             onPress={closePicker}
           >
             <ChevronDownIcon size={20} color={Colors.foam} />
@@ -928,10 +948,10 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
           size={44}
           accessibilityLabel={
             compass.currentPosition
-              ? 'Vycentrovat na mě'
+              ? t.pubList.centreOnMe
               : compass.permissionState === 'granted'
-                ? cs.addPub.retryLocation
-                : 'Povolit polohu'
+                ? t.addPub.retryLocation
+                : t.pubList.allowLocation
           }
           onPress={() => {
             if (compass.currentPosition) locateOnMap();
@@ -987,11 +1007,11 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                 onPress={() => router.push('/search' as Href)}
                 style={({ pressed }) => [styles.searchField, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel="Hledat hospodu nebo pivo"
+                accessibilityLabel={t.pubList.searchA11y}
               >
                 <SearchIcon size={17} color={Colors.mutedText} />
                 <Text style={styles.searchPlaceholder} maxFontSizeMultiplier={FontScaleCap.body}>
-                  Hledej hospodu nebo pivo
+                  {t.pubList.searchPlaceholder}
                 </Text>
               </Pressable>
             </Animated.View>
@@ -1028,21 +1048,21 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                 <>
                   {compass.searchFailed && presentations.length > 0 ? (
                     <View style={styles.statusBanner}>
-                      <Text style={styles.statusBannerText}>Ukazuju poslední uložené hospody.</Text>
+                      <Text style={styles.statusBannerText}>{t.pubList.staleBanner}</Text>
                       <Pressable onPress={compass.retrySearch} accessibilityRole="button">
-                        <Text style={styles.statusActionText}>Obnovit</Text>
+                        <Text style={styles.statusActionText}>{t.pubList.staleRefresh}</Text>
                       </Pressable>
                     </View>
                   ) : null}
 
                   {compass.permissionState === 'denied' && presentations.length > 0 ? (
                     <View style={styles.statusBanner}>
-                      <Text style={styles.statusBannerText}>Vzdálenost bez polohy nespočítám.</Text>
+                      <Text style={styles.statusBannerText}>{t.pubList.noLocationBanner}</Text>
                       <Pressable
                         onPress={() => void compass.requestPermission()}
                         accessibilityRole="button"
                       >
-                        <Text style={styles.statusActionText}>Povolit</Text>
+                        <Text style={styles.statusActionText}>{t.pubList.noLocationAllow}</Text>
                       </Pressable>
                     </View>
                   ) : null}
@@ -1051,7 +1071,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                     <CompassCell
                       pub={head}
                       position={compass.currentPosition}
-                      badge={focusHead ? cs.compass.focusBadge : BADGE[sort]}
+                      badge={focusHead ? t.compass.focusBadge : BADGE[sort]}
                       // It is a pub row, so it opens the pub. It used to open the
                       // map, which meant the one cell naming a place was the one
                       // cell that would not take you to it. A coarse friend
@@ -1076,7 +1096,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                         pressed && styles.pressed,
                       ]}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.pubPicker.outsideTitle}
+                      accessibilityLabel={t.pubPicker.outsideTitle}
                     >
                       <View style={styles.distanceTile}>
                         <TreePineIcon size={20} color={Colors.mutedText} />
@@ -1087,14 +1107,14 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                           numberOfLines={1}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {cs.pubPicker.outsideTitle}
+                          {t.pubPicker.outsideTitle}
                         </Text>
                         <Text
                           style={styles.address}
                           numberOfLines={1}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {cs.pubPicker.outsideFact}
+                          {t.pubPicker.outsideFact}
                         </Text>
                       </View>
                       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -1107,33 +1127,33 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                   {emptyState === 'loading' ? (
                     <View style={styles.listState}>
                       <ActivityIndicator color={Colors.amber} />
-                      <Text style={styles.listStateText}>Hledám hospody…</Text>
+                      <Text style={styles.listStateText}>{t.pubList.loadingPubs}</Text>
                     </View>
                   ) : null}
 
                   {emptyState === 'permission-denied' ? (
                     <View style={styles.listState}>
-                      <Text style={styles.listStateText}>Povol polohu a ukážu ti, co je kolem.</Text>
+                      <Text style={styles.listStateText}>{t.pubList.permissionDenied}</Text>
                       <Pressable
                         onPress={() => void compass.requestPermission()}
                         style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
                         accessibilityRole="button"
                       >
-                        <Text style={styles.stateButtonText}>Povolit polohu</Text>
+                        <Text style={styles.stateButtonText}>{t.pubList.allowLocation}</Text>
                       </Pressable>
                     </View>
                   ) : null}
 
                   {emptyState === 'location-unavailable' ? (
                     <View style={styles.listState}>
-                      <Text style={styles.listStateText}>{cs.addPub.locationUnavailable}</Text>
+                      <Text style={styles.listStateText}>{t.addPub.locationUnavailable}</Text>
                       <Pressable
                         onPress={() => void compass.requestPermission()}
                         style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
                         accessibilityRole="button"
-                        accessibilityLabel={cs.addPub.retryLocation}
+                        accessibilityLabel={t.addPub.retryLocation}
                       >
-                        <Text style={styles.stateButtonText}>{cs.addPub.retryLocation}</Text>
+                        <Text style={styles.stateButtonText}>{t.addPub.retryLocation}</Text>
                       </Pressable>
                     </View>
                   ) : null}
@@ -1142,22 +1162,22 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                     <View style={styles.listState}>
                       <Text style={styles.listStateText}>
                         {emptyState === 'search-failed'
-                          ? 'Hospody jsem teď nenačetl.'
-                          : 'V okolí zatím nic není.'}
+                          ? t.pubList.loadFailed
+                          : t.pubList.emptyNearby}
                       </Text>
                       <Pressable
                         onPress={compass.retrySearch}
                         style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
                         accessibilityRole="button"
                       >
-                        <Text style={styles.stateButtonText}>Zkusit znovu</Text>
+                        <Text style={styles.stateButtonText}>{t.pubList.retry}</Text>
                       </Pressable>
                     </View>
                   ) : null}
 
                   {presentations.length > 0 && ordered.length === 0 ? (
                     <View style={styles.listState}>
-                      <Text style={styles.listStateText}>Na tuhle kombinaci filtrů nic nemám.</Text>
+                      <Text style={styles.listStateText}>{t.pubList.noFilterMatch}</Text>
                       {hasActiveFilters ? (
                         <Pressable
                           onPress={() =>
@@ -1171,7 +1191,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                           style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
                           accessibilityRole="button"
                         >
-                          <Text style={styles.stateButtonText}>Zrušit filtry</Text>
+                          <Text style={styles.stateButtonText}>{t.pubList.clearFilters}</Text>
                         </Pressable>
                       ) : null}
                     </View>

@@ -22,7 +22,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, HitArea } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MapPinnedIcon, BadgeCheckIcon } from '@/components/shared/IconGlyph';
 import { usePubAmenitiesStore, selectPubVotes } from '@/stores/pubAmenitiesStore';
 import {
@@ -87,18 +87,18 @@ export function MapPubButton({ pubKey, pubName, onPress, info }: MapPubButtonPro
   const isPartial = !isDone && pct > 0;
 
   const label = isDone
-    ? cs.mapPub.triggerDone
+    ? t.mapPub.triggerDone
     : isPartial
-      ? cs.mapPub.triggerPartial
-      : cs.mapPub.triggerDefault;
+      ? t.mapPub.triggerPartial
+      : t.mapPub.triggerDefault;
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.mapPub.triggerA11y(pubName, pct)}
-      accessibilityHint={cs.mapPub.entryA11yPublic}
+      accessibilityLabel={t.mapPub.triggerA11y(pubName, pct)}
+      accessibilityHint={t.mapPub.entryA11yPublic}
     >
       {isDone ? (
         <BadgeCheckIcon size={16} color={Colors.success} />
@@ -107,7 +107,7 @@ export function MapPubButton({ pubKey, pubName, onPress, info }: MapPubButtonPro
       )}
       <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
-        {isPartial && <Text style={styles.suffix}>{cs.mapPub.triggerPartialSuffix(pct)}</Text>}
+        {isPartial && <Text style={styles.suffix}>{t.mapPub.triggerPartialSuffix(pct)}</Text>}
       </Text>
       {isPartial && <View style={styles.dot} />}
     </Pressable>

@@ -23,7 +23,7 @@ import {
   HouseIcon,
   type IconProps,
 } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -44,8 +44,8 @@ export function PartaPlans() {
   const rows: PlanRow[] = [
     {
       key: 'home-party',
-      title: cs.friends.planHomePartyTitle,
-      body: cs.friends.planHomePartyBody,
+      title: t.friends.planHomePartyTitle,
+      body: t.friends.planHomePartyBody,
       Icon: HouseIcon,
       onPress: () => router.push('/community-events' as Href),
     },
@@ -54,7 +54,7 @@ export function PartaPlans() {
   return (
     <View>
       <Text style={styles.header} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.friends.planHeader}
+        {t.friends.planHeader}
       </Text>
       <View style={styles.card}>
         {rows.map((row, index) => (

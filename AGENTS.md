@@ -67,7 +67,7 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 - **Nativní hranice.** Nový modul, config plugin nebo nativní dependency = rebuild, ne OTA. Napiš to.
 - **Persisted data.** Změna tvaru lokálně uložených dat musí načíst starý tvar (validovaná storage v `createQueue`) a přežít malformed obsah.
 - **Globální destruktivní akce nad komunitními daty** (skrytí/smazání hospody) jedou přes potvrzení a práh hlasů — jedno klepnutí na vlaječku už jednou mazalo hospody všem. Vlastní obsah si uživatel maže rovnou, s potvrzením.
-- **Texty.** Nová a měněná česká copy patří do `src/i18n/cs.ts` (plánujeme angličtinu; staré hardcoded texty nemigruj mimo scope). Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi prožeň humanizerem sám od sebe; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
+- **Texty.** Appka běží česky (i pro Slováky) a anglicky podle jazyka telefonu. Každý text pro lidi patří do `src/i18n/cs.ts` **a zároveň** do `src/i18n/en.ts` (stejný tvar, typecheck a `src/i18n/__tests__/en.test.ts` to hlídají); obrazovky čtou jen `t` z `@/i18n`, datumy a čísla formátují přes `intlLocale`, plurály přes `plural(...)`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi prožeň humanizerem sám od sebe; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
 
 ## Dev prostředí
 
@@ -99,7 +99,7 @@ Backend je jedna Django app `pubs`. DRF má `DEFAULT_AUTHENTICATION_CLASSES` pr�
 
 - `src/data/` — síťová a sync vrstva (klienti, fronty, auth, `privateAccountBoundary`); i těžiště testů (`src/data/__tests__`).
 - `src/components/shared/` — sdílené komponenty; scrollovatelný formulář s inputy = `KeyboardAwareScrollView`.
-- `src/i18n/cs.ts` — zdroj UI textů; `src/theme/` + `src/mocks/mockTheme.ts` — designové tokeny.
+- `src/i18n/cs.ts` + `src/i18n/en.ts` — UI texty (cs je zdroj, en zrcadlo), `src/i18n/locale.ts` volba jazyka; `src/theme/` + `src/mocks/mockTheme.ts` — designové tokeny.
 - `src/games/` + `npm run build:games` — party hry jako WebView bundly v `assets/games/`.
 - `modules/beer-live-activity/`, `plugins/` — nativní modul a config pluginy; sahat na ně = rebuild.
 - `backend/pubs/` — modely, `api/` (routy pod `/v1/`), `migrations/`, `management/commands/`, `enrichment/` (Firmy.cz scraping — právně citlivé, nezvyšuj objem ani neobcházej ochrany; denní capy jsou v env).

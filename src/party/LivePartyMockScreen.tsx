@@ -69,7 +69,7 @@ import { menuPhotoPickFeedback, menuScanFailureCopy } from '@/contribute/menuSca
 import { showMenuScanPermissionBlocked } from '@/contribute/menuScanPermission';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { GameCover } from '@/party/GameCover';
-import { GAME_CATALOG } from '@/party/gameCatalog';
+import { GAME_CATALOG, gameDisplayName } from '@/party/gameCatalog';
 import { Avatar } from '@/profile/Avatar';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
@@ -78,6 +78,7 @@ import { InviteSheet } from '@/party/InviteSheet';
 import { JoinTableSheet } from '@/party/JoinTableSheet';
 import { RowMenu } from '@/mocks/MenuChip';
 import { hubStats } from '@/party/nightPulse';
+import { displayPersonName, OUTSIDE_PUB_NAME } from '@/party/nightBuilder';
 import { NightRoute } from '@/mocks/NightRoute';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
@@ -91,6 +92,8 @@ import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
   clockAt,
+  DEFAULT_HOUSE_BEER,
+  displayHouseBeer,
   isStaleNightStart,
   hubPubName,
   minutesBetween,
@@ -131,7 +134,7 @@ import {
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -212,7 +215,7 @@ function CircleButton({
         onPress={onPress}
         style={({ pressed }) => [styles.circleSecondary, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={adds ? `Přidat: ${label}` : label}
+        accessibilityLabel={adds ? t.liveParty.addAction(label) : label}
       >
         {/* Real glass where the OS has it (§15.1), a filled disc below iOS 26.
             The discs sit over a fading thread, which is exactly the situation
@@ -276,7 +279,7 @@ export default function LivePartyMockScreen() {
   const beer = usePartyBeer();
   const mutateBeer = React.useMemo(
     () => createPartyBeerMutationGate(() => {
-      useToastStore.getState().show(cs.friends.queueSaveError);
+      useToastStore.getState().show(t.friends.queueSaveError);
     }),
     [],
   );
@@ -356,7 +359,7 @@ export default function LivePartyMockScreen() {
       isStaleNightStart(new Date(local.startedAt).toISOString());
     if (!localIsStale) return;
     endParty();
-    useToastStore.getState().show(cs.party.staleEveningClosed);
+    useToastStore.getState().show(t.party.staleEveningClosed);
   }, [closeLostTable, endParty, staleEveningCode]);
 
   React.useEffect(() => {
@@ -380,7 +383,7 @@ export default function LivePartyMockScreen() {
     });
     setPartyPub(
       detected.name,
-      detectedTaps[0]?.name ?? 'Pivo',
+      detectedTaps[0]?.name ?? DEFAULT_HOUSE_BEER,
       geohash8(detected.lat, detected.lng),
       detectedTaps,
     );
@@ -415,7 +418,7 @@ export default function LivePartyMockScreen() {
    * lands there is a code to read out, and when it does not the night still runs.
    */
   const beginNight = (firstDrink: BeerFormResult) => {
-    const placeName = pubName.trim() || 'Mimo hospodu';
+    const placeName = pubName.trim() || OUTSIDE_PUB_NAME;
     const transition = startParty(placeName, firstDrink.name, pubKey, pubTaps);
     const joinCode = stagedPartyCode ?? generateJoinCode();
     if (!confirmedPartyCode) void startEvening(placeName, undefined, joinCode);
@@ -451,7 +454,7 @@ export default function LivePartyMockScreen() {
     // is independent from counting the first beer, so inviting before the first
     // order no longer leaves this sheet on an endless fake placeholder.
     if (!confirmedPartyCode) {
-      const table = startEvening(pubName.trim() || 'Mimo hospodu');
+      const table = startEvening(pubName.trim() || OUTSIDE_PUB_NAME);
       void table
         .then(async (created) => {
           const currentVisit = useLivePartyStore.getState().pubVisits.at(-1);
@@ -700,21 +703,21 @@ export default function LivePartyMockScreen() {
     yesterdayEvening.setHours(20, 0, 0, 0);
 
     showAppDialog({
-      title: cs.counter.backdateTitle,
+      title: t.counter.backdateTitle,
       buttons: [
         {
-          text: cs.counter.backdateHourAgo,
+          text: t.counter.backdateHourAgo,
           onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)),
         },
         {
-          text: cs.counter.backdateTwoHoursAgo,
+          text: t.counter.backdateTwoHoursAgo,
           onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)),
         },
         {
-          text: cs.counter.backdateYesterdayEvening,
+          text: t.counter.backdateYesterdayEvening,
           onPress: () => openBackdateForm(clamp(yesterdayEvening.getTime())),
         },
-        { text: cs.counter.cancel, style: 'cancel' },
+        { text: t.counter.cancel, style: 'cancel' },
       ],
     });
   };
@@ -762,12 +765,12 @@ export default function LivePartyMockScreen() {
   };
   const confirmDrinkRemoval = (drinkId: string) => {
     showAppDialog({
-      title: cs.myBeers.deleteDrinkTitle,
-      message: cs.myBeers.deleteDrinkBody,
+      title: t.myBeers.deleteDrinkTitle,
+      message: t.myBeers.deleteDrinkBody,
       buttons: [
-        { text: cs.myBeers.deleteDrinkCancel, style: 'cancel' },
+        { text: t.myBeers.deleteDrinkCancel, style: 'cancel' },
         {
-          text: cs.myBeers.deleteDrinkConfirm,
+          text: t.myBeers.deleteDrinkConfirm,
           style: 'destructive',
           onPress: () => {
             void mutateBeer(drinkId, () => beer.remove(drinkId));
@@ -801,13 +804,13 @@ export default function LivePartyMockScreen() {
       if (result.drinks.length > 0) {
         setScannedDrinks(result.drinks);
       } else {
-        toast(cs.counter.scanDrinksEmpty);
+        toast(t.counter.scanDrinksEmpty);
       }
       return;
     }
-    toast(menuScanFailureCopy(result.status, cs.counter.scanDrinksEmpty));
+    toast(menuScanFailureCopy(result.status, t.counter.scanDrinksEmpty));
   };
-  const displayPubName = hubPubName(pubName, evening) || 'Vyber hospodu';
+  const displayPubName = hubPubName(pubName, evening) || t.liveParty.pickPubPlaceholder;
   const currentVisit = selectedVisit?.pubKey === partyPlaceKey ? selectedVisit : null;
   const partyPub: Pub | null = detectedPub ?? (
     /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(partyPlaceKey)
@@ -824,7 +827,7 @@ export default function LivePartyMockScreen() {
         detectedCandidate ? formatDistanceCs(detectedCandidate.distanceMeters) : null,
         presentOpenStatus(detectedPub).label,
         taps[0]
-          ? `${taps[0].name}${taps[0].priceCzk == null ? '' : ` · ${taps[0].priceCzk} Kč`}`
+          ? `${taps[0].name}${taps[0].priceCzk == null ? '' : ` · ${t.liveParty.tapPrice(taps[0].priceCzk)}`}`
           : null,
       ].filter((value): value is string => !!value)
     : [];
@@ -839,23 +842,27 @@ export default function LivePartyMockScreen() {
   const log = React.useMemo(() => {
     const myId = nightMe(night)?.id;
     const nameOf = (id: string | null) =>
-      night.people.find((person) => person.id === id)?.name ?? 'Někdo';
+      displayPersonName(night.people.find((person) => person.id === id)?.name ?? t.liveParty.someone);
     let stops = 0;
     return nightThread(night).map((entry) => {
-      const pubText = entry.kind === 'pub' ? (stops++ === 0 ? 'Večer začal v ' : 'Přesun do ') : '';
+      const first = entry.kind === 'pub' && stops++ === 0;
+      const mine = entry.by === myId;
       return {
         id: entry.id,
         at: new Date(entry.at).getTime(),
         kind: entry.kind,
         text:
           entry.kind === 'pub'
-            ? `${pubText}${entry.label}`
+            ? first
+              ? t.liveParty.threadNightStarted(entry.label)
+              : t.liveParty.threadMovedTo(entry.label)
             : entry.kind === 'join'
-              ? `${entry.label} je u stolu`
+              ? t.liveParty.threadJoined(entry.label)
               : entry.kind === 'photo'
-                ? 'Fotka'
+                ? t.liveParty.threadPhoto
                 : entry.label,
-        by: entry.by === myId ? 'Ty' : nameOf(entry.by),
+        mine,
+        by: mine ? t.liveParty.you : nameOf(entry.by),
         // Only your own beer can be corrected — somebody else's row is theirs.
         beerId: entry.kind === 'beer' && entry.by === myId ? entry.refId : undefined,
         drinkType: entry.drinkType,
@@ -902,7 +909,7 @@ export default function LivePartyMockScreen() {
           onPress={() => minimizeParty(router)}
           style={({ pressed }) => [styles.topIcon, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Minimalizovat večer"
+          accessibilityLabel={t.liveParty.a11yMinimize}
         >
           <ChevronDownIcon size={20} color={Colors.foam} />
         </Pressable>
@@ -914,10 +921,10 @@ export default function LivePartyMockScreen() {
             onPress={() => setReceiptOpen(true)}
             style={({ pressed }) => [styles.receiptPill, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Otevřít účet"
+            accessibilityLabel={t.liveParty.a11yOpenBill}
           >
             <Text style={styles.receiptText} allowFontScaling={false}>
-              {hasCompletePrice ? formatPrice(totalCzk, priceCurrency) : 'Účet'}
+              {hasCompletePrice ? formatPrice(totalCzk, priceCurrency) : t.liveParty.billPill}
             </Text>
           </Pressable>
         ) : null}
@@ -931,10 +938,10 @@ export default function LivePartyMockScreen() {
             onPress={() => router.push('/party-finish' as Href)}
             style={({ pressed }) => [styles.endPill, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Ukončit večer"
+            accessibilityLabel={t.liveParty.a11yEndNight}
           >
             <Text style={styles.endText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Ukončit
+              {t.liveParty.endPill}
             </Text>
           </Pressable>
         ) : null}
@@ -979,7 +986,7 @@ export default function LivePartyMockScreen() {
               onPress={() => router.push('/pick-pub' as Href)}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`${displayPubName}. Změnit hospodu.`}
+              accessibilityLabel={t.liveParty.a11yChangePub(displayPubName)}
             >
               {active ? <View style={styles.pubDot} /> : null}
               <Text
@@ -1002,10 +1009,10 @@ export default function LivePartyMockScreen() {
 
                 With a word on it: a bare glyph in a corner is a guess, and this
                 is the one control here whose job no icon says on its own. */}
-            <GlassPill accessibilityLabel="Přizvat ke stolu" onPress={openInvite}>
+            <GlassPill accessibilityLabel={t.liveParty.a11yInvite} onPress={openInvite}>
               <UserPlusIcon size={17} color={Colors.amber} />
               <Text style={styles.invitePill} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Pozvat
+                {t.liveParty.invitePill}
               </Text>
             </GlassPill>
             </View>
@@ -1032,14 +1039,14 @@ export default function LivePartyMockScreen() {
                 style={styles.hubPeople}
                 accessibilityLabel={
                   people.length > 0
-                    ? `U stolu: ty, ${people.map((person) => person.name).join(', ')}`
-                    : 'U stolu: ty'
+                    ? t.liveParty.a11yTableWith(people.map((person) => person.name).join(', '))
+                    : t.liveParty.a11yTableAlone
                 }
               >
                 <View style={styles.faces}>
                   {/* The same component the feed card uses, so a person looks
                       the same wherever they appear. */}
-                  <Avatar nickname="Ty" size={30} />
+                  <Avatar nickname={t.liveParty.you} size={30} />
                   {people.map((person) => (
                     <View key={person.id} style={styles.faceOverlap}>
                       <Avatar
@@ -1057,7 +1064,7 @@ export default function LivePartyMockScreen() {
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {['Ty', ...people.map((p) => p.name)].join(', ')}
+                  {[t.liveParty.you, ...people.map((p) => p.name)].join(', ')}
                 </Text>
               </View>
             ) : null}
@@ -1074,12 +1081,12 @@ export default function LivePartyMockScreen() {
                 }}
                 style={({ pressed }) => [styles.joinRow, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel="Přisednout ke stolu kódem"
+                accessibilityLabel={t.liveParty.a11yJoinWithCode}
               >
                 <Text style={styles.joinText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  Někdo už stůl založil?{' '}
+                  {t.liveParty.joinPrompt}{' '}
                   <Text style={styles.joinLink} maxFontSizeMultiplier={FontScaleCap.body}>
-                    Přisednout kódem
+                    {t.liveParty.joinLink}
                   </Text>
                 </Text>
               </Pressable>
@@ -1175,9 +1182,9 @@ export default function LivePartyMockScreen() {
                               style={styles.logWhoName}
                               maxFontSizeMultiplier={FontScaleCap.body}
                             >
-                              {event.by === 'Ty'
-                                ? `Hodil jsi na stůl ${game.name}`
-                                : `${event.by} hodil na stůl ${game.name}`}{' '}
+                              {event.mine
+                                ? t.liveParty.gamePlacedSelf(gameDisplayName(game))
+                                : t.liveParty.gamePlacedOther(event.by, gameDisplayName(game))}{' '}
                               · {clockAt(event.at)}
                             </Text>
                           </View>
@@ -1187,7 +1194,9 @@ export default function LivePartyMockScreen() {
                             style={({ pressed }) => [styles.gameCover, pressed && styles.pressed]}
                             accessibilityRole="button"
                             accessibilityLabel={
-                              game.result ? `${game.name}, výsledek` : `Spustit ${game.name}`
+                              game.result
+                                ? t.liveParty.a11yGameResult(gameDisplayName(game))
+                                : t.liveParty.a11yGameStart(gameDisplayName(game))
                             }
                           >
                             <GameCover game={gameDef(game.key)} height={132} glyph={38} />
@@ -1217,7 +1226,7 @@ export default function LivePartyMockScreen() {
                                   numberOfLines={1}
                                   maxFontSizeMultiplier={FontScaleCap.heading}
                                 >
-                                  Platí {game.result.paying}
+                                  {t.liveParty.gamePaying(displayPersonName(game.result.paying))}
                                 </Text>
                               ) : game.result?.winner ? (
                                 <Text
@@ -1225,7 +1234,7 @@ export default function LivePartyMockScreen() {
                                   numberOfLines={1}
                                   maxFontSizeMultiplier={FontScaleCap.heading}
                                 >
-                                  Vyhrál {game.result.winner}
+                                  {t.liveParty.gameWinner(displayPersonName(game.result.winner))}
                                 </Text>
                               ) : null}
                               <Text
@@ -1233,7 +1242,7 @@ export default function LivePartyMockScreen() {
                                 numberOfLines={1}
                                 maxFontSizeMultiplier={FontScaleCap.body}
                               >
-                                {game.name}
+                                {gameDisplayName(game)}
                               </Text>
                               <Text
                                 style={styles.gameMeta}
@@ -1241,9 +1250,9 @@ export default function LivePartyMockScreen() {
                               >
                                 {game.result
                                   ? game.result.winner || game.result.paying
-                                    ? 'Odehráno'
-                                    : 'Odehráno, nikdo nevyhrál'
-                                  : 'Ťukni a hraj'}
+                                    ? t.liveParty.gamePlayed
+                                    : t.liveParty.gamePlayedNoWinner
+                                  : t.liveParty.gameTapToPlay}
                               </Text>
                             </View>
                           </Pressable>
@@ -1260,7 +1269,7 @@ export default function LivePartyMockScreen() {
                                     numberOfLines={1}
                                     maxFontSizeMultiplier={FontScaleCap.body}
                                   >
-                                    {row.name}
+                                    {displayPersonName(row.name)}
                                   </Text>
                                   <Text style={styles.boardScore} allowFontScaling={false}>
                                     {row.score}
@@ -1312,7 +1321,7 @@ export default function LivePartyMockScreen() {
                     <View style={styles.logMenuSlot}>
                       {event.beerId ? (
                         <RowMenu
-                          title="Co to bylo?"
+                          title={t.liveParty.rowMenuTitle}
                           value={event.text}
                           options={privateDrink && drinkTypeOf(privateDrink) === 'beer'
                             ? Array.from(new Set([privateDrink.beerName, ...taps.map((tap) => tap.name)]))
@@ -1324,12 +1333,12 @@ export default function LivePartyMockScreen() {
                           // Repeat the current selection from the row; this is the only place
                           // that knows which private drink the event represents.
                           repeat={{
-                            label: cs.counter.repeatCta,
+                            label: t.counter.repeatCta,
                             onPress: () => privateDrink ? repeatDrink(privateDrink) : beer.add(event.text),
                           }}
                           actions={[
                             ...(privateDrink ? [{
-                              label: 'Upravit',
+                              label: t.liveParty.rowEdit,
                               onPress: () => openDrinkForm('edit', drinkTypeOf(privateDrink), privateDrink),
                             }] : []),
                             ...(privateDrink && drinkTypeOf(privateDrink) === 'beer' && partyPub ? [{
@@ -1341,7 +1350,7 @@ export default function LivePartyMockScreen() {
                             }] : []),
                           ]}
                           destructive={{
-                            label: cs.myBeers.deleteDrink,
+                            label: t.myBeers.deleteDrink,
                             onPress: () => confirmDrinkRemoval(event.beerId as string),
                           }}
                         />
@@ -1357,7 +1366,7 @@ export default function LivePartyMockScreen() {
         <View style={styles.undoSlot}>
           {undoDrink ? <View style={styles.undoStrip}>
             <Text style={styles.undoText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-              Zapsáno: {undoDrink.beerName}
+              {t.liveParty.undoLogged(undoDrink.beerName)}
             </Text>
             <Pressable
               onPress={() => {
@@ -1369,9 +1378,9 @@ export default function LivePartyMockScreen() {
                 });
               }}
               accessibilityRole="button"
-              accessibilityLabel={`Vrátit zápis ${undoDrink.beerName}`}
+              accessibilityLabel={t.liveParty.a11yUndo(undoDrink.beerName)}
             >
-              <Text style={styles.undoAction} maxFontSizeMultiplier={FontScaleCap.body}>Vrátit</Text>
+              <Text style={styles.undoAction} maxFontSizeMultiplier={FontScaleCap.body}>{t.liveParty.undoAction}</Text>
             </Pressable>
           </View> : null}
         </View>
@@ -1397,7 +1406,7 @@ export default function LivePartyMockScreen() {
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#controlsFade)" />
           </Svg>
           <CircleButton
-            label={photoCount > 0 ? `Foto, ${photoCount}` : 'Foto'}
+            label={photoCount > 0 ? t.liveParty.photoWithCount(photoCount) : t.liveParty.photo}
             onPress={() => setPhotoOpen(true)}
           >
             <CameraIcon size={20} color={Colors.foam} />
@@ -1423,7 +1432,11 @@ export default function LivePartyMockScreen() {
               onPress={() => (active && latestDrink ? repeatDrink(latestDrink) : setBeersOpen(true))}
               style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={active && latestDrink ? `Přidat ${latestDrink.beerName}` : 'Začít večer prvním nápojem'}
+              accessibilityLabel={
+                active && latestDrink
+                  ? t.liveParty.a11yAddDrink(latestDrink.beerName)
+                  : t.liveParty.a11yStartNight
+              }
             >
               <PlusIcon size={17} color={Colors.stout} />
               <DrinkGlyph type={latestDrink ? drinkTypeOf(latestDrink) : 'beer'} color={Colors.stout} />
@@ -1432,7 +1445,7 @@ export default function LivePartyMockScreen() {
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {active ? (latestDrink?.beerName ?? houseBeer) : 'Začni večer'}
+                {active ? (latestDrink?.beerName ?? displayHouseBeer(houseBeer)) : t.liveParty.startNight}
               </Text>
             </Pressable>
           </View>
@@ -1446,14 +1459,14 @@ export default function LivePartyMockScreen() {
               onPress={() => setBeersOpen(true)}
               style={({ pressed }) => [styles.primaryPick, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Vybrat jiný nápoj"
+              accessibilityLabel={t.liveParty.a11yPickOtherDrink}
             >
               <ChevronDownIcon size={18} color={Colors.stout} />
             </Pressable>
           ) : null}
           </View>
 
-          <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
+          <CircleButton label={t.liveParty.games} onPress={() => setGamesOpen(true)}>
             <DicesIcon size={21} color={Colors.foam} />
           </CircleButton>
         </View>
@@ -1468,7 +1481,7 @@ export default function LivePartyMockScreen() {
           const selected = gameDef(key);
           void placePartyGameAfterTableConfirmation({
             confirmedPartyCode,
-            startTable: () => startEvening(pubName.trim() || 'Mimo hospodu'),
+            startTable: () => startEvening(pubName.trim() || OUTSIDE_PUB_NAME),
             readConfirmedPartyCode: () =>
               selectConfirmedPartyJoinCode(usePartyEveningStore.getState()),
             place: placePartyGameOnTable,
@@ -1508,7 +1521,7 @@ export default function LivePartyMockScreen() {
 
       <ReceiptSheet
         visible={receiptOpen}
-        startedAtLabel={effectiveStartedAt ? cs.counter.receiptStarted(clockAt(effectiveStartedAt)) : null}
+        startedAtLabel={effectiveStartedAt ? t.counter.receiptStarted(clockAt(effectiveStartedAt)) : null}
         beerItems={receiptBeerRows}
         otherItems={receiptOtherRows}
         totalLabel={hasCompletePrice ? formatPrice(totalCzk, priceCurrency) : null}
@@ -1525,7 +1538,7 @@ export default function LivePartyMockScreen() {
         lockNameInEdit={false}
         placeContext={contextFromPubKey(partyPlaceKey) ?? 'pub'}
         formKey={formNonce}
-        titleOverride={formMode === 'edit' ? 'Upravit nápoj' : undefined}
+        titleOverride={formMode === 'edit' ? t.liveParty.editDrinkTitle : undefined}
         onCancel={() => {
           setFormOpen(false);
           setFormDrink(null);
@@ -1620,7 +1633,7 @@ export default function LivePartyMockScreen() {
           // if its persisted `live` flag has not settled yet.
           if (!active || previousCode?.toUpperCase() !== joined.joinCode.toUpperCase()) {
             const transition = startParty(
-              joined.pubName || pubName || 'Mimo hospodu',
+              joined.pubName || pubName || OUTSIDE_PUB_NAME,
               houseBeer,
             );
             void enqueuePartyPubTransition(transition, joined.joinCode);

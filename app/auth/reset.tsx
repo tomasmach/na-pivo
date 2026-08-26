@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -62,11 +62,11 @@ export default function ResetPasswordScreen() {
     if (operationInFlight.current) return;
     const token = linkToken || code.trim();
     if (!token) {
-      setError(cs.account.errorResetCodeMissing);
+      setError(t.account.errorResetCodeMissing);
       return;
     }
     if (password.length < MIN_PASSWORD) {
-      setError(cs.account.errorPasswordShort);
+      setError(t.account.errorPasswordShort);
       return;
     }
     operationInFlight.current = true;
@@ -75,11 +75,11 @@ export default function ResetPasswordScreen() {
     try {
       const result = await resetPassword({ token, password });
       if (result.ok) {
-        showToast(cs.account.resetDoneToast);
+        showToast(t.account.resetDoneToast);
         router.replace('/(tabs)' as Href);
         return;
       }
-      setError(result.detail || cs.account.errorGeneric);
+      setError(result.detail || t.account.errorGeneric);
     } finally {
       operationInFlight.current = false;
       setBusy(false);
@@ -92,13 +92,13 @@ export default function ResetPasswordScreen() {
         onPress={leave}
         style={styles.backButton}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.backButton}
+        accessibilityLabel={t.a11y.backButton}
         hitSlop={4}
       >
         <ChevronLeftIcon size={22} color={Colors.foam} />
       </Pressable>
       <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {cs.account.resetTitle}
+        {t.account.resetTitle}
       </Text>
       <View style={styles.headerSpacer} />
     </View>
@@ -119,7 +119,7 @@ export default function ResetPasswordScreen() {
           {!linkToken && (
             <View style={styles.fieldGroup}>
               <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.account.resetCodeLabel}
+                {t.account.resetCodeLabel}
               </Text>
               <TextInput
                 style={styles.input}
@@ -128,13 +128,13 @@ export default function ResetPasswordScreen() {
                   setCode(value.trim());
                   if (error) setError('');
                 }}
-                placeholder={cs.account.resetCodePlaceholder}
+                placeholder={t.account.resetCodePlaceholder}
                 placeholderTextColor={Colors.mutedText}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="one-time-code"
                 textContentType="oneTimeCode"
-                accessibilityLabel={cs.a11y.authResetCodeInput}
+                accessibilityLabel={t.a11y.authResetCodeInput}
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
             </View>
@@ -142,7 +142,7 @@ export default function ResetPasswordScreen() {
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.account.resetNewPasswordLabel}
+              {t.account.resetNewPasswordLabel}
             </Text>
             <TextInput
               style={styles.input}
@@ -151,14 +151,14 @@ export default function ResetPasswordScreen() {
                 setPassword(value);
                 if (error) setError('');
               }}
-              placeholder={cs.account.passwordPlaceholder}
+              placeholder={t.account.passwordPlaceholder}
               placeholderTextColor={Colors.mutedText}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
               autoComplete="new-password"
               textContentType="newPassword"
-              accessibilityLabel={cs.a11y.authNewPasswordInput}
+              accessibilityLabel={t.a11y.authNewPasswordInput}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
           </View>
@@ -171,11 +171,11 @@ export default function ResetPasswordScreen() {
 
           <View style={styles.submitButton}>
             <GlowButton
-              label={busy ? cs.account.loading : cs.account.resetSubmit}
+              label={busy ? t.account.loading : t.account.resetSubmit}
               onPress={handleSubmit}
               glow={busy ? 'none' : 'soft'}
               loading={busy}
-              accessibilityLabel={cs.account.resetSubmit}
+              accessibilityLabel={t.account.resetSubmit}
             />
           </View>
       </KeyboardAwareScrollView>

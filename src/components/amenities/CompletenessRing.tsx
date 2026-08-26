@@ -20,7 +20,7 @@ import Animated, {
 
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -58,7 +58,7 @@ export const CompletenessRing = memo(function CompletenessRing({
     <View
       style={styles.wrap}
       accessibilityRole="progressbar"
-      accessibilityLabel={cs.mapPub.ringA11y(percent)}
+      accessibilityLabel={t.mapPub.ringA11y(percent)}
       accessibilityValue={{ now: percent, min: 0, max: 100 }}
     >
       <View>
@@ -96,7 +96,7 @@ export const CompletenessRing = memo(function CompletenessRing({
         </View>
       </View>
       <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={1}>
-        {cs.mapPub.ringCaption}
+        {t.mapPub.ringCaption}
       </Text>
     </View>
   );

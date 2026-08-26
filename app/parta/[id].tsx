@@ -45,7 +45,7 @@ import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useModalPresentation } from '@/stores/launchModalMutex';
@@ -61,16 +61,16 @@ const FRIEND_PHOTO_STRIP_LIMIT = 12;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return t.map.friendFallback;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || t.map.friendFallback;
 }
 
 /** "29. 6." short shared-visit stamp for the recent-together rows. */
 function shortDate(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
+  return new Date(ms).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }
 
 interface StatTileProps {
@@ -202,7 +202,7 @@ export default function FriendProfileScreen() {
     void reportProfileContent({ targetAccountId: accountId, reason: 'other', comment: name }).then(
       (res) => {
         if (!mountedRef.current) return;
-        showToast(res.ok ? cs.friends.reportDone : res.detail || cs.profile.edit.errorGeneric);
+        showToast(res.ok ? t.friends.reportDone : res.detail || t.profile.edit.errorGeneric);
       },
     );
   }, [accountId, name, reportProfileContent, showToast]);
@@ -211,7 +211,7 @@ export default function FriendProfileScreen() {
     void blockFriend(accountId).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(cs.friends.blocked);
+        showToast(t.friends.blocked);
         goBack();
       } else {
         showToast(res.detail);
@@ -223,7 +223,7 @@ export default function FriendProfileScreen() {
     void removeFriend(accountId).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(cs.friends.friendRemoved);
+        showToast(t.friends.friendRemoved);
         goBack();
       } else {
         showToast(res.detail);
@@ -233,33 +233,33 @@ export default function FriendProfileScreen() {
 
   const confirmReport = useCallback(() => {
     showAppDialog({
-      title: cs.profile.report.confirmTitle,
-      message: cs.profile.report.confirmBody(name),
+      title: t.profile.report.confirmTitle,
+      message: t.profile.report.confirmBody(name),
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        { text: cs.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
       ],
     });
   }, [doReport, name]);
 
   const confirmBlock = useCallback(() => {
     showAppDialog({
-      title: cs.friends.blockTitle(name),
-      message: cs.friends.blockBody,
+      title: t.friends.blockTitle(name),
+      message: t.friends.blockBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        { text: cs.friends.blockConfirm, style: 'destructive', onPress: doBlock },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.friends.blockConfirm, style: 'destructive', onPress: doBlock },
       ],
     });
   }, [doBlock, name]);
 
   const confirmRemove = useCallback(() => {
     showAppDialog({
-      title: cs.friends.removeTitle,
-      message: cs.friends.removeBody(name),
+      title: t.friends.removeTitle,
+      message: t.friends.removeBody(name),
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        { text: cs.friends.removeConfirm, style: 'destructive', onPress: doRemove },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.friends.removeConfirm, style: 'destructive', onPress: doRemove },
       ],
     });
   }, [doRemove, name]);
@@ -268,15 +268,15 @@ export default function FriendProfileScreen() {
 
   const openOverflow = useCallback(() => {
     showAppDialog({
-      title: cs.friends.rowActionsTitle,
+      title: t.friends.rowActionsTitle,
       buttons: [
-        { text: cs.friends.reportAction, onPress: confirmReport },
-        { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
+        { text: t.friends.reportAction, onPress: confirmReport },
+        { text: t.friends.blockAction, style: 'destructive', onPress: confirmBlock },
         // "Vyhodit z party" only makes sense for an actual friend.
         ...(isFriend
-          ? [{ text: cs.friends.profileRemove, style: 'destructive' as const, onPress: confirmRemove }]
+          ? [{ text: t.friends.profileRemove, style: 'destructive' as const, onPress: confirmRemove }]
           : []),
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
       ],
     });
   }, [confirmBlock, confirmRemove, confirmReport, isFriend]);
@@ -293,7 +293,7 @@ export default function FriendProfileScreen() {
       if (!mountedRef.current) return;
       setRequestBusy(false);
       if (res.ok) {
-        showToast(next ? cs.friends.followed : cs.friends.unfollowed);
+        showToast(next ? t.friends.followed : t.friends.unfollowed);
         setDetail((prev) => (prev ? { ...prev, isFollowing: next } : prev));
       } else {
         showToast(res.detail);
@@ -309,7 +309,7 @@ export default function FriendProfileScreen() {
       if (!mountedRef.current) return;
       setRequestBusy(false);
       if (res.ok) {
-        showToast(cs.friends.requestAcceptedToast);
+        showToast(t.friends.requestAcceptedToast);
         void load();
       } else {
         showToast(res.detail);
@@ -331,7 +331,7 @@ export default function FriendProfileScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.claimBack}
+          accessibilityLabel={t.friends.claimBack}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
@@ -344,7 +344,7 @@ export default function FriendProfileScreen() {
             onPress={openOverflow}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.profileActionsA11y}
+            accessibilityLabel={t.friends.profileActionsA11y}
             style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
           >
             <MenuIcon size={22} color={Colors.foamMuted} />
@@ -357,11 +357,11 @@ export default function FriendProfileScreen() {
       {state === 'error' ? (
         <View style={styles.centerBlock}>
           <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.profileError}
+            {t.friends.profileError}
           </Text>
           <View style={styles.errorCta}>
             <GlowButton
-              label={cs.friends.retry}
+              label={t.friends.retry}
               onPress={retry}
               variant="secondary"
               glow="none"
@@ -403,7 +403,7 @@ export default function FriendProfileScreen() {
           {compassTarget ? (
             <View style={styles.compassWrap}>
               <GlowButton
-                label={cs.friends.showOnCompass}
+                label={t.friends.showOnCompass}
                 onPress={handleShowOnCompass}
                 variant="primary"
                 glow="soft"
@@ -420,10 +420,10 @@ export default function FriendProfileScreen() {
               <GlowButton
                 label={
                   detail.friendshipStatus === 'incoming_pending'
-                    ? cs.friends.acceptRequest
+                    ? t.friends.acceptRequest
                     : detail.isFollowing
-                      ? cs.friends.unfollow
-                      : cs.friends.follow
+                      ? t.friends.unfollow
+                      : t.friends.follow
                 }
                 onPress={
                   detail.friendshipStatus === 'incoming_pending' ? acceptRequest : toggleFollow
@@ -448,27 +448,27 @@ export default function FriendProfileScreen() {
               a stranger (never location, never individual beers). */}
           {isFriend ? (
             <View style={styles.statsRow}>
-              <StatTile value={stats?.nightsTogether ?? 0} label={cs.friends.statNightsTogether} />
-              <StatTile value={stats?.rituals.length ?? 0} label={cs.friends.statRitualsTogether} />
+              <StatTile value={stats?.nightsTogether ?? 0} label={t.friends.statNightsTogether} />
+              <StatTile value={stats?.rituals.length ?? 0} label={t.friends.statRitualsTogether} />
             </View>
           ) : publicStats ? (
             <View style={styles.statsRow}>
               <StatTile
                 value={publicStats.totalBeers}
-                label={cs.friends.publicStatBeers(publicStats.totalBeers)}
+                label={t.friends.publicStatBeers(publicStats.totalBeers)}
               />
               <StatTile
                 value={publicStats.distinctPubs}
-                label={cs.friends.publicStatPubs(publicStats.distinctPubs)}
+                label={t.friends.publicStatPubs(publicStats.distinctPubs)}
               />
-              <StatTile value={publicStats.mapperLevel} label={cs.friends.publicStatMapper} />
+              <StatTile value={publicStats.mapperLevel} label={t.friends.publicStatMapper} />
             </View>
           ) : null}
 
           {/* Vitrína — unlocked badges only; a locked grid is nobody's business. */}
           {showcase.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={cs.friends.showcaseHeader} />
+              <SectionHeader label={t.friends.showcaseHeader} />
               <View style={styles.showcaseWrap}>
                 {showcase.map(({ key, title, Icon }) => (
                   <View key={key} style={styles.showcaseChip}>
@@ -489,13 +489,13 @@ export default function FriendProfileScreen() {
           {/* Naposledy spolu + recent štace — shared history is friends-only. */}
           {isFriend ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={cs.friends.profileRecentHeader} />
+              <SectionHeader label={t.friends.profileRecentHeader} />
               {stats?.lastPubName ? (
                 <HairlineRow first>
                   <View style={styles.recentRow}>
                     <MapPinIcon size={16} color={Colors.amber} />
                     <Text style={styles.recentLead} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.lastTogether(stats.lastPubName)}
+                      {t.friends.lastTogether(stats.lastPubName)}
                     </Text>
                   </View>
                 </HairlineRow>
@@ -519,7 +519,7 @@ export default function FriendProfileScreen() {
                 ))
               ) : !stats?.lastPubName ? (
                 <Text style={styles.emptyHistory} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.friends.profileNoHistory}
+                  {t.friends.profileNoHistory}
                 </Text>
               ) : null}
             </View>
@@ -530,7 +530,7 @@ export default function FriendProfileScreen() {
               and a plain map would mount every image at once. */}
           {friendPhotos && friendPhotos.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={cs.photoDiary.friendHeader(name)} />
+              <SectionHeader label={t.photoDiary.friendHeader(name)} />
               <FlatList
                 horizontal
                 data={friendPhotos.slice(0, FRIEND_PHOTO_STRIP_LIMIT)}
@@ -542,7 +542,7 @@ export default function FriendProfileScreen() {
                     onPress={() => setViewerPhoto(photo)}
                     style={styles.photoThumb}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.a11y.friendPhotoTile(name)}
+                    accessibilityLabel={t.a11y.friendPhotoTile(name)}
                   >
                     <Image
                       source={{ uri: photo.imageUrl }}
@@ -558,7 +558,7 @@ export default function FriendProfileScreen() {
 
           {latestBeers.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={cs.beerCheckins.lastBeersHeader} />
+              <SectionHeader label={t.beerCheckins.lastBeersHeader} />
               {latestBeers.map((beer, i) => (
                 <HairlineRow
                   key={beer.id}
@@ -605,7 +605,7 @@ export default function FriendProfileScreen() {
             onPress={() => setViewerPhoto(null)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.photoViewerClose}
+            accessibilityLabel={t.a11y.photoViewerClose}
             style={({ pressed }) => [
               styles.viewerClose,
               { top: insets.top + Spacing.sm },

@@ -38,7 +38,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -189,7 +189,7 @@ function GoingRosterBase({
     [profiles, config.maxVisible],
   );
   const overflow = Math.max(0, goingCount - config.maxVisible);
-  const maybeCantLine = cs.friends.maybeCantLine(maybeCount, cantCount);
+  const maybeCantLine = t.friends.maybeCantLine(maybeCount, cantCount);
 
   // Loud count numeral pulses once on each increment (never on a refresh that
   // leaves the count unchanged).
@@ -210,13 +210,13 @@ function GoingRosterBase({
     transform: [{ scale: countScale.value }],
   }));
 
-  const goingWord = `${cs.friends.goingLabel(goingCount)}${iAmGoing ? ' + ty' : ''}`;
+  const goingWord = `${t.friends.goingLabel(goingCount)}${iAmGoing ? ' + ty' : ''}`;
 
   // Whole roster reads as one accessible node so a screen reader gets the
   // summary instead of an unlabelled pile of avatar images.
   const a11yLabel = useMemo(() => {
     if (goingCount === 0) {
-      return isMyCard ? cs.friends.nobodyYet : cs.friends.rosterEmpty;
+      return isMyCard ? t.friends.nobodyYet : t.friends.rosterEmpty;
     }
     const head = `${goingCount} ${goingWord}`;
     return maybeCantLine ? `${head}, ${maybeCantLine}` : head;
@@ -240,7 +240,7 @@ function GoingRosterBase({
             style={styles.emptyLine}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {isMyCard ? cs.friends.nobodyYet : cs.friends.rosterEmpty}
+            {isMyCard ? t.friends.nobodyYet : t.friends.rosterEmpty}
           </Text>
         </View>
       ) : (

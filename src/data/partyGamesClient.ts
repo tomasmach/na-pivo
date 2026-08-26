@@ -25,6 +25,8 @@
  * server that needs deploying every time we add one.
  */
 
+import { t } from '@/i18n';
+
 import { ensureAccount, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
@@ -136,7 +138,7 @@ export function parsePartyGameProfile(value: unknown): PartyGameProfile {
   return {
     id: str(data.id),
     nickname,
-    displayName: str(data.display_name, nickname ?? 'Kamarád'),
+    displayName: str(data.display_name, nickname ?? t.common.friendFallback),
     avatarUrl: typeof data.avatar_url === 'string' ? data.avatar_url : null,
   };
 }
@@ -251,7 +253,7 @@ async function requestJson(
   if (!endpoint || options.signal?.aborted) {
     return {
       ok: false,
-      result: { ok: false, code: 'offline', detail: 'Teď se k serveru nedostanu.' },
+      result: { ok: false, code: 'offline', detail: t.clientErrors.offline },
     };
   }
 
@@ -259,13 +261,13 @@ async function requestJson(
   if (!session || options.signal?.aborted) {
     return {
       ok: false,
-      result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' },
+      result: { ok: false, code: 'account', detail: t.clientErrors.account },
     };
   }
   if (options.expectedAccountId && session.accountId !== options.expectedAccountId) {
     return {
       ok: false,
-      result: { ok: false, code: 'account', detail: 'Účet se mezitím změnil.' },
+      result: { ok: false, code: 'account', detail: t.clientErrors.accountChanged },
     };
   }
 
@@ -289,7 +291,7 @@ async function requestJson(
     }
     if (resp.status === 401) {
       await handleUnauthorized(session, endpoint);
-      return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
+      return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
     return { ok: true, data };
@@ -301,7 +303,7 @@ async function requestJson(
     }
     return {
       ok: false,
-      result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' },
+      result: { ok: false, code: 'network', detail: t.clientErrors.network },
     };
   } finally {
     abort.cleanup();

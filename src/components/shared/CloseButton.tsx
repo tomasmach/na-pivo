@@ -14,11 +14,12 @@ import React from 'react';
 
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { XIcon } from '@/components/shared/IconGlyph';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 
 export function CloseButton({
   onPress,
-  label = 'Zavřít',
+  label = t.common.close,
   disabled = false,
 }: {
   onPress: () => void;

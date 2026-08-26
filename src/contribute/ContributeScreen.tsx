@@ -73,7 +73,7 @@ import { enqueuePubCommunity } from '@/data/communityQueue';
 import { geohash8 } from '@/data/geohash';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -209,9 +209,9 @@ function beerMeta(
   const price =
     priceCzk !== null ? formatPrice(priceCzk, priceCurrency) : null;
   if (volume && price) return `${volume} · ${price}`;
-  if (volume) return `${volume} · ${cs.contribute.priceMissing}`;
-  if (price) return `${cs.contribute.volumeMissing} · ${price}`;
-  return cs.contribute.volumeMissing;
+  if (volume) return `${volume} · ${t.contribute.priceMissing}`;
+  if (price) return `${t.contribute.volumeMissing} · ${price}`;
+  return t.contribute.volumeMissing;
 }
 
 // ─── Inline day row (opening hours) ──────────────────────────────────────────
@@ -239,7 +239,7 @@ function HoursDayRow({
   onRemoveInterval,
   onChangeTime,
 }: HoursDayRowProps) {
-  const dayName = cs.contribute.days[day];
+  const dayName = t.contribute.days[day];
   const isClosed = intervals.length === 0;
   const canAdd = intervals.length < MAX_INTERVALS;
 
@@ -266,10 +266,10 @@ function HoursDayRow({
           style={({ pressed }) => [styles.closedLabelWrap, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityState={{ selected: true }}
-          accessibilityLabel={cs.a11y.contributeDayClosedToggle(dayName)}
+          accessibilityLabel={t.a11y.contributeDayClosedToggle(dayName)}
         >
           <Text style={styles.closedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.contribute.closedToggle}
+            {t.contribute.closedToggle}
           </Text>
         </Pressable>
       ) : (
@@ -283,7 +283,7 @@ function HoursDayRow({
               <SplitTimeInput
                 value={interval[0]}
                 onChange={(value) => onChangeTime(index, 0, value)}
-                accessibilityLabel={`${dayName} ${cs.contribute.from}`}
+                accessibilityLabel={`${dayName} ${t.contribute.from}`}
               />
               <Text style={styles.timeDash} maxFontSizeMultiplier={FontScaleCap.body}>
                 -
@@ -291,14 +291,14 @@ function HoursDayRow({
               <SplitTimeInput
                 value={interval[1]}
                 onChange={(value) => onChangeTime(index, 1, value)}
-                accessibilityLabel={`${dayName} ${cs.contribute.to}`}
+                accessibilityLabel={`${dayName} ${t.contribute.to}`}
               />
               <Pressable
                 onPress={() => onRemoveInterval(index)}
                 hitSlop={6}
                 style={({ pressed }) => [styles.timeIcon, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.contributeRemoveInterval(dayName)}
+                accessibilityLabel={t.a11y.contributeRemoveInterval(dayName)}
               >
                 <Trash2Icon size={15} color={Colors.mutedText} />
               </Pressable>
@@ -308,7 +308,7 @@ function HoursDayRow({
                   hitSlop={6}
                   style={({ pressed }) => [styles.timeIcon, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.contributeAddInterval(dayName)}
+                  accessibilityLabel={t.a11y.contributeAddInterval(dayName)}
                 >
                   <PlusIcon size={16} color={Colors.amber} />
                 </Pressable>
@@ -641,11 +641,11 @@ export default function ContributeScreen() {
   const confirmRemoveBeer = useCallback(
     (beer: BeerRow) => {
       showAppDialog({
-        title: cs.contribute.removeBeer,
+        title: t.contribute.removeBeer,
         buttons: [
-          { text: cs.common.cancel, style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: cs.contribute.removeBeer,
+            text: t.contribute.removeBeer,
             style: 'destructive',
             onPress: () => removeBeer(beer.id),
           },
@@ -733,11 +733,11 @@ export default function ContributeScreen() {
             setBeers(rows);
             setBeersTouched(true);
             fireSuccessHaptic();
-            toast(cs.contribute.scanMenu.successToast(count), {
+            toast(t.contribute.scanMenu.successToast(count), {
               icon: <SparklesIcon size={18} color={Colors.amber} />,
             });
           } else {
-            toast(cs.contribute.scanMenu.nothingNewToast, {
+            toast(t.contribute.scanMenu.nothingNewToast, {
               icon: <CheckIcon size={18} color={Colors.amber} />,
             });
           }
@@ -890,7 +890,7 @@ export default function ContributeScreen() {
       if (response.xpAwarded > 0) {
         useToastStore
           .getState()
-          .show(cs.contribute.xpToast(response.xpAwarded), {
+          .show(t.contribute.xpToast(response.xpAwarded), {
             icon: <CompassIcon size={18} color={Colors.amber} />,
           });
       }
@@ -899,7 +899,7 @@ export default function ContributeScreen() {
     if (useSettingsStore.getState().hapticEnabled) {
       fireSuccessHaptic();
     }
-    useToastStore.getState().show(cs.contribute.savedToast);
+    useToastStore.getState().show(t.contribute.savedToast);
     leaveRoute(router);
   }, [
     beersTouched,
@@ -930,11 +930,11 @@ export default function ContributeScreen() {
   const openStateTime = nextChangeTime(openState.nextChange);
   const hoursFooter = openState.isOpenNow
     ? openStateTime
-      ? cs.contribute.hoursOpenNow(openStateTime)
-      : cs.contribute.hoursOpenNoChange
+      ? t.contribute.hoursOpenNow(openStateTime)
+      : t.contribute.hoursOpenNoChange
     : openStateTime
-      ? cs.contribute.hoursClosedNow(openStateTime)
-      : cs.contribute.hoursClosedNoChange;
+      ? t.contribute.hoursClosedNow(openStateTime)
+      : t.contribute.hoursClosedNoChange;
 
   // "Stejně celý týden" copies the first day that has hours onto every day.
   const firstOpenDay = useMemo<DayKey | null>(
@@ -946,11 +946,11 @@ export default function ContributeScreen() {
     if (hoursTouched && invalidDay) {
       return {
         kind: 'counted',
-        text: cs.contribute.invalidDayNudge(
-          cs.contribute.daysAt[invalidDay],
+        text: t.contribute.invalidDayNudge(
+          t.contribute.daysAt[invalidDay],
         ),
-        undoLabel: cs.contribute.fix,
-        actionAccessibilityLabel: cs.contribute.fixHoursA11y,
+        undoLabel: t.contribute.fix,
+        actionAccessibilityLabel: t.contribute.fixHoursA11y,
         onUndo: () => {
           setSection('hours');
         },
@@ -959,14 +959,14 @@ export default function ContributeScreen() {
     if (scanning) {
       return {
         kind: 'dopito',
-        label: cs.contribute.scanningNudge,
+        label: t.contribute.scanningNudge,
         onPress: () => undefined,
       };
     }
     if (section === 'beers' && beers.length >= MAX_BEERS) {
       return {
         kind: 'dopito',
-        label: cs.contribute.maxBeersNudge,
+        label: t.contribute.maxBeersNudge,
         onPress: () => undefined,
       };
     }
@@ -995,7 +995,7 @@ export default function ContributeScreen() {
             ]}
             hitSlop={2}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.backButton}
+            accessibilityLabel={t.a11y.backButton}
           >
             <ChevronLeftIcon size={22} color={Colors.foam} />
           </Pressable>
@@ -1004,7 +1004,7 @@ export default function ContributeScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {cs.contribute.title}
+            {t.contribute.title}
           </Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -1014,8 +1014,8 @@ export default function ContributeScreen() {
             const selected = section === value;
             const label =
               value === 'hours'
-                ? cs.contribute.hoursTab
-                : cs.contribute.beersTab;
+                ? t.contribute.hoursTab
+                : t.contribute.beersTab;
             return (
               <Pressable
                 key={value}
@@ -1052,7 +1052,7 @@ export default function ContributeScreen() {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {pub.name || cs.contribute.unknownPub}
+          {pub.name || t.contribute.unknownPub}
         </Text>
 
         <KeyboardAwareScrollView
@@ -1085,15 +1085,15 @@ export default function ContributeScreen() {
                       color={beerMenuRotates ? Colors.amber : Colors.foamMuted}
                     />
                     <Text style={styles.menuTypeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.contribute.beerMenuTypeLabel}
+                      {t.contribute.beerMenuTypeLabel}
                     </Text>
                   </View>
                   <View style={styles.menuTypeSegment}>
                     {([false, true] as const).map((rotates) => {
                       const selected = beerMenuRotates === rotates;
                       const label = rotates
-                        ? cs.contribute.beerMenuRotating
-                        : cs.contribute.beerMenuFixed;
+                        ? t.contribute.beerMenuRotating
+                        : t.contribute.beerMenuFixed;
                       return (
                         <Pressable
                           key={String(rotates)}
@@ -1105,7 +1105,7 @@ export default function ContributeScreen() {
                           ]}
                           accessibilityRole="button"
                           accessibilityState={{ selected }}
-                          accessibilityLabel={cs.a11y.contributeBeerMenuType(label)}
+                          accessibilityLabel={t.a11y.contributeBeerMenuType(label)}
                         >
                           <Text
                             style={[
@@ -1123,8 +1123,8 @@ export default function ContributeScreen() {
                   </View>
                   <Text style={styles.menuTypeHint} maxFontSizeMultiplier={FontScaleCap.body}>
                     {beerMenuRotates
-                      ? cs.contribute.beerMenuRotatingHint
-                      : cs.contribute.beerMenuFixedHint}
+                      ? t.contribute.beerMenuRotatingHint
+                      : t.contribute.beerMenuFixedHint}
                   </Text>
                 </View>
 
@@ -1133,7 +1133,7 @@ export default function ContributeScreen() {
                     style={styles.emptyText}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.contribute.beersEmpty}
+                    {t.contribute.beersEmpty}
                   </Text>
                 ) : (
                   beers.map((beer, index) => (
@@ -1145,7 +1145,7 @@ export default function ContributeScreen() {
                         onPress={() => openBeer(beer.id)}
                         style={({ pressed }) => [styles.beerEdit, pressed && styles.pressed]}
                         accessibilityRole="button"
-                        accessibilityLabel={cs.contribute.editBeerA11y(
+                        accessibilityLabel={t.contribute.editBeerA11y(
                           beer.name,
                           beerMeta(beer, priceCurrency),
                         )}
@@ -1176,7 +1176,7 @@ export default function ContributeScreen() {
                             pressed && styles.pressed,
                           ]}
                           accessibilityRole="button"
-                          accessibilityLabel={cs.contribute.addSmallBeer}
+                          accessibilityLabel={t.contribute.addSmallBeer}
                         >
                           <PlusIcon size={15} color={Colors.amber} />
                           <Text
@@ -1191,7 +1191,7 @@ export default function ContributeScreen() {
                         onPress={() => confirmRemoveBeer(beer)}
                         style={({ pressed }) => [styles.beerRowAction, pressed && styles.pressed]}
                         accessibilityRole="button"
-                        accessibilityLabel={cs.a11y.contributeRemoveBeer}
+                        accessibilityLabel={t.a11y.contributeRemoveBeer}
                       >
                         <Trash2Icon size={17} color={Colors.mutedText} />
                       </Pressable>
@@ -1208,14 +1208,14 @@ export default function ContributeScreen() {
                       pressed && styles.pressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.a11y.contributeAddBeer}
+                    accessibilityLabel={t.a11y.contributeAddBeer}
                   >
                     <PlusIcon size={16} color={Colors.amber} />
                     <Text
                       style={styles.addBeerLabel}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.contribute.addBeer}
+                      {t.contribute.addBeer}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -1244,7 +1244,7 @@ export default function ContributeScreen() {
                   hitSlop={8}
                   style={({ pressed }) => [styles.copyWeek, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.contributeCopyToAll}
+                  accessibilityLabel={t.a11y.contributeCopyToAll}
                 >
                   <CopyIcon size={14} color={Colors.mutedText} />
                   <Text
@@ -1252,7 +1252,7 @@ export default function ContributeScreen() {
                     numberOfLines={1}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.contribute.copyWeek}
+                    {t.contribute.copyWeek}
                   </Text>
                 </Pressable>
               ) : null}
@@ -1265,7 +1265,7 @@ export default function ContributeScreen() {
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={cs.contribute.historicalBeersDoor(
+              accessibilityLabel={t.contribute.historicalBeersDoor(
                 availableHistoricalBeers.length,
               )}
             >
@@ -1274,7 +1274,7 @@ export default function ContributeScreen() {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.contribute.historicalBeersDoor(
+                {t.contribute.historicalBeersDoor(
                   availableHistoricalBeers.length,
                 )}
               </Text>
@@ -1286,7 +1286,7 @@ export default function ContributeScreen() {
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {cs.contribute.beersLifecycleHintShort}
+              {t.contribute.beersLifecycleHintShort}
             </Text>
           )}
         </View>
@@ -1299,7 +1299,7 @@ export default function ContributeScreen() {
         }
         accessibilityLabel={
           scanningNudgeVisible
-            ? cs.contribute.scanningNudge
+            ? t.contribute.scanningNudge
             : undefined
         }
       >
@@ -1307,18 +1307,18 @@ export default function ContributeScreen() {
       </View>
 
       <CounterCta
-        label={cs.contribute.save}
-        subLabel={cs.contribute.publicSubmitHint}
+        label={t.contribute.save}
+        subLabel={t.contribute.publicSubmitHint}
         onPress={handleSubmit}
         disabled={!canSubmit}
-        accessibilityLabel={cs.a11y.contributeSaveButton}
+        accessibilityLabel={t.a11y.contributeSaveButton}
       />
 
       {section === 'beers' ? (
         <CounterSecondary
-          label={cs.contribute.scanMenuSecondary}
+          label={t.contribute.scanMenuSecondary}
           onPress={handleScanMenu}
-          accessibilityLabel={cs.contribute.scanMenuSecondary}
+          accessibilityLabel={t.contribute.scanMenuSecondary}
         />
       ) : null}
 

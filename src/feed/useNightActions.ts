@@ -9,7 +9,7 @@ import {
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { useVycepStore } from '@/stores/vycepStore';
 
@@ -28,17 +28,17 @@ export function useNightActions(onRemoved?: (night: PublishedNight) => void) {
     (night: PublishedNight) => {
       if (night.isMine) {
         showAppDialog({
-          title: cs.vycep.unpublishCta,
-          message: cs.vycep.unpublishConfirmBody,
+          title: t.vycep.unpublishCta,
+          message: t.vycep.unpublishConfirmBody,
           buttons: [
-            { text: cs.common.cancel, style: 'cancel' },
+            { text: t.common.cancel, style: 'cancel' },
             {
-              text: cs.vycep.unpublishCta,
+              text: t.vycep.unpublishCta,
               style: 'destructive',
               onPress: () => {
                 const clientId = night.clientId;
                 if (!clientId) {
-                  showToast(cs.vycep.unpublishErrorToast);
+                  showToast(t.vycep.unpublishErrorToast);
                   return;
                 }
                 trackUiInteraction('night_unpublish', 'submit');
@@ -50,18 +50,18 @@ export function useNightActions(onRemoved?: (night: PublishedNight) => void) {
                       );
                       if (!queued) {
                         trackUiInteraction('night_unpublish', 'failure');
-                        showToast(cs.vycep.unpublishErrorToast);
+                        showToast(t.vycep.unpublishErrorToast);
                         return;
                       }
                     } else {
                       trackUiInteraction('night_unpublish', 'failure');
-                      showToast(cs.vycep.unpublishErrorToast);
+                      showToast(t.vycep.unpublishErrorToast);
                       return;
                     }
                   }
                   trackUiInteraction('night_unpublish', 'success');
                   markUnpublished(clientId);
-                  showToast(cs.vycep.unpublishedToast);
+                  showToast(t.vycep.unpublishedToast);
                   onRemoved?.(night);
                 });
               },
@@ -72,16 +72,16 @@ export function useNightActions(onRemoved?: (night: PublishedNight) => void) {
       }
 
       showAppDialog({
-        title: cs.vycep.reportTitle,
-        message: cs.vycep.reportBody,
+        title: t.vycep.reportTitle,
+        message: t.vycep.reportBody,
         buttons: [
-          { text: cs.common.cancel, style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: cs.vycep.reportConfirm,
+            text: t.vycep.reportConfirm,
             style: 'destructive',
             onPress: () => {
               if (!night.author.id) {
-                showToast(cs.vycep.reportErrorToast);
+                showToast(t.vycep.reportErrorToast);
                 return;
               }
               void reportProfileContent({
@@ -90,7 +90,7 @@ export function useNightActions(onRemoved?: (night: PublishedNight) => void) {
                 nightId: night.id,
               }).then((result) => {
                 showToast(
-                  result.ok ? cs.vycep.reportSentToast : cs.vycep.reportErrorToast,
+                  result.ok ? t.vycep.reportSentToast : t.vycep.reportErrorToast,
                 );
               });
             },

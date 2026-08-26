@@ -58,7 +58,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 
 /**
@@ -101,33 +101,33 @@ const TAB_META: Record<
     // Two mugs meeting, not a generic pair of people. The tab is nights out with
     // the table, and the clink says that where a "users" glyph says "contacts".
     Icon: CheersIcon,
-    label: cs.tabs.feed,
-    a11yLabel: cs.a11y.tabFeed,
+    label: t.tabs.feed,
+    a11yLabel: t.a11y.tabFeed,
     telemetryTarget: 'tab_friends',
   },
   '(pubs)': {
     Icon: CompassIcon,
-    label: cs.tabs.pubs,
-    a11yLabel: cs.a11y.tabPubs,
+    label: t.tabs.pubs,
+    a11yLabel: t.a11y.tabPubs,
     telemetryTarget: 'tab_compass',
   },
   beer: {
     Icon: BeerIcon,
-    label: cs.tabs.party,
-    a11yLabel: cs.a11y.tabParty,
+    label: t.tabs.party,
+    a11yLabel: t.a11y.tabParty,
     telemetryTarget: 'tab_beer',
     accent: true,
   },
   community: {
     Icon: TrophyIcon,
-    label: cs.tabs.community,
-    a11yLabel: cs.a11y.tabCommunity,
+    label: t.tabs.community,
+    a11yLabel: t.a11y.tabCommunity,
     telemetryTarget: 'tab_community',
   },
   profile: {
     Icon: UserIcon,
-    label: cs.tabs.profile,
-    a11yLabel: cs.a11y.tabProfile,
+    label: t.tabs.profile,
+    a11yLabel: t.a11y.tabProfile,
     telemetryTarget: 'tab_profile',
   },
 };
@@ -262,7 +262,7 @@ const TabItem = memo(function TabItem({
   // over the dot visually, so VoiceOver follows the same priority.
   const accessibilityLabel =
     routeName === 'friends' && badge
-      ? cs.a11y.tabFeedBadge(badge.count, badge.dot, badge.live)
+      ? t.a11y.tabFeedBadge(badge.count, badge.dot, badge.live)
       : meta.a11yLabel;
 
   return (
@@ -299,7 +299,7 @@ const TabItem = memo(function TabItem({
         minimumFontScale={0.8}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {running && meta.accent ? 'Večer' : meta.label}
+        {running && meta.accent ? t.tabs.partyRunning : meta.label}
       </Text>
     </Pressable>
   );

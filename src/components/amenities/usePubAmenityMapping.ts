@@ -20,7 +20,7 @@ import {
 } from '@/data/pubAmenitiesView';
 import { pubIdentityKey } from '@/data/pubIdentity';
 import { runPrivateAccountMutation } from '@/data/privateAccountBoundary';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import {
   selectPubVotes,
@@ -121,7 +121,7 @@ export function usePubAmenityMapping({
     const { count, xp } = xpAccum.current;
     xpAccum.current = { count: 0, xp: 0 };
     if (count === 0 || xp <= 0) return;
-    showToast(cs.mapPub.xpSession(count, xp));
+    showToast(t.mapPub.xpSession(count, xp));
   }, [showToast]);
 
   const scheduleXpToast = useCallback(() => {
@@ -152,7 +152,7 @@ export function usePubAmenityMapping({
       setVote(identityKey, row.amenityKey as AmenityKey, next);
 
       if (next == null && !wasUnanswered) {
-        showToast(cs.mapPub.retracted);
+        showToast(t.mapPub.retracted);
       }
 
       if (!backendConfigured) {
@@ -193,7 +193,7 @@ export function usePubAmenityMapping({
           }));
         }
         if (voteResult?.was_first_map && voteResult.xp_awarded > 0) {
-          showToast(cs.mapPub.xpFirstMapper(voteResult.xp_awarded));
+          showToast(t.mapPub.xpFirstMapper(voteResult.xp_awarded));
         } else if (voteResult && voteResult.xp_awarded > 0) {
           xpAccum.current.count += 1;
           xpAccum.current.xp += voteResult.xp_awarded;

@@ -17,14 +17,14 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { CupSodaIcon, PlusIcon, RefreshCwIcon, XIcon } from '@/components/shared/IconGlyph';
 
 export interface DrinkPickRow {
   /** Stable identity key. */
   key: string;
   name: string;
-  /** Pre-composed "0,5 l · 62 Kč" or "Bez ceny" — parent builds it via cs.counter.beerMeta. */
+  /** Pre-composed "0,5 l · 62 Kč" or "Bez ceny" — parent builds it via t.counter.beerMeta. */
   meta: string;
   /** How many of these tonight (0 = no badge). */
   count: number;
@@ -78,12 +78,12 @@ export function DrinkPickSheet({
       accessibilityRole="button"
       accessibilityLabel={
         row.hasPrice
-          ? cs.a11y.counterCountBeer(row.name, row.meta)
-          : cs.a11y.counterCountBeerNoPrice(row.name)
+          ? t.a11y.counterCountBeer(row.name, row.meta)
+          : t.a11y.counterCountBeerNoPrice(row.name)
       }
       // The long-press edit is invisible otherwise — a screen reader user would
       // never learn the pub's price can be fixed from here.
-      accessibilityHint={isPub ? cs.a11y.counterEditBeer(row.name) : undefined}
+      accessibilityHint={isPub ? t.a11y.counterEditBeer(row.name) : undefined}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -95,7 +95,7 @@ export function DrinkPickSheet({
       </View>
       {row.count > 0 ? (
         <Text style={styles.rowBadge} maxFontSizeMultiplier={FontScaleCap.display}>
-          {cs.counter.perBeerCount(row.count)}
+          {t.counter.perBeerCount(row.count)}
         </Text>
       ) : null}
     </Pressable>
@@ -124,7 +124,7 @@ export function DrinkPickSheet({
     </Pressable>
   );
 
-  const addBeerLabel = isEmpty ? cs.counter.pickFirstBeer : cs.counter.pickAddBeer;
+  const addBeerLabel = isEmpty ? t.counter.pickFirstBeer : t.counter.pickAddBeer;
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose}>
@@ -133,13 +133,13 @@ export function DrinkPickSheet({
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.counter.pickTitle}
+                {t.counter.pickTitle}
               </Text>
               <Pressable
                 onPress={onClose}
                 style={styles.closeButton}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
+                accessibilityLabel={t.a11y.counterCloseModal}
               >
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>
@@ -149,7 +149,7 @@ export function DrinkPickSheet({
               <View style={styles.rotatingHint}>
                 <RefreshCwIcon size={13} color={Colors.amber} />
                 <Text style={styles.rotatingHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.counter.rotatingMenuHint}
+                  {t.counter.rotatingMenuHint}
                 </Text>
               </View>
             ) : null}
@@ -162,10 +162,10 @@ export function DrinkPickSheet({
               {isEmpty ? (
                 <Text style={styles.emptyCopy} maxFontSizeMultiplier={FontScaleCap.body}>
                   {isPub && beerMenuRotates
-                    ? cs.counter.rotatingMenuBadge
+                    ? t.counter.rotatingMenuBadge
                     : isPub
-                      ? cs.counter.pickEmptyPub
-                      : cs.counter.pickEmptyOutside}
+                      ? t.counter.pickEmptyPub
+                      : t.counter.pickEmptyOutside}
                 </Text>
               ) : (
                 <>
@@ -173,7 +173,7 @@ export function DrinkPickSheet({
                     <>
                       {showCaptions ? (
                         <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {cs.counter.outsideMenuHeader}
+                          {t.counter.outsideMenuHeader}
                         </Text>
                       ) : null}
                       {tonightRows.map((row, index) => renderRow(row, index === 0))}
@@ -183,7 +183,7 @@ export function DrinkPickSheet({
                     <>
                       {showCaptions ? (
                         <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {cs.counter.menuHeader}
+                          {t.counter.menuHeader}
                         </Text>
                       ) : null}
                       {menuRows.map((row, index) => renderRow(row, index === 0))}
@@ -196,8 +196,8 @@ export function DrinkPickSheet({
             {/* Pinned below the scroll area: the two ways to add something new
                 must never scroll off or get clipped by the card's max height. */}
             <View style={styles.actions}>
-              {renderActionRow('add-beer', PlusIcon, addBeerLabel, onAddBeer, cs.a11y.counterAddBeer)}
-              {renderActionRow('add-other', CupSodaIcon, cs.counter.pickNonBeer, onAddOther, cs.counter.pickNonBeer)}
+              {renderActionRow('add-beer', PlusIcon, addBeerLabel, onAddBeer, t.a11y.counterAddBeer)}
+              {renderActionRow('add-other', CupSodaIcon, t.counter.pickNonBeer, onAddOther, t.counter.pickNonBeer)}
             </View>
           </View>
         </View>

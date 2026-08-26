@@ -1,6 +1,11 @@
 const SPACE_RE = /\s+/g;
 const IDENTITY_SEPARATOR = '::';
 
+/**
+ * The locale is pinned to 'cs-CZ' on purpose and must NOT follow the UI language:
+ * this feeds a persisted identity key, so the same pub name has to fold to the
+ * same string on every phone, in every language, forever.
+ */
 export function normalizePubNameForIdentity(name: string | null | undefined): string {
   return (name ?? '').trim().toLocaleLowerCase('cs-CZ').replace(SPACE_RE, ' ');
 }

@@ -34,6 +34,8 @@
  *      (`docs/decisions/no-bac-or-driving-estimates.md`).
  */
 
+import { t } from '@/i18n';
+import { gameDisplayName } from './gameCatalog';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 export interface NightPerson {
@@ -520,7 +522,7 @@ export function nightThread(night: NightRecord): NightThreadEntry[] {
       kind: 'photo',
       by: photo.by,
       refId: photo.id,
-      label: 'Fotka',
+      label: t.liveParty.threadPhoto,
       url: photo.url,
     });
   }
@@ -532,7 +534,7 @@ export function nightThread(night: NightRecord): NightThreadEntry[] {
       kind: 'game',
       by: game.by ?? null,
       refId: game.key,
-      label: game.name,
+      label: gameDisplayName(game),
       gameKey: game.key,
     });
   }

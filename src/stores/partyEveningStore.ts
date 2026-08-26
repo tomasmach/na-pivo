@@ -16,6 +16,8 @@
  * signal leaves the evening exactly as it was.
  */
 
+import { t } from '@/i18n';
+
 import { create } from 'zustand';
 
 import { ensureAccount, generateUuidV4 } from '@/data/account';
@@ -362,7 +364,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
         failed(set, {
           ok: false,
           code: 'protocol',
-          detail: 'Stůl se nepodařilo založit. Zkus to znovu.',
+          detail: t.clientErrors.tableCreateFailed,
         });
         set({ pendingJoinCode: null });
         // The create may have committed; only the response looks wrong. Keep
@@ -417,7 +419,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
       return failed(set, {
         ok: false,
         code: 'protocol',
-        detail: 'Přisednout ke stolu se nepovedlo. Zkus to znovu.',
+        detail: t.clientErrors.tableJoinFailed,
       });
     }
     const evening = result.evening;

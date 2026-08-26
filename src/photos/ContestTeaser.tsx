@@ -17,7 +17,7 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { CameraIcon, ChevronRightIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchPhotoContestTeaser, type PhotoContestSnapshot } from '@/data/photoContestClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -67,20 +67,20 @@ export function ContestTeaser() {
   if (resultsUnseen) {
     subtitle =
       myRank != null && myRank <= 3
-        ? cs.photoContest.teaserResultsPodiumSubtitle
-        : cs.photoContest.teaserResultsSubtitle;
+        ? t.photoContest.teaserResultsPodiumSubtitle
+        : t.photoContest.teaserResultsSubtitle;
   } else {
     let base: string;
     if (!contest) {
-      base = cs.photoContest.teaserFallbackSubtitle;
+      base = t.photoContest.teaserFallbackSubtitle;
     } else if (myEntry) {
-      base = cs.photoContest.teaserMyEntrySubtitle(cs.photoContest.votesCount(myEntry.votes));
+      base = t.photoContest.teaserMyEntrySubtitle(t.photoContest.votesCount(myEntry.votes));
     } else if (voted) {
-      base = cs.photoContest.teaserVotedSubtitle;
+      base = t.photoContest.teaserVotedSubtitle;
     } else if (foreignCount > 0) {
-      base = cs.photoContest.teaserVoteSubtitle(foreignCount);
+      base = t.photoContest.teaserVoteSubtitle(foreignCount);
     } else {
-      base = cs.photoContest.teaserEmptySubtitle;
+      base = t.photoContest.teaserEmptySubtitle;
     }
     const countdown = contest ? contestCountdownLabel(contest.periodEnd) : '';
     subtitle = countdown ? `${base} · ${countdown}` : base;
@@ -94,7 +94,7 @@ export function ContestTeaser() {
     <Pressable
       onPress={open}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.photoContestLink}
+      accessibilityLabel={t.a11y.photoContestLink}
       style={({ pressed }) => [styles.strip, pressed && styles.pressed]}
     >
       <View style={styles.iconWell}>
@@ -106,7 +106,7 @@ export function ContestTeaser() {
       </View>
       <View style={styles.textCol}>
         <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.photoContest.title}
+          {t.photoContest.title}
         </Text>
         <Text style={styles.subtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
           {subtitle}

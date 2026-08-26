@@ -10,7 +10,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   ChevronDownIcon,
   HouseIcon,
@@ -61,7 +61,7 @@ export function PlaceChip({
       onPress={onPress}
       hitSlop={{ top: VERTICAL_SLOP, bottom: VERTICAL_SLOP }}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.counterPlaceChip(label)}
+      accessibilityLabel={t.a11y.counterPlaceChip(label)}
       style={({ pressed }) => [
         styles.chip,
         isUnknown ? styles.chipUnknown : styles.chipDefault,

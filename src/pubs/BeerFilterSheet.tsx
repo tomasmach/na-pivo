@@ -29,6 +29,7 @@ import { MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
 import { HitArea, Radius, Spacing } from "@/theme/layout";
+import { t } from '@/i18n';
 
 export function BeerFilterSheet({
   visible,
@@ -91,7 +92,7 @@ function SheetBody({
               style={styles.title}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              Pivo
+              {t.pubDetail.beerFallback}
             </Text>
             <View style={styles.grow} />
             <CloseButton onPress={onClose} />
@@ -142,13 +143,13 @@ function SheetBody({
               onPress={() => setDraft([])}
               style={({ pressed }) => [styles.clear, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Zrušit výběr"
+              accessibilityLabel={t.pubList.filterClearA11y}
             >
               <Text
                 style={styles.clearText}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                Vymazat
+                {t.pubList.filterClear}
               </Text>
             </Pressable>
             <Pressable
@@ -158,13 +159,13 @@ function SheetBody({
                 pressed && styles.applyPressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Použít filtr"
+              accessibilityLabel={t.pubList.filterApplyA11y}
             >
               <Text
                 style={styles.applyText}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {draft.length > 0 ? `Ukázat (${draft.length})` : "Ukázat vše"}
+                {draft.length > 0 ? t.pubList.filterShowCount(draft.length) : t.pubList.filterShowAll}
               </Text>
             </Pressable>
           </View>

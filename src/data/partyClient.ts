@@ -28,6 +28,8 @@
  * evening is that it survives a pub's signal.
  */
 
+import { t } from '@/i18n';
+
 import { ensureAccount, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
@@ -123,7 +125,7 @@ export function parsePartyProfile(value: unknown): PartyProfile {
   return {
     id: str(data.id),
     nickname,
-    displayName: str(data.display_name, nickname ?? 'Kamarád'),
+    displayName: str(data.display_name, nickname ?? t.common.friendFallback),
     avatarUrl: typeof data.avatar_url === 'string' ? data.avatar_url : null,
   };
 }
@@ -337,7 +339,7 @@ function extractError(data: unknown, status: number): PartyError {
     return {
       ok: false,
       code: 'party_not_found',
-      detail: 'Takový večer tu není.',
+      detail: t.clientErrors.eveningMissing,
     };
   }
   return {
@@ -368,7 +370,7 @@ async function requestJson(
       result: {
         ok: false,
         code: 'offline',
-        detail: 'Teď se k serveru nedostanu.',
+        detail: t.clientErrors.offline,
       },
     };
   }
@@ -380,7 +382,7 @@ async function requestJson(
       result: {
         ok: false,
         code: 'account',
-        detail: 'Účet teď není připravený.',
+        detail: t.clientErrors.account,
       },
     };
   }
@@ -407,7 +409,7 @@ async function requestJson(
       await handleUnauthorized(session, endpoint);
       return {
         ok: false,
-        result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' },
+        result: { ok: false, code: 'auth', detail: t.clientErrors.auth },
       };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
@@ -427,7 +429,7 @@ async function requestJson(
       result: {
         ok: false,
         code: 'network',
-        detail: 'Síť se netváří. Zkus to za chvíli.',
+        detail: t.clientErrors.network,
       },
     };
   } finally {

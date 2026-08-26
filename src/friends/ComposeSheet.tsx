@@ -50,7 +50,7 @@ import {
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockColors } from '@/mocks/mockTheme';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -125,7 +125,7 @@ function PubRow({
       </View>
       {option.distanceMeters != null ? (
         <Text style={styles.pubDistance} allowFontScaling={false}>
-          {cs.friends.composeMeters(Math.round(option.distanceMeters))}
+          {t.friends.composeMeters(Math.round(option.distanceMeters))}
         </Text>
       ) : null}
       {selected ? <CheckIcon size={18} color={Colors.amber} /> : null}
@@ -372,11 +372,11 @@ function ComposeSheet({
   const saveCurrentGroup = useCallback(() => {
     const savedId = upsertGroup(groupName, selectedRecipientIdsValid, activeGroupId ?? undefined);
     if (!savedId) {
-      showToast(cs.friends.recipientGroupSaveHint);
+      showToast(t.friends.recipientGroupSaveHint);
       return;
     }
     setActiveGroupId(savedId);
-    showToast(cs.friends.recipientGroupSaved);
+    showToast(t.friends.recipientGroupSaved);
   }, [activeGroupId, groupName, selectedRecipientIdsValid, showToast, upsertGroup]);
 
   const setHourClamped = useCallback(
@@ -452,10 +452,10 @@ function ComposeSheet({
           trackUiInteraction('parta_activity_share', 'success');
           showToast(
             isPlan
-              ? cs.friends.planCreated
+              ? t.friends.planCreated
               : result.state === 'queued'
-                ? cs.friends.composeQueued
-                : cs.friends.shareSuccess,
+                ? t.friends.composeQueued
+                : t.friends.shareSuccess,
           );
           onSubmitted();
           requestClose();
@@ -466,15 +466,15 @@ function ComposeSheet({
         setSubmitting(false);
         showToast(
           result.state === 'storage-error'
-            ? cs.friends.queueSaveError
-            : result.res?.detail || cs.friends.shareError,
+            ? t.friends.queueSaveError
+            : result.res?.detail || t.friends.shareError,
         );
       })
       .catch((error) => {
         if (!mountedRef.current) return;
         submittingRef.current = false;
         setSubmitting(false);
-        if (!(error instanceof PrivateAccountMutationFrozenError)) showToast(cs.friends.shareError);
+        if (!(error instanceof PrivateAccountMutationFrozenError)) showToast(t.friends.shareError);
       });
   }, [
     selectionPub,
@@ -519,7 +519,7 @@ function ComposeSheet({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {isPlan ? cs.friends.planComposeTitle : cs.friends.composeTitle}
+              {isPlan ? t.friends.planComposeTitle : t.friends.composeTitle}
             </Text>
           </View>
 
@@ -531,14 +531,14 @@ function ComposeSheet({
             {/* KOMU */}
             {!audienceIsFixed ? (
               <>
-                <SectionHeader label={cs.friends.composeAudienceLabel} />
+                <SectionHeader label={t.friends.composeAudienceLabel} />
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.recipientChips}
                 >
                   <RecipientChip
-                    label={cs.friends.recipientAll}
+                    label={t.friends.recipientAll}
                     selected={audienceMode === 'all'}
                     onPress={selectAllRecipients}
                     icon={
@@ -557,7 +557,7 @@ function ComposeSheet({
                     />
                   ))}
                   <RecipientChip
-                    label={cs.friends.recipientCustom}
+                    label={t.friends.recipientCustom}
                     selected={audienceMode === 'custom' && activeGroupId == null}
                     onPress={startCustomSelection}
                     icon={
@@ -578,14 +578,14 @@ function ComposeSheet({
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
                   {audienceMode === 'all'
-                    ? cs.friends.recipientAllSummary(selectedCount)
-                    : cs.friends.recipientCustomSummary(selectedCount)}
+                    ? t.friends.recipientAllSummary(selectedCount)
+                    : t.friends.recipientCustomSummary(selectedCount)}
                 </Text>
                 {audienceMode === 'custom' ? (
                   <View style={styles.recipientPanel}>
                     {friends.length === 0 ? (
                       <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.friends.recipientNoFriends}
+                        {t.friends.recipientNoFriends}
                       </Text>
                     ) : (
                       friends.map((friend) => (
@@ -601,7 +601,7 @@ function ComposeSheet({
                       <TextInput
                         value={groupName}
                         onChangeText={setGroupName}
-                        placeholder={cs.friends.recipientGroupPlaceholder}
+                        placeholder={t.friends.recipientGroupPlaceholder}
                         placeholderTextColor={MockColors.fieldHint}
                         style={styles.groupNameInput}
                         maxLength={28}
@@ -619,13 +619,13 @@ function ComposeSheet({
                         accessibilityState={{
                           disabled: selectedRecipientIdsValid.length === 0,
                         }}
-                        accessibilityLabel={cs.friends.recipientGroupSave}
+                        accessibilityLabel={t.friends.recipientGroupSave}
                       >
                         <Text
                           style={styles.groupSaveText}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {cs.friends.recipientGroupSave}
+                          {t.friends.recipientGroupSave}
                         </Text>
                       </Pressable>
                     </View>
@@ -636,10 +636,10 @@ function ComposeSheet({
 
             {/* KDE */}
             <View style={styles.sectionGap}>
-              <SectionHeader label={cs.friends.composePubLabel} />
+              <SectionHeader label={t.friends.composePubLabel} />
             </View>
             <SegmentedControl
-              options={[cs.friends.composeNearby, cs.friends.composeRecent]}
+              options={[t.friends.composeNearby, t.friends.composeRecent]}
               value={placeTab}
               onChange={setPlaceTab}
             />
@@ -649,11 +649,11 @@ function ComposeSheet({
                   onPress={() => void requestPermission()}
                   style={({ pressed }) => [styles.permRow, pressed && styles.dim]}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.friends.composeLocPermCta}
+                  accessibilityLabel={t.friends.composeLocPermCta}
                 >
                   <MapPinIcon size={18} color={Colors.amber} />
                   <Text style={styles.permText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.composeLocPermCta}
+                    {t.friends.composeLocPermCta}
                   </Text>
                 </Pressable>
               ) : showNearbyLoading ? (
@@ -670,7 +670,7 @@ function ComposeSheet({
                 </View>
               ) : options.length === 0 ? (
                 <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {placeTab === 0 ? cs.friends.composeNoNearby : cs.friends.composeNoRecent}
+                  {placeTab === 0 ? t.friends.composeNoNearby : t.friends.composeNoRecent}
                 </Text>
               ) : (
                 options.map((option) => (
@@ -687,10 +687,10 @@ function ComposeSheet({
             {/* KDY — the hub opens a single-intent sheet, so no Teď/Na čas fork. */}
             {intent !== 'live' ? (
               <View style={styles.sectionGap}>
-                <SectionHeader label={cs.friends.composeTimeLabel} />
+                <SectionHeader label={t.friends.composeTimeLabel} />
                 {intent === 'choose' ? (
                   <SegmentedControl
-                    options={[cs.friends.composeNow, cs.friends.composeLater]}
+                    options={[t.friends.composeNow, t.friends.composeLater]}
                     value={timeTab}
                     onChange={setTimeTab}
                   />
@@ -729,7 +729,7 @@ function ComposeSheet({
                       <HourStepper
                         value={hour}
                         onChange={setHourClamped}
-                        accessibilityLabel={cs.friends.composeTimeLabel}
+                        accessibilityLabel={t.friends.composeTimeLabel}
                       />
                     </View>
                   </View>
@@ -739,11 +739,11 @@ function ComposeSheet({
 
             {/* VZKAZ */}
             <View style={styles.sectionGap}>
-              <SectionHeader label={cs.friends.composeMsgLabel} />
+              <SectionHeader label={t.friends.composeMsgLabel} />
               <TextInput
                 value={message}
                 onChangeText={setMessage}
-                placeholder={cs.friends.composeMsgPlaceholder}
+                placeholder={t.friends.composeMsgPlaceholder}
                 placeholderTextColor={MockColors.fieldHint}
                 style={styles.messageInput}
                 multiline
@@ -757,7 +757,7 @@ function ComposeSheet({
           <View style={styles.footer}>
             {!canSubmit && !submitting ? (
               <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {!hasRecipients ? cs.friends.recipientNoSelection : cs.friends.composeNoPub}
+                {!hasRecipients ? t.friends.recipientNoSelection : t.friends.composeNoPub}
               </Text>
             ) : null}
             <Pressable
@@ -771,14 +771,14 @@ function ComposeSheet({
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSubmit }}
               accessibilityLabel={
-                isPlan ? cs.friends.composeSubmitPlan : cs.friends.composeSubmitNow
+                isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow
               }
             >
               {submitting ? (
                 <ActivityIndicator color={Colors.stout} size="small" />
               ) : (
                 <Text style={styles.submitLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {isPlan ? cs.friends.composeSubmitPlan : cs.friends.composeSubmitNow}
+                  {isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow}
                 </Text>
               )}
             </Pressable>

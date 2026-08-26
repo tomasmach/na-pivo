@@ -62,8 +62,7 @@ import { mergeHistoricalNights, withoutRunningNight } from '@/feed/historicalFee
 import { useNightReaction } from '@/feed/useNightReaction';
 import { useNightActions } from '@/feed/useNightActions';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
-import { czechPlural } from '@/i18n/plural';
+import { plural, t } from '@/i18n';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
@@ -77,11 +76,17 @@ import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
-const SCOPE_LABELS = ['Parta', 'Svět'] as const;
-type ScopeLabel = (typeof SCOPE_LABELS)[number];
+// The tab state is a stable scope key; the underline gets its words from the
+// label map, so the loaded feed never depends on the UI language.
+const SCOPES: readonly NightsFeedScope[] = ['friends', 'global'];
+const SCOPE_LABELS: Record<NightsFeedScope, string> = {
+  friends: t.vycep.scopeParta,
+  global: t.vycep.scopeWorld,
+};
+const SCOPE_TABS = SCOPES.map((scope) => SCOPE_LABELS[scope]);
 
-function scopeOf(label: ScopeLabel): NightsFeedScope {
-  return label === 'Parta' ? 'friends' : 'global';
+function scopeOfLabel(label: string): NightsFeedScope {
+  return SCOPES.find((scope) => SCOPE_LABELS[scope] === label) ?? 'friends';
 }
 
 function FeedSkeleton() {
@@ -136,10 +141,10 @@ function StateMessage({
           onPress={onRetry}
           style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Zkusit načíst Kocoviny znovu"
+          accessibilityLabel={t.feed.retryA11y}
         >
           <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>
-            Zkusit znovu
+            {t.vycep.retry}
           </Text>
         </Pressable>
       ) : null}
@@ -181,7 +186,7 @@ function NightPeopleHeader({
         onPress={() => onOpenAuthor?.(night)}
         disabled={!onOpenAuthor}
         accessibilityRole={onOpenAuthor ? 'button' : undefined}
-        accessibilityLabel={onOpenAuthor ? `Profil ${author}` : undefined}
+        accessibilityLabel={onOpenAuthor ? t.feed.profileA11y(author) : undefined}
       >
         <View style={styles.peopleFaces}>
           {people.slice(0, 4).map((person, index) => (
@@ -214,7 +219,7 @@ function NightPeopleHeader({
           onPress={() => onOpenActions(night)}
           style={({ pressed }) => [styles.nightMenu, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Možnosti večera"
+          accessibilityLabel={t.feed.nightMenuA11y}
           hitSlop={4}
         >
           <MenuIcon size={18} color={Colors.mutedText} />
@@ -236,7 +241,7 @@ function NightHeroStrip({ night }: { night: PublishedNight }) {
       nestedScrollEnabled
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.heroStrip}
-      accessibilityLabel="Momentky večera"
+      accessibilityLabel={t.feed.momentsA11y}
     >
       {hasRoute ? (
         <View testID="night-route-tile" style={[styles.heroTile, styles.routeTile]}>
@@ -271,13 +276,13 @@ function NightHeroStrip({ night }: { night: PublishedNight }) {
             <DicesIcon size={30} color={Colors.amber} />
           </View>
           <Text style={styles.gameEyebrow} allowFontScaling={false}>
-            ODEHRÁNO
+            {t.feed.gamePlayed}
           </Text>
           <Text style={styles.gameTitle} numberOfLines={2}>
             {game.name}
           </Text>
           <Text style={styles.gameScoring}>
-            {game.scoring === 'points' ? 'Na body' : 'Bez bodů'}
+            {game.scoring === 'points' ? t.feed.gamePoints : t.feed.gameNoPoints}
           </Text>
         </View>
       ))}
@@ -376,7 +381,11 @@ export const FeedCard = memo(function FeedCard({
         onPress={() => onOpenNight?.(night)}
         style={({ pressed }) => [styles.storyTap, pressed && onOpenNight && styles.pressed]}
         accessibilityRole={onOpenNight ? 'button' : undefined}
-        accessibilityLabel={onOpenNight ? `Otevřít večer ${night.roastLine || night.title || feedNightTitle(night)}` : undefined}
+        accessibilityLabel={
+          onOpenNight
+            ? t.feed.openNightA11y(night.roastLine || night.title || feedNightTitle(night))
+            : undefined
+        }
       >
         <Text
           style={styles.title}
@@ -446,8 +455,8 @@ export const FeedCard = memo(function FeedCard({
             onPress={() => onToggleReaction?.(night)}
             label={
               night.isMine || !onToggleReaction
-                ? cs.vycep.roundCount(night.rounds)
-                : cs.a11y.roundButton(author)
+                ? t.vycep.roundCount(night.rounds)
+                : t.a11y.roundButton(author)
             }
           />
           <Pressable
@@ -455,11 +464,13 @@ export const FeedCard = memo(function FeedCard({
             onPress={() => onOpenNight?.(night)}
             style={({ pressed }) => [styles.commentButton, pressed && styles.pressed]}
             accessibilityRole={onOpenNight ? 'button' : undefined}
-            accessibilityLabel={`${night.commentCount} ${czechPlural(night.commentCount, {
-              one: 'komentář',
-              few: 'komentáře',
-              many: 'komentářů',
-            })}. Otevřít večer.`}
+            accessibilityLabel={t.feed.commentsA11y(
+              night.commentCount,
+              plural(night.commentCount, {
+                cs: { one: 'komentář', few: 'komentáře', many: 'komentářů' },
+                en: { one: 'comment', other: 'comments' },
+              }),
+            )}
           >
             <MessageSquareIcon size={18} color={Colors.mutedText} />
             <Text style={styles.commentCount} allowFontScaling={false}>
@@ -468,7 +479,7 @@ export const FeedCard = memo(function FeedCard({
           </Pressable>
           {night.isMine ? (
             <Text style={styles.mineLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              Tvoje noc
+              {t.vycep.myNightChip}
             </Text>
           ) : null}
         </View>
@@ -487,8 +498,7 @@ function FeedScreenContent() {
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((state) => state.show);
 
-  const [scopeLabel, setScopeLabel] = useState<ScopeLabel>('Parta');
-  const scope = scopeOf(scopeLabel);
+  const [scope, setScope] = useState<NightsFeedScope>('friends');
   const [nights, setNights] = useState<PublishedNight[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [historicalCursor, setHistoricalCursor] = useState<string | null>(null);
@@ -593,7 +603,7 @@ function FeedScreenContent() {
       const session = await ensureAccount();
       if (!mountedRef.current || seq !== requestSeq.current) return;
       if (!session) {
-        setLoadError('Účet se mi teď nepovedlo připravit. Zkus to za chvíli.');
+        setLoadError(t.feed.accountError);
         setInitialLoading(false);
         setRefreshing(false);
         return;
@@ -624,7 +634,7 @@ function FeedScreenContent() {
       setInitialLoading(false);
       setRefreshing(false);
       if (!result.ok) {
-        setLoadError(result.detail || 'Kocoviny se teď nenačetly.');
+        setLoadError(result.detail || t.feed.loadError);
         return;
       }
 
@@ -674,10 +684,11 @@ function FeedScreenContent() {
     return () => clearTimeout(kickoff);
   }, [loadFirstPage]);
 
-  const changeScope = useCallback((next: ScopeLabel) => {
-    if (next === scopeLabel) return;
+  const changeScope = useCallback((label: string) => {
+    const next = scopeOfLabel(label);
+    if (next === scope) return;
     requestSeq.current += 1;
-    setScopeLabel(next);
+    setScope(next);
     commitNights(null);
     commitCursor(null);
     historicalSittingsRef.current = [];
@@ -688,7 +699,7 @@ function FeedScreenContent() {
     setLoadError(null);
     setMoreError(false);
     setShowingCache(false);
-  }, [commitCursor, commitNights, scopeLabel]);
+  }, [commitCursor, commitNights, scope]);
 
   const refresh = useCallback(() => {
     if (refreshing) return;
@@ -802,31 +813,29 @@ function FeedScreenContent() {
         <View style={[styles.brandRow, { paddingTop: insets.top + Spacing.sm }]}>
           <Image source={require('../../assets/images/icon.png')} style={styles.mark} />
           <Text style={styles.wordmark} allowFontScaling={false}>
-            Na pivo
+            {t.appName}
           </Text>
         </View>
         <UnderlineTabs
-          options={SCOPE_LABELS}
-          value={scopeLabel}
+          options={SCOPE_TABS}
+          value={SCOPE_LABELS[scope]}
           onChange={changeScope}
           inset={MockLayout.screenPad}
         />
         {feedNights.length > 0 && (showingCache || loadError) ? (
           <View style={[styles.statusBar, loadError && styles.statusBarError]}>
             <Text style={styles.statusText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {loadError
-                ? 'Jedeš z posledního načtení. Novější večery se teď nedotáhly.'
-                : 'Poslední načtení · kontroluju novější večery…'}
+              {loadError ? t.feed.staleWithError : t.feed.staleChecking}
             </Text>
             {loadError ? (
               <Pressable
                 onPress={refresh}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Zkusit načíst nové večery"
+                accessibilityLabel={t.feed.refreshA11y}
               >
                 <Text style={styles.statusRetry} maxFontSizeMultiplier={FontScaleCap.body}>
-                  Zkusit znovu
+                  {t.vycep.retry}
                 </Text>
               </Pressable>
             ) : null}
@@ -834,25 +843,21 @@ function FeedScreenContent() {
         ) : null}
       </View>
     ),
-    [changeScope, feedNights.length, insets.top, loadError, refresh, scopeLabel, showingCache],
+    [changeScope, feedNights.length, insets.top, loadError, refresh, scope, showingCache],
   );
 
   const empty = initialLoading ? (
     <FeedSkeleton />
   ) : loadError ? (
     <StateMessage
-      title="Kocoviny se teď nenačetly"
-      body="Zápisy v telefonu zůstávají v bezpečí. Zkus to za chvíli znovu."
+      title={t.feed.errorTitle}
+      body={t.feed.errorBody}
       onRetry={refresh}
     />
   ) : (
     <StateMessage
-      title={scope === 'friends' ? cs.vycep.emptyPartaTitle : 'Svět je zatím podezřele čerstvý'}
-      body={
-        scope === 'friends'
-          ? cs.vycep.emptyPartaBody
-          : 'Zatím tu nikdo nezveřejnil svůj večer.'
-      }
+      title={scope === 'friends' ? t.vycep.emptyPartaTitle : t.feed.emptyWorldTitle}
+      body={scope === 'friends' ? t.vycep.emptyPartaBody : t.feed.emptyWorldBody}
     />
   );
 
@@ -885,10 +890,10 @@ function FeedScreenContent() {
               onPress={retryMore}
               style={({ pressed }) => [styles.moreError, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.vycep.loadMoreRetryA11y}
+              accessibilityLabel={t.vycep.loadMoreRetryA11y}
             >
               <Text style={styles.moreErrorText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.vycep.loadMoreError}
+                {t.vycep.loadMoreError}
               </Text>
             </Pressable>
           ) : cursor || historicalCursor ? (
@@ -896,10 +901,10 @@ function FeedScreenContent() {
               onPress={() => loadMore()}
               style={({ pressed }) => [styles.moreError, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.vycep.loadMore}
+              accessibilityLabel={t.vycep.loadMore}
             >
               <Text style={styles.moreErrorText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.vycep.loadMore}
+                {t.vycep.loadMore}
               </Text>
             </Pressable>
           ) : null
@@ -922,14 +927,14 @@ function FeedScreenContent() {
       {/* The bar that forms once the wordmark scrolls away. Without it the two
           buttons floated on nothing and post text ran under them and under the
           status bar. */}
-      <CollapsingHeader progress={headerProgress} title={cs.appName}>
+      <CollapsingHeader progress={headerProgress} title={t.appName}>
         <View style={styles.partaButtonWrap}>
           <GlassIconButton
             size={40}
             accessibilityLabel={
               pendingRequests > 0
-                ? cs.a11y.openPartaWithRequests(pendingRequests)
-                : cs.a11y.openParta
+                ? t.a11y.openPartaWithRequests(pendingRequests)
+                : t.a11y.openParta
             }
             onPress={() => router.push('/friends/parta' as Href)}
           >
@@ -945,7 +950,7 @@ function FeedScreenContent() {
         </View>
         <GlassIconButton
           size={40}
-          accessibilityLabel="Hledat"
+          accessibilityLabel={t.feed.searchA11y}
           onPress={() => router.push('/search' as Href)}
         >
           <SearchIcon size={19} color={Colors.amber} />

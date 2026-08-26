@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.utils.translation import gettext_lazy
 
 from pubs.ladder import Ladder
 
 PIVAR_LEVEL_TITLES: tuple[str, ...] = (
-    "Zelenáč",
-    "Ochutnávač",
-    "Pivní tovaryš",
-    "Výčepní",
-    "Sládek",
-    "Pivní mistr",
-    "Pivní legenda",
+    gettext_lazy("Zelenáč"),
+    gettext_lazy("Ochutnávač"),
+    gettext_lazy("Pivní tovaryš"),
+    gettext_lazy("Výčepní"),
+    gettext_lazy("Sládek"),
+    gettext_lazy("Pivní mistr"),
+    gettext_lazy("Pivní legenda"),
 )
 
 

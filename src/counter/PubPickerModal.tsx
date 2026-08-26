@@ -25,7 +25,7 @@ import {
   TreePineIcon,
 } from '@/components/shared/IconGlyph';
 import { formatDistanceCs } from '@/compass/distance';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { Pub } from '@/data/pubs';
 import type { NearbyCandidate } from '@/counter/useNearbyPub';
@@ -75,9 +75,9 @@ export function PubPickerModal({
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.pickerTitle}
+              {t.counter.pickerTitle}
             </Text>
-            <CloseButton onPress={onClose} label={cs.a11y.counterCloseModal} />
+            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
           </View>
 
           <ScrollView
@@ -87,7 +87,7 @@ export function PubPickerModal({
           >
             {candidates.length > 0 ? (
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.pickerNearbyHeader}
+                {t.counter.pickerNearbyHeader}
               </Text>
             ) : null}
             {candidates.map((candidate, index) => {
@@ -104,7 +104,7 @@ export function PubPickerModal({
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={cs.a11y.counterPickPub(candidate.pub.name, distance)}
+                  accessibilityLabel={t.a11y.counterPickPub(candidate.pub.name, distance)}
                 >
                   <MapPinIcon size={18} color={Colors.amber} />
                   <Text
@@ -129,7 +129,7 @@ export function PubPickerModal({
                   pressed && styles.rowPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterRetry}
+                accessibilityLabel={t.a11y.counterRetry}
               >
                 <RefreshCwIcon size={18} color={Colors.foamMuted} />
                 <Text
@@ -137,21 +137,21 @@ export function PubPickerModal({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.counter.retry}
+                  {t.counter.retry}
                 </Text>
               </Pressable>
             ) : null}
 
             {onSelectOutside ? (
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.pickerOutsideHeader}
+                {t.counter.pickerOutsideHeader}
               </Text>
             ) : null}
             {onSelectOutside
               ? OUTSIDE_PLACE_CONTEXTS.map((context, index) => {
                   const isSelected = contextPubKey(context) === selectedKey;
                   const Icon = OUTSIDE_ICONS[context];
-                  const label = cs.counter.outsideLabel(context);
+                  const label = t.counter.outsideLabel(context);
                   return (
                     <Pressable
                       key={context}
@@ -187,7 +187,7 @@ export function PubPickerModal({
                   pressed && styles.rowPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.counter.noPubAddPub}
+                accessibilityLabel={t.counter.noPubAddPub}
               >
                 <MapPinPlusIcon size={18} color={Colors.foamMuted} />
                 <Text
@@ -195,7 +195,7 @@ export function PubPickerModal({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.counter.noPubAddPub}
+                  {t.counter.noPubAddPub}
                 </Text>
               </Pressable>
             ) : null}

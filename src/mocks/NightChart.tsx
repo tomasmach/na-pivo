@@ -25,6 +25,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Chart, Host } from '@expo/ui/swift-ui';
 
 import { ChartColumnIcon, ChartPieIcon } from '@/components/shared/IconGlyph';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -63,7 +64,7 @@ export function NightChart({
   if (rows.length === 0) {
     return (
       <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-        Zatím není co kreslit.
+        {t.nightChart.empty}
       </Text>
     );
   }
@@ -88,14 +89,14 @@ export function NightChart({
           <View style={styles.switcher}>
           <ShapeButton
             active={shape === 'bar'}
-            label="Sloupcový graf"
+            label={t.nightChart.barChart}
             onPress={() => onShape('bar')}
           >
             <ChartColumnIcon size={16} color={shape === 'bar' ? Colors.stout : Colors.mutedText} />
           </ShapeButton>
             <ShapeButton
               active={shape === 'pie'}
-              label="Koláčový graf"
+              label={t.nightChart.pieChart}
               onPress={() => onShape('pie')}
             >
               <ChartPieIcon size={16} color={shape === 'pie' ? Colors.stout : Colors.mutedText} />

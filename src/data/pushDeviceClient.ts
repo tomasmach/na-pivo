@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { locale } from '@/i18n';
 import { chainAbortSignal } from './apiFetch';
 import {
   PrivateAccountMutationFrozenError,
@@ -101,6 +102,7 @@ export async function registerPushDevice(
             permission_status: permissionStatus,
             enabled: permissionStatus === 'granted',
             app_version: getAppVersionLabel(),
+            locale,
           }),
           signal: abort.signal,
         });

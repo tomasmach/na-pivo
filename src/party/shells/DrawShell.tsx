@@ -36,7 +36,9 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { t } from "@/i18n";
 import { kingsDeck, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
+import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
   STAGE_FILL,
@@ -166,6 +168,9 @@ export function DrawShell({
   const cardLabel = shownCard
     ? `${shownRank} ${shownCard.title} ${shownCard.rule}`
     : undefined;
+  const shownPlayerName = shownPlayer
+    ? displayPersonName(shownPlayer.name)
+    : undefined;
   // Seeded with the result already on screen, so a remount never re-announces.
   const announcedNonce = React.useRef(shown?.nonce);
   React.useEffect(() => {
@@ -174,11 +179,11 @@ export function DrawShell({
     if (rolling) return;
     const nonce = shown?.nonce;
     if (!nonce || announcedNonce.current === nonce) return;
-    const label = shownPlayer?.name ?? cardLabel;
+    const label = shownPlayerName ?? cardLabel;
     if (!label) return;
     announcedNonce.current = nonce;
     AccessibilityInfo.announceForAccessibility?.(label);
-  }, [rolling, shown?.nonce, shownPlayer?.name, cardLabel]);
+  }, [rolling, shown?.nonce, shownPlayerName, cardLabel]);
   // Unlocks on the CANONICAL draw, not on the optimistic one this phone just
   // painted: otherwise a double tap in reduced motion draws two cards.
   const canonicalNonce = result === undefined ? localResult?.nonce : result?.nonce;
@@ -292,9 +297,9 @@ export function DrawShell({
   const label = rolling
     ? "…"
     : deckFinished
-      ? "Dohráno"
+      ? t.gameShell.deckDone
       : shown
-        ? "Znovu"
+        ? t.gameShell.again
         : action;
 
   return (
@@ -304,7 +309,7 @@ export function DrawShell({
       <GameStage
         topRight={
           kind === "card" ? (
-            <StageChip label={`Zbývá ${Math.max(0, remaining)}`} />
+            <StageChip label={t.gameShell.cardsLeft(Math.max(0, remaining))} />
           ) : undefined
         }
       >
@@ -320,10 +325,10 @@ export function DrawShell({
                 style={styles.person}
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.heading}
-                accessibilityLabel={shownPlayer?.name}
+                accessibilityLabel={shownPlayerName}
                 accessibilityLiveRegion="polite"
               >
-                {shownPlayer?.name ?? "…"}
+                {shownPlayerName ?? "…"}
               </Text>
             )}
           </Animated.View>
@@ -372,7 +377,7 @@ export function DrawShell({
           disabled={spectator || rolling || deckFinished}
           tone={spectator ? "muted" : "primary"}
           accessibilityLabel={
-            deckFinished ? "Dohráno" : shown ? `${action} znovu` : action
+            deckFinished ? t.gameShell.deckDone : shown ? t.gameShell.againAction(action) : action
           }
         />
       </View>
@@ -458,7 +463,7 @@ function RollingNames({ players }: { players: DrawPlayer[] }) {
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      {players[index % players.length]?.name ?? "…"}
+      {displayPersonName(players[index % players.length]?.name ?? "…")}
     </Text>
   );
 }

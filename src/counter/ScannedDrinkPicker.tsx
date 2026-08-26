@@ -6,7 +6,7 @@ import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon } from '@/components/shared/IconGlyph';
 import type { ScannedDrink } from '@/data/menuScanClient';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -38,14 +38,14 @@ export function ScannedDrinkPicker({ visible, drinks, priceCurrency, onClose, on
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.scanDrinksTitle}
+              {t.counter.scanDrinksTitle}
             </Text>
-            <CloseButton onPress={onClose} label={cs.counter.cancel} />
+            <CloseButton onPress={onClose} label={t.counter.cancel} />
           </View>
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
             {drinks.map((drink, index) => {
               const meta = [
-                cs.counter.drinkTypeLabel(drink.drinkType),
+                t.counter.drinkTypeLabel(drink.drinkType),
                 typeof drink.priceCzk === 'number'
                   ? formatPrice(drink.priceCzk, priceCurrency)
                   : null,

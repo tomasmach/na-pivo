@@ -8,7 +8,7 @@ import {
   InstagramIcon,
   LinkedinIcon,
 } from '@/components/shared/BrandIcon';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -16,20 +16,20 @@ import { Radius, Spacing } from '@/theme/layout';
 const creatorLinks = [
   {
     key: 'instagram',
-    label: cs.profile.creator.instagram,
-    url: cs.profile.creator.instagramUrl,
+    label: t.profile.creator.instagram,
+    url: t.profile.creator.instagramUrl,
     Icon: InstagramIcon,
   },
   {
     key: 'linkedin',
-    label: cs.profile.creator.linkedin,
-    url: cs.profile.creator.linkedinUrl,
+    label: t.profile.creator.linkedin,
+    url: t.profile.creator.linkedinUrl,
     Icon: LinkedinIcon,
   },
   {
     key: 'discord',
-    label: cs.profile.creator.discord,
-    url: cs.profile.creator.discordUrl,
+    label: t.profile.creator.discord,
+    url: t.profile.creator.discordUrl,
     Icon: DiscordIcon,
   },
 ];
@@ -47,13 +47,13 @@ export default function AboutRoute() {
         ]}
       >
         <Text style={styles.followEyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.profile.creator.header}
+          {t.profile.creator.header}
         </Text>
         <Text style={styles.followTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.profile.creator.title}
+          {t.profile.creator.title}
         </Text>
         <Text style={styles.followBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.profile.creator.subtitle}
+          {t.profile.creator.subtitle}
         </Text>
         <View style={styles.links}>
           {creatorLinks.map(({ key, label, url, Icon }) => (

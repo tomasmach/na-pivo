@@ -20,7 +20,7 @@ import Animated, {
 import { Colors } from '@/theme/colors';
 
 import { Radius } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { usePubStore } from '@/stores/pubStore';
@@ -63,31 +63,31 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// Continuous scaling instead of hard-coded buckets: `t` is 1 on every normal
+// Continuous scaling instead of hard-coded buckets: `scale` is 1 on every normal
 // phone (full design, matching the original screens) and shrinks smoothly only
 // when the viewport is genuinely short — e.g. an iPhone-compatibility window on
 // iPad. The ScrollView below guarantees the back button stays reachable even if
 // the content can't fully fit.
 function getCelebrationLayout(width: number, height: number, topInset: number, bottomInset: number): CelebrationLayout {
   const usableHeight = height - topInset - bottomInset;
-  const t = clamp(usableHeight / 740, 0.66, 1);
+  const scale = clamp(usableHeight / 740, 0.66, 1);
 
   return {
-    buttonHeight: Math.round(clamp(64 * t, 48, 64)),
-    cardPaddingHorizontal: Math.round(22 * t),
-    cardPaddingVertical: Math.round(18 * t),
+    buttonHeight: Math.round(clamp(64 * scale, 48, 64)),
+    cardPaddingHorizontal: Math.round(22 * scale),
+    cardPaddingVertical: Math.round(18 * scale),
     contentWidth: Math.min(width - 48, 342),
-    foamBottom: Math.round(108 * t),
-    foamHeight: Math.round(236 * t),
-    headlineFontSize: Math.round(84 * t),
-    headlineLineHeight: Math.round(110 * t),
-    iconSize: Math.round(96 * t),
-    justifyContent: t < 0.85 ? 'flex-start' : 'center',
-    paddingBottom: bottomInset + Math.round(24 * t),
-    paddingTop: topInset + Math.round(170 * t),
-    pubNameFontSize: Math.round(30 * t),
-    subtitleMarginBottom: Math.round(24 * t),
-    subtitlePaddingTop: Math.round(14 * t),
+    foamBottom: Math.round(108 * scale),
+    foamHeight: Math.round(236 * scale),
+    headlineFontSize: Math.round(84 * scale),
+    headlineLineHeight: Math.round(110 * scale),
+    iconSize: Math.round(96 * scale),
+    justifyContent: scale < 0.85 ? 'flex-start' : 'center',
+    paddingBottom: bottomInset + Math.round(24 * scale),
+    paddingTop: topInset + Math.round(170 * scale),
+    pubNameFontSize: Math.round(30 * scale),
+    subtitleMarginBottom: Math.round(24 * scale),
+    subtitlePaddingTop: Math.round(14 * scale),
   };
 }
 
@@ -133,13 +133,13 @@ export default function CelebrationScreen() {
     opacity: contentOpacity.value,
   }));
 
-  const pubName = revealedPub?.name ?? 'Hospoda';
+  const pubName = revealedPub?.name ?? t.celebration.pubFallback;
   const layout = getCelebrationLayout(screenWidth, screenHeight, insets.top, insets.bottom);
 
   // Drop anchors: emerge from the bottom tip of each foam tongue.
-  const dropAnchors = buildFoamTongues(screenWidth, layout.foamBottom).map((t) => ({
-    x: t.centerX,
-    y: t.bottomY - 4,
+  const dropAnchors = buildFoamTongues(screenWidth, layout.foamBottom).map((tongue) => ({
+    x: tongue.centerX,
+    y: tongue.bottomY - 4,
   }));
 
   return (
@@ -205,7 +205,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {cs.celebration.headlineLine1}
+            {t.celebration.headlineLine1}
           </Text>
           <Text
             style={[
@@ -216,7 +216,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {cs.celebration.headlineLine2}
+            {t.celebration.headlineLine2}
           </Text>
         </Animated.View>
 
@@ -231,7 +231,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {cs.celebration.subtitle}
+            {t.celebration.subtitle}
           </Text>
         </Animated.View>
 
@@ -247,7 +247,7 @@ export default function CelebrationScreen() {
             },
           ]}
         >
-          <Text style={styles.pubCardEyebrow}>{cs.celebration.eyebrow}</Text>
+          <Text style={styles.pubCardEyebrow}>{t.celebration.eyebrow}</Text>
           <Text
             style={[
               styles.pubCardName,
@@ -267,10 +267,10 @@ export default function CelebrationScreen() {
               style={styles.mapsRow}
               onPress={() => openPubInMaps(revealedPub)}
               accessibilityRole="link"
-              accessibilityLabel={cs.celebration.openInMaps}
+              accessibilityLabel={t.celebration.openInMaps}
             >
               <MapPinIcon size={14} color={Colors.neon} />
-              <Text style={styles.mapsLabel}>{cs.celebration.openInMaps}</Text>
+              <Text style={styles.mapsLabel}>{t.celebration.openInMaps}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -278,7 +278,7 @@ export default function CelebrationScreen() {
         {/* Back to compass button */}
         <Animated.View style={[styles.buttonWrap, { width: layout.contentWidth }, contentAnimStyle]}>
           <GlowButton
-            label={cs.celebration.backToCompass}
+            label={t.celebration.backToCompass}
             onPress={() => leaveRoute(router)}
             variant="primary"
             glow="strong"

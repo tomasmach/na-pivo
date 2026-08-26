@@ -43,7 +43,7 @@ import {
 import type { FriendPubActivity } from '@/data/friendsClient';
 import { endFriendActivityDurably } from '@/data/friendsQueue';
 import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -125,7 +125,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
         if (!mountedRef.current) return;
         if (result.state === 'delivered' || result.state === 'queued') {
           showToast(
-            result.state === 'delivered' ? cs.friends.endedToast : cs.friends.endQueued,
+            result.state === 'delivered' ? t.friends.endedToast : t.friends.endQueued,
             { icon: <Undo2Icon size={20} color={Colors.amber} /> },
           );
           onEnded();
@@ -133,26 +133,26 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
         }
         setEnding(false);
         showToast(
-          result.state === 'storage-error' ? cs.friends.queueSaveError : result.error.detail,
+          result.state === 'storage-error' ? t.friends.queueSaveError : result.error.detail,
         );
       })
       .catch((error) => {
         if (!mountedRef.current) return;
         setEnding(false);
         if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(cs.friends.queueSaveError);
+          showToast(t.friends.queueSaveError);
         }
       });
   }, [activity.id, onEnded, showToast]);
 
   const handleEndPress = useCallback(() => {
     showAppDialog({
-      title: cs.friends.endActivityConfirmTitle,
-      message: cs.friends.endActivityConfirmBody,
+      title: t.friends.endActivityConfirmTitle,
+      message: t.friends.endActivityConfirmBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.friends.endActivityConfirmConfirm,
+          text: t.friends.endActivityConfirmConfirm,
           style: 'destructive',
           onPress: confirmEnd,
         },
@@ -188,7 +188,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {cs.friends.myActiveTitle}
+              {t.friends.myActiveTitle}
             </Text>
           </View>
 
@@ -255,7 +255,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.friends.cheersCount(activity.reactions.cheers)}
+            {t.friends.cheersCount(activity.reactions.cheers)}
           </Text>
         ) : null}
 
@@ -264,7 +264,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
             onPress={handleEndPress}
             hitSlop={PILL_HIT_SLOP}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.endActivityA11y}
+            accessibilityLabel={t.friends.endActivityA11y}
             style={({ pressed }) => [styles.endPill, pressed && styles.endPillPressed]}
           >
             <XIcon size={16} color={Colors.foamMuted} />
@@ -273,7 +273,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {cs.friends.endActivity}
+              {t.friends.endActivity}
             </Text>
           </Pressable>
         </View>

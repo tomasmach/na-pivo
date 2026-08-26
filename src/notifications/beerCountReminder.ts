@@ -11,6 +11,7 @@ import {
 } from '@/data/privateAccountBoundary';
 import type { ExplicitEntryReservation } from '@/data/inviteNavigation';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { t } from '@/i18n';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import {
@@ -149,7 +150,7 @@ async function setAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android' || !Notifications) return;
   try {
     await Notifications.setNotificationChannelAsync(BEER_COUNT_REMINDER_CHANNEL_ID, {
-      name: 'Připomínky počítadla',
+      name: t.notifications.beerCountChannel,
       importance: Notifications.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 180],
       lightColor: '#f6c45c',
@@ -269,8 +270,8 @@ async function scheduleInternal(
   try {
     notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Mrkni na svůj deníček',
-        body: 'Sedí dnešní zápis?',
+        title: t.notifications.beerCountTitle,
+        body: t.notifications.beerCountBody,
         data: {
           kind: BEER_COUNT_REMINDER_KIND,
           sessionId,

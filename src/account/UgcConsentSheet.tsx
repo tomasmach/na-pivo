@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -49,9 +49,9 @@ export function UgcConsentSheet({
 
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.ugcConsent.title}
+              {t.ugcConsent.title}
             </Text>
-            <CloseButton onPress={onLater} label={cs.ugcConsent.later} disabled={busy} />
+            <CloseButton onPress={onLater} label={t.ugcConsent.later} disabled={busy} />
           </View>
 
           <ScrollView
@@ -59,7 +59,7 @@ export function UgcConsentSheet({
             contentContainerStyle={styles.bodyContent}
             showsVerticalScrollIndicator={false}
           >
-            {cs.ugcConsent.lines.map((line) => (
+            {t.ugcConsent.lines.map((line) => (
               <Text key={line} style={styles.line} maxFontSizeMultiplier={FontScaleCap.body}>
                 {line}
               </Text>
@@ -71,7 +71,7 @@ export function UgcConsentSheet({
               onPress={() => void Linking.openURL(TERMS_URL)}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {cs.ugcConsent.termsLink}
+              {t.ugcConsent.termsLink}
             </Text>
           </ScrollView>
 
@@ -80,7 +80,7 @@ export function UgcConsentSheet({
               onPress={onAccept}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel={cs.ugcConsent.accept}
+              accessibilityLabel={t.ugcConsent.accept}
               accessibilityState={{ disabled: busy }}
               style={({ pressed }) => [
                 styles.primary,
@@ -89,7 +89,7 @@ export function UgcConsentSheet({
               ]}
             >
               <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {busy ? cs.ugcConsent.acceptBusy : cs.ugcConsent.accept}
+                {busy ? t.ugcConsent.acceptBusy : t.ugcConsent.accept}
               </Text>
             </Pressable>
 
@@ -97,12 +97,12 @@ export function UgcConsentSheet({
               onPress={onLater}
               disabled={busy}
               accessibilityRole="button"
-              accessibilityLabel={cs.ugcConsent.later}
+              accessibilityLabel={t.ugcConsent.later}
               accessibilityState={{ disabled: busy }}
               style={({ pressed }) => [styles.secondary, pressed && styles.secondaryPressed]}
             >
               <Text style={styles.secondaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.ugcConsent.later}
+                {t.ugcConsent.later}
               </Text>
             </Pressable>
           </View>

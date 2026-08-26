@@ -1,5 +1,5 @@
 import type { PublishedNight } from '@/data/nightsClient';
-import { shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+import { intlLocale, shotCountLabel, softDrinkCountLabel, t, wineCountLabel } from '@/i18n';
 
 const ROUTE_VISIBLE_NAME_BUDGET = 34;
 
@@ -19,12 +19,12 @@ export interface FeedNightRoute {
 /** Prefer a handle in social UI, then the display name, then a neutral fallback. */
 export function feedAuthorLabel(night: PublishedNight): string {
   if (night.author.nickname) return `@${night.author.nickname}`;
-  return night.author.displayName || 'Pivař';
+  return night.author.displayName || t.vycep.anonymousAuthor;
 }
 
 /** The published-night API has no user-authored title. Lead with a real pub when present. */
 export function feedNightTitle(night: PublishedNight): string {
-  return night.pubNames[0]?.trim() || 'Pivní večer';
+  return night.pubNames[0]?.trim() || t.feed.nightTitleFallback;
 }
 
 export function feedNightRoute(night: PublishedNight): FeedNightRoute | null {
@@ -70,9 +70,9 @@ export function feedDuration(minutes: number | null): string | null {
 
 /** Only facts carried by PublishedNight are eligible for the card. */
 export function feedFacts(night: PublishedNight): FeedFact[] {
-  const facts: FeedFact[] = [{ label: 'Piva', value: String(night.beerCount) }];
+  const facts: FeedFact[] = [{ label: t.feed.factBeers, value: String(night.beerCount) }];
   const duration = feedDuration(night.durationMinutes);
-  if (duration) facts.push({ label: 'Večer', value: duration });
+  if (duration) facts.push({ label: t.feed.factNight, value: duration });
   return facts;
 }
 
@@ -100,6 +100,15 @@ function dateFromKey(key: string): Date | null {
   return Number.isNaN(value.getTime()) ? null : value;
 }
 
+/** A day without a year ("12. 7." / "12 Jul"), or with one when it is not this year. */
+function shortDate(date: Date, withYear: boolean): string {
+  return new Intl.DateTimeFormat(intlLocale, {
+    day: 'numeric',
+    month: 'numeric',
+    ...(withYear ? { year: 'numeric' } : {}),
+  }).format(date);
+}
+
 /** Humanised from server timestamps/day only; no guessed live state. */
 export function feedWhen(night: PublishedNight, now: Date = new Date()): string {
   const instantRaw = night.endedAt || night.startedAt || night.createdAt;
@@ -108,24 +117,28 @@ export function feedWhen(night: PublishedNight, now: Date = new Date()): string 
   const today = dateFromKey(dateKey(now));
 
   let dayLabel = '';
+  // Only "today" and "yesterday" get a clock time hung off them, so the branch
+  // is tracked as a flag instead of comparing the rendered word.
+  let relativeDay = false;
   if (drinkingDate && today) {
     const days = Math.round((today.getTime() - drinkingDate.getTime()) / 86_400_000);
-    if (days <= 0) dayLabel = 'dnes';
-    else if (days === 1) dayLabel = 'včera';
-    else {
-      dayLabel =
-        drinkingDate.getFullYear() === today.getFullYear()
-          ? `${drinkingDate.getDate()}. ${drinkingDate.getMonth() + 1}.`
-          : `${drinkingDate.getDate()}. ${drinkingDate.getMonth() + 1}. ${drinkingDate.getFullYear()}`;
+    if (days <= 0) {
+      dayLabel = t.relativeTime.todayShort;
+      relativeDay = true;
+    } else if (days === 1) {
+      dayLabel = t.relativeTime.yesterday;
+      relativeDay = true;
+    } else {
+      dayLabel = shortDate(drinkingDate, drinkingDate.getFullYear() !== today.getFullYear());
     }
   }
 
-  if (!instant || Number.isNaN(instant.getTime())) return dayLabel || 'Publikováno';
-  if (dayLabel === 'dnes' || dayLabel === 'včera') {
+  if (!instant || Number.isNaN(instant.getTime())) return dayLabel || t.feed.published;
+  if (relativeDay) {
     const time = `${String(instant.getHours()).padStart(2, '0')}:${String(instant.getMinutes()).padStart(2, '0')}`;
     return `${dayLabel} ${time}`;
   }
-  return dayLabel || `${instant.getDate()}. ${instant.getMonth() + 1}.`;
+  return dayLabel || shortDate(instant, false);
 }
 
 /** Append a page without duplicating a night already present. */

@@ -9,7 +9,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -270,7 +270,7 @@ export function AppDialogHost() {
 function normalizeDialog(options: AppDialogOptions): AppDialogOptions {
   return {
     ...options,
-    buttons: options.buttons && options.buttons.length > 0 ? options.buttons : [{ text: cs.common.ok }],
+    buttons: options.buttons && options.buttons.length > 0 ? options.buttons : [{ text: t.common.ok }],
     cancelable: options.cancelable ?? true,
   };
 }

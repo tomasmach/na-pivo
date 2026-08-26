@@ -24,7 +24,7 @@ import { CheckIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { GameCover } from '@/party/GameCover';
 import { GAMES_COMING_SOON, GAME_CATALOG } from '@/party/gameCatalog';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -54,14 +54,14 @@ export function GamesSheet({
           <View style={styles.header}>
             <View style={styles.grow}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Hry
+                {t.party.gamesTitle}
               </Text>
             </View>
             <CloseButton onPress={onClose} />
           </View>
           {GAMES_COMING_SOON ? (
             <Text style={styles.soon} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.party.gamesComingSoon}
+              {t.party.gamesComingSoon}
             </Text>
           ) : null}
 
@@ -83,7 +83,7 @@ export function GamesSheet({
                   accessibilityState={{ selected: added, disabled: added || locked }}
                   accessibilityLabel={
                     locked
-                      ? `${game.name}. ${cs.party.gamesComingSoon}`
+                      ? `${game.name}. ${t.party.gamesComingSoon}`
                       : `${game.name}. ${game.how}`
                   }
                 >
@@ -93,13 +93,15 @@ export function GamesSheet({
                       <View style={styles.lock}>
                         <LockKeyholeIcon size={16} color={Colors.foam} />
                         <Text style={styles.lockText} allowFontScaling={false}>
-                          {cs.party.gamesSoonBadge}
+                          {t.party.gamesSoonBadge}
                         </Text>
                       </View>
                     ) : (
                       <View style={[styles.badge, game.scoring === 'points' && styles.badgePoints]}>
                         <Text style={styles.badgeText} allowFontScaling={false}>
-                          {game.scoring === 'points' ? 'Na body' : 'Bez bodů'}
+                          {game.scoring === 'points'
+                            ? t.party.scoringPoints
+                            : t.party.scoringNoPoints}
                         </Text>
                       </View>
                     )}

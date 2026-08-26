@@ -22,7 +22,7 @@ import React from 'react';
 
 import { GlassWaterIcon } from '@/components/shared/IconGlyph';
 import { contextPubKey } from '@/drinks/drinkTypes';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useLivePartyStore, type PartyPubVisit } from '@/mocks/livePartyStore';
 import {
   logPartyBeer,
@@ -59,7 +59,7 @@ function maybeNudgeWater(drinkType: DrinkType, backdated: boolean): void {
   const key = `${session?.clientId ?? ''}:${count}`;
   if (lastWaterNudgeKey === key) return;
   lastWaterNudgeKey = key;
-  useToastStore.getState().show(cs.counter.waterNudge(count), {
+  useToastStore.getState().show(t.counter.waterNudge(count), {
     icon: React.createElement(GlassWaterIcon, { size: 20, color: Colors.amber }),
   });
 }

@@ -28,17 +28,23 @@ describe("alcohol leaderboard safety", () => {
     );
     const squashed = communitySource.replace(/\s+/g, " ");
 
+    // The metric is a stable key now, and its label comes from i18n, so the
+    // guarantee to check is that no beer-volume board can be selected at all.
     const metricsMatch = squashed.match(/const\s+METRICS[^=]*=\s*\[[\s\S]*?\]\s*(?:as\s+const)?;?/);
     expect(metricsMatch).toBeTruthy();
     const metrics = metricsMatch![0];
-    expect(metrics).toContain("Hospody");
-    expect(metrics).toContain("Mapér XP");
-    expect(metrics).not.toContain("Piva");
+    expect(metrics).toContain("'pubs'");
+    expect(metrics).toContain("'mapper'");
     expect(metrics).not.toContain("beers");
 
-    expect(squashed).toMatch(/useState<Metric>\(\s*["']Hospody["']/);
+    expect(squashed).toMatch(/useState<Metric>\(\s*["']pubs["']/);
 
-    expect(squashed).toMatch(/\bHospody\s*:\s*["']pubs["']/);
-    expect(squashed).toMatch(/["']Mapér XP["']\s*:\s*["']mapper["']/);
+    // Labels stay on pubs and Mapér XP, never on litres drunk.
+    expect(squashed).toMatch(/pubs\s*:\s*t\.community\.metricPubs/);
+    expect(squashed).toMatch(/mapper\s*:\s*t\.community\.metricMapper/);
+
+    const categoryMatch = squashed.match(/const\s+CATEGORY[^=]*=\s*\{[\s\S]*?\};/);
+    expect(categoryMatch).toBeTruthy();
+    expect(categoryMatch![0]).not.toContain("beers");
   });
 });

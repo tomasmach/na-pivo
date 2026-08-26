@@ -23,7 +23,8 @@
 
 import { MAX_PUB_NAMES } from '@/vycep/nightModel';
 import { isContextPubKey } from '@/drinks/drinkTypes';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
+import { OUTSIDE_PUB_NAME } from '@/party/nightBuilder';
 import { drinkingDayKey } from '@/stores/tallyStore';
 import { nightMinutes, nightTally, type NightRecord } from '@/party/nightRecord';
 import type { NightPublishPayload, NightVisibility } from '@/data/nightsClient';
@@ -69,13 +70,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export function defaultNightTitle(
   stop: { pubName: string; cacheKey?: string | null } | undefined,
 ): string {
-  if (!stop) return cs.party.nightTitleFallback;
+  if (!stop) return t.party.nightTitleFallback;
   const outside =
     (stop.cacheKey != null && isContextPubKey(stop.cacheKey)) ||
-    stop.pubName.trim().toLocaleLowerCase('cs-CZ') === 'mimo hospodu';
-  if (outside) return cs.party.nightTitleOutsidePub;
+    // Matched against the stored Czech sentinel, never against UI copy.
+    stop.pubName.trim().toLowerCase() === OUTSIDE_PUB_NAME.toLowerCase();
+  if (outside) return t.party.nightTitleOutsidePub;
   const pubName = stop.pubName.trim();
-  return pubName ? cs.party.nightTitleAtPub(pubName) : cs.party.nightTitleFallback;
+  return pubName ? t.party.nightTitleAtPub(pubName) : t.party.nightTitleFallback;
 }
 
 export function nightPublishPayload(

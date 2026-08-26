@@ -6,6 +6,7 @@ import io
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.utils.translation import gettext
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
@@ -28,7 +29,7 @@ def process_feedback_attachment(uploaded_file) -> ContentFile:
     size = getattr(uploaded_file, "size", None)
     if size is not None and size > max_bytes:
         raise FeedbackAttachmentError(
-            "Příloha je příliš velká.", code="attachment_too_large"
+            gettext("Příloha je příliš velká."), code="attachment_too_large"
         )
 
     try:
@@ -38,11 +39,11 @@ def process_feedback_attachment(uploaded_file) -> ContentFile:
     raw = uploaded_file.read(max_bytes + 1)
     if len(raw) > max_bytes:
         raise FeedbackAttachmentError(
-            "Příloha je příliš velká.", code="attachment_too_large"
+            gettext("Příloha je příliš velká."), code="attachment_too_large"
         )
     if not raw:
         raise FeedbackAttachmentError(
-            "Přílohu se nepodařilo načíst.", code="attachment_invalid"
+            gettext("Přílohu se nepodařilo načíst."), code="attachment_invalid"
         )
 
     previous_limit = Image.MAX_IMAGE_PIXELS
@@ -63,7 +64,7 @@ def process_feedback_attachment(uploaded_file) -> ContentFile:
                 )
         except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
             raise FeedbackAttachmentError(
-                "Přílohu se nepodařilo načíst.", code="attachment_invalid"
+                gettext("Přílohu se nepodařilo načíst."), code="attachment_invalid"
             ) from exc
     finally:
         Image.MAX_IMAGE_PIXELS = previous_limit

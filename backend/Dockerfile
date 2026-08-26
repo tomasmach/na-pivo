@@ -14,6 +14,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# --- System packages --------------------------------------------------------
+# gettext gives us msgfmt, which compilemessages needs to turn the checked-in
+# .po files into the .mo files Django actually reads at runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gettext \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Dependency layer (cached unless lock / pyproject change) --------------
 # Resolve third-party deps first so editing source doesn't bust this layer.
 # --extra prod pulls gunicorn + the ASGI worker; --no-dev drops pytest/ruff.
@@ -25,6 +32,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra prod
+
+# Translations are shipped as .po sources; compile them into the image so the
+# running container never has to (and .mo files stay out of git).
+RUN python manage.py compilemessages --ignore=.venv
 
 RUN chmod +x docker-entrypoint.sh
 

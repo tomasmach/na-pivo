@@ -21,6 +21,8 @@ import {
   type GameHostHandle,
 } from "@/games/GameHost";
 import { GameResult, type GameOutcome } from "@/games/GameResult";
+import { t } from "@/i18n";
+import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
   STAGE_FILL,
@@ -267,7 +269,7 @@ export function PickShell({
           pointerEvents="none"
         >
           <StageStatus
-            name={pickedPlayer.name}
+            name={displayPersonName(pickedPlayer.name)}
             tint={pickedPlayer.tint}
             text={verdictText}
           />
@@ -276,11 +278,11 @@ export function PickShell({
 
       <View style={styles.dock}>
         <StagePill
-          label={spinning ? "…" : pickedPlayer ? "Znovu" : action}
+          label={spinning ? "…" : pickedPlayer ? t.gameShell.again : action}
           onPress={spin}
           disabled={spectator || spinning}
           tone={spectator ? "muted" : "primary"}
-          accessibilityLabel={pickedPlayer ? `${action} znovu` : action}
+          accessibilityLabel={pickedPlayer ? t.gameShell.againAction(action) : action}
         />
       </View>
     </View>

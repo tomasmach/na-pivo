@@ -25,7 +25,7 @@ import {
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ScalePressable } from '@/photos/ScalePressable';
@@ -60,7 +60,7 @@ function SyncChip({ state }: { state: 'pending' | 'failed' }) {
         style={[styles.syncChipText, !pending && styles.syncChipTextFailed]}
         allowFontScaling={false}
       >
-        {pending ? cs.photoDiary.syncPendingShort : cs.photoDiary.syncFailedShort}
+        {pending ? t.photoDiary.syncPendingShort : t.photoDiary.syncFailedShort}
       </Text>
     </View>
   );
@@ -81,7 +81,7 @@ function PhotoTile({
       onPress={onPress}
       style={[styles.tile, lead ? styles.tileLead : styles.tileSmall]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.photoTile(tileLabel(photo))}
+      accessibilityLabel={t.a11y.photoTile(tileLabel(photo))}
     >
       {uri ? (
         <Image
@@ -104,13 +104,13 @@ function AddTile({ onPress, lead }: { onPress: () => void; lead: boolean }) {
       onPress={onPress}
       style={[styles.addTile, lead ? styles.tileLead : styles.tileSmall]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.photoAddTile}
+      accessibilityLabel={t.a11y.photoAddTile}
     >
       <View style={styles.addIconWell}>
         <CameraIcon size={22} color={Colors.amber} />
       </View>
       <Text style={styles.addLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.photoDiary.addPhoto}
+        {t.photoDiary.addPhoto}
       </Text>
     </ScalePressable>
   );
@@ -157,7 +157,7 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
       {profile ? (
         <View style={styles.profileHeaderRow}>
           <Text style={styles.profileTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.photoDiary.title}
+            {t.photoDiary.title}
           </Text>
           {/* "Zobrazit vše" — the Odznaky idiom, so the same-looking link means
               the same thing: more of what is above it. FotoPivař keeps its own
@@ -170,10 +170,10 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
             style={({ pressed }) => [styles.profileLink, pressed && styles.pressed]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.photoAlbumLink}
+            accessibilityLabel={t.a11y.photoAlbumLink}
           >
             <Text style={styles.profileLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoDiary.viewAll}
+              {t.photoDiary.viewAll}
             </Text>
             <ChevronRightIcon size={16} color={Colors.amber} />
           </Pressable>
@@ -181,9 +181,9 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
       ) : (
       <View style={styles.headerRow}>
         <Text style={styles.sectionHeader}>
-          {cs.photoDiary.header}
+          {t.photoDiary.header}
           {photos.length > 0 ? (
-            <Text style={styles.sectionCount}>{`  ·  ${cs.photoDiary.photoCount(photos.length)}`}</Text>
+            <Text style={styles.sectionCount}>{`  ·  ${t.photoDiary.photoCount(photos.length)}`}</Text>
           ) : null}
         </Text>
         <Pressable
@@ -191,11 +191,11 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
           style={({ pressed }) => [styles.contestLink, pressed && styles.pressed]}
           hitSlop={6}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.photoContestLink}
+          accessibilityLabel={t.a11y.photoContestLink}
         >
           <TrophyIcon size={14} color={Colors.amber} />
           <Text style={styles.contestLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.photoDiary.contestLink}
+            {t.photoDiary.contestLink}
           </Text>
           <ChevronRightIcon size={14} color={Colors.amber} />
         </Pressable>
@@ -206,19 +206,19 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
         /* Flat empty state: one sentence, one quiet action (§20.12, §6.2). */
         <View style={styles.profileEmpty}>
           <Text style={styles.profileEmptyLine} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.photoDiary.emptyProfile}
+            {t.photoDiary.emptyProfile}
           </Text>
           <Pressable
             onPress={openCapture}
             style={({ pressed }) => [styles.profileEmptyAction, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.photoAddTile}
+            accessibilityLabel={t.a11y.photoAddTile}
           >
             <Text
               style={styles.profileEmptyActionText}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {cs.photoDiary.addPhoto}
+              {t.photoDiary.addPhoto}
             </Text>
           </Pressable>
         </View>
@@ -229,19 +229,19 @@ export function PhotoDiarySection({ variant = 'full' }: { variant?: PhotoDiaryVa
             <CameraIcon size={24} color={Colors.amber} />
           </View>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.photoDiary.emptyTitle}
+            {t.photoDiary.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.photoDiary.empty}
+            {t.photoDiary.empty}
           </Text>
           <View style={styles.emptyCta}>
             <GlowButton
-              label={cs.photoDiary.addPhoto}
+              label={t.photoDiary.addPhoto}
               onPress={openCapture}
               glow="soft"
               height={52}
               icon={<CameraIcon size={18} color={Colors.stout} />}
-              accessibilityLabel={cs.a11y.photoAddTile}
+              accessibilityLabel={t.a11y.photoAddTile}
             />
           </View>
         </View>

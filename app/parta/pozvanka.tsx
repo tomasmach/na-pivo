@@ -28,7 +28,7 @@ import {
 } from '@/data/friendInviteLink';
 import { resolveInviteCode, type FriendProfile } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors } from '@/theme/colors';
@@ -44,9 +44,9 @@ type InviteResolution = {
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return t.map.friendFallback;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || t.map.friendFallback;
 }
 
 export default function InviteClaimScreen() {
@@ -139,7 +139,7 @@ function InviteClaimScreenContent({ code }: { code: string }) {
         await clearPendingInviteCode();
         if (!mountedRef.current) return;
         showToast(
-          isInviteClaimAccepted(result) ? cs.friends.requestAcceptedToast : cs.friends.claimDone,
+          isInviteClaimAccepted(result) ? t.friends.requestAcceptedToast : t.friends.claimDone,
           { icon: <UsersIcon size={20} color={Colors.amber} /> },
         );
         goAfterClaim(inviteClaimRoute(result));
@@ -150,18 +150,18 @@ function InviteClaimScreenContent({ code }: { code: string }) {
       setClaiming(false);
       // Surface the backend's reason; fall back to a generic invalid message.
       const message =
-        result.code === 'invite_expired' ? cs.friends.claimExpired : result.detail || cs.friends.claimInvalid;
+        result.code === 'invite_expired' ? t.friends.claimExpired : result.detail || t.friends.claimInvalid;
       showToast(message);
     });
   }, [code, goAfterClaim, showToast, state]);
 
   const errorMessage =
     state === 'expired'
-      ? cs.friends.claimExpired
+      ? t.friends.claimExpired
       : state === 'invalid'
-        ? cs.friends.claimInvalid
+        ? t.friends.claimInvalid
         : state === 'self'
-          ? cs.friends.claimSelf
+          ? t.friends.claimSelf
           : null;
 
   return (
@@ -172,7 +172,7 @@ function InviteClaimScreenContent({ code }: { code: string }) {
           disabled={claiming}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.claimBack}
+          accessibilityLabel={t.friends.claimBack}
           accessibilityState={{ disabled: claiming }}
           style={({ pressed }) => [styles.backBtn, pressed && styles.dim]}
         >
@@ -183,7 +183,7 @@ function InviteClaimScreenContent({ code }: { code: string }) {
       <View style={styles.body}>
         {state === 'loading' ? (
           <Text style={styles.loadingText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.claimLoading}
+            {t.friends.claimLoading}
           </Text>
         ) : errorMessage ? (
           <View style={styles.centerBlock}>
@@ -193,7 +193,7 @@ function InviteClaimScreenContent({ code }: { code: string }) {
             </Text>
             <View style={styles.ctaWrap}>
               <GlowButton
-                label={cs.friends.claimBack}
+                label={t.friends.claimBack}
                 onPress={goBack}
                 variant="secondary"
                 glow="none"
@@ -210,14 +210,14 @@ function InviteClaimScreenContent({ code }: { code: string }) {
               size={88}
             />
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.claimTitle(nameOf(inviter))}
+              {t.friends.claimTitle(nameOf(inviter))}
             </Text>
             <Text style={styles.claimBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.claimBody}
+              {t.friends.claimBody}
             </Text>
             <View style={styles.ctaWrap}>
               <GlowButton
-                label={cs.friends.claimCta}
+                label={t.friends.claimCta}
                 onPress={handleClaim}
                 variant="primary"
                 glow="soft"

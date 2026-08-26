@@ -1,0 +1,7 @@
+<resources>
+  <string name="beer_live_activity_total_prefix">Total %1$s</string>
+  <string name="beer_live_activity_night_running">Night in progress</string>
+  <string name="beer_live_activity_add_beer_action">Log the same beer</string>
+  <string name="beer_live_activity_channel_name">Night at the pub</string>
+  <string name="beer_live_activity_channel_description">Live beer count during your night</string>
+</resources>

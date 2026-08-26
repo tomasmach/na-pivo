@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePubAmenityMapping } from '@/components/amenities/usePubAmenityMapping';
 import { TriangleAlertIcon } from '@/components/shared/IconGlyph';
 import type { AmenityRow } from '@/data/pubAmenitiesView';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import type { AmenityVote } from '@/stores/pubAmenitiesStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -13,13 +13,13 @@ import { Radius, Spacing } from '@/theme/layout';
 
 function confidenceText(row: AmenityRow, resolved: boolean): string | null {
   if (resolved && row.yesCount === 0 && row.noCount === 0 && row.myValue != null) {
-    return cs.mapPub.confFirst;
+    return t.mapPub.confFirst;
   }
   if (row.signalState !== 'known') return null;
-  if (row.status === 'disputed') return cs.mapPub.confDisputed;
+  if (row.status === 'disputed') return t.mapPub.confDisputed;
   const isNo = row.status === 'no' || (row.status === 'unknown' && row.noCount > row.yesCount);
   const count = isNo ? row.noCount : row.yesCount;
-  return isNo ? cs.mapPub.confNo(count) : cs.mapPub.confHas(count);
+  return isNo ? t.mapPub.confNo(count) : t.mapPub.confHas(count);
 }
 
 function VoteButton({
@@ -32,7 +32,7 @@ function VoteButton({
   onVote: (row: AmenityRow, value: AmenityVote) => void;
 }) {
   const active = row.myValue === value;
-  const label = value === 'yes' ? cs.mapPub.yes : cs.mapPub.no;
+  const label = value === 'yes' ? t.mapPub.yes : t.mapPub.no;
   return (
     <Pressable
       onPress={() => onVote(row, value)}
@@ -45,9 +45,9 @@ function VoteButton({
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={
-        value === 'yes' ? cs.mapPub.yesA11y(row.label) : cs.mapPub.noA11y(row.label)
+        value === 'yes' ? t.mapPub.yesA11y(row.label) : t.mapPub.noA11y(row.label)
       }
-      accessibilityHint={active ? cs.mapPub.clearHint : undefined}
+      accessibilityHint={active ? t.mapPub.clearHint : undefined}
     >
       <Text style={[styles.voteText, active && styles.voteTextActive]} allowFontScaling={false}>
         {label}
@@ -73,7 +73,7 @@ export function PubAmenitySection({
 
   return (
     <View>
-      <SectionBreak title={cs.pubDetail.amenitiesTitle} />
+      <SectionBreak title={t.pubDetail.amenitiesTitle} />
       {rows.map((row, index) => {
         const confidence = confidenceText(row, aggregatesResolved);
         return (

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -46,9 +46,9 @@ export function WhatsNewModal() {
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {note?.title ?? cs.whatsNew.defaultTitle}
+              {note?.title ?? t.whatsNew.defaultTitle}
             </Text>
-            <CloseButton onPress={close} label={cs.a11y.counterCloseModal} />
+            <CloseButton onPress={close} label={t.a11y.counterCloseModal} />
           </View>
 
           <ScrollView
@@ -70,11 +70,11 @@ export function WhatsNewModal() {
             <Pressable
               onPress={close}
               accessibilityRole="button"
-              accessibilityLabel={cs.whatsNew.cta}
+              accessibilityLabel={t.whatsNew.cta}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryPressed]}
             >
               <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
-                {cs.whatsNew.cta}
+                {t.whatsNew.cta}
               </Text>
             </Pressable>
           </View>

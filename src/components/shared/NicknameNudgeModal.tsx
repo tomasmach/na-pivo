@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { NicknameField } from '@/profile/NicknameField';
 import {
   getSeenNicknameNudgeVersion,
@@ -96,10 +96,10 @@ export function NicknameNudgeModal() {
       if (result.ok) {
         void markNicknameNudgeSeen(version);
         setEligible(false);
-        showToast(cs.nicknameNudge.savedToast);
+        showToast(t.nicknameNudge.savedToast);
         return;
       }
-      setError(result.detail || cs.account.errorGeneric);
+      setError(result.detail || t.account.errorGeneric);
     } finally {
       setBusy(false);
     }
@@ -117,9 +117,9 @@ export function NicknameNudgeModal() {
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.nicknameNudge.title}
+              {t.nicknameNudge.title}
             </Text>
-            <CloseButton onPress={dismiss} label={cs.nicknameNudge.skip} disabled={busy} />
+            <CloseButton onPress={dismiss} label={t.nicknameNudge.skip} disabled={busy} />
           </View>
 
           <ScrollView
@@ -149,7 +149,7 @@ export function NicknameNudgeModal() {
               onPress={() => void handleSave()}
               disabled={!ready || busy}
               accessibilityRole="button"
-              accessibilityLabel={cs.nicknameNudge.cta}
+              accessibilityLabel={t.nicknameNudge.cta}
               style={({ pressed }) => [
                 styles.primaryButton,
                 (!ready || busy) && styles.primaryDisabled,
@@ -157,7 +157,7 @@ export function NicknameNudgeModal() {
               ]}
             >
               <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
-                {busy ? cs.nicknameNudge.ctaBusy : cs.nicknameNudge.cta}
+                {busy ? t.nicknameNudge.ctaBusy : t.nicknameNudge.cta}
               </Text>
             </Pressable>
           </View>

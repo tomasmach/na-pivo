@@ -1,3 +1,5 @@
+import { intlLocale } from '@/i18n';
+
 import AsyncStorage from '@/data/privateAccountStorage';
 import {
   guardPrivateAccountStateCreator,
@@ -61,7 +63,7 @@ export const usePartyGroupsStore = create<PartyGroupsState>()(
         set((state) => {
           const withoutCurrent = state.groups.filter((group) => group.id !== nextId);
           const existingByName = withoutCurrent.find(
-            (group) => group.name.toLocaleLowerCase('cs-CZ') === name.toLocaleLowerCase('cs-CZ'),
+            (group) => group.name.toLocaleLowerCase(intlLocale) === name.toLocaleLowerCase(intlLocale),
           );
           const finalId = existingByName?.id ?? nextId;
           const groups = [
@@ -71,7 +73,7 @@ export const usePartyGroupsStore = create<PartyGroupsState>()(
           return { groups };
         });
         return get().groups.find(
-          (group) => group.name.toLocaleLowerCase('cs-CZ') === name.toLocaleLowerCase('cs-CZ'),
+          (group) => group.name.toLocaleLowerCase(intlLocale) === name.toLocaleLowerCase(intlLocale),
         )?.id ?? nextId;
       },
 

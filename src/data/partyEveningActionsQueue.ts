@@ -1,5 +1,7 @@
 /** Durable end/leave actions so a cellar cannot trap a finished local night. */
 
+import { t } from '@/i18n';
+
 import {
   endPartyEvening,
   isRetriablePartyError,
@@ -137,7 +139,7 @@ export async function enqueuePartyEveningAction(
       error: {
         ok: false,
         code: 'storage',
-        detail: 'Večer se mi nepovedlo uložit k dokončení.',
+        detail: t.clientErrors.eveningSaveFailed,
       },
     };
   }

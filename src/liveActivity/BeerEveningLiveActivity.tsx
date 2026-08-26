@@ -45,6 +45,19 @@ export interface BeerEveningLiveActivityProps {
   latestBeerName: string;
   /** Localized wall-clock time such as "21:47" of the latest counted beer. */
   latestBeerAt: string;
+  /** The noun under the numeral, already declined for `beerCount`. */
+  beerWordLabel: string;
+  /** VoiceOver label for the bare number in the compact/minimal presentations. */
+  beerCountA11yLabel: string;
+  /** The running total as a whole line; empty when the total is unknown. */
+  totalPriceLabel: string;
+  /** The latest beer's name, or the fallback when it has none. */
+  latestBeerLabel: string;
+  /** When the latest beer was counted, or the line for an evening with none. */
+  latestTimeLabel: string;
+  addBeerLabel: string;
+  addBeerA11yLabel: string;
+  openCounterLabel: string;
   /** Exact metadata repeated by the native action; intentionally not rendered. */
   repeatBeerName: string;
   repeatBeerPriceCzk?: number;
@@ -90,19 +103,14 @@ const BeerEveningLiveActivity = (
         endPoint: { x: 0.5, y: 1 },
       };
 
-  const beerWord =
-    props.beerCount === 1
-      ? 'pivo'
-      : props.beerCount >= 2 && props.beerCount <= 4
-        ? 'piva'
-        : 'piv';
+  // Every word below arrives finished from `liveBeerActivityModel`: this
+  // runtime is isolated from the app, so it has no strings file and no locale.
   // Running total sits under the pub name; the latest beer with its wall-clock
   // time lives next to the button so the freshest info is closest to the action.
-  const priceLabel = props.totalPrice ? `Celkem ${props.totalPrice}` : '';
-  const latestBeerLabel = props.latestBeerName || 'Poslední pivo';
-  const latestTimeLabel = props.latestBeerAt
-    ? `naposled v ${props.latestBeerAt}`
-    : 'První pivo se teprve čepuje';
+  const beerWord = props.beerWordLabel;
+  const priceLabel = props.totalPriceLabel;
+  const latestBeerLabel = props.latestBeerLabel;
+  const latestTimeLabel = props.latestTimeLabel;
 
   return {
     banner: (
@@ -250,7 +258,7 @@ const BeerEveningLiveActivity = (
           <Spacer />
           {props.supportsInteractiveAdd === true ? (
             <Button
-              label="Zapsat stejné"
+              label={props.addBeerLabel}
               systemImage="plus"
               target="add-beer"
               modifiers={[
@@ -260,12 +268,12 @@ const BeerEveningLiveActivity = (
                 controlSize('regular'),
                 tint(accent),
                 foregroundStyle(buttonText),
-                accessibilityLabel('Zapsat stejné pivo'),
+                accessibilityLabel(props.addBeerA11yLabel),
               ]}
             />
           ) : (
             <Link
-              label="Otevřít počítadlo"
+              label={props.openCounterLabel}
               destination={counterDeepLink}
               modifiers={[
                 font({ size: 15, weight: 'semibold', design: 'rounded' }),
@@ -274,7 +282,7 @@ const BeerEveningLiveActivity = (
                 controlSize('regular'),
                 tint(accent),
                 foregroundStyle(buttonText),
-                accessibilityLabel('Otevřít počítadlo'),
+                accessibilityLabel(props.openCounterLabel),
               ]}
             />
           )}
@@ -324,7 +332,7 @@ const BeerEveningLiveActivity = (
           foregroundStyle(accent),
           monospacedDigit(),
           contentTransition('numericText'),
-          accessibilityLabel(`Počet piv ${props.beerCount}`),
+          accessibilityLabel(props.beerCountA11yLabel),
         ]}
       >
         {props.beerCount}
@@ -337,7 +345,7 @@ const BeerEveningLiveActivity = (
           foregroundStyle(accent),
           monospacedDigit(),
           contentTransition('numericText'),
-          accessibilityLabel(`Počet piv ${props.beerCount}`),
+          accessibilityLabel(props.beerCountA11yLabel),
         ]}
       >
         {props.beerCount}
@@ -433,7 +441,7 @@ const BeerEveningLiveActivity = (
         <Spacer />
         {props.supportsInteractiveAdd === true ? (
           <Button
-            label="Zapsat stejné"
+            label={props.addBeerLabel}
             systemImage="plus"
             target="add-beer"
             modifiers={[
@@ -443,12 +451,12 @@ const BeerEveningLiveActivity = (
               controlSize('small'),
               tint(accent),
               foregroundStyle(buttonText),
-              accessibilityLabel('Zapsat stejné pivo'),
+              accessibilityLabel(props.addBeerA11yLabel),
             ]}
           />
         ) : (
           <Link
-            label="Otevřít počítadlo"
+            label={props.openCounterLabel}
             destination={counterDeepLink}
             modifiers={[
               font({ size: 14, weight: 'semibold', design: 'rounded' }),
@@ -457,7 +465,7 @@ const BeerEveningLiveActivity = (
               controlSize('small'),
               tint(accent),
               foregroundStyle(buttonText),
-              accessibilityLabel('Otevřít počítadlo'),
+              accessibilityLabel(props.openCounterLabel),
             ]}
           />
         )}

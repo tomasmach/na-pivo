@@ -23,7 +23,7 @@ import { BetaBadge } from '@/components/shared/BetaBadge';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 
@@ -76,25 +76,25 @@ function ScanMenuSheetImpl({ visible, onClose, onPick }: ScanMenuSheetProps) {
             <View style={styles.titleRow}>
               <View style={styles.titleLine}>
                 <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.contribute.scanMenu.sheetTitle}
+                  {t.contribute.scanMenu.sheetTitle}
                 </Text>
                 <BetaBadge tone="amber" />
               </View>
-              <CloseButton onPress={onClose} label={cs.contribute.scanMenu.cancel} />
+              <CloseButton onPress={onClose} label={t.contribute.scanMenu.cancel} />
             </View>
 
             <View style={styles.options}>
               <OptionRow
                 icon={<CameraIcon size={22} color={Colors.amber} />}
-                label={cs.contribute.scanMenu.camera}
+                label={t.contribute.scanMenu.camera}
                 onPress={() => pick('camera')}
-                accessibilityLabel={cs.contribute.scanMenu.camera}
+                accessibilityLabel={t.contribute.scanMenu.camera}
               />
               <OptionRow
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
-                label={cs.contribute.scanMenu.library}
+                label={t.contribute.scanMenu.library}
                 onPress={() => pick('library')}
-                accessibilityLabel={cs.contribute.scanMenu.library}
+                accessibilityLabel={t.contribute.scanMenu.library}
               />
             </View>
           </View>

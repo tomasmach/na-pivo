@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -204,24 +204,24 @@ export default function AuthScreen() {
     const trimmedEmail = email.trim();
     if (!isValidEmail(trimmedEmail)) {
       trackUiInteraction('auth_email_submit', 'failure');
-      setError(cs.account.errorEmailInvalid);
+      setError(t.account.errorEmailInvalid);
       return;
     }
     if (password.length < MIN_PASSWORD) {
       trackUiInteraction('auth_email_submit', 'failure');
-      setError(cs.account.errorPasswordShort);
+      setError(t.account.errorPasswordShort);
       return;
     }
     const trimmedNickname = nickname.trim();
     if (mode === 'register') {
       if (!trimmedNickname) {
         trackUiInteraction('auth_email_submit', 'failure');
-        setError(cs.account.errorNicknameMissing);
+        setError(t.account.errorNicknameMissing);
         return;
       }
       if (!nicknameReady) {
         trackUiInteraction('auth_email_submit', 'failure');
-        setError(cs.account.errorNicknameNotReady);
+        setError(t.account.errorNicknameNotReady);
         return;
       }
     }
@@ -243,11 +243,11 @@ export default function AuthScreen() {
           if (trimmedNickname) {
             const nickResult = await updateProfile({ nickname: trimmedNickname });
             if (!nickResult.ok) {
-              showToast(cs.account.nicknameSetFailedToast);
+              showToast(t.account.nicknameSetFailedToast);
             }
           }
           if (!result.profile.emailVerified) {
-            showToast(cs.account.verifyEmailSentToast);
+            showToast(t.account.verifyEmailSentToast);
           }
           router.replace('/profile/privacy' as Href);
         } else {
@@ -257,7 +257,7 @@ export default function AuthScreen() {
       }
       if (result.code !== 'cancelled') {
         trackUiInteraction('auth_email_submit', 'failure');
-        setError(result.detail || cs.account.errorGeneric);
+        setError(result.detail || t.account.errorGeneric);
       } else {
         trackUiInteraction('auth_email_submit', 'cancel');
       }
@@ -303,7 +303,7 @@ export default function AuthScreen() {
         }
         if (result.code !== 'cancelled') {
           trackUiInteraction(target, 'failure');
-          setError(result.detail || cs.account.errorGeneric);
+          setError(result.detail || t.account.errorGeneric);
         } else {
           trackUiInteraction(target, 'cancel');
         }
@@ -321,7 +321,7 @@ export default function AuthScreen() {
     const trimmed = resetEmail.trim();
     if (!isValidEmail(trimmed)) {
       trackUiInteraction('auth_reset_submit', 'failure');
-      setError(cs.account.errorEmailInvalid);
+      setError(t.account.errorEmailInvalid);
       return;
     }
     operationInFlight.current = true;
@@ -331,13 +331,13 @@ export default function AuthScreen() {
       const result = await requestPasswordReset(trimmed);
       if (!result.ok) {
         trackUiInteraction('auth_reset_submit', 'failure');
-        setError(result.detail || cs.account.errorGeneric);
+        setError(result.detail || t.account.errorGeneric);
         return;
       }
       setResetOpen(false);
       trackUiInteraction('auth_reset_submit', 'success');
       setResetEmail('');
-      showToast(cs.account.resetSentToast);
+      showToast(t.account.resetSentToast);
       router.push('/auth/reset');
     } finally {
       operationInFlight.current = false;
@@ -347,14 +347,14 @@ export default function AuthScreen() {
 
   const submitLabel =
     busy === 'submit'
-      ? cs.account.loading
+      ? t.account.loading
       : mode === 'login'
-        ? cs.account.submitLogin
-        : cs.account.submitRegister;
+        ? t.account.submitLogin
+        : t.account.submitRegister;
   const visibleError =
     error ||
     (sessionRecoveryRequired
-      ? cs.account.sessionExpired
+      ? t.account.sessionExpired
       : '');
 
   return (
@@ -365,13 +365,13 @@ export default function AuthScreen() {
           onPress={leave}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.account.authTitle}
+          {t.account.authTitle}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -389,7 +389,7 @@ export default function AuthScreen() {
           {mode === 'register' && (
             <View style={styles.fieldGroup}>
               <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.account.nicknameLabel}
+                {t.account.nicknameLabel}
               </Text>
               <NicknameField
                 value={nickname}
@@ -402,27 +402,27 @@ export default function AuthScreen() {
             </View>
           )}
           <Field
-            label={cs.account.emailLabel}
+            label={t.account.emailLabel}
             value={email}
             onChangeText={(value) => {
               setEmail(value);
               if (error) setError('');
             }}
-            placeholder={cs.account.emailPlaceholder}
-            accessibilityLabel={cs.a11y.authEmailInput}
+            placeholder={t.account.emailPlaceholder}
+            accessibilityLabel={t.a11y.authEmailInput}
             keyboardType="email-address"
             autoComplete="email"
             textContentType="emailAddress"
           />
           <Field
-            label={cs.account.passwordLabel}
+            label={t.account.passwordLabel}
             value={password}
             onChangeText={(value) => {
               setPassword(value);
               if (error) setError('');
             }}
-            placeholder={cs.account.passwordPlaceholder}
-            accessibilityLabel={cs.a11y.authPasswordInput}
+            placeholder={t.account.passwordPlaceholder}
+            accessibilityLabel={t.a11y.authPasswordInput}
             secureTextEntry
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             textContentType={mode === 'login' ? 'password' : 'newPassword'}
@@ -458,12 +458,12 @@ export default function AuthScreen() {
               style={({ pressed }) => [styles.forgotLink, pressed && styles.pressed]}
               disabled={busy !== null}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.authForgotPassword}
+              accessibilityLabel={t.a11y.authForgotPassword}
               accessibilityState={{ disabled: busy !== null }}
               hitSlop={8}
             >
               <Text style={styles.forgotText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.account.forgotPassword}
+                {t.account.forgotPassword}
               </Text>
             </Pressable>
           )}
@@ -471,31 +471,31 @@ export default function AuthScreen() {
           {resetOpen && (
             <View style={styles.resetCard}>
               <Text style={styles.resetPrompt} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.account.resetPrompt}
+                {t.account.resetPrompt}
               </Text>
               <TextInput
                 style={styles.input}
                 value={resetEmail}
                 onChangeText={setResetEmail}
-                placeholder={cs.account.emailPlaceholder}
+                placeholder={t.account.emailPlaceholder}
                 placeholderTextColor={Colors.mutedText}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
                 autoComplete="email"
                 textContentType="emailAddress"
-                accessibilityLabel={cs.a11y.authResetEmailInput}
+                accessibilityLabel={t.a11y.authResetEmailInput}
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
               <GlowButton
-                label={cs.account.resetSend}
+                label={t.account.resetSend}
                 onPress={handleSendReset}
                 variant="secondary"
                 glow="none"
                 height={52}
                 loading={busy === 'reset'}
                 disabled={busy !== null && busy !== 'reset'}
-                accessibilityLabel={cs.account.resetSend}
+                accessibilityLabel={t.account.resetSend}
               />
             </View>
           )}
@@ -504,7 +504,7 @@ export default function AuthScreen() {
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
             <Text style={styles.dividerText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.account.orDivider}
+              {t.account.orDivider}
             </Text>
             <View style={styles.dividerLine} />
           </View>
@@ -513,42 +513,42 @@ export default function AuthScreen() {
           {appleSupported && (
             <SocialButton
               light
-              label={cs.account.continueWithApple}
+              label={t.account.continueWithApple}
               icon={<AppleIcon size={20} color={Colors.black} />}
               onPress={() => handleSocial('apple')}
-              accessibilityLabel={cs.a11y.authSignInApple}
+              accessibilityLabel={t.a11y.authSignInApple}
               disabled={busy != null}
             />
           )}
           {googleConfigured && (
             <SocialButton
-              label={cs.account.continueWithGoogle}
+              label={t.account.continueWithGoogle}
               icon={<GoogleIcon size={20} color={Colors.foam} />}
               onPress={() => handleSocial('google')}
-              accessibilityLabel={cs.a11y.authSignInGoogle}
+              accessibilityLabel={t.a11y.authSignInGoogle}
               disabled={busy != null}
             />
           )}
 
           {/* ── Terms consent (covers e-mail registration and social sign-in) ── */}
           <Text style={styles.legalNote} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.account.termsNotePrefix}
+            {t.account.termsNotePrefix}
             <Text
               style={styles.legalLink}
               onPress={() => void Linking.openURL(TERMS_URL)}
               accessibilityRole="link"
             >
-              {cs.account.termsNoteTermsLink}
+              {t.account.termsNoteTermsLink}
             </Text>
-            {cs.account.termsNoteMiddle}
+            {t.account.termsNoteMiddle}
             <Text
               style={styles.legalLink}
               onPress={() => void Linking.openURL(PRIVACY_URL)}
               accessibilityRole="link"
             >
-              {cs.account.termsNotePrivacyLink}
+              {t.account.termsNotePrivacyLink}
             </Text>
-            {cs.account.termsNoteSuffix}
+            {t.account.termsNoteSuffix}
           </Text>
 
           {/* The other errand, as a link. Registering and signing in are not two
@@ -561,14 +561,14 @@ export default function AuthScreen() {
             disabled={busy !== null}
             accessibilityRole="button"
             accessibilityLabel={
-              mode === 'register' ? cs.a11y.authTabLogin : cs.a11y.authTabRegister
+              mode === 'register' ? t.a11y.authTabLogin : t.a11y.authTabRegister
             }
             accessibilityState={{ disabled: busy !== null }}
           >
             <Text style={styles.switchText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {mode === 'register' ? cs.account.haveAccount : cs.account.noAccount}{' '}
+              {mode === 'register' ? t.account.haveAccount : t.account.noAccount}{' '}
               <Text style={styles.switchLink}>
-                {mode === 'register' ? cs.account.tabLogin : cs.account.tabRegister}
+                {mode === 'register' ? t.account.tabLogin : t.account.tabRegister}
               </Text>
             </Text>
           </Pressable>

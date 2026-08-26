@@ -2,7 +2,7 @@ import { Pressable } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SettingsIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 
 /**
@@ -43,12 +43,12 @@ export default function ProfileLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Profil',
+          title: t.tabs.profile,
           headerRight: () => (
             <Pressable
               onPress={() => router.push('/settings' as Href)}
               accessibilityRole="button"
-              accessibilityLabel="Nastavení"
+              accessibilityLabel={t.settings.title}
               hitSlop={10}
             >
               <SettingsIcon size={20} color={Colors.amber} />
@@ -59,7 +59,7 @@ export default function ProfileLayout() {
       <Stack.Screen
         name="diary"
         options={{
-          title: cs.profile.diaryTitle,
+          title: t.profile.diaryTitle,
           headerLargeTitle: false,
           // A pushed small-title bar otherwise picks iOS' light scroll-edge
           // material even though the whole diary is stout. Pin this route to

@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { chainAbortSignal } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
@@ -48,7 +50,7 @@ function parseFriendProgress(value: unknown): ChallengeFriendProgress | null {
   const displayName =
     typeof account.display_name === 'string' && account.display_name.length > 0
       ? account.display_name
-      : nickname ?? 'Pivař';
+      : nickname ?? t.common.drinkerFallback;
   return {
     account: {
       id: account.id,

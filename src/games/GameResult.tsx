@@ -40,8 +40,9 @@ import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { GameScore } from '@/games/protocol';
+import { ME_NAME } from '@/party/nightBuilder';
 import {
   GameStage,
   StageCard,
@@ -99,18 +100,18 @@ function headline(outcome: GameOutcome, players: ResultPlayer[]): { title: strin
   if (outcome.payingId) {
     const name = nameOf(outcome.payingId);
     return {
-      title: name === 'Ty' ? cs.gameResult.payingSelf : cs.gameResult.payingOther(name),
-      note: cs.gameResult.payingNote,
+      title: name === ME_NAME ? t.gameResult.payingSelf : t.gameResult.payingOther(name),
+      note: t.gameResult.payingNote,
     };
   }
   if (outcome.winnerId) {
     const name = nameOf(outcome.winnerId);
     return {
-      title: name === 'Ty' ? cs.gameResult.winningSelf : cs.gameResult.winningOther(name),
-      note: cs.gameResult.winningNote,
+      title: name === ME_NAME ? t.gameResult.winningSelf : t.gameResult.winningOther(name),
+      note: t.gameResult.winningNote,
     };
   }
-  return { title: cs.gameResult.done, note: cs.gameResult.doneNote };
+  return { title: t.gameResult.done, note: t.gameResult.doneNote };
 }
 
 export function GameResult({
@@ -119,7 +120,7 @@ export function GameResult({
   /** Ranked, best first. Empty for games that keep no score. */
   board,
   onDone,
-  doneLabel = 'Konec',
+  doneLabel = t.gameResult.closeLabel,
 }: {
   players: ResultPlayer[];
   outcome: GameOutcome;
@@ -225,8 +226,8 @@ export function GameResult({
       <View style={styles.content}>
         <GameStage
           topLeft={
-            title === cs.gameResult.done ? undefined : (
-              <StageChip label={cs.gameResult.done} />
+            title === t.gameResult.done ? undefined : (
+              <StageChip label={t.gameResult.done} />
             )
           }
           style={styles.stage}

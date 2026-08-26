@@ -17,6 +17,8 @@ import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-nativ
 import { useReducedMotion } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
+import { t } from "@/i18n";
+import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
   StagePill,
@@ -36,7 +38,7 @@ const pickOne = (players: readonly PickPlayer[]): string =>
 
 function displayName(player: PickPlayer | undefined, index: number): string {
   const name = player?.name.trim();
-  return name || `Hráč ${index + 1}`;
+  return name ? displayPersonName(name) : t.gameShell.playerNumber(index + 1);
 }
 
 export function RoundDrumShell({
@@ -101,7 +103,9 @@ export function RoundDrumShell({
   const selected = players.find((player) => player.id === effectiveId);
   const selectedName = displayName(selected, selectedIndex);
   const settled = Boolean(effectiveId) && !spinning;
-  const drumLabel = settled ? `Platí ${selectedName}` : "Buben se jmény hráčů";
+  const drumLabel = settled
+    ? t.gameResult.payingOther(selectedName)
+    : t.gameShell.drumA11y;
   // Keyed by the stable id plus publish revision, not the label: two players
   // may share a name, and the canonical pick arriving for an already-published
   // local result keeps this key unchanged (no duplicate announcement).
@@ -180,10 +184,10 @@ export function RoundDrumShell({
   const label = spinning
     ? "…"
     : spectator && effectiveId
-      ? "Zpátky k večeru"
+      ? t.gameShell.backToNight
       : effectiveId
-        ? "Roztoč znovu"
-        : "Roztoč";
+        ? t.gameShell.spinAgain
+        : t.gameShell.spin;
 
   return (
     <View style={stageBody(bottomInset)}>
@@ -245,8 +249,8 @@ export function RoundDrumShell({
         <StageStatus
           name={selectedName}
           tint={selected.tint}
-          text={`Platí ${selectedName}`}
-          sub="Runda pro stůl."
+          text={t.gameResult.payingOther(selectedName)}
+          sub={t.gameShell.roundForTable}
         />
       ) : null}
 
@@ -264,10 +268,10 @@ export function RoundDrumShell({
           }
           accessibilityLabel={
             spectator && effectiveId
-              ? "Zpátky k večeru"
+              ? t.gameShell.backToNight
               : effectiveId
-                ? "Roztoč znovu"
-                : "Roztoč"
+                ? t.gameShell.spinAgain
+                : t.gameShell.spin
           }
         />
       </View>

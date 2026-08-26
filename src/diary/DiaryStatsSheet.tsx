@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { StatGrid, type Stat } from '@/mocks/StatGrid';
@@ -100,7 +100,7 @@ export function DiaryStatsSheet({
       style={[styles.row, !isFirstOfGroup && styles.rowDivider]}
       accessible
       accessibilityRole="text"
-      accessibilityLabel={cs.diary.nightMeta([row.label, row.value, row.meta ?? ''])}
+      accessibilityLabel={t.diary.nightMeta([row.label, row.value, row.meta ?? ''])}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -139,9 +139,9 @@ export function DiaryStatsSheet({
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.diary.statsTitle}
+              {t.diary.statsTitle}
             </Text>
-            <CloseButton onPress={onClose} label={cs.a11y.diaryStatsClose} />
+            <CloseButton onPress={onClose} label={t.a11y.diaryStatsClose} />
           </View>
 
           <ScrollView
@@ -155,7 +155,7 @@ export function DiaryStatsSheet({
               style={styles.total}
               accessible
               accessibilityRole="text"
-              accessibilityLabel={cs.diary.nightMeta([totalBeers, cs.diary.statsTotalCaption])}
+              accessibilityLabel={t.diary.nightMeta([totalBeers, t.diary.statsTotalCaption])}
             >
               <Text
                 style={styles.totalCount}
@@ -169,7 +169,7 @@ export function DiaryStatsSheet({
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.diary.statsTotalCaption}
+                {t.diary.statsTotalCaption}
               </Text>
             </View>
 
@@ -185,7 +185,7 @@ export function DiaryStatsSheet({
 
             {month ? (
               <>
-                <SectionBreak title={cs.diary.statsThisMonth} inset={MockLayout.screenPad} />
+                <SectionBreak title={t.diary.statsThisMonth} inset={MockLayout.screenPad} />
                 {/* The two-column grid spaces its own rows with a bottom margin
                     on every cell; here there is only one row, so that margin is
                     dead air before the next band. */}
@@ -195,8 +195,8 @@ export function DiaryStatsSheet({
               </>
             ) : null}
 
-            {renderSection(cs.diary.statsPubsTitle, topPubs)}
-            {renderSection(cs.diary.statsYearsTitle, years)}
+            {renderSection(t.diary.statsPubsTitle, topPubs)}
+            {renderSection(t.diary.statsYearsTitle, years)}
           </ScrollView>
 
           {/* Pinned below the scroll area: the footnote explains what the

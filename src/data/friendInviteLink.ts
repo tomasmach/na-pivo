@@ -14,6 +14,8 @@
  * helpers are best-effort and never throw.
  */
 
+import { t } from '@/i18n';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { sendFriendRequest, type FriendActionResult } from './friendsClient';
@@ -128,7 +130,7 @@ async function claimInviteCodeWithinBoundary(code: string): Promise<FriendAction
 const ACCOUNT_TRANSITION_ERROR: FriendActionResult = {
   ok: false,
   code: 'account_transition',
-  detail: 'Účet se právě mění. Pozvánku zkus za chvilku znovu.',
+  detail: t.clientErrors.inviteAccountChanging,
 };
 
 /** True when the backend accepted the invite immediately (additive outcome). */

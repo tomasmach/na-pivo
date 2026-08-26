@@ -17,19 +17,22 @@ locked in the spec).
 from __future__ import annotations
 
 from django.conf import settings
+from django.utils.translation import gettext_lazy
 
 from pubs.ladder import Ladder
 
-# Fixed Czech titles, lowest level first (§7.2). Disjoint from the badge names
-# {Prvomapér, Objevitel, Kartograf, Pořádkumil, Pivní detektiv}.
+# Fixed titles, lowest level first (§7.2). Disjoint from the badge names
+# {Prvomapér, Objevitel, Kartograf, Pořádkumil, Pivní detektiv}. Lazy msgids:
+# this table is imported once, so every reader must str() a title at the moment
+# it serializes, when the request language is known.
 MAPER_LEVEL_TITLES: tuple[str, ...] = (
-    "Nováček",
-    "Všímálek",
-    "Štamgast",
-    "Znalec",
-    "Hospodský mudrc",
-    "Pivní kartograf",
-    "Legenda lokálu",
+    gettext_lazy("Nováček"),
+    gettext_lazy("Všímálek"),
+    gettext_lazy("Štamgast"),
+    gettext_lazy("Znalec"),
+    gettext_lazy("Hospodský mudrc"),
+    gettext_lazy("Pivní kartograf"),
+    gettext_lazy("Legenda lokálu"),
 )
 
 

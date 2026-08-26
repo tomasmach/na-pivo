@@ -57,8 +57,7 @@ import {
   GameResult,
   type ResultPlayerReference,
 } from "@/games/GameResult";
-import { cs } from "@/i18n/cs";
-import { beerCountLabel } from "@/i18n/plural";
+import { beerCountLabel, t } from "@/i18n";
 import { GAME_PROMPTS, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
 import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
 import {
@@ -90,7 +89,12 @@ import { PromptShell } from "@/party/shells/PromptShell";
 import { QuizShell } from "@/party/shells/QuizShell";
 import { RoundDrumShell } from "@/party/shells/RoundDrumShell";
 import { minimizeParty } from "@/party/partyRouting";
-import { fallbackPlayerName, tintFor } from "@/party/nightBuilder";
+import {
+  displayPersonName,
+  fallbackPlayerName,
+  ME_NAME,
+  tintFor,
+} from "@/party/nightBuilder";
 import { beersOf, nightMe, nightStandings } from "@/party/nightRecord";
 import { useNightRecord } from "@/party/useNightRecord";
 import { usePartyBeer } from "@/party/usePartyBeer";
@@ -121,8 +125,8 @@ function stamp(): number {
 
 /** The verb IS the game — "roztoč" and "hoď" are different promises. */
 const DRAW_ACTION: Record<GameDraw, string> = {
-  person: "Roztoč",
-  card: "Táhni kartu",
+  person: t.gameShell.spin,
+  card: t.gameShell.drawCard,
 };
 const KINGS_CARD_IDS = new Set([
   ...KINGS_CARDS.map((card) => card.card),
@@ -147,7 +151,7 @@ function canonicalResultReference(
 
 /** One score row, said the same way in the label and in the announcement. */
 function scoreAccessibilityLabel(name: string, score: number): string {
-  return `Bod pro ${name}. Aktuálně ${score}`;
+  return t.gameShell.scoreA11y(name, score);
 }
 
 /** First player by sorted id — the same phone-independent pick on every device. */
@@ -183,7 +187,9 @@ export default function PartyGameScreen() {
 
   const def = key ? findGame(key) : undefined;
   const name =
-    def?.name ?? games.find((entry) => entry.key === key)?.name ?? "Hra";
+    def?.name ??
+    games.find((entry) => entry.key === key)?.name ??
+    t.gameShell.fallbackTitle;
   // Points games crown someone; sip games do not. See `gameCatalog`.
   const onPoints = def?.scoring !== "drinks";
   const shell = def?.shell ?? "score";
@@ -871,11 +877,11 @@ export default function PartyGameScreen() {
   // becomes visible, announced.
   const sharingFailureLine =
     sharingFailure && roster && !spectator
-      ? `Hra běží jen na tomhle telefonu. ${sharingFailure}`
+      ? t.gameShell.localOnlyGame(sharingFailure)
       : null;
   const retryFailureLine =
     roster === null && !canonicalFinish && retryQuizRoster
-      ? (sharingFailure ?? cs.gameHost.loadFailed)
+      ? (sharingFailure ?? t.gameHost.loadFailed)
       : null;
 
   /**
@@ -922,7 +928,7 @@ export default function PartyGameScreen() {
       const before = previous[row.id];
       if (before !== undefined && before !== row.score)
         AccessibilityInfo.announceForAccessibility?.(
-          scoreAccessibilityLabel(row.name, row.score),
+          scoreAccessibilityLabel(displayPersonName(row.name), row.score),
         );
     }
   });
@@ -1076,7 +1082,7 @@ export default function PartyGameScreen() {
           onPress={leaveGame}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Zpátky do večera"
+          accessibilityLabel={t.gameShell.backToNightScreen}
           hitSlop={6}
         >
           <ChevronLeftIcon size={20} color={Colors.foam} />
@@ -1108,7 +1114,7 @@ export default function PartyGameScreen() {
               onPress={finish}
               style={({ pressed }) => [styles.end, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel="Ukončit hru"
+              accessibilityLabel={t.gameShell.endGameA11y}
               hitSlop={8}
             >
               <Text
@@ -1118,7 +1124,7 @@ export default function PartyGameScreen() {
                 minimumFontScale={0.8}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                Konec
+                {t.gameShell.endGame}
               </Text>
             </Pressable>
           ) : null}
@@ -1130,7 +1136,7 @@ export default function PartyGameScreen() {
           style={styles.spectatorNote}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {cs.gameHost.spectator}
+          {t.gameHost.spectator}
         </Text>
       ) : null}
 
@@ -1162,13 +1168,13 @@ export default function PartyGameScreen() {
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={cs.gameHost.retry}
+            accessibilityLabel={t.gameHost.retry}
           >
             <Text
               style={styles.startRetryText}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {cs.gameHost.retry}
+              {t.gameHost.retry}
             </Text>
           </Pressable>
         </View>
@@ -1322,13 +1328,13 @@ export default function PartyGameScreen() {
           spectator={spectator}
           game="bottle"
           players={roster}
-          action="Roztoč"
+          action={t.gameShell.spin}
           verdict={(name) =>
             key === "bottle"
-              ? `${name} je na řadě`
-              : name === "Ty"
-                ? "Platíš ty"
-                : `Platí ${name}`
+              ? t.gameShell.turnPick(displayPersonName(name))
+              : name === ME_NAME
+                ? t.gameResult.payingSelf
+                : t.gameResult.payingOther(displayPersonName(name))
           }
           // Flaška keeps going until the table has had enough.
           onDone={undefined}
@@ -1515,8 +1521,8 @@ export default function PartyGameScreen() {
           ) : null}
           <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
             {onPoints
-              ? "Ťukni na toho, kdo bodoval."
-              : "Ťukni na toho, kdo dostal bod."}
+              ? t.gameShell.tapScorer
+              : t.gameShell.tapSipper}
           </Text>
 
           {ranked.map((row, index) => (
@@ -1530,7 +1536,10 @@ export default function PartyGameScreen() {
                 pressed && !spectator && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={scoreAccessibilityLabel(row.name, row.score)}
+              accessibilityLabel={scoreAccessibilityLabel(
+                displayPersonName(row.name),
+                row.score,
+              )}
               accessibilityLiveRegion="polite"
               accessibilityState={{ disabled: spectator }}
             >
@@ -1539,7 +1548,7 @@ export default function PartyGameScreen() {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {row.name}
+                {displayPersonName(row.name)}
               </Text>
               <Text style={styles.playerScore} allowFontScaling={false}>
                 {row.score}
@@ -1561,7 +1570,7 @@ export default function PartyGameScreen() {
             pressed && styles.counterPressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.partyGameBeerCounter(
+          accessibilityLabel={t.a11y.partyGameBeerCounter(
             beerCountLabel(beerCount),
           )}
           hitSlop={6}

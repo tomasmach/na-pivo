@@ -6,7 +6,7 @@ import { PlusIcon } from '@/components/shared/IconGlyph';
 import { CloseButton } from '@/components/shared/CloseButton';
 import type { CommunityBeer } from '@/data/communityClient';
 import { normalizeBeerName } from '@/data/communityHours';
-import { cs, formatVolume } from '@/i18n/cs';
+import { t, formatVolume } from '@/i18n';
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -41,9 +41,9 @@ export function HistoricalBeersSheet({
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.contribute.historicalBeersHeader}
+                {t.contribute.historicalBeersHeader}
               </Text>
-              <CloseButton onPress={onClose} label={cs.contribute.closeSheet} />
+              <CloseButton onPress={onClose} label={t.contribute.closeSheet} />
             </View>
 
             <ScrollView
@@ -72,7 +72,7 @@ export function HistoricalBeersSheet({
                     ]}
                     accessibilityRole="button"
                     accessibilityState={{ disabled: !canRestore }}
-                    accessibilityLabel={cs.a11y.contributeRestoreHistoricalBeer(beer.name)}
+                    accessibilityLabel={t.a11y.contributeRestoreHistoricalBeer(beer.name)}
                   >
                     <View style={styles.rowCopy}>
                       <Text

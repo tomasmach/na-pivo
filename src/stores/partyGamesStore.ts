@@ -17,6 +17,8 @@
  * what lets a new one ship without a backend deploy.
  */
 
+import { t } from '@/i18n';
+
 import React from 'react';
 import { create } from 'zustand';
 
@@ -209,7 +211,7 @@ export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
         set((state) => ({
           sharingFailures: {
             ...state.sharingFailures,
-            [catalogKey]: 'Hru se nepodařilo uložit pro sdílení.',
+            [catalogKey]: t.clientErrors.gameShareSaveFailed,
           },
         }));
       }
@@ -223,7 +225,7 @@ export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
           set((state) => ({
             sharingFailures: {
               ...state.sharingFailures,
-              [catalogKey]: delivery.detail || 'Hru se nepodařilo sdílet se stolem.',
+              [catalogKey]: delivery.detail || t.clientErrors.gameShareFailed,
             },
           }));
         }

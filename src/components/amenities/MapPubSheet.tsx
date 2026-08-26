@@ -38,7 +38,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   XIcon,
   CompassIcon,
@@ -331,7 +331,7 @@ export function MapPubSheet({
     const { count, xp } = xpAccum.current;
     xpAccum.current = { count: 0, xp: 0 };
     if (count === 0 || xp <= 0) return;
-    showToast(cs.mapPub.xpSession(count, xp), {
+    showToast(t.mapPub.xpSession(count, xp), {
       icon: <CompassIcon size={18} color={Colors.amber} />,
     });
   }, [showToast]);
@@ -367,7 +367,7 @@ export function MapPubSheet({
     (xpAwarded: number, wasFirstMap: boolean) => {
       // First-mapper gets its own stronger toast, not coalesced.
       if (wasFirstMap && xpAwarded > 0) {
-        showToast(cs.mapPub.xpFirstMapper(xpAwarded), {
+        showToast(t.mapPub.xpFirstMapper(xpAwarded), {
           icon: <SproutIcon size={18} color={Colors.amber} />,
         });
         return;
@@ -409,7 +409,7 @@ export function MapPubSheet({
       // Retraction never touches XP/counters (lifetime-achievement model), but a
       // silent removal feels like a bug — confirm the vote left the public map.
       if (next == null && !wasUnanswered) {
-        showToast(cs.mapPub.retracted, {
+        showToast(t.mapPub.retracted, {
           icon: <XIcon size={18} color={Colors.mutedText} />,
         });
       }
@@ -564,7 +564,7 @@ export function MapPubSheet({
         setRenameVisible(false);
         runAfterSheetClose(() => {
           setRenameOpen(false);
-          showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
+          showToast(synced ? t.compass.renameSavedToast : t.compass.renameQueuedToast);
         });
       })
       .catch(() => {
@@ -572,7 +572,7 @@ export function MapPubSheet({
         usePubStore.getState().bumpCatalogRevision();
         setRenamedName(displayName);
         onRenamed?.(displayName);
-        showToast(cs.pubDetail.saveFailed);
+        showToast(t.pubDetail.saveFailed);
       })
       .finally(() => setRenameSubmitting(false));
   }, [info, renameSubmitting, renameDraft, displayName, showToast, onRenamed, runAfterSheetClose]);
@@ -629,7 +629,7 @@ export function MapPubSheet({
                 ) : null}
               </View>
               <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
-              <CloseButton onPress={onClose} label={cs.mapPub.closeA11y} />
+              <CloseButton onPress={onClose} label={t.mapPub.closeA11y} />
             </View>
 
             <ScrollView
@@ -654,12 +654,12 @@ export function MapPubSheet({
                         color={facts.hasHours ? Colors.amber : Colors.mutedText}
                       />
                     }
-                    label={cs.mapPub.tileHours}
+                    label={t.mapPub.tileHours}
                     filled={facts.hasHours}
                     weekly={weeklyHours}
                     value={null}
-                    recency={hoursMappedAge ? cs.mapPub.tileMapped(hoursMappedAge) : null}
-                    emptyLabel={cs.mapPub.tileHoursEmpty}
+                    recency={hoursMappedAge ? t.mapPub.tileMapped(hoursMappedAge) : null}
+                    emptyLabel={t.mapPub.tileHoursEmpty}
                     onPress={() => openContribute('hours')}
                   />
                   <FactTile
@@ -669,22 +669,22 @@ export function MapPubSheet({
                         color={facts.hasBeers ? Colors.amber : Colors.mutedText}
                       />
                     }
-                    label={cs.mapPub.tileBeers}
+                    label={t.mapPub.tileBeers}
                     filled={facts.hasBeers}
                     weekly={null}
                     value={
                       facts.hasBeers
                         ? facts.beerMenuRotates
-                          ? cs.mapPub.factBeersRotating(
+                          ? t.mapPub.factBeersRotating(
                               facts.beerCount > 0
-                                ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                                ? t.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
                                 : null,
                             )
-                          : cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                          : t.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
                         : null
                     }
-                    recency={beersMappedAge ? cs.mapPub.tileMapped(beersMappedAge) : null}
-                    emptyLabel={cs.mapPub.tileBeersEmpty}
+                    recency={beersMappedAge ? t.mapPub.tileMapped(beersMappedAge) : null}
+                    emptyLabel={t.mapPub.tileBeersEmpty}
                     onPress={() => openContribute('beers')}
                   />
                 </View>
@@ -702,7 +702,7 @@ export function MapPubSheet({
                   chip; each row carries its own confidence, not a poll ratio. */}
               <View style={styles.sectionHead}>
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.mapPub.amenitiesSection}
+                  {t.mapPub.amenitiesSection}
                 </Text>
                 <View style={styles.publicPill}>
                   <GlobeIcon size={12} color={Colors.amberLight} />
@@ -710,7 +710,7 @@ export function MapPubSheet({
                     style={styles.publicPillText}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {backendConfigured ? cs.mapPub.publicChip : cs.mapPub.offlineChip}
+                    {backendConfigured ? t.mapPub.publicChip : t.mapPub.offlineChip}
                   </Text>
                 </View>
               </View>
@@ -749,13 +749,13 @@ export function MapPubSheet({
 
       <RenamePromptSheet
         visible={renameVisible}
-        title={cs.compass.renameTitle}
+        title={t.compass.renameTitle}
         value={renameDraft}
-        placeholder={cs.compass.renamePlaceholder}
-        inputLabel={cs.a11y.renamePubInput}
-        cancelLabel={cs.common.cancel}
-        saveLabel={cs.compass.renameSave}
-        savingLabel={cs.compass.renameSaving}
+        placeholder={t.compass.renamePlaceholder}
+        inputLabel={t.a11y.renamePubInput}
+        cancelLabel={t.common.cancel}
+        saveLabel={t.compass.renameSave}
+        savingLabel={t.compass.renameSaving}
         submitting={renameSubmitting}
         canSubmit={canRename}
         onChange={setRenameDraft}
@@ -845,7 +845,7 @@ function ConfidenceMeter({
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {cs.mapPub.confFirst}
+          {t.mapPub.confFirst}
         </Text>
       </View>
     );
@@ -863,7 +863,7 @@ function ConfidenceMeter({
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {cs.mapPub.confDisputed}
+          {t.mapPub.confDisputed}
         </Text>
       </View>
     );
@@ -876,7 +876,7 @@ function ConfidenceMeter({
     <View style={styles.conf}>
       <ConfidenceBars tier={confidenceTier(count)} tone={isNo ? 'no' : 'has'} />
       <Text style={styles.confText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {isNo ? cs.mapPub.confNo(count) : cs.mapPub.confHas(count)}
+        {isNo ? t.mapPub.confNo(count) : t.mapPub.confHas(count)}
       </Text>
     </View>
   );
@@ -899,15 +899,15 @@ function SegmentedVote({
       <VoteHalf
         side="yes"
         active={isYes}
-        label={cs.mapPub.yes}
-        a11yLabel={cs.mapPub.yesA11y(row.label)}
+        label={t.mapPub.yes}
+        a11yLabel={t.mapPub.yesA11y(row.label)}
         onPress={() => onVote(row, 'yes')}
       />
       <VoteHalf
         side="no"
         active={isNo}
-        label={cs.mapPub.no}
-        a11yLabel={cs.mapPub.noA11y(row.label)}
+        label={t.mapPub.no}
+        a11yLabel={t.mapPub.noA11y(row.label)}
         onPress={() => onVote(row, 'no')}
       />
     </View>
@@ -945,7 +945,7 @@ function VoteHalf({
       accessibilityLabel={a11yLabel}
       // The retract hint only applies to the currently-selected half — the one
       // tap that actually clears the vote. An unselected half just sets it.
-      accessibilityHint={active ? cs.mapPub.clearHint : undefined}
+      accessibilityHint={active ? t.mapPub.clearHint : undefined}
     >
       <View
         style={[
@@ -1009,7 +1009,7 @@ function FactTile({
       onPress={onPress}
       style={({ pressed }) => [styles.tile, pressed && { opacity: 0.7 }]}
       accessibilityRole="button"
-      accessibilityLabel={cs.mapPub.tileA11y(label, detail || label)}
+      accessibilityLabel={t.mapPub.tileA11y(label, detail || label)}
     >
       <View style={styles.tileTop}>
         <View style={[styles.tileIcon, !filled && styles.tileIconEmpty]}>{icon}</View>
@@ -1080,21 +1080,21 @@ function PubDetailActions({
         {showRename ? (
           <DetailActionRow
             icon={<PencilIcon size={20} color={Colors.foamMuted} />}
-            label={cs.mapPub.renameRowLabel}
+            label={t.mapPub.renameRowLabel}
             onPress={onRename}
           />
         ) : null}
         {showEditAdded ? (
           <DetailActionRow
             icon={<MapPinIcon size={20} color={Colors.amber} />}
-            label={cs.addPub.edit}
+            label={t.addPub.edit}
             onPress={onEditAdded}
           />
         ) : null}
         {showReport && onReport ? (
           <DetailActionRow
             icon={<FlagIcon size={20} color={Colors.amberLight} />}
-            label={cs.mapPub.reportRowLabel}
+            label={t.mapPub.reportRowLabel}
             onPress={onReport}
             tone="accent"
           />

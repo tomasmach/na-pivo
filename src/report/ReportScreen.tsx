@@ -25,7 +25,7 @@ import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
 
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -41,20 +41,20 @@ import {
 import { openSystemSettings } from '@/compass/permissions';
 
 const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
-  { value: 'bug', label: cs.report.categoryBug },
-  { value: 'idea', label: cs.report.categoryIdea },
-  { value: 'other', label: cs.report.categoryOther },
+  { value: 'bug', label: t.report.categoryBug },
+  { value: 'idea', label: t.report.categoryIdea },
+  { value: 'other', label: t.report.categoryOther },
 ];
 
 // Instagram first — most users know the app from there.
 const CONTACT_CHANNELS: { value: FeedbackContactType; label: string }[] = [
-  { value: 'instagram', label: cs.report.contactInstagram },
-  { value: 'email', label: cs.report.contactEmail },
+  { value: 'instagram', label: t.report.contactInstagram },
+  { value: 'email', label: t.report.contactEmail },
 ];
 
 const CONTACT_PLACEHOLDERS: Record<FeedbackContactType, string> = {
-  instagram: cs.report.contactInstagramPlaceholder,
-  email: cs.report.contactEmailPlaceholder,
+  instagram: t.report.contactInstagramPlaceholder,
+  email: t.report.contactEmailPlaceholder,
 };
 
 export default function ReportScreen() {
@@ -102,24 +102,24 @@ export default function ReportScreen() {
         setAttachmentUri(result.uri);
       } else if (result.status === 'denied-permanent') {
         showAppDialog({
-          title: cs.report.attachmentPermissionTitle,
-          message: cs.report.attachmentPermissionBlocked,
+          title: t.report.attachmentPermissionTitle,
+          message: t.report.attachmentPermissionBlocked,
           buttons: [
-            { text: cs.common.cancel, style: 'cancel' },
-            { text: cs.report.attachmentOpenSettings, onPress: () => void openSystemSettings() },
+            { text: t.common.cancel, style: 'cancel' },
+            { text: t.report.attachmentOpenSettings, onPress: () => void openSystemSettings() },
           ],
         });
       } else if (result.status === 'denied') {
         showAppDialog({
-          title: cs.report.attachmentPermissionTitle,
-          message: cs.report.attachmentPermissionDenied,
-          buttons: [{ text: cs.common.ok }],
+          title: t.report.attachmentPermissionTitle,
+          message: t.report.attachmentPermissionDenied,
+          buttons: [{ text: t.common.ok }],
         });
       } else if (result.status === 'error') {
         showAppDialog({
-          title: cs.report.attachmentErrorTitle,
-          message: cs.report.attachmentErrorBody,
-          buttons: [{ text: cs.common.ok }],
+          title: t.report.attachmentErrorTitle,
+          message: t.report.attachmentErrorBody,
+          buttons: [{ text: t.common.ok }],
         });
       }
     } finally {
@@ -129,11 +129,11 @@ export default function ReportScreen() {
 
   const showAttachmentSource = useCallback(() => {
     showAppDialog({
-      title: cs.report.attachmentSourceTitle,
+      title: t.report.attachmentSourceTitle,
       buttons: [
-        { text: cs.report.attachmentCamera, onPress: () => void handleAttachmentPick('camera') },
-        { text: cs.report.attachmentLibrary, onPress: () => void handleAttachmentPick('library') },
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.report.attachmentCamera, onPress: () => void handleAttachmentPick('camera') },
+        { text: t.report.attachmentLibrary, onPress: () => void handleAttachmentPick('library') },
+        { text: t.common.cancel, style: 'cancel' },
       ],
     });
   }, [handleAttachmentPick]);
@@ -146,13 +146,13 @@ export default function ReportScreen() {
           onPress={() => leaveRoute(router)}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{cs.report.title}</Text>
+        <Text style={styles.headerTitle}>{t.report.title}</Text>
 
         {/* Invisible spacer keeps title centered */}
         <View style={styles.headerSpacer} />
@@ -165,11 +165,11 @@ export default function ReportScreen() {
             { paddingBottom: Math.max(insets.bottom + 24, 32) },
           ]}
         >
-          <Text style={styles.successTitle}>{cs.report.successTitle}</Text>
-          <Text style={styles.successBody}>{cs.report.successBody}</Text>
+          <Text style={styles.successTitle}>{t.report.successTitle}</Text>
+          <Text style={styles.successBody}>{t.report.successBody}</Text>
           <View style={styles.successButton}>
             <GlowButton
-              label={cs.report.successClose}
+              label={t.report.successClose}
               onPress={() => leaveRoute(router)}
             />
           </View>
@@ -189,7 +189,7 @@ export default function ReportScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.intro}>{cs.report.intro}</Text>
+          <Text style={styles.intro}>{t.report.intro}</Text>
 
           {/* ── Category selector ── */}
           <View style={styles.segmented}>
@@ -202,7 +202,7 @@ export default function ReportScreen() {
                   style={[styles.segment, selected && styles.segmentSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={cs.a11y.feedbackCategory(item.label)}
+                  accessibilityLabel={t.a11y.feedbackCategory(item.label)}
                 >
                   <Text
                     style={[
@@ -222,27 +222,27 @@ export default function ReportScreen() {
             style={styles.messageInput}
             value={message}
             onChangeText={setMessage}
-            placeholder={cs.report.messagePlaceholder}
+            placeholder={t.report.messagePlaceholder}
             placeholderTextColor={MockColors.fieldHint}
             multiline
             textAlignVertical="top"
             maxLength={4000}
-            accessibilityLabel={cs.report.messagePlaceholder}
+            accessibilityLabel={t.report.messagePlaceholder}
           />
 
           {/* ── Optional screenshot/photo ── */}
-          <Text style={styles.attachmentCaption}>{cs.report.attachmentCaption}</Text>
+          <Text style={styles.attachmentCaption}>{t.report.attachmentCaption}</Text>
           {attachmentUri ? (
             <View style={styles.attachmentPreviewRow}>
               <Image source={{ uri: attachmentUri }} style={styles.attachmentPreview} />
               <View style={styles.attachmentPreviewCopy}>
-                <Text style={styles.attachmentReady}>{cs.report.attachmentReady}</Text>
-                <Text style={styles.attachmentPrivacy}>{cs.report.attachmentPrivacy}</Text>
+                <Text style={styles.attachmentReady}>{t.report.attachmentReady}</Text>
+                <Text style={styles.attachmentPrivacy}>{t.report.attachmentPrivacy}</Text>
               </View>
               <Pressable
                 onPress={() => setAttachmentUri(null)}
                 accessibilityRole="button"
-                accessibilityLabel={cs.report.attachmentRemove}
+                accessibilityLabel={t.report.attachmentRemove}
                 style={({ pressed }) => [styles.attachmentRemove, pressed && styles.pressed]}
               >
                 <XIcon size={18} color={Colors.foamMuted} />
@@ -253,7 +253,7 @@ export default function ReportScreen() {
               onPress={showAttachmentSource}
               disabled={pickingAttachment}
               accessibilityRole="button"
-              accessibilityLabel={cs.report.attachmentAdd}
+              accessibilityLabel={t.report.attachmentAdd}
               style={({ pressed }) => [styles.attachmentButton, pressed && styles.pressed]}
             >
               <View style={styles.attachmentIcon}>
@@ -265,15 +265,15 @@ export default function ReportScreen() {
               </View>
               <View style={styles.attachmentButtonCopy}>
                 <Text style={styles.attachmentButtonTitle}>
-                  {pickingAttachment ? cs.report.attachmentPreparing : cs.report.attachmentAdd}
+                  {pickingAttachment ? t.report.attachmentPreparing : t.report.attachmentAdd}
                 </Text>
-                <Text style={styles.attachmentPrivacy}>{cs.report.attachmentHelper}</Text>
+                <Text style={styles.attachmentPrivacy}>{t.report.attachmentHelper}</Text>
               </View>
             </Pressable>
           )}
 
           {/* ── Optional contact ── */}
-          <Text style={styles.contactCaption}>{cs.report.contactCaption}</Text>
+          <Text style={styles.contactCaption}>{t.report.contactCaption}</Text>
           <View style={styles.contactChannels}>
             {CONTACT_CHANNELS.map((channel) => {
               const selected = channel.value === contactType;
@@ -287,7 +287,7 @@ export default function ReportScreen() {
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={cs.a11y.feedbackContactChannel(channel.label)}
+                  accessibilityLabel={t.a11y.feedbackContactChannel(channel.label)}
                 >
                   <Text
                     style={[
@@ -311,23 +311,23 @@ export default function ReportScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             maxLength={254}
-            accessibilityLabel={cs.a11y.feedbackContactInput}
+            accessibilityLabel={t.a11y.feedbackContactInput}
           />
 
           {/* ── Submit ── */}
           <View style={styles.submitButton}>
             <GlowButton
-              label={cs.report.submit}
+              label={t.report.submit}
               onPress={() => void handleSubmit()}
               glow={canSubmit ? 'soft' : 'none'}
-              accessibilityLabel={cs.a11y.feedbackSubmitButton}
+              accessibilityLabel={t.a11y.feedbackSubmitButton}
             />
             {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
 
           {appVersionLabel ? (
             <Text style={styles.versionCaption}>
-              {cs.report.versionCaption(appVersionLabel)}
+              {t.report.versionCaption(appVersionLabel)}
             </Text>
           ) : null}
         </KeyboardAwareScrollView>

@@ -14,6 +14,8 @@
  * re-sent upload never duplicates the photo server-side.
  */
 
+import { t } from '@/i18n';
+
 import { File, UploadType } from 'expo-file-system';
 
 import { ensureAccount, type AccountSession } from './account';
@@ -207,7 +209,7 @@ type RequestResult = RequestOk | { ok: false; result: FriendActionError };
 
 function extractError(data: Record<string, unknown>, status: number): FriendActionError {
   const detail =
-    typeof data.detail === 'string' ? data.detail : 'Nepodařilo se to uložit. Zkus to znovu.';
+    typeof data.detail === 'string' ? data.detail : t.clientErrors.save;
   const code = typeof data.code === 'string' ? data.code : `http_${status}`;
   return { ok: false, code, detail };
 }
@@ -227,12 +229,12 @@ async function requestJson(
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'offline', detail: 'Teď se k serveru nedostanu.' } };
+    return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
   }
 
   const session = options.session ?? (await ensureAccount(options.signal));
   if (!session || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
+    return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
   }
 
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
@@ -255,7 +257,7 @@ async function requestJson(
     }
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
-      return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
+      return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
     return { ok: true, data };
@@ -264,7 +266,7 @@ async function requestJson(
     if (!options.signal?.aborted && !isAbort) {
       trackApiFailure('beer_photos_request', { endpoint: path, reason: 'exception', error: err });
     }
-    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
+    return { ok: false, result: { ok: false, code: 'network', detail: t.clientErrors.network } };
   } finally {
     abort.cleanup();
   }

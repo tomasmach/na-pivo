@@ -84,7 +84,7 @@ const STATS: RemoteStats = {
 
 describe('profileStats', () => {
   it('keeps zero server buckets in the weekly chart and uses exact window totals', () => {
-    const series = profileSeries(STATS, 'Týden');
+    const series = profileSeries(STATS, 'week');
     expect(series.points.map((point) => point.value)).toEqual([2, 0]);
     expect(series.totals.map((item) => item.value)).toEqual(['2', '1', '2', '4 h']);
   });
@@ -115,7 +115,7 @@ describe('profileStats', () => {
   it('falls back to the released per-pub timeline and records on an older backend', () => {
     const legacy = { ...STATS, nightTimeline: undefined, nightRecords: undefined };
 
-    expect(profileSeries(legacy, 'Týden').totals.map((item) => item.value)).toEqual([
+    expect(profileSeries(legacy, 'week').totals.map((item) => item.value)).toEqual([
       '2',
       '1',
       '1',

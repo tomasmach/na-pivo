@@ -7,7 +7,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { BADGE_CATALOG } from '@/profile/badgeCatalog';
 import type { AccountAchievements, AccountMapper } from '@/data/auth';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 function resolvedAchievements(
   mapper: AccountMapper | undefined,
@@ -54,7 +54,7 @@ export function AchievementGrid({
                 style={styles.badge}
                 accessible
                 accessibilityRole="image"
-                accessibilityLabel={unlocked ? cs.a11y.badgeUnlocked(title) : cs.a11y.badgeLocked(title, hint)}
+                accessibilityLabel={unlocked ? t.a11y.badgeUnlocked(title) : t.a11y.badgeLocked(title, hint)}
               >
                 <View style={[styles.medallion, unlocked ? styles.medallionOn : styles.medallionOff]}>
                   {unlocked ? <Icon size={20} color={Colors.amber} /> : <LockKeyholeIcon size={20} color={Colors.mutedText} />}

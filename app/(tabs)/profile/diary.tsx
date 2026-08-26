@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import DiaryScreen from '@/diary/DiaryScreen';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 
 /** Private/local history lives in Profil; Party keeps the centre tab. */
@@ -23,7 +23,7 @@ export default function ProfileDiaryRoute() {
               onPress={() => setStatsOpen(true)}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.diaryStats}
+              accessibilityLabel={t.a11y.diaryStats}
             >
               <MenuIcon size={20} color={Colors.amber} />
             </Pressable>

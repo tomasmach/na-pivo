@@ -21,6 +21,7 @@ import SkeletonBlock from '@/friends/SkeletonBlock';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
+import { intlLocale, t } from '@/i18n';
 import { loadRecentSearches, saveRecentSearch } from '@/search/recentSearches';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { usePubStore } from '@/stores/pubStore';
@@ -28,13 +29,22 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-const TABS = ['Hospody', 'Piva', 'Pivaři'] as const;
+/** Stable keys; the visible labels come from t below. */
+const TABS = ['pubs', 'beers', 'people'] as const;
 type SearchTab = (typeof TABS)[number];
+
+const TAB_LABELS: Record<SearchTab, string> = {
+  pubs: t.search.tabPubs,
+  beers: t.search.tabBeers,
+  people: t.search.tabPeople,
+};
+const TAB_OPTIONS = TABS.map((key) => TAB_LABELS[key]);
+const tabFromLabel = (label: string) => TABS.find((key) => TAB_LABELS[key] === label) ?? 'pubs';
 
 function normalize(value: string): string {
   return value
     .trim()
-    .toLocaleLowerCase('cs-CZ')
+    .toLocaleLowerCase(intlLocale)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }
@@ -54,7 +64,7 @@ function personLabel(person: FriendProfile): string {
 function SearchLoading() {
   const reduceMotion = useReducedMotion();
   return (
-    <View style={styles.loading} accessibilityLabel="Hledám">
+    <View style={styles.loading} accessibilityLabel={t.search.loadingA11y}>
       <SkeletonBlock width="100%" height={56} reduceMotion={reduceMotion} />
       <SkeletonBlock width="100%" height={56} reduceMotion={reduceMotion} />
       <SkeletonBlock width="100%" height={56} reduceMotion={reduceMotion} />
@@ -67,7 +77,7 @@ export default function SearchMockScreen() {
   const router = useRouter();
   const setRevealedPub = usePubStore((state) => state.setRevealedPub);
   const [query, setQuery] = React.useState('');
-  const [tab, setTab] = React.useState<SearchTab>('Hospody');
+  const [tab, setTab] = React.useState<SearchTab>('pubs');
   const [recent, setRecent] = React.useState<string[]>([]);
   const [pubs, setPubs] = React.useState<Pub[]>([]);
   const [beers, setBeers] = React.useState<BeerBrandSuggestion[]>([]);
@@ -100,7 +110,7 @@ export default function SearchMockScreen() {
     const timer = setTimeout(() => {
       setLoading(true);
       setFailed(false);
-      if (tab === 'Hospody') {
+      if (tab === 'pubs') {
         const local = getAllLoadedPubs().filter((pub) => pubMatches(pub, term)).slice(0, 20);
         void suggestPubLocations({ name: term }, controller.signal)
           .then((suggestions) => {
@@ -145,7 +155,7 @@ export default function SearchMockScreen() {
         return;
       }
 
-      if (tab === 'Piva') {
+      if (tab === 'beers') {
         void suggestBeerBrands(term, controller.signal, 20).then((results) => {
           if (controller.signal.aborted) return;
           setBeers(results);
@@ -187,10 +197,10 @@ export default function SearchMockScreen() {
   };
 
   const empty = failed
-    ? 'Hledání se mi teď nepovedlo.'
+    ? t.search.failed
     : canSearch
-      ? 'Nic jsem nenašel. Zkus to jinak.'
-      : 'Napiš aspoň dvě písmena.';
+      ? t.search.noResults
+      : t.search.tooShort;
 
   return (
     <View style={styles.screen}>
@@ -201,7 +211,7 @@ export default function SearchMockScreen() {
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={() => remember(term)}
-            placeholder="Hospodu, pivo nebo pivaře"
+            placeholder={t.search.placeholder}
             placeholderTextColor={MockColors.fieldHint}
             style={styles.input}
             autoFocus
@@ -213,7 +223,7 @@ export default function SearchMockScreen() {
             <Pressable
               onPress={() => setQuery('')}
               accessibilityRole="button"
-              accessibilityLabel="Smazat"
+              accessibilityLabel={t.search.clear}
               hitSlop={8}
             >
               <XIcon size={15} color={Colors.mutedText} />
@@ -223,17 +233,22 @@ export default function SearchMockScreen() {
         <Pressable
           onPress={() => leaveRoute(router)}
           accessibilityRole="button"
-          accessibilityLabel="Zrušit hledání"
+          accessibilityLabel={t.search.cancelA11y}
           hitSlop={8}
         >
           <Text style={styles.cancel} maxFontSizeMultiplier={FontScaleCap.body}>
-            Zrušit
+            {t.search.cancel}
           </Text>
         </Pressable>
       </View>
 
       {searching ? (
-        <UnderlineTabs options={TABS} value={tab} onChange={setTab} inset={MockLayout.screenPad} />
+        <UnderlineTabs
+          options={TAB_OPTIONS}
+          value={TAB_LABELS[tab]}
+          onChange={(label) => setTab(tabFromLabel(label))}
+          inset={MockLayout.screenPad}
+        />
       ) : null}
 
       <KeyboardAwareScrollView
@@ -247,7 +262,7 @@ export default function SearchMockScreen() {
             {recent.length > 0 ? (
               <>
                 <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  Nedávno
+                  {t.search.recent}
                 </Text>
                 {recent.map((entry) => (
                   <Pressable
@@ -265,13 +280,13 @@ export default function SearchMockScreen() {
                 ))}
               </>
             ) : null}
-            <SectionBreak title="Pivaři, které možná znáš" />
+            <SectionBreak title={t.search.peopleYouMayKnow} />
             <PeopleSuggestions />
           </>
         ) : null}
 
         {searching && loading ? <SearchLoading /> : null}
-        {searching && !loading && tab === 'Hospody' ? (
+        {searching && !loading && tab === 'pubs' ? (
           pubs.length === 0 ? (
             <Empty text={empty} />
           ) : (
@@ -299,7 +314,7 @@ export default function SearchMockScreen() {
           )
         ) : null}
 
-        {searching && !loading && tab === 'Piva' ? (
+        {searching && !loading && tab === 'beers' ? (
           beers.length === 0 ? (
             <Empty text={empty} />
           ) : (
@@ -336,7 +351,7 @@ export default function SearchMockScreen() {
           )
         ) : null}
 
-        {searching && !loading && tab === 'Pivaři' ? (
+        {searching && !loading && tab === 'people' ? (
           people.length === 0 ? (
             <Empty text={empty} />
           ) : (

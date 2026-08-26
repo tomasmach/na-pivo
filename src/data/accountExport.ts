@@ -2,7 +2,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 import { getBackendEndpoint } from './backendConfig';
 import { ensureAccount } from './account';
@@ -29,17 +29,17 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
     return await runPrivateAccountMutation(async (scope) => {
       const endpoint = getBackendEndpoint(EXPORT_ENDPOINT);
       if (!endpoint) {
-        return { ok: false, code: 'network', detail: cs.account.exportNetworkError };
+        return { ok: false, code: 'network', detail: t.account.exportNetworkError };
       }
 
       let session: Awaited<ReturnType<typeof ensureAccount>> = null;
       try {
         session = await ensureAccount(scope.signal);
       } catch {
-        return { ok: false, code: 'network', detail: cs.account.exportNetworkError };
+        return { ok: false, code: 'network', detail: t.account.exportNetworkError };
       }
       if (!session) {
-        return { ok: false, code: 'unauthenticated', detail: cs.account.exportNetworkError };
+        return { ok: false, code: 'unauthenticated', detail: t.account.exportNetworkError };
       }
 
       const { signal, cleanup } = chainAbortSignal(
@@ -59,7 +59,7 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
         });
         text = await response.text();
       } catch {
-        return { ok: false, code: 'network', detail: cs.account.exportNetworkError };
+        return { ok: false, code: 'network', detail: t.account.exportNetworkError };
       } finally {
         cleanup();
       }
@@ -79,11 +79,11 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
           ? record.code
           : `http_${response.status}`;
         if (response.status === 429) {
-          return { ok: false, code, detail: cs.account.exportRateLimited };
+          return { ok: false, code, detail: t.account.exportRateLimited };
         }
         const detail = record && isNonEmptyString(record.detail)
           ? record.detail
-          : cs.account.exportServerError;
+          : t.account.exportServerError;
         return { ok: false, code, detail };
       }
 
@@ -91,12 +91,12 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
       try {
         parsedData = JSON.parse(text) as unknown;
       } catch {
-        return { ok: false, code: 'network', detail: cs.account.exportNetworkError };
+        return { ok: false, code: 'network', detail: t.account.exportNetworkError };
       }
 
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (!sharingAvailable) {
-        return { ok: false, code: 'sharing_unavailable', detail: cs.account.exportServerError };
+        return { ok: false, code: 'sharing_unavailable', detail: t.account.exportServerError };
       }
 
       // On Android a resolved share chooser does not guarantee the receiving
@@ -120,7 +120,7 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
         file.write(JSON.stringify(parsedData, null, 2));
         await Sharing.shareAsync(file.uri, {
           mimeType: 'application/json',
-          dialogTitle: cs.account.exportDialogTitle,
+          dialogTitle: t.account.exportDialogTitle,
           UTI: 'public.json',
         });
         shared = true;
@@ -133,7 +133,7 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
           } catch {
             // Ignore delete failures.
           }
-          return { ok: false, code: 'share_failed', detail: cs.account.exportServerError };
+          return { ok: false, code: 'share_failed', detail: t.account.exportServerError };
         }
       } finally {
         if (Platform.OS !== 'android' && shared) {
@@ -155,9 +155,9 @@ export async function exportMyAccountData(): Promise<AccountExportResult> {
         ok: false,
         code: 'account_transition',
         detail:
-          cs.account.exportAccountTransitionError,
+          t.account.exportAccountTransitionError,
       };
     }
-    return { ok: false, code: 'network', detail: cs.account.exportNetworkError };
+    return { ok: false, code: 'network', detail: t.account.exportNetworkError };
   }
 }
