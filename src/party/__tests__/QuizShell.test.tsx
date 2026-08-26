@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform, ScrollView, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
 
 
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
@@ -192,9 +192,18 @@ describe('QuizShell', () => {
     renderShell([]);
 
     expect(
-      StyleSheet.flatten(screen.UNSAFE_getByType(ScrollView).props.contentContainerStyle)
-        .paddingBottom,
-    ).toBe(122);
+      screen
+        .UNSAFE_getAllByType(View)
+        .some((node) => StyleSheet.flatten(node.props.style)?.paddingBottom === 122),
+    ).toBe(true);
+  });
+
+  it('letters the four tiles, so the table can shout "béčko" across the noise', () => {
+    renderShell([]);
+
+    ['A', 'B', 'C', 'D'].forEach((letter) => {
+      expect(screen.getByText(letter)).toBeTruthy();
+    });
   });
 
   it('asks before anybody has answered', () => {

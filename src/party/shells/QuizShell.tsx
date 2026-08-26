@@ -36,8 +36,17 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckIcon } from "@/components/shared/IconGlyph";
-import { PersonAvatar } from "@/components/shared/PersonAvatar";
 import { GameResult } from "@/games/GameResult";
+import {
+  GameStage,
+  StageCard,
+  StageChip,
+  StageChips,
+  StageInk,
+  StagePill,
+  StageStatus,
+  stageBody,
+} from "@/party/shells/GameStage";
 import { DurableFinishPending, useDurableFinish } from "@/party/shells/DurableFinish";
 import { QUIZ_QUESTIONS } from "@/party/quiz/questions";
 import {
@@ -48,7 +57,6 @@ import {
   type QuizAnswer,
   type QuizEntrant,
 } from "@/party/quiz/rules";
-import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap, Fonts } from "@/theme/fonts";
 import { Radius, Spacing } from "@/theme/layout";
@@ -222,250 +230,201 @@ export function QuizShell({
 
   return (
     <ScrollView
-      contentContainerStyle={[
-        styles.body,
-        { paddingBottom: insets.bottom + 88 },
-      ]}
+      contentContainerStyle={styles.scroll}
+      style={styles.body}
       showsVerticalScrollIndicator={false}
       // Locking mid-question would leave a half-scrolled option under the thumb.
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.kicker} maxFontSizeMultiplier={FontScaleCap.body}>
-        Otázka {index + 1}/{QUIZ_QUESTIONS.length}
-      </Text>
-
-      <Animated.Text
-        key={question.id}
-        entering={reduceMotion ? undefined : FadeIn.duration(220)}
-        style={styles.question}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-        accessibilityRole="header"
-        accessibilityLiveRegion="polite"
-      >
-        {question.text}
-      </Animated.Text>
-
-      <View style={styles.options}>
-        {question.options.map((option, optionIndex) => {
-          const right = revealed && optionIndex === question.answer;
-          const wrong = revealed && mine?.option === optionIndex && !right;
-          const picked = mine?.option === optionIndex;
-          return (
-            <Pressable
-              key={option}
-              onPress={() => {
-                if (!canAnswer || answerLocked.current === question.id) return;
-                answerLocked.current = question.id;
-                // Canonical answers unlock us; bound the lock in case this
-                // answer never lands anywhere.
-                if (answerUnlock.current) clearTimeout(answerUnlock.current);
-                const atQuestion = question.id;
-                answerUnlock.current = setTimeout(() => {
-                  if (answerLocked.current === atQuestion)
-                    answerLocked.current = null;
-                }, LOCK_RECOVERY_MS);
-                onAnswer(optionIndex);
-              }}
-              disabled={!canAnswer}
-              style={({ pressed }) => [
-                styles.option,
-                picked && styles.optionPicked,
-                right && styles.optionRight,
-                wrong && styles.optionWrong,
-                pressed && canAnswer && styles.pressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !canAnswer, selected: picked }}
-              accessibilityLiveRegion={
-                revealed && right ? "assertive" : undefined
-              }
-              accessibilityLabel={
-                revealed && right
-                  ? (correctLabel ?? undefined)
-                  : option
-              }
-            >
-              <Text
-                style={[
-                  styles.optionText,
-                  (right || picked) && styles.optionTextOn,
-                ]}
-                maxFontSizeMultiplier={FontScaleCap.heading}
-              >
-                {option}
-              </Text>
-              {right ? <CheckIcon size={18} color={Colors.stout} /> : null}
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* Locked but not yet revealed: the only honest thing to show is who the
-          table is still waiting for. */}
-      {locked && !revealed ? (
-        <Animated.View
-          entering={reduceMotion ? undefined : FadeInDown.duration(200)}
-          style={styles.waiting}
+      <View style={stageBody(insets.bottom)}>
+        <GameStage
+          topRight={
+            <StageChip label={`${index + 1}/${QUIZ_QUESTIONS.length}`} />
+          }
+          style={styles.stage}
         >
-          <Text
-            style={styles.waitingTitle}
-            maxFontSizeMultiplier={FontScaleCap.body}
-            accessibilityLiveRegion="polite"
+          <StageCard wide style={styles.questionCard}>
+            <Animated.Text
+              key={question.id}
+              entering={reduceMotion ? undefined : FadeIn.duration(220)}
+              style={styles.question}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+              accessibilityRole="header"
+              accessibilityLiveRegion="polite"
+            >
+              {question.text}
+            </Animated.Text>
+          </StageCard>
+
+          {/* Four tiles, two by two. A vertical list of four rows read as a
+              settings screen; a grid reads as a game you tap fast. */}
+          <View style={styles.grid}>
+            {question.options.map((option, optionIndex) => {
+              const right = revealed && optionIndex === question.answer;
+              const wrong = revealed && mine?.option === optionIndex && !right;
+              const picked = mine?.option === optionIndex;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    if (!canAnswer || answerLocked.current === question.id)
+                      return;
+                    answerLocked.current = question.id;
+                    // Canonical answers unlock us; bound the lock in case this
+                    // answer never lands anywhere.
+                    if (answerUnlock.current) clearTimeout(answerUnlock.current);
+                    const atQuestion = question.id;
+                    answerUnlock.current = setTimeout(() => {
+                      if (answerLocked.current === atQuestion)
+                        answerLocked.current = null;
+                    }, LOCK_RECOVERY_MS);
+                    onAnswer(optionIndex);
+                  }}
+                  disabled={!canAnswer}
+                  style={({ pressed }) => [
+                    styles.tile,
+                    picked && styles.tilePicked,
+                    right && styles.tileRight,
+                    wrong && styles.tileWrong,
+                    pressed && canAnswer && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !canAnswer, selected: picked }}
+                  accessibilityLiveRegion={
+                    revealed && right ? "assertive" : undefined
+                  }
+                  accessibilityLabel={
+                    revealed && right ? (correctLabel ?? undefined) : option
+                  }
+                >
+                  <View style={styles.tileTop}>
+                    <Text
+                      style={[styles.letter, picked && styles.letterOn]}
+                      allowFontScaling={false}
+                    >
+                      {LETTERS[optionIndex]}
+                    </Text>
+                    {right ? <CheckIcon size={16} color={Colors.success} /> : null}
+                  </View>
+                  <Text
+                    style={[styles.tileText, picked && styles.tileTextOn]}
+                    numberOfLines={3}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {option}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </GameStage>
+
+        {/* Locked but not yet revealed: the only honest thing to show is who the
+            table is still waiting for. Nominative, so it reads right however the
+            table is named — "čeká se na Honza" is the kind of Czech an app
+            writes and a person never does. */}
+        {locked && !revealed && waitingLine ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.duration(200)}
           >
-            {/* Nominative, so it reads right however the table is named —
-                "čeká se na Honza" is the kind of Czech an app writes and a
-                person never does. */}
-            {waitingLine}
-          </Text>
+            <StageStatus text={waitingLine} />
+          </Animated.View>
+        ) : null}
+
+        {visibleStandings.length > 1 ? (
+          <StageChips
+            players={visibleStandings.map((row) => ({
+              id: row.teamId,
+              name: row.teamName,
+              tint: tintOf(row.teamId),
+              score: row.score,
+            }))}
+          />
+        ) : null}
+
+        <View style={styles.dock}>
           {/* Somebody is at the bar, or their phone died. A quiz that can only
               be unblocked by a person who left is a quiz that ends there. */}
-          {!spectator ? (
-            <Pressable
+          {locked && !revealed && !spectator ? (
+            <StagePill
+              label="Nečekat"
+              tone="quiet"
               onPress={onReveal}
-              style={({ pressed }) => [
-                styles.reveal,
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="button"
               accessibilityLabel="Ukázat odpověď bez čekání"
-              hitSlop={8}
-            >
-              <Text
-                style={styles.revealText}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                Nečekat
-              </Text>
-            </Pressable>
+            />
           ) : null}
-        </Animated.View>
-      ) : null}
 
-      {revealed && !spectator ? (
-        <Pressable
-          onPress={onNext}
-          style={({ pressed }) => [styles.action, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Další otázka"
-        >
-          <Text
-            style={styles.actionText}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-          >
-            {index + 1 >= QUIZ_QUESTIONS.length ? "Výsledky" : "Další otázka"}
-          </Text>
-        </Pressable>
-      ) : null}
-
-      {/* The board is context, not the question — quiet, at the bottom, and only
-          when there is somebody to compare with. */}
-      {visibleStandings.length > 1 ? (
-        <View style={styles.board}>
-          {visibleStandings.map((row) => (
-            <View
-              key={row.teamId}
-              style={styles.boardRow}
-              accessible
-              accessibilityRole="text"
-              accessibilityLabel={`${row.teamName} ${row.score}`}
-            >
-              <PersonAvatar
-                name={row.teamName}
-                tint={tintOf(row.teamId)}
-                size={22}
-              />
-              <Text
-                style={styles.boardName}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-              >
-                {row.teamName}
-              </Text>
-              <Text
-                style={styles.boardScore}
-                allowFontScaling={false}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-              >
-                {row.score}
-              </Text>
-            </View>
-          ))}
+          {revealed && !spectator ? (
+            <StagePill
+              label={
+                index + 1 >= QUIZ_QUESTIONS.length ? "Výsledky" : "Další otázka"
+              }
+              onPress={onNext}
+              accessibilityLabel="Další otázka"
+            />
+          ) : null}
         </View>
-      ) : null}
+      </View>
     </ScrollView>
   );
 }
 
+/** The four tiles are lettered, so a table can shout "béčko" across the noise. */
+const LETTERS = ["A", "B", "C", "D"] as const;
+
 const styles = StyleSheet.create({
-  body: {
-    paddingHorizontal: MockLayout.screenPad,
-    paddingTop: Spacing.lg,
-  },
+  body: { flex: 1 },
+  scroll: { flexGrow: 1 },
   pressed: { opacity: 0.8 },
-  kicker: { fontSize: 13, fontWeight: "700", color: Colors.mutedText },
+
+  stage: { padding: Spacing.md, justifyContent: "flex-start" },
+  questionCard: { marginTop: Spacing.xl },
   question: {
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "800",
-    color: Colors.foam,
-    letterSpacing: -0.4,
-    marginTop: Spacing.sm,
-  },
-
-  options: { marginTop: Spacing.xl, gap: Spacing.sm },
-  option: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    minHeight: 60,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: 18,
-    backgroundColor: MockColors.surfaceHigh,
-  },
-  optionPicked: { backgroundColor: withAlpha(Colors.amber, 0.18) },
-  optionRight: { backgroundColor: Colors.amber },
-  optionWrong: { backgroundColor: withAlpha(Colors.foam, 0.06) },
-  optionText: { flex: 1, fontSize: 17, fontWeight: "600", color: Colors.foam },
-  optionTextOn: { color: Colors.stout, fontWeight: "700" },
-
-  waiting: { marginTop: Spacing.lg, alignItems: "center", gap: Spacing.sm },
-  reveal: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
-  revealText: { fontSize: 14, fontWeight: "700", color: Colors.amber },
-  waitingTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.mutedText,
+    color: StageInk.strong,
+    letterSpacing: -0.3,
     textAlign: "center",
   },
 
-  action: {
-    height: MockLayout.sheetButtonHeight,
-    borderRadius: Radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: Spacing.xl,
-    backgroundColor: Colors.amber,
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignSelf: "stretch",
+    justifyContent: "space-between",
+    marginTop: Spacing.md,
+    rowGap: Spacing.sm,
   },
-  actionText: { ...MockType.buttonLabel, color: Colors.stout },
-
-  board: { marginTop: Spacing.xxl, gap: Spacing.sm },
-  boardRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  boardName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-    color: withAlpha(Colors.foam, 0.75),
+  tile: {
+    width: "48.5%",
+    minHeight: 84,
+    padding: Spacing.md,
+    borderRadius: Radius.medium,
+    justifyContent: "space-between",
+    backgroundColor: Colors.stout3,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
-  boardScore: {
+  // Tinted, not filled: the one full amber plane on the screen is the pill
+  // (§2.2), and a chosen answer is a state, not a call to action.
+  tilePicked: {
+    backgroundColor: withAlpha(Colors.amber, 0.2),
+    borderColor: Colors.amber,
+  },
+  tileRight: { borderColor: Colors.success },
+  tileWrong: { backgroundColor: withAlpha(StageInk.red, 0.24) },
+  tileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  letter: {
     fontFamily: Fonts.numeral,
-    fontSize: 17,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 18,
     includeFontPadding: false,
-    color: Colors.foam,
-    fontVariant: ["tabular-nums"],
+    color: Colors.mutedText,
   },
+  letterOn: { color: Colors.amber },
+  tileText: { fontSize: 17, fontWeight: "700", color: Colors.foam },
+  tileTextOn: { color: Colors.foam },
+
+  dock: { marginTop: "auto", paddingTop: Spacing.lg, gap: Spacing.sm },
 });
