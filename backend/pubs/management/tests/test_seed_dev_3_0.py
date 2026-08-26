@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from io import StringIO
+from itertools import combinations
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -56,9 +57,9 @@ def _target(*, nickname: str | None = "Tester") -> Account:
     )
 
 
-def _run(*args: str) -> str:
+def _run(*args: str, now: datetime = NOW) -> str:
     stdout = StringIO()
-    with patch("pubs.management.commands.seed_dev_3_0.timezone.now", return_value=NOW):
+    with patch("pubs.management.commands.seed_dev_3_0.timezone.now", return_value=now):
         call_command("seed_dev_3_0", *args, stdout=stdout)
     return stdout.getvalue()
 
@@ -269,6 +270,25 @@ def test_seed_is_idempotent():
     assert set(PublishedNight.objects.values_list("pk", flat=True)) == night_ids
     assert set(CommunityEvent.objects.values_list("pk", flat=True)) == event_ids
     assert set(CommunityEventTeam.objects.values_list("pk", flat=True)) == team_ids
+
+
+@pytest.mark.django_db
+def test_seed_avoids_overlapping_visits_in_the_same_pub():
+    target = _target()
+    friday_now = datetime(2026, 8, 14, 12, tzinfo=UTC)
+
+    _run("--nickname", target.nickname, now=friday_now)
+    _run("--nickname", target.nickname, now=friday_now)
+
+    visits = list(PubVisit.objects.filter(account=target).order_by("started_at", "client_id"))
+    overlaps = [
+        (left.name, left.started_at, left.ended_at, right.started_at, right.ended_at)
+        for left, right in combinations(visits, 2)
+        if (left.cache_key, left.name) == (right.cache_key, right.name)
+        and left.started_at < right.ended_at
+        and right.started_at < left.ended_at
+    ]
+    assert overlaps == []
 
 
 @pytest.mark.django_db

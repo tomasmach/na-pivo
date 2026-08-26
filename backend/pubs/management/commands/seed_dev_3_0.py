@@ -494,18 +494,40 @@ class Command(BaseCommand):
             if start > now:
                 start = now - timedelta(minutes=30)
             pub = SEED_PUBS[index]
+            client_id = self._uuid(target.device_id, f"challenge:thursday:{index}")
+            cache_key = geohash8(pub.lat, pub.lng)
+            for _attempt in range(2):
+                end = start + timedelta(hours=2)
+                overlaps = (
+                    PubVisit.objects.filter(
+                        account=target,
+                        cache_key=cache_key,
+                        name=pub.name,
+                        started_at__lt=end,
+                        ended_at__gt=start,
+                    )
+                    .exclude(client_id=client_id)
+                    .exists()
+                )
+                if not overlaps:
+                    break
+                start -= timedelta(days=7)
+            else:
+                PubVisit.objects.filter(account=target, client_id=client_id).delete()
+                continue
+
             PubVisit.objects.update_or_create(
                 account=target,
-                client_id=self._uuid(target.device_id, f"challenge:thursday:{index}"),
+                client_id=client_id,
                 defaults={
-                    "cache_key": geohash8(pub.lat, pub.lng),
+                    "cache_key": cache_key,
                     "name": pub.name,
                     "lat": pub.lat,
                     "lng": pub.lng,
                     "city": pub.city,
                     "external_id": "",
                     "started_at": start,
-                    "ended_at": start + timedelta(hours=2),
+                    "ended_at": end,
                     "client_updated_at": now,
                 },
             )
