@@ -20,10 +20,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { CheckIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { GameCover } from '@/party/GameCover';
-import { GAME_CATALOG } from '@/party/gameCatalog';
+import { GAMES_COMING_SOON, GAME_CATALOG } from '@/party/gameCatalog';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -58,6 +59,11 @@ export function GamesSheet({
             </View>
             <CloseButton onPress={onClose} />
           </View>
+          {GAMES_COMING_SOON ? (
+            <Text style={styles.soon} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.party.gamesComingSoon}
+            </Text>
+          ) : null}
 
           <ScrollView
             style={styles.list}
@@ -66,23 +72,37 @@ export function GamesSheet({
           >
             {GAME_CATALOG.map((game) => {
               const added = onTable.includes(game.key);
+              const locked = GAMES_COMING_SOON;
               return (
                 <Pressable
                   key={game.key}
-                  onPress={added ? undefined : () => onPick(game.key, game.name)}
-                  disabled={added}
+                  onPress={added || locked ? undefined : () => onPick(game.key, game.name)}
+                  disabled={added || locked}
                   style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityState={{ selected: added, disabled: added }}
-                  accessibilityLabel={`${game.name}. ${game.how}`}
+                  accessibilityState={{ selected: added, disabled: added || locked }}
+                  accessibilityLabel={
+                    locked
+                      ? `${game.name}. ${cs.party.gamesComingSoon}`
+                      : `${game.name}. ${game.how}`
+                  }
                 >
                   <View>
                     <GameCover game={game} height={COVER_H} />
-                    <View style={[styles.badge, game.scoring === 'points' && styles.badgePoints]}>
-                      <Text style={styles.badgeText} allowFontScaling={false}>
-                        {game.scoring === 'points' ? 'Na body' : 'Bez bodů'}
-                      </Text>
-                    </View>
+                    {locked ? (
+                      <View style={styles.lock}>
+                        <LockKeyholeIcon size={16} color={Colors.foam} />
+                        <Text style={styles.lockText} allowFontScaling={false}>
+                          {cs.party.gamesSoonBadge}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.badge, game.scoring === 'points' && styles.badgePoints]}>
+                        <Text style={styles.badgeText} allowFontScaling={false}>
+                          {game.scoring === 'points' ? 'Na body' : 'Bez bodů'}
+                        </Text>
+                      </View>
+                    )}
                     {added ? (
                       <View style={styles.added}>
                         <CheckIcon size={15} color={Colors.stout} />
@@ -109,6 +129,25 @@ export function GamesSheet({
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
+  soon: {
+    ...MockType.body,
+    color: Colors.foamMuted,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  lock: {
+    position: 'absolute',
+    top: Spacing.sm,
+    left: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.stout, 0.72),
+  },
+  lockText: { ...MockType.label, color: Colors.foam },
   pressed: { opacity: 0.7 },
 
   cardWrap: { width: '100%', maxHeight: '92%' },

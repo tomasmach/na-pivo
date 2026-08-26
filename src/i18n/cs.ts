@@ -2452,6 +2452,8 @@ export const cs = {
   party: {
     /** Server rule: a published night needs at least one drink of my own. */
     nothingToPublish: 'Bez vlastního piva není co zveřejnit.',
+    gamesComingSoon: 'Hry ještě dolaďuju. Přijdou v další verzi.',
+    gamesSoonBadge: 'Brzy',
     staleEveningClosed: 'Starý večer jsem zavřel.',
     nightTitleOutsidePub: 'Večer mimo hospodu',
     nightTitleAtPub: (pubName: string) => `Večer v ${pubName}`,

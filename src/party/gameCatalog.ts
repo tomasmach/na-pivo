@@ -69,6 +69,13 @@ export interface GameDef {
   Icon: ComponentType<{ size?: number; color: string }>;
 }
 
+/**
+ * 2.0.0 ships the table games locked. They are visible in the sheet so the
+ * table knows what is coming, but nothing can be placed or played until the
+ * screens are finished. Flip to `false` to release them.
+ */
+export const GAMES_COMING_SOON = true;
+
 export const GAME_CATALOG: readonly GameDef[] = [
   {
     key: 'quiz',
