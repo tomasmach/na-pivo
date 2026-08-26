@@ -2,6 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
+import { XIcon } from '@/components/shared/IconGlyph';
+import { cs } from '@/i18n/cs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { PubPosition, PubPresentation } from '@/pubs/pubPresentation';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
@@ -16,11 +18,15 @@ export function CompassCell({
   position,
   badge,
   onPress,
+  onClose,
 }: {
   pub: PubPresentation;
   position: PubPosition;
   badge: string;
   onPress?: () => void;
+  /** Present only while the needle is borrowed by a friend's handoff — tapping
+   *  it hands the head cell back to the list's own first pub. */
+  onClose?: () => void;
 }) {
   const rotation = useCompassRotation(position, { lat: pub.pub.lat, lng: pub.pub.lng });
 
@@ -54,6 +60,18 @@ export function CompassCell({
           {[pub.openLabel, pub.beerLine].filter(Boolean).join(' · ')}
         </Text>
       </View>
+
+      {onClose ? (
+        <Pressable
+          onPress={onClose}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={cs.compass.backToNearest}
+          style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+        >
+          <XIcon size={16} color={Colors.mutedText} />
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -71,6 +89,7 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7 },
   body: { flex: 1 },
+  close: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   distanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
   badge: {
     paddingHorizontal: 8,
