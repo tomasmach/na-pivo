@@ -384,10 +384,20 @@ export const useLivePartyStore = create<LivePartyState>()(
   ),
 );
 
-/** "1h 12m" / "48m". Shared, so the bar, the hub and the recap agree. */
+/**
+ * "48m" / "1h 12m" / "110h". Shared, so the bar, the hub and the recap agree.
+ *
+ * Past ten hours the minutes are dropped: an evening that long is a number you
+ * read, not a stopwatch you check, and "110h 30m" was wide enough to run into
+ * the column beside it on the finish screen.
+ */
+const ELAPSED_MINUTES_CUTOFF_H = 10;
+
 export function formatElapsed(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours >= ELAPSED_MINUTES_CUTOFF_H) return `${hours}h`;
+  return `${hours}h ${minutes % 60}m`;
 }
 
 /**

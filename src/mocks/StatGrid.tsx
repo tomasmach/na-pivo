@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     marginTop: 2,
   },
-  valueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  valueRow: { flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 },
   /**
    * The one place the app is not on the system font.
    *
@@ -163,6 +163,11 @@ const styles = StyleSheet.create({
    * overshoots its box (§3.2).
    */
   value: {
+    // Without these the numeral takes its natural width inside the row and
+    // simply overflows the cell — `adjustsFontSizeToFit` then has nothing to
+    // shrink into, which is how "110h 30m" landed on the column beside it.
+    flexShrink: 1,
+    minWidth: 0,
     fontFamily: Fonts.numeral,
     fontSize: 22,
     lineHeight: 27,

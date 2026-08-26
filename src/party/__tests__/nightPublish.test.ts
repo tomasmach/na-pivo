@@ -6,7 +6,11 @@
  * names go; prices, coordinates and individual beer names stay at home.
  */
 
-import { nightPhotoReferences, nightPublishPayload } from '@/party/nightPublish';
+import {
+  defaultNightTitle,
+  nightPhotoReferences,
+  nightPublishPayload,
+} from '@/party/nightPublish';
 import { emptyNight, type NightDrink, type NightRecord } from '@/party/nightRecord';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -246,5 +250,27 @@ describe('nightPublishPayload', () => {
       durationMinutes: 90,
     });
     expect(JSON.stringify(payload)).not.toContain('Cizí štace');
+  });
+});
+
+describe('defaultNightTitle', () => {
+  it('names the pub the night happened in', () => {
+    expect(defaultNightTitle({ pubName: 'U Hrocha', cacheKey: 'u2fkbfvu' })).toBe(
+      'Ve\u010der v U Hrocha',
+    );
+  });
+
+  it('does not say "Ve\u010der v Mimo hospodu"', () => {
+    expect(defaultNightTitle({ pubName: 'Mimo hospodu', cacheKey: 'ctx:other' })).toBe(
+      'Ve\u010der mimo hospodu',
+    );
+    expect(defaultNightTitle({ pubName: 'Mimo hospodu', cacheKey: null })).toBe(
+      'Ve\u010der mimo hospodu',
+    );
+  });
+
+  it('falls back when there is no stop at all', () => {
+    expect(defaultNightTitle(undefined)).toBe('Pivn\u00ed ve\u010der');
+    expect(defaultNightTitle({ pubName: '   ', cacheKey: null })).toBe('Pivn\u00ed ve\u010der');
   });
 });

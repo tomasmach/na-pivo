@@ -24,7 +24,11 @@ import {
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { buildRoast } from '@/feed/roast';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
-import { nightPhotoReferences, nightPublishPayload } from '@/party/nightPublish';
+import {
+  defaultNightTitle,
+  nightPhotoReferences,
+  nightPublishPayload,
+} from '@/party/nightPublish';
 import { nightByBeer, nightMe, nightMinutes, nightTally } from '@/party/nightRecord';
 import { rememberNightRecord, useNightRecord } from '@/party/useNightRecord';
 import { finishPartyToRecap } from '@/party/partyRouting';
@@ -110,9 +114,7 @@ export default function FinishNightScreen() {
   const played = night.games.filter((game) => game.result);
   const partyCode = evening?.joinCode ?? confirmedIdentity?.joinCode ?? night.code ?? undefined;
   const partyDrinkingDay = drinkingDayKey(new Date(night.startedAt));
-  const defaultTitle = night.stops[0]?.pubName
-    ? `Večer v ${night.stops[0].pubName}`
-    : 'Pivní večer';
+  const defaultTitle = defaultNightTitle(night.stops[0]);
   const roast = React.useMemo(
     () => buildRoast({
       beers: tally.beers,

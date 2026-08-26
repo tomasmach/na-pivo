@@ -22,6 +22,8 @@
  */
 
 import { MAX_PUB_NAMES } from '@/vycep/nightModel';
+import { isContextPubKey } from '@/drinks/drinkTypes';
+import { cs } from '@/i18n/cs';
 import { drinkingDayKey } from '@/stores/tallyStore';
 import { nightMinutes, nightTally, type NightRecord } from '@/party/nightRecord';
 import type { NightPublishPayload, NightVisibility } from '@/data/nightsClient';
@@ -57,6 +59,24 @@ export function nightPhotoReferences(
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * The title the finish screen offers before you rename it.
+ *
+ * "Večer v Mimo hospodu" is not a sentence. Outside a pub the place is not a
+ * name you can put after "v", so the whole phrase changes.
+ */
+export function defaultNightTitle(
+  stop: { pubName: string; cacheKey?: string | null } | undefined,
+): string {
+  if (!stop) return cs.party.nightTitleFallback;
+  const outside =
+    (stop.cacheKey != null && isContextPubKey(stop.cacheKey)) ||
+    stop.pubName.trim().toLocaleLowerCase('cs-CZ') === 'mimo hospodu';
+  if (outside) return cs.party.nightTitleOutsidePub;
+  const pubName = stop.pubName.trim();
+  return pubName ? cs.party.nightTitleAtPub(pubName) : cs.party.nightTitleFallback;
+}
 
 export function nightPublishPayload(
   night: NightRecord,

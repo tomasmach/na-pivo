@@ -35,7 +35,11 @@ const SECTION_GAP = 32;
 
 function formatElapsed(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  const hours = Math.floor(minutes / 60);
+  // Same cutoff as the hub's shared formatter: past ten hours the minutes are
+  // noise, and the numeral still has to fit a quarter of the screen.
+  if (hours >= 10) return `${hours}h`;
+  return `${hours}h ${minutes % 60}m`;
 }
 
 function clockAt(iso: string): string {
