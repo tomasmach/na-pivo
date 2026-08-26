@@ -1,32 +1,53 @@
 /**
  * A deck of prompts, one card at a time.
  *
- * Three of the eight games are this: "Nikdy jsem…", "Kategorie", "Pravidlo
- * večera". They differ only in what is written on the cards.
+ * Four of the games are this — "Kategorie", "Nikdy jsem…", "Palec", "Pravidlo
+ * večera" — and they differ only in what is printed on the cards.
  *
- * The card is the whole screen on purpose. A phone in the middle of a pub table
- * is read by five people at arm's length in bad light, so the prompt is 30pt and
- * everything else gets out of its way — no header, no chrome, no explanation
- * repeated under it. You tap anywhere to deal the next one, which is the one
- * gesture that survives being drunk.
+ * The prompt used to be bare text floating on a black screen, which read as an
+ * error message rather than a game. It is now a physical card lying on the
+ * stage: cream paper, dark ink, the game's glyph at the top and the deck
+ * counter in the corner. A phone in the middle of a pub table is read by five
+ * people at arm's length in bad light, so the prompt is still the biggest thing
+ * on the screen — it just now looks like an object you dealt.
+ *
+ * You tap the card to deal the next one, which is the one gesture that survives
+ * being drunk; the amber pill does the same thing for anyone who reads buttons.
  *
  * The deck is SHUFFLED once and then dealt through, rather than picking at
  * random each time. Random repeats, and a repeat two cards apart is the moment
  * a table decides the app is broken. When it runs out it reshuffles and says so.
  */
 
-import React from "react";
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { type ComponentType } from "react";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
+  SlideInRight,
+  SlideOutLeft,
   useReducedMotion,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Colors, withAlpha } from "@/theme/colors";
-import { FontScaleCap, Fonts } from "@/theme/fonts";
-import { MockLayout } from "@/mocks/mockTheme";
+import {
+  GameStage,
+  STAGE_FILL,
+  StageCard,
+  StageChip,
+  StageInk,
+  StageIntro,
+  StagePill,
+  stageBody,
+} from "@/party/shells/GameStage";
+import { FontScaleCap } from "@/theme/fonts";
 import { Spacing } from "@/theme/layout";
 
 /**
@@ -66,12 +87,16 @@ export function promptDeck(
 /** Long enough to cover a slow round trip, short enough that the card frees up. */
 const LOCK_RECOVERY_MS = 1200;
 
+/** The deal: the old card leaves left, the new one arrives from the right. */
+const DEAL_MS = 250;
+
 export function PromptShell({
   prompts,
   intro,
   seed,
   step,
   onNext,
+  Icon,
   spectator = false,
 }: {
   prompts: readonly string[];
@@ -81,6 +106,8 @@ export function PromptShell({
   /** Shared append-only position. Omit for a local-only game. */
   step?: number;
   onNext?: () => void;
+  /** The game's glyph, small, at the top of the card. */
+  Icon?: ComponentType<{ size?: number; color: string }>;
   /** Read-only view: the card shows, but nobody advances the deck from here. */
   spectator?: boolean;
 }) {
@@ -146,116 +173,101 @@ export function PromptShell({
     }
   };
 
-  const card = (
-    <>
-      {intro ? (
-        <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-          {intro}
-        </Text>
-      ) : null}
-
-      <Animated.View
-        // Keyed by the card, so React unmounts one and mounts the next — which
-        // is what makes the cross-fade a card change rather than text swapping
-        // inside a box.
-        key={`${index}-${deck[index]}`}
-        entering={reduceMotion ? undefined : FadeIn.duration(220)}
-        exiting={reduceMotion ? undefined : FadeOut.duration(140)}
-        style={styles.card}
-      >
-        <Text
-          style={styles.prompt}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {deck[index]}
-        </Text>
-      </Animated.View>
-
-      {single ? null : (
-        <View style={[styles.foot, { bottom: insets.bottom + 88 }]}>
-          {spectator ? null : (
-            <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-              Ťukni kamkoliv
-            </Text>
-          )}
-          <Text style={styles.count} allowFontScaling={false}>
-            {index + 1}/{deck.length}
-          </Text>
-        </View>
-      )}
-    </>
-  );
-
-  if (spectator) {
-    return (
-      <View
-        style={styles.wrap}
-        accessibilityRole="text"
-        accessibilityLabel={deck[index]}
-        accessibilityLiveRegion="polite"
-      >
-        {card}
-      </View>
-    );
-  }
-
-  return (
-    <Pressable
-      onPress={next}
-      style={styles.wrap}
-      accessibilityRole={single ? "text" : "button"}
-      accessibilityLiveRegion="polite"
-      accessibilityLabel={
-        single ? deck[index] : `${deck[index] ?? ""} Ťukni pro další.`
+  const stage = (
+    <GameStage
+      topRight={
+        single ? undefined : (
+          <StageChip label={`${index + 1}/${deck.length}`} />
+        )
       }
     >
-      {card}
-    </Pressable>
+      <Animated.View
+        // Keyed by the card, so React unmounts one and mounts the next — which
+        // is what makes this a deal rather than text swapping inside a box.
+        key={`${index}-${deck[index]}`}
+        entering={
+          reduceMotion
+            ? undefined
+            : single
+              ? FadeIn.duration(DEAL_MS)
+              : SlideInRight.duration(DEAL_MS)
+        }
+        exiting={
+          reduceMotion
+            ? undefined
+            : single
+              ? FadeOut.duration(140)
+              : SlideOutLeft.duration(DEAL_MS)
+        }
+        style={styles.dealt}
+        pointerEvents="none"
+      >
+        <StageCard>
+          {Icon ? (
+            <View style={styles.glyph}>
+              <Icon size={20} color={StageInk.soft} />
+            </View>
+          ) : null}
+          <Text
+            style={styles.prompt}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {deck[index]}
+          </Text>
+        </StageCard>
+      </Animated.View>
+    </GameStage>
+  );
+
+  return (
+    <View style={stageBody(insets.bottom)}>
+      {intro ? <StageIntro text={intro} /> : null}
+
+      {spectator || single ? (
+        <View
+          style={styles.stageWrap}
+          accessibilityRole="text"
+          accessibilityLabel={deck[index]}
+          accessibilityLiveRegion="polite"
+        >
+          {stage}
+        </View>
+      ) : (
+        <Pressable
+          onPress={next}
+          style={styles.stageWrap}
+          accessibilityRole="button"
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={`${deck[index] ?? ""} Ťukni pro další.`}
+        >
+          {stage}
+        </Pressable>
+      )}
+
+      {single || spectator ? null : (
+        <View style={styles.dock}>
+          <StagePill label="Další" onPress={next} />
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flex: 1,
+  stageWrap: { flexShrink: 1 },
+  dealt: {
+    ...STAGE_FILL,
+    alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: MockLayout.screenPad,
   },
-  intro: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: withAlpha(Colors.foam, 0.5),
-    textAlign: "center",
-    marginBottom: Spacing.xl,
-  },
-  card: { justifyContent: "center" },
+  glyph: { position: "absolute", top: Spacing.md },
   prompt: {
-    fontSize: 30,
-    lineHeight: 40,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: "800",
-    color: Colors.foam,
+    color: StageInk.strong,
     textAlign: "center",
     letterSpacing: -0.4,
   },
-  foot: {
-    position: "absolute",
-    left: MockLayout.screenPad,
-    right: MockLayout.screenPad,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  hint: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: withAlpha(Colors.foam, 0.35),
-  },
-  count: {
-    marginLeft: "auto",
-    fontFamily: Fonts.numeral,
-    fontSize: 15,
-    lineHeight: 19,
-    includeFontPadding: false,
-    color: withAlpha(Colors.foam, 0.35),
-    fontVariant: ["tabular-nums"],
-  },
+  dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });

@@ -1386,6 +1386,7 @@ export default function PartyGameScreen() {
           spectator={spectator}
           prompts={prompts}
           intro={def?.intro}
+          Icon={def?.Icon}
           seed={seed}
           step={gameId ? sharedPromptStep : undefined}
           onNext={
