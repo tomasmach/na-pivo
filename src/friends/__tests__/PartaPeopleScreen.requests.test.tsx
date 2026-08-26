@@ -40,6 +40,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('@/components/shared/TabBar', () => ({ TAB_CHROME: 80 }));
+jest.mock('@/components/shared/AppDialog', () => ({ showAppDialog: jest.fn() }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   CheckIcon: () => null,
   PlusIcon: () => null,
@@ -47,6 +48,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
 }));
 jest.mock('@/data/friendsClient', () => ({
   respondFriendRequest: jest.fn(async () => ({ ok: true })),
+  cancelFriendRequest: jest.fn(async () => ({ ok: true })),
 }));
 jest.mock('@/stores/toastStore', () => ({
   useToastStore: (selector: (state: { show: typeof showToast }) => unknown) =>
