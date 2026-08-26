@@ -1,7 +1,11 @@
 import React from 'react';
 import { AppState, Pressable } from 'react-native';
 import * as Location from 'expo-location';
-import { useDevicePosition } from '../useDevicePosition';
+import {
+  clearLastKnownDevicePosition,
+  lastKnownDevicePosition,
+  useDevicePosition,
+} from '../useDevicePosition';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -64,6 +68,7 @@ describe('useDevicePosition', () => {
 
   beforeEach(() => {
     appStateHandler = undefined;
+    clearLastKnownDevicePosition();
     jest.clearAllMocks();
     (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
     (AppState as { currentState: string }).currentState = 'active';
@@ -449,5 +454,50 @@ describe('useDevicePosition', () => {
     expect(remove).not.toHaveBeenCalled();
     hook.unmount();
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('last known device position', () => {
+  beforeEach(() => {
+    clearLastKnownDevicePosition();
+    jest.clearAllMocks();
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+    (AppState as { currentState: string }).currentState = 'active';
+    (AppState.addEventListener as jest.Mock).mockImplementation(() => ({ remove: jest.fn() }));
+  });
+
+  it('hands a freshly mounted screen the fix the previous one already had', async () => {
+    let emitLocation:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_options, callback) => {
+      emitLocation = callback;
+      return { remove: jest.fn() };
+    });
+
+    const first = renderDevicePositionHook({ enabled: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      emitLocation?.({ coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 } });
+    });
+    first.unmount();
+
+    expect(lastKnownDevicePosition()).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+
+    // The pub picker opening over the Hospody tab: a brand new hook instance,
+    // which used to start at null and show "no location" until GPS answered.
+    const second = renderDevicePositionHook({ enabled: true });
+    expect(second.result.position).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+    second.unmount();
   });
 });

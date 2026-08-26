@@ -81,6 +81,7 @@ import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
 import { formatDistanceCs } from '@/compass/distance';
 import { useNearbyPub } from '@/counter/useNearbyPub';
+import { lastKnownDevicePosition } from '@/compass/useDevicePosition';
 import { presentOpenStatus } from '@/pubs/pubPresentation';
 import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
@@ -140,6 +141,15 @@ type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
 /** The catalogue entry behind a game on the table — the cover art lives there,
  *  and the live store only keeps the key. */
 const gameDef = (key: string) => GAME_CATALOG.find((game) => game.key === key) ?? GAME_CATALOG[0];
+
+/**
+ * The map of last resort: Prague, framed wide enough to read as "Czechia".
+ *
+ * The hub's top 460pt were plain black whenever there was no fix yet — the map
+ * simply rendered nothing. A guessed frame is a worse map but an honest screen,
+ * and the moment a real position arrives it replaces this.
+ */
+const CZ_FALLBACK_CENTER = { lat: 50.0808, lng: 14.4287, span: 0.9 };
 
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
@@ -864,7 +874,7 @@ export default function LivePartyMockScreen() {
           live={active}
           height={mapHeight}
           caption={false}
-          fallbackCenter={nearby.position ?? undefined}
+          fallbackCenter={nearby.position ?? lastKnownDevicePosition() ?? CZ_FALLBACK_CENTER}
         />
       </View>
 
