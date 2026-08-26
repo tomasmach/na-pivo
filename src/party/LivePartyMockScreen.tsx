@@ -1070,15 +1070,20 @@ export default function LivePartyMockScreen() {
             )}
           </View>
 
-          {/* Shown even before the first beer, as zeroes. An empty stopwatch is
-              still a stopwatch — the shape tells you what the night will collect,
-              which a paragraph explaining it never did. */}
-          {/* Which numbers these are is a product rule with tests, not a fixed
+          {/* Only once the night is running. A stopwatch reading "0:00 večer"
+              before anything has happened is a number about nothing — and it
+              stayed on screen after a shared table ended, which read as an
+              evening still going. Before the first drink the hub is a place,
+              some people and a way to start.
+
+              Which numbers these are is a product rule with tests, not a fixed
               row: alone the table is your own count twice over. */}
-          <PulsePanel
-            startedAt={startedAt}
-            stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
-          />
+          {active ? (
+            <PulsePanel
+              startedAt={startedAt}
+              stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
+            />
+          ) : null}
 
           {/* The thread. Every kind of thing the row of buttons can add lands
               here, in order, with the name of whoever added it — at a table of
