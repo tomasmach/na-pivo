@@ -20,7 +20,9 @@
 
 import React from 'react';
 
+import { GlassWaterIcon } from '@/components/shared/IconGlyph';
 import { contextPubKey } from '@/drinks/drinkTypes';
+import { cs } from '@/i18n/cs';
 import { useLivePartyStore, type PartyPubVisit } from '@/mocks/livePartyStore';
 import {
   logPartyBeer,
@@ -31,7 +33,36 @@ import {
 } from '@/party/logBeer';
 import type { DrinkType, ServingType } from '@/drinks/drinkTypes';
 import { selectPartyJoinCode, usePartyEveningStore } from '@/stores/partyEveningStore';
-import { useTallyStore } from '@/stores/tallyStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { sessionCount, useTallyStore } from '@/stores/tallyStore';
+import { useToastStore } from '@/stores/toastStore';
+import { Colors } from '@/theme/colors';
+
+/**
+ * "Připomenout vodu" (settings, off by default): a hydration nudge on every
+ * fourth beer of the evening, exactly as the 2.x counter had it. Local only —
+ * no notification, no server, and per `docs/decisions/no-bac-or-driving-estimates.md`
+ * it makes no claim about sobriety or driving.
+ *
+ * The key is module-level because the hub, the glass bar and a running game can
+ * all be mounted at once; a per-instance guard would let the same fourth beer
+ * fire the toast three times.
+ */
+let lastWaterNudgeKey: string | null = null;
+
+function maybeNudgeWater(drinkType: DrinkType, backdated: boolean): void {
+  if (backdated || drinkType !== 'beer') return;
+  if (!useSettingsStore.getState().waterNudgeEnabled) return;
+  const session = useTallyStore.getState().current;
+  const count = sessionCount(session);
+  if (count <= 0 || count % 4 !== 0) return;
+  const key = `${session?.clientId ?? ''}:${count}`;
+  if (lastWaterNudgeKey === key) return;
+  lastWaterNudgeKey = key;
+  useToastStore.getState().show(cs.counter.waterNudge(count), {
+    icon: React.createElement(GlassWaterIcon, { size: 20, color: Colors.amber }),
+  });
+}
 
 export interface PartyBeerActions {
   /** Count one. Returns its id, which is the id everywhere else too. */
@@ -109,8 +140,8 @@ export function usePartyBeer(): PartyBeerActions {
           at?: string;
           backdated?: boolean;
         },
-      ) =>
-        logPartyBeer({
+      ) => {
+        const id = logPartyBeer({
           place: options?.visit
             ? {
                 pubKey: options.visit.pubKey,
@@ -130,7 +161,10 @@ export function usePartyBeer(): PartyBeerActions {
           backdated: options?.backdated,
           partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
           deferDelivery: options?.deferDelivery ?? tableCreatePending,
-        }),
+        });
+        maybeNudgeWater(options?.drinkType ?? 'beer', options?.backdated === true);
+        return id;
+      },
       remove: (drinkId: string) => unlogPartyBeer(drinkId),
       rename: (drinkId: string, beerName: string) => renamePartyBeer(drinkId, beerName),
       update: updatePartyDrink,
