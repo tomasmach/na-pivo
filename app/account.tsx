@@ -28,7 +28,7 @@ import {
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { isAppleSignInSupported } from '@/data/socialAuth';
 import type { AuthProvider } from '@/data/auth';
@@ -48,6 +48,42 @@ import { Radius, Spacing } from '@/theme/layout';
 const MIN_PASSWORD = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SHEET_DISMISS_MS = 260;
+
+/** DESIGN §6.2: the secondary action is a quiet `stout3` pill, never an
+ *  outline. Same shape as `PrivacyScreen`'s full-policy button. */
+function QuietPill({
+  label,
+  onPress,
+  accessibilityLabel,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  accessibilityLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.quietPill,
+        pressed && !disabled && styles.quietPillPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+    >
+      <Text
+        style={styles.quietPillLabel}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 function providerName(provider: AuthProvider): string {
   if (provider === 'email') return cs.account.methodEmail;
@@ -491,7 +527,7 @@ export default function AccountScreen() {
             }
             disabled={profileRetrying || busy === 'logout'}
           />
-          <CounterSecondary
+          <QuietPill
             label={
               logoutBusy
                 ? cs.account.loading
@@ -614,6 +650,8 @@ export default function AccountScreen() {
         </View>
       </View>
 
+      <View style={styles.spacer} />
+
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
@@ -624,7 +662,7 @@ export default function AccountScreen() {
       />
 
       {isClaimed ? (
-        <CounterSecondary
+        <QuietPill
           label={logoutBusy ? cs.account.loading : cs.account.logout}
           onPress={() => void handleLogout()}
           accessibilityLabel={
@@ -715,19 +753,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   accountCard: {
-    flex: 1,
     overflow: 'hidden',
     backgroundColor: Colors.stout2,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.07),
     paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
+    paddingVertical: 20,
   },
   cardBody: {
-    flex: 1,
-    minHeight: 132,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -750,9 +784,8 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   cardFooter: {
-    marginTop: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
@@ -766,6 +799,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  spacer: {
+    flex: 1,
+  },
+  quietPill: {
+    minHeight: 48,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  quietPillPressed: {
+    opacity: 0.65,
+  },
+  quietPillLabel: {
+    fontWeight: '700',
+    fontSize: 14,
+    color: Colors.foam,
     includeFontPadding: false,
   },
   unavailableState: {
