@@ -1,18 +1,31 @@
-import React from "react";
-import {
-  AccessibilityInfo,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useReducedMotion } from "react-native-reanimated";
+/**
+ * Kdo platí rundu — a real drum, on the stage.
+ *
+ * Names scroll through a window with an amber frame and fade out into the
+ * table above and below it, and whatever is in the window when the drum stops
+ * is who is buying. It used to be a plain column of names on black, which read
+ * as a list rather than as something spinning; the frame and the fade are what
+ * make it a drum.
+ *
+ * The drum ENDS on the first stop, because a round has exactly one payer. The
+ * sentence saying who that is stays in React Native, under the stage, where it
+ * has the app's type and a voice (§21.4.3).
+ */
 
-import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
+import React from "react";
+import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+
+import {
+  GameStage,
+  StagePill,
+  StageStatus,
+  stageBody,
+} from "@/party/shells/GameStage";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
-import { Radius } from "@/theme/layout";
+import { Radius, Spacing } from "@/theme/layout";
 import type { PickPlayer } from "@/party/shells/PickShell";
 
 const SPIN_MS = 2200;
@@ -164,9 +177,17 @@ export function RoundDrumShell({
     tick();
   };
 
+  const label = spinning
+    ? "…"
+    : spectator && effectiveId
+      ? "Zpátky k večeru"
+      : effectiveId
+        ? "Roztoč znovu"
+        : "Roztoč";
+
   return (
-    <View style={[styles.body, { paddingBottom: bottomInset + 88 }]}>
-      <View style={styles.drumWrap}>
+    <View style={stageBody(bottomInset)}>
+      <GameStage>
         <View
           style={styles.drum}
           accessible
@@ -176,52 +197,71 @@ export function RoundDrumShell({
           accessibilityLiveRegion={settled ? "polite" : "none"}
           accessibilityLabel={drumLabel}
         >
-          {slots.map(({ player, index, offset }, slot) => {
-            const on = offset === 0 && Boolean(effectiveId) && !spinning;
-            return (
-              <View
-                key={`${slot}-${player?.id ?? index}`}
-                style={[styles.slot, on && styles.slotOn]}
-                importantForAccessibility="no-hide-descendants"
+          {slots.map(({ player, index, offset }, slot) => (
+            <View
+              key={`${slot}-${player?.id ?? index}`}
+              style={styles.slot}
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Text
+                style={[
+                  styles.slotText,
+                  Math.abs(offset) === 1 && styles.slotNear,
+                  Math.abs(offset) === 2 && styles.slotFar,
+                  offset === 0 && settled && styles.slotTextOn,
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.74}
+                maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                <Text
-                  style={[
-                    styles.slotText,
-                    Math.abs(offset) === 1 && styles.slotNear,
-                    Math.abs(offset) === 2 && styles.slotFar,
-                    on && styles.slotTextOn,
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.74}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {displayName(player, index)}
-                </Text>
-              </View>
-            );
-          })}
-          {!effectiveId || spinning ? (
-            <View pointerEvents="none" style={styles.gate} />
-          ) : null}
+                {displayName(player, index)}
+              </Text>
+            </View>
+          ))}
         </View>
-        <Text style={styles.note} maxFontSizeMultiplier={FontScaleCap.body}>
-          {effectiveId && !spinning ? "Platí. Runda pro stůl." : " "}
-        </Text>
-      </View>
+
+        {/* The window. An amber frame around the one slot that counts, and the
+            drum fading out into the stage above and below it — that is what
+            makes names GO PAST rather than a list sitting there. */}
+        <View pointerEvents="none" style={styles.window} />
+        <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <LinearGradient id="drumFadeTop" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={Colors.stout2} stopOpacity="1" />
+              <Stop offset="1" stopColor={Colors.stout2} stopOpacity="0" />
+            </LinearGradient>
+            <LinearGradient id="drumFadeBottom" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={Colors.stout2} stopOpacity="0" />
+              <Stop offset="1" stopColor={Colors.stout2} stopOpacity="1" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="26%" fill="url(#drumFadeTop)" />
+          <Rect x="0" y="74%" width="100%" height="26%" fill="url(#drumFadeBottom)" />
+        </Svg>
+      </GameStage>
+
+      {settled && selected ? (
+        <StageStatus
+          name={selectedName}
+          tint={selected.tint}
+          text={`Platí ${selectedName}`}
+          sub="Runda pro stůl."
+        />
+      ) : null}
 
       <View style={styles.dock}>
-        <Pressable
+        <StagePill
+          label={label}
           onPress={spin}
           disabled={spinning || saving || Boolean(spectator && !effectiveId)}
-          style={({ pressed }) => [
-            styles.action,
-            effectiveId && styles.actionQuiet,
-            spectator && !effectiveId && styles.actionMuted,
-            saving && styles.actionMuted,
-            (pressed || spinning) && styles.pressed,
-          ]}
-          accessibilityRole="button"
+          tone={
+            (spectator && !effectiveId) || saving
+              ? "muted"
+              : effectiveId
+                ? "quiet"
+                : "primary"
+          }
           accessibilityLabel={
             spectator && effectiveId
               ? "Zpátky k večeru"
@@ -229,82 +269,38 @@ export function RoundDrumShell({
                 ? "Roztoč znovu"
                 : "Roztoč"
           }
-          accessibilityState={{
-            disabled:
-              spinning || saving || Boolean(spectator && !effectiveId),
-          }}
-        >
-          <Text
-            style={[styles.actionText, effectiveId && styles.actionTextQuiet]}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-          >
-            {spinning
-              ? "…"
-              : spectator && effectiveId
-                ? "Zpátky k večeru"
-                : effectiveId
-                  ? "Roztoč znovu"
-                  : "Roztoč"}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: MockLayout.screenPad },
-  drumWrap: { flex: 1, justifyContent: "center" },
-  drum: { height: 392, overflow: "hidden" },
+  drum: { height: SLOT_HEIGHT * 5, alignSelf: "stretch" },
   slot: {
     height: SLOT_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 16,
+    paddingHorizontal: Spacing.lg,
   },
-  slotOn: { backgroundColor: Colors.amber },
   slotText: {
     fontSize: 27,
     fontWeight: "700",
     letterSpacing: -0.5,
     color: Colors.foam,
   },
-  slotNear: { opacity: 0.52 },
-  slotFar: { opacity: 0.3 },
-  slotTextOn: {
-    color: Colors.stout,
-    opacity: 1,
-    fontSize: 30,
-    fontWeight: "800",
-  },
-  gate: {
+  slotNear: { opacity: 0.5 },
+  slotFar: { opacity: 0.26 },
+  slotTextOn: { fontSize: 30, fontWeight: "800", color: Colors.amber },
+  window: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    top: 157,
+    left: Spacing.md,
+    right: Spacing.md,
     height: SLOT_HEIGHT,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.14),
+    borderRadius: Radius.medium,
+    borderWidth: 2,
+    borderColor: withAlpha(Colors.amber, 0.85),
+    backgroundColor: withAlpha(Colors.amber, 0.08),
   },
-  note: {
-    height: 44,
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "500",
-    color: Colors.mutedText,
-  },
-  dock: { paddingTop: 14 },
-  action: {
-    height: MockLayout.sheetButtonHeight,
-    borderRadius: Radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.amber,
-  },
-  actionQuiet: { backgroundColor: MockColors.surfaceHigh },
-  actionMuted: { backgroundColor: withAlpha(Colors.amber, 0.35) },
-  actionText: { ...MockType.buttonLabel, color: Colors.stout },
-  actionTextQuiet: { color: Colors.foam },
-  pressed: { opacity: 0.72 },
+  dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });
