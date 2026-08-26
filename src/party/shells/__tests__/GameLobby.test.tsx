@@ -1,5 +1,7 @@
 import React from 'react';
+import { Text } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { findGame } from '@/party/gameCatalog';
 import { GameLobby, type LobbyPlayer } from '@/party/shells/GameLobby';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -39,6 +41,29 @@ it('exposes headings and start button disabled state for accessibility', () => {
 
   const start = screen.getByLabelText('Potřebuješ aspoň dva hráče');
   expect(start).toHaveProp('accessibilityState', expect.objectContaining({ disabled: true }));
+});
+
+it('carries the rules on the cover instead of under the title', () => {
+  const def = findGame('quiz')!;
+  render(
+    <GameLobby
+      def={def}
+      table={[
+        { id: 'a', name: 'Honza', tint: '#111' },
+        { id: 'b', name: 'Petra', tint: '#222' },
+      ]}
+      onStart={jest.fn()}
+    />,
+  );
+
+  const order = screen
+    .UNSAFE_getAllByType(Text)
+    .map((node) => node.props.children)
+    .filter((child) => typeof child === 'string');
+  // The rules come before the heading now, because they live on the hero — a
+  // paragraph after a heading is the helper text §14 killed.
+  expect(order.indexOf(def.how)).toBeGreaterThanOrEqual(0);
+  expect(order.indexOf(def.how)).toBeLessThan(order.indexOf(def.name));
 });
 
 it('enables the start button once at least two players are in', () => {

@@ -81,6 +81,14 @@ export function GameLobby({
                 radius={Radius.cardLarge}
               />
             </View>
+            {/* The rules ride on the cover's quiet bottom strip rather than
+                sitting under the title as a helper paragraph (§14). Same words,
+                and the heading is the only thing that gets to be a heading. */}
+            <View style={styles.heroFoot}>
+              <Text style={styles.rules} maxFontSizeMultiplier={FontScaleCap.body}>
+                {def.how}
+              </Text>
+            </View>
           </GameStage>
         ) : null}
 
@@ -91,11 +99,6 @@ export function GameLobby({
         >
           {def?.name ?? 'Hra'}
         </Text>
-        {def ? (
-          <Text style={styles.rules} maxFontSizeMultiplier={FontScaleCap.body}>
-            {def.how}
-          </Text>
-        ) : null}
 
         <Text
           style={styles.section}
@@ -177,13 +180,21 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.xl },
 
   hero: { marginTop: Spacing.md },
+  heroFoot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
+    backgroundColor: withAlpha(Colors.stout, 0.62),
+  },
   title: { ...MockType.titleXL, fontSize: 27, color: Colors.foam, marginTop: Spacing.lg },
   rules: {
-    fontSize: 15,
-    lineHeight: 21,
-    fontWeight: '500',
-    color: withAlpha(Colors.foam, 0.7),
-    marginTop: Spacing.xs,
+    ...MockType.label,
+    lineHeight: 17,
+    color: withAlpha(Colors.foam, 0.86),
   },
   section: {
     fontSize: 13,
