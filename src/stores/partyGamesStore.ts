@@ -209,7 +209,7 @@ export const usePartyGamesStore = create<PartyGamesState>()((set, get) => ({
         set((state) => ({
           sharingFailures: {
             ...state.sharingFailures,
-            [catalogKey]: 'Hru se nepodařilo bezpečně uložit pro sdílení.',
+            [catalogKey]: 'Hru se nepodařilo uložit pro sdílení.',
           },
         }));
       }

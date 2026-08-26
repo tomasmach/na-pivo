@@ -625,7 +625,7 @@ describe('loginEmail', () => {
     await expect(auth.loginEmail({ email: 'jan@example.com', password: 'pw' })).resolves.toEqual({
       ok: false,
       code: 'protocol',
-      detail: 'Server neposlal platné přihlášení. Zkus to prosím znovu.',
+      detail: 'Server neposlal platné přihlášení. Zkus to znovu.',
     });
     expect(mockSetSession).not.toHaveBeenCalled();
     expect(mockTrackApiFailure).toHaveBeenCalledWith('auth_session', {
@@ -642,7 +642,7 @@ describe('loginEmail', () => {
     await expect(auth.loginEmail({ email: 'jan@example.com', password: 'pw' })).resolves.toEqual({
       ok: false,
       code: 'session_storage',
-      detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+      detail: 'Přihlášení se nepodařilo uložit. Odemkni telefon a zkus to znovu.',
     });
     expect(mockTrackApiFailure).toHaveBeenCalledWith(
       'auth_session_persist',
@@ -1025,7 +1025,7 @@ describe('loginEmail', () => {
     ).resolves.toEqual({
       ok: false,
       code: 'session_storage',
-      detail: expect.stringContaining('bezpečně uložit'),
+      detail: expect.stringContaining('se nepodařilo uložit'),
     });
 
     expect(mockSetSession).toHaveBeenCalledTimes(1);
@@ -1238,7 +1238,7 @@ describe('loginEmail', () => {
     ).resolves.toEqual({
       ok: false,
       code: 'photo_deletions_storage',
-      detail: expect.stringContaining('bezpečně převést'),
+      detail: expect.stringContaining('se nepodařilo přenést'),
     });
     expect(spy).not.toHaveBeenCalled();
     expect(mockSetSession).not.toHaveBeenCalled();
@@ -1413,7 +1413,7 @@ describe('signInWithGoogle', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected failure');
     expect(result.code).toBe('unsupported');
-    expect(result.detail).toBe('Tato možnost není na tomto zařízení dostupná.');
+    expect(result.detail).toBe('Tenhle způsob přihlášení na tvém telefonu nejde.');
   });
 
   it('surfaces and records a release OAuth configuration error', async () => {
@@ -1607,7 +1607,7 @@ describe('logout', () => {
     await expect(auth.logout()).resolves.toEqual({
       ok: false,
       code: 'session_storage',
-      detail: expect.stringContaining('bezpečně'),
+      detail: expect.stringContaining('se nepodařilo dokončit'),
     });
     expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
     expect(mockClearLocalPrivateAccountData).toHaveBeenCalledWith({
@@ -3046,7 +3046,7 @@ describe('deleteAccount', () => {
       ok: false,
       code: 'account_deletion_recovered',
       detail:
-        'Předchozí mazání jsme dokončili. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+        'Předchozí mazání jsem dokončil. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
     });
     expect(fetchCallsAfterTap1).toBe(1);
     expect(spy.mock.calls[0][0]).toBe('https://api.test/v1/account/deletion-status');
@@ -3149,7 +3149,7 @@ describe('deleteAccount', () => {
         ok: false,
         code: 'account_deletion_storage',
         detail:
-          'Žádost o smazání nejde v telefonu bezpečně dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
+          'Smazání účtu nejde v telefonu dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
       });
 
       expect(spy).not.toHaveBeenCalled();
@@ -3227,7 +3227,7 @@ describe('deleteAccount', () => {
       ok: false,
       code: 'account_deletion_storage',
       detail:
-        'Žádost o smazání nejde v telefonu bezpečně dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
+        'Smazání účtu nejde v telefonu dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
     });
 
     // Zero network while stranded on corrupt bytes.
@@ -3470,7 +3470,7 @@ describe('deleteAccount', () => {
       ok: false,
       code: 'account_deletion_recovered',
       detail:
-        'Předchozí mazání jsme dokončili. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+        'Předchozí mazání jsem dokončil. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
     });
   });
 
@@ -3642,7 +3642,7 @@ describe('deleteAccount', () => {
       ok: false,
       code: 'account_deletion_storage',
       detail:
-        'Žádost o smazání nejde v telefonu bezpečně dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
+        'Smazání účtu nejde v telefonu dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
     });
     expect(deleteAInit.method).toBe('DELETE');
     expect(authHeader(deleteAInit)).toBe('Bearer token-a');
@@ -3669,7 +3669,7 @@ describe('deleteAccount', () => {
       ok: false,
       code: 'account_deletion_recovered',
       detail:
-        'Předchozí mazání jsme dokončili. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+        'Předchozí mazání jsem dokončil. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
     });
     expect(statusInit.method).toBe('GET');
     expect(authHeader(statusInit)).toBeUndefined();
@@ -3870,7 +3870,7 @@ describe('deleteAccount', () => {
         ok: false,
         code: 'account_deletion_recovered',
         detail:
-          'Předchozí mazání jsme dokončili. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+          'Předchozí mazání jsem dokončil. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
       });
       // Corrupt bytes finish fully offline: zero network attributable to tap 1.
       expect(spy.mock.calls.slice(0, tap1FetchCalls)).toHaveLength(0);

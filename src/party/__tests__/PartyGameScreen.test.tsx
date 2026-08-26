@@ -1260,7 +1260,7 @@ describe("PartyGameScreen result wiring", () => {
   it("keeps a multiplayer quiz in a retryable error state when its shared start is not durable", async () => {
     mockRouteKey = "quiz";
     mockStartSharedGame.mockImplementationOnce(async () => {
-      mockSharingFailure = "Hru se nepodařilo bezpečně uložit pro sdílení.";
+      mockSharingFailure = "Hru se nepodařilo uložit pro sdílení.";
       return null;
     });
 
@@ -1269,7 +1269,7 @@ describe("PartyGameScreen result wiring", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Hru se nepodařilo bezpečně uložit pro sdílení."),
+        screen.getByText("Hru se nepodařilo uložit pro sdílení."),
       ).toBeTruthy();
     });
     expect(screen.getByLabelText("Zkusit znovu")).toBeTruthy();
@@ -2295,7 +2295,7 @@ describe("PartyGameScreen spectator mode", () => {
   it("hides the sharing failure band while spectating", () => {
     mockRouteKey = "dice";
     mockSharedRoster = SHARED_ROSTER_WITHOUT_ME;
-    mockSharingFailure = "Hru se nepodařilo bezpečně uložit pro sdílení.";
+    mockSharingFailure = "Hru se nepodařilo uložit pro sdílení.";
 
     render(<PartyGameScreen />);
     act(() => {
@@ -2434,7 +2434,7 @@ describe("PartyGameScreen spectator mode", () => {
 
 describe("PartyGameScreen accessibility", () => {
   const announceSpy = jest.fn();
-  const FAILURE = "Hru se nepodařilo bezpečně uložit pro sdílení.";
+  const FAILURE = "Hru se nepodařilo uložit pro sdílení.";
   const SHARING_LINE = `Hra běží jen na tomhle telefonu. ${FAILURE}`;
 
   type MockNode = {

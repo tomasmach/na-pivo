@@ -165,7 +165,7 @@ export function QuizShell({
   const shownWaitingLine = locked && !revealed ? waitingLine : null;
   const correctLabel =
     question && revealed
-      ? `${question.options[question.answer]} — správně`
+      ? `${question.options[question.answer]}, správně`
       : null;
 
   // accessibilityLiveRegion never fires on iOS, so the same beats are announced

@@ -227,7 +227,7 @@ async function requestJson(
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
+    return { ok: false, result: { ok: false, code: 'offline', detail: 'Teď se k serveru nedostanu.' } };
   }
 
   const session = options.session ?? (await ensureAccount(options.signal));

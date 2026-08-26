@@ -270,7 +270,7 @@ async function scheduleInternal(
     notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Mrkni na svůj deníček',
-        body: 'Klepni a zkontroluj dnešní zápis.',
+        body: 'Sedí dnešní zápis?',
         data: {
           kind: BEER_COUNT_REMINDER_KIND,
           sessionId,

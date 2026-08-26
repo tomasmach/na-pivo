@@ -25,7 +25,7 @@ describe('dailyBeerAverage', () => {
   it('formats the result with a Czech decimal comma', () => {
     expect(formatDailyBeerAverage(0.36)).toBe('0,4');
     expect(formatDailyBeerAverage(0)).toBe('0');
-    expect(formatDailyBeerAverage(null)).toBe('—');
+    expect(formatDailyBeerAverage(null)).toBe('–');
   });
 });
 

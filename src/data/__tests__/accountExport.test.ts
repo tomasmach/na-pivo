@@ -86,7 +86,7 @@ const {
 
 const EXPORT_URI = '/cache/na-pivo-export.json';
 const RATE_LIMIT_DETAIL =
-  'Dnešní limit exportů je vyčerpaný. Zkus to znovu zítra.';
+  'Dnešní limit exportů je pryč. Zkus to zítra.';
 
 function existsAt(uri: string): boolean {
   return pathState.get(uri) ?? false;

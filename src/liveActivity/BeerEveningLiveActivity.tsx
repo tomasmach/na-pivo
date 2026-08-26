@@ -101,8 +101,8 @@ const BeerEveningLiveActivity = (
   const priceLabel = props.totalPrice ? `Celkem ${props.totalPrice}` : '';
   const latestBeerLabel = props.latestBeerName || 'Poslední pivo';
   const latestTimeLabel = props.latestBeerAt
-    ? `zapsáno v ${props.latestBeerAt}`
-    : 'První pivo se teprve točí';
+    ? `naposled v ${props.latestBeerAt}`
+    : 'První pivo se teprve čepuje';
 
   return {
     banner: (

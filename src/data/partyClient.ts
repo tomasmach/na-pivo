@@ -368,7 +368,7 @@ async function requestJson(
       result: {
         ok: false,
         code: 'offline',
-        detail: 'Server teď není dostupný.',
+        detail: 'Teď se k serveru nedostanu.',
       },
     };
   }

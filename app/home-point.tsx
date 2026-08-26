@@ -121,7 +121,7 @@ export default function HomePointScreen() {
       const result = await geocodeHomeAddress(query, controller.signal);
       if (controller.signal.aborted) return;
       if (!result) {
-        setSearchError('Tohle místo se nepodařilo najít. Zkus doplnit ulici, číslo nebo město.');
+        setSearchError('Tohle místo jsem nenašel. Zkus doplnit ulici, číslo nebo město.');
         return;
       }
 
@@ -135,7 +135,7 @@ export default function HomePointScreen() {
       }, 350);
     } catch {
       if (!controller.signal.aborted) {
-        setSearchError('Místo se teď nepodařilo dohledat. Zkus to prosím znovu.');
+        setSearchError('Hledání se teď nepovedlo. Zkus to za chvíli znovu.');
       }
     } finally {
       if (searchAbortRef.current === controller) {
@@ -238,7 +238,7 @@ export default function HomePointScreen() {
           </Pressable>
 
           <Text style={styles.privacy}>
-            Zadaná adresa se jednorázově odešle geokódovací službě. Aplikace lokálně uloží jen finální potvrzený bod. Žádnou historii polohy ani trasy neukládá.
+            Adresu jednou pošlu geokódovací službě, ať ji najdu na mapě. V telefonu zůstane jen ten potvrzený bod, žádná historie polohy ani trasy.
           </Text>
         </View>
 
@@ -259,7 +259,7 @@ export default function HomePointScreen() {
           {!draftPoint ? (
             <View pointerEvents="none" style={styles.mapHint}>
               <MapPinIcon size={18} color={Colors.amber} />
-              <Text style={styles.mapHintText}>Najdi místo, pak bod upřesni ťuknutím</Text>
+              <Text style={styles.mapHintText}>Najdi místo, pak ho ťuknutím dolaď</Text>
             </View>
           ) : null}
         </View>
@@ -270,7 +270,7 @@ export default function HomePointScreen() {
 
         {permissionDenied ? (
           <View style={styles.fallback}>
-            <Text style={styles.fallbackText}>Poloha je vypnutá. Domov můžeš vybrat ručně v mapě, nebo povolení změnit v nastavení telefonu.</Text>
+            <Text style={styles.fallbackText}>Poloha je vypnutá. Domov si označ ťuknutím do mapy, nebo si polohu povol v nastavení telefonu.</Text>
             <Pressable onPress={() => void openSystemSettings()} accessibilityRole="button" style={styles.inlineButton}>
               <Text style={styles.inlineButtonText}>Otevřít nastavení</Text>
             </Pressable>

@@ -48,8 +48,8 @@ it('shows loading, exposes a recoverable error, and clears it after the ready ha
   await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
 
   act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
-  expect(screen.getByText('Hru se nepodařilo načíst.')).toBeTruthy();
-  expect(onError).toHaveBeenCalledWith('Hru se nepodařilo načíst.');
+  expect(screen.getByText('Hru jsem nenačetl.')).toBeTruthy();
+  expect(onError).toHaveBeenCalledWith('Hru jsem nenačetl.');
 
   fireEvent.press(screen.getByLabelText('Zkusit znovu'));
   await waitFor(() => expect(mockDownload).toHaveBeenCalledTimes(2));
@@ -60,7 +60,7 @@ it('shows loading, exposes a recoverable error, and clears it after the ready ha
   );
 
   expect(screen.queryByText('Načítám hru…')).toBeNull();
-  expect(screen.queryByText('Hru se nepodařilo načíst.')).toBeNull();
+  expect(screen.queryByText('Hru jsem nenačetl.')).toBeNull();
 });
 
 it('recovers through the fail path when the Android renderer process is gone', async () => {
@@ -226,7 +226,7 @@ it('announces loading politely and errors assertively while Retry stays reachabl
   await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
   act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
 
-  const errorText = screen.getByText('Hru se nepodařilo načíst.');
+  const errorText = screen.getByText('Hru jsem nenačetl.');
   expect(errorText.props.accessibilityLiveRegion).toBe('assertive');
   expect((errorText.parent as { props: Record<string, unknown> }).props.accessibilityRole)
     .toBeUndefined();
@@ -273,7 +273,7 @@ describe('GameHost status announcements', () => {
 
     act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
     expect(announce).toHaveBeenCalledTimes(1);
-    expect(announce).toHaveBeenLastCalledWith('Hru se nepodařilo načíst.');
+    expect(announce).toHaveBeenLastCalledWith('Hru jsem nenačetl.');
 
     // The same error callback firing again must not duplicate.
     act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
@@ -324,7 +324,7 @@ describe('GameHost status announcements', () => {
     await waitFor(() => expect(mockWebProps?.source).toEqual({ uri: 'file:///dice.html' }));
     act(() => (mockWebProps?.onError as (() => void) | undefined)?.());
 
-    expect(screen.getByText('Hru se nepodařilo načíst.').props.accessibilityLiveRegion)
+    expect(screen.getByText('Hru jsem nenačetl.').props.accessibilityLiveRegion)
       .toBe('assertive');
     expect(announce).not.toHaveBeenCalled();
   });

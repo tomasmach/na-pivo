@@ -137,7 +137,7 @@ export async function enqueuePartyEveningAction(
       error: {
         ok: false,
         code: 'storage',
-        detail: 'Večer se nepodařilo bezpečně uložit k dokončení.',
+        detail: 'Večer se mi nepovedlo uložit k dokončení.',
       },
     };
   }

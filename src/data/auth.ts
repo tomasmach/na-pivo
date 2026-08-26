@@ -495,7 +495,7 @@ function extractError(data: unknown, status: number): { code: string; detail: st
       }
     }
   }
-  return { code: `http_${status}`, detail: 'Něco se pokazilo. Zkus to prosím znovu.' };
+  return { code: `http_${status}`, detail: 'Něco se pokazilo. Zkus to znovu.' };
 }
 
 interface FetchOutcome {
@@ -598,42 +598,42 @@ const PHOTO_DELETIONS_PENDING = {
   ok: false as const,
   code: 'photo_deletions_pending',
   detail:
-    'Nejdřív potřebujeme dosmazat fotky. Připoj se k internetu a zkus to znovu.',
+    'Nejdřív musím dosmazat fotky. Připoj se k internetu a zkus to znovu.',
 };
 
 const PHOTO_DELETIONS_REKEY_FAILED = {
   ok: false as const,
   code: 'photo_deletions_storage',
   detail:
-    'Rozpracované mazání fotek se nepodařilo bezpečně převést. Uvolni místo v telefonu a zkus to znovu.',
+    'Rozdělané mazání fotek se nepodařilo přenést. Uvolni místo v telefonu a zkus to znovu.',
 };
 
 const SESSION_BOUNDARY_FAILED = {
   ok: false as const,
   code: 'session_storage',
   detail:
-    'Odhlášení se nepodařilo bezpečně dokončit. Odemkni telefon a zkus to znovu.',
+    'Odhlášení se nepodařilo dokončit. Odemkni telefon a zkus to znovu.',
 };
 
 const CREDENTIAL_BOUNDARY_FAILED = {
   ok: false as const,
   code: 'session_storage',
   detail:
-    'Přihlášení nejde bezpečně dokončit, dokud se nesmažou stará data v telefonu. Uvolni místo a zkus to znovu.',
+    'Přihlášení nejde dokončit, dokud se nesmažou stará data v telefonu. Uvolni místo a zkus to znovu.',
 };
 
 const ACCOUNT_DELETION_RECEIPT_FAILED = {
   ok: false as const,
   code: 'account_deletion_storage',
   detail:
-    'Žádost o smazání nejde v telefonu bezpečně dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
+    'Smazání účtu nejde v telefonu dokončit. Uvolni místo, odemkni telefon a zkus to znovu.',
 };
 
 const ACCOUNT_DELETION_RECOVERED = {
   ok: false as const,
   code: 'account_deletion_recovered',
   detail:
-    'Předchozí mazání jsme dokončili. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
+    'Předchozí mazání jsem dokončil. Pokud chceš smazat i aktuální účet, potvrď to znovu.',
 };
 
 interface CredentialTransition {
@@ -851,7 +851,7 @@ async function applyAuthSuccessInner(
     return {
       ok: false,
       code: 'protocol',
-      detail: 'Server neposlal platné přihlášení. Zkus to prosím znovu.',
+      detail: 'Server neposlal platné přihlášení. Zkus to znovu.',
     };
   }
 
@@ -968,7 +968,7 @@ async function applyAuthSuccessInner(
     return {
       ok: false,
       code: 'session_storage',
-      detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+      detail: 'Přihlášení se nepodařilo uložit. Odemkni telefon a zkus to znovu.',
     };
   }
 
@@ -1182,7 +1182,7 @@ function mapSocialError(err: unknown): AuthResult {
   if (err instanceof SocialAuthError) {
     if (err.code === 'cancelled') return CANCELLED;
     if (err.code === 'unsupported') {
-      return { ok: false, code: 'unsupported', detail: 'Tato možnost není na tomto zařízení dostupná.' };
+      return { ok: false, code: 'unsupported', detail: 'Tenhle způsob přihlášení na tvém telefonu nejde.' };
     }
     if (err.code === 'misconfigured') {
       return {
@@ -1195,7 +1195,7 @@ function mapSocialError(err: unknown): AuthResult {
       return {
         ok: false,
         code: err.code,
-        detail: 'Google Play služby nejsou dostupné nebo potřebují aktualizaci. Aktualizuj je v Google Play, nebo se přihlas e-mailem.',
+        detail: 'Google Play služby chybí nebo jsou zastaralé. Aktualizuj je, nebo se přihlas e-mailem.',
       };
     }
     if (err.code === 'account_picker') {
@@ -1208,7 +1208,7 @@ function mapSocialError(err: unknown): AuthResult {
     return {
       ok: false,
       code: err.code,
-      detail: 'Přihlášení přes poskytovatele se nezdařilo. Zkus to prosím znovu.',
+      detail: 'Přihlášení přes Google nebo Apple se nezdařilo. Zkus to znovu.',
     };
   }
   return { ok: false, code: 'failed', detail: 'Přihlášení se nezdařilo.' };

@@ -93,7 +93,7 @@ describe('profileStats', () => {
     expect(profileRecords(STATS).map((record) => record.id)).toEqual(['longest-evening']);
     expect(profileRecords(STATS)[0]).toMatchObject({ value: '4 h' });
     expect(profileRecords(STATS)[0].when).toContain('U Tygra → Lokál');
-    expect(profileRecords(STATS)[0].title).toBe('Délka zaznamenaného večera');
+    expect(profileRecords(STATS)[0].title).toBe('Délka večera');
     expect(profileRecords(null)).toEqual([]);
   });
 

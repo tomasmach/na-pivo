@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { cs } from '@/i18n/cs';
 import type { PublishedNight } from '@/data/nightsClient';
 import type { NightSummary } from '@/vycep/nightModel';
 
@@ -204,7 +205,7 @@ it('keeps the publish sheet open when its offline payload cannot be persisted', 
   expect(onPublished).not.toHaveBeenCalled();
   expect(onClose).not.toHaveBeenCalled();
   expect(mockShowToast).toHaveBeenCalledWith(
-    'Noc se nepodařilo bezpečně uložit. Zkus to znovu.',
+    cs.vycep.publishErrorToast,
   );
 });
 
@@ -227,7 +228,7 @@ it('reverts an optimistic round when its offline operation cannot be persisted',
       .accessibilityState,
   ).toEqual({ selected: false });
   expect(mockShowToast).toHaveBeenCalledWith(
-    'Runda nedošla. Zkus to za chvíli.',
+    cs.vycep.roundErrorToast,
     expect.any(Object),
   );
 
@@ -259,6 +260,6 @@ it('keeps a night published when its offline removal cannot be persisted', async
   expect(mockMarkUnpublished).not.toHaveBeenCalled();
   expect(onRemoved).not.toHaveBeenCalled();
   expect(mockShowToast).toHaveBeenCalledWith(
-    'Stažení se nepodařilo uložit. Zkus to znovu.',
+    cs.vycep.unpublishErrorToast,
   );
 });

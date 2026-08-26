@@ -200,7 +200,7 @@ export default function FinishNightScreen() {
         if (isRetriableNightError(result)) {
           const queued = await enqueueNightOp({ op: 'publish', payload });
           if (!queued) {
-            setError('Příspěvek se nepodařilo bezpečně uložit. Zkus to znovu.');
+            setError('Příspěvek se nepodařilo uložit. Zkus to znovu.');
             return;
           }
         } else {
@@ -312,10 +312,10 @@ export default function FinishNightScreen() {
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
                 {game.result?.paying
-                  ? `${game.name} — platí ${game.result.paying}`
+                  ? `${game.name} · platí ${game.result.paying}`
                   : game.result?.winner
-                    ? `${game.name} — vyhrál ${game.result.winner}`
-                    : `${game.name} — odehráno`}
+                    ? `${game.name} · vyhrál ${game.result.winner}`
+                    : `${game.name} · odehráno`}
               </Text>
             ))}
           </View>
@@ -349,7 +349,7 @@ export default function FinishNightScreen() {
               value={customTitle}
               onChangeText={setCustomTitle}
               maxLength={120}
-              placeholder="Jak to nazveme"
+              placeholder="Jak to nazveš"
               placeholderTextColor={Colors.mutedText}
               style={styles.titleInput}
               accessibilityLabel="Název večera"

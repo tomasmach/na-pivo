@@ -48,6 +48,9 @@ const BEER_BY_SERVING: Record<string, CzechPlural> = {
 const SHOT: CzechPlural = { one: 'panák', few: 'panáky', many: 'panáků' };
 const WINE: CzechPlural = { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' };
 
+/** "+ 1 další" / "+ 3 další" / "+ 6 dalších" — the tail of a mixed sitting. */
+const MORE: CzechPlural = { one: 'další', few: 'další', many: 'dalších' };
+
 /**
  * The counted noun for one drink line, or null when the drink has no natural
  * Czech noun and the row should fall back to "3× Kofola". Soft drinks land here
@@ -90,7 +93,9 @@ export function sittingHeadline(sitting: PartaFeedSitting): string {
   // `total` counts drinks the server truncated out of `items`, so trust it over
   // the visible sum whenever it is larger.
   const remainder = Math.max(others, sitting.total - first.count);
-  return remainder > 0 ? `${describeDrink(first)} + ${remainder} dalších` : describeDrink(first);
+  return remainder > 0
+    ? `${describeDrink(first)} + ${remainder} ${pluralize(remainder, MORE)}`
+    : describeDrink(first);
 }
 
 /** The quiet second line: everything that was not the headline. */

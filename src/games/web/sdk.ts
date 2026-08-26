@@ -118,7 +118,7 @@ function buildHarness(definition: GameDefinition, dispatch: CommandHandler, turn
 
   const readout = document.createElement('span');
   readout.style.cssText = 'color:#FBF6EA;opacity:.7;min-width:120px;';
-  readout.textContent = '—';
+  readout.textContent = '...';
   bar.appendChild(readout);
 
   harnessLog = (message) => {
@@ -194,7 +194,7 @@ export function connect(definition: GameDefinition): void {
   (window as unknown as { napivoGame(raw: string): void }).napivoGame = (raw) => {
     const message = parseToGame(raw);
     if (!message) {
-      session.fail('Neplatná zpráva z aplikace.');
+      session.fail('Hra dostala zprávu, které nerozumí.');
       return;
     }
     apply(message);

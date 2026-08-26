@@ -63,6 +63,7 @@ import { useNightReaction } from '@/feed/useNightReaction';
 import { useNightActions } from '@/feed/useNightActions';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
+import { czechPlural } from '@/i18n/plural';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Avatar } from '@/profile/Avatar';
@@ -454,7 +455,11 @@ export const FeedCard = memo(function FeedCard({
             onPress={() => onOpenNight?.(night)}
             style={({ pressed }) => [styles.commentButton, pressed && styles.pressed]}
             accessibilityRole={onOpenNight ? 'button' : undefined}
-            accessibilityLabel={`${night.commentCount} komentářů. Otevřít večer.`}
+            accessibilityLabel={`${night.commentCount} ${czechPlural(night.commentCount, {
+              one: 'komentář',
+              few: 'komentáře',
+              many: 'komentářů',
+            })}. Otevřít večer.`}
           >
             <MessageSquareIcon size={18} color={Colors.mutedText} />
             <Text style={styles.commentCount} allowFontScaling={false}>
@@ -588,7 +593,7 @@ function FeedScreenContent() {
       const session = await ensureAccount();
       if (!mountedRef.current || seq !== requestSeq.current) return;
       if (!session) {
-        setLoadError('Účet se teď nepodařilo připravit.');
+        setLoadError('Účet se mi teď nepovedlo připravit. Zkus to za chvíli.');
         setInitialLoading(false);
         setRefreshing(false);
         return;

@@ -1242,7 +1242,7 @@ export default function LivePartyMockScreen() {
                                 {game.result
                                   ? game.result.winner || game.result.paying
                                     ? 'Odehráno'
-                                    : 'Odehráno — bez vítěze'
+                                    : 'Odehráno, nikdo nevyhrál'
                                   : 'Ťukni a hraj'}
                               </Text>
                             </View>

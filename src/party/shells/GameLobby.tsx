@@ -159,7 +159,7 @@ export function GameLobby({
         <StagePill
           label={
             enough
-              ? `Začít — hraje vás ${playing.length}`
+              ? `Začít, hraje vás ${playing.length}`
               : 'Aspoň dva, jinak to není hra'
           }
           onPress={() => enough && onStart(playing)}

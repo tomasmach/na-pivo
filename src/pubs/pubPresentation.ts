@@ -205,7 +205,7 @@ export function presentPub(
     pub,
     id: pub.id,
     name: pub.name,
-    address: pub.address?.trim() || pub.city?.trim() || 'Adresa není známá',
+    address: pub.address?.trim() || pub.city?.trim() || 'Adresu neznám',
     distanceMeters,
     distanceLabel,
     distanceValue: distance.value,
@@ -299,9 +299,9 @@ export function sortPubs(
 }
 
 export function formatLastVisit(iso: string | null, now = new Date()): string {
-  if (!iso) return '—';
+  if (!iso) return '–';
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
+  if (Number.isNaN(date.getTime())) return '–';
   const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
   const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
   if (dateKey === todayKey) return 'dnes';

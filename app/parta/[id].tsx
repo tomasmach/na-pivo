@@ -507,7 +507,7 @@ export default function FriendProfileScreen() {
                     <View style={styles.recentRow}>
                       <MapPinIcon size={16} color={Colors.mutedText} />
                       <Text style={styles.recentPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {row.pubName || '—'}
+                        {row.pubName || '–'}
                       </Text>
                       {shortDate(row.at) ? (
                         <Text style={styles.recentDate} allowFontScaling={false}>

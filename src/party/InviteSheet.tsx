@@ -102,8 +102,8 @@ export function InviteSheet({
   const inviteMessage = React.useMemo(() => {
     if (!code) return null;
     return link
-      ? `Přisedni ke stolu v Na pivo: ${link}\nKód: ${code}`
-      : `Přisedni ke stolu v Na pivo. Kód: ${code}`;
+      ? `Přisedni si ke stolu v Na pivu: ${link}\nKód: ${code}`
+      : `Přisedni si ke stolu v Na pivu. Kód: ${code}`;
   }, [code, link]);
 
   const shareLink = React.useCallback(
@@ -153,12 +153,12 @@ export function InviteSheet({
                     {code}
                   </Text>
                   <Text style={styles.codeHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {link ? 'Nasnímej, nebo si kód přečti nahlas.' : 'Přečti kód nahlas.'}
+                    {link ? 'Naskenuj kód, nebo ho přečti nahlas.' : 'Přečti kód nahlas.'}
                   </Text>
                 </>
               ) : (
                 <Text style={styles.codeHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                  Kód se zakládá. Chvilku.
+                  Zakládám kód. Chvilku.
                 </Text>
               )}
             </View>

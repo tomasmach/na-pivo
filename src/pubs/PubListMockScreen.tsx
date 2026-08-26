@@ -328,7 +328,7 @@ const PubRow = React.memo(function PubRow({
               detail-screen answer, and spelling it out on every row was a
               second sentence competing with the ones you actually scan. */}
           {pub.visitCount > 0 ? (
-            <View accessible accessibilityLabel="Už jsi tu byl">
+            <View accessible accessibilityLabel="Tuhle hospodu už znáš">
               <HeartIcon size={13} color={Colors.amber} />
             </View>
           ) : null}
@@ -1113,7 +1113,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
 
                   {emptyState === 'permission-denied' ? (
                     <View style={styles.listState}>
-                      <Text style={styles.listStateText}>Povol polohu a mrkneme, co je kolem.</Text>
+                      <Text style={styles.listStateText}>Povol polohu a ukážu ti, co je kolem.</Text>
                       <Pressable
                         onPress={() => void compass.requestPermission()}
                         style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
@@ -1142,7 +1142,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                     <View style={styles.listState}>
                       <Text style={styles.listStateText}>
                         {emptyState === 'search-failed'
-                          ? 'Hospody se teď nenačetly.'
+                          ? 'Hospody jsem teď nenačetl.'
                           : 'V okolí zatím nic není.'}
                       </Text>
                       <Pressable
@@ -1157,7 +1157,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
 
                   {presentations.length > 0 && ordered.length === 0 ? (
                     <View style={styles.listState}>
-                      <Text style={styles.listStateText}>Tahle kombinace je prázdná.</Text>
+                      <Text style={styles.listStateText}>Na tuhle kombinaci filtrů nic nemám.</Text>
                       {hasActiveFilters ? (
                         <Pressable
                           onPress={() =>

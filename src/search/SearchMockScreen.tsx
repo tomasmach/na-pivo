@@ -187,9 +187,9 @@ export default function SearchMockScreen() {
   };
 
   const empty = failed
-    ? 'Hledání se teď nedotáhlo.'
+    ? 'Hledání se mi teď nepovedlo.'
     : canSearch
-      ? 'Nic. Zkus to jinak.'
+      ? 'Nic jsem nenašel. Zkus to jinak.'
       : 'Napiš aspoň dvě písmena.';
 
   return (
@@ -265,7 +265,7 @@ export default function SearchMockScreen() {
                 ))}
               </>
             ) : null}
-            <SectionBreak title="Pivaři, co bys mohl znát" />
+            <SectionBreak title="Pivaři, které možná znáš" />
             <PeopleSuggestions />
           </>
         ) : null}

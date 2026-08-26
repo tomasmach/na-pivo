@@ -108,8 +108,8 @@ export default function PartyRecapScreen() {
         ) : (
           <Text style={styles.recoveryText} maxFontSizeMultiplier={FontScaleCap.body}>
             {recoveryState === 'empty'
-              ? 'Žádný dokončený večer.'
-              : 'Rekapitulaci teď nenačtu.'}
+              ? 'Zatím nemáš dokončený večer.'
+              : 'Ten večer teď nenačtu.'}
           </Text>
         )}
       </View>

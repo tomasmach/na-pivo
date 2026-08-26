@@ -136,7 +136,7 @@ describe('OpenStatusChip', () => {
 
     const { text, color } = readLabel(renderer);
     expect(text).toBe(cs.compass.hoursUnknown);
-    expect(text).toBe('Otevírací doba neznámá');
+    expect(text).toBe('Otevíračku neznám');
     expect(color).toBe(Colors.mutedText);
   });
 

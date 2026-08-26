@@ -30,7 +30,7 @@ export interface ProfileRecord {
 }
 
 function formatDuration(seconds: number | null): string {
-  if (seconds === null || seconds <= 0) return '—';
+  if (seconds === null || seconds <= 0) return '–';
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.round((seconds % 3600) / 60);
   if (hours === 0) return `${minutes} min`;
@@ -148,7 +148,7 @@ export function profileRecords(stats: RemoteStats | null): ProfileRecord[] {
       ].filter(Boolean);
       records.push({
         id: 'longest-evening',
-        title: 'Délka zaznamenaného večera',
+        title: 'Délka večera',
         value: formatDuration(stats.nightRecords.longestSeconds),
         when: context.join(' · '),
       });
@@ -162,7 +162,7 @@ export function profileRecords(stats: RemoteStats | null): ProfileRecord[] {
     ].filter(Boolean);
     records.push({
       id: 'longest-evening',
-      title: 'Délka zaznamenaného večera',
+      title: 'Délka večera',
       value: formatDuration(stats.records.longestEveningSeconds),
       when: context.join(' · '),
     });

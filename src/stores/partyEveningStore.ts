@@ -362,7 +362,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
         failed(set, {
           ok: false,
           code: 'protocol',
-          detail: 'Server neposlal založený stůl. Zkus to znovu.',
+          detail: 'Stůl se nepodařilo založit. Zkus to znovu.',
         });
         set({ pendingJoinCode: null });
         // The create may have committed; only the response looks wrong. Keep
@@ -417,7 +417,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
       return failed(set, {
         ok: false,
         code: 'protocol',
-        detail: 'Server neposlal přisednutý stůl. Zkus to znovu.',
+        detail: 'Přisednout ke stolu se nepovedlo. Zkus to znovu.',
       });
     }
     const evening = result.evening;

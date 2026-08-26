@@ -23,7 +23,7 @@ function shortDate(iso: string): string {
 }
 
 function formatAverage(value: number | null): string {
-  return value == null ? '—' : value.toFixed(1);
+  return value == null ? '–' : value.toFixed(1);
 }
 
 /** Genitive Czech month names for the "Piješ ho od června" relationship line. */

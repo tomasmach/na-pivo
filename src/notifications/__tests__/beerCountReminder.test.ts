@@ -109,7 +109,7 @@ it('moves the evening reminder after every newly counted beer', async () => {
     expect.objectContaining({
       content: expect.objectContaining({
         title: 'Mrkni na svůj deníček',
-        body: 'Klepni a zkontroluj dnešní zápis.',
+        body: 'Sedí dnešní zápis?',
         data: expect.objectContaining({
           kind: BEER_COUNT_REMINDER_KIND,
           sessionId: SESSION.clientId,

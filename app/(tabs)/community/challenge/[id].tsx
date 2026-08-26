@@ -71,7 +71,7 @@ export default function ChallengeRoute() {
     return (
       <View style={styles.missing}>
         <Text style={styles.missingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          Výzva teď nedotekla.
+          Výzvu se teď nepovedlo načíst.
         </Text>
         <Pressable
           onPress={() => setRetry((value) => value + 1)}

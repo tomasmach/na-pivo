@@ -136,7 +136,7 @@ export default function SuggestPubEventScreen() {
       setError('Tenhle návrh server nevzal. Zkontroluj časy a délku akce.');
       return;
     }
-    setError('Teď se k serveru nedostaneme. Návrh zůstal ve formuláři, zkus to za chvíli.');
+    setError('Server se teď neozývá. Návrh zůstal ve formuláři, zkus to za chvíli.');
   };
 
   return (
@@ -170,7 +170,7 @@ export default function SuggestPubEventScreen() {
             <View style={styles.flex}>
               <Text style={styles.pubName} maxFontSizeMultiplier={FontScaleCap.heading}>{name}</Text>
               <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-                Napiš, co se děje. Po kontrole se akce ukáže v detailu hospody.
+                Napiš, co se v hospodě děje.
               </Text>
             </View>
           </View>
@@ -228,7 +228,7 @@ export default function SuggestPubEventScreen() {
           </Field>
 
           <Text style={styles.moderation} maxFontSizeMultiplier={FontScaleCap.body}>
-            Návrh nejdřív zkontroluju. Neověřené a skončené akce ostatní neuvidí.
+            Návrh nejdřív zkontroluju. Až projde, ukáže se v detailu hospody. Neověřené a skončené akce ostatní neuvidí.
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -244,7 +244,7 @@ export default function SuggestPubEventScreen() {
             accessibilityLabel="Poslat návrh ke kontrole"
             accessibilityState={{ disabled: !canSubmit }}
           >
-            <Text style={styles.submitText}>{submitting ? 'Posílám...' : 'Poslat ke kontrole'}</Text>
+            <Text style={styles.submitText}>{submitting ? 'Posílám…' : 'Poslat ke kontrole'}</Text>
           </Pressable>
         </KeyboardAwareScrollView>
       </KeyboardAvoidingView>

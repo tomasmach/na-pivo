@@ -239,7 +239,7 @@ describe('QuizShell', () => {
 
     expect(onAnswer).toHaveBeenCalledWith(QUESTION.options.indexOf(WRONG));
     expect(onAnswer).toHaveBeenCalledTimes(1);
-    expect(screen.queryByLabelText(`${RIGHT} — správně`)).toBeNull();
+    expect(screen.queryByLabelText(`${RIGHT}, správně`)).toBeNull();
   });
 
   it('does not leak whether the locked answer scored through the board', () => {
@@ -254,13 +254,13 @@ describe('QuizShell', () => {
 
     expect(screen.getByText('Zamknuto. Chybí Honza')).toBeTruthy();
     // Locked means locked: a second tap must not reach the handler.
-    expect(screen.queryByLabelText(`${RIGHT} — správně`)).toBeNull();
+    expect(screen.queryByLabelText(`${RIGHT}, správně`)).toBeNull();
   });
 
   it('reveals once everybody has committed', () => {
     renderShell([answer('Ty', 0), answer('Honza', 1)]);
 
-    expect(screen.getByLabelText(`${RIGHT} — správně`)).toBeTruthy();
+    expect(screen.getByLabelText(`${RIGHT}, správně`)).toBeTruthy();
     expect(screen.getByText('Další otázka')).toBeTruthy();
   });
 
@@ -274,7 +274,7 @@ describe('QuizShell', () => {
   it('reveals when told to, without the missing answer', () => {
     const { onAnswer } = renderShell([answer('Ty', 0)], { forceRevealed: true });
 
-    expect(screen.getByLabelText(`${RIGHT} — správně`)).toBeTruthy();
+    expect(screen.getByLabelText(`${RIGHT}, správně`)).toBeTruthy();
     fireEvent.press(screen.getByText(WRONG));
     expect(onAnswer).not.toHaveBeenCalled();
   });
@@ -312,7 +312,7 @@ describe('QuizShell', () => {
       answer('Honza', QUESTION.answer),
     ]);
 
-    const right = screen.getByLabelText(`${RIGHT} — správně`);
+    const right = screen.getByLabelText(`${RIGHT}, správně`);
     expect(right.props.accessibilityLiveRegion).toBe('assertive');
 
     const wrong = screen.getByLabelText(WRONG);
@@ -410,7 +410,7 @@ describe('QuizShell iOS announcements', () => {
       />,
     );
     expect(announce).toHaveBeenCalledTimes(1);
-    expect(announce).toHaveBeenCalledWith(`${RIGHT} — správně`);
+    expect(announce).toHaveBeenCalledWith(`${RIGHT}, správně`);
 
     view.rerender(
       <QuizShell
@@ -481,7 +481,7 @@ describe('QuizShell spectator mode', () => {
   it('sees the canonical reveal but cannot advance', () => {
     const { onNext } = renderSpectator([answer('Ty', 0), answer('Honza', 1)]);
 
-    expect(screen.getByLabelText(`${RIGHT} — správně`)).toBeTruthy();
+    expect(screen.getByLabelText(`${RIGHT}, správně`)).toBeTruthy();
     expect(screen.queryByText('Další otázka')).toBeNull();
     expect(screen.queryByText('Výsledky')).toBeNull();
     expect(onNext).not.toHaveBeenCalled();

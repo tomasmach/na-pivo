@@ -83,7 +83,7 @@ export default function NearestMapMockScreen() {
             {compass.permissionState === 'denied'
               ? 'Povol polohu a ukážu ti nejbližší hospodu.'
               : compass.searchFailed
-                ? 'Hospodu se teď nepodařilo načíst.'
+                ? 'Hospodu jsem teď nenačetl.'
                 : 'Hledám nejbližší hospodu…'}
           </Text>
           {compass.permissionState === 'denied' ? (

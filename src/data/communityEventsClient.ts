@@ -234,7 +234,7 @@ function parseEvent(value: unknown): CommunityEvent | null {
 
 async function request(path: string, options: RequestOptions = {}) {
   const endpoint = getBackendEndpoint(path);
-  if (!endpoint) return { ok: false as const, code: 'offline', detail: 'Server teď není dostupný.' };
+  if (!endpoint) return { ok: false as const, code: 'offline', detail: 'Teď se k serveru nedostanu.' };
   let session: Awaited<ReturnType<typeof ensureAccount>>;
   try {
     session = await ensureAccount(options.signal);
@@ -314,7 +314,7 @@ export async function fetchCommunityEvent(
   const event = parseEvent(result.data);
   return event
     ? { ok: true, event }
-    : { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+    : { ok: false, code: 'invalid_response', detail: 'Data ze serveru nedávala smysl. Zkus to znovu.' };
 }
 
 export async function createCommunityEvent(input: {
@@ -350,7 +350,7 @@ export async function createCommunityEvent(input: {
   });
   if (!result.ok) return result;
   const event = parseEvent(result.data);
-  return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+  return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: 'Data ze serveru nedávala smysl. Zkus to znovu.' };
 }
 
 export async function requestCommunityEventJoin(eventId: string, message = ''): Promise<CommunityActionResult> {
@@ -387,7 +387,7 @@ export async function fetchCommunityEventTeams(
   const roster = parseTeamRoster(result.data);
   return roster
     ? { ok: true, roster }
-    : { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+    : { ok: false, code: 'invalid_response', detail: 'Data ze serveru nedávala smysl. Zkus to znovu.' };
 }
 
 export async function createCommunityEventTeam(
@@ -403,7 +403,7 @@ export async function createCommunityEventTeam(
   const roster = parseTeamRoster(result.data.team_roster);
   const team = parseTeam(result.data.team);
   if (!roster || !team) {
-    return { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+    return { ok: false, code: 'invalid_response', detail: 'Data ze serveru nedávala smysl. Zkus to znovu.' };
   }
   return { ok: true, roster, team, created: result.data.created === true };
 }
@@ -420,7 +420,7 @@ export async function joinCommunityEventTeam(
   const roster = parseTeamRoster(result.data.team_roster);
   const team = parseTeam(result.data.team);
   if (!roster || !team) {
-    return { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+    return { ok: false, code: 'invalid_response', detail: 'Data ze serveru nedávala smysl. Zkus to znovu.' };
   }
   return { ok: true, roster, team, joined: result.data.joined === true };
 }
@@ -436,7 +436,7 @@ export async function leaveCommunityEventTeam(
   if (!result.ok) return result;
   const roster = parseTeamRoster(result.data.team_roster);
   if (!roster) {
-    return { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+    return { ok: false, code: 'invalid_response', detail: 'Data ze serveru nedávala smysl. Zkus to znovu.' };
   }
   return { ok: true, roster, left: result.data.left === true };
 }

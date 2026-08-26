@@ -251,7 +251,7 @@ async function requestJson(
   if (!endpoint || options.signal?.aborted) {
     return {
       ok: false,
-      result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' },
+      result: { ok: false, code: 'offline', detail: 'Teď se k serveru nedostanu.' },
     };
   }
 

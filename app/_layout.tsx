@@ -231,7 +231,7 @@ function StartupBoundaryRecovery({
         <View style={styles.startupRecoveryContent}>
           <Text style={styles.startupRecoveryTitle}>Telefon teď nepustil účet</Text>
           <Text style={styles.startupRecoveryBody}>
-            Odemkni ho a zkus bezpečné načtení znovu. Tvoje data zatím necháváme zavřená.
+            Odemkni ho a zkus to znovu. Tvoje data zatím nechávám zamčená.
           </Text>
           <Pressable
             accessibilityRole="button"

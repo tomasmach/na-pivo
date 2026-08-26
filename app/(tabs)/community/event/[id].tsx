@@ -74,7 +74,7 @@ export default function EventRoute() {
     return (
       <View style={styles.missing}>
         <Text style={styles.missingText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {error ?? 'Tuhle akci už nenajdeme.'}
+          {error ?? 'Tuhle akci už nenajdu.'}
         </Text>
         <Pressable
           onPress={() => setRevision((value) => value + 1)}

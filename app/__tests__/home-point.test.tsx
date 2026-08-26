@@ -169,7 +169,7 @@ describe('HomePointScreen', () => {
     expect(
       renderer.root.findByProps({
         children:
-          'Zadaná adresa se jednorázově odešle geokódovací službě. Aplikace lokálně uloží jen finální potvrzený bod. Žádnou historii polohy ani trasy neukládá.',
+          'Adresu jednou pošlu geokódovací službě, ať ji najdu na mapě. V telefonu zůstane jen ten potvrzený bod, žádná historie polohy ani trasy.',
       }),
     ).toBeTruthy();
   });
@@ -190,7 +190,7 @@ describe('HomePointScreen', () => {
     expect(
       renderer.root.findAll(
         (node: { props: { children?: unknown } }) =>
-          typeof node.props.children === 'string' && node.props.children.includes('vybrat ručně'),
+          typeof node.props.children === 'string' && node.props.children.includes('ťuknutím do mapy'),
       ),
     ).not.toHaveLength(0);
     expect(useSettingsStore.getState().homePoint).toBeNull();

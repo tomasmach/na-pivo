@@ -308,7 +308,7 @@ describe('partyGamesStore', () => {
 
     expect(handle).toBeNull();
     expect(usePartyGamesStore.getState().sharingFailures.quiz).toBe(
-      'Hru se nepodařilo bezpečně uložit pro sdílení.',
+      'Hru se nepodařilo uložit pro sdílení.',
     );
   });
 

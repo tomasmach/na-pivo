@@ -58,7 +58,7 @@ export default function PubDetailScreen() {
       <View style={styles.stateScreen}>
         {loading ? <ActivityIndicator color={Colors.amber} /> : null}
         <Text style={styles.stateText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {loading ? 'Načítám hospodu…' : 'Hospodu se nepodařilo načíst.'}
+          {loading ? 'Načítám hospodu…' : 'Hospodu jsem nenačetl.'}
         </Text>
         {!loading ? (
           <Pressable

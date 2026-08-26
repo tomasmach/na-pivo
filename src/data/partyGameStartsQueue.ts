@@ -144,7 +144,7 @@ async function deliver(
         ownerAccountId,
       );
       if (!remapped || !isPartyGameBoundaryCurrent(snapshot) || abort.signal.aborted) {
-        return deliveryFailure('storage', 'Rozehranou hru se nepodařilo bezpečně uložit.');
+        return deliveryFailure('storage', 'Rozehranou hru se nepodařilo uložit.');
       }
       await remove(item.input.clientId, ownerAccountId, snapshot);
       return { ok: true, game: result.game };
@@ -162,7 +162,7 @@ async function deliver(
       if (discarded.ok) await remove(item.input.clientId, ownerAccountId, snapshot);
       return deliveryFailure(
         result.code,
-        result.detail || 'Sdílení hry server odmítl.',
+        result.detail || 'Server sdílení hry odmítl.',
         true,
         discarded.discarded,
       );

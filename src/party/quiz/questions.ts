@@ -50,7 +50,7 @@ export const QUIZ_QUESTIONS: readonly QuizQuestion[] = [
   },
   {
     id: 'q-tank',
-    text: 'Co znamená „tankové pivo"?',
+    text: 'Co znamená „tankové pivo“?',
     options: [
       'Pivo čepované přímo z velkoobjemového tanku',
       'Pivo z kovového sudu',
@@ -79,7 +79,7 @@ export const QUIZ_QUESTIONS: readonly QuizQuestion[] = [
   },
   {
     id: 'q-hospoda',
-    text: 'Co je „šnyt"?',
+    text: 'Co je „šnyt“?',
     options: [
       'Malé pivo s vysokou vrstvou pěny',
       'Pivo bez pěny',

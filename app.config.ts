@@ -3,9 +3,9 @@ import type { ConfigPlugin } from 'expo/config-plugins';
 import { withGradleProperties, withInfoPlist } from 'expo/config-plugins.js';
 
 const LOCATION_REASON =
-  'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat mému serveru; GPS trasu ani historii neukládám.';
+  'Polohu potřebuju, abych ti našel hospody v okolí a namířil šipku. Aktuální nebo přibližná poloha se může poslat mému serveru; GPS trasu ani historii neukládám.';
 const BACKGROUND_LOCATION_REASON =
-  'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv — i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládám.';
+  'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv, i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládám.';
 
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
 const SPLASH_BACKGROUND = '#1f1007';
@@ -379,7 +379,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         CFBundleAllowMixedLocalizations: true,
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSLocationAlwaysAndWhenInUseUsageDescription: BACKGROUND_LOCATION_REASON,
-        NSMotionUsageDescription: 'Pomocí senzorů otáčíme šipku, když se otočíš.',
+        NSMotionUsageDescription: 'Podle senzorů otáčím šipku, když se otočíš.',
         NSPhotoLibraryUsageDescription:
           'Otevřu ti galerii, ať si vybereš profilovku, fotku pivního menu nebo fotku piva do deníčku.',
         NSCameraUsageDescription:
