@@ -2714,7 +2714,7 @@ export const cs = {
     teaserSubtitle: 'Vyvěšené noci tvé party i zbytku světa.',
 
     // — Feed —
-    emptyPartaTitle: 'Ve Výčepu je zatím prázdno',
+    emptyPartaTitle: 'V Kocovinách je zatím prázdno',
     emptyPartaBody: 'Až někdo z party zapíše večer, objeví se tady.',
     emptyWorldTitle: 'Svět zatím mlčí',
     emptyWorldBody: 'Nikdo teď nemá vyvěšenou noc. Vyvěs tu svoji a rozjeď to.',
@@ -2752,12 +2752,12 @@ export const cs = {
     visibilityWorldHint: 'Noc uvidí každý, kdo otevře Výčep. I mimo tvoji partu.',
     publishCta: 'Vyvěsit',
     updateCta: 'Vyvěsit znovu',
-    publishedToast: 'Noc visí ve Výčepu.',
+    publishedToast: 'Noc visí v Kocovinách.',
     publishQueuedToast: 'Vyvěsím ji, až budeš online.',
     publishErrorToast: 'Noc se nepodařilo bezpečně uložit. Zkus to znovu.',
-    unpublishCta: 'Stáhnout z Výčepu',
-    unpublishConfirmBody: 'Večer zmizí z Výčepu i profilů. V deníčku ti zůstane.',
-    unpublishedToast: 'Noc už ve Výčepu nevisí.',
+    unpublishCta: 'Stáhnout z Kocovin',
+    unpublishConfirmBody: 'Večer zmizí z Kocovin i profilů. V deníčku ti zůstane.',
+    unpublishedToast: 'Noc už v Kocovinách nevisí.',
     unpublishErrorToast: 'Stažení se nepodařilo uložit. Zkus to znovu.',
     nicknameNeededTitle: 'Chybí ti přezdívka',
     nicknameNeededBody:
@@ -2803,7 +2803,7 @@ export const cs = {
     sectionHeader: 'VÝČEP',
     publishEntryTitle: 'Vyvěsit na Výčep',
     publishEntryBody: 'Pochlub se partě nebo celému světu, jak šla noc.',
-    publishedState: (visibility: string) => `Visí ve Výčepu · ${visibility}`,
+    publishedState: (visibility: string) => `Visí v Kocovinách · ${visibility}`,
 
     // — Reporting a public night —
     reportNight: 'Nahlásit noc',
