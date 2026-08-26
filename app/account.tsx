@@ -28,6 +28,7 @@ import {
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { QuietPill } from '@/components/shared/QuietPill';
 import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { isAppleSignInSupported } from '@/data/socialAuth';
@@ -48,42 +49,6 @@ import { Radius, Spacing } from '@/theme/layout';
 const MIN_PASSWORD = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SHEET_DISMISS_MS = 260;
-
-/** DESIGN §6.2: the secondary action is a quiet `stout3` pill, never an
- *  outline. Same shape as `PrivacyScreen`'s full-policy button. */
-function QuietPill({
-  label,
-  onPress,
-  accessibilityLabel,
-  disabled = false,
-}: {
-  label: string;
-  onPress: () => void;
-  accessibilityLabel: string;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.quietPill,
-        pressed && !disabled && styles.quietPillPressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-    >
-      <Text
-        style={styles.quietPillLabel}
-        numberOfLines={1}
-        maxFontSizeMultiplier={FontScaleCap.body}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
 
 function providerName(provider: AuthProvider): string {
   if (provider === 'email') return cs.account.methodEmail;
@@ -803,23 +768,6 @@ const styles = StyleSheet.create({
   },
   spacer: {
     flex: 1,
-  },
-  quietPill: {
-    minHeight: 48,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  quietPillPressed: {
-    opacity: 0.65,
-  },
-  quietPillLabel: {
-    fontWeight: '700',
-    fontSize: 14,
-    color: Colors.foam,
-    includeFontPadding: false,
   },
   unavailableState: {
     flex: 1,
