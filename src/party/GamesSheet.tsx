@@ -78,7 +78,7 @@ export function GamesSheet({
                   key={game.key}
                   onPress={added || locked ? undefined : () => onPick(game.key, game.name)}
                   disabled={added || locked}
-                  style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+                  style={({ pressed }) => [styles.tile, locked && styles.locked, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: added, disabled: added || locked }}
                   accessibilityLabel={
@@ -103,7 +103,7 @@ export function GamesSheet({
                         </Text>
                       </View>
                     )}
-                    {added ? (
+                    {added && !locked ? (
                       <View style={styles.added}>
                         <CheckIcon size={15} color={Colors.stout} />
                       </View>
@@ -149,6 +149,7 @@ const styles = StyleSheet.create({
   },
   lockText: { ...MockType.label, color: Colors.foam },
   pressed: { opacity: 0.7 },
+  locked: { opacity: 0.82 },
 
   cardWrap: { width: '100%', maxHeight: '92%' },
   card: {
