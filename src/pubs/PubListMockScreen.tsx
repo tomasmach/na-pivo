@@ -56,6 +56,7 @@ import {
   type BeerBrandFilterOption,
 } from '@/data/beerSuggestionsClient';
 import { geohash8 } from '@/data/geohash';
+import { freshPriceCzks } from '@/data/pubSearchFilters';
 import {
   fetchPubsPageNear,
   getAllLoadedPubs,
@@ -66,10 +67,9 @@ import { useCompass } from '@/hooks/useCompass';
 import { t } from '@/i18n';
 import { leaveRoute } from '@/navigation/leaveRoute';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
-import { MenuChip } from '@/mocks/MenuChip';
-import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
+import { PubFilterChips, type PubListSort } from '@/pubs/PubFilterChips';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
@@ -83,6 +83,7 @@ import {
   buildPubVisitIndex,
   presentPub,
   filterReportedPubs,
+  normalizePubListFilters,
   pubMatchesFilters,
   serverFiltersForPubList,
   sortPubs,
@@ -115,178 +116,19 @@ const VIEWPORT_DEBOUNCE_MS = 650;
  * somewhere and asking "where do I go" is the whole job of this screen;
  * "Vše" was never an answer to anything.
  */
-const SORTS = ['nearest', 'rating', 'random'] as const;
-type Sort = (typeof SORTS)[number];
-
-/** Menu labels for the sort keys, in the order the menu lists them. */
-const SORT_LABELS: Record<Sort, string> = {
-  nearest: t.pubList.sortNearest,
-  rating: t.pubList.sortRating,
-  random: t.pubList.sortRandom,
-};
-const SORT_OPTIONS = SORTS.map((key) => SORT_LABELS[key]);
-const sortFromLabel = (label: string): Sort =>
-  SORTS.find((key) => SORT_LABELS[key] === label) ?? 'nearest';
-
 /** What the head cell's badge says, per sort — it has to explain why THIS pub
  *  is the one the compass points at. */
-const BADGE: Record<Sort, string> = {
+const BADGE: Record<PubListSort, string> = {
   nearest: t.pubList.badgeNearest,
   rating: t.pubList.badgeRating,
   random: t.pubList.badgeRandom,
 };
 
-const SORT_KEY: Record<Sort, PubSort> = {
+const SORT_KEY: Record<PubListSort, PubSort> = {
   nearest: 'nearest',
   rating: 'rating',
   random: 'random',
 };
-
-/**
- * Independent toggles, on top of whatever the sort is. These are real
- * `mapFilterable` amenity keys from `src/data/amenities.ts`
- * (`practical_tank_beer`, `seating_garden`) plus the open-now state — not
- * invented labels.
- */
-const TOGGLES = ['open', 'tank', 'garden'] as const;
-const TOGGLE_LABELS: Record<(typeof TOGGLES)[number], string> = {
-  open: t.pubList.toggleOpen,
-  tank: t.pubList.toggleTank,
-  garden: t.pubList.toggleGarden,
-};
-
-function FilterChips({
-  sort,
-  onSort,
-  beerOptions,
-  filters,
-  onFilters,
-}: {
-  sort: Sort;
-  /** Fires on EVERY pick, including re-picking the current one — that is how
-   *  "Náhodně v okolí" reshuffles a second time. */
-  onSort: (next: Sort) => void;
-  beerOptions: readonly BeerBrandFilterOption[];
-  filters: PubListFilters;
-  onFilters: (next: PubListFilters) => void;
-}) {
-  const [beerSheet, setBeerSheet] = React.useState(false);
-  const labelByKey = React.useMemo(
-    () => new Map(beerOptions.map((option) => [option.key, option.label])),
-    [beerOptions],
-  );
-  const selectedLabels = filters.beers.map((key) => labelByKey.get(key) ?? key);
-  const beerLabel =
-    filters.beers.length === 0
-      ? t.pubList.beerChip
-      : filters.beers.length === 1
-        ? selectedLabels[0]
-        : t.pubList.beerChipCount(filters.beers.length);
-
-  const activeToggle = (key: (typeof TOGGLES)[number]) => {
-    if (key === 'open') return filters.openOnly;
-    if (key === 'tank') return filters.tankOnly;
-    return filters.gardenOnly;
-  };
-
-  const toggle = (key: (typeof TOGGLES)[number]) => {
-    if (key === 'open') onFilters({ ...filters, openOnly: !filters.openOnly });
-    else if (key === 'tank') onFilters({ ...filters, tankOnly: !filters.tankOnly });
-    else onFilters({ ...filters, gardenOnly: !filters.gardenOnly });
-  };
-
-  return (
-    <ScrollView
-      horizontal
-      style={styles.chipsScroller}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipsRow}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* The sort is a dropdown, not one of the toggles — it answers a
-          different question and only ever has one answer at a time. It is now a
-          real anchored UIMenu: the earlier note here said this needed
-          `react-native-ios-context-menu` and could not link ("cannot link
-          directly with 'SwiftUICore'"), which was true of that library and not
-          of the problem — `@expo/ui` ships SwiftUI's own Menu and was already in
-          the Podfile. */}
-      <MenuChip
-        value={SORT_LABELS[sort]}
-        options={SORT_OPTIONS}
-        title={t.pubList.sortTitle}
-        onChange={(next) => onSort(sortFromLabel(next))}
-      />
-
-      {/* Beer is an ANY-of multi-select backed by canonical server brand keys. */}
-      {beerOptions.length > 0 || filters.beers.length > 0 ? (
-        <>
-          <Pressable
-            onPress={() => setBeerSheet(true)}
-            style={({ pressed }) => [
-              styles.chip,
-              filters.beers.length > 0 && styles.chipActive,
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={
-              filters.beers.length > 0
-                ? t.pubList.beerChipA11y(selectedLabels.join(', '))
-                : t.pubList.beerChipPick
-            }
-          >
-            <Text
-              style={[styles.chipText, filters.beers.length > 0 && styles.chipTextActive]}
-              allowFontScaling={false}
-            >
-              {beerLabel}
-            </Text>
-            <ChevronDownIcon
-              size={14}
-              color={filters.beers.length > 0 ? Colors.amber : Colors.mutedText}
-            />
-          </Pressable>
-
-          <BeerFilterSheet
-            visible={beerSheet}
-            options={beerOptions}
-            value={[...filters.beers]}
-            onClose={() => setBeerSheet(false)}
-            onApply={(next) => {
-              onFilters({ ...filters, beers: next });
-              setBeerSheet(false);
-            }}
-          />
-        </>
-      ) : null}
-
-      {TOGGLES.map((key) => {
-        const active = activeToggle(key);
-        const label = TOGGLE_LABELS[key];
-        return (
-          <Pressable
-            key={key}
-            onPress={() => toggle(key)}
-            style={({ pressed }) => [
-              styles.chip,
-              active && styles.chipActive,
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={label}
-          >
-            <Text
-              style={[styles.chipText, active && styles.chipTextActive]}
-              allowFontScaling={false}
-            >
-              {label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
-}
 
 // Memoized: the list re-renders on every GPS-driven presentation pass, and
 // without this every mounted row rebuilds its whole subtree each time.
@@ -409,20 +251,27 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   const { height } = useWindowDimensions();
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
-  const [filters, setFilters] = React.useState<PubListFilters>({
+  const [filterState, setFilterState] = React.useState<PubListFilters>({
     beers: [],
     openOnly: false,
     tankOnly: false,
-    gardenOnly: false,
+    amenityKeys: [],
+    includeOtherPlaces: false,
+    priceMinCzk: null,
+    priceMaxCzk: null,
   });
+  const filters = React.useMemo(() => normalizePubListFilters(filterState), [filterState]);
+  const setFilters = React.useCallback((next: PubListFilters) => {
+    setFilterState(normalizePubListFilters(next));
+  }, []);
   const serverFilters = React.useMemo(() => serverFiltersForPubList(filters), [filters]);
   const compass = useCompass(
     serverFilters.beerBrandKeys,
     serverFilters.amenityKeys,
-    null,
-    null,
+    filters.priceMinCzk,
+    filters.priceMaxCzk,
     true,
-    false,
+    filters.includeOtherPlaces,
   );
   const visits = usePubVisits();
   const [beerOptions, setBeerOptions] = React.useState<BeerBrandFilterOption[]>(() =>
@@ -495,7 +344,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     };
   });
   const [selectedPub, setSelectedPub] = React.useState<string | null>(null);
-  const [sort, setSort] = React.useState<Sort>('nearest');
+  const [sort, setSort] = React.useState<PubListSort>('nearest');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
   const [carouselHeight, setCarouselHeight] = React.useState(CAROUSEL_H);
   // The detail opens INSIDE the sheet rather than as a push: the map behind is
@@ -598,7 +447,11 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     return () => controller.abort();
   }, []);
 
-  const hasServerFilters = filters.beers.length > 0 || filters.tankOnly || filters.gardenOnly;
+  const hasServerFilters =
+    filters.beers.length > 0 ||
+    filters.tankOnly ||
+    filters.amenityKeys.length > 0 ||
+    filters.includeOtherPlaces;
   const catalogueRevision = compass.pubDataRevision;
   const snapshotReady = compass.currentPosition != null || fallbackSnapshotReady;
   const viewportFiltersKey = React.useMemo(
@@ -606,8 +459,9 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
       JSON.stringify([
         [...serverFilters.beerBrandKeys].sort(),
         [...serverFilters.amenityKeys].sort(),
+        filters.includeOtherPlaces,
       ]),
-    [serverFilters.amenityKeys, serverFilters.beerBrandKeys],
+    [filters.includeOtherPlaces, serverFilters.amenityKeys, serverFilters.beerBrandKeys],
   );
 
   React.useEffect(() => {
@@ -636,6 +490,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
         radiusKm,
         beerBrandKeys: serverFilters.beerBrandKeys,
         amenityKeys: serverFilters.amenityKeys,
+        includeOtherPlaces: filters.includeOtherPlaces,
       })
         .then((page) => {
           if (serial !== viewportRequestSerial.current || controller.signal.aborted) return;
@@ -659,6 +514,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
     };
   }, [
     browseRegion,
+    filters.includeOtherPlaces,
     serverFilters.amenityKeys,
     serverFilters.beerBrandKeys,
     viewportCatalog,
@@ -719,6 +575,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
       ),
     [amenitiesByKey, compass.currentPosition, rawPubs, visitIndex],
   );
+  const nearbyPrices = React.useMemo(() => freshPriceCzks(rawPubs), [rawPubs]);
   const ordered = React.useMemo(
     () =>
       sortPubs(
@@ -758,7 +615,11 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
   const openPub = openPubId
     ? (presentations.find((pub) => pub.id === openPubId) ?? null)
     : null;
-  const hasActiveFilters = hasServerFilters || filters.openOnly;
+  const hasActiveFilters =
+    hasServerFilters ||
+    filters.openOnly ||
+    filters.priceMinCzk !== null ||
+    filters.priceMaxCzk !== null;
   const emptyState = resolvePubListEmptyState({
     pubCount: presentations.length,
     snapshotReady,
@@ -797,7 +658,7 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
 
   const clearFocusedPub = compass.clearFocusedPub;
   const pickSort = React.useCallback(
-    (next: Sort) => {
+    (next: PubListSort) => {
       setSort(next);
       if (next === 'random') setShuffleSeed((n) => n + 1);
       // Picking a sort is asking the head cell a new question, so the borrowed
@@ -1018,10 +879,11 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
 
             {/* The chips stay. They are how you change what the list IS, so
                 losing them on scroll would mean scrolling back up to filter. */}
-            <FilterChips
+            <PubFilterChips
               sort={sort}
               onSort={pickSort}
               beerOptions={beerOptions}
+              nearbyPrices={nearbyPrices}
               filters={filters}
               onFilters={setFilters}
             />
@@ -1185,7 +1047,10 @@ export default function PubListMockScreen({ picker = false }: { picker?: boolean
                               beers: [],
                               openOnly: false,
                               tankOnly: false,
-                              gardenOnly: false,
+                              amenityKeys: [],
+                              includeOtherPlaces: false,
+                              priceMinCzk: null,
+                              priceMaxCzk: null,
                             })
                           }
                           style={({ pressed }) => [styles.stateButton, pressed && styles.pressed]}
@@ -1292,32 +1157,6 @@ const styles = StyleSheet.create({
     borderColor: MockColors.fieldBorder,
   },
   searchPlaceholder: { ...MockType.body, color: MockColors.fieldHint },
-  // `flexGrow: 0` matters: a horizontal ScrollView inside a column otherwise
-  // takes a full flex slot, which is where the band of dead space under the
-  // filters came from.
-  chipsScroller: { flexGrow: 0 },
-  chipsRow: {
-    paddingHorizontal: MockLayout.screenPad,
-    gap: Spacing.xs,
-    alignItems: 'center',
-    paddingBottom: Spacing.xs,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: MockLayout.pillHeight,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    justifyContent: 'center',
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  chipActive: { borderColor: withAlpha(Colors.amber, 0.5) },
-  chipText: { fontSize: 14, fontWeight: '600', color: Colors.mutedText },
-  chipTextActive: { color: Colors.amber },
-
   // — Rows (Packeta list item: photo well + title + facts) —
   // Rows sit straight on the sheet, separated by a hairline. Wrapping each one
   // in its own bordered card put a rectangle inside a rectangle inside the

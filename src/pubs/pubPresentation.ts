@@ -1,6 +1,12 @@
 import { formatDistanceCs, haversineMeters } from '@/compass/distance';
 import { geohash8 } from '@/data/geohash';
+import type { AmenityKey } from '@/data/amenities';
 import type { Pub } from '@/data/pubs';
+import {
+  MAX_AMENITY_FILTERS,
+  normalizeAmenityFilterKeys,
+  pubMatchesPriceFilter,
+} from '@/data/pubSearchFilters';
 import type { WireAmenityAggregate } from '@/data/pubAmenitiesClient';
 import type { WireVisit } from '@/data/visitsClient';
 import { intlLocale, t } from '@/i18n';
@@ -42,7 +48,32 @@ export interface PubListFilters {
   beers: readonly string[];
   openOnly: boolean;
   tankOnly: boolean;
-  gardenOnly: boolean;
+  amenityKeys: readonly AmenityKey[];
+  includeOtherPlaces: boolean;
+  priceMinCzk: number | null;
+  priceMaxCzk: number | null;
+}
+
+type LegacyPubListFilters = Partial<PubListFilters> & {
+  gardenOnly?: boolean;
+};
+
+/** Keep Fast Refresh and older in-memory filter state from crashing the list. */
+export function normalizePubListFilters(filters: LegacyPubListFilters): PubListFilters {
+  const legacyGarden = filters.gardenOnly === true ? ['seating_garden' as const] : [];
+  const tankOnly = filters.tankOnly === true;
+  const amenityKeys = normalizeAmenityFilterKeys(
+    Array.isArray(filters.amenityKeys) ? filters.amenityKeys : legacyGarden,
+  ).slice(0, MAX_AMENITY_FILTERS - (tankOnly ? 1 : 0));
+  return {
+    beers: Array.isArray(filters.beers) ? filters.beers : [],
+    openOnly: filters.openOnly === true,
+    tankOnly,
+    amenityKeys,
+    includeOtherPlaces: filters.includeOtherPlaces === true,
+    priceMinCzk: typeof filters.priceMinCzk === 'number' ? filters.priceMinCzk : null,
+    priceMaxCzk: typeof filters.priceMaxCzk === 'number' ? filters.priceMaxCzk : null,
+  };
 }
 
 export type PubSort = 'nearest' | 'rating' | 'random';
@@ -244,7 +275,7 @@ export function pubMatchesFilters(pub: PubPresentation, filters: PubListFilters)
   // its bulky beer menu or amenity aggregates even though that pub matched;
   // filtering those fields again here would erase authoritative results.
   if (filters.openOnly && pub.openState !== 'open') return false;
-  return true;
+  return pubMatchesPriceFilter(pub.pub, filters.priceMinCzk, filters.priceMaxCzk);
 }
 
 /** Translate the redesign's friendly selections to canonical nearby wire keys. */
@@ -252,12 +283,17 @@ export function serverFiltersForPubList(filters: PubListFilters): {
   beerBrandKeys: string[];
   amenityKeys: string[];
 } {
+  const normalized = normalizePubListFilters(filters);
   return {
-    beerBrandKeys: Array.from(new Set(filters.beers.map((key) => key.trim()).filter(Boolean))).sort(),
-    amenityKeys: [
-      ...(filters.tankOnly ? ['practical_tank_beer'] : []),
-      ...(filters.gardenOnly ? ['seating_garden'] : []),
-    ],
+    beerBrandKeys: Array.from(
+      new Set(normalized.beers.map((key) => key.trim()).filter(Boolean)),
+    ).sort(),
+    amenityKeys: Array.from(
+      new Set([
+        ...normalized.amenityKeys,
+        ...(normalized.tankOnly ? ['practical_tank_beer'] : []),
+      ]),
+    ).sort(),
   };
 }
 
