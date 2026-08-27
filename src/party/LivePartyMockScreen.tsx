@@ -70,6 +70,8 @@ import { showMenuScanPermissionBlocked } from '@/contribute/menuScanPermission';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { GameCover } from '@/party/GameCover';
 import { GAME_CATALOG, gameDisplayName } from '@/party/gameCatalog';
+import { IdleHub } from '@/party/IdleHub';
+import { lastArchivedSession } from '@/party/idleHubModel';
 import { Avatar } from '@/profile/Avatar';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
@@ -160,8 +162,10 @@ const gameDef = (key: string) => GAME_CATALOG.find((game) => game.key === key) ?
  */
 const CZ_FALLBACK_CENTER = { lat: 50.0808, lng: 14.4287, span: 0.9 };
 
-/** Full map before the night starts, a band once it has. */
-const MAP_IDLE = 460;
+/** A band before the night starts, a thinner one once it has. 460 was half
+ *  the screen of map over a sheet with nothing in it; the idle sheet now has
+ *  the night's rows to show and the map only needs to say where. */
+const MAP_IDLE = 300;
 /** Below the notch and the floating chrome: at a fixed 128 the sheet's top edge
  *  cut through the back chevron and "Ukončit" on a tall phone. */
 const MAP_LIVE_MIN = 128;
@@ -293,6 +297,7 @@ export default function LivePartyMockScreen() {
   const nearby = useNearbyPub();
   const tallyCurrent = useTallyStore((s) => s.current);
   const tallyHistory = useTallyStore((s) => s.history);
+  const lastSession = React.useMemo(() => lastArchivedSession(tallyHistory), [tallyHistory]);
   const archiveCurrent = useTallyStore((s) => s.archiveCurrent);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const [undoDrink, setUndoDrink] = React.useState<TallyDrink | null>(null);
@@ -973,6 +978,9 @@ export default function LivePartyMockScreen() {
               pill floating on the map and the table was buried three sections
               down, so the top of a screen about an evening with friends said
               nothing about either. */}
+          {/* Only once the night runs. Before it, the place, the table and the
+              games are rows in IdleHub below, each with its own action. */}
+          {active ? (
           <View style={styles.hub}>
             <View style={styles.hubTop}>
             <Pressable
@@ -988,7 +996,7 @@ export default function LivePartyMockScreen() {
               accessibilityRole="button"
               accessibilityLabel={t.liveParty.a11yChangePub(displayPubName)}
             >
-              {active ? <View style={styles.pubDot} /> : null}
+              <View style={styles.pubDot} />
               <Text
                 style={styles.hubPubName}
                 numberOfLines={1}
@@ -1003,9 +1011,7 @@ export default function LivePartyMockScreen() {
                 "who and where" row, and that is what asking someone to join
                 changes. Down in the control row it sat among the things you do
                 over and over all evening; you invite people once. */}
-            {/* Before the night starts too. Getting people to the pub is the
-                thing you do BEFORE the first beer, so hiding this until one is
-                poured hid it at exactly the moment it is useful.
+            {/* Before the night the same door is the "U stolu" row in IdleHub.
 
                 With a word on it: a bare glyph in a corner is a guess, and this
                 is the one control here whose job no icon says on its own. */}
@@ -1017,24 +1023,10 @@ export default function LivePartyMockScreen() {
             </GlassPill>
             </View>
 
-            {!active && idlePubMeta.length > 0 ? (
-              <Text
-                style={styles.hubMeta}
-                numberOfLines={2}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {idlePubMeta.join('  ·  ')}
-              </Text>
-            ) : null}
+            {/* The table: who is actually sitting at it.
 
-            {/* The table, once there is one. Before the night the nearest pub's
-                distance, opening state and first tap sit above this block;
-                after start this row becomes about who is actually at the table.
-
-                Not a button, and no "+" face: inviting lives in the control row
-                with the other things that ADD to the evening. Two ways to do it
-                made the header read as a control panel. */}
-            {active ? (
+                Not a button, and no "+" face: inviting is the pill above. Two
+                ways to do it made the header read as a control panel. */}
               <View
                 style={styles.hubPeople}
                 accessibilityLabel={
@@ -1067,31 +1059,8 @@ export default function LivePartyMockScreen() {
                   {[t.liveParty.you, ...people.map((p) => p.name)].join(', ')}
                 </Text>
               </View>
-            ) : null}
-
-            {/* The other door. Before a night there are two ways in and only one
-                was on screen: you could start a table, but not sit down at one
-                somebody else had already started. It disappears once the night
-                is running — you are at a table, that is the answer. */}
-            {active ? null : (
-              <Pressable
-                onPress={() => {
-                  setPrefilledJoinCode(null);
-                  setJoinOpen(true);
-                }}
-                style={({ pressed }) => [styles.joinRow, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={t.liveParty.a11yJoinWithCode}
-              >
-                <Text style={styles.joinText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.liveParty.joinPrompt}{' '}
-                  <Text style={styles.joinLink} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.liveParty.joinLink}
-                  </Text>
-                </Text>
-              </Pressable>
-            )}
           </View>
+          ) : null}
 
           {/* Only once the night is running. A stopwatch reading "0:00 večer"
               before anything has happened is a number about nothing — and it
@@ -1360,7 +1329,23 @@ export default function LivePartyMockScreen() {
                 );
               })}
             </View>
-          ) : null}
+          ) : active ? null : (
+            // Before the first beer the thread is empty, and an empty thread
+            // was six hundred points of nothing. What goes there instead is
+            // what the night will collect.
+            <IdleHub
+              pubName={displayPubName}
+              pubMeta={idlePubMeta}
+              lastSession={lastSession}
+              onPickPub={() => router.push('/pick-pub' as Href)}
+              onInvite={openInvite}
+              onOpenGames={() => setGamesOpen(true)}
+              onJoinByCode={() => {
+                setPrefilledJoinCode(null);
+                setJoinOpen(true);
+              }}
+            />
+          )}
         </ScrollView>
 
         <View style={styles.undoSlot}>
@@ -1466,9 +1451,14 @@ export default function LivePartyMockScreen() {
           ) : null}
           </View>
 
-          <CircleButton label={t.liveParty.games} onPress={() => setGamesOpen(true)}>
-            <DicesIcon size={21} color={Colors.foam} />
-          </CircleButton>
+          {/* Only while the night runs: before it the "Hry" row in IdleHub is
+              the one door to the games (§14.4), and two doors to one sheet on
+              one screen is how the old counter got confusing. */}
+          {active ? (
+            <CircleButton label={t.liveParty.games} onPress={() => setGamesOpen(true)}>
+              <DicesIcon size={21} color={Colors.foam} />
+            </CircleButton>
+          ) : null}
         </View>
       </View>
 
@@ -1713,14 +1703,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   invitePill: { fontSize: 14, fontWeight: '700', color: Colors.amber },
-  joinRow: {
-    minHeight: HitArea.min,
-    marginTop: Spacing.md,
-    alignSelf: 'flex-start',
-    justifyContent: 'center',
-  },
-  joinText: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
-  joinLink: { color: Colors.amber, fontWeight: '700' },
   // A pill, not a heading with a chevron bolted on: it is a control, and it
   // should look like one before you tap it.
   hubPub: {
@@ -1743,7 +1725,6 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     letterSpacing: -0.2,
   },
-  hubMeta: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   hubPeople: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   faces: { flexDirection: 'row', alignItems: 'center' },
   faceOverlap: { marginLeft: -9 },
@@ -1786,8 +1767,9 @@ const styles = StyleSheet.create({
     backgroundColor: MockColors.bg,
     borderTopLeftRadius: SHEET_RADIUS,
     borderTopRightRadius: SHEET_RADIUS,
-    // The app's one width (§18.3b), not a private 16 because it is a sheet.
-    paddingHorizontal: MockLayout.screenPad,
+    // The app's one width (§18.3b) lives on the sheet's PARTS, not the sheet:
+    // padding here made the ScrollView 40pt narrower than the sheet, and a
+    // SectionBreak bleeding past it got clipped into a divider.
     paddingTop: Spacing.sm,
   },
   grabber: {
@@ -1798,8 +1780,8 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.22),
     marginBottom: Spacing.md,
   },
-  sheetHead: { paddingBottom: Spacing.xs },
-  sheetContent: { paddingBottom: Spacing.md },
+  sheetHead: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.xs },
+  sheetContent: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.md },
 
   section: {
     ...MockType.titleS,
@@ -1955,7 +1937,7 @@ const styles = StyleSheet.create({
   logIconCount: { fontFamily: Fonts.numeral, fontSize: 14, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
 
-  undoSlot: { height: 44, justifyContent: 'center' },
+  undoSlot: { height: 44, justifyContent: 'center', paddingHorizontal: MockLayout.screenPad },
   undoStrip: {
     minHeight: 44,
     flexDirection: 'row',
@@ -1978,6 +1960,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
+    paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.sm,
     // Overlaps the thread it fades out — the scroll runs under it.

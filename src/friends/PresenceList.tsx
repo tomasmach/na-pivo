@@ -175,6 +175,12 @@ export interface PresenceListProps {
   onOpenProfile: (accountId: string) => void;
   /** Called after a block/report so the screen can reload the graph. */
   onChanged: () => void;
+  /**
+   * Rows straight on the ground instead of inside the card. Kocoviny frames
+   * the list as a card among cards; a sheet of flat hairline rows (the Party
+   * hub) wants the same rows without the frame (§7.3).
+   */
+  flat?: boolean;
 }
 
 export function PresenceList({
@@ -182,6 +188,7 @@ export function PresenceList({
   myPresence,
   stale,
   sharedCacheKey = null,
+  flat = false,
   onOpenProfile,
   onChanged,
 }: PresenceListProps) {
@@ -204,7 +211,7 @@ export function PresenceList({
   if (presence.length === 0 && !myPresence) return null;
 
   return (
-    <View style={styles.card}>
+    <View style={flat ? undefined : styles.card}>
       {myPresence ? (
         <PresenceRow
           presence={myPresence}

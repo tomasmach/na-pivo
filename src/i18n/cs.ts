@@ -3800,6 +3800,16 @@ export const cs = {
     a11yJoinWithCode: 'Přisednout ke stolu kódem',
     joinPrompt: 'Někdo už stůl založil?',
     joinLink: 'Přisednout kódem',
+    // — Before the night —
+    idlePubLabel: 'Hospoda',
+    idleTableLabel: 'U stolu',
+    idleGamesLabel: 'Hry',
+    idleGamesMore: (n: number) => (n === 1 ? 'a 1 další' : n < 5 ? `a ${n} další` : `a ${n} dalších`),
+    idleGamesSoon: 'Přijdou v další verzi',
+    a11yOpenGames: 'Otevřít hry',
+    idleSeatedTitle: 'Kdo už sedí',
+    idleLastTitle: 'Naposledy',
+    a11yLastNight: (label: string) => `Poslední večer, ${label}. Otevřít.`,
     // — The thread —
     threadNightStarted: (pubName: string) => `Večer začal v ${pubName}`,
     threadMovedTo: (pubName: string) => `Přesun do ${pubName}`,

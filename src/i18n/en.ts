@@ -3738,6 +3738,16 @@ export const en: Strings = {
     a11yJoinWithCode: 'Join a table with a code',
     joinPrompt: 'Someone already started a table?',
     joinLink: 'Join with a code',
+    // Before the night
+    idlePubLabel: 'Pub',
+    idleTableLabel: 'Table',
+    idleGamesLabel: 'Games',
+    idleGamesMore: (n: number) => `and ${n} more`,
+    idleGamesSoon: 'Coming in the next version',
+    a11yOpenGames: 'Open games',
+    idleSeatedTitle: 'Already at the pub',
+    idleLastTitle: 'Last time',
+    a11yLastNight: (label: string) => `Last time out, ${label}. Open.`,
     // The thread
     threadNightStarted: (pubName: string) => `Night started at ${pubName}`,
     threadMovedTo: (pubName: string) => `Moved to ${pubName}`,
