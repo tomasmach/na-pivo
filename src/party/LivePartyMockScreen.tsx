@@ -78,6 +78,7 @@ import { GamesSheet } from '@/party/GamesSheet';
 import { placePartyGameAfterTableConfirmation } from '@/party/placePartyGame';
 import { InviteSheet } from '@/party/InviteSheet';
 import { JoinTableSheet } from '@/party/JoinTableSheet';
+import { PickPubSheet } from '@/party/PickPubSheet';
 import { RowMenu } from '@/mocks/MenuChip';
 import { hubStats } from '@/party/nightPulse';
 import { displayPersonName, OUTSIDE_PUB_NAME } from '@/party/nightBuilder';
@@ -481,6 +482,7 @@ export default function LivePartyMockScreen() {
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [joinOpen, setJoinOpen] = React.useState(false);
+  const [pickPubOpen, setPickPubOpen] = React.useState(false);
   const [prefilledJoinCode, setPrefilledJoinCode] = React.useState<string | null>(null);
   const [beersOpen, setBeersOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -571,9 +573,17 @@ export default function LivePartyMockScreen() {
   const detectedPub = nearby.selected && pubKey === geohash8(nearby.selected.lat, nearby.selected.lng)
     ? nearby.selected
     : null;
-  const detectedCandidate = detectedPub
-    ? nearby.candidates.find((candidate) => candidate.pubKey === pubKey)
-    : null;
+  // A pub picked from the sheet rather than detected under your feet: still
+  // one of the candidates, so the hub row keeps its distance and hours.
+  const pickedCandidate = nearby.candidates.find((candidate) => candidate.pubKey === pubKey) ?? null;
+  // Stable identity for the sheet: a fresh object each render restarted its
+  // search debounce on every GPS tick.
+  const positionLat = nearby.position?.lat;
+  const positionLng = nearby.position?.lng;
+  const pickPubPosition = React.useMemo(
+    () => (positionLat !== undefined && positionLng !== undefined ? { lat: positionLat, lng: positionLng } : null),
+    [positionLat, positionLng],
+  );
   const detectedTaps = React.useMemo(
     () =>
       (detectedPub?.beers ?? []).map((tap) => ({
@@ -827,10 +837,11 @@ export default function LivePartyMockScreen() {
         }
       : null
   );
-  const idlePubMeta = detectedPub
+  const idlePub = detectedPub ?? pickedCandidate?.pub ?? null;
+  const idlePubMeta = idlePub
     ? [
-        detectedCandidate ? formatDistanceCs(detectedCandidate.distanceMeters) : null,
-        presentOpenStatus(detectedPub).label,
+        pickedCandidate ? formatDistanceCs(pickedCandidate.distanceMeters) : null,
+        presentOpenStatus(idlePub).label,
         taps[0]
           ? `${taps[0].name}${taps[0].priceCzk == null ? '' : ` · ${t.liveParty.tapPrice(taps[0].priceCzk)}`}`
           : null,
@@ -1337,7 +1348,9 @@ export default function LivePartyMockScreen() {
               pubName={displayPubName}
               pubMeta={idlePubMeta}
               lastSession={lastSession}
-              onPickPub={() => router.push('/pick-pub' as Href)}
+              // A sheet over the hub, not the Hospody screen as a modal: from a
+              // hub that already shows the map, that read as jumping tabs.
+              onPickPub={() => setPickPubOpen(true)}
               onInvite={openInvite}
               onOpenGames={() => setGamesOpen(true)}
               onJoinByCode={() => {
@@ -1607,6 +1620,41 @@ export default function LivePartyMockScreen() {
           }}
         />
       ) : null}
+
+      <PickPubSheet
+        visible={pickPubOpen}
+        candidates={nearby.candidates}
+        position={pickPubPosition}
+        // Null until something was picked: a fresh hub must not tell the sheet
+        // that "Mimo hospodu" is already the answer.
+        selectedKey={pubName.trim() ? partyPlaceKey : null}
+        onClose={() => setPickPubOpen(false)}
+        // The same store move the picker's "Mimo hospodu" row makes: before the
+        // night there is no visit to transition, the place just changes. The
+        // house beer comes from the NEW pub, as the auto-detect path does —
+        // carrying the old one over offered the last pub's tap at this one.
+        onPick={(pub) => {
+          setPartyPub(
+            pub.name,
+            pub.beers?.[0]?.name.trim() || DEFAULT_HOUSE_BEER,
+            geohash8(pub.lat, pub.lng),
+            (pub.beers ?? []).flatMap((tap) => {
+              const name = tap.name.trim();
+              return name
+                ? [{ name, priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null }]
+                : [];
+            }),
+            pub.city,
+            pub.googlePlaceId,
+          );
+          setPickPubOpen(false);
+        }}
+        onPickOutside={() => {
+          // Persisted sentinels, not display copy — the hub compares these.
+          setPartyPub(OUTSIDE_PUB_NAME, DEFAULT_HOUSE_BEER, null, []);
+          setPickPubOpen(false);
+        }}
+      />
 
       <JoinTableSheet
         visible={joinOpen}

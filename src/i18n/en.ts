@@ -3748,6 +3748,13 @@ export const en: Strings = {
     idleSeatedTitle: 'Already at the pub',
     idleLastTitle: 'Last time',
     a11yLastNight: (label: string) => `Last time out, ${label}. Open.`,
+    pickPubTitle: 'Where are you sitting?',
+    pickPubSearch: 'Find a pub',
+    pickPubNearby: 'Around you',
+    pickPubPicked: 'picked',
+    pickPubNoNearby: "I can't see a pub around you yet. Try searching.",
+    pickPubNoResults: 'Nothing found. Try another name.',
+    pickPubClear: 'Clear the search',
     // The thread
     threadNightStarted: (pubName: string) => `Night started at ${pubName}`,
     threadMovedTo: (pubName: string) => `Moved to ${pubName}`,

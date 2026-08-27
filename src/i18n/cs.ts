@@ -3810,6 +3810,13 @@ export const cs = {
     idleSeatedTitle: 'Kdo už sedí',
     idleLastTitle: 'Naposledy',
     a11yLastNight: (label: string) => `Poslední večer, ${label}. Otevřít.`,
+    pickPubTitle: 'Kde sedíš?',
+    pickPubSearch: 'Hledej hospodu',
+    pickPubNearby: 'Kolem tebe',
+    pickPubPicked: 'vybráno',
+    pickPubNoNearby: 'Kolem tebe zatím žádnou hospodu nevidím. Zkus hledat.',
+    pickPubNoResults: 'Nic jsem nenašel. Zkus to jinak.',
+    pickPubClear: 'Smazat hledání',
     // — The thread —
     threadNightStarted: (pubName: string) => `Večer začal v ${pubName}`,
     threadMovedTo: (pubName: string) => `Přesun do ${pubName}`,
