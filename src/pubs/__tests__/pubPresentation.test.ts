@@ -4,6 +4,7 @@ import type { WireVisit } from '@/data/visitsClient';
 import {
   beerFilterOptions,
   filterReportedPubs,
+  normalizePubListFilters,
   formatLastVisit,
   presentOpenStatus,
   presentPub,
@@ -156,7 +157,10 @@ describe('pubPresentation', () => {
         beers: ['matuška raptor'],
         openOnly: true,
         tankOnly: true,
-        gardenOnly: true,
+        amenityKeys: ['seating_garden'],
+        includeOtherPlaces: false,
+        priceMinCzk: null,
+        priceMaxCzk: null,
       }),
     ).toBe(true);
     expect(
@@ -164,7 +168,10 @@ describe('pubPresentation', () => {
         beers: ['Pilsner Urquell'],
         openOnly: false,
         tankOnly: true,
-        gardenOnly: true,
+        amenityKeys: ['seating_garden'],
+        includeOtherPlaces: false,
+        priceMinCzk: null,
+        priceMaxCzk: null,
       }),
     ).toBe(true);
     expect(
@@ -172,7 +179,10 @@ describe('pubPresentation', () => {
         beers: [],
         openOnly: true,
         tankOnly: false,
-        gardenOnly: false,
+        amenityKeys: [],
+        includeOtherPlaces: false,
+        priceMinCzk: null,
+        priceMaxCzk: null,
       }),
     ).toBe(false);
     expect(
@@ -186,11 +196,54 @@ describe('pubPresentation', () => {
         beers: ['radegast', 'pilsner-urquell', 'radegast'],
         openOnly: true,
         tankOnly: true,
-        gardenOnly: true,
+        amenityKeys: ['seating_garden', 'payment_card'],
+        includeOtherPlaces: false,
+        priceMinCzk: null,
+        priceMaxCzk: null,
       }),
     ).toEqual({
       beerBrandKeys: ['pilsner-urquell', 'radegast'],
-      amenityKeys: ['practical_tank_beer', 'seating_garden'],
+      amenityKeys: ['payment_card', 'practical_tank_beer', 'seating_garden'],
+    });
+  });
+
+  it('never sends more than five amenity filters when tank is selected', () => {
+    const result = serverFiltersForPubList({
+      beers: [],
+      openOnly: false,
+      tankOnly: true,
+      amenityKeys: [
+        'payment_card',
+        'seating_garden',
+        'seating_barrier_free',
+        'game_darts',
+        'game_billiards',
+      ],
+      includeOtherPlaces: false,
+      priceMinCzk: null,
+      priceMaxCzk: null,
+    });
+
+    expect(result.amenityKeys).toHaveLength(5);
+    expect(result.amenityKeys).toContain('practical_tank_beer');
+  });
+
+  it('migrates the previous in-memory filter shape without crashing Fast Refresh', () => {
+    expect(
+      normalizePubListFilters({
+        beers: ['pilsner-urquell'],
+        openOnly: true,
+        tankOnly: false,
+        gardenOnly: true,
+      }),
+    ).toEqual({
+      beers: ['pilsner-urquell'],
+      openOnly: true,
+      tankOnly: false,
+      amenityKeys: ['seating_garden'],
+      includeOtherPlaces: false,
+      priceMinCzk: null,
+      priceMaxCzk: null,
     });
   });
 

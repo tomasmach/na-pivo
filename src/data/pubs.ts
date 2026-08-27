@@ -194,6 +194,7 @@ export interface FetchPubsPageOptions {
   radiusKm?: number;
   beerBrandKeys?: readonly string[];
   amenityKeys?: readonly string[];
+  includeOtherPlaces?: boolean;
 }
 
 export interface PubsPage {
@@ -539,10 +540,12 @@ export async function fetchPubsPageNear(
     new Set((options.beerBrandKeys ?? []).map((key) => key.trim()).filter(Boolean)),
   ).sort();
   const amenityKeys = Array.from(new Set(options.amenityKeys ?? [])).sort();
+  const includeOtherPlaces = options.includeOtherPlaces === true;
   const [pubs, blockedReports] = await Promise.all([
     searchPubsNear(lat, lng, radiusKm, signal, {
       ...(beerBrandKeys.length > 0 ? { beerBrandKeys } : {}),
       amenityKeys,
+      ...(includeOtherPlaces ? { includeOtherPlaces: true } : {}),
     }),
     fetchBlockedPubReports(lat, lng, radiusKm, signal),
   ]);

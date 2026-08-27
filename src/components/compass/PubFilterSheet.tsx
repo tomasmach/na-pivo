@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
   type LayoutChangeEvent,
+  type ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -83,26 +84,40 @@ const FILTERABLE_AMENITIES = AMENITIES.filter((amenity) => amenity.mapFilterable
 interface PubFilterSheetProps {
   visible: boolean;
   value: PubSearchFilters;
+  showBeerFilter?: boolean;
+  showTankFilter?: boolean;
+  tankOnly?: boolean;
+  initialSection?: 'all' | 'price' | 'games';
+  limitReachedInitially?: boolean;
   /** Known reference prices (CZK) of the currently loaded pubs, price-cap NOT
    *  applied — drives the histogram and the live match count. */
   nearbyPrices?: number[];
   onClose: () => void;
-  onApply: (value: PubSearchFilters) => void;
+  onApply: (value: PubSearchFilters, extras?: { tankOnly: boolean }) => void;
 }
 
 export function PubFilterSheet({
   visible,
   value,
+  showBeerFilter = true,
+  showTankFilter = false,
+  tankOnly = false,
+  initialSection = 'all',
+  limitReachedInitially = false,
   nearbyPrices = [],
   onClose,
   onApply,
 }: PubFilterSheetProps) {
   const insets = useSafeAreaInsets();
+  const scrollRef = React.useRef<ScrollView>(null);
+  const sectionOffsets = React.useRef<Partial<Record<'price' | 'games', number>>>({});
+  const initialScrollDone = React.useRef(initialSection === 'all');
   const [draft, setDraft] = useState<PubSearchFilters>(() => normalizePubSearchFilters(value));
+  const [draftTankOnly, setDraftTankOnly] = useState(tankOnly);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [suggestionsQuery, setSuggestionsQuery] = useState('');
-  const [limitReached, setLimitReached] = useState(false);
+  const [limitReached, setLimitReached] = useState(limitReachedInitially);
   const searching = query.trim().length >= 2;
   const normalizedQuery = query.trim();
   const visibleSuggestions = suggestionsQuery === normalizedQuery ? suggestions : [];
@@ -170,13 +185,28 @@ export function PubFilterSheet({
       });
       return;
     }
-    if (draft.amenityKeys.length >= MAX_AMENITY_FILTERS) {
+    const availableAmenitySlots = MAX_AMENITY_FILTERS - (showTankFilter && draftTankOnly ? 1 : 0);
+    if (draft.amenityKeys.length >= availableAmenitySlots) {
       setLimitReached(true);
       return;
     }
     setLimitReached(false);
     setDraft({ ...draft, amenityKeys: [...draft.amenityKeys, key] });
-  }, [draft]);
+  }, [draft, draftTankOnly, showTankFilter]);
+
+  const toggleTank = useCallback(() => {
+    if (draftTankOnly) {
+      setDraftTankOnly(false);
+      setLimitReached(false);
+      return;
+    }
+    if (draft.amenityKeys.length >= MAX_AMENITY_FILTERS) {
+      setLimitReached(true);
+      return;
+    }
+    setDraftTankOnly(true);
+    setLimitReached(false);
+  }, [draft.amenityKeys.length, draftTankOnly]);
 
   const clear = useCallback(() => {
     setDraft({
@@ -190,6 +220,7 @@ export function PubFilterSheet({
     setSuggestions([]);
     setSuggestionsQuery('');
     setLimitReached(false);
+    setDraftTankOnly(false);
   }, []);
 
   const setPriceRange = useCallback((priceMinCzk: number | null, priceMaxCzk: number | null) => {
@@ -197,16 +228,35 @@ export function PubFilterSheet({
   }, []);
 
   const apply = useCallback(() => {
-    onApply(normalizePubSearchFilters(draft));
+    const normalized = normalizePubSearchFilters(draft);
+    if (showTankFilter) onApply(normalized, { tankOnly: draftTankOnly });
+    else onApply(normalized);
     onClose();
-  }, [draft, onApply, onClose]);
+  }, [draft, draftTankOnly, onApply, onClose, showTankFilter]);
+
+  const scrollToInitialSection = useCallback(() => {
+    if (initialScrollDone.current || initialSection === 'all') return;
+    const y = sectionOffsets.current[initialSection];
+    if (y === undefined) return;
+    initialScrollDone.current = true;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - Spacing.sm), animated: false });
+  }, [initialSection]);
+
+  const captureSection = useCallback(
+    (section: 'price' | 'games', event: LayoutChangeEvent) => {
+      sectionOffsets.current[section] = event.nativeEvent.layout.y;
+      requestAnimationFrame(scrollToInitialSection);
+    },
+    [scrollToInitialSection],
+  );
 
   const hasDraftFilters =
     draft.beerBrand !== null ||
     draft.amenityKeys.length > 0 ||
     draft.includeOtherPlaces === true ||
     draft.priceMinCzk !== null ||
-    draft.priceMaxCzk !== null;
+    draft.priceMaxCzk !== null ||
+    draftTankOnly;
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose} keyboardLift>
@@ -221,104 +271,112 @@ export function PubFilterSheet({
           </View>
 
           <KeyboardAwareScrollView
+            ref={scrollRef}
             style={styles.content}
             contentContainerStyle={styles.contentContainer}
             keyboardAvoidedExternally
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            onContentSizeChange={scrollToInitialSection}
           >
-            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.compass.beerFilterSection}
-            </Text>
-            <View style={styles.searchRow}>
-              <SearchIcon size={16} color={Colors.mutedText} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder={draft.beerBrand?.label ?? t.compass.beerFilterSearchPlaceholder}
-                placeholderTextColor={draft.beerBrand ? Colors.foam : Colors.mutedText}
-                style={styles.searchInput}
-                autoCapitalize="words"
-                autoCorrect={false}
-                returnKeyType="search"
-                maxFontSizeMultiplier={FontScaleCap.body}
-                accessibilityLabel={t.a11y.beerBrandFilterInput}
-              />
-              {(query.length > 0 || draft.beerBrand) && (
-                <Pressable
-                  onPress={() => (query.length > 0 ? setQuery('') : chooseBrand(null))}
-                  hitSlop={10}
-                  style={styles.searchClear}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.a11y.clearBeerBrandFilter}
-                >
-                  <XIcon size={15} color={Colors.foamMuted} />
-                </Pressable>
-              )}
-            </View>
-
-            {searching ? (
-              <View style={styles.results}>
-                {suggestionsPending || visibleSuggestions.length === 0 ? (
-                  <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {suggestionsPending
-                      ? t.compass.beerFilterSearching
-                      : t.compass.beerFilterNoResults}
-                  </Text>
-                ) : (
-                  visibleSuggestions.map((suggestion, index) => (
-                    <Pressable
-                      key={suggestion.slug}
-                      onPress={() => chooseSuggestion(suggestion)}
-                      style={[styles.resultRow, index > 0 && styles.resultRowDivider]}
-                      accessibilityRole="button"
-                      accessibilityLabel={t.a11y.beerBrandFilterSuggestion(suggestion.name)}
-                    >
-                      <BeerIcon size={15} color={Colors.mutedText} />
-                      <Text
-                        style={styles.resultText}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {suggestion.name}
-                      </Text>
-                    </Pressable>
-                  ))
-                )}
-              </View>
-            ) : (
-              <View style={styles.chipsWrap}>
-                {POPULAR_BEER_BRANDS.map((brand) => {
-                  const active = draft.beerBrand?.key === brand.key;
-                  return (
-                    <FilterChip
-                      key={brand.key}
-                      label={brand.short}
-                      active={active}
-                      icon={BeerIcon}
-                      onPress={() => chooseBrand(active ? null : { key: brand.key, label: brand.short })}
-                      accessibilityLabel={t.a11y.selectBeerBrand(brand.label)}
-                    />
-                  );
-                })}
-              </View>
-            )}
-
-            {draft.beerBrand ? (
-              <View style={styles.rotatingFilterHint}>
-                <RefreshCwIcon size={14} color={Colors.amber} />
-                <Text style={styles.rotatingFilterHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.compass.beerFilterRotatingHint}
+            {showBeerFilter ? (
+              <>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {t.compass.beerFilterSection}
                 </Text>
-              </View>
+                <View style={styles.searchRow}>
+                  <SearchIcon size={16} color={Colors.mutedText} />
+                  <TextInput
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder={draft.beerBrand?.label ?? t.compass.beerFilterSearchPlaceholder}
+                    placeholderTextColor={draft.beerBrand ? Colors.foam : Colors.mutedText}
+                    style={styles.searchInput}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                    accessibilityLabel={t.a11y.beerBrandFilterInput}
+                  />
+                  {(query.length > 0 || draft.beerBrand) && (
+                    <Pressable
+                      onPress={() => (query.length > 0 ? setQuery('') : chooseBrand(null))}
+                      hitSlop={10}
+                      style={styles.searchClear}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.a11y.clearBeerBrandFilter}
+                    >
+                      <XIcon size={15} color={Colors.foamMuted} />
+                    </Pressable>
+                  )}
+                </View>
+
+                {searching ? (
+                  <View style={styles.results}>
+                    {suggestionsPending || visibleSuggestions.length === 0 ? (
+                      <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {suggestionsPending
+                          ? t.compass.beerFilterSearching
+                          : t.compass.beerFilterNoResults}
+                      </Text>
+                    ) : (
+                      visibleSuggestions.map((suggestion, index) => (
+                        <Pressable
+                          key={suggestion.slug}
+                          onPress={() => chooseSuggestion(suggestion)}
+                          style={[styles.resultRow, index > 0 && styles.resultRowDivider]}
+                          accessibilityRole="button"
+                          accessibilityLabel={t.a11y.beerBrandFilterSuggestion(suggestion.name)}
+                        >
+                          <BeerIcon size={15} color={Colors.mutedText} />
+                          <Text
+                            style={styles.resultText}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {suggestion.name}
+                          </Text>
+                        </Pressable>
+                      ))
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.chipsWrap}>
+                    {POPULAR_BEER_BRANDS.map((brand) => {
+                      const active = draft.beerBrand?.key === brand.key;
+                      return (
+                        <FilterChip
+                          key={brand.key}
+                          label={brand.short}
+                          active={active}
+                          icon={BeerIcon}
+                          onPress={() => chooseBrand(active ? null : { key: brand.key, label: brand.short })}
+                          accessibilityLabel={t.a11y.selectBeerBrand(brand.label)}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
+
+                {draft.beerBrand ? (
+                  <View style={styles.rotatingFilterHint}>
+                    <RefreshCwIcon size={14} color={Colors.amber} />
+                    <Text style={styles.rotatingFilterHintText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {t.compass.beerFilterRotatingHint}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
             ) : null}
 
-            <PriceFilterSection
-              nearbyPrices={nearbyPrices}
-              priceMinCzk={draft.priceMinCzk}
-              priceMaxCzk={draft.priceMaxCzk}
-              onChange={setPriceRange}
-            />
+            <View onLayout={(event) => captureSection('price', event)}>
+              <PriceFilterSection
+                nearbyPrices={nearbyPrices}
+                priceMinCzk={draft.priceMinCzk}
+                priceMaxCzk={draft.priceMaxCzk}
+                onChange={setPriceRange}
+              />
+            </View>
 
             <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
               {t.compass.otherPlacesSection}
@@ -338,7 +396,12 @@ export function PubFilterSheet({
               />
             </View>
             {groupedAmenities.map(({ section, items }) => (
-              <View key={section}>
+              <View
+                key={section}
+                onLayout={
+                  section === 'fun' ? (event) => captureSection('games', event) : undefined
+                }
+              >
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {SECTION_LABELS[section]}
                 </Text>
@@ -351,20 +414,35 @@ export function PubFilterSheet({
                       onPress={() => toggleAmenity(amenity.key)}
                     />
                   ))}
+                  {showTankFilter && section === 'practical' ? (
+                    <FilterChip
+                      label={t.pubList.toggleTank}
+                      active={draftTankOnly}
+                      icon={BeerIcon}
+                      onPress={toggleTank}
+                      accessibilityLabel={t.pubList.tankChipA11y}
+                    />
+                  ) : null}
                 </View>
               </View>
             ))}
 
+            {!limitReached ? (
+              <Text style={styles.matchHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.compass.pubFilterMatchAll}
+              </Text>
+            ) : null}
+          </KeyboardAwareScrollView>
+
+          {limitReached ? (
             <Text
-              style={[styles.matchHint, limitReached && styles.limitHint]}
+              style={styles.limitBanner}
               maxFontSizeMultiplier={FontScaleCap.body}
               accessibilityLiveRegion="polite"
             >
-              {limitReached
-                ? t.compass.pubFilterLimit(MAX_AMENITY_FILTERS)
-                : t.compass.pubFilterMatchAll}
+              {t.compass.pubFilterLimit(MAX_AMENITY_FILTERS)}
             </Text>
-          </KeyboardAwareScrollView>
+          ) : null}
 
           <View style={styles.actions}>
             {hasDraftFilters ? (
@@ -819,7 +897,13 @@ const styles = StyleSheet.create({
   priceHint: { marginTop: 4, fontWeight: '400', fontSize: 12, lineHeight: 16, color: Colors.mutedText },
   priceNoData: { fontWeight: '400', fontSize: 13, lineHeight: 18, color: Colors.mutedText },
   matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontWeight: '400', fontSize: 12, lineHeight: 17, color: Colors.mutedText },
-  limitHint: { color: Colors.amberLight },
+  limitBanner: {
+    marginTop: Spacing.sm,
+    fontWeight: '500',
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.amberLight,
+  },
   actions: {
     flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.md,
   },

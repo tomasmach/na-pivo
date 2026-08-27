@@ -339,6 +339,20 @@ describe("fetchPubsPageNear", () => {
     expect(page.coveredKm).toBe(5);
     expect(getAllLoadedPubs()).toEqual(before);
   });
+
+  it("passes the other-tap-places opt-in while browsing the map", async () => {
+    (searchPubsNear as jest.Mock).mockResolvedValue([]);
+
+    await fetchPubsPageNear(49.2, 16.61, undefined, {
+      radiusKm: 5,
+      includeOtherPlaces: true,
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(49.2, 16.61, 5, undefined, {
+      amenityKeys: [],
+      includeOtherPlaces: true,
+    });
+  });
 });
 
 describe("fetchPubsNear — persistent snapshot cache", () => {

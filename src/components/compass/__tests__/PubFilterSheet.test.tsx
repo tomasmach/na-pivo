@@ -80,7 +80,12 @@ jest.mock('@/data/beerSuggestionsClient', () => ({
 const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
-function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: number[] = []) {
+function renderSheet(
+  onApply = jest.fn(),
+  onClose = jest.fn(),
+  nearbyPrices: number[] = [],
+  props: Partial<React.ComponentProps<typeof PubFilterSheet>> = {},
+) {
   let renderer: ReturnType<typeof TestRenderer.create>;
   act(() => {
     renderer = TestRenderer.create(
@@ -90,6 +95,7 @@ function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: num
         nearbyPrices={nearbyPrices}
         onClose={onClose}
         onApply={onApply}
+        {...props}
       />,
     );
   });
@@ -198,6 +204,59 @@ describe('PubFilterSheet', () => {
     expect(renderer.root.findAllByProps({
       accessibilityLabel: cs.a11y.togglePubAmenityFilter('Živá hudba'),
     })).toHaveLength(0);
+  });
+
+  it('hides the duplicate beer picker and preserves the tank filter for the pub list', () => {
+    const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [], {
+      showBeerFilter: false,
+      showTankFilter: true,
+      tankOnly: false,
+    });
+
+    expect(renderer.root.findAllByProps({ accessibilityLabel: cs.a11y.beerBrandFilterInput })).toHaveLength(0);
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.pubList.tankChipA11y }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+    });
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ beerBrand: null }),
+      { tankOnly: true },
+    );
+  });
+
+  it('counts tank toward the five-property backend limit', () => {
+    const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [], {
+      value: {
+        beerBrand: null,
+        amenityKeys: [
+          'payment_card',
+          'seating_garden',
+          'seating_barrier_free',
+          'game_darts',
+          'game_billiards',
+        ],
+        priceMinCzk: null,
+        priceMaxCzk: null,
+      },
+      showBeerFilter: false,
+      showTankFilter: true,
+      tankOnly: false,
+    });
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.pubList.tankChipA11y }).props.onPress();
+    });
+    expect(
+      renderer.root.findAllByProps({ children: cs.compass.pubFilterLimit(5) }).length,
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+    });
+    expect(onApply).toHaveBeenCalledWith(expect.any(Object), { tankOnly: false });
   });
 
   it('applies a price range through two independent slider thumbs', () => {
