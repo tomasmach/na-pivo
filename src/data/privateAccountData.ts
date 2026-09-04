@@ -366,7 +366,10 @@ export async function clearLocalPrivateAccountData(options?: {
 }): Promise<PrivateAccountDataClearResult> {
   const tasks: Promise<ClearTaskResult>[] = [];
   const start = (operation: string, action: () => unknown) => {
-    tasks.push(startClearTask(operation, action));
+    // These synchronous resets invalidate memory; the strict pass below owns
+    // disk removal. Zustand must not write empty snapshots through the frozen
+    // normal-user adapter while logout is clearing its own account.
+    tasks.push(startClearTask(operation, () => suppressPrivatePersistenceDuringMemoryReset(action)));
   };
 
   // Start every synchronous invalidation before yielding. Each action is
