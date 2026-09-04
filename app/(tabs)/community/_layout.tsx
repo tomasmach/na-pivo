@@ -1,4 +1,4 @@
-import { Pressable } from 'react-native';
+import { Platform, Pressable } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SearchIcon } from '@/components/shared/IconGlyph';
@@ -10,10 +10,8 @@ import { Colors } from '@/theme/colors';
  * Native stack for the Komunita tab — same treatment as Kocoviny.
  *
  * A list screen, so it gets the iOS 26 large title that scrolls away with the
- * content and re-forms small on the bar. The bar is pinned to an opaque stout
- * rather than left on the system material: on this dark screen iOS' own
- * scroll-edge material read as a faint lighter band above the title, and it let
- * the leaderboard ghost through the bar as it scrolled.
+ * content and re-forms small on the bar. iOS 26 hides large titles behind an
+ * explicit opaque navigation-bar background, so the screen supplies stout.
  *
  * A folder (not a route group) so the URL stays `/community`.
  */
@@ -28,13 +26,9 @@ export default function CommunityLayout() {
         headerShadowVisible: false,
         headerLargeTitleShadowVisible: false,
         headerTintColor: Colors.amber,
-        // Opaque on BOTH platforms. Left to itself iOS gives the bar its light
-        // scroll-edge material, which on a stout screen read as a faint lighter
-        // rounded band above the title — and let scrolled content ghost through
-        // the bar. The same pin the diary route already uses (§15.2: the
-        // material always has an opaque fallback, and this bar has to hide
-        // content, not show it).
-        headerStyle: { backgroundColor: Colors.stout },
+        headerStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : Colors.stout },
+        headerTransparent: Platform.OS === 'ios',
+        headerBlurEffect: 'none',
         headerTitleStyle: { color: Colors.foam },
         headerLargeTitleStyle: { color: Colors.foam },
         contentStyle: { backgroundColor: Colors.stout },
@@ -61,6 +55,8 @@ export default function CommunityLayout() {
       <Stack.Screen
         name="event/[id]"
         options={{
+          headerLargeTitle: false,
+          headerStyle: { backgroundColor: 'transparent' },
           headerTransparent: true,
           headerTitle: '',
           headerBackButtonDisplayMode: 'minimal',
@@ -72,6 +68,8 @@ export default function CommunityLayout() {
       <Stack.Screen
         name="challenge/[id]"
         options={{
+          headerLargeTitle: false,
+          headerStyle: { backgroundColor: 'transparent' },
           headerTransparent: true,
           headerTitle: '',
           headerBackButtonDisplayMode: 'minimal',
