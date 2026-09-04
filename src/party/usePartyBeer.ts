@@ -65,7 +65,7 @@ function maybeNudgeWater(drinkType: DrinkType, backdated: boolean): void {
 }
 
 export interface PartyBeerActions {
-  /** Count one. Returns its id, which is the id everywhere else too. */
+  /** Count one after durable storage succeeds; null means nothing was added. */
   add: (
     beerName: string,
     options?: {
@@ -81,7 +81,7 @@ export interface PartyBeerActions {
       /** Distinguishes a selected backdate from a live timestamp. */
       backdated?: boolean;
     },
-  ) => string;
+  ) => Promise<string | null>;
   /** Take one back — a mis-tap, or a beer that never came. */
   remove: typeof unlogPartyBeer;
   /** Fix a typo in what it was called. */
@@ -127,7 +127,7 @@ export function usePartyBeer(): PartyBeerActions {
 
   return React.useMemo(
     () => ({
-      add: (
+      add: async (
         beerName: string,
         options?: {
           partyCode?: string | null;
@@ -141,7 +141,7 @@ export function usePartyBeer(): PartyBeerActions {
           backdated?: boolean;
         },
       ) => {
-        const id = logPartyBeer({
+        const id = await logPartyBeer({
           place: options?.visit
             ? {
                 pubKey: options.visit.pubKey,
@@ -162,6 +162,10 @@ export function usePartyBeer(): PartyBeerActions {
           partyCode: options?.partyCode === undefined ? partyCode : options.partyCode,
           deferDelivery: options?.deferDelivery ?? tableCreatePending,
         });
+        if (!id) {
+          useToastStore.getState().show(t.friends.queueSaveError);
+          return null;
+        }
         maybeNudgeWater(options?.drinkType ?? 'beer', options?.backdated === true);
         return id;
       },

@@ -24,9 +24,12 @@ import { buildDrinkEntry } from '@/data/drinksClient';
 import {
   enqueueDrink,
   flushDrinksQueue,
+  isDrinkQueued,
   updateQueuedDrink,
   updateQueuedDrinkBeerName,
 } from '@/data/drinksQueue';
+import { createQueueLock } from '@/data/createQueue';
+import { isPrivateAccountMutationScopeCurrent, runPrivateAccountMutation } from '@/data/privateAccountBoundary';
 import { enqueueDrinkUpdate } from '@/data/updateDrinksQueue';
 import { prepareDrinkDeletion } from '@/data/drinkDeletion';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -46,14 +49,17 @@ export interface PartyBeerPlace {
   visitStartedAt?: string;
 }
 
+// Keep local additions ordered; the account lease is captured before this lock.
+const runAddition = createQueueLock({ protectPrivateAccount: false });
+
 /**
  * Count one, from the hub.
  *
  * Returns the drink's client id, which is also its id everywhere else: in the
  * session, in the queue, on the server. One id, so taking it back later is a
- * lookup rather than a guess.
+ * lookup rather than a guess. Returns null when local persistence fails.
  */
-export function logPartyBeer({
+export async function logPartyBeer({
   place,
   beerName,
   drinkType = 'beer',
@@ -79,7 +85,7 @@ export function logPartyBeer({
   at?: string;
   /** True only when the user explicitly selected an earlier time. */
   backdated?: boolean;
-}): string {
+}): Promise<string | null> {
   const id = generateUuidV4();
   const drankAt = at ?? new Date().toISOString();
   // A backdate edits the private diary. It must never leak into the table that
@@ -103,20 +109,6 @@ export function logPartyBeer({
     servingType,
     at: drankAt,
   };
-  let landedSession: TallySession | null;
-  if (backdated && isPastEveningBackdate(drankAt)) {
-    landedSession = useTallyStore.getState().addBackdatedDrink(tallyPlace, tallyDrink);
-  } else {
-    useTallyStore.getState().addDrink(tallyPlace, tallyDrink);
-    landedSession = useTallyStore.getState().current;
-  }
-  // The private party record derives its stops from PubVisit, not from a drink's
-  // display pub. Reuse the normal visit queue so moving pubs and offline nights
-  // become real record stops without a second party-only write model.
-  syncVisit(landedSession, drankAt, activePartyCode, {
-    deliver: !deferDelivery,
-  });
-
   // A pub carries its identity; an evening that is not at a pub carries no
   // coordinates at all — never a guessed pub for a drink at somebody's flat.
   const outside = contextFromPubKey(place.pubKey);
@@ -139,13 +131,35 @@ export function logPartyBeer({
     },
     id,
   );
-  void enqueueDrink(entry, { deliver: !deferDelivery })
-    .then((result) => {
-      if (result === 'delivered') useTallyStore.getState().markDrinkSynced(id);
-    })
-    .catch(() => undefined);
-
-  return id;
+  return runPrivateAccountMutation((scope) => runAddition(async () => {
+    if (!isPrivateAccountMutationScopeCurrent(scope)) return null;
+    if ((await enqueueDrink(entry, { deliver: false })) === 'storage-error') return null;
+    if (!isPrivateAccountMutationScopeCurrent(scope)) return null;
+    const before = useTallyStore.getState();
+    let landedSession: TallySession | null;
+    if (backdated && isPastEveningBackdate(drankAt)) {
+      landedSession = before.addBackdatedDrink(tallyPlace, tallyDrink);
+    } else {
+      before.addDrink(tallyPlace, tallyDrink);
+      landedSession = useTallyStore.getState().current;
+    }
+    // The drink is durable now. A failed visit must not undo it or overwrite
+    // another edit made while local storage was pending.
+    await syncVisit(landedSession, drankAt, activePartyCode, {
+      deliver: false,
+    });
+    if (!isPrivateAccountMutationScopeCurrent(scope)) return null;
+    if (!deferDelivery) {
+      void flushPartyBeerWrites().then(async () => {
+        if (!isPrivateAccountMutationScopeCurrent(scope)) return;
+        const queued = await isDrinkQueued(id);
+        if (!queued && isPrivateAccountMutationScopeCurrent(scope)) {
+          useTallyStore.getState().markDrinkSynced(id);
+        }
+      }).catch(() => undefined);
+    }
+    return id;
+  })).catch(() => null);
 }
 
 /** Release first-write queues after the table create request has settled. */

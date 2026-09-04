@@ -423,7 +423,7 @@ export default function LivePartyMockScreen() {
    * in a cellar with no signal. The evening is a best-effort extra — when it
    * lands there is a code to read out, and when it does not the night still runs.
    */
-  const beginNight = (firstDrink: BeerFormResult) => {
+  const beginNight = async (firstDrink: BeerFormResult) => {
     const placeName = pubName.trim() || OUTSIDE_PUB_NAME;
     const transition = startParty(placeName, firstDrink.name, pubKey, pubTaps);
     const joinCode = stagedPartyCode ?? generateJoinCode();
@@ -434,7 +434,7 @@ export default function LivePartyMockScreen() {
     // The first beer is a real beer: it goes into the diary through the same
     // path as every other one. Its queue is durable immediately, but delivery
     // waits for the table create so a fast POST cannot outrun its party code.
-    const id = beer.add(firstDrink.name, {
+    const id = await beer.add(firstDrink.name, {
       partyCode: joinCode,
       deferDelivery: true,
       drinkType: firstDrink.drinkType,
@@ -443,6 +443,7 @@ export default function LivePartyMockScreen() {
       servingType: firstDrink.servingType,
       ...(transition?.current ? { visit: transition.current } : {}),
     });
+    if (!id) return;
     rememberUndo({
       id,
       beerName: firstDrink.name,
@@ -736,13 +737,13 @@ export default function LivePartyMockScreen() {
       ],
     });
   };
-  const logDrink = (result: BeerFormResult, atOverride?: string) => {
+  const logDrink = async (result: BeerFormResult, atOverride?: string) => {
     if (!active) {
       beginNight(result);
       return;
     }
     const at = atOverride ?? new Date().toISOString();
-    const id = beer.add(result.name, {
+    const id = await beer.add(result.name, {
       deferDelivery: true,
       drinkType: result.drinkType,
       priceCzk: result.priceCzk,
@@ -751,6 +752,7 @@ export default function LivePartyMockScreen() {
       at,
       backdated: atOverride !== undefined,
     });
+    if (!id) return;
     rememberUndo({
       id,
       beerName: result.name,
