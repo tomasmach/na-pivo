@@ -53,6 +53,7 @@ jest.mock('@/components/shared/CloseButton', () => ({
 
 jest.mock('@/components/shared/IconGlyph', () => ({
   CheckIcon: () => null,
+  EllipsisIcon: () => null,
   ChevronDownIcon: () => null,
 }));
 
