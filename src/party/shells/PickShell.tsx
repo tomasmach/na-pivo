@@ -13,6 +13,7 @@
 import React from "react";
 import { AccessibilityInfo, Platform, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
+import { SvgXml } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -23,6 +24,7 @@ import {
 import { GameResult, type GameOutcome } from "@/games/GameResult";
 import { t } from "@/i18n";
 import { GameArtwork } from "@/party/GameArtwork";
+import { bottleTableSvg } from "@/party/bottleTableArtwork";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
@@ -257,7 +259,14 @@ export function PickShell({
             }}
           />
           </View>
-        ) : <GameArtwork gameKey="bottle" size={240} />}
+        ) : (
+          <>
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <SvgXml xml={bottleTableSvg} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" />
+            </View>
+            <GameArtwork gameKey="bottle" size={240} />
+          </>
+        )}
       </GameStage>
 
       {/* The name, UNDER the table rather than over it. Printed on top it landed
