@@ -666,12 +666,22 @@ export async function clearPubReminderAccountData(): Promise<boolean> {
 
   let geofencesClear = false;
   try {
-    if (await Location.hasStartedGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK)) {
-      await Location.stopGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK);
+    if (Platform.OS === 'android') {
+      // Expo Location gates even its stop/read methods on background permission.
+      // TaskManager invokes the same native consumer cleanup after revocation.
+      if (TaskManager && await TaskManager.isTaskRegisteredAsync(PUB_REMINDER_GEOFENCE_TASK)) {
+        await TaskManager.unregisterTaskAsync(PUB_REMINDER_GEOFENCE_TASK);
+      }
+      geofencesClear = TaskManager !== null &&
+        (await TaskManager.isTaskRegisteredAsync(PUB_REMINDER_GEOFENCE_TASK)) === false;
+    } else {
+      if (await Location.hasStartedGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK)) {
+        await Location.stopGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK);
+      }
+      geofencesClear = !(await Location.hasStartedGeofencingAsync(
+        PUB_REMINDER_GEOFENCE_TASK,
+      ));
     }
-    geofencesClear = !(await Location.hasStartedGeofencingAsync(
-      PUB_REMINDER_GEOFENCE_TASK,
-    ));
   } catch {
     geofencesClear = false;
   }
