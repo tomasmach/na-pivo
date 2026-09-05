@@ -1,9 +1,10 @@
-# Verify Na pivo on iOS
+---
+name: verify
+description: Ověř změnu Na pivo v lokálním prostředí; projektový vstup pro dřívější odkazy na verify.
+---
 
-1. Spusť `npm run dev` na cold start backendu, buildu, Metra a iOS simulátoru.
-2. Sleduj společný výstup: readiness probe má volat `/v1/health`; runtime warningy jsou viditelné po řádku `iOS Bundled`.
-3. Pro druhý cold start použij:
-   `xcrun simctl terminate booted com.tomasmach.na-pivo && xcrun simctl launch booted com.tomasmach.na-pivo`
-4. Screenshot aktuálního simulátoru pořiď přes:
-   `xcrun simctl io booted screenshot /tmp/na-pivo-verification.png`
-5. U kompasu ověř vykreslení šipky, záře, rotaci a bootstrap requesty. CocoaPods deployment-target warningy během buildu jsou známý transitivní šum.
+# Ověření Na pivo
+
+Pro výběr a spuštění prostředí načti [run-na-pivo](../run-na-pivo/SKILL.md) a pravidla verifikace v [AGENTS.md](../../../AGENTS.md). Tento vstup zachovává starší odkazy; nevyžaduje konkrétní model ani iOS na Linuxu.
+
+Ověř chování dotčené zadáním: u bugu stejný reprodukční flow, u mobilního UI screenshot odpovídajícího buildu, u backendu lokální request a jeho účinek. Zapiš revizi, prostředí, výsledek a co nešlo ověřit. Testy nenahrazují běžící aplikaci; čistě dokumentační změny potřebují kontrolu diffu, odkazů a metadat.
