@@ -22,6 +22,7 @@ import {
 } from "@/games/GameHost";
 import { GameResult, type GameOutcome } from "@/games/GameResult";
 import { t } from "@/i18n";
+import { GameArtwork } from "@/party/GameArtwork";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
@@ -256,7 +257,7 @@ export function PickShell({
             }}
           />
           </View>
-        ) : null}
+        ) : <GameArtwork gameKey="bottle" size={240} />}
       </GameStage>
 
       {/* The name, UNDER the table rather than over it. Printed on top it landed

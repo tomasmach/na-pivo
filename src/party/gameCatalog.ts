@@ -15,10 +15,7 @@
  * mean crowning whoever drank most, which is the one scoreboard this product
  * must never keep.
  *
- * `cover` is a two-stop gradient rather than artwork. Twenty illustrated covers
- * is the badge problem again (see `docs/badge-art-brief.md`) and it is not worth
- * paying twice; a warm gradient with the glyph on it reads as a cover, ships
- * today, and can be swapped for a picture later without touching the grid.
+ * Each game has its own linocut artwork, shared by the cover and the stage.
  */
 
 import type { ComponentType } from 'react';
@@ -70,12 +67,8 @@ export interface GameDef {
   Icon: ComponentType<{ size?: number; color: string }>;
 }
 
-/**
- * 2.0.0 ships the table games locked. They are visible in the sheet so the
- * table knows what is coming, but nothing can be placed or played until the
- * screens are finished. Flip to `false` to release them.
- */
-export const GAMES_COMING_SOON = true;
+/** Shared availability flag for the catalog and direct game routes. */
+export const GAMES_COMING_SOON = false;
 
 export const GAME_CATALOG: readonly GameDef[] = [
   {

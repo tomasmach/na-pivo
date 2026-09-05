@@ -1392,7 +1392,7 @@ export default function PartyGameScreen() {
           spectator={spectator}
           prompts={prompts}
           intro={def?.intro}
-          Icon={def?.Icon}
+          gameKey={def?.key}
           seed={seed}
           step={gameId ? sharedPromptStep : undefined}
           onNext={

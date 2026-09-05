@@ -23,11 +23,30 @@ import {
   startBottleSpin,
   type BottleSpinState,
 } from './physics';
-import bottleTextureUrl from './bottle-top-down.webp';
+// Inline SVG keeps the print crisp and the bundled game entirely offline.
+// The neck points towards the SVG top, mapped to +Z by the plane rotation.
+const bottleTextureUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="960" viewBox="0 0 320 960">
+  <path d="M119 27 201 25 204 248 215 294 275 357 282 402 280 878 270 918 245 935 73 937 43 915 37 882 39 405 48 364 107 295 118 249Z" fill="#E8A317" stroke="#15120F" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M202 82 201 270 217 309 265 363 270 416 267 875 252 912 220 919 235 874 238 404 184 321 177 266 177 82Z" fill="#A76C19"/>
+  <path d="M119 95 143 94 140 265 126 308 70 375 63 419 61 857" fill="none" stroke="#FBF6EA" stroke-width="10" stroke-linecap="square"/>
+  <path d="M115 24 203 24 208 62 112 66Z" fill="#BBA07A" stroke="#15120F" stroke-width="10"/>
+  <path d="m125 30 1 24m17-25 1 22m17-22 1 22m18-22 1 23m15-22 1 20" stroke="#15120F" stroke-width="3"/>
+  <path d="m42 482 238-5 0 239-240 7Z" fill="#FBF6EA" stroke="#15120F" stroke-width="8"/>
+  <path d="m57 497 207-4M54 706l211-5" stroke="#15120F" stroke-width="4"/>
+  <path d="m112 554 77 0 0 96-80 0Z" fill="#E8A317" stroke="#15120F" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M190 565h30v63h-30" fill="none" stroke="#15120F" stroke-width="9"/>
+  <path d="M105 560c-17-16-4-38 13-35 6-21 34-19 42-6 20-13 42 3 37 21 18 9 6 29-8 24-14 8-25-2-35-1-17 8-26-5-35-1Z" fill="#FBF6EA" stroke="#15120F" stroke-width="7"/>
+  <path d="m128 582-1 48m20-45 0 45m20-47 0 45" stroke="#15120F" stroke-width="4"/>
+  <g fill="none" stroke="#15120F" stroke-width="4" stroke-linecap="square">
+    <path d="m80 376-11 46m23-35-8 37m156-42 13 39M65 748l-1 126m15-121-1 123m156-125-1 134m14-128-1 102m-62 42-92 2m93-14-94 2M128 112l-1 108m68-104 1 121"/>
+    <path d="m65 458 13-3m9 4 22-4m108-7 26-2m-29 295 22-2m-129 34 13-3m77 97 16-4"/>
+  </g>
+</svg>` )}`;
 
 /** Where the seats sit. The table is a circle and the bottle is at its centre. */
 const SEAT_RADIUS = 3.4;
-const BOTTLE_WIDTH = 0.76;
+const BOTTLE_WIDTH = 1.05;
 const BOTTLE_LENGTH = 3.15;
 /** Seat discs, sized like the app's 34pt avatar next to a 3.15 long bottle. */
 const SEAT_RADIUS_UNITS = 0.34;
@@ -134,10 +153,22 @@ class BottleTable {
       this.seats.push(seat);
     });
 
-    const texture = new THREE.TextureLoader().load(bottleTextureUrl, () => {
-      this.renderer.render(this.scene, this.camera);
-    });
+    // WKWebView can decode SVG while failing to upload that SVG image directly
+    // to WebGL. Rasterize explicitly, then upload the same pixels as the dice.
+    const bottleCanvas = document.createElement('canvas');
+    bottleCanvas.width = 320;
+    bottleCanvas.height = 960;
+    const texture = new THREE.CanvasTexture(bottleCanvas);
     texture.colorSpace = THREE.SRGBColorSpace;
+    const bottleImage = new Image();
+    bottleImage.onload = () => {
+      const context = bottleCanvas.getContext('2d');
+      if (!context) return;
+      context.drawImage(bottleImage, 0, 0, bottleCanvas.width, bottleCanvas.height);
+      texture.needsUpdate = true;
+      this.renderer.render(this.scene, this.camera);
+    };
+    bottleImage.src = bottleTextureUrl;
     this.bottle = bottleMesh(texture);
     this.bottle.castShadow = true;
     this.bottle.position.y = 0.08;

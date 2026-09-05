@@ -201,6 +201,9 @@ export function GameResult({
       {star ? <PersonAvatar name={star} tint={starTint} size={72} /> : null}
       <Text
         style={[styles.title, ranking.length === 0 && styles.titleInk]}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
         {title}

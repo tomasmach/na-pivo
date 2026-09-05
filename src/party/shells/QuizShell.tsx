@@ -38,6 +38,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckIcon } from "@/components/shared/IconGlyph";
 import { GameResult } from "@/games/GameResult";
 import { t } from "@/i18n";
+import { GameArtwork } from "@/party/GameArtwork";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
@@ -301,6 +302,7 @@ export function QuizShell({
           style={styles.stage}
         >
           <StageCard wide style={styles.questionCard}>
+            <View style={styles.quizArt}><GameArtwork gameKey="quiz" size={64} /></View>
             <Animated.Text
               key={question.id}
               entering={reduceMotion ? undefined : FadeIn.duration(220)}
@@ -389,6 +391,7 @@ const styles = StyleSheet.create({
 
   stage: { padding: Spacing.md, justifyContent: "flex-start" },
   questionCard: { marginTop: Spacing.xl },
+  quizArt: { alignItems: "center", marginBottom: Spacing.xs },
   question: {
     fontSize: 22,
     lineHeight: 28,

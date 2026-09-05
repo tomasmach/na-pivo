@@ -33,7 +33,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, RadialGradient, Rect, Stop, Path } from "react-native-svg";
 
 import { PersonAvatar } from "@/components/shared/PersonAvatar";
 import { MockLayout, MockType } from "@/mocks/mockTheme";
@@ -121,15 +121,21 @@ export function StageCard({
   children,
   /** Full width and only as tall as its text — a quiz question, not a deck card. */
   wide = false,
+  ruled = true,
   style,
   ...rest
 }: {
   children?: React.ReactNode;
   wide?: boolean;
+  ruled?: boolean;
   style?: StyleProp<ViewStyle>;
 } & React.ComponentProps<typeof View>) {
   return (
     <View style={[wide ? styles.paperWide : styles.paper, style]} {...rest}>
+      <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 400" preserveAspectRatio="none" pointerEvents="none" accessible={false}>
+        <Path d="M4 5 294 1 299 394 7 399 1 210Z" fill={Colors.foam} />
+        {ruled ? <Path d="M18 19 282 16M17 383 283 380" stroke={Colors.stout} strokeWidth={2} /> : null}
+      </Svg>
       {children}
     </View>
   );
@@ -339,7 +345,7 @@ export function StagePill({
   disabled = false,
   tone = "primary",
   accessibilityLabel,
-  stretch = true,
+  stretch = false,
 }: {
   label: string;
   onPress: () => void;
@@ -419,7 +425,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.lg,
-    backgroundColor: Colors.foam,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: Colors.black,
@@ -434,7 +440,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.lg,
-    backgroundColor: Colors.foam,
+    backgroundColor: "transparent",
     justifyContent: "center",
     shadowColor: Colors.black,
     shadowOpacity: 0.35,

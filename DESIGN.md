@@ -1720,6 +1720,18 @@ plocha četla jako nasvícený stůl, ne jako karta. Žádné glow, žádná dru
 jantarová plocha uvnitř stolu — vybraná odpověď v kvízu je jantarový **tint
 s okrajem**, ne plná výplň (§2.2).
 
+### 21.3b Linorytové rekvizity
+
+Schválený směr B: pěnový papír, stoutový inkoust a druhá jantarová tisková barva.
+Každá z devíti her má vlastní SVG kresbu v `GameArtwork`; stejná kresba patří na
+cover, do lobby i rozehrané hry. Kresba má pevnou siluetu, mírně nepravidelné hrany
+a několik řezaných tahů. Papírové karty mají nepravidelný obrys a dvě inkoustové
+linky. Text zůstává nativní. Runda losuje na papírové účtence, fyzické kostky
+zůstávají Three.js se slonovinovými plochami a inkoustovými puntíky.
+
+Akce ve hře je pilulka podle šířky textu (`StagePill`, horizontální padding 44),
+nikoli pruh přes celou obrazovku. Lobby si může výslovně ponechat širokou akci.
+
 ### 21.4 Fyzické hry žijí ve WebView
 
 Devět her je obsah plus skořápka v React Native. **Výjimka je jedna: hra, jejíž
