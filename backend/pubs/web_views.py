@@ -129,13 +129,16 @@ def _android_cert_fingerprints() -> list[str]:
     The value is never invented here: without ANDROID_APP_LINK_CERT_FINGERPRINTS
     (or with only malformed entries) the statement list stays empty and Google
     grants no app-link verification — fail closed. Valid entries are 64 hex
-    characters; colons are tolerated and stripped.
+    characters; publish the uppercase colon-separated octets required by Google.
     """
 
     raw = str(getattr(settings, ANDROID_APP_LINK_FINGERPRINTS_ENV, "") or "")
     if not raw.strip():
         return []
-    return normalized_cert_fingerprints(raw)
+    return [
+        ":".join(value[index:index + 2] for index in range(0, len(value), 2))
+        for value in normalized_cert_fingerprints(raw)
+    ]
 
 
 def android_asset_statements(_request: HttpRequest) -> JsonResponse:

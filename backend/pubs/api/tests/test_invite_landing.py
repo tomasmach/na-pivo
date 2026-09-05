@@ -99,8 +99,8 @@ def test_assetlinks_serves_android_statement_for_valid_fingerprints(client, sett
     statement = payload[0]
     assert statement["relation"] == ["delegate_permission/common.handle_all_urls"]
     assert statement["target"]["package_name"] == "com.tomasmach.na_pivo"
-    # Malformed entries are dropped, valid ones are normalized to plain hex.
-    assert statement["target"]["sha256_cert_fingerprints"] == [fingerprint]
+    # Digital Asset Links requires uppercase octets separated by colons.
+    assert statement["target"]["sha256_cert_fingerprints"] == [":".join(["AA"] * 32)]
 
 
 def test_assetlinks_drops_only_malformed_fingerprints(client, settings):
