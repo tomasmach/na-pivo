@@ -1729,6 +1729,12 @@ a několik řezaných tahů. Papírové karty mají nepravidelný obrys a dvě i
 linky. Text zůstává nativní. Runda losuje na papírové účtence, fyzické kostky
 zůstávají Three.js se slonovinovými plochami a inkoustovými puntíky.
 
+Flaška leží na statické kresbě dubového stolu: čtyři prkna, střídmá řezaná léta,
+otisky pivních kroužků a papírové tácky v barvách hráčů. Dřevo používá tiskové
+odstíny `#4E3320`, `#452B1A`, `#3F2718`, `#4B301D`; kresba je společná i pro
+režim omezeného pohybu. Otáčí se pouze SVG flaška na samostatné vrstvě prohlížeče,
+bez WebGL světel a stínového kotouče. Fyzikální dráha a výběr hráče zůstávají stejné.
+
 Akce ve hře je pilulka podle šířky textu (`StagePill`, horizontální padding 44),
 nikoli pruh přes celou obrazovku. Lobby si může výslovně ponechat širokou akci.
 

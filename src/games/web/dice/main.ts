@@ -59,7 +59,7 @@ const HALF = DIE_SIZE / 2;
 /** How still a die has to be before we call it landed. */
 const REST_SPEED = 0.12;
 const REST_FRAMES = 12;
-/** A throw that somehow never settles must not hang the game. */
+/** Retry a stuck throw physically instead of accepting an unreadable face. */
 const MAX_FRAMES = 60 * 8;
 
 /**
@@ -388,6 +388,28 @@ class DiceTable {
     return FACE_VALUES[best];
   }
 
+  private hasLanded(body: CANNON.Body): boolean {
+    const rotation = new THREE.Quaternion(
+      body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w,
+    );
+    const faceUp = FACE_NORMALS.some((normal) =>
+      normal.clone().applyQuaternion(rotation).y >= 0.999,
+    );
+    return faceUp && body.position.y <= HALF + 0.05;
+  }
+
+  private unstick(body: CANNON.Body): void {
+    // A die can stop against a wall or another die while balanced on an edge.
+    // Give it a physical shove towards the table; never choose or snap a face.
+    body.wakeUp();
+    body.applyImpulse(new CANNON.Vec3(-body.position.x * 0.45, 1.2, -body.position.z * 0.45));
+    body.angularVelocity.set(
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+    );
+  }
+
   private tick = (): void => {
     this.frame = null;
     this.world.step(1 / 60);
@@ -410,11 +432,16 @@ class DiceTable {
       );
       this.still = moving ? 0 : this.still + 1;
 
-      // Settled, or gave up waiting. Either way the table has an answer, and a
-      // game that hangs on a stuck die is worse than one that reads it early.
       if (this.still >= REST_FRAMES || this.frames > MAX_FRAMES) {
-        this.rolling = false;
-        this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
+        const unlanded = this.bodies.filter((body) => !this.hasLanded(body));
+        if (unlanded.length === 0 && !moving) {
+          this.rolling = false;
+          this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
+        } else {
+          unlanded.forEach((body) => this.unstick(body));
+          this.still = 0;
+          this.frames = 0;
+        }
       }
     }
 
