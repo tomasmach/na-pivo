@@ -57,7 +57,7 @@ Zbytek dokumentu ber jako dobré defaulty, ne tvrdá pravidla. Když prompt ří
 
 ## Zasáhni každou plochu
 
-Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testoval, a chybí všude jinde. Než řekneš hotovo, projdi seznam a řekni, které položky se tě týkaly:
+Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testoval, a chybí všude jinde. Podle dotčeného chování vyber relevantní položky a ověř je:
 
 - **Offline i online.** Offline-slíbený zápis má frontu a flush v `app/_layout.tsx`; bez toho je funkce rozbitá v hospodě.
 - **Anonym, přihlášený a přechod mezi nimi.** `privateAccountBoundary` zmrazuje zápisy během claimu a mazání účtu; fronta, která ho obejde, zapíše data pod špatný účet.
@@ -67,12 +67,13 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 - **Nativní hranice.** Nový modul, config plugin nebo nativní dependency = rebuild, ne OTA. Napiš to.
 - **Persisted data.** Změna tvaru lokálně uložených dat musí načíst starý tvar (validovaná storage v `createQueue`) a přežít malformed obsah.
 - **Globální destruktivní akce nad komunitními daty** (skrytí/smazání hospody) jedou přes potvrzení a práh hlasů — jedno klepnutí na vlaječku už jednou mazalo hospody všem. Vlastní obsah si uživatel maže rovnou, s potvrzením.
-- **Texty.** Appka běží česky (i pro Slováky) a anglicky podle jazyka telefonu. Každý text pro lidi patří do `src/i18n/cs.ts` **a zároveň** do `src/i18n/en.ts` (stejný tvar, typecheck a `src/i18n/__tests__/en.test.ts` to hlídají); obrazovky čtou jen `t` z `@/i18n`, datumy a čísla formátují přes `intlLocale`, plurály přes `plural(...)`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi prožeň humanizerem sám od sebe; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
+- **Texty.** Appka běží česky (i pro Slováky) a anglicky podle jazyka telefonu. Každý text pro lidi patří do `src/i18n/cs.ts` **a zároveň** do `src/i18n/en.ts` (stejný tvar, typecheck a `src/i18n/__tests__/en.test.ts` to hlídají); obrazovky čtou jen `t` z `@/i18n`, datumy a čísla formátují přes `intlLocale`, plurály přes `plural(...)`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi zkontroluj podle unslop; humanizer použij jako referenci pro rozsáhlejší přepis; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
 
 ## Dev prostředí
 
-- `npm run dev` je jediná standardní cesta: migrace → lokální backend (uvicorn na portu 8012) → prebuild → iOS simulátor. Samostatné Metro, `expo run:ios` nebo ruční backend jen při cílené diagnostice jedné vrstvy.
-- Background běh: `npm run dev:detached` / `npm run dev:stop`; `NAPIVO_KEEP_SIM=1` nechá simulátor žít.
+- Na macOS je `npm run dev` standardní cesta: migrace → lokální backend (uvicorn na portu 8012) → prebuild → iOS simulátor. Samostatné Metro, `expo run:ios` nebo ruční backend jen při cílené diagnostice jedné vrstvy.
+- Na Linuxu `npm run dev` ani `dev:detached` nepoužívej: spouštějí iOS nástroje. Backend a případný Android řeší projektový skill [run-na-pivo](.agents/skills/run-na-pivo/SKILL.md). Nativní iOS ověření patří na Mac; bez něj ho označ jako neověřené.
+- macOS background běh: `npm run dev:detached` / `npm run dev:stop`; `NAPIVO_KEEP_SIM=1` nechá simulátor žít.
 - `ios/` a `android/` jsou gitignorované, prebuild je pokaždé regeneruje. `postinstall` patchuje `node_modules` — instalace s `--ignore-scripts` je rozbitý build.
 - Backend potřebuje ASGI (party hry jedou přes SSE) — proto uvicorn, ne `runserver`.
 - Prázdná databáze je špatný test: `cd backend && uv run python manage.py seed_dev_3_0` naseje dev data.
@@ -80,10 +81,11 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 
 ## Verifikace
 
-- Vizuální nebo runtime změna je hotová, až když jsi ji viděl běžet v simulátoru a podíval ses na screenshot očima uživatele. Přetékající text, useknutý glow, nevycentrovaný label, karta v kartě — to musíš vidět ty, ne já. Zelený typecheck a testy nejsou ověření.
+- Mobilní vizuální nebo runtime změna je hotová, až když jsi ji viděl běžet v odpovídajícím simulátoru či emulátoru a podíval ses na screenshot očima uživatele. Přetékající text, useknutý glow, nevycentrovaný label, karta v kartě — to musíš vidět ty, ne já. Zelený typecheck a testy nejsou ověření.
 - Ověř celý flow, ne jeho první krok. „Otevřela se kamera“ není „sken funguje“. Slovo „ověřeno“ bez proběhlého ověření je lež, ne optimismus.
 - Backendová změna je hotová až po reálném requestu na lokální endpoint: ukaž metodu, URL, status i tělo odpovědi; u zápisu ověř následný read nebo stav v DB.
 - Bug nejdřív zreprodukuj a příčinu dolož daty (u UI screenshot, jinak log, databáze, request). Teprve pak opravuj — a odpověď pro reálného uživatele („opraveno“) navrhuj až po ověření stejným flow, kterým si stěžoval. Falešné „opraveno“ už jednou dostal člověk, který zůstal zamčený z účtu.
+- Čistě dokumentační změny ověř kontrolou diffu, odkazů a skill metadat; bez změny chování nepotřebují aplikační sadu testů.
 - Testy cíleně podle rizika: `npm run typecheck`, `npm test`, `npm run lint`; backend `cd backend && uv run pytest`, `uv run ruff check`. CI na `dev` jede totéž plus `audit-ci`, `pip-audit` a dependency-review.
 - Backend testy běží na SQLite, produkce je Postgres 17 — migraci závislou na PG chování (indexy, constrainty) ověř proti Postgresu z `backend/docker-compose.yml`, ne jen pytestem.
 
@@ -111,7 +113,7 @@ Backend je jedna Django app `pubs`. DRF má `DEFAULT_AUTHENTICATION_CLASSES` pr�
 
 Nové UI skládej z komponent, tokenů a interakcí, které v appce už jsou. Když se ti hodí vzor bez precedentu v appce — jiný rating, jiný dialog, jiný typ ovládání — znamená to, že jsi nenašel ten existující, ne že máš zavést nový.
 
-Netriviální UI změna začíná statickými variantami A/B/C vedle sebe; produkční komponentu měň až po mém výběru. Kosmetiku dělej rovnou.
+Netriviální nový návrh začíná statickými variantami A/B/C vedle sebe; produkční komponentu měň až po mém výběru. Už vybraný mock nebo jednoznačně schválený návrh implementuj bez dalšího kola schvalování; nové rozhodnutí potřebuje jen změna mimo jeho rozsah. Kosmetiku dělej rovnou.
 
 ## Git a dopad změn
 
