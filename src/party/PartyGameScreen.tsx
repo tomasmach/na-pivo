@@ -234,6 +234,7 @@ export default function PartyGameScreen() {
       !def &&
       (sharedGame || games.some((game) => game.key === key)),
   );
+  const retiredNewGame = def?.retired && !sharedGame && !games.some((game) => game.key === key);
   const invalidGame = !key || (!def && !knownLegacyGame);
   React.useEffect(() => {
     if (invalidGame) minimizeParty(router);
@@ -1073,6 +1074,14 @@ export default function PartyGameScreen() {
     });
   };
   if (invalidGame) return null;
+  if (retiredNewGame) return (
+    <View style={[styles.screen, { paddingTop: insets.top + Spacing.lg, paddingHorizontal: Spacing.lg }]}>
+      <Pressable onPress={leaveGame} accessibilityRole="button" accessibilityLabel={t.gameShell.backToNightScreen} style={styles.back}>
+        <ChevronLeftIcon size={20} color={Colors.foam} />
+      </Pressable>
+      <Text style={styles.topTitle}>{t.gameShell.retiredGame}</Text>
+    </View>
+  );
   return (
     <View style={styles.screen}>
       {/* The night, pinned. Back on the left, tally and +1 on the right — the

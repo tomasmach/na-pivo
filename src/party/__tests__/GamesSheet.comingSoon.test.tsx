@@ -42,6 +42,12 @@ describe('GamesSheet released games', () => {
       expect(onPick).toHaveBeenLastCalledWith(game.key, game.name);
     }
     expect(onPick).toHaveBeenCalledTimes(GAME_CATALOG.length);
+    for (const retiredName of [cs.games.never.name, cs.games.kings.name]) {
+      expect(renderer!.root.findAll((node) =>
+        typeof node.props.accessibilityLabel === 'string' &&
+        node.props.accessibilityLabel.startsWith(`${retiredName}.`),
+      )).toHaveLength(0);
+    }
     const badges = renderer!.root.findAll((node) => node.props.children === cs.party.gamesSoonBadge);
     expect(badges).toHaveLength(0);
   });
