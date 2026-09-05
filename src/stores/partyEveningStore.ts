@@ -17,6 +17,7 @@
  */
 
 import { t } from '@/i18n';
+import { isStaleNightStart } from '@/mocks/livePartyStore';
 
 import { create } from 'zustand';
 
@@ -42,6 +43,7 @@ import {
   joinPartyEvening,
   type PartyError,
   type PartyEvening,
+  type PartyEveningResult,
 } from '@/data/partyClient';
 
 export interface PartyEveningState {
@@ -107,6 +109,29 @@ let retainedCreateTicket: PartyCreateTicket | null = null;
  * Process-local on purpose: one reminder per launch is enough.
  */
 const dismissedStaleCodes = new Set<string>();
+
+/** Recover a server membership hidden by the local 24-hour expiry. */
+async function recoverStaleMembership(
+  result: PartyEveningResult,
+  retry: () => Promise<PartyEveningResult>,
+  isCurrent: () => boolean,
+): Promise<PartyEveningResult> {
+  if (result.ok || !['active_party_membership_exists', 'active_party_exists'].includes(result.code)) {
+    return result;
+  }
+  // Read the server directly: refresh deliberately hides dismissed tables.
+  const current = await fetchCurrentPartyEvening();
+  if (!isCurrent() || !current.ok || !current.evening || !isStaleNightStart(current.evening.startedAt)) {
+    return result;
+  }
+  const action = await enqueuePartyEveningAction(
+    current.evening.isHost ? 'end' : 'leave',
+    current.evening.joinCode,
+  ).catch(() => null);
+  // Offline acceptance is durable, but a new membership must wait for delivery.
+  if (!isCurrent() || !action?.accepted || !action.completed) return result;
+  return retry();
+}
 
 function failed(set: (patch: Partial<PartyEveningState>) => void, error: PartyError): null {
   set({ busy: false, error: error.detail });
@@ -335,7 +360,7 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     const joinCode = ticket.joinCode;
     set({ busy: true, error: null, lastEvening: null, pendingJoinCode: joinCode });
     const request = (async () => {
-      const result = await createPartyEvening({
+      const create = () => createPartyEvening({
         // The id is the retry ticket: a second attempt after a lost response
         // returns the evening already created rather than starting another.
         clientId: ticket.clientId,
@@ -343,6 +368,11 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
         pubName,
         pubCity,
       });
+      const result = await recoverStaleMembership(
+        await create(),
+        create,
+        () => generation === boundaryGeneration && membership === membershipGeneration,
+      );
       const session = await sessionPromise;
       if (generation !== boundaryGeneration || membership !== membershipGeneration) {
         retainedCreateTicket = null;
@@ -411,7 +441,11 @@ export const usePartyEveningStore = create<PartyEveningState>()((set, get) => ({
     const cacheGeneration = partyEveningIdentityGeneration();
     const sessionPromise = ensureAccount();
     set({ busy: true, error: null, lastEvening: null });
-    const result = await joinPartyEvening(code);
+    const result = await recoverStaleMembership(
+      await joinPartyEvening(code),
+      () => joinPartyEvening(code),
+      () => generation === boundaryGeneration && membership === membershipGeneration,
+    );
     const session = await sessionPromise;
     if (generation !== boundaryGeneration || membership !== membershipGeneration) return null;
     if (!result.ok) return failed(set, result);

@@ -124,6 +124,72 @@ beforeEach(() => {
 });
 
 describe('partyEveningStore', () => {
+  describe('stale membership recovery', () => {
+    afterEach(() => {
+      fetchCurrentPartyEvening.mockReset();
+      createPartyEvening.mockReset();
+      joinPartyEvening.mockReset();
+    });
+  it.each([false, true])('recovers a dismissed stale table before joining, host=%s', async (isHost) => {
+    const stale = { ...EVENING, joinCode: 'STARXX', isHost, startedAt: new Date(Date.now() - 48 * 3600_000).toISOString() };
+    usePartyEveningStore.setState({ evening: stale });
+    usePartyEveningStore.getState().closeLostTable(stale.joinCode);
+    const joined = { ...EVENING, joinCode: 'NOVYST', startedAt: new Date().toISOString() };
+    joinPartyEvening.mockResolvedValueOnce({ ok: false, code: 'active_party_membership_exists', detail: 'Leave first' });
+    joinPartyEvening.mockResolvedValueOnce({ ok: true, evening: joined });
+    fetchCurrentPartyEvening.mockResolvedValueOnce({ ok: true, evening: stale });
+
+    expect(await usePartyEveningStore.getState().join('NOVYST')).toEqual(joined);
+    expect(isHost ? endPartyEvening : leavePartyEvening).toHaveBeenCalledWith(stale.joinCode);
+    expect(joinPartyEvening).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a new table with the same create ticket after ending a stale hosted table', async () => {
+    const fresh = { ...EVENING, joinCode: 'NOVYST', startedAt: new Date().toISOString() };
+    createPartyEvening.mockResolvedValueOnce({ ok: false, code: 'active_party_exists', detail: 'End first' });
+    createPartyEvening.mockResolvedValueOnce({ ok: true, evening: fresh });
+    fetchCurrentPartyEvening.mockResolvedValueOnce({ ok: true, evening: { ...EVENING, startedAt: new Date(Date.now() - 48 * 3600_000).toISOString() } });
+
+    expect(await usePartyEveningStore.getState().start('New pub', undefined, 'NOVYST')).toEqual(fresh);
+    expect(createPartyEvening.mock.calls[1]).toEqual(createPartyEvening.mock.calls[0]);
+    expect(endPartyEvening).toHaveBeenCalledWith(EVENING.joinCode);
+  });
+
+  it('never leaves a fresh table to recover a membership conflict', async () => {
+    joinPartyEvening.mockResolvedValueOnce({ ok: false, code: 'active_party_membership_exists', detail: 'Leave first' });
+    fetchCurrentPartyEvening.mockResolvedValueOnce({ ok: true, evening: { ...EVENING, startedAt: new Date().toISOString() } });
+    expect(await usePartyEveningStore.getState().join('NOVYST')).toBeNull();
+    expect(endPartyEvening).not.toHaveBeenCalled();
+    expect(leavePartyEvening).not.toHaveBeenCalled();
+    expect(joinPartyEvening).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['queued', 'storage-error', 'rejected'])('does not retry a join until stale departure completes: %s', async (failure) => {
+    joinPartyEvening.mockResolvedValueOnce({ ok: false, code: 'active_party_membership_exists', detail: 'Leave first' });
+    fetchCurrentPartyEvening.mockResolvedValueOnce({ ok: true, evening: { ...EVENING, isHost: false, startedAt: new Date(Date.now() - 48 * 3600_000).toISOString() } });
+    if (failure === 'rejected') leavePartyEvening.mockRejectedValueOnce(new Error('account transition'));
+    else leavePartyEvening.mockResolvedValueOnce(failure === 'queued'
+      ? { accepted: true, completed: false }
+      : { accepted: false, error: { ok: false, code: 'storage', detail: 'Cannot save' } });
+
+    expect(await usePartyEveningStore.getState().join('NOVYST')).toBeNull();
+    expect(joinPartyEvening).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not leave a table discovered after an account switch', async () => {
+    joinPartyEvening.mockResolvedValueOnce({ ok: false, code: 'active_party_membership_exists', detail: 'Leave first' });
+    fetchCurrentPartyEvening.mockImplementationOnce(async () => {
+      clearPartyEveningState();
+      return { ok: true, evening: { ...EVENING, startedAt: new Date(Date.now() - 48 * 3600_000).toISOString() } };
+    });
+    expect(await usePartyEveningStore.getState().join('NOVYST')).toBeNull();
+    expect(endPartyEvening).not.toHaveBeenCalled();
+    expect(leavePartyEvening).not.toHaveBeenCalled();
+    expect(joinPartyEvening).toHaveBeenCalledTimes(1);
+  });
+
+  });
+
   it('can restore the cold-launch identity without waiting for a Party API request', async () => {
     const restored = {
       id: EVENING.id,
