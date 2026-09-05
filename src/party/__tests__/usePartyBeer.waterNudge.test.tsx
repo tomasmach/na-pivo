@@ -9,6 +9,8 @@
 import React from 'react';
 
 import { usePartyBeer } from '@/party/usePartyBeer';
+import { logPartyBeer } from '@/party/logBeer';
+import { t } from '@/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,7 +19,7 @@ const mockSession = { clientId: 'session-1', drinks: [] as { drinkType: string }
 const mockShow = jest.fn();
 
 jest.mock('@/party/logBeer', () => ({
-  logPartyBeer: jest.fn(() => 'drink-id'),
+  logPartyBeer: jest.fn(async () => 'drink-id'),
   unlogPartyBeer: jest.fn(),
   renamePartyBeer: jest.fn(),
   updatePartyDrink: jest.fn(),
@@ -49,7 +51,7 @@ jest.mock('@/stores/toastStore', () => ({
 const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
-function mountAdd(): (name: string, options?: Record<string, unknown>) => void {
+function mountAdd(): (name: string, options?: Record<string, unknown>) => Promise<void> {
   let add!: (name: string, options?: Record<string, unknown>) => void;
   function Probe() {
     add = usePartyBeer().add;
@@ -58,13 +60,13 @@ function mountAdd(): (name: string, options?: Record<string, unknown>) => void {
   act(() => {
     TestRenderer.create(<Probe />);
   });
-  return (name, options) => {
+  return async (name, options) => {
     // The store is the counter's, so the test moves it the way the real write
     // does: the drink lands first, the nudge reads the session after.
     mockSession.drinks.push({
       drinkType: (options?.drinkType as string | undefined) ?? 'beer',
     });
-    add(name, options);
+    await add(name, options);
   };
 }
 
@@ -76,38 +78,46 @@ beforeEach(() => {
 });
 
 describe('usePartyBeer water nudge', () => {
-  it('speaks up on the fourth beer and stays quiet on the others', () => {
+  it('shows the existing save error when a drink could not be persisted', async () => {
+    jest.mocked(logPartyBeer).mockResolvedValueOnce(null);
     const add = mountAdd();
-    add('Plzeň');
-    add('Plzeň');
-    add('Plzeň');
+    await add('Plzeň');
+    expect(mockShow).toHaveBeenCalledTimes(1);
+    expect(mockShow).toHaveBeenCalledWith(t.friends.queueSaveError);
+  });
+
+  it('speaks up on the fourth beer and stays quiet on the others', async () => {
+    const add = mountAdd();
+    await add('Plzeň');
+    await add('Plzeň');
+    await add('Plzeň');
     expect(mockShow).not.toHaveBeenCalled();
 
-    add('Plzeň');
+    await add('Plzeň');
     expect(mockShow).toHaveBeenCalledTimes(1);
     expect(mockShow.mock.calls[0][0]).toContain('vod');
 
-    add('Plzeň');
+    await add('Plzeň');
     expect(mockShow).toHaveBeenCalledTimes(1);
   });
 
-  it('says nothing while the setting is off', () => {
+  it('says nothing while the setting is off', async () => {
     mockSettings.waterNudgeEnabled = false;
     const add = mountAdd();
-    for (let i = 0; i < 8; i += 1) add('Plzeň');
+    for (let i = 0; i < 8; i += 1) await add('Plzeň');
     expect(mockShow).not.toHaveBeenCalled();
   });
 
-  it('counts beers only, and never a backdated one', () => {
+  it('counts beers only, and never a backdated one', async () => {
     const add = mountAdd();
-    add('Plzeň');
-    add('Kofola', { drinkType: 'soft_drink' });
-    add('Slivovice', { drinkType: 'shot' });
-    add('Plzeň');
-    add('Plzeň');
+    await add('Plzeň');
+    await add('Kofola', { drinkType: 'soft_drink' });
+    await add('Slivovice', { drinkType: 'shot' });
+    await add('Plzeň');
+    await add('Plzeň');
     expect(mockShow).not.toHaveBeenCalled();
 
-    add('Plzeň', { backdated: true });
+    await add('Plzeň', { backdated: true });
     expect(mockShow).not.toHaveBeenCalled();
   });
 });
