@@ -10,6 +10,7 @@ import {
 } from '../privateAccountData';
 import privateAccountStorage from '../privateAccountStorage';
 import {
+  beginPrivateAccountTransition,
   isPrivateAccountMutationFrozen,
   PrivateAccountMutationFrozenError,
   setPrivateAccountDeletionRecoveryBlocked,
@@ -322,6 +323,25 @@ it('clears local private stores and private sync queue storage', async () => {
     });
   }
   expect(await AsyncStorage.getItem(privateFeedCacheKey)).toBeNull();
+});
+
+it('clears persisted stores during the frozen logout boundary without derived writes', async () => {
+  await useTallyStore.setState({ current: session(), history: [] });
+  await useSettingsStore.setState({ marketingEmailsEnabled: true });
+  const transition = beginPrivateAccountTransition('logout');
+  expect(transition).not.toBeNull();
+  try {
+    await transition!.drain();
+    expect(isPrivateAccountMutationFrozen()).toBe(true);
+    expect(await clearLocalPrivateAccountData()).toEqual({ ok: true });
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(await AsyncStorage.getItem('na-pivo-tally')).toBeNull();
+    expect(useSettingsStore.getState().marketingEmailsEnabled).toBe(false);
+    await expect(privateAccountStorage.setItem('na-pivo-tally', 'late old-account write'))
+      .rejects.toBeInstanceOf(PrivateAccountMutationFrozenError);
+  } finally {
+    transition!.release();
+  }
 });
 
 it('final memory reset removes a late explicit pub stop from the outgoing account', () => {

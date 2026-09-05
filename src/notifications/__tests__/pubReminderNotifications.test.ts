@@ -1,4 +1,4 @@
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   beginPrivateAccountTransition,
@@ -16,6 +16,8 @@ const mockFetchPubsNear = jest.fn();
 const mockFindNearbyPubs = jest.fn();
 const mockSettingsGetState = jest.fn();
 let mockGeofenceTask: ((event: unknown) => Promise<void>) | null = null;
+const mockIsTaskRegisteredAsync = jest.fn();
+const mockUnregisterTaskAsync = jest.fn();
 const mockDefineTask = jest.fn((_name: string, task: (event: unknown) => Promise<void>) => {
   mockGeofenceTask = task;
 });
@@ -63,6 +65,8 @@ jest.mock('expo-notifications', () => ({
 
 jest.mock('expo-task-manager', () => ({
   defineTask: mockDefineTask,
+  isTaskRegisteredAsync: mockIsTaskRegisteredAsync,
+  unregisterTaskAsync: mockUnregisterTaskAsync,
 }));
 
 jest.mock('expo-location', () => ({
@@ -1108,5 +1112,52 @@ describe('isPubReminderEligible', () => {
     expect(isPubReminderEligible({ venueKind: 'maybe' })).toBe(false);
     expect(isPubReminderEligible({ venueKind: 'unknown', beers: [{ name: '   ' }] })).toBe(false);
     expect(isPubReminderEligible({})).toBe(false);
+  });
+});
+
+
+describe('Android account-boundary geofence cleanup', () => {
+  const originalOS = Platform.OS;
+
+  beforeEach(() => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    mockGetBackgroundPermissionsAsync.mockResolvedValue({ status: 'denied' });
+    mockHasStartedGeofencingAsync.mockRejectedValue(
+      new Error('Not authorized to use background location services'),
+    );
+    mockIsTaskRegisteredAsync.mockResolvedValue(false);
+    mockUnregisterTaskAsync.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+  });
+
+  it('clears an account without requiring background location permission', async () => {
+    await expect(clearPubReminderAccountData()).resolves.toBe(true);
+    expect(mockHasStartedGeofencingAsync).not.toHaveBeenCalled();
+    expect(mockUnregisterTaskAsync).not.toHaveBeenCalled();
+  });
+
+  it('unregisters a persisted task even after background permission was revoked', async () => {
+    mockIsTaskRegisteredAsync.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await expect(clearPubReminderAccountData()).resolves.toBe(true);
+    expect(mockUnregisterTaskAsync).toHaveBeenCalledWith('na-pivo-pub-reminder-geofence');
+  });
+
+  it('fails closed when unregistering the native task fails', async () => {
+    mockIsTaskRegisteredAsync.mockResolvedValue(true);
+    mockUnregisterTaskAsync.mockRejectedValue(new Error('native unregister failed'));
+    await expect(clearPubReminderAccountData()).resolves.toBe(false);
+  });
+
+  it('fails closed when the native task remains registered', async () => {
+    mockIsTaskRegisteredAsync.mockResolvedValue(true);
+    await expect(clearPubReminderAccountData()).resolves.toBe(false);
+  });
+
+  it('fails closed when native registration cannot be read', async () => {
+    mockIsTaskRegisteredAsync.mockRejectedValue(new Error('native read failed'));
+    await expect(clearPubReminderAccountData()).resolves.toBe(false);
   });
 });
