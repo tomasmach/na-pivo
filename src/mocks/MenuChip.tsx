@@ -38,7 +38,7 @@ import {
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { CheckIcon, ChevronDownIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, ChevronDownIcon, EllipsisIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { MODAL_DISMISS_MS } from '@/stores/launchModalMutex';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -384,9 +384,7 @@ function AndroidRowMenu({
         accessibilityLabel={title}
         hitSlop={8}
       >
-        <Text style={styles.rowMenuGlyph} allowFontScaling={false}>
-          ···
-        </Text>
+        <EllipsisIcon size={17} color={Colors.mutedText} />
       </Pressable>
       {menu.mounted ? (
         <AndroidActionSheet
@@ -442,8 +440,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   chipOn: { borderColor: withAlpha(Colors.amber, 0.5) },
-  rowMenu: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs },
-  rowMenuGlyph: { fontSize: 17, fontWeight: '800', color: Colors.mutedText },
+  rowMenu: { width: 30, minHeight: HitArea.min, alignItems: 'center', justifyContent: 'center' },
   chipText: { fontSize: 13, fontWeight: '600', color: Colors.amber },
   chipTextOff: { color: Colors.mutedText },
   sheetWrap: { width: '100%', maxHeight: '92%' },
