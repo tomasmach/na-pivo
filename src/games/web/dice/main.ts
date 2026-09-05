@@ -27,6 +27,7 @@
 
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 // Talks to the app only through the SDK — see `src/games/protocol.ts`. Nothing
 // here knows about `ReactNativeWebView`, query strings or message shapes, which
@@ -58,7 +59,7 @@ const HALF = DIE_SIZE / 2;
 /** How still a die has to be before we call it landed. */
 const REST_SPEED = 0.12;
 const REST_FRAMES = 12;
-/** A throw that somehow never settles must not hang the game. */
+/** Retry a stuck throw physically instead of accepting an unreadable face. */
 const MAX_FRAMES = 60 * 8;
 
 /**
@@ -84,15 +85,40 @@ const FACE_NORMALS = [
  * Textures rather than geometry for the pips: six little spheres per die is
  * twelve more bodies for the renderer to sort, and at this size nobody can tell.
  */
-function faceTexture(value: number, face: string, pip: string): THREE.CanvasTexture {
+function faceTexture(value: number, face: string): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = face;
+  // Warm paper, a player's stamped border and cut ink pips. Material colours
+  // stay legible in both app themes; only the player's stamp changes each turn.
+  ctx.fillStyle = '#FBF6EA';
   ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = face;
+  ctx.lineWidth = 9;
+  ctx.beginPath();
+  ctx.moveTo(37, 17);
+  ctx.lineTo(219, 17);
+  ctx.quadraticCurveTo(239, 17, 239, 37);
+  ctx.lineTo(239, 219);
+  ctx.quadraticCurveTo(239, 239, 219, 239);
+  ctx.lineTo(37, 239);
+  ctx.quadraticCurveTo(17, 239, 17, 219);
+  ctx.lineTo(17, 37);
+  ctx.quadraticCurveTo(17, 17, 37, 17);
+  ctx.stroke();
+  // Short, deterministic cuts sit near the edges, clear of all six pip layouts.
+  ctx.strokeStyle = '#B5A58B';
+  ctx.lineWidth = 1.4;
+  for (let cut = 0; cut < 15; cut += 1) {
+    const x = 36 + ((cut * 37 + value * 11) % 181);
+    ctx.beginPath();
+    ctx.moveTo(x, 29 + cut % 3);
+    ctx.lineTo(x + 5 + cut % 7, 31 + cut % 3);
+    ctx.stroke();
+  }
 
   const layouts: Record<number, [number, number][]> = {
     1: [[0.5, 0.5]],
@@ -128,14 +154,24 @@ function faceTexture(value: number, face: string, pip: string): THREE.CanvasText
     ],
   };
 
-  ctx.fillStyle = pip;
+  ctx.fillStyle = '#15120F';
   for (const [x, y] of layouts[value] ?? []) {
     ctx.beginPath();
-    ctx.arc(x * size, y * size, size * 0.085, 0, Math.PI * 2);
+    // Slightly irregular silhouette, as if carved into the printing block.
+    for (let step = 0; step <= 24; step += 1) {
+      const angle = step / 24 * Math.PI * 2;
+      const radius = size * (0.081 + Math.sin(step * 2.1 + value) * 0.002);
+      const px = x * size + Math.cos(angle) * radius;
+      const py = y * size + Math.sin(angle) * radius;
+      if (step === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
     ctx.fill();
   }
 
   const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
 }
@@ -147,6 +183,7 @@ class DiceTable {
   private readonly world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0) });
   private readonly meshes: THREE.Mesh[] = [];
   private readonly bodies: CANNON.Body[] = [];
+  private readonly sideWalls: CANNON.Body[] = [];
   private readonly ownedMaterials = new Set<THREE.Material>();
   private readonly materialCache = new Map<string, THREE.MeshStandardMaterial[]>();
   private readonly resizeHandler = () => this.resize();
@@ -202,19 +239,23 @@ class DiceTable {
       body.position.set(x, 0, z);
       body.quaternion.setFromEuler(0, ry, 0);
       this.world.addBody(body);
+      return body;
     };
-    wall(0, -5, 0);
-    wall(0, 5, Math.PI);
-    wall(-4.2, 0, Math.PI / 2);
-    wall(4.2, 0, -Math.PI / 2);
+    // Keep the physical table inside the camera, including each die's edges.
+    // A smaller table preserves large dice instead of zooming the camera out.
+    wall(0, -2.8, 0);
+    wall(0, 2.8, Math.PI);
+    this.sideWalls.push(wall(-2.8, 0, Math.PI / 2), wall(2.8, 0, -Math.PI / 2));
 
     faceColour = face;
     pipColour = pip;
     const materials = this.buildMaterials(face, pip);
 
     for (let index = 0; index < count; index += 1) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE), materials);
+      const mesh = new THREE.Mesh(new RoundedBoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE, 3, 0.075), materials);
       mesh.castShadow = true;
+      mesh.position.set((index - (count - 1) / 2) * 1.45, HALF, 0);
+      mesh.rotation.set(0, index % 2 === 0 ? -0.22 : 0.19, 0);
       this.scene.add(mesh);
       this.meshes.push(mesh);
 
@@ -238,6 +279,11 @@ class DiceTable {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    const halfWidth = Math.min(3.2, 2.65 * this.camera.aspect);
+    this.sideWalls.forEach((wall, index) => {
+      wall.position.x = index === 0 ? -halfWidth : halfWidth;
+      wall.aabbNeedsUpdate = true;
+    });
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -247,9 +293,9 @@ class DiceTable {
     if (cached) return cached;
     const materials = FACE_VALUES.map((value) => {
       const material = new THREE.MeshStandardMaterial({
-        map: faceTexture(value, face, pip),
-        roughness: 0.42,
-        metalness: 0.02,
+        map: faceTexture(value, face),
+        roughness: 0.86,
+        metalness: 0,
       });
       this.ownedMaterials.add(material);
       return material;
@@ -310,7 +356,7 @@ class DiceTable {
     this.bodies.forEach((body, index) => {
       const lane = index - (this.bodies.length - 1) / 2;
       body.wakeUp();
-      body.position.set(lane * 1.6, 4.2 + index * 0.6, 2.4);
+      body.position.set(lane * 1.6, 2.6 + index * 0.3, 1.2);
       body.quaternion.setFromEuler(
         Math.random() * Math.PI,
         Math.random() * Math.PI,
@@ -318,7 +364,7 @@ class DiceTable {
       );
       // Thrown away from the camera and down the table, with spin. The numbers
       // are small enough that dice never fly off, big enough that they tumble.
-      body.velocity.set((Math.random() - 0.5) * 4, -3, -6 - Math.random() * 2);
+      body.velocity.set((Math.random() - 0.5) * 4, -3, -4 - Math.random());
       body.angularVelocity.set(
         (Math.random() - 0.5) * 22,
         (Math.random() - 0.5) * 22,
@@ -340,6 +386,28 @@ class DiceTable {
       }
     });
     return FACE_VALUES[best];
+  }
+
+  private hasLanded(body: CANNON.Body): boolean {
+    const rotation = new THREE.Quaternion(
+      body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w,
+    );
+    const faceUp = FACE_NORMALS.some((normal) =>
+      normal.clone().applyQuaternion(rotation).y >= 0.999,
+    );
+    return faceUp && body.position.y <= HALF + 0.05;
+  }
+
+  private unstick(body: CANNON.Body): void {
+    // A die can stop against a wall or another die while balanced on an edge.
+    // Give it a physical shove towards the table; never choose or snap a face.
+    body.wakeUp();
+    body.applyImpulse(new CANNON.Vec3(-body.position.x * 0.45, 1.2, -body.position.z * 0.45));
+    body.angularVelocity.set(
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+    );
   }
 
   private tick = (): void => {
@@ -364,11 +432,16 @@ class DiceTable {
       );
       this.still = moving ? 0 : this.still + 1;
 
-      // Settled, or gave up waiting. Either way the table has an answer, and a
-      // game that hangs on a stuck die is worse than one that reads it early.
       if (this.still >= REST_FRAMES || this.frames > MAX_FRAMES) {
-        this.rolling = false;
-        this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
+        const unlanded = this.bodies.filter((body) => !this.hasLanded(body));
+        if (unlanded.length === 0 && !moving) {
+          this.rolling = false;
+          this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
+        } else {
+          unlanded.forEach((body) => this.unstick(body));
+          this.still = 0;
+          this.frames = 0;
+        }
       }
     }
 

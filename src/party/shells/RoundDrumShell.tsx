@@ -15,9 +15,10 @@
 import React from "react";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 
 import { t } from "@/i18n";
+import { GameArtwork } from "@/party/GameArtwork";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
@@ -27,11 +28,11 @@ import {
 } from "@/party/shells/GameStage";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
-import { Radius, Spacing } from "@/theme/layout";
+import { Spacing } from "@/theme/layout";
 import type { PickPlayer } from "@/party/shells/PickShell";
 
 const SPIN_MS = 2200;
-const SLOT_HEIGHT = 78;
+const SLOT_HEIGHT = 58;
 
 const pickOne = (players: readonly PickPlayer[]): string =>
   players[Math.floor(Math.random() * players.length)]?.id ?? "";
@@ -192,6 +193,10 @@ export function RoundDrumShell({
   return (
     <View style={stageBody(bottomInset)}>
       <GameStage>
+        <Svg style={styles.ticket} viewBox="0 0 300 430" preserveAspectRatio="none" pointerEvents="none">
+          <Path d="M12 4 30 12 48 4 66 12 84 4 102 12 120 4 138 12 156 4 174 12 192 4 210 12 228 4 246 12 264 4 288 12 294 416 276 424 258 416 240 424 222 416 204 424 186 416 168 424 150 416 132 424 114 416 96 424 78 416 60 424 42 416 18 424Z" fill={Colors.foam} />
+        </Svg>
+        <View style={styles.artwork} pointerEvents="none"><GameArtwork gameKey="round" size={88} /></View>
         <View
           style={styles.drum}
           accessible
@@ -229,20 +234,7 @@ export function RoundDrumShell({
             drum fading out into the stage above and below it — that is what
             makes names GO PAST rather than a list sitting there. */}
         <View pointerEvents="none" style={styles.window} />
-        <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Defs>
-            <LinearGradient id="drumFadeTop" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={Colors.stout2} stopOpacity="1" />
-              <Stop offset="1" stopColor={Colors.stout2} stopOpacity="0" />
-            </LinearGradient>
-            <LinearGradient id="drumFadeBottom" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={Colors.stout2} stopOpacity="0" />
-              <Stop offset="1" stopColor={Colors.stout2} stopOpacity="1" />
-            </LinearGradient>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="26%" fill="url(#drumFadeTop)" />
-          <Rect x="0" y="74%" width="100%" height="26%" fill="url(#drumFadeBottom)" />
-        </Svg>
+
       </GameStage>
 
       {settled && selected ? (
@@ -280,7 +272,9 @@ export function RoundDrumShell({
 }
 
 const styles = StyleSheet.create({
-  drum: { height: SLOT_HEIGHT * 5, alignSelf: "stretch" },
+  ticket: { position: "absolute", width: "84%", height: "91%", transform: [{ rotate: "-2deg" }] },
+  artwork: { position: "absolute", top: "5%" },
+  drum: { height: SLOT_HEIGHT * 5, width: "78%", marginTop: 64 },
   slot: {
     height: SLOT_HEIGHT,
     alignItems: "center",
@@ -291,20 +285,21 @@ const styles = StyleSheet.create({
     fontSize: 27,
     fontWeight: "700",
     letterSpacing: -0.5,
-    color: Colors.foam,
+    color: Colors.stout,
   },
   slotNear: { opacity: 0.5 },
   slotFar: { opacity: 0.26 },
-  slotTextOn: { fontSize: 30, fontWeight: "800", color: Colors.amber },
+  slotTextOn: { fontSize: 30, fontWeight: "800", color: Colors.stout },
   window: {
     position: "absolute",
-    left: Spacing.md,
-    right: Spacing.md,
+    left: "13%",
+    right: "13%",
+    marginTop: 64,
     height: SLOT_HEIGHT,
-    borderRadius: Radius.medium,
+    borderRadius: 2,
     borderWidth: 2,
     borderColor: withAlpha(Colors.amber, 0.85),
-    backgroundColor: withAlpha(Colors.amber, 0.08),
+    backgroundColor: withAlpha(Colors.amber, 0.16),
   },
   dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });

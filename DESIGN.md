@@ -123,17 +123,21 @@ mluví sama se sebou. Když se pivo vezme zpátky, zmizí i z vlákna.
 
 ## Hry
 
-Devět her v katalogu. Hra je **obsah plus skořápka**, ne vlastní obrazovka —
-desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
+Nabídka má tři hry: Pub kvíz, Kostky a Kategorie. Pod nimi jsou oddělené sekce
+**Pomůcky ke stolu** (Flaška, Kdo platí rundu) a **Na celý večer** (Pravidlo večera).
+Palec je další volba pod Pravidlem večera; sdílený balíček pravidel se nemění.
+Nikdy jsem… a King's Cup se nově nenabízejí; existující večery si ponechávají původní hru i její výsledek.
 
-| hra | jak se hraje | skóre |
+Hra je **obsah plus skořápka**, ne vlastní obrazovka.
+
+| hra nebo pomůcka | jak se hraje | skóre |
 |---|---|---|
 | Pub kvíz | každý na svém telefonu | body |
 | Kostky | 3D, fyzika, telefon koluje | body → kdo platí |
-| Kdo platí rundu | nativní zpomalující buben se jmény | doušky |
-| Flaška | 3D láhev | doušky |
-| Nikdy jsem…, Kategorie, Palec, Pravidlo večera | balíček karet | doušky |
-| King's Cup | tažení karty | doušky |
+| Kategorie | kategorie pro slovní hru u stolu | bez bodů v appce |
+| Kdo platí rundu | nativní zpomalující buben se jmény | plátce rundy |
+| Flaška | SVG láhev na dřevěném stole | vybraný hráč |
+| Pravidlo večera | výběr pravidla včetně Palce | bez bodů |
 
 ### Platforma a hra
 
@@ -1719,6 +1723,24 @@ Vinětace je **jediný** gradient, který na stole smí být, a existuje proto, 
 plocha četla jako nasvícený stůl, ne jako karta. Žádné glow, žádná druhá plná
 jantarová plocha uvnitř stolu — vybraná odpověď v kvízu je jantarový **tint
 s okrajem**, ne plná výplň (§2.2).
+
+### 21.3b Linorytové rekvizity
+
+Schválený směr B: pěnový papír, stoutový inkoust a druhá jantarová tisková barva.
+Každá z devíti her má vlastní SVG kresbu v `GameArtwork`; stejná kresba patří na
+cover, do lobby i rozehrané hry. Kresba má pevnou siluetu, mírně nepravidelné hrany
+a několik řezaných tahů. Papírové karty mají nepravidelný obrys a dvě inkoustové
+linky. Text zůstává nativní. Runda losuje na papírové účtence, fyzické kostky
+zůstávají Three.js se slonovinovými plochami a inkoustovými puntíky.
+
+Flaška leží na statické kresbě dubového stolu: čtyři prkna, střídmá řezaná léta,
+otisky pivních kroužků a papírové tácky v barvách hráčů. Dřevo používá tiskové
+odstíny `#4E3320`, `#452B1A`, `#3F2718`, `#4B301D`; kresba je společná i pro
+režim omezeného pohybu. Otáčí se pouze SVG flaška na samostatné vrstvě prohlížeče,
+bez WebGL světel a stínového kotouče. Fyzikální dráha a výběr hráče zůstávají stejné.
+
+Akce ve hře je pilulka podle šířky textu (`StagePill`, horizontální padding 44),
+nikoli pruh přes celou obrazovku. Lobby si může výslovně ponechat širokou akci.
 
 ### 21.4 Fyzické hry žijí ve WebView
 

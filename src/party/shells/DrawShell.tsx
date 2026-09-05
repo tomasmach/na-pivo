@@ -21,6 +21,7 @@ import React from "react";
 import {
   AccessibilityInfo,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -37,11 +38,11 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { t } from "@/i18n";
+import { GameArtwork } from "@/party/GameArtwork";
 import { kingsDeck, KINGS_CARDS, KINGS_DECK } from "@/party/gameContent";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
-  STAGE_FILL,
   StageCard,
   StageChip,
   StageInk,
@@ -339,30 +340,37 @@ export function DrawShell({
             {rolling || !shownCard ? (
               <CardBack />
             ) : (
-              <StageCard>
-                <CardCorner rank={shownRank} suit={shownSuit} place="top" />
-                <Animated.View
-                  key={shown?.nonce}
-                  entering={reduceMotion ? undefined : FadeIn.duration(200)}
-                  style={styles.face}
-                  accessible
-                  accessibilityRole="text"
-                  accessibilityLiveRegion="polite"
-                  accessibilityLabel={cardLabel}
+              <StageCard ruled={false}>
+                <ScrollView
+                  style={styles.cardScroll}
+                  contentContainerStyle={styles.cardContent}
+                  showsVerticalScrollIndicator={false}
                 >
-                  <Text
-                    style={styles.cardTitle}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  <Animated.View
+                    key={shown?.nonce}
+                    entering={reduceMotion ? undefined : FadeIn.duration(200)}
+                    style={styles.face}
+                    accessible
+                    accessibilityRole="text"
+                    accessibilityLiveRegion="polite"
+                    accessibilityLabel={cardLabel}
                   >
-                    {shownCard.title}
-                  </Text>
-                  <Text
-                    style={styles.cardRule}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {shownCard.rule}
-                  </Text>
-                </Animated.View>
+                    <GameArtwork gameKey="kings" size={100} />
+                    <Text
+                      style={styles.cardTitle}
+                      maxFontSizeMultiplier={FontScaleCap.heading}
+                    >
+                      {shownCard.title}
+                    </Text>
+                    <Text
+                      style={styles.cardRule}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {shownCard.rule}
+                    </Text>
+                  </Animated.View>
+                </ScrollView>
+                <CardCorner rank={shownRank} suit={shownSuit} place="top" />
                 <CardCorner rank={shownRank} suit={shownSuit} place="bottom" />
               </StageCard>
             )}
@@ -433,15 +441,7 @@ function CardBack() {
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      <View style={styles.backPattern} pointerEvents="none">
-        {Array.from({ length: 7 }).map((_, row) => (
-          <View key={row} style={styles.backRow}>
-            {Array.from({ length: 5 }).map((__, column) => (
-              <View key={column} style={styles.backPip} />
-            ))}
-          </View>
-        ))}
-      </View>
+      <GameArtwork gameKey="kings" size={200} />
     </View>
   );
 }
@@ -485,6 +485,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  cardScroll: { alignSelf: "stretch", flex: 1, marginVertical: Spacing.xl },
+  cardContent: { flexGrow: 1, justifyContent: "center" },
   face: { alignItems: "center", justifyContent: "center", width: "100%" },
   corner: { position: "absolute", alignItems: "center" },
   cornerTop: { top: Spacing.md, left: Spacing.md },
@@ -525,20 +527,11 @@ const styles = StyleSheet.create({
     aspectRatio: 0.72,
     borderRadius: Radius.medium,
     overflow: "hidden",
-    backgroundColor: Colors.stout3,
-    borderWidth: 6,
-    borderColor: Colors.foam,
+    backgroundColor: Colors.foam,
+    borderWidth: 2,
+    borderColor: StageInk.strong,
     alignItems: "center",
     justifyContent: "center",
-  },
-  backPattern: { ...STAGE_FILL, justifyContent: "space-evenly" as const },
-  backRow: { flexDirection: "row", justifyContent: "space-evenly" },
-  backPip: {
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-    transform: [{ rotate: "45deg" }],
-    backgroundColor: withAlpha(Colors.amber, 0.16),
   },
 
   dock: { marginTop: "auto", paddingTop: Spacing.lg },
