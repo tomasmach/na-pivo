@@ -8,6 +8,8 @@
  * delivery.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { beginPrivateAccountTransition } from '@/data/privateAccountBoundary';
 import { logPartyBeer, renamePartyBeer, unlogPartyBeer, updatePartyDrink } from '@/party/logBeer';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
@@ -500,3 +502,28 @@ async function loggedBeer(options: Parameters<typeof logPartyBeer>[0]): Promise<
   expect(id).not.toBeNull();
   return id!;
 }
+
+describe('first drink outside a pub after restart', () => {
+  it('keeps the initial nameless place drink editable and removable after rehydration', async () => {
+    const id = await logPartyBeer({
+      place: { pubKey: 'ctx:other', pubName: '' },
+      beerName: 'Beer',
+      volumeMl: 500,
+      deferDelivery: true,
+    });
+    await flush();
+    const saved = await AsyncStorage.getItem('na-pivo-tally');
+    expect(saved).not.toBeNull();
+    useTallyStore.setState({ current: null, history: [] });
+    await flush();
+    await AsyncStorage.setItem('na-pivo-tally', saved!);
+    await useTallyStore.persist.rehydrate();
+    expect(useTallyStore.getState().current?.drinks).toEqual([
+      expect.objectContaining({ id, volumeMl: 500 }),
+    ]);
+    await expect(updatePartyDrink(id!, {
+      beerName: 'Beer', drinkType: 'beer', volumeMl: 330,
+    })).resolves.toBe('updated');
+    await expect(unlogPartyBeer(id!)).resolves.toBe('removed');
+  });
+});

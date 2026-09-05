@@ -319,9 +319,12 @@ function sanitizeDrink(value: unknown): TallyDrink | null {
 function sanitizeSession(value: unknown, archived: boolean): TallySession | null {
   if (!isRecord(value)) return null;
   const pubKey = sanitizePubKey(value.pubKey);
+  // An evening started outside a pub has no place name before the hub
+  // rerenders. Its ctx:* identity is sufficient; keep its durable drinks.
   if (
     !pubKey ||
-    typeof value.pubName !== 'string' || !value.pubName.trim() ||
+    typeof value.pubName !== 'string' ||
+    (!value.pubName.trim() && !isContextPubKey(pubKey)) ||
     !validIso(value.startedAt) ||
     !Array.isArray(value.drinks)
   ) {

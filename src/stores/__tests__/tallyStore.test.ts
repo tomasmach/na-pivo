@@ -735,6 +735,24 @@ describe('migrateTally — v0 → v1 backfills clientId', () => {
     expect(migrated.history).toEqual([]);
   });
 
+  it.each(['ctx:other', 'ctx:private', 'ctx:future'])('keeps unnamed persisted outside sessions (%s)', (pubKey) => {
+    const session = {
+      clientId: 'outside', pubKey, pubName: '',
+      startedAt: '2026-06-12T18:00:00.000Z',
+      drinks: [{ id: 'first', beerName: 'Pivo', at: '2026-06-12T18:01:00.000Z' }],
+    };
+    const migrated = migrateTally({ current: session, history: [session] }, 1);
+    expect(migrated.current?.drinks[0].id).toBe('first');
+    expect(migrated.history[0]?.drinks[0].id).toBe('first');
+  });
+
+  it('still rejects an unnamed real pub session', () => {
+    expect(migrateTally({ current: {
+      clientId: 'pub', pubKey: 'u2fkbjgx', pubName: '',
+      startedAt: '2026-06-12T18:00:00.000Z', drinks: [],
+    }, history: [] }, 1).current).toBeNull();
+  });
+
   it('derives outside privacy context from its synthetic key', () => {
     const migrated = migrateTally({
       current: {
