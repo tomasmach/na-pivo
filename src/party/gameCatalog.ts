@@ -53,6 +53,9 @@ export type GameDraw = 'person' | 'card';
 
 export interface GameDef {
   key: string;
+  /** Retained for existing evenings, never offered for a new game. */
+  retired?: boolean;
+  section?: 'tools' | 'evening' | 'rule';
   name: string;
   blurb: string;
   /** One line of rules, so nobody has to remember how it goes. */
@@ -70,7 +73,7 @@ export interface GameDef {
 /** Shared availability flag for the catalog and direct game routes. */
 export const GAMES_COMING_SOON = false;
 
-export const GAME_CATALOG: readonly GameDef[] = [
+const GAME_DEFINITIONS: readonly GameDef[] = [
   {
     key: 'quiz',
     name: t.games.quiz.name,
@@ -106,6 +109,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
   {
     key: 'never',
+    retired: true,
     name: t.games.never.name,
     blurb: t.games.never.blurb,
     how: t.games.never.how,
@@ -117,6 +121,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
   {
     key: 'kings',
+    retired: true,
     name: t.games.kings.name,
     blurb: t.games.kings.blurb,
     how: t.games.kings.how,
@@ -129,6 +134,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
   {
     key: 'round',
+    section: 'tools',
     name: t.games.round.name,
     blurb: t.games.round.blurb,
     how: t.games.round.how,
@@ -140,6 +146,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
   {
     key: 'bottle',
+    section: 'tools',
     name: t.games.bottle.name,
     blurb: t.games.bottle.blurb,
     how: t.games.bottle.how,
@@ -151,6 +158,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
   {
     key: 'thumb',
+    section: 'rule',
     name: t.games.thumb.name,
     blurb: t.games.thumb.blurb,
     how: t.games.thumb.how,
@@ -162,6 +170,7 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
   {
     key: 'rules',
+    section: 'evening',
     name: t.games.rules.name,
     blurb: t.games.rules.blurb,
     how: t.games.rules.how,
@@ -173,8 +182,10 @@ export const GAME_CATALOG: readonly GameDef[] = [
   },
 ];
 
+export const GAME_CATALOG: readonly GameDef[] = GAME_DEFINITIONS.filter((game) => !game.retired && game.section !== 'rule');
+
 export function findGame(key: string): GameDef | undefined {
-  return GAME_CATALOG.find((game) => game.key === key);
+  return GAME_DEFINITIONS.find((game) => game.key === key);
 }
 
 /**

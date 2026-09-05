@@ -199,12 +199,10 @@ export function IdleHub({
           accessibilityLabel={t.liveParty.a11yInvite}
         />
         {/* The dice disc in the control row is the running night's door to the
-            games; before the night this row is the only one. The catalogue is
-            locked until the next version and the row says so rather than
-            hiding the fact behind a tap. */}
+            games; before the night this row is the only one. */}
         <IdleRow
           label={t.liveParty.idleGamesLabel}
-          title={gamesLine(GAME_CATALOG)}
+          title={gamesLine(GAME_CATALOG.filter((game) => !game.section))}
           meta={GAMES_COMING_SOON ? t.liveParty.idleGamesSoon : undefined}
           onOpen={onOpenGames}
           accessibilityLabel={t.liveParty.a11yOpenGames}

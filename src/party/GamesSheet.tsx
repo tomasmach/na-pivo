@@ -22,7 +22,7 @@ import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
 import { CheckIcon, LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { GameCover } from '@/party/GameCover';
-import { GAMES_COMING_SOON, GAME_CATALOG } from '@/party/gameCatalog';
+import { GAMES_COMING_SOON, GAME_CATALOG, findGame } from '@/party/gameCatalog';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -45,6 +45,7 @@ export function GamesSheet({
   onPick: (key: string, name: string) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const thumb = findGame('thumb')!;
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose}>
@@ -67,61 +68,85 @@ export function GamesSheet({
 
           <ScrollView
             style={styles.list}
-            contentContainerStyle={styles.grid}
+            contentContainerStyle={styles.sections}
             showsVerticalScrollIndicator={false}
           >
-            {GAME_CATALOG.map((game) => {
-              const added = onTable.includes(game.key);
-              const locked = GAMES_COMING_SOON;
-              return (
-                <Pressable
-                  key={game.key}
-                  onPress={added || locked ? undefined : () => onPick(game.key, game.name)}
-                  disabled={added || locked}
-                  style={({ pressed }) => [styles.tile, locked && styles.locked, pressed && styles.pressed]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: added, disabled: added || locked }}
-                  accessibilityLabel={
-                    locked
-                      ? `${game.name}. ${t.party.gamesComingSoon}`
-                      : `${game.name}. ${game.how}`
-                  }
-                >
-                  <View>
-                    <GameCover game={game} height={COVER_H} />
-                    {locked ? (
-                      <View style={styles.lock}>
-                        <LockKeyholeIcon size={16} color={Colors.foam} />
-                        <Text style={styles.lockText} allowFontScaling={false}>
-                          {t.party.gamesSoonBadge}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.badge, game.scoring === 'points' && styles.badgePoints]}>
-                        <Text style={styles.badgeText} allowFontScaling={false}>
-                          {game.scoring === 'points'
-                            ? t.party.scoringPoints
-                            : t.party.scoringNoPoints}
-                        </Text>
-                      </View>
-                    )}
-                    {added && !locked ? (
-                      <View style={styles.added}>
-                        <CheckIcon size={15} color={Colors.stout} />
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <Text
-                    style={styles.name}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {game.name}
+            {([undefined, 'tools', 'evening'] as const).map((section) => (
+              <View key={section ?? 'games'}>
+                {section ? (
+                  <Text style={styles.sectionTitle} accessibilityRole="header">
+                    {section === 'tools' ? t.party.gameToolsTitle : t.party.eveningExtrasTitle}
                   </Text>
-                </Pressable>
-              );
-            })}
+                ) : null}
+                <View style={styles.grid}>
+                  {GAME_CATALOG.filter((game) => game.section === section).map((game) => {
+                    const added = onTable.includes(game.key);
+                    const locked = GAMES_COMING_SOON;
+                    return (
+                      <Pressable
+                        key={game.key}
+                        onPress={added || locked ? undefined : () => onPick(game.key, game.name)}
+                        disabled={added || locked}
+                        style={({ pressed }) => [styles.tile, locked && styles.locked, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: added, disabled: added || locked }}
+                        accessibilityLabel={
+                          locked
+                            ? `${game.name}. ${t.party.gamesComingSoon}`
+                            : `${game.name}. ${game.how}`
+                        }
+                      >
+                        <View>
+                          <GameCover game={game} height={COVER_H} />
+                          {locked ? (
+                            <View style={styles.lock}>
+                              <LockKeyholeIcon size={16} color={Colors.foam} />
+                              <Text style={styles.lockText} allowFontScaling={false}>
+                                {t.party.gamesSoonBadge}
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.badge, game.scoring === 'points' && styles.badgePoints]}>
+                              <Text style={styles.badgeText} allowFontScaling={false}>
+                                {game.scoring === 'points'
+                                  ? t.party.scoringPoints
+                                  : t.party.scoringNoPoints}
+                              </Text>
+                            </View>
+                          )}
+                          {added && !locked ? (
+                            <View style={styles.added}>
+                              <CheckIcon size={15} color={Colors.stout} />
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <Text
+                          style={styles.name}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {game.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {section === 'evening' ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${thumb.name}. ${thumb.how}`}
+                    accessibilityState={{ disabled: onTable.includes(thumb.key) }}
+                    disabled={onTable.includes(thumb.key)}
+                    onPress={() => onPick(thumb.key, thumb.name)}
+                    style={({ pressed }) => [styles.ruleOption, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.name}>{thumb.name}</Text>
+                    {onTable.includes(thumb.key) ? <CheckIcon size={16} color={Colors.amber} /> : null}
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
           </ScrollView>
         </View>
       </View>
@@ -179,6 +204,9 @@ const styles = StyleSheet.create({
   },
   title: { ...MockType.titleS, fontSize: 24, color: Colors.foam },
   list: { flexGrow: 0, flexShrink: 1, marginTop: Spacing.sm },
+  ruleOption: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md },
+  sections: { gap: Spacing.lg, paddingBottom: Spacing.sm },
+  sectionTitle: { ...MockType.titleS, color: Colors.foam, marginBottom: Spacing.md },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -23,6 +23,7 @@ const mockLoadQueuedPartyGameEvents = jest.fn();
 let mockRoundPickedPlayerId = "honza";
 let mockRouteKey = "dice";
 let mockPlacedGame = false;
+let mockRetiredGame = false;
 let mockSharedCode: string | null = "TABLE1";
 let mockSharingFailure: string | undefined;
 let mockSharedRoster: {
@@ -162,6 +163,7 @@ jest.mock("@/party/gameCatalog", () => ({
         how: "Body.",
       },
       never: {
+        retired: mockRetiredGame,
         key: "never",
         name: "Nikdy jsem",
         scoring: "drinks",
@@ -638,6 +640,7 @@ describe("PartyGameScreen result wiring", () => {
     mockRoundPickedPlayerId = "honza";
     mockCanGoBack = true;
     mockPlacedGame = false;
+    mockRetiredGame = false;
     mockSharedCode = "TABLE1";
     mockSharingFailure = undefined;
     mockSharedRoster = [];
@@ -1911,6 +1914,20 @@ describe("PartyGameScreen result wiring", () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/friends"));
     expect(screen.queryByLabelText("start-game")).toBeNull();
     expect(mockStartSharedGame).not.toHaveBeenCalled();
+  });
+
+  it("blocks a new retired game but recovers when its shared snapshot arrives", () => {
+    mockRouteKey = "never";
+    mockRetiredGame = true;
+    mockCanGoBack = false;
+    const view = render(<PartyGameScreen />);
+    expect(screen.queryByLabelText("start-game")).toBeNull();
+    expect(mockStartSharedGame).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+    mockPlacedGame = true;
+    view.rerender(<PartyGameScreen />);
+    expect(screen.getByLabelText("start-game")).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it("keeps an unknown catalogue key playable when it belongs to a known legacy game", () => {

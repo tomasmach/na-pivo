@@ -123,17 +123,21 @@ mluví sama se sebou. Když se pivo vezme zpátky, zmizí i z vlákna.
 
 ## Hry
 
-Devět her v katalogu. Hra je **obsah plus skořápka**, ne vlastní obrazovka —
-desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
+Nabídka má tři hry: Pub kvíz, Kostky a Kategorie. Pod nimi jsou oddělené sekce
+**Pomůcky ke stolu** (Flaška, Kdo platí rundu) a **Na celý večer** (Pravidlo večera).
+Palec je další volba pod Pravidlem večera; sdílený balíček pravidel se nemění.
+Nikdy jsem… a King's Cup se nově nenabízejí; existující večery si ponechávají původní hru i její výsledek.
 
-| hra | jak se hraje | skóre |
+Hra je **obsah plus skořápka**, ne vlastní obrazovka.
+
+| hra nebo pomůcka | jak se hraje | skóre |
 |---|---|---|
 | Pub kvíz | každý na svém telefonu | body |
 | Kostky | 3D, fyzika, telefon koluje | body → kdo platí |
-| Kdo platí rundu | nativní zpomalující buben se jmény | doušky |
-| Flaška | 3D láhev | doušky |
-| Nikdy jsem…, Kategorie, Palec, Pravidlo večera | balíček karet | doušky |
-| King's Cup | tažení karty | doušky |
+| Kategorie | kategorie pro slovní hru u stolu | bez bodů v appce |
+| Kdo platí rundu | nativní zpomalující buben se jmény | plátce rundy |
+| Flaška | SVG láhev na dřevěném stole | vybraný hráč |
+| Pravidlo večera | výběr pravidla včetně Palce | bez bodů |
 
 ### Platforma a hra
 
