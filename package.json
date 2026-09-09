@@ -36,6 +36,7 @@
     "@react-native-google-signin/google-signin": "^16.1.2",
     "cannon-es": "^0.20.0",
     "country-to-currency": "^3.0.1",
+    "decode-uri-component": "file:vendor/decode-uri-component",
     "expo": "^57.0.9",
     "expo-apple-authentication": "~57.0.1",
     "expo-asset": "~57.0.13",
@@ -101,6 +102,9 @@
     "typescript": "^6.0.3"
   },
   "overrides": {
+    "decode-uri-component": "$decode-uri-component",
+    "js-yaml@^3.0.0": "3.15.2",
+    "js-yaml@^4.0.0": "4.3.2",
     "xcode": {
       "uuid": "11.1.1"
     }
