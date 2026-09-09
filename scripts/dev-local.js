@@ -139,14 +139,19 @@ async function iosClient() {
     console.log('==> Native inputs changed or no verified client is installed; building iOS locally');
     await run(process.execPath, [require.resolve('expo/bin/cli'), 'prebuild', '--clean', '--platform', 'ios', '--no-install']);
     await run('pod', ['install'], path.join(root, 'ios'));
-    await run('npm', ['run', 'ios:local', '--', '--device', device.udid, '--no-bundler']);
+    const outputDirectory = fs.mkdtempSync(path.join(root, '.expo', 'dev-client-ios-'));
+    // Build-only avoids Expo's System Events / GUI activation requirement over SSH.
+    await run('npm', ['run', 'ios:local', '--', '--device', 'generic', '--no-bundler', '--output', outputDirectory]);
+    const apps = fs.readdirSync(outputDirectory).filter(file => file.endsWith('.app'));
+    if (apps.length !== 1) throw new Error(`Expected one simulator app in ${outputDirectory}.`);
+    await run('xcrun', ['simctl', 'install', device.udid, path.join(outputDirectory, apps[0])]);
     const built = installedIdentity();
     if (!built) throw new Error('The iOS build did not install the expected app.');
     writeJson(stamp, { hash, identity: built });
   } else {
     console.log('==> Compatible iOS client found; skipping prebuild, CocoaPods and Xcode build');
   }
-  return device.udid;
+  return { udid: device.udid, bundle };
 }
 
 async function main() {
@@ -215,8 +220,10 @@ async function main() {
   if (!metroOnly) {
     const device = await iosClient();
     await run('open', ['-a', 'Simulator']);
-    await run('xcrun', ['simctl', 'openurl', device,
-      `napivo://expo-development-client/?url=${encodeURIComponent(`http://127.0.0.1:${metroPort}`)}`]);
+    // Expo dev-launcher accepts --initialUrl on simulators. Restart just this app
+    // so a client opened by another checkout cannot keep its previous Metro URL.
+    await run('xcrun', ['simctl', 'launch', '--terminate-running-process', device.udid,
+      device.bundle, '--initialUrl', `http://127.0.0.1:${metroPort}`]);
   }
   console.log(`==> Ready: ${root} (API ${backendPort}, Metro ${metroPort})`);
   if (metroOnly) console.log('==> Native client compatibility and the native screen have not been verified by --metro.');
