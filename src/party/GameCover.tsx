@@ -8,7 +8,6 @@ import { Colors } from '@/theme/colors';
 export function GameCover({
   game,
   height,
-  glyph = 30,
   radius = 18,
 }: {
   game: GameDef;
@@ -18,7 +17,7 @@ export function GameCover({
 }) {
   return (
     <View style={[styles.wrap, { height, borderRadius: radius }]}>
-      <GameArtwork gameKey={game.key} size={Math.min(height * 0.94, Math.max(110, glyph * 4))} />
+      <GameArtwork gameKey={game.key} mode="cover" />
     </View>
   );
 }
