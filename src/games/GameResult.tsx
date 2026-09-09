@@ -42,6 +42,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { t } from '@/i18n';
 import type { GameScore } from '@/games/protocol';
+import { ResultCoaster } from '@/party/GamePrints';
 import { ME_NAME } from '@/party/nightBuilder';
 import {
   GameStage,
@@ -53,7 +54,7 @@ import {
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
 export interface ResultPlayer {
   id?: string;
@@ -255,11 +256,19 @@ export function GameResult({
                     accessible
                     accessibilityLabel={`${place}. ${row.name} ${row.suffix ?? row.score}`}
                   >
-                    <PersonAvatar
-                      name={row.name}
-                      tint={row.tint ?? Colors.amber}
-                      size={first ? 64 : 44}
-                    />
+                    <View style={[styles.coaster, first && styles.coasterFirst]}>
+                      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                        <ResultCoaster first={first} />
+                      </View>
+                      <Text style={[styles.place, first && styles.placeFirst]} allowFontScaling={false}>
+                        {place}
+                      </Text>
+                      <PersonAvatar
+                        name={row.name}
+                        tint={row.tint ?? Colors.amber}
+                        size={first ? 64 : 48}
+                      />
+                    </View>
                     <Text
                       style={[styles.stepName, first && styles.stepNameFirst]}
                       numberOfLines={1}
@@ -356,15 +365,36 @@ const styles = StyleSheet.create({
     maxWidth: 132,
     alignItems: 'center',
     gap: Spacing.xs,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.xs,
-    borderRadius: Radius.medium,
-    backgroundColor: Colors.stout3,
+    backgroundColor: 'transparent',
   },
   stepFirst: {
-    paddingVertical: Spacing.xl,
-    backgroundColor: withAlpha(Colors.amber, 0.18),
+    paddingTop: 0,
+    paddingBottom: Spacing.md,
   },
+  coaster: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coasterFirst: {
+    width: 118,
+    height: 118,
+  },
+  place: {
+    position: 'absolute',
+    left: 9,
+    top: 7,
+    zIndex: 1,
+    fontFamily: Fonts.numeral,
+    fontSize: 16,
+    lineHeight: 20,
+    includeFontPadding: false,
+    color: StageInk.strong,
+  },
+  placeFirst: { left: 13, top: 11, fontSize: 21, lineHeight: 26 },
   stepName: {
     maxWidth: '100%',
     fontSize: 14,

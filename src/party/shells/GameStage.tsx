@@ -122,19 +122,34 @@ export function StageCard({
   /** Full width and only as tall as its text — a quiz question, not a deck card. */
   wide = false,
   ruled = true,
+  /** Show dealt cards underneath. Only real decks use this. */
+  stacked = false,
   style,
   ...rest
 }: {
   children?: React.ReactNode;
   wide?: boolean;
   ruled?: boolean;
+  stacked?: boolean;
   style?: StyleProp<ViewStyle>;
 } & React.ComponentProps<typeof View>) {
   return (
     <View style={[wide ? styles.paperWide : styles.paper, style]} {...rest}>
       <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 400" preserveAspectRatio="none" pointerEvents="none" accessible={false}>
-        <Path d="M4 5 294 1 299 394 7 399 1 210Z" fill={Colors.foam} />
-        {ruled ? <Path d="M18 19 282 16M17 383 283 380" stroke={Colors.stout} strokeWidth={2} /> : null}
+        {stacked ? (
+          <>
+            <Path d="M24 2 298 16 290 397 17 386Z" fill={withAlpha(Colors.amber, 0.32)} />
+            <Path d="M13 7 291 5 295 390 12 397Z" fill={Colors.foamMuted} stroke={withAlpha(Colors.stout, 0.6)} strokeWidth={2} />
+            <Path d="M2 15 280 2 289 382 5 396 1 208Z" fill={Colors.foam} />
+            {ruled ? <Path d="M19 29 265 17M18 378 274 366" stroke={Colors.stout} strokeWidth={2} /> : null}
+          </>
+        ) : (
+          <>
+            <Path d="M10 12 298 7 295 398 5 394Z" fill={withAlpha(Colors.amber, 0.18)} />
+            <Path d="M4 5 290 1 299 388 7 399 1 210Z" fill={Colors.foam} />
+            {ruled ? <Path d="M18 19 276 16M17 383 283 373" stroke={Colors.stout} strokeWidth={2} /> : null}
+          </>
+        )}
       </Svg>
       {children}
     </View>

@@ -15,10 +15,10 @@
 import React from "react";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Circle, G, Line, Path } from "react-native-svg";
 
 import { t } from "@/i18n";
-import { GameArtwork } from "@/party/GameArtwork";
+import { RoundReceiptPrint } from "@/party/GamePrints";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
@@ -192,11 +192,23 @@ export function RoundDrumShell({
 
   return (
     <View style={stageBody(bottomInset)}>
-      <GameStage>
+      <GameStage fraction={0.62}>
         <Svg style={styles.ticket} viewBox="0 0 300 430" preserveAspectRatio="none" pointerEvents="none">
-          <Path d="M12 4 30 12 48 4 66 12 84 4 102 12 120 4 138 12 156 4 174 12 192 4 210 12 228 4 246 12 264 4 288 12 294 416 276 424 258 416 240 424 222 416 204 424 186 416 168 424 150 416 132 424 114 416 96 424 78 416 60 424 42 416 18 424Z" fill={Colors.foam} />
+          <Path d="M19 10 37 18 55 10 73 18 91 10 109 18 127 10 145 18 163 10 181 18 199 10 217 18 235 10 253 18 271 10 293 18 298 419 281 427 263 419 245 427 227 419 209 427 191 419 173 427 155 419 137 427 119 419 101 427 83 419 65 427 47 419 23 427Z" fill={withAlpha(Colors.amber, 0.34)} />
+          <Path d="M8 4 26 12 44 4 62 12 80 4 98 12 116 4 134 12 152 4 170 12 188 4 206 12 224 4 242 12 260 4 286 12 292 410 274 418 256 410 238 418 220 410 202 418 184 410 166 418 148 410 130 418 112 410 94 418 76 410 58 418 40 410 14 418Z" fill={Colors.foam} stroke={Colors.stout} strokeWidth={3} />
+          <G opacity={0.7}>
+            <Line x1="29" y1="92" x2="265" y2="88" stroke={Colors.stout} strokeWidth={2} strokeDasharray="8 7" />
+            <Line x1="31" y1="390" x2="263" y2="394" stroke={Colors.stout} strokeWidth={2} strokeDasharray="8 7" />
+          </G>
+          <G fill={withAlpha(Colors.stout, 0.2)}>
+            <Circle cx="42" cy="371" r="3" />
+            <Circle cx="257" cy="373" r="3" />
+            <Circle cx="231" cy="55" r="2.5" />
+          </G>
         </Svg>
-        <View style={styles.artwork} pointerEvents="none"><GameArtwork gameKey="round" size={88} /></View>
+        <View style={styles.receiptHeader} pointerEvents="none">
+          <RoundReceiptPrint />
+        </View>
         <View
           style={styles.drum}
           accessible
@@ -228,13 +240,11 @@ export function RoundDrumShell({
               </Text>
             </View>
           ))}
+          <View pointerEvents="none" style={styles.window}>
+            <View style={[styles.pointer, styles.pointerLeft]} />
+            <View style={[styles.pointer, styles.pointerRight]} />
+          </View>
         </View>
-
-        {/* The window. An amber frame around the one slot that counts, and the
-            drum fading out into the stage above and below it — that is what
-            makes names GO PAST rather than a list sitting there. */}
-        <View pointerEvents="none" style={styles.window} />
-
       </GameStage>
 
       {settled && selected ? (
@@ -272,9 +282,14 @@ export function RoundDrumShell({
 }
 
 const styles = StyleSheet.create({
-  ticket: { position: "absolute", width: "84%", height: "91%", transform: [{ rotate: "-2deg" }] },
-  artwork: { position: "absolute", top: "5%" },
-  drum: { height: SLOT_HEIGHT * 5, width: "78%", marginTop: 64 },
+  ticket: { position: "absolute", width: "88%", height: "92%", transform: [{ rotate: "-1.4deg" }] },
+  receiptHeader: { position: "absolute", top: "5%" },
+  drum: {
+    height: SLOT_HEIGHT * 5,
+    width: "78%",
+    marginTop: 72,
+    overflow: "hidden",
+  },
   slot: {
     height: SLOT_HEIGHT,
     alignItems: "center",
@@ -292,14 +307,36 @@ const styles = StyleSheet.create({
   slotTextOn: { fontSize: 30, fontWeight: "800", color: Colors.stout },
   window: {
     position: "absolute",
-    left: "13%",
-    right: "13%",
-    marginTop: 64,
+    top: SLOT_HEIGHT * 2,
+    left: 0,
+    right: 0,
     height: SLOT_HEIGHT,
     borderRadius: 2,
-    borderWidth: 2,
-    borderColor: withAlpha(Colors.amber, 0.85),
-    backgroundColor: withAlpha(Colors.amber, 0.16),
+    borderWidth: 3,
+    borderColor: Colors.amber,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    backgroundColor: withAlpha(Colors.amber, 0.13),
+  },
+  pointer: {
+    position: "absolute",
+    top: SLOT_HEIGHT / 2 - 7,
+    width: 0,
+    height: 0,
+    borderTopWidth: 7,
+    borderBottomWidth: 7,
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+  },
+  pointerLeft: {
+    left: 4,
+    borderLeftWidth: 11,
+    borderLeftColor: Colors.stout,
+  },
+  pointerRight: {
+    right: 4,
+    borderRightWidth: 11,
+    borderRightColor: Colors.stout,
   },
   dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });

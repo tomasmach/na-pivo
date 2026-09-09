@@ -176,6 +176,47 @@ function faceTexture(value: number, face: string): THREE.CanvasTexture {
   return texture;
 }
 
+/** A quiet screen-printed dice tray. The dice stay the loudest object. */
+function tableTexture(surface: string, accent: string): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = surface;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.09;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(66, 76, 74, 0.28, Math.PI * 1.72);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(449, 431, 91, Math.PI * 1.08, Math.PI * 2.45);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.07;
+  ctx.lineWidth = 2;
+  for (let cut = 0; cut < 22; cut += 1) {
+    const x = 18 + (cut * 83) % 476;
+    const y = 28 + (cut * 137) % 452;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 9 + cut % 11, y + (cut % 3) - 1);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2.2, 2.2);
+  return texture;
+}
+
 class DiceTable {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -184,6 +225,8 @@ class DiceTable {
   private readonly meshes: THREE.Mesh[] = [];
   private readonly bodies: CANNON.Body[] = [];
   private readonly sideWalls: CANNON.Body[] = [];
+  private readonly sideRails: THREE.Mesh[] = [];
+  private readonly endRails: THREE.Mesh[] = [];
   private readonly ownedMaterials = new Set<THREE.Material>();
   private readonly materialCache = new Map<string, THREE.MeshStandardMaterial[]>();
   private readonly resizeHandler = () => this.resize();
@@ -194,7 +237,7 @@ class DiceTable {
   /** Set by the game once the app has said who is playing. */
   onSettled: ((dice: number[]) => void) | null = null;
 
-  constructor(face: string, pip: string, count: number) {
+  constructor(face: string, pip: string, surface: string, accent: string, count: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -218,14 +261,59 @@ class DiceTable {
     key.shadow.camera.bottom = -8;
     this.scene.add(key);
 
-    // The table. It only exists to catch shadows — the felt colour comes from
-    // the app so the canvas does not read as a foreign web page.
-    const tableMaterial = new THREE.ShadowMaterial({ opacity: 0.45 });
+    // A shallow pub tray makes the invisible collision walls legible. Its felt
+    // carries only worn print marks; no label or result lives in the canvas.
+    const tableMaterial = new THREE.MeshStandardMaterial({
+      map: tableTexture(surface, accent),
+      roughness: 1,
+      metalness: 0,
+    });
     this.ownedMaterials.add(tableMaterial);
     const table = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), tableMaterial);
     table.rotation.x = -Math.PI / 2;
     table.receiveShadow = true;
     this.scene.add(table);
+
+    const railColour = new THREE.Color(surface).lerp(new THREE.Color(accent), 0.16);
+    const railMaterial = new THREE.MeshStandardMaterial({
+      color: railColour,
+      roughness: 0.92,
+      metalness: 0,
+    });
+    const trimMaterial = new THREE.MeshStandardMaterial({
+      color: accent,
+      roughness: 0.88,
+      metalness: 0,
+    });
+    this.ownedMaterials.add(railMaterial);
+    this.ownedMaterials.add(trimMaterial);
+    const rail = (
+      width: number,
+      depth: number,
+      x: number,
+      z: number,
+      material: THREE.Material,
+      height = 0.13,
+    ) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+      mesh.position.set(x, height / 2, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      return mesh;
+    };
+    this.endRails.push(
+      rail(7, 0.2, 0, -2.9, railMaterial),
+      rail(7, 0.2, 0, 2.9, railMaterial),
+      rail(6.8, 0.035, 0, -2.77, trimMaterial, 0.025),
+      rail(6.8, 0.035, 0, 2.77, trimMaterial, 0.025),
+    );
+    this.sideRails.push(
+      rail(0.2, 5.8, -2.8, 0, railMaterial),
+      rail(0.2, 5.8, 2.8, 0, railMaterial),
+      rail(0.035, 5.54, -2.67, 0, trimMaterial, 0.025),
+      rail(0.035, 5.54, 2.67, 0, trimMaterial, 0.025),
+    );
 
     this.world.defaultContactMaterial.restitution = 0.28;
     this.world.defaultContactMaterial.friction = 0.42;
@@ -283,6 +371,15 @@ class DiceTable {
     this.sideWalls.forEach((wall, index) => {
       wall.position.x = index === 0 ? -halfWidth : halfWidth;
       wall.aabbNeedsUpdate = true;
+    });
+    this.sideRails.forEach((rail, index) => {
+      const side = index % 2 === 0 ? -1 : 1;
+      rail.position.x = side * (halfWidth - (index < 2 ? 0 : 0.13));
+    });
+    this.endRails.forEach((rail, index) => {
+      const originalWidth = index < 2 ? 7 : 6.8;
+      const visibleWidth = index < 2 ? halfWidth * 2 + 0.2 : halfWidth * 2 - 0.26;
+      rail.scale.x = visibleWidth / originalWidth;
     });
     this.renderer.render(this.scene, this.camera);
   }
@@ -470,7 +567,13 @@ connect({
   ],
   start(session: GameSession) {
     const count = Number(session.options.count ?? 2);
-    const table = new DiceTable(session.theme.ink, session.theme.bg, count);
+    const table = new DiceTable(
+      session.theme.ink,
+      session.theme.bg,
+      session.theme.surface,
+      session.theme.accent,
+      count,
+    );
 
     // The game owns its own progression. The app draws the words from the
     // snapshots below and never recomputes any of this — one set of rules,

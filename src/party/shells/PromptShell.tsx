@@ -39,7 +39,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { t } from "@/i18n";
-import { GameArtwork } from "@/party/GameArtwork";
+import { PromptCardPrint } from "@/party/GamePrints";
 import {
   GameStage,
   STAGE_FILL,
@@ -177,6 +177,7 @@ export function PromptShell({
 
   const stage = (
     <GameStage
+      fraction={single ? 0.68 : undefined}
       topRight={
         single ? undefined : (
           <StageChip label={`${index + 1}/${deck.length}`} />
@@ -203,14 +204,20 @@ export function PromptShell({
         }
         style={styles.dealt}
       >
-        <StageCard style={styles.paper}>
+        <StageCard style={styles.paper} stacked={!single}>
           <ScrollView
             style={styles.cardScroll}
             contentContainerStyle={styles.cardContent}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.artwork} pointerEvents="none">
-              <GameArtwork gameKey={gameKey ?? "categories"} size={112} />
+            <View
+              style={[
+                styles.print,
+                gameKey === "thumb" && styles.printThumb,
+              ]}
+              pointerEvents="none"
+            >
+              <PromptCardPrint gameKey={gameKey ?? "categories"} />
             </View>
             <Text
               style={styles.prompt}
@@ -268,7 +275,12 @@ const styles = StyleSheet.create({
   paper: { paddingHorizontal: 0, paddingVertical: 24, overflow: "hidden" },
   cardScroll: { alignSelf: "stretch", flex: 1 },
   cardContent: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
-  artwork: { marginBottom: Spacing.md },
+  print: {
+    width: "82%",
+    height: 90,
+    marginBottom: Spacing.md,
+  },
+  printThumb: { width: "92%", height: 112, marginBottom: Spacing.sm },
   prompt: {
     fontSize: 25,
     lineHeight: 32,
