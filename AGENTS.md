@@ -71,13 +71,13 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 
 ## Dev prostředí
 
-- Na macOS je `npm run dev` standardní cesta: migrace → lokální backend (uvicorn na portu 8012) → prebuild → iOS simulátor. Samostatné Metro, `expo run:ios` nebo ruční backend jen při cílené diagnostice jedné vrstvy.
-- Na Linuxu `npm run dev` ani `dev:detached` nepoužívej: spouštějí iOS nástroje. Backend a případný Android řeší projektový skill [run-na-pivo](.agents/skills/run-na-pivo/SKILL.md). Nativní iOS ověření patří na Mac; bez něj ho označ jako neověřené.
-- macOS background běh: `npm run dev:detached` / `npm run dev:stop`; `NAPIVO_KEEP_SIM=1` nechá simulátor žít.
-- `ios/` a `android/` jsou gitignorované, prebuild je pokaždé regeneruje. `postinstall` patchuje `node_modules` — instalace s `--ignore-scripts` je rozbitý build.
-- Backend potřebuje ASGI (party hry jedou přes SSE) — proto uvicorn, ne `runserver`.
-- Prázdná databáze je špatný test: `cd backend && uv run python manage.py seed_dev_3_0` naseje dev data.
-- Nespouštěj druhý simulátor ani druhý dev server vedle běžícího. Po práci **zastav všechno, co jsi sám spustil**; cizí procesy nech být. Když mi necháváš běžící appku k proklikání, napiš to do handoffu včetně stop příkazu. Pozor: `dev:stop` čte globální `/tmp/napivo-dev.pid` — v jiném worktree může zabít cizí běh, ověř si PID, než ho použiješ.
+- Na macOS je `npm run dev` standardní cesta: migrace → lokální ASGI backend na portu 8012 → Metro tohoto checkoutu → iOS simulátor. Pro JS a běžné asset změny použije kompatibilního instalovaného klienta. Expo fingerprint hlídá nativní nastavení, závislosti, pluginy a nativní assets; čistý prebuild a build proběhnou jen při změně těchto vstupů nebo chybějícím či dosud neověřeném klientu. `npm run dev -- --rebuild` vynutí nový lokální build.
+- Na Linuxu použij `npm run dev -- --metro` pro lokální backend a Metro. Tento režim nesestavuje klienta a nedokazuje jeho nativní kompatibilitu. Android a konkrétní ověření řeší projektový skill [run-na-pivo](.agents/skills/run-na-pivo/SKILL.md); iOS ověř na Macu.
+- Background běh: `npm run dev:detached` (na Linuxu přidej `-- --metro`), stop: `npm run dev:stop` ze stejného worktree. Stav i log leží v jeho `.expo/`; stop kontroluje totožnost procesu. Runner nikdy nevypíná simulátor a zastavuje jen vlastní backend a Metro.
+- Běžící prostředí použij až po ověření checkoutu, konfigurace a portů. Runner znovu použije vlastní ověřenou session; při cizím nebo neověřeném listeneru skončí bez zásahu. Pro nezávislou práci nastav volné `EXPO_PUBLIC_BACKEND_PORT` a `EXPO_METRO_PORT`. Konkrétní iPhone lze vybrat přes `EXPO_IOS_DEVICE`.
+- `ios/` a `android/` jsou generované a gitignorované. Před vynuceným rebuildem zkontroluj případné ruční nativní změny. `postinstall` patchuje `node_modules` — instalace s `--ignore-scripts` je rozbitý build.
+- Backend potřebuje ASGI kvůli SSE. Runner používá SQLite `backend/db.sqlite3` tohoto checkoutu i při jiném `DATABASE_URL` v prostředí. Prázdná databáze je špatný test: `cd backend && uv run python manage.py seed_dev_3_0` naseje dev data; před samostatným seedem ověř efektivní DB.
+- Nespouštěj zbytečně druhý simulátor ani druhý dev server vedle běžícího. Po práci zastav vlastní procesy. Když necháváš appku k proklikání, napiš checkout, porty a stop příkaz. Cizí procesy a session zachovej.
 
 ## Verifikace
 

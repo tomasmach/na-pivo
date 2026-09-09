@@ -9,13 +9,15 @@ Nejdřív ověř OS, checkout, obsazené porty a vlastníky procesů. Zkontroluj
 
 ## macOS a iOS
 
-Standardní cesta je `npm run dev` z kořene repa: [scripts/dev-local.sh](../../../scripts/dev-local.sh) migruje backend, spustí ASGI na portu 8012 a provede iOS prebuild. Skript regeneruje nativní projekt; nejdřív ověř, že v něm není cizí rozdělaná práce. Pokud už běží simulátor, použij `NAPIVO_KEEP_SIM=1 npm run dev`, aby ho cleanup runneru nevypnul; nejdřív ověř, že spuštění appky nenaruší cizí práci. Background běh nabízí `npm run dev:detached`. Před `dev:stop` ověř vlastnictví PID z `/tmp/napivo-dev.pid`, který je společný pro worktrees.
+Standardní cesta je `npm run dev` z kořene repa. [Runner](../../../scripts/dev-local.js) migruje vlastní lokální SQLite, spustí ASGI a Metro tohoto checkoutu a podle Expo fingerprintu znovu použije kompatibilního iOS klienta. Čistý prebuild a build proběhnou při nativní změně nebo chybějícím či dosud neověřeném klientu; `--rebuild` je vynutí. Před rebuildem zkontroluj ruční změny v generovaném `ios/`. Při více bootovaných iPhonech vyber `EXPO_IOS_DEVICE` (UDID).
+
+Runner nikdy nevypíná simulátory. Běžící backend a Metro znovu použije jen při shodě checkoutu, konfigurace a vlastnictví procesů; cizí port odmítne bez zásahu. Background běh nabízí `npm run dev:detached`; `npm run dev:stop` kontroluje proces podle stavu v `.expo/` tohoto worktree.
 
 Pro screenshot použij konkrétní simulátor z `xcrun simctl list devices booted`, pak `xcrun simctl io <UDID> screenshot <path>`. Cold start dotčeného flow má bundle ID `com.tomasmach.na-pivo`. Neukončuj cizí session.
 
 ## Linux, backend a Android
 
-`npm run dev` a `dev:detached` obsahují iOS kroky a na Linux nepatří. Backend spusť podle lokálního Quick start v [backend/README.md](../../../backend/README.md), nikoli podle jeho produkční deploy sekce. Použij ASGI, protože party hry používají SSE. Dokumentovaný příkaz z `backend/` je `uv run --extra prod uvicorn config.asgi:application --reload --no-access-log --port 8000`; vyber volný port a stejný nastav klientovi. Připravenost ověř přes lokální `/v1/health`. Migrace a seed nejdřív vyžadují ověřenou vlastní lokální DB.
+`npm run dev -- --metro` spustí lokální ASGI a Metro bez iOS kroků. Background varianta je `npm run dev:detached -- --metro`. Neověřuje kompatibilitu ani obrazovku nativního klienta. Vyber volné `EXPO_PUBLIC_BACKEND_PORT` a `EXPO_METRO_PORT`; připravenost ověř přes `/v1/health` a Metro `/status`. Runner používá vlastní `backend/db.sqlite3`. Pro diagnostiku backendu čti lokální Quick start v [backend/README.md](../../../backend/README.md), nikoli produkční deploy sekci. Zachovej ASGI kvůli SSE a před samostatnou migrací nebo seedem ověř DB.
 
 Pro Android nejdřív ověř SDK, `adb` a dostupný emulátor či zařízení. `npm run android` existuje v package.json; před spuštěním explicitně nastav lokální backend podle `src/data/backendConfig.ts` a zkontroluj výslednou base URL. Skripty `*:local` používají macOS `ipconfig`, na Linuxu z nich nepřebírej detekci hosta. Samotná existence příkazu není důkaz funkčního linuxového buildu. Chybějící Android prostředí uveď a ověř dostupnou backendovou část; iOS flow předej na Mac.
 
