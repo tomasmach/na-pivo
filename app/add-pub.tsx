@@ -32,6 +32,7 @@ import {
   TargetIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { StatusStrip } from '@/components/shared/StatusStrip';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
@@ -286,6 +287,9 @@ export default function AddPubScreen() {
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
+    // Confirming a location answers the failed lookup: the stale strip would
+    // otherwise keep a live retry that overwrites the fields typed since then.
+    setFailedSuggestion(null);
     if (currentLocationSelected) {
       setSelectedLocation(null);
       if (isEditing) {
@@ -636,22 +640,15 @@ export default function AddPubScreen() {
             </View>
           )}
           {failedSuggestion && (
-            <View style={styles.lookupFailed}>
-              <Text style={styles.lookupFailedText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.addPub.placeLookupUnavailable}
-              </Text>
-              <Pressable
-                onPress={() => void handleSuggestionPress(failedSuggestion)}
-                disabled={resolvingSuggestionId !== null}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t.vycep.retry}
-              >
-                <Text style={styles.lookupFailedRetry} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.vycep.retry}
-                </Text>
-              </Pressable>
-            </View>
+            <StatusStrip
+              message={t.addPub.placeLookupUnavailable}
+              tone="error"
+              action={{
+                label: t.addPub.retry,
+                onPress: () => void handleSuggestionPress(failedSuggestion),
+                disabled: resolvingSuggestionId !== null,
+              }}
+            />
           )}
           {selectedLocation && (
             <View style={styles.suggestions}>
@@ -728,20 +725,25 @@ export default function AddPubScreen() {
           </Text>
         )}
 
-        {!!submitHint && (
+        {/* The hint keeps its line whether or not it has text, so the button
+            does not jump out from under a finger the moment the form is done. */}
+        <View style={styles.submitBlock}>
           <Text style={styles.submitHint} maxFontSizeMultiplier={FontScaleCap.body}>
             {submitHint}
           </Text>
-        )}
-
-        <View style={styles.submitButton}>
-          <GlowButton
-            label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
-            onPress={handleSubmit}
-            glow="none"
-            accessibilityLabel={isEditing ? t.addPub.editSave : t.a11y.addPubSaveButton}
-          />
-          {!canSubmit && <View style={styles.submitDisabledOverlay} />}
+          <View>
+            <GlowButton
+              label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
+              onPress={handleSubmit}
+              glow="none"
+              disabled={!canSubmit}
+              accessibilityLabel={isEditing ? t.addPub.editSave : t.a11y.addPubSaveButton}
+            />
+            {/* GlowButton's own disabled opacity still reads as a live amber CTA
+                on this screen, so the blocked state keeps the darkening veil.
+                It never takes the tap — the button owns that now. */}
+            {!canSubmit && <View pointerEvents="none" style={styles.submitDisabledVeil} />}
+          </View>
         </View>
       </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
@@ -994,43 +996,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: Colors.amberLight,
   },
-  lookupFailed: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.22),
-    backgroundColor: withAlpha(Colors.foam, 0.06),
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  lookupFailedText: {
-    flex: 1,
-    fontWeight: '500',
-    fontSize: 12,
-    lineHeight: 17,
-    color: Colors.mutedText,
-  },
-  lookupFailedRetry: {
-    fontWeight: '800',
-    fontSize: 12,
-    color: Colors.amber,
-  },
-  submitHint: {
-    marginTop: -Spacing.sm,
-    textAlign: 'center',
-    fontWeight: '500',
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-  },
-  submitButton: {
-    position: 'relative',
+  submitBlock: {
     marginTop: Spacing.sm,
+    gap: Spacing.sm,
   },
-  submitDisabledOverlay: {
+  submitDisabledVeil: {
     position: 'absolute',
     top: 0,
     right: 0,
@@ -1038,5 +1008,13 @@ const styles = StyleSheet.create({
     left: 0,
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.stout, 0.42),
+  },
+  submitHint: {
+    minHeight: 18,
+    textAlign: 'center',
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
   },
 });

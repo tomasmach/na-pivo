@@ -365,13 +365,15 @@ async function backendLocationLookup(
     const data = (await resp.json()) as BackendLocationLookupResponse;
     return data.items ?? [];
   } catch (err) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
     if (signal?.aborted) return null;
-    // The caller did not cancel, so an abort here is our own hard timeout.
+    // The caller did not cancel, so an aborted chained signal is our own hard
+    // timeout. Checking the signal (not the error class) keeps this honest:
+    // an aborted fetch rejects with a different error shape per runtime.
+    const timedOut = abort.signal.aborted;
     trackApiFailure(operation, {
       endpoint: path,
-      reason: isAbortError ? 'timeout' : 'exception',
-      ...(isAbortError ? {} : { error: err }),
+      reason: timedOut ? 'timeout' : 'exception',
+      ...(timedOut ? {} : { error: err }),
     });
     return null;
   } finally {
@@ -532,12 +534,12 @@ export async function reverseGeocodePubLocation(
     const item = data.items?.find((candidate) => isValidPosition(candidate.position));
     return item ? geocodeResultFromItem(item) : null;
   } catch (err) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
     if (signal?.aborted) return null;
+    const timedOut = abort.signal.aborted;
     trackApiFailure('pub_location_geocode_backend', {
       endpoint: '/v1/pubs/reverse-geocode',
-      reason: isAbortError ? 'timeout' : 'exception',
-      ...(isAbortError ? {} : { error: err }),
+      reason: timedOut ? 'timeout' : 'exception',
+      ...(timedOut ? {} : { error: err }),
     });
     return null;
   } finally {

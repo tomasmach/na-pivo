@@ -23,6 +23,11 @@ import {
   searchPubsNear,
   suggestPubLocations,
 } from '../mapyClient';
+import { trackApiFailure } from '../telemetryClient';
+
+jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
+
+const trackApiFailureMock = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
 
 const REST = 'Restaurace a pohostinství';
 const BAR = 'Bar';
@@ -1129,6 +1134,20 @@ describe('location lookup failures', () => {
     await expect(geocode).resolves.toBeNull();
     await expect(reverse).resolves.toBeNull();
     await expect(suggest).resolves.toEqual([]);
+    // A timeout is a real outage signal — it has to reach telemetry as one,
+    // and without the error object (it carries no privacy-safe detail).
+    expect(trackApiFailureMock).toHaveBeenCalledWith('pub_location_geocode_backend', {
+      endpoint: '/v1/pubs/geocode',
+      reason: 'timeout',
+    });
+    expect(trackApiFailureMock).toHaveBeenCalledWith('pub_location_geocode_backend', {
+      endpoint: '/v1/pubs/reverse-geocode',
+      reason: 'timeout',
+    });
+    expect(trackApiFailureMock).toHaveBeenCalledWith('pub_location_suggest_backend', {
+      endpoint: '/v1/pubs/suggest',
+      reason: 'timeout',
+    });
   });
 
   it('stays silent when the caller cancels the lookup', async () => {
@@ -1147,5 +1166,8 @@ describe('location lookup failures', () => {
     controller.abort();
 
     await expect(pending).resolves.toEqual([]);
+    // The screen cancelled it on purpose (new keystroke, unmount) — that is not
+    // a backend failure and must not show up as one.
+    expect(trackApiFailureMock).not.toHaveBeenCalled();
   });
 });
