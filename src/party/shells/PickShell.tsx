@@ -283,7 +283,7 @@ function PickShellSession({
       </GameStage>
 
       {crowdedBottle ? (
-        <ScrollView horizontal style={styles.roster} showsHorizontalScrollIndicator={false}>
+        <ScrollView bounces={false} overScrollMode="never" horizontal style={styles.roster} showsHorizontalScrollIndicator={false}>
           <StageChips players={players.map(player => ({ ...player, name: displayPersonName(player.name), on: !spinning && player.id === pickedPlayer?.id }))} />
         </ScrollView>
       ) : null}

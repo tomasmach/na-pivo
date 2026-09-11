@@ -66,7 +66,7 @@ export function GamesSheet({
             </Text>
           ) : null}
 
-          <ScrollView
+          <ScrollView bounces={false} overScrollMode="never"
             style={styles.list}
             contentContainerStyle={styles.sections}
             showsVerticalScrollIndicator={false}

@@ -341,7 +341,7 @@ export function DrawShell({
               <CardBack />
             ) : (
               <StageCard ruled={false}>
-                <ScrollView
+                <ScrollView bounces={false} overScrollMode="never"
                   style={styles.cardScroll}
                   contentContainerStyle={styles.cardContent}
                   showsVerticalScrollIndicator={false}

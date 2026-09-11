@@ -205,7 +205,7 @@ export function PromptShell({
         style={styles.dealt}
       >
         <StageCard style={styles.paper} stacked={!single}>
-          <ScrollView
+          <ScrollView bounces={false} overScrollMode="never"
             style={styles.cardScroll}
             contentContainerStyle={styles.cardContent}
             showsVerticalScrollIndicator={false}

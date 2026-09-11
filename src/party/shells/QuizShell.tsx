@@ -289,7 +289,7 @@ export function QuizShell({
   };
 
   return (
-    <ScrollView
+    <ScrollView bounces={false} overScrollMode="never"
       contentContainerStyle={styles.scroll}
       style={styles.body}
       showsVerticalScrollIndicator={false}

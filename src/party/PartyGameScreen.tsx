@@ -1511,7 +1511,7 @@ export default function PartyGameScreen() {
       ) : null}
 
       {roster && !canonicalFinish && shell === "score" ? (
-        <ScrollView
+        <ScrollView bounces={false} overScrollMode="never"
           contentContainerStyle={[
             styles.body,
             { paddingBottom: insets.bottom + 120 },

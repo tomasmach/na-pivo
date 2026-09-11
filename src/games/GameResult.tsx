@@ -296,7 +296,7 @@ export function GameResult({
         {ranking.length > 0 ? summary : null}
 
         {rest.length > 0 ? (
-          <ScrollView
+          <ScrollView bounces={false} overScrollMode="never"
             style={styles.board}
             contentContainerStyle={styles.boardRows}
             showsVerticalScrollIndicator={false}
