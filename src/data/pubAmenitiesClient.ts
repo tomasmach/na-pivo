@@ -34,7 +34,8 @@ import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import {
   holdUgcPublishing,
   isUgcConsentPending,
-  notifyUgcConsentRequiredFromResponse,
+  notifyUgcConsentRequired,
+  ugcConsentRequiredCode,
   ugcPolicyHeaders,
 } from './ugcConsent';
 import { trackClientEvent } from './telemetryClient';
@@ -295,18 +296,19 @@ export async function submitAmenityVotes(
       return 'ok';
     }
     if (isPublicContribution) {
-      const consentCode = notifyUgcConsentRequiredFromResponse(
-        resp.status,
-        await parseNonOkPayload(resp),
-      );
+      const consentCode = ugcConsentRequiredCode(resp.status, await parseNonOkPayload(resp));
       if (consentCode) {
-        holdUgcPublishing(session.accountId, consentCode);
-        trackAmenitySyncFailed('submit_votes', {
-          status: resp.status,
-          reason: 'http_error',
-          result: 'consent-blocked',
-          retryable: true,
-        });
+        // A refusal that crossed the acceptance in flight says nothing about
+        // now: it must not re-open the sheet or log a failure.
+        if (holdUgcPublishing(session.accountId, consentCode)) {
+          notifyUgcConsentRequired(consentCode);
+          trackAmenitySyncFailed('submit_votes', {
+            status: resp.status,
+            reason: 'http_error',
+            result: 'consent-blocked',
+            retryable: true,
+          });
+        }
         return 'consent-blocked';
       }
     }
@@ -442,19 +444,19 @@ export async function submitAmenityVotesDetailed(
       return { status: 'ok', body };
     }
     if (isPublicContribution) {
-      const consentCode = notifyUgcConsentRequiredFromResponse(
-        resp.status,
-        await parseNonOkPayload(resp),
-        { userInitiated: options?.userInitiated === true },
-      );
+      const consentCode = ugcConsentRequiredCode(resp.status, await parseNonOkPayload(resp));
       if (consentCode) {
-        holdUgcPublishing(session.accountId, consentCode);
-        trackAmenitySyncFailed('submit_votes', {
-          status: resp.status,
-          reason: 'http_error',
-          result: 'consent-blocked',
-          retryable: true,
-        });
+        if (holdUgcPublishing(session.accountId, consentCode)) {
+          notifyUgcConsentRequired(consentCode, {
+            userInitiated: options?.userInitiated === true,
+          });
+          trackAmenitySyncFailed('submit_votes', {
+            status: resp.status,
+            reason: 'http_error',
+            result: 'consent-blocked',
+            retryable: true,
+          });
+        }
         return { status: 'consent-blocked', body: null };
       }
     }

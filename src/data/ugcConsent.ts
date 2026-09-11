@@ -41,7 +41,12 @@ export type UgcConsentRequiredCode = 'ugc_consent_required' | 'ugc_policy_update
 interface AccountConsentState {
   /** The most recent snapshot, kept for deriving which code the sheet needs. */
   snapshot?: UgcConsentSnapshot;
-  /** Highest policy version the server has asked this client for. */
+  /**
+   * The version the server last said it wants. Follows the server in BOTH
+   * directions — a reverted bump has to take the header back down, or every
+   * gated write keeps asking for a version the server no longer accepts and
+   * "Souhlasím" fails until the app restarts.
+   */
   learnedVersion?: string;
   /** Highest policy version we have first-hand proof this account accepted. */
   acceptedVersion?: string;
@@ -68,9 +73,7 @@ function wantedVersion(accountId: string): string {
 export function rememberUgcConsent(accountId: string, snapshot: UgcConsentSnapshot): void {
   const state = stateFor(accountId);
   state.snapshot = snapshot;
-  if (!state.learnedVersion || snapshot.policyVersion > state.learnedVersion) {
-    state.learnedVersion = snapshot.policyVersion;
-  }
+  state.learnedVersion = snapshot.policyVersion;
   if (!snapshot.accepted) return;
 
   // Acceptance (this device or another one) lifts the hold, so the queues that
@@ -89,21 +92,24 @@ export function ugcPolicyHeaders(accountId: string): Record<string, string> {
 /**
  * Remember that the server refused this account's public writes with a 428.
  *
- * A `ugc_consent_required` that lands after we have proof of acceptance for the
- * very version we send is a refusal of a request that left before the user
- * accepted — it says nothing about now. A policy bump
+ * Returns whether the hold was recorded. A `ugc_consent_required` that lands
+ * after we have proof of acceptance for the version we send is a refusal of a
+ * request that left before the user accepted — it says nothing about now, so it
+ * gets no hold, no sheet and no failure event. A policy bump
  * (`ugc_policy_update_required`) always holds: it asks for a version this
  * account has not accepted.
  */
 export function holdUgcPublishing(
   accountId: string,
   code: UgcConsentRequiredCode = 'ugc_consent_required',
-): void {
+): boolean {
   const state = stateFor(accountId);
-  if (code === 'ugc_consent_required' && state.acceptedVersion === wantedVersion(accountId)) {
-    return;
+  const accepted = state.acceptedVersion;
+  if (code === 'ugc_consent_required' && accepted && accepted >= wantedVersion(accountId)) {
+    return false;
   }
   state.owedCode = code;
+  return true;
 }
 
 /**
@@ -188,20 +194,26 @@ export function notifyUgcConsentRequired(
   }
 }
 
-export function notifyUgcConsentRequiredFromResponse(
+/** The consent code a non-2xx response carries, without telling anyone about it. */
+export function ugcConsentRequiredCode(
   status: number,
   payload: unknown,
-  options?: { userInitiated?: boolean },
 ): UgcConsentRequiredCode | null {
   if (status !== 428) return null;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
 
   const code = (payload as Record<string, unknown>).code;
-  if (code === 'ugc_consent_required' || code === 'ugc_policy_update_required') {
-    notifyUgcConsentRequired(code, options);
-    return code;
-  }
-  return null;
+  return code === 'ugc_consent_required' || code === 'ugc_policy_update_required' ? code : null;
+}
+
+export function notifyUgcConsentRequiredFromResponse(
+  status: number,
+  payload: unknown,
+  options?: { userInitiated?: boolean },
+): UgcConsentRequiredCode | null {
+  const code = ugcConsentRequiredCode(status, payload);
+  if (code) notifyUgcConsentRequired(code, options);
+  return code;
 }
 
 export function clearUgcConsentStateForTests(): void {

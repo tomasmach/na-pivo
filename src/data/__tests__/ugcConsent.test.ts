@@ -42,6 +42,11 @@ describe('ugcConsent', () => {
     it('is the planned policy version baked into the client', () => {
       expect(CURRENT_UGC_POLICY_VERSION).toBe('2026-08-22');
     });
+
+    it('is a YYYY-MM-DD date, which is what makes version comparison sortable', () => {
+      // Every "is the server ahead of us" check compares these strings directly.
+      expect(CURRENT_UGC_POLICY_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
   });
 
   describe('parseUgcConsentSnapshot', () => {
@@ -183,6 +188,40 @@ describe('ugcConsent', () => {
         requiredCode: 'ugc_policy_update_required',
       });
       expect(ugcPolicyHeaders('account-1')).toEqual({ [UGC_POLICY_HEADER]: '2026-12-01' });
+    });
+
+    it('follows a reverted policy version back down', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+      // A bad bump goes out …
+      rememberUgcConsent(
+        'account-1',
+        parseUgcConsentSnapshot({
+          policy_version: '2026-12-01',
+          accepted: false,
+          accepted_version: CURRENT_UGC_POLICY_VERSION,
+          accepted_at: '2026-09-11T20:00:00Z',
+        })!,
+      );
+      expect(ugcPolicyHeaders('account-1')).toEqual({ [UGC_POLICY_HEADER]: '2026-12-01' });
+
+      // … and is reverted. The header has to follow, or every gated write keeps
+      // asking for a version the server no longer accepts.
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+
+      expect(ugcPolicyHeaders('account-1')).toEqual({
+        [UGC_POLICY_HEADER]: CURRENT_UGC_POLICY_VERSION,
+      });
+      expect(ugcConsentStatus('account-1')).toEqual({ known: true, requiredCode: null });
+    });
+
+    it('reports whether a hold was recorded', () => {
+      expect(holdUgcPublishing('account-1', 'ugc_consent_required')).toBe(true);
+
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+      // Refusal of a request that left before the acceptance.
+      expect(holdUgcPublishing('account-1', 'ugc_consent_required')).toBe(false);
+      // A policy bump is never stale.
+      expect(holdUgcPublishing('account-1', 'ugc_policy_update_required')).toBe(true);
     });
 
     it('asks from scratch for an account that never accepted anything', () => {

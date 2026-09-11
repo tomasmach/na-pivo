@@ -252,6 +252,18 @@ describe('flushPubAmenitiesQueue', () => {
     expect(await readQueue()).toEqual([]);
   });
 
+  it('stops at one refused request per pass', async () => {
+    submitAmenityVotes.mockResolvedValue('consent-blocked');
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'practical_wifi'));
+    await enqueueAmenityOp(upsert('bbbbbbbb', 'game_darts'));
+
+    await flushPubAmenitiesQueue();
+
+    expect(submitAmenityVotes).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toHaveLength(3);
+  });
+
   it('still delivers a retraction queued behind a consent-blocked vote', async () => {
     // The server lets a null-only batch through without consent, so a vote the
     // user just deleted must not stay public until they accept the rules.

@@ -125,17 +125,21 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   // content changed under us is kept regardless of the stale result.
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  let consentBlocked = false;
   for (const item of queue) {
     if (signal.aborted) break;
+    // Once the server has refused one public vote for missing consent, every
+    // other public vote in this pass gets the same answer — one refused request
+    // per flush, not one per vote. A RETRACTION still goes out: the server lets
+    // a null-only batch through without consent, and leaving it queued would
+    // keep a vote the user just deleted public.
+    if (consentBlocked && item.payload.value !== null) continue;
     const key = dedupKey(item);
     attempted.set(key, signature(item));
     const result = await deliver(item, signal);
-    // 'consent-blocked' keeps the vote exactly like 'retry'. The pass still walks
-    // the rest of the queue: the client answers the remaining public votes
-    // without touching the network, and a pending RETRACTION must go out — the
-    // server lets a null-only batch through without consent, and leaving it
-    // queued would keep a vote the user just deleted public.
-    if (result !== 'retry' && result !== 'consent-blocked') settled.add(key);
+    // 'consent-blocked' keeps the vote exactly like 'retry'.
+    if (result === 'consent-blocked') consentBlocked = true;
+    else if (result !== 'retry') settled.add(key);
   }
 
   await runLocked(async () => {

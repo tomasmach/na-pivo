@@ -13,6 +13,7 @@ import {
   type WireAmenityVote,
 } from '../pubAmenitiesClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
+import { trackClientEvent } from '../telemetryClient';
 import { getBackendEndpoint } from '../backendConfig';
 import {
   CURRENT_UGC_POLICY_VERSION,
@@ -532,6 +533,28 @@ describe('UGC policy contract', () => {
     await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
     await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('stays silent about a 428 that crossed the acceptance in flight', async () => {
+    rememberUgcConsent('a', {
+      policyVersion: CURRENT_UGC_POLICY_VERSION,
+      accepted: true,
+      acceptedVersion: CURRENT_UGC_POLICY_VERSION,
+      acceptedAt: '2026-09-11T20:00:00Z',
+    });
+    const events: string[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event.code));
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+
+    // The request left before the user accepted; its answer must not re-open the
+    // sheet the user just dealt with, nor log a failure.
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+
+    expect(events).toEqual([]);
+    const failures = (trackClientEvent as jest.Mock).mock.calls.filter(
+      (call) => (call[0] as { event: string }).event === 'amenity_vote_failed',
+    );
+    expect(failures).toEqual([]);
   });
 
   it('does not publish when the profile snapshot already says consent is missing', async () => {
