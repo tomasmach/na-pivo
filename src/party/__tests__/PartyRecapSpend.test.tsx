@@ -120,6 +120,16 @@ describe('PartyRecapScreen receipt', () => {
     expect(renderText()).toContain('jen tvoje zápisy');
   });
 
+  it('labels the average as a drink price for a wine-only night', () => {
+    mockNight.drinks = [{ ...beer('wine', 90, 'Ryzlink'), drinkType: 'wine' }];
+
+    const text = renderText();
+
+    expect(text).toContain('Průměr za nápoj');
+    expect(text).not.toContain('Průměr za pivo');
+    expect(text).toContain('90');
+  });
+
   it('admits how many of my drinks the total is missing', () => {
     mockNight.drinks = [beer('a', 62), beer('b'), beer('c')];
 

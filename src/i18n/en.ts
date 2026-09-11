@@ -2025,7 +2025,9 @@ export const en: Strings = {
     rowEvenings: 'Nights',
     rowPubs: 'Pubs',
     rowPace: 'Beers a night',
-    rowSpend: 'Spent',
+    rowSpend: 'Recorded spend',
+    spendCoverage: (mine: number, myBeers: number, name: string, theirs: number, theirBeers: number) =>
+      `You: ${mine} of ${beerCountLabel(myBeers)} priced. ${name}: ${theirs} of ${beerCountLabel(theirBeers)} priced.`,
     paceValue: (value: number) => value.toFixed(1),
     rowA11y: (label: string, mine: string, name: string, theirs: string) =>
       `${label}: you ${mine}, ${name} ${theirs}`,
@@ -3910,7 +3912,7 @@ export const en: Strings = {
     sectionGames: 'Games',
     sectionSpend: 'The bill',
     spendTotal: 'What you spent',
-    spendAverage: 'Average per beer',
+    spendAverage: 'Average per drink',
     spendPriciest: (beer: string) => `Priciest: ${beer}`,
     spendMineOnly: 'Only what you logged counts here. What the others spent, I cannot see.',
     spendPartial: (priced: number, total: number) =>

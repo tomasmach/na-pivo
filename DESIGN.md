@@ -1636,7 +1636,7 @@ Pravidla:
 - **Žádný vítěz.** Nikde není slovo „vyhrál“ ani celkové skóre. Každý řádek říká
   jen, kdo vede v tom jednom řádku; jinak se čísla nesčítají.
 - **Disciplíny jsou čtyři plus jedna.** Piva, Večery, Hospody, Piv na večer;
-  Utraceno přibude, jen když ho sdílejí oba.
+  Zapsaná útrata přibude, jen když ji sdílejí oba.
 - **Kdo vede, má pěnové číslo, kdo ne, hnědé.** Jantar drží jen dráha mého
   podílu — obarvit vedoucí číslo jantarem by z akcentu udělalo medaili.
 - **Večer je večer.** Stejná trojice (účet, pijácký den, hospoda) jako na Výkonu,
@@ -1646,6 +1646,10 @@ Pravidla:
 - **Bez souhlasu nejsou čísla.** Kdo nesdílí pití, nemá souboj vůbec; obrazovka
   to řekne větou a nekreslí nuly. Nula čte jako „přestal pít“.
 - **Útrata má vlastní přepínač**, vypnutý, a čte se jen když ho mají zapnutý oba.
+- **Chybějící ceny nejsou nula.** Zapsaná útrata ukazuje součet známých cen;
+  při neúplných cenách uvede počet oceněných piv na obou stranách. Bez cen je
+  místo částky pomlčka. Srovnávací pruh a zvýraznění vedoucí částky se zobrazí
+  jen při vyplněných cenách všech piv na obou stranách.
 - **Graf je měsíční sloupce Výkonu se druhým sloupcem** (`DuelChart`): moje plný
   jantar, jeho `amber 0.28`. Měsíc bez piva dostane sloupec.
 

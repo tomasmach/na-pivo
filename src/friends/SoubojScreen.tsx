@@ -57,6 +57,8 @@ interface Discipline {
   theirs: string;
   mineValue: number;
   theirsValue: number;
+  comparable?: boolean;
+  coverage?: string;
 }
 
 function disciplinesOf(
@@ -64,6 +66,7 @@ function disciplinesOf(
   them: DuelSide,
   spendAvailable: boolean,
   currency: Parameters<typeof formatPrice>[1],
+  friendName: string,
 ): Discipline[] {
   const rows: Discipline[] = [
     {
@@ -102,13 +105,19 @@ function disciplinesOf(
   // Only when both sides turned it on — and the server has already refused to
   // send the numbers otherwise, so this is the second lock, not the only one.
   if (spendAvailable && me.spendCzk !== null && them.spendCzk !== null) {
+    const comparable = (me.pricedBeers ?? 0) > 0 && me.pricedBeers === me.beers
+      && (them.pricedBeers ?? 0) > 0 && them.pricedBeers === them.beers;
     rows.push({
       key: 'spend',
       label: t.souboj.rowSpend,
-      mine: formatPrice(me.spendCzk, currency),
-      theirs: formatPrice(them.spendCzk, currency),
+      mine: (me.pricedBeers ?? 0) > 0 ? formatPrice(me.spendCzk, currency) : '—',
+      theirs: (them.pricedBeers ?? 0) > 0 ? formatPrice(them.spendCzk, currency) : '—',
       mineValue: me.spendCzk,
       theirsValue: them.spendCzk,
+      comparable,
+      coverage: comparable ? undefined : t.souboj.spendCoverage(
+        me.pricedBeers ?? 0, me.beers, friendName, them.pricedBeers ?? 0, them.beers,
+      ),
     });
   }
   return rows;
@@ -127,14 +136,16 @@ function DisciplineRow({ row, friendName }: { row: Discipline; friendName: strin
   // A row where neither has anything splits evenly rather than collapsing to a
   // zero-width bar, which would read as a rendering bug.
   const minePercent = total > 0 ? (row.mineValue / total) * 100 : 50;
-  const iLead = row.mineValue > row.theirsValue;
-  const theyLead = row.theirsValue > row.mineValue;
+  const iLead = row.comparable !== false && row.mineValue > row.theirsValue;
+  const theyLead = row.comparable !== false && row.theirsValue > row.mineValue;
 
   return (
     <View
       style={styles.row}
       accessible
-      accessibilityLabel={t.souboj.rowA11y(row.label, row.mine, friendName, row.theirs)}
+      accessibilityLabel={[
+        t.souboj.rowA11y(row.label, row.mine, friendName, row.theirs), row.coverage,
+      ].filter(Boolean).join('. ')}
     >
       <View style={styles.rowTop}>
         <Text style={[styles.rowValue, theyLead && styles.rowValueBehind]} allowFontScaling={false}>
@@ -142,7 +153,6 @@ function DisciplineRow({ row, friendName }: { row: Discipline; friendName: strin
         </Text>
         <Text
           style={styles.rowLabel}
-          numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
           {row.label}
@@ -151,18 +161,38 @@ function DisciplineRow({ row, friendName }: { row: Discipline; friendName: strin
           {row.theirs}
         </Text>
       </View>
-      <View style={styles.track}>
-        <View style={[styles.fillMine, { width: `${minePercent}%` }]} />
-        <View style={styles.fillTheirs} />
-      </View>
+      {row.comparable !== false ? (
+        <View style={styles.track}>
+          <View style={[styles.fillMine, { width: `${minePercent}%` }]} />
+          <View style={styles.fillTheirs} />
+        </View>
+      ) : null}
+      {row.coverage ? (
+        <Text style={styles.coverage} maxFontSizeMultiplier={FontScaleCap.body}>
+          {row.coverage}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 export default function SoubojScreen() {
+  const { accountId = '' } = useLocalSearchParams<{ accountId?: string }>();
+  const ownerAccountId = useAccountStore((state) => state.session?.accountId ?? null);
+  // Tab routes survive account changes. A new owner/friend gets fresh state,
+  // so neither loaded data nor a failed refresh can reveal the previous duel.
+  return (
+    <SoubojContent
+      key={`${ownerAccountId ?? ''}:${accountId}`}
+      accountId={accountId}
+      ownerAccountId={ownerAccountId}
+    />
+  );
+}
+
+function SoubojContent({ accountId, ownerAccountId }: { accountId: string; ownerAccountId: string | null }) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { accountId } = useLocalSearchParams<{ accountId?: string }>();
   const currency = useSettingsStore((state) => state.priceCurrency);
   const myProfile = useAccountStore((state) => state.profile);
   const reduceMotion = useReduceMotion();
@@ -173,32 +203,33 @@ export default function SoubojScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const mountedRef = useRef(true);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   // A later window choice always outranks an older response.
   const requestRef = useRef(0);
   const load = useCallback(
     async (next: DuelWindow) => {
       const requestId = ++requestRef.current;
-      // A missing route id resolves to null in the client, so this stays one
-      // unconditional await and lands in the same failed state as a refusal.
-      const result = await fetchFriendDuel(accountId ?? '', next);
+      // Do not create an anonymous session while sign-out clears the owner.
+      // A missing friend id resolves to null in the client.
+      const result = ownerAccountId ? await fetchFriendDuel(accountId, next) : null;
       // The request counter, not an abort signal, decides staleness: tapping
       // through three windows must leave the last one on screen, not whichever
       // request happened to answer last.
-      if (!mountedRef.current || requestId !== requestRef.current) return;
+      if (!mountedRef.current || requestId !== requestRef.current
+        || ownerAccountId !== (useAccountStore.getState().session?.accountId ?? null)) return;
       // Keep what is on screen when a refresh fails: the error notice already
       // says the numbers are stale, and blanking them loses the comparison the
       // user opened the screen for.
       setDuel((previous) => result ?? previous);
       setState(result ? 'loaded' : 'error');
     },
-    [accountId],
+    [accountId, ownerAccountId],
   );
 
   // Changing the window deliberately does NOT blank the rows: `state` stays
@@ -346,7 +377,7 @@ export default function SoubojScreen() {
                 <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {t.souboj.rowsHeader}
                 </Text>
-                {disciplinesOf(duel.me, duel.them, duel.spendAvailable, currency).map((row) => (
+                {disciplinesOf(duel.me, duel.them, duel.spendAvailable, currency, friendName).map((row) => (
                   <DisciplineRow key={row.key} row={row} friendName={friendName} />
                 ))}
 
@@ -455,6 +486,7 @@ const styles = StyleSheet.create({
   fillTheirs: { flex: 1, height: '100%', backgroundColor: withAlpha(Colors.amber, 0.28) },
 
   footnote: { ...MockType.bodySmall, color: Colors.mutedText, marginTop: Spacing.lg },
+  coverage: { ...MockType.bodySmall, color: Colors.mutedText, marginTop: Spacing.sm },
 
   staleStrip: { marginTop: Spacing.md },
   notice: { marginTop: Spacing.xxl, alignItems: 'center', gap: Spacing.md },

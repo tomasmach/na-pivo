@@ -2099,7 +2099,9 @@ export const cs = {
     rowEvenings: 'Večery',
     rowPubs: 'Hospody',
     rowPace: 'Piv na večer',
-    rowSpend: 'Utraceno',
+    rowSpend: 'Zapsaná útrata',
+    spendCoverage: (mine: number, myBeers: number, name: string, theirs: number, theirBeers: number) =>
+      `Ty: cena u ${mine} z ${myBeers} ${czechPlural(myBeers, { one: 'piva', few: 'piv', many: 'piv' })}. ${name}: cena u ${theirs} z ${theirBeers} ${czechPlural(theirBeers, { one: 'piva', few: 'piv', many: 'piv' })}.`,
     paceValue: (value: number) => value.toFixed(1).replace('.', ','),
     rowA11y: (label: string, mine: string, name: string, theirs: string) =>
       `${label}: ty ${mine}, ${name} ${theirs}`,
@@ -3977,7 +3979,7 @@ export const cs = {
     // — Účtenka. Jen moje útrata: cizí piva na drátě cenu nenesou. —
     sectionSpend: 'Účtenka',
     spendTotal: 'Tvoje útrata',
-    spendAverage: 'Průměr za pivo',
+    spendAverage: 'Průměr za nápoj',
     spendPriciest: (beer: string) => `Nejdražší: ${beer}`,
     spendMineOnly: 'Počítám jen tvoje zápisy. Co utratili ostatní, nevidím.',
     spendPartial: (priced: number, total: number) =>
