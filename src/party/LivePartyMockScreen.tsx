@@ -1037,7 +1037,10 @@ export default function LivePartyMockScreen() {
               // abandoning the evening. Same screen, presented as a modal.
               // The pickingPub flag is owned by the modal's own lifecycle, so
               // it cannot stay stuck when the route pops without picking.
-              onPress={() => router.push('/pick-pub' as Href)}
+              onPress={() => {
+                trackUiInteraction('counter_place_open');
+                router.push('/pick-pub' as Href);
+              }}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={t.liveParty.a11yChangePub(displayPubName)}
