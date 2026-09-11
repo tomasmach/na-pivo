@@ -40,6 +40,9 @@ export const BetaBadge = memo(BetaBadgeImpl);
 
 const styles = StyleSheet.create({
   badge: {
+    // Never give up width to a shrinking label beside it: inside the scan pill
+    // the badge was the thing that got pushed off the edge.
+    flexShrink: 0,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: Radius.pill,
