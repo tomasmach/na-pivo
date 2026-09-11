@@ -11,6 +11,8 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from psycopg_pool import ConnectionPool
@@ -54,18 +56,27 @@ def load_default_database(**overrides: str) -> dict:
     return json.loads(result.stdout)
 
 
-def build_pool(config: dict) -> ConnectionPool:
+@contextmanager
+def build_pool(config: dict) -> Iterator[ConnectionPool]:
     """Build the pool Django would build for this config, without connecting.
 
     Django creates pools with ``open=False``, so this needs no database — but it
     does need ``psycopg[pool]`` to be installed, which is the other half of what
     can silently go missing in the container image.
+
+    DatabaseWrapper caches pools in a dict on the CLASS, shared by the whole
+    process, and closing a pool does not evict it from there. So the teardown
+    has to go through ``close_pool()``: without it the second caller silently
+    gets the first caller's closed pool and asserts nothing.
     """
     from django.db.backends.postgresql.base import DatabaseWrapper
 
-    # A private alias: DatabaseWrapper caches pools in a dict shared by the
-    # whole process, and "default" belongs to the test database.
-    return DatabaseWrapper(config, alias="db_pool_settings_test").pool
+    # A private alias; "default" belongs to the test database.
+    wrapper = DatabaseWrapper(config, alias="db_pool_settings_test")
+    try:
+        yield wrapper.pool
+    finally:
+        wrapper.close_pool()
 
 
 def test_postgres_pools_connections_instead_of_keeping_them_per_request():
@@ -86,8 +97,7 @@ def test_postgres_pools_connections_instead_of_keeping_them_per_request():
 
 
 def test_settings_produce_a_pool_psycopg_actually_accepts():
-    pool = build_pool(load_default_database(DATABASE_URL=POSTGRES_URL))
-    try:
+    with build_pool(load_default_database(DATABASE_URL=POSTGRES_URL)) as pool:
         assert pool.min_size == 2
         assert pool.max_size == 20
         assert pool.timeout == 10
@@ -95,8 +105,6 @@ def test_settings_produce_a_pool_psycopg_actually_accepts():
         # CONN_HEALTH_CHECKS: a connection that the server closed underneath us
         # is reconnected on checkout instead of failing somebody's request.
         assert pool._check is not None
-    finally:
-        pool.close()
 
 
 def test_pool_size_is_configurable_and_minimum_cannot_exceed_maximum():
@@ -108,7 +116,9 @@ def test_pool_size_is_configurable_and_minimum_cannot_exceed_maximum():
 
     assert config["OPTIONS"]["pool"]["max_size"] == 4
     assert config["OPTIONS"]["pool"]["min_size"] == 4
-    build_pool(config).close()
+    with build_pool(config) as pool:
+        assert pool.max_size == 4
+        assert pool.min_size == 4
 
 
 def test_a_negative_pool_minimum_does_not_take_the_api_down():
@@ -117,7 +127,8 @@ def test_a_negative_pool_minimum_does_not_take_the_api_down():
     config = load_default_database(DATABASE_URL=POSTGRES_URL, DB_POOL_MIN_SIZE="-1")
 
     assert config["OPTIONS"]["pool"]["min_size"] == 0
-    build_pool(config).close()
+    with build_pool(config) as pool:
+        assert pool.min_size == 0
 
 
 def test_sqlite_development_database_is_left_alone():
