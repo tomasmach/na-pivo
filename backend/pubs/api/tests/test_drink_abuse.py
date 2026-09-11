@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.cache import cache
@@ -89,9 +90,32 @@ def _drink(
     )
 
 
-def _yesterday_noon():
-    local_now = timezone.localtime(timezone.now())
-    return (local_now - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+_PRAGUE_TZ = ZoneInfo("Europe/Prague")
+
+
+def _past_local(*, days_ago: int, hour: int):
+    """A fixed Prague-local hour, ``days_ago`` whole calendar days back.
+
+    Calendar arithmetic on the date, not duration arithmetic on the datetime, so
+    a DST switch cannot move the hour we asked for.
+    """
+
+    day = timezone.localtime(timezone.now(), _PRAGUE_TZ).date() - timedelta(days=days_ago)
+    return datetime.combine(day, time(hour=hour), tzinfo=_PRAGUE_TZ)
+
+
+def _finished_drinking_day_start():
+    """05:00 of a drinking day that is already over, at any hour of the clock.
+
+    These tests lay out sequences up to ~13.5 hours long from this anchor. While
+    it was "yesterday noon", the tail landed in the future whenever the suite ran
+    between midnight and 01:20 local: the API then clamped that drank_at down to
+    now, the rows lost their order and latest("drank_at") returned a different
+    one. A 04:00-to-04:00 day that has already ended keeps the whole sequence in
+    the past and inside a single daily-cap window.
+    """
+
+    return _past_local(days_ago=2, hour=5)
 
 
 @pytest.mark.django_db
@@ -133,7 +157,7 @@ def test_drink_older_than_backdate_window_is_flagged(client):
 @pytest.mark.django_db
 def test_twenty_first_beer_is_daily_cap_but_twentieth_is_not(client):
     token, account = _register(client)
-    start = _yesterday_noon()
+    start = _finished_drinking_day_start()
     for index in range(19):
         _drink(account, start + timedelta(minutes=30 * index))
 
@@ -166,18 +190,16 @@ def test_twenty_first_beer_is_daily_cap_but_twentieth_is_not(client):
 def test_daily_beer_limit_uses_the_0400_drinking_day(client, settings):
     settings.DRINK_DAILY_FLAG_CAP = 3
     token, account = _register(client)
-    # Keep the 04:00 boundary in the past even when this suite runs shortly
-    # after midnight. Otherwise the API correctly clamps the final 04:00 row
-    # from the future to "now", putting it back into the previous drinking day.
-    late_evening = (_yesterday_noon() - timedelta(days=1)).replace(hour=23)
-    _drink(account, late_evening)
-    _drink(account, late_evening + timedelta(hours=3))
+    # Every timestamp is an explicit local hour on a finished day, so the 04:00
+    # boundary sits where the test says it does whatever the clock or DST does.
+    _drink(account, _past_local(days_ago=3, hour=23))
+    _drink(account, _past_local(days_ago=2, hour=2))
     before_id = uuid.uuid4()
 
     before_cutoff = client.post(
         "/v1/drinks",
         data=_payload(
-            drank_at=late_evening + timedelta(hours=4),
+            drank_at=_past_local(days_ago=2, hour=3),
             client_id=before_id,
         ),
         format="json",
@@ -185,7 +207,7 @@ def test_daily_beer_limit_uses_the_0400_drinking_day(client, settings):
     )
     after_cutoff = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=late_evening + timedelta(hours=5)),
+        data=_payload(drank_at=_past_local(days_ago=2, hour=4)),
         format="json",
         **_auth(token),
     )
@@ -199,7 +221,7 @@ def test_daily_beer_limit_uses_the_0400_drinking_day(client, settings):
 @pytest.mark.django_db
 def test_ninth_beer_in_burst_is_flagged_but_spread_beers_are_not(client):
     token, account = _register(client)
-    base = _yesterday_noon()
+    base = _finished_drinking_day_start()
     for index in range(8):
         _drink(account, base + timedelta(seconds=index))
     burst_response = client.post(
@@ -229,7 +251,7 @@ def test_ninth_beer_in_burst_is_flagged_but_spread_beers_are_not(client):
 @pytest.mark.django_db
 def test_forty_first_drink_is_preserved_privately_and_hard_limited(client):
     token, account = _register(client)
-    start = _yesterday_noon()
+    start = _finished_drinking_day_start()
     for index in range(40):
         _drink(account, start + timedelta(minutes=20 * index))
     stats, _ = AccountUsageStats.objects.get_or_create(account=account)
@@ -302,7 +324,7 @@ def test_forty_first_drink_is_preserved_privately_and_hard_limited(client):
 @pytest.mark.django_db
 def test_hard_limited_drink_never_links_to_party_evening(client):
     token, account = _register(client)
-    start = _yesterday_noon()
+    start = _finished_drinking_day_start()
     # 39 private rows leave the account exactly one drink below the hard cap.
     for index in range(39):
         _drink(account, start + timedelta(minutes=20 * index))
@@ -367,7 +389,7 @@ def test_hard_limited_drink_never_links_to_party_evening(client):
 @pytest.mark.django_db
 def test_pub_and_non_pub_beers_share_daily_flag_and_hard_cap(client):
     token, account = _register(client)
-    start = _yesterday_noon()
+    start = _finished_drinking_day_start()
     for index in range(20):
         drink = _drink(account, start + timedelta(minutes=20 * index))
         if index % 2:
@@ -412,7 +434,7 @@ def test_pub_and_non_pub_beers_share_daily_flag_and_hard_cap(client):
 @pytest.mark.django_db
 def test_non_beers_do_not_consume_beer_fair_play_limits(client):
     token, account = _register(client)
-    base = _yesterday_noon()
+    base = _finished_drinking_day_start()
     for index in range(20):
         _drink(
             account,
@@ -436,7 +458,7 @@ def test_non_beers_do_not_consume_beer_fair_play_limits(client):
 @pytest.mark.django_db
 def test_burst_cannot_be_bypassed_with_descending_timestamps(client):
     token, account = _register(client)
-    base = _yesterday_noon()
+    base = _finished_drinking_day_start()
     for index in range(8):
         _drink(account, base + timedelta(seconds=20 - index))
 
@@ -487,7 +509,7 @@ def test_duplicate_retry_does_not_recompute_or_change_flags(client):
 @pytest.mark.django_db
 def test_patch_on_hard_limited_drink_never_publishes_brand_index(client):
     token, account = _register(client)
-    start = _yesterday_noon()
+    start = _finished_drinking_day_start()
     for index in range(40):
         _drink(account, start + timedelta(minutes=20 * index))
     client_id = uuid.uuid4()
@@ -539,7 +561,7 @@ def test_suspect_row_does_not_keep_old_index_active_after_patch(client):
         beer_product_name=product.name,
         price_czk=65,
         volume_ml=500,
-        drank_at=_yesterday_noon(),
+        drank_at=_finished_drinking_day_start(),
     )
     legit = DrinkLog.objects.create(client_id=uuid.uuid4(), **common)
     DrinkLog.objects.create(
