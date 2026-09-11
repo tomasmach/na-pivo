@@ -199,6 +199,12 @@ function FriendSettingsSheet({
     sendPatch({ shareDrinksWithParta });
   }, [applyOptimistic, sendPatch]);
 
+  const handleShareSpendToggle = useCallback(() => {
+    const shareSpendWithParta = !draftRef.current.shareSpendWithParta;
+    applyOptimistic({ shareSpendWithParta });
+    sendPatch({ shareSpendWithParta });
+  }, [applyOptimistic, sendPatch]);
+
   const handleQuietToggle = useCallback(() => {
     const quietHoursEnabled = !draftRef.current.quietHoursEnabled;
     applyOptimistic({ quietHoursEnabled });
@@ -297,6 +303,26 @@ function FriendSettingsSheet({
                   onToggle={handleShareDrinksToggle}
                   disabled={draft.ghostMode}
                   accessibilityLabel={t.friends.shareDrinksTitle}
+                />
+              </View>
+            </View>
+
+            {/* Spend is its own switch, and off until you say otherwise: how
+                many beers you had and what they cost are two different things
+                to hand over. Only the Souboj reads it, and only when the other
+                side has it on too. */}
+            <View style={styles.settingItem}>
+              <View style={styles.settingRow}>
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {t.friends.shareSpendTitle}
+                  </Text>
+                </View>
+                <Toggle
+                  value={draft.shareSpendWithParta && draft.shareDrinksWithParta && !draft.ghostMode}
+                  onToggle={handleShareSpendToggle}
+                  disabled={draft.ghostMode || !draft.shareDrinksWithParta}
+                  accessibilityLabel={t.friends.shareSpendTitle}
                 />
               </View>
             </View>

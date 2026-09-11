@@ -1649,6 +1649,15 @@ export const en: Strings = {
     streakEmpty: 'No streak',
 
     // Crew leaderboard
+    soubojeHeader: 'Duels',
+    soubojAhead: (beers: number) => `You lead by ${beerCountLabel(beers)}`,
+    soubojBehind: (beers: number) => `You trail by ${beerCountLabel(beers)}`,
+    soubojTied: 'Dead level',
+    soubojNoNumbers: 'Not sharing their beers yet',
+    soubojRowA11y: (name: string) => `Open the duel with ${name}`,
+    soubojOpen: 'Duel',
+    soubojHint: 'Who leads, and at what.',
+
     leaderboardHeader: 'Crew leaderboard · 30 days',
     // Nouns only; the numeral renders separately.
     leaderboardVisits: (n: number) => englishPlural(n, { one: 'visit', other: 'visits' }),
@@ -1667,6 +1676,7 @@ export const en: Strings = {
     ghostSubtitle:
       'The crew cannot see where you are sitting or what you have drunk. Your pings stay with you.',
     shareDrinksTitle: 'Show the crew where I am',
+    shareSpendTitle: 'Show what I spent in a duel',
     shareDrinksSubtitle:
       "Your mates see which pub you're in and what you've had tonight. Nobody else does.",
     ghostActive: 'Invisible mode is on',
@@ -1987,6 +1997,51 @@ export const en: Strings = {
     pubFallback: 'Pub',
   },
 
+
+  // Souboj (the duel) - me against one friend. Not a board on purpose: no
+  // winner, no ranking, only who leads which discipline.
+  souboj: {
+    title: 'Duel',
+    me: 'You',
+    vs: 'vs',
+    openFriendA11y: (name: string) => `Open ${name}'s profile`,
+
+    window30d: '30 days',
+    window180d: 'Six months',
+    windowAll: 'All time',
+    windowA11y: 'How far back you compare',
+
+    headlineTied: 'Dead level on beers.',
+    headlineAhead: (beers: number) => `You lead by ${beerCountLabel(beers)}.`,
+    headlineBehind: (name: string, beers: number) =>
+      `${name} leads by ${beerCountLabel(beers)}.`,
+
+    chartHeader: 'Beers by month',
+    legendMe: 'You',
+    chartMonthA11y: (month: string, mine: number, name: string, theirs: number) =>
+      `${month}: you ${mine}, ${name} ${theirs}`,
+
+    rowsHeader: 'Who leads what',
+    rowBeers: 'Beers',
+    rowEvenings: 'Nights',
+    rowPubs: 'Pubs',
+    rowPace: 'Beers a night',
+    rowSpend: 'Spent',
+    paceValue: (value: number) => value.toFixed(1),
+    rowA11y: (label: string, mine: string, theirs: string) =>
+      `${label}: you ${mine}, them ${theirs}`,
+
+    spendOff: (name: string) =>
+      `I compare spending once you both share it. ${name} keeps theirs private for now.`,
+    spendOffMine: 'Turn spending on in your parta settings and I will compare it. Your mate already shares theirs.',
+
+    privateTitle: 'No duel here.',
+    privateBody: (name: string) =>
+      `${name} keeps their beers private. Without that there is nothing to compare.`,
+
+    errorTitle: 'I cannot load the duel right now.',
+    retry: 'Try again',
+  },
 
   // Global leaderboards, /leaderboards. Countrywide boards over logged beers,
   // discovered pubs and Mapper XP. Copy measures diary activity (logged beers,
@@ -3853,6 +3908,13 @@ export const en: Strings = {
     sectionStops: 'Stops',
     sectionChart: 'How it went',
     sectionGames: 'Games',
+    sectionSpend: 'The bill',
+    spendTotal: 'You left behind',
+    spendAverage: 'Average per beer',
+    spendPriciest: (beer: string) => `Priciest: ${beer}`,
+    spendMineOnly: 'Only your beers count here. What the others spent, I cannot see.',
+    spendPartial: (priced: number, total: number) =>
+      `Counting ${priced} of your ${total} beers. The rest have no price.`,
     gamePaying: (name: string) => `Round on ${name}`,
     gameWinner: (name: string) => `${name} won`,
     gamePlayed: 'Played',

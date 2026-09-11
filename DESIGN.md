@@ -109,8 +109,12 @@ Pravidla, která jsou produktová, ne matematická:
 2. **Remíza je remíza.** MVP je `null`, když se o špičku dělí dva.
 3. **Prázdná hodina dostane sloupec.** Jinak se večer nakreslí klidnější, než byl.
 4. **Vyrovnat rekord není překonat rekord.**
-5. Ceny, útrata, promile a čas do řízení se v datech večera **neobjevují nikdy**
+5. **Promile a čas do řízení se neobjevují nikdy**
    (`docs/decisions/no-bac-or-driving-estimates.md`).
+6. **Útrata je moje vlastní.** Cenu nese jen pivo, které zapsal můj telefon, takže
+   sečíst jde jenom moje útrata (`nightSpend`). Celková útrata stolu by byla tiše
+   špatně: cena je nepovinná a kdo nesdílí pití, nemá ve večeru řádky. Do
+   zveřejněného večera se útrata nedostane.
 
 Zdroje jsou řádky, které už existují: `DrinkLog`, `PartyEveningMember`,
 `PubVisit`, `PartyGame`, `BeerPhoto`. Pro party se neukládá nic nového.
@@ -1617,6 +1621,36 @@ Idiomy z etalonu, které platí všude, kde se blok objeví:
 - **Live bar říká „běží to“ tikajícím časem, ne zelenou tečkou** (`LivePartyBar`: výška 58,
   pilulka nad tab barem, hodiny `Fonts.numeral` 20 s tabular-nums, vlastní `+1` CTA 44 pt).
 
+### 20.14 Souboj (poměřování s parťákem)
+
+Poměřování s kamarády je důvod, proč lidi appku otevírají ráno. Ve 3.0 zmizelo
+s žebříčkem party a vrací se jako **Souboj**: já proti jednomu parťákovi
+(`SoubojScreen`), nikdy tabulka celé party.
+
+Rozdíl není kosmetický. Tabulka má prvního a ten první je ten, kdo nejvíc vypil
+— přesně to, co §„Co nedělat“ zakazuje. Dvojice a víc disciplín dávají místo
+koruny větu „ty vedeš v hospodách, on ve večerech“.
+
+Pravidla:
+
+- **Žádný vítěz.** Nikde není slovo „vyhrál“ ani celkové skóre. Každý řádek říká
+  jen, kdo vede v tom jednom řádku; jinak se čísla nesčítají.
+- **Disciplíny jsou čtyři plus jedna.** Piva, Večery, Hospody, Piv na večer;
+  Utraceno přibude, jen když ho sdílejí oba.
+- **Kdo vede, má pěnové číslo, kdo ne, hnědé.** Jantar drží jen dráha mého
+  podílu — obarvit vedoucí číslo jantarem by z akcentu udělalo medaili.
+- **Večer je večer.** Stejná trojice (účet, pijácký den, hospoda) jako na Výkonu.
+  Druhý význam slova „večer“ by znamenal dvě obrazovky, které si odporují.
+- **Bez souhlasu nejsou čísla.** Kdo nesdílí pití, nemá souboj vůbec; obrazovka
+  to řekne větou a nekreslí nuly. Nula čte jako „přestal pít“.
+- **Útrata má vlastní přepínač**, vypnutý, a čte se jen když ho mají zapnutý oba.
+- **Graf je měsíční sloupce Výkonu se druhým sloupcem** (`DuelChart`): moje plný
+  jantar, jeho `amber 0.28`. Měsíc bez piva dostane sloupec.
+
+Vstupy dva: řádek **Souboje** na hubu Party (jeden řádek na parťáka, stav jednou
+větou, počítá se z `leaderboard` v dashboardu, který už chodí) a tichý řádek na
+profilu parťáka. Ani jeden není jantarové tlačítko — na obou plochách už jedno je.
+
 ## 21. Hry — pravidla stavby
 
 ### 21.1 Skořápky, ne obrazovky
@@ -1957,9 +1991,16 @@ Zbývající dev-dluh mocků a kódu vůči dokumentu (opravuje se v kódu, ne v
 
 - **Světlý režim.** Odložený vědomě — zdvojil by práci na každé obrazovce.
 - **Grafy v běžícím večeru.** Patří do recapu (§20.2).
-- **Cokoliv, co počítá promile, útratu nebo čas do řízení.** Rozhodnuto
+- **Cokoliv, co počítá promile nebo čas do řízení.** Rozhodnuto
   a nediskutovatelné (`docs/decisions/no-bac-or-driving-estimates.md`).
-- **Žebříček, který korunuje toho, kdo nejvíc vypil.** Hra na pití nemá vítěze.
+- **Veřejný žebříček podle vypitých piv.** Hra na pití nemá vítěze. Celostátní
+  žebříčky měří objevené hospody a Mapér XP, nikdy litry.
+- **Podium nad partou.** Jedno pořadí od prvního k poslednímu je přesně ta
+  korunovace, které se vyhýbáme. Souboj (§20.14) je proto dvojice, ne tabulka.
+
+Útrata na seznamu není. Vlastní útratu appka počítá a ukazuje ti ji na profilu,
+na Výkonu i v účtence večera; parťákovi ji ukáže jen v Souboji a jen když si ji
+zapnete oba (§20.14).
 
 ## Jak předávat assety
 

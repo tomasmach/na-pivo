@@ -761,6 +761,14 @@ class Account(models.Model):
         default=True,
         help_text="Whether accepted friends can see my live pub presence and automatic drink feed.",
     )
+    # Off by default, unlike the drink feed: what a beer cost is a different
+    # order of disclosure from how many you had, and nobody opted into it when
+    # they joined a parta. Only the Souboj reads it, and only when BOTH sides
+    # have it on.
+    share_spend_with_parta = models.BooleanField(
+        default=False,
+        help_text="Whether a Souboj with an accepted friend may compare my total spend.",
+    )
     quiet_hours_enabled = models.BooleanField(
         default=True,
         help_text="Whether friend pushes are suppressed during the local quiet-hours window.",
