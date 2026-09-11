@@ -294,7 +294,7 @@ export default function FinishNightScreen() {
               accessibilityRole="button"
               accessibilityLabel={t.finishNight.a11yAddPhoto}
             >
-              <CameraIcon size={20} color={Colors.stout} />
+              <CameraIcon size={20} color={Colors.amber} />
             </Pressable>
             {night.photos.map((photo) => (
               <Image key={photo.id} source={{ uri: photo.url }} style={styles.photo} />
@@ -323,26 +323,17 @@ export default function FinishNightScreen() {
           </View>
         ) : null}
 
+        {/* One card, not two. The title used to sit in a field and then again,
+            word for word, in a "this is how it goes out" preview underneath —
+            the same sentence twice, in the same weight. The card you type into
+            IS the post, so there is nothing left to preview. */}
         <View style={styles.field}>
-          <View style={styles.roastRow}>
-            <Text style={styles.roastLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.finishNight.roastLabel}
-            </Text>
-            <Switch
-              value={roastEnabled && roast !== null}
-              disabled={roast === null}
-              onValueChange={setRoastEnabled}
-              trackColor={{ false: withAlpha(Colors.foam, 0.14), true: Colors.amber }}
-              thumbColor={Colors.foam}
-              accessibilityLabel={t.finishNight.a11yRoastSwitch}
-            />
-          </View>
           {roastEnabled && roast ? (
-            <View style={styles.roastPreview}>
-              <Text style={styles.roastLine} maxFontSizeMultiplier={FontScaleCap.body}>
+            <View style={styles.post}>
+              <Text style={styles.postTitle} maxFontSizeMultiplier={FontScaleCap.body}>
                 {roast.line}
               </Text>
-              <Text style={styles.roastBasis} maxFontSizeMultiplier={FontScaleCap.body}>
+              <Text style={styles.postBasis} maxFontSizeMultiplier={FontScaleCap.body}>
                 {roast.basis}
               </Text>
             </View>
@@ -351,35 +342,35 @@ export default function FinishNightScreen() {
               value={customTitle}
               onChangeText={setCustomTitle}
               maxLength={120}
-              placeholder={t.finishNight.titlePlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.titleInput}
+              placeholder={defaultTitle}
+              placeholderTextColor={MockColors.fieldHint}
+              style={[styles.post, styles.postTitle, styles.postInput]}
               accessibilityLabel={t.finishNight.a11yTitleInput}
               maxFontSizeMultiplier={FontScaleCap.body}
+              multiline
             />
           )}
-        </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.finishNight.previewLabel}
-          </Text>
-          <View style={styles.postPreview}>
-            <Text style={styles.postPreviewTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-              {publishTitle}
-            </Text>
-            {roastEnabled && roast ? (
-              <Text style={styles.postPreviewBasis} maxFontSizeMultiplier={FontScaleCap.body}>
-                {roast.basis}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.visibility}>
-          <Text style={styles.visibilityTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {/* A plain line, not a pill. As a pill it looked like a control that
+              could be tapped to change who sees it, and nothing happened. */}
+          <Text style={styles.visibilityLine} maxFontSizeMultiplier={FontScaleCap.body}>
             {t.finishNight.visibility}
           </Text>
+
+          {roast ? (
+            <View style={styles.roastRow}>
+              <Text style={styles.roastLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.finishNight.roastLabel}
+              </Text>
+              <Switch
+                value={roastEnabled}
+                onValueChange={setRoastEnabled}
+                trackColor={{ false: withAlpha(Colors.foam, 0.14), true: Colors.amber }}
+                thumbColor={Colors.foam}
+                accessibilityLabel={t.finishNight.a11yRoastSwitch}
+              />
+            </View>
+          ) : null}
         </View>
       </KeyboardAwareScrollView>
 
@@ -486,55 +477,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: Spacing.sm,
   },
   roastLabel: { fontSize: 16, fontWeight: '700', color: Colors.foam },
-  roastPreview: {
+  // The post itself: read-only when the roast writes it, a field when I do.
+  // Same box either way, so the thing on screen is always the thing that ships.
+  post: {
     gap: 4,
     padding: Spacing.md,
-    borderRadius: Radius.medium,
+    borderRadius: Radius.card,
     backgroundColor: MockColors.surfaceHigh,
   },
-  roastLine: { fontSize: 19, fontWeight: '800', color: Colors.foam, lineHeight: 25 },
-  roastBasis: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, lineHeight: 19 },
-  titleInput: {
-    minHeight: HitArea.min,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.medium,
-    color: Colors.foam,
-    backgroundColor: MockColors.surfaceHigh,
-    fontSize: 16,
-    fontWeight: '600',
+  postTitle: { fontSize: 19, fontWeight: '800', color: Colors.foam, lineHeight: 25 },
+  postBasis: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, lineHeight: 19 },
+  // Two lines' worth. At 88 a one-line title sat in a mostly empty box.
+  // A field has to look like a hole you can type into (§20.9): lighter than the
+  // ground it sits on, plus a hairline. Without the border the card read as a
+  // printed headline and nobody would try to edit it.
+  postInput: {
+    minHeight: 64,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: MockColors.fieldBorder,
   },
-  postPreview: {
-    gap: 4,
-    padding: Spacing.md,
-    borderRadius: Radius.medium,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.amber, 0.28),
-    backgroundColor: withAlpha(Colors.amber, 0.07),
+  visibilityLine: {
+    marginTop: Spacing.sm,
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.mutedText,
   },
-  postPreviewTitle: { fontSize: 18, fontWeight: '800', color: Colors.foam, lineHeight: 24 },
-  postPreviewBasis: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, lineHeight: 18 },
   photoRow: { alignItems: 'center', gap: Spacing.sm },
+  // Quiet, not a second amber plane: the screen spends its one accent on the
+  // button that actually ends the night (§2.2).
   addPhoto: {
     width: 62,
     height: 62,
     borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.amber,
+    backgroundColor: MockColors.surfaceHigh,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.35),
   },
   photo: { width: 62, height: 62, borderRadius: 18, backgroundColor: Colors.stout3 },
   gameLine: { fontSize: 15, fontWeight: '600', color: Colors.foam },
-  visibility: {
-    minHeight: HitArea.min,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    backgroundColor: MockColors.surfaceHigh,
-  },
-  visibilityTitle: { fontSize: 14, fontWeight: '700', color: Colors.foam },
   foot: {
     paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.sm,

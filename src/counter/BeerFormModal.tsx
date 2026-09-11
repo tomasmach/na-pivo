@@ -461,7 +461,13 @@ function BeerFormBody({
               accessibilityLabel={t.counter.scanMenuShortcut}
             >
               <CameraIcon size={16} color={Colors.amber} />
-              <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
+              <Text
+                style={styles.scanShortcutText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
                 {t.counter.scanMenuShortcut}
               </Text>
               <BetaBadge tone="muted" />
@@ -727,7 +733,10 @@ const styles = StyleSheet.create({
     minHeight: HitArea.min,
     marginTop: -4,
     paddingVertical: 10,
-    paddingHorizontal: 14,
+    // 14 left the label wider than the pill in both languages: the camera slid
+    // off the left edge and the BETA badge off the right. The label now shrinks
+    // into whatever the pill has (§3.3 — never bound text without flexShrink).
+    paddingHorizontal: 12,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.3),
@@ -738,6 +747,8 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.14),
   },
   scanShortcutText: {
+    flexShrink: 1,
+    minWidth: 0,
     fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
