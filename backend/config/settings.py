@@ -146,18 +146,29 @@ DATABASES = {
     )
 }
 
-# One psycopg pool per worker PROCESS. Sized so that every process that talks to
-# Postgres (2 gunicorn workers + the cron worker container) stays well under the
-# server's max_connections, with room left for a manual psql.
+# One psycopg pool per worker PROCESS. Every process that talks to Postgres
+# holds its own: 2 gunicorn workers, the cron worker container, plus whatever
+# manage.py someone runs by hand. Worst case is therefore
+# DB_POOL_MAX_SIZE * number of processes, which has to stay under the database
+# server's max_connections (100 in our compose file). With the defaults the two
+# web workers can reach 40; management commands are single-threaded and settle
+# at DB_POOL_MIN_SIZE.
 DB_POOL_MAX_SIZE: int = max(1, int(os.environ.get("DB_POOL_MAX_SIZE", "20")))
-# psycopg refuses a pool whose minimum exceeds its maximum, and it refuses it
-# per request — a single typo in one env value would turn every endpoint into a
-# 500. Clamp instead.
-DB_POOL_MIN_SIZE: int = min(int(os.environ.get("DB_POOL_MIN_SIZE", "2")), DB_POOL_MAX_SIZE)
-# Seconds a request waits for a free pooled connection before failing. Queueing
-# briefly is much cheaper than opening another connection; a mobile client that
-# would retry anyway should not hang for the psycopg default of 30 s.
+# psycopg refuses a pool whose minimum exceeds its maximum, or whose minimum is
+# negative — and it refuses it on every request, so one typo in one env value
+# would turn every endpoint into a 500. Clamp into the range it accepts.
+DB_POOL_MIN_SIZE: int = max(
+    0, min(int(os.environ.get("DB_POOL_MIN_SIZE", "2")), DB_POOL_MAX_SIZE)
+)
+# Seconds a request waits for a free pooled connection. Past this it fails with
+# HTTP 500 (psycopg_pool.PoolTimeout), so this is a real error budget, not a
+# latency knob. Shorter than the psycopg default of 30 s: a mobile client that
+# is going to retry anyway should not be left hanging.
 DB_POOL_TIMEOUT: float = float(os.environ.get("DB_POOL_TIMEOUT", "10"))
+# Seconds of being unused before the pool drops a connection. psycopg retires at
+# most ONE connection per window, so the default of 600 s would leave a spike's
+# worth of idle connections parked for hours after the evening peak.
+DB_POOL_MAX_IDLE: float = float(os.environ.get("DB_POOL_MAX_IDLE", "60"))
 
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     # Local Expo starts an evening, visit and first drink concurrently. SQLite
@@ -196,6 +207,7 @@ elif DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
             "min_size": DB_POOL_MIN_SIZE,
             "max_size": DB_POOL_MAX_SIZE,
             "timeout": DB_POOL_TIMEOUT,
+            "max_idle": DB_POOL_MAX_IDLE,
         },
     }
 
