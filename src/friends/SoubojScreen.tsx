@@ -122,7 +122,7 @@ function headline(me: DuelSide, them: DuelSide, friendName: string): string {
   return t.souboj.headlineBehind(friendName, -diff);
 }
 
-function DisciplineRow({ row }: { row: Discipline }) {
+function DisciplineRow({ row, friendName }: { row: Discipline; friendName: string }) {
   const total = row.mineValue + row.theirsValue;
   // A row where neither has anything splits evenly rather than collapsing to a
   // zero-width bar, which would read as a rendering bug.
@@ -134,7 +134,7 @@ function DisciplineRow({ row }: { row: Discipline }) {
     <View
       style={styles.row}
       accessible
-      accessibilityLabel={t.souboj.rowA11y(row.label, row.mine, row.theirs)}
+      accessibilityLabel={t.souboj.rowA11y(row.label, row.mine, friendName, row.theirs)}
     >
       <View style={styles.rowTop}>
         <Text style={[styles.rowValue, theyLead && styles.rowValueBehind]} allowFontScaling={false}>
@@ -344,13 +344,13 @@ export default function SoubojScreen() {
                   {t.souboj.rowsHeader}
                 </Text>
                 {disciplinesOf(duel.me, duel.them, duel.spendAvailable, currency).map((row) => (
-                  <DisciplineRow key={row.key} row={row} />
+                  <DisciplineRow key={row.key} row={row} friendName={friendName} />
                 ))}
 
                 {!duel.spendAvailable ? (
                   <Text style={styles.footnote} maxFontSizeMultiplier={FontScaleCap.body}>
                     {duel.spendBlockedByMe
-                      ? t.souboj.spendOffMine
+                      ? t.souboj.spendOffMine(friendName)
                       : t.souboj.spendOff(friendName)}
                   </Text>
                 ) : null}

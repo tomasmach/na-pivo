@@ -1698,14 +1698,13 @@ export const cs = {
     // — Souboje na hubu: jeden řádek na parťáka, stav jednou větou —
     soubojeHeader: 'Souboje',
     soubojAhead: (beers: number) => `Vedeš o ${beerCountLabel(beers)}`,
-    soubojBehind: (beers: number) => `Prohráváš o ${beerCountLabel(beers)}`,
+    soubojBehind: (beers: number) => `Vede o ${beerCountLabel(beers)}`,
     soubojTied: 'Přesně nastejno',
     soubojNoNumbers: 'Svoje piva zatím nesdílí',
     soubojRowA11y: (name: string) => `Otevřít souboj s ${name}`,
 
     // — Souboj: dveře z profilu parťáka —
     soubojOpen: 'Souboj',
-    soubojHint: 'Kdo z vás vede a v čem.',
 
     // — Party leaderboard —
     leaderboardHeader: 'Žebříček party · 30 dní',
@@ -1728,7 +1727,7 @@ export const cs = {
     ghostSubtitle:
       'Parta nevidí, kde sedíš, ani co jsi vypil. Tvoje cinknutí zůstanou jen u tebe.',
     shareDrinksTitle: 'Ukazovat partě, kde sedím',
-    shareSpendTitle: 'Ukazovat v souboji, kolik jsem utratil',
+    shareSpendTitle: 'Ukazovat v souboji, kolik utrácím',
     shareDrinksSubtitle:
       'Kámoši uvidí, ve které hospodě zrovna jsi a co ti večer teklo. Nikdo jiný ne.',
     ghostActive: 'Neviditelný režim je zapnutý',
@@ -2082,7 +2081,7 @@ export const cs = {
     window30d: '30 dní',
     window180d: 'Půl roku',
     windowAll: 'Celkem',
-    windowA11y: 'Za jak dlouho se měříte',
+    windowA11y: 'Za jaké období se měříte',
 
     headlineTied: 'Jste na pivech nastejno.',
     headlineAhead: (beers: number) =>
@@ -2102,12 +2101,13 @@ export const cs = {
     rowPace: 'Piv na večer',
     rowSpend: 'Utraceno',
     paceValue: (value: number) => value.toFixed(1).replace('.', ','),
-    rowA11y: (label: string, mine: string, theirs: string) =>
-      `${label}: ty ${mine}, on ${theirs}`,
+    rowA11y: (label: string, mine: string, name: string, theirs: string) =>
+      `${label}: ty ${mine}, ${name} ${theirs}`,
 
     spendOff: (name: string) =>
-      `Útratu porovnám, až si ji budete ukazovat oba. ${name} ji zatím sdílenou nemá.`,
-    spendOffMine: 'Útratu ti ukážu, až si ji zapneš v nastavení party. Kámoš už ji sdílenou má.',
+      `Útratu porovnám, až ji budete sdílet oba. ${name} ji zatím nesdílí.`,
+    spendOffMine: (name: string) =>
+      `${name} svoji útratu sdílí. Zapni si ji v nastavení party a porovnám vás.`,
 
     privateTitle: 'Tenhle souboj nejde.',
     privateBody: (name: string) =>
@@ -3976,7 +3976,7 @@ export const cs = {
     sectionGames: 'Hry',
     // — Účtenka. Jen moje útrata: cizí piva na drátě cenu nenesou. —
     sectionSpend: 'Účtenka',
-    spendTotal: 'Nechal jsi tu',
+    spendTotal: 'Tvoje útrata',
     spendAverage: 'Průměr za pivo',
     spendPriciest: (beer: string) => `Nejdražší: ${beer}`,
     spendMineOnly: 'Počítám jen tvoje piva. Co utratili ostatní, nevidím.',

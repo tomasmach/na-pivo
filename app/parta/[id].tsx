@@ -482,18 +482,12 @@ export default function FriendProfileScreen() {
                   accessibilityLabel={t.friends.soubojOpen}
                   style={({ pressed }) => [styles.soubojRow, pressed && { opacity: 0.65 }]}
                 >
-                  <View style={styles.soubojText}>
-                    <Text style={styles.soubojTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {t.friends.soubojOpen}
-                    </Text>
-                    <Text
-                      style={styles.soubojHint}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {t.friends.soubojHint}
-                    </Text>
-                  </View>
+                  <Text
+                    style={[styles.soubojText, styles.soubojTitle]}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {t.friends.soubojOpen}
+                  </Text>
                   <ChevronRightIcon size={20} color={Colors.mutedText} />
                 </Pressable>
               </HairlineRow>
@@ -777,7 +771,6 @@ const styles = StyleSheet.create({
   },
   soubojText: { flex: 1, minWidth: 0 },
   soubojTitle: { fontWeight: '700', fontSize: 17, color: Colors.foam },
-  soubojHint: { marginTop: 2, fontWeight: '500', fontSize: 13, color: Colors.mutedText },
 
   // — Badge showcase —
   showcaseWrap: {

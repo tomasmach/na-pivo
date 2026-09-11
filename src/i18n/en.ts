@@ -1651,12 +1651,11 @@ export const en: Strings = {
     // Crew leaderboard
     soubojeHeader: 'Duels',
     soubojAhead: (beers: number) => `You lead by ${beerCountLabel(beers)}`,
-    soubojBehind: (beers: number) => `You trail by ${beerCountLabel(beers)}`,
+    soubojBehind: (beers: number) => `Leads by ${beerCountLabel(beers)}`,
     soubojTied: 'Dead level',
     soubojNoNumbers: 'Not sharing their beers yet',
     soubojRowA11y: (name: string) => `Open the duel with ${name}`,
     soubojOpen: 'Duel',
-    soubojHint: 'Who leads, and at what.',
 
     leaderboardHeader: 'Crew leaderboard · 30 days',
     // Nouns only; the numeral renders separately.
@@ -1676,7 +1675,7 @@ export const en: Strings = {
     ghostSubtitle:
       'The crew cannot see where you are sitting or what you have drunk. Your pings stay with you.',
     shareDrinksTitle: 'Show the crew where I am',
-    shareSpendTitle: 'Show what I spent in a duel',
+    shareSpendTitle: 'Show what I spend in a duel',
     shareDrinksSubtitle:
       "Your mates see which pub you're in and what you've had tonight. Nobody else does.",
     ghostActive: 'Invisible mode is on',
@@ -2009,7 +2008,7 @@ export const en: Strings = {
     window30d: '30 days',
     window180d: 'Six months',
     windowAll: 'All time',
-    windowA11y: 'How far back you compare',
+    windowA11y: 'Which stretch you compare',
 
     headlineTied: 'Dead level on beers.',
     headlineAhead: (beers: number) => `You lead by ${beerCountLabel(beers)}.`,
@@ -2028,12 +2027,13 @@ export const en: Strings = {
     rowPace: 'Beers a night',
     rowSpend: 'Spent',
     paceValue: (value: number) => value.toFixed(1),
-    rowA11y: (label: string, mine: string, theirs: string) =>
-      `${label}: you ${mine}, them ${theirs}`,
+    rowA11y: (label: string, mine: string, name: string, theirs: string) =>
+      `${label}: you ${mine}, ${name} ${theirs}`,
 
     spendOff: (name: string) =>
-      `I compare spending once you both share it. ${name} keeps theirs private for now.`,
-    spendOffMine: 'Turn spending on in your parta settings and I will compare it. Your mate already shares theirs.',
+      `I compare spending once you both share it. ${name} does not share theirs yet.`,
+    spendOffMine: (name: string) =>
+      `${name} shares their spending. Turn yours on in the crew settings and I will compare you.`,
 
     privateTitle: 'No duel here.',
     privateBody: (name: string) =>
@@ -3909,7 +3909,7 @@ export const en: Strings = {
     sectionChart: 'How it went',
     sectionGames: 'Games',
     sectionSpend: 'The bill',
-    spendTotal: 'You left behind',
+    spendTotal: 'What you spent',
     spendAverage: 'Average per beer',
     spendPriciest: (beer: string) => `Priciest: ${beer}`,
     spendMineOnly: 'Only your beers count here. What the others spent, I cannot see.',
