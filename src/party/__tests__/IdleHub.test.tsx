@@ -28,17 +28,22 @@ const lastSession: TallySession = {
   ] as TallySession['drinks'],
 };
 
-const handlers = () => ({ onInvite: jest.fn(), onJoinByCode: jest.fn() });
+const handlers = () => ({ onOpenTable: jest.fn() });
 
 beforeEach(() => {
   push.mockClear();
 });
 
-it('offers both table doors and nothing else when there is no history', () => {
-  const screen = render(<IdleHub lastSession={null} {...handlers()} />);
-  expect(screen.getByText('Pozvat ke stolu')).toBeTruthy();
-  expect(screen.getByText('Přisednout kódem')).toBeTruthy();
+it('offers the table as one quiet pill, with no amber word beside it', () => {
+  const h = handlers();
+  const screen = render(<IdleHub lastSession={null} {...h} />);
+  expect(screen.getByText('Stůl')).toBeTruthy();
+  // The two doors live in the sheet behind it, not on the hub.
+  expect(screen.queryByText('Pozvat ke stolu')).toBeNull();
+  expect(screen.queryByText('Přisednout kódem')).toBeNull();
   expect(screen.queryByText('Naposledy')).toBeNull();
+  fireEvent.press(screen.getByLabelText('Stůl. Pozvat ke stolu, nebo přisednout kódem.'));
+  expect(h.onOpenTable).toHaveBeenCalledTimes(1);
 });
 
 it('keeps the games and the parta off the screen before the first beer', () => {
@@ -59,13 +64,4 @@ it('names the last night with the diary date label and honest drink counts', () 
   });
 });
 
-it('separates the two table doors', () => {
-  const h = handlers();
-  const screen = render(<IdleHub lastSession={null} {...h} />);
-  fireEvent.press(screen.getByLabelText('Přizvat ke stolu'));
-  expect(h.onInvite).toHaveBeenCalledTimes(1);
-  expect(h.onJoinByCode).not.toHaveBeenCalled();
-  fireEvent.press(screen.getByLabelText('Přisednout ke stolu kódem'));
-  expect(h.onJoinByCode).toHaveBeenCalledTimes(1);
-  expect(h.onInvite).toHaveBeenCalledTimes(1);
-});
+

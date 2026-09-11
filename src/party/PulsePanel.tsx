@@ -57,6 +57,7 @@ export function PulsePanel({
   stats,
   startedAt,
   clock = true,
+  hero = false,
 }: {
   /** Whatever is worth knowing right now; the clock is added after them. */
   stats: PulseStat[];
@@ -67,13 +68,19 @@ export function PulsePanel({
    * count beside it is real from the first glance, so the block itself stays.
    */
   clock?: boolean;
+  /**
+   * The counter size (§3.1): one number, centred, when it is the whole answer
+   * on the screen. At 33 pt in the top left corner with two thirds of the row
+   * empty beside it, the number the tab exists for read like a caption.
+   */
+  hero?: boolean;
 }) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, hero && styles.rowHero]}>
       {stats.map((stat) => (
-        <View key={`${stat.value}-${stat.unit ?? ''}`} style={styles.col}>
+        <View key={`${stat.value}-${stat.unit ?? ''}`} style={[styles.col, hero && styles.colHero]}>
           <Text
-            style={styles.value}
+            style={[styles.value, hero && styles.valueHero]}
             allowFontScaling={false}
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -81,7 +88,11 @@ export function PulsePanel({
           >
             {stat.value}
           </Text>
-          <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={[styles.label, hero && styles.labelHero]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {stat.unit ?? ''}
           </Text>
         </View>
@@ -127,4 +138,10 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   label: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 3 },
+  // §3.1 counter step. Air above and below, because it is the whole screen
+  // between the pub and the button, not a row in a header.
+  rowHero: { marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  colHero: { alignItems: 'center' },
+  valueHero: { fontSize: 76, lineHeight: 94, letterSpacing: -1 },
+  labelHero: { fontSize: 15, marginTop: 0 },
 });

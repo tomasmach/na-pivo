@@ -6,41 +6,82 @@
 import type { PartyTap } from '@/mocks/livePartyStore';
 import { drinkingDayKey, sessionCount, type TallySession } from '@/stores/tallyStore';
 
+/** What one press of the hub's amber button does. */
+export type PrimaryTap = 'first' | 'repeat' | 'pick';
+
+/**
+ * The one rule behind that button.
+ *
+ * "Start the night" is only ever the answer when no night is running. It used
+ * to be the fallthrough for a running evening with nothing to repeat — which
+ * happens the moment you move to another pub or sit down at somebody's table —
+ * and one tap there threw away the stopwatch, the stops and the games. A
+ * running hub with nothing to repeat asks instead.
+ */
+export function primaryTapAction(active: boolean, repeatableDrink: boolean): PrimaryTap {
+  if (!active) return 'first';
+  return repeatableDrink ? 'repeat' : 'pick';
+}
+
 /**
  * The beer the first-beer button pours, and names.
  *
- * The pub's own tap wins, because that is what the house pours and what the
- * button promises; with several taps mapped it is the one the evening was
- * opened with, and with none at all it stays the pub-less fallback the store
- * already holds. Nothing here guesses a beer the pub does not serve.
+ * The pub's mapped tap wins — `partyTapOptions` has already put the pub's own
+ * list in front — because that is what the house pours and what the button
+ * promises. The stored house beer is only a fallback: it is set when the pub is
+ * chosen, so at a pub whose tap list arrives a second later it is still the
+ * generic "Pivo" while the real tap sits right there. Nothing here invents a
+ * beer the pub does not serve.
  */
 export function firstDrinkTap(taps: readonly PartyTap[], houseBeer: string): PartyTap {
-  return (
-    taps.find((tap) => tap.name === houseBeer) ??
-    taps[0] ?? { name: houseBeer, priceCzk: null }
+  return taps[0] ?? { name: houseBeer, priceCzk: null };
+}
+
+/**
+ * The big number before the night runs: beers this phone logged tonight.
+ *
+ * Tonight is the drinking day (04:00 to 04:00) — the same evening the running
+ * hub counts, so the number does not jump when a night starts, ends, or is
+ * closed from another phone. Counting only the open session made the hub read
+ * "0" directly above "Naposledy · Dnes · 1 pivo", and an offline queue flush
+ * flipped it from 0 to 14 with nothing pressed. Yesterday is not tonight.
+ */
+export function idleBeerCount(
+  current: TallySession | null,
+  history: readonly TallySession[],
+  now: Date,
+): number {
+  return tonight(current, history, now).reduce((sum, session) => sum + sessionCount(session), 0);
+}
+
+function tonight(
+  current: TallySession | null,
+  history: readonly TallySession[],
+  now: Date,
+): TallySession[] {
+  const today = drinkingDayKey(now);
+  return [current, ...history].filter(
+    (session): session is TallySession =>
+      session !== null && drinkingDayKey(new Date(session.startedAt)) === today,
   );
 }
 
 /**
- * The big number before the night runs.
+ * The most recent evening with something in it that is NOT tonight.
  *
- * Usually zero, and zero is the right answer once an evening has been finished:
- * that one is in "Naposledy" now, and repeating its count as the headline over
- * a button that starts a new one would be the same number twice.
- *
- * It is NOT zero while the counter's own session is still open without the
- * party chrome around it — the app was relaunched, the shared table was lost,
- * the evening was never restored. Those beers are tonight's, they are in the
- * diary, and a hub reading "0" over them would be lying about the only number
- * on the screen. A session from an earlier drinking day is not tonight.
+ * Tonight is already the big number above this row; printing it again as
+ * "Naposledy · Dnes · 1 pivo" made the hub argue with itself. This row is the
+ * tab's memory, and memory starts yesterday.
  */
-export function idleBeerCount(current: TallySession | null, now: Date): number {
-  if (!current) return 0;
-  if (drinkingDayKey(new Date(current.startedAt)) !== drinkingDayKey(now)) return 0;
-  return sessionCount(current);
-}
-
-/** The most recent archived evening with something in it, or null. */
-export function lastArchivedSession(history: readonly TallySession[]): TallySession | null {
-  return history.find((session) => session.drinks.length > 0) ?? null;
+export function lastArchivedSession(
+  history: readonly TallySession[],
+  now: Date,
+): TallySession | null {
+  const today = drinkingDayKey(now);
+  return (
+    history.find(
+      (session) =>
+        session.drinks.length > 0 && drinkingDayKey(new Date(session.startedAt)) !== today,
+    ) ?? null
+  );
 }

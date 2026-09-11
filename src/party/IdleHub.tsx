@@ -8,8 +8,8 @@
  * (`LivePartyMockScreen`), exactly where they are once the night runs, and what
  * is left here is what may quietly follow them:
  *
- *   table       one line, two words: start one, or sit down at somebody's
- *   naposledy   the last evening, so the tab has a memory
+ *   naposledy   the last evening that is not tonight, so the tab has a memory
+ *   stůl        one quiet pill to the two table doors, a tap deeper
  *
  * Both are local, so the screen is whole with no signal. The parta's presence
  * ("Kdo už sedí") used to sit between them and is gone from here: three server
@@ -24,22 +24,20 @@ import { useRouter, type Href } from 'expo-router';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { useNowTick } from '@/friends/useNowTick';
 import { t } from '@/i18n';
-import { MockType } from '@/mocks/mockTheme';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { eveningDateLabel, sessionDrinkSummary } from '@/myBeers/eveningModel';
 import type { TallySession } from '@/stores/tallyStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 export function IdleHub({
   lastSession,
-  onInvite,
-  onJoinByCode,
+  onOpenTable,
 }: {
   lastSession: TallySession | null;
-  onInvite: () => void;
-  onJoinByCode: () => void;
+  onOpenTable: () => void;
 }) {
   const router = useRouter();
   // Ticks, so a hub left open past the 04:00 cutoff stops saying "Včera".
@@ -54,34 +52,6 @@ export function IdleHub({
 
   return (
     <View style={styles.root}>
-      {/* Two text links, not two pills: the table is the evening's second
-          question and the screen already has its one amber button (§6.3). */}
-      <View style={styles.tableRow}>
-        <Pressable
-          onPress={onInvite}
-          style={({ pressed }) => [styles.linkHit, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={t.liveParty.a11yInvite}
-        >
-          <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.liveParty.idleInviteLink}
-          </Text>
-        </Pressable>
-        <Text style={styles.linkDot} maxFontSizeMultiplier={FontScaleCap.body}>
-          ·
-        </Text>
-        <Pressable
-          onPress={onJoinByCode}
-          style={({ pressed }) => [styles.linkHit, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={t.liveParty.a11yJoinWithCode}
-        >
-          <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.liveParty.joinLink}
-          </Text>
-        </Pressable>
-      </View>
-
       {lastSession ? (
         <>
           <SectionBreak title={t.liveParty.idleLastTitle} />
@@ -116,6 +86,21 @@ export function IdleHub({
           </Pressable>
         </>
       ) : null}
+
+      {/* The table, as one quiet pill (§6.2) rather than two amber words under
+          the number: amber is the button's, and two accented links beside it
+          were three things competing for the same tap. Behind it the two doors
+          are a named sheet, one tap deeper (§6.3). */}
+      <Pressable
+        onPress={onOpenTable}
+        style={({ pressed }) => [styles.tableRow, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={t.liveParty.a11yOpenTable}
+      >
+        <Text style={styles.tableLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {t.liveParty.idleTable}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -123,16 +108,17 @@ export function IdleHub({
 const styles = StyleSheet.create({
   // Air under the last row so it does not sit on the control row.
   root: { paddingBottom: Spacing.lg },
-  // Its own block, not a caption to the number above it (§4).
+  // The canonical quiet pill (§6.2): stout3, no border, self-sized.
   tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
+    alignSelf: 'flex-start',
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    marginTop: MockLayout.controlGap,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
   },
-  linkHit: { minHeight: HitArea.min, justifyContent: 'center' },
-  link: { fontSize: 14, fontWeight: '800', color: Colors.amber },
-  linkDot: { fontSize: 14, fontWeight: '800', color: Colors.mutedText },
+  tableLabel: { fontSize: 14, fontWeight: '700', color: Colors.foam },
   // The canonical row (§5.1); 68 because it is a two-line row (§4.1). It is the
   // only one here, so it never draws the hairline a list needs.
   row: {
