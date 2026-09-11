@@ -25,6 +25,8 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import psycopg
+import psycopg_pool
 import pytest
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -1479,6 +1481,13 @@ def test_merge_participants_are_locked_in_primary_key_order(monkeypatch):
     assert locked_target.pk == first.pk
 
 
+def _as_django_error(cause: BaseException) -> DatabaseError:
+    """Rebuild how Django re-raises a driver error: wrapped, cause attached."""
+    error = DatabaseError(str(cause))
+    error.__cause__ = cause
+    return error
+
+
 @pytest.mark.django_db(transaction=True)
 def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeypatch):
     source = Account.objects.create(device_id="merge-nowait-source")
@@ -1496,7 +1505,9 @@ def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeyp
 
     def fail_new_account_lock(*args, **kwargs):
         if kwargs.get("nowait"):
-            raise DatabaseError("could not obtain lock")
+            raise _as_django_error(
+                psycopg.errors.LockNotAvailable("could not obtain lock on row")
+            )
         return original_select_for_update(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -1513,6 +1524,44 @@ def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeyp
     assert raised.value.http_status == 409
     assert Account.objects.filter(pk=source.pk).exists()
     assert not AccountIdentityAlias.objects.filter(public_id=source.public_id).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_does_not_blame_the_account_when_the_pool_runs_out(monkeypatch):
+    """An exhausted connection pool is not "someone else changed your account".
+
+    ``PoolTimeout`` is an ``OperationalError``, so the wide ``except
+    DatabaseError`` around the NOWAIT lock used to turn a busy server into a
+    409 telling the user to log in again. It has to stay a server error, which
+    the client retries.
+    """
+    source = Account.objects.create(device_id="merge-pool-source")
+    target = Account.objects.create(device_id="merge-pool-target")
+    third = Account.objects.create(device_id="merge-pool-third")
+    evening = PartyEvening.objects.create(
+        host=source,
+        client_id=uuid.uuid4(),
+        join_code="POOLTO",
+        pub_name="U Zámku",
+    )
+    PartyEveningMember.objects.create(evening=evening, account=source)
+    PartyEveningMember.objects.create(evening=evening, account=third)
+    original_select_for_update = Account.objects.select_for_update
+
+    def fail_new_account_lock(*args, **kwargs):
+        if kwargs.get("nowait"):
+            raise _as_django_error(
+                psycopg_pool.PoolTimeout("couldn't get a connection after 10.00 sec")
+            )
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(Account.objects, "select_for_update", fail_new_account_lock)
+
+    with pytest.raises(DatabaseError):
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
+
+    assert Account.objects.filter(pk=source.pk).exists()
 
 
 @pytest.mark.django_db

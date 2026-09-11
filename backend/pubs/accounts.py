@@ -165,6 +165,28 @@ class AccountPurgeConflictError(Exception):
     """A shared tree changed while the purge acquired its global lock scope."""
 
 
+# PostgreSQL states that mean "another writer got here first, retry":
+# 55P03 lock_not_available (what NOWAIT raises) and 40P01 deadlock_detected.
+_ROW_LOCK_CONFLICT_SQLSTATES = frozenset({"55P03", "40P01"})
+
+
+def is_row_lock_conflict(exc: BaseException) -> bool:
+    """True only for a losing race for a row lock, not for any database error.
+
+    ``select_for_update(nowait=True)`` is wrapped in ``except DatabaseError``
+    below so a genuine conflict becomes a clean 409 instead of a deadlock. That
+    net is wider than the intent: a pool timeout arrives as
+    ``psycopg_pool.PoolTimeout``, which is an ``OperationalError`` and therefore
+    a ``DatabaseError`` too. Reporting an overloaded pool as "someone else
+    changed your account, log in again" is exactly the kind of confident lie
+    that once left somebody locked out, so anything that is not a lock conflict
+    has to keep its own failure mode.
+    """
+
+    # Django re-raises backend errors with the driver exception as __cause__.
+    return getattr(exc.__cause__, "sqlstate", None) in _ROW_LOCK_CONFLICT_SQLSTATES
+
+
 _LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
 # Bounded per-call timeout; deletes run sequentially, one request per issue,
 # fail-closed — any failure aborts the whole purge with nothing committed.
@@ -2222,6 +2244,8 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
                     .order_by("pk")
                 }
         except DatabaseError as exc:
+            if not is_row_lock_conflict(exc):
+                raise
             raise AccountError(
                 gettext("Účet se mezitím změnil. Zkus přihlášení znovu."),
                 code="auth",
@@ -3586,6 +3610,8 @@ def _lock_account_purge_scope(account_id: int) -> Account | None:
                     .order_by("pk")
                 }
         except DatabaseError as exc:
+            if not is_row_lock_conflict(exc):
+                raise
             raise AccountPurgeConflictError from exc
         if set(newly_locked) != missing_ids:
             raise AccountPurgeConflictError
