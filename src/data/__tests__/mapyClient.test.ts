@@ -23,6 +23,11 @@ import {
   searchPubsNear,
   suggestPubLocations,
 } from '../mapyClient';
+import { trackApiFailure } from '../telemetryClient';
+
+jest.mock('../telemetryClient', () => ({ trackApiFailure: jest.fn() }));
+
+const trackApiFailureMock = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
 
 const REST = 'Restaurace a pohostinství';
 const BAR = 'Bar';
@@ -1060,5 +1065,109 @@ describe('reverseGeocodePubLocation', () => {
       lat: 50.080123,
       lng: 16.510616,
     });
+  });
+});
+
+describe('location lookup failures', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
+
+  afterEach(() => {
+    jest.useRealTimers();
+    global.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_BACKEND === undefined) {
+      delete process.env.EXPO_PUBLIC_BACKEND_URL;
+    } else {
+      process.env.EXPO_PUBLIC_BACKEND_URL = ORIGINAL_BACKEND;
+    }
+    jest.clearAllMocks();
+  });
+
+  it('resolves to null when the backend geocoder answers 503', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({ detail: 'Location lookup is not configured.' }),
+    })) as unknown as typeof fetch;
+
+    await expect(
+      geocodePubLocation({ name: 'Bar Dawu', placeId: 'place-dawu' }),
+    ).resolves.toBeNull();
+  });
+
+  it('resolves to null when the backend answers with no items', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    })) as unknown as typeof fetch;
+
+    await expect(
+      geocodePubLocation({ name: 'Bar Dawu', placeId: 'place-dawu' }),
+    ).resolves.toBeNull();
+    await expect(
+      reverseGeocodePubLocation({ lat: 50.08, lng: 14.42 }),
+    ).resolves.toBeNull();
+    await expect(suggestPubLocations({ name: 'Bar Dawu' })).resolves.toEqual([]);
+  });
+
+  it('gives up on a stalled lookup instead of waiting forever', async () => {
+    jest.useFakeTimers();
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    // A stalled upstream: the socket never answers, only the abort resolves it.
+    global.fetch = jest.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const geocode = geocodePubLocation({ name: 'Bar Dawu', placeId: 'place-dawu' });
+    const reverse = reverseGeocodePubLocation({ lat: 50.08, lng: 14.42 });
+    const suggest = suggestPubLocations({ name: 'Bar Dawu' });
+    await jest.advanceTimersByTimeAsync(12_000);
+
+    await expect(geocode).resolves.toBeNull();
+    await expect(reverse).resolves.toBeNull();
+    await expect(suggest).resolves.toEqual([]);
+    // A timeout is a real outage signal — it has to reach telemetry as one,
+    // and without the error object (it carries no privacy-safe detail).
+    expect(trackApiFailureMock).toHaveBeenCalledWith('pub_location_geocode_backend', {
+      endpoint: '/v1/pubs/geocode',
+      reason: 'timeout',
+    });
+    expect(trackApiFailureMock).toHaveBeenCalledWith('pub_location_geocode_backend', {
+      endpoint: '/v1/pubs/reverse-geocode',
+      reason: 'timeout',
+    });
+    expect(trackApiFailureMock).toHaveBeenCalledWith('pub_location_suggest_backend', {
+      endpoint: '/v1/pubs/suggest',
+      reason: 'timeout',
+    });
+  });
+
+  it('stays silent when the caller cancels the lookup', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    const controller = new AbortController();
+    global.fetch = jest.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const pending = suggestPubLocations({ name: 'Bar Dawu' }, controller.signal);
+    controller.abort();
+
+    await expect(pending).resolves.toEqual([]);
+    // The screen cancelled it on purpose (new keystroke, unmount) — that is not
+    // a backend failure and must not show up as one.
+    expect(trackApiFailureMock).not.toHaveBeenCalled();
   });
 });

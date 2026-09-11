@@ -148,12 +148,14 @@ class GooglePlacesAutocompleteSource:
                 break
             if attempt == 1:
                 raise GooglePlacesUnavailableError(
-                    "Google Places retry budget exhausted."
+                    f"Google Places retry budget exhausted "
+                    f"(HTTP {response.status_code})."
                 )
 
         if response is None or not response.ok:
+            status_code = "none" if response is None else response.status_code
             raise GooglePlacesUnavailableError(
-                "Google Places returned an error response."
+                f"Google Places returned HTTP {status_code}."
             )
         try:
             payload = response.json()

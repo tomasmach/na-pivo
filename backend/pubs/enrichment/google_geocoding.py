@@ -214,12 +214,17 @@ class GoogleGeocodingSource:
                 break
             if attempt == 1:
                 raise GoogleGeocodingUnavailableError(
-                    "Google Geocoding retry budget exhausted."
+                    f"Google Geocoding retry budget exhausted "
+                    f"(HTTP {response.status_code})."
                 )
 
         if response is None or not response.ok:
+            # The status is the one thing operations needs here: 403 reads as a
+            # disabled API or a key restriction, 429 as a spent quota. It never
+            # carries user data, so it is safe to log.
+            status_code = "none" if response is None else response.status_code
             raise GoogleGeocodingUnavailableError(
-                "Google Geocoding returned an error response."
+                f"Google Geocoding returned HTTP {status_code}."
             )
         try:
             payload = response.json()
