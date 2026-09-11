@@ -229,6 +229,9 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUBLIC_API_ORIGIN` | `http://localhost:8012` (dev), `https://api.na-pivo.cz` (prod) | Bare API origin (`scheme://host`, no path/query) used when the backend links to itself |
 | `ANDROID_APP_LINK_CERT_FINGERPRINTS` | _(unset)_ | Comma-separated SHA-256 fingerprints served via `/.well-known/assetlinks.json`; production value is the Play App Signing cert from Google Play Console > App integrity > App signing key certificate (EAS/local `keytool` show the upload cert and may differ). Extra entries cover preview/internal/direct-distribution builds. Unset/malformed serves no association (fail closed) and the production deploy check refuses to pass |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
+| `DB_POOL_MAX_SIZE` | `20` | Postgres connections one process may hold. Every process counts (2 gunicorn workers + the worker container), so the total has to stay under the db container's `max_connections` (100). Ignored on SQLite |
+| `DB_POOL_MIN_SIZE` | `2` | Connections kept warm per process; clamped to `DB_POOL_MAX_SIZE` |
+| `DB_POOL_TIMEOUT` | `10` | Seconds a request waits for a free pooled connection before it fails |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |

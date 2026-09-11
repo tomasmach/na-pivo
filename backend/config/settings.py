@@ -145,6 +145,20 @@ DATABASES = {
         conn_max_age=600,
     )
 }
+
+# One psycopg pool per worker PROCESS. Sized so that every process that talks to
+# Postgres (2 gunicorn workers + the cron worker container) stays well under the
+# server's max_connections, with room left for a manual psql.
+DB_POOL_MAX_SIZE: int = max(1, int(os.environ.get("DB_POOL_MAX_SIZE", "20")))
+# psycopg refuses a pool whose minimum exceeds its maximum, and it refuses it
+# per request — a single typo in one env value would turn every endpoint into a
+# 500. Clamp instead.
+DB_POOL_MIN_SIZE: int = min(int(os.environ.get("DB_POOL_MIN_SIZE", "2")), DB_POOL_MAX_SIZE)
+# Seconds a request waits for a free pooled connection before failing. Queueing
+# briefly is much cheaper than opening another connection; a mobile client that
+# would retry anyway should not hang for the psycopg default of 30 s.
+DB_POOL_TIMEOUT: float = float(os.environ.get("DB_POOL_TIMEOUT", "10"))
+
 if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
     # Local Expo starts an evening, visit and first drink concurrently. SQLite
     # DEFERRED transactions can read first and then fail immediately while
@@ -154,6 +168,35 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
         **DATABASES["default"].get("OPTIONS", {}),
         "timeout": 20,
         "transaction_mode": "IMMEDIATE",
+    }
+elif DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    # Production runs Django on gunicorn's ASGI (uvicorn) workers. Django wraps
+    # every request in its own asgiref ThreadSensitiveContext, so every request
+    # gets a FRESH single-use thread, and the ORM's connection registry is
+    # thread-local — one new Postgres connection per request. With persistent
+    # connections (CONN_MAX_AGE > 0) Django deliberately does not close it when
+    # the request ends, but the thread is discarded immediately, so nothing ever
+    # reuses that connection either; the socket stays open until a garbage
+    # collection pass happens to reclaim the wrapper. Open connections therefore
+    # grew with the REQUEST RATE rather than with concurrency, and the evening
+    # peak walked straight into "FATAL: sorry, too many clients already".
+    #
+    # A pool fixes both halves. CONN_MAX_AGE=0 returns the connection to the
+    # pool at the end of every request (Django requires it: pooling and
+    # persistent connections are mutually exclusive), and max_size is a hard
+    # per-process ceiling that no traffic spike can cross.
+    DATABASES["default"]["CONN_MAX_AGE"] = 0
+    # Pooled connections can sit idle for minutes. The cheap check on checkout
+    # turns a socket the server closed underneath us into a transparent
+    # reconnect instead of a 500 for whoever drew the stale connection.
+    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+    DATABASES["default"]["OPTIONS"] = {
+        **DATABASES["default"].get("OPTIONS", {}),
+        "pool": {
+            "min_size": DB_POOL_MIN_SIZE,
+            "max_size": DB_POOL_MAX_SIZE,
+            "timeout": DB_POOL_TIMEOUT,
+        },
     }
 
 # ---------------------------------------------------------------------------
