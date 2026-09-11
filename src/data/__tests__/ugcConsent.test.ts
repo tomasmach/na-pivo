@@ -8,6 +8,8 @@ import {
   notifyUgcConsentRequired,
   notifyUgcConsentRequiredFromResponse,
   clearUgcConsentStateForTests,
+  holdUgcPublishing,
+  isUgcConsentPending,
 } from '../ugcConsent';
 
 const VALID_WIRE = {
@@ -86,6 +88,39 @@ describe('ugcConsent', () => {
     });
   });
 
+  describe('isUgcConsentPending', () => {
+    it('is false for an account nothing is known about', () => {
+      expect(isUgcConsentPending('account-1')).toBe(false);
+    });
+
+    it('is true once the server refused this account with a 428', () => {
+      holdUgcPublishing('account-1');
+
+      expect(isUgcConsentPending('account-1')).toBe(true);
+      expect(isUgcConsentPending('account-2')).toBe(false);
+    });
+
+    it('is true when the last profile snapshot says the policy is not accepted', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(FRESH_ACCOUNT_WIRE)!);
+
+      expect(isUgcConsentPending('account-1')).toBe(true);
+    });
+
+    it('an accepted snapshot lifts a hold left by an earlier 428', () => {
+      holdUgcPublishing('account-1');
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(VALID_WIRE)!);
+
+      expect(isUgcConsentPending('account-1')).toBe(false);
+    });
+
+    it('a non-accepted snapshot does not lift the hold', () => {
+      holdUgcPublishing('account-1');
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(FRESH_ACCOUNT_WIRE)!);
+
+      expect(isUgcConsentPending('account-1')).toBe(true);
+    });
+  });
+
   describe('rememberUgcConsent + ugcPolicyHeaders', () => {
     it('returns the baked header for an unknown account', () => {
       rememberUgcConsent('account-1', parseUgcConsentSnapshot(VALID_WIRE)!);
@@ -155,7 +190,24 @@ describe('ugcConsent', () => {
       expect(call[0]).toMatchObject({ code: 'ugc_consent_required' });
       expect(call).toHaveLength(1);
       const payload = call[0];
-      expect(Object.keys(payload).sort()).toEqual(['code']);
+      expect(Object.keys(payload).sort()).toEqual(['code', 'userInitiated']);
+      // A background retry must stay marked as such — the sheet's quiet period
+      // after "Teď ne" depends on it.
+      expect(payload.userInitiated).toBe(false);
+
+      unsubscribe();
+    });
+
+    it('marks a request the user just triggered', () => {
+      const listener = jest.fn();
+      const unsubscribe = subscribeUgcConsentRequired(listener);
+
+      notifyUgcConsentRequired('ugc_consent_required', { userInitiated: true });
+
+      expect(listener.mock.calls[0][0]).toEqual({
+        code: 'ugc_consent_required',
+        userInitiated: true,
+      });
 
       unsubscribe();
     });

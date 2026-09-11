@@ -20,6 +20,8 @@ import {
 } from '@/data/pubAmenitiesView';
 import { pubIdentityKey } from '@/data/pubIdentity';
 import { runPrivateAccountMutation } from '@/data/privateAccountBoundary';
+import { notifyUgcConsentRequired } from '@/data/ugcConsent';
+import { amenityVoteNeedsUgcConsent } from '@/components/amenities/amenityVoteConsent';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -165,6 +167,15 @@ export function usePubAmenityMapping({
               : rules.confirm;
           scheduleXpToast();
         }
+        return;
+      }
+
+      // A vote is a public contribution: without accepted policy the server
+      // answers 428. Ask here, at the tap, instead of letting the request fail
+      // silently — the vote is already stored and queued, and the queue flushes
+      // as soon as the sheet is accepted.
+      if (next != null && amenityVoteNeedsUgcConsent()) {
+        notifyUgcConsentRequired('ugc_consent_required', { userInitiated: true });
         return;
       }
 

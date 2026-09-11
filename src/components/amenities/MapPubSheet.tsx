@@ -99,6 +99,8 @@ import {
 } from '@/data/pubAmenitiesSnapshot';
 import { fetchPubAmenities } from '@/data/pubAmenitiesClient';
 import { getBackendEndpoint } from '@/data/backendConfig';
+import { notifyUgcConsentRequired } from '@/data/ugcConsent';
+import { amenityVoteNeedsUgcConsent } from '@/components/amenities/amenityVoteConsent';
 import { useToastStore } from '@/stores/toastStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -431,6 +433,19 @@ export function MapPubSheet({
         return;
       }
 
+      // A vote is a public contribution, and without accepted policy the server
+      // answers 428 to every one of them. Ask at the tap instead of failing
+      // silently. The consent sheet cannot present over this one (one modal at a
+      // time), so this sheet steps aside first; the vote is already stored and
+      // queued and goes out the moment the policy is accepted.
+      if (next != null && amenityVoteNeedsUgcConsent()) {
+        onClose();
+        runAfterSheetClose(() =>
+          notifyUgcConsentRequired('ugc_consent_required', { userInitiated: true }),
+        );
+        return;
+      }
+
       // Online: PUT this single vote to read the authoritative XP envelope. The
       // queue's later duplicate flush is a server-idempotent 0-XP no-op.
       const wire = buildAmenityVoteWire({
@@ -473,8 +488,10 @@ export function MapPubSheet({
     [
       backendConfigured,
       identityKey,
+      onClose,
       pubKey,
       pubName,
+      runAfterSheetClose,
       setVote,
       estimateLocalXp,
       scheduleXpToast,

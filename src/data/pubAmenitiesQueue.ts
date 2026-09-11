@@ -26,6 +26,11 @@
  *   - 'ok' (2xx)              → reached backend → drop from queue.
  *   - 'permanent-error' (4xx) → will never succeed → drop from queue.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
+ *   - 'consent-blocked' (428) → keep, and STOP the pass. Missing UGC consent is
+ *     a user decision, not a transport hiccup: every further vote would answer
+ *     428 too, so retrying on each launch/foreground only burned requests and
+ *     logged amenity_vote_failed forever. The consent sheet flushes the queue
+ *     the moment the user accepts.
  *
  * We do NOT flush per enqueue: enqueue debounces a single flush (~250ms microtask)
  * after the subscriber settles, so mapping one pub doesn't fire 16 serial 8s-timeout
@@ -125,6 +130,10 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     const key = dedupKey(item);
     attempted.set(key, signature(item));
     const result = await deliver(item, signal);
+    // The account owes UGC consent: keep this vote and leave the rest of the
+    // queue untouched (a pair never attempted stays keyed out of `attempted`,
+    // so the filter below keeps it).
+    if (result === 'consent-blocked') break;
     if (result !== 'retry') settled.add(key);
   }
 

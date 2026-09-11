@@ -142,6 +142,16 @@ describe('UgcConsentGate', () => {
     expect(sheetProps(renderer).visible).toBe(false);
   });
 
+  it('re-opens right after "Teď ne" when the user taps a gated action', () => {
+    accountState.profile = { ugcConsent: { accepted: false } };
+    const renderer = renderGate();
+    act(() => sheetProps(renderer).onLater());
+    expect(sheetProps(renderer).visible).toBe(false);
+
+    act(() => notifyUgcConsentRequired('ugc_consent_required', { userInitiated: true }));
+    expect(sheetProps(renderer).visible).toBe(true);
+  });
+
   it('keeps the sheet open and complains when accepting fails', async () => {
     acceptUgcConsent.mockResolvedValueOnce({
       ok: false,

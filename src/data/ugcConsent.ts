@@ -28,22 +28,59 @@ export function parseUgcConsentSnapshot(input: unknown): UgcConsentSnapshot | nu
 
 export const CURRENT_UGC_POLICY_VERSION = '2026-08-22';
 
-const headersByAccountId = new Map<string, string>();
+const snapshotsByAccountId = new Map<string, UgcConsentSnapshot>();
+
+/**
+ * Accounts the server has already answered 428 for. A profile snapshot can be
+ * missing or stale (the queue flushes before the profile loads), so the refusal
+ * itself is remembered as the authoritative "this account still owes consent".
+ */
+const consentOwedAccountIds = new Set<string>();
 
 export function rememberUgcConsent(accountId: string, snapshot: UgcConsentSnapshot): void {
-  headersByAccountId.set(accountId, snapshot.policyVersion);
+  snapshotsByAccountId.set(accountId, snapshot);
+  // Acceptance (this device or another one) lifts the hold, so the queues that
+  // were waiting on it may publish again.
+  if (snapshot.accepted) consentOwedAccountIds.delete(accountId);
 }
 
 export function ugcPolicyHeaders(accountId: string): Record<string, string> {
-  const learned = headersByAccountId.get(accountId);
+  const learned = snapshotsByAccountId.get(accountId)?.policyVersion;
   const version =
     learned && learned > CURRENT_UGC_POLICY_VERSION ? learned : CURRENT_UGC_POLICY_VERSION;
   return { [UGC_POLICY_HEADER]: version };
 }
 
+/** Remember that the server refused this account's public writes with a 428. */
+export function holdUgcPublishing(accountId: string): void {
+  consentOwedAccountIds.add(accountId);
+}
+
+/**
+ * True when a public contribution from this account would be refused: the server
+ * already answered 428, or the last profile snapshot says the policy is not
+ * accepted. Callers use it to ask BEFORE publishing — a queued write that keeps
+ * re-sending into a 428 never lands and only burns requests and telemetry.
+ */
+export function isUgcConsentPending(accountId: string): boolean {
+  if (consentOwedAccountIds.has(accountId)) return true;
+  const snapshot = snapshotsByAccountId.get(accountId);
+  return snapshot ? !snapshot.accepted : false;
+}
+
 export type UgcConsentRequiredCode = 'ugc_consent_required' | 'ugc_policy_update_required';
 
-export type UgcConsentRequiredListener = (payload: { code: UgcConsentRequiredCode }) => void;
+export interface UgcConsentRequiredEvent {
+  code: UgcConsentRequiredCode;
+  /**
+   * True when the user just tried to publish something. The sheet keeps its
+   * "not now" quiet period against background retries, but an explicit tap has
+   * to be answered — otherwise the tap does nothing at all.
+   */
+  userInitiated: boolean;
+}
+
+export type UgcConsentRequiredListener = (payload: UgcConsentRequiredEvent) => void;
 
 const listeners = new Set<UgcConsentRequiredListener>();
 
@@ -57,11 +94,15 @@ export function subscribeUgcConsentRequired(listener: UgcConsentRequiredListener
   };
 }
 
-export function notifyUgcConsentRequired(code: UgcConsentRequiredCode): void {
+export function notifyUgcConsentRequired(
+  code: UgcConsentRequiredCode,
+  options?: { userInitiated?: boolean },
+): void {
   if (code !== 'ugc_consent_required' && code !== 'ugc_policy_update_required') return;
+  const userInitiated = options?.userInitiated === true;
   for (const listener of [...listeners]) {
     try {
-      listener({ code });
+      listener({ code, userInitiated });
     } catch {
       // A failing listener must not stop the others.
     }
@@ -84,6 +125,7 @@ export function notifyUgcConsentRequiredFromResponse(
 }
 
 export function clearUgcConsentStateForTests(): void {
-  headersByAccountId.clear();
+  snapshotsByAccountId.clear();
+  consentOwedAccountIds.clear();
   listeners.clear();
 }
