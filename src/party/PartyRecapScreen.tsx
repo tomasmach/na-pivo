@@ -305,7 +305,7 @@ export default function PartyRecapScreen() {
                 {t.partyRecap.spendAverage}
               </Text>
               <Text style={styles.receiptValue} allowFontScaling={false}>
-                {formatPrice(Math.round(spend.czk / spend.priced), priceCurrency)}
+                {formatPrice(spend.czk / spend.priced, priceCurrency)}
               </Text>
             </View>
             {spend.topName ? (

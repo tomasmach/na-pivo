@@ -72,6 +72,8 @@ function FriendSettingsSheet({
   const setFriendPushEnabled = useSettingsStore((s) => s.setFriendPushEnabled);
   const setFriendPushOptedOut = useSettingsStore((s) => s.setFriendPushOptedOut);
   const [pushBusy, setPushBusy] = useState(false);
+  const [spendBusy, setSpendBusy] = useState(false);
+  const spendBusyRef = useRef(false);
 
   // Optimistic display state. `draftRef` mirrors it so the (stable) handlers can
   // read the freshest value without listing `draft` in their deps. The ref is
@@ -151,7 +153,7 @@ function FriendSettingsSheet({
   // ── Network PATCH with revert-on-fail ──
   const sendPatch = useCallback(
     (patch: Partial<FriendSocialSettings>) => {
-      void updateFriendSettings(patch).then((res) => {
+      return updateFriendSettings(patch).then((res) => {
         if (!mountedRef.current) return;
         if (res.ok) {
           // Confirm the server-accepted keys (so a flushed hour value can't later
@@ -200,9 +202,16 @@ function FriendSettingsSheet({
   }, [applyOptimistic, sendPatch]);
 
   const handleShareSpendToggle = useCallback(() => {
+    // A privacy choice must not be overwritten by an older PATCH finishing last.
+    if (spendBusyRef.current) return;
+    spendBusyRef.current = true;
+    setSpendBusy(true);
     const shareSpendWithParta = !draftRef.current.shareSpendWithParta;
     applyOptimistic({ shareSpendWithParta });
-    sendPatch({ shareSpendWithParta });
+    void sendPatch({ shareSpendWithParta }).finally(() => {
+      spendBusyRef.current = false;
+      if (mountedRef.current) setSpendBusy(false);
+    });
   }, [applyOptimistic, sendPatch]);
 
   const handleQuietToggle = useCallback(() => {
@@ -321,7 +330,7 @@ function FriendSettingsSheet({
                 <Toggle
                   value={draft.shareSpendWithParta && draft.shareDrinksWithParta && !draft.ghostMode}
                   onToggle={handleShareSpendToggle}
-                  disabled={draft.ghostMode || !draft.shareDrinksWithParta}
+                  disabled={spendBusy || draft.ghostMode || !draft.shareDrinksWithParta}
                   accessibilityLabel={t.friends.shareSpendTitle}
                 />
               </View>

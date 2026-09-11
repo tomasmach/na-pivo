@@ -150,6 +150,17 @@ test('preserves the same account’s last result when an offline refresh fails',
   expect(view.root.findAllByType('OfflineBanner')).toHaveLength(1);
 });
 
+test('never shows the previous period under a newly requested period when loading fails', async () => {
+  await render();
+  const next = deferred();
+  fetchDuel.mockReturnValueOnce(next.promise);
+  await act(async () => view.root.findByType('PeriodChips').props.onChange('30d'));
+  expect(view.root.findByType('PeriodChips').props.value).toBe('180d');
+  await act(async () => next.resolve(null));
+  expect(text()).not.toContain('Private Friend A');
+  expect(text()).toContain(cs.souboj.errorTitle);
+});
+
 test('shows price coverage and no comparison bar for incomplete spend', async () => {
   await render();
   const row = spendRow();

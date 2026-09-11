@@ -223,10 +223,9 @@ function SoubojContent({ accountId, ownerAccountId }: { accountId: string; owner
       // request happened to answer last.
       if (!mountedRef.current || requestId !== requestRef.current
         || ownerAccountId !== (useAccountStore.getState().session?.accountId ?? null)) return;
-      // Keep what is on screen when a refresh fails: the error notice already
-      // says the numbers are stale, and blanking them loses the comparison the
-      // user opened the screen for.
-      setDuel((previous) => result ?? previous);
+      // Keep an offline refresh for the same period, but never show another
+      // period's numbers after its replacement failed to load.
+      setDuel((previous) => result ?? (previous?.window === next ? previous : null));
       setState(result ? 'loaded' : 'error');
     },
     [accountId, ownerAccountId],
@@ -354,7 +353,7 @@ function SoubojContent({ accountId, ownerAccountId }: { accountId: string; owner
                 <View style={styles.windowRow}>
                   <PeriodChips
                     options={WINDOWS}
-                    value={span}
+                    value={duel.window}
                     onChange={setSpan}
                     accessibilityLabel={t.souboj.windowA11y}
                   />

@@ -13,6 +13,7 @@ import type { NightDrink, NightRecord } from '@/party/nightRecord';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const startedAt = new Date(2026, 8, 5, 18, 0).toISOString();
+let mockPriceCurrency = 'CZK';
 
 const mockNight: NightRecord = {
   id: 'night-1',
@@ -61,7 +62,7 @@ jest.mock('@/party/useNightRecord', () => ({
 }));
 
 jest.mock('@/stores/settingsStore', () => ({
-  useSettingsStore: (selector: (state: unknown) => unknown) => selector({ priceCurrency: 'CZK' }),
+  useSettingsStore: (selector: (state: unknown) => unknown) => selector({ priceCurrency: mockPriceCurrency }),
 }));
 
 // Mocks must be registered before the screen module is evaluated.
@@ -101,6 +102,7 @@ function renderText(): string {
 describe('PartyRecapScreen receipt', () => {
   afterEach(() => {
     mockNight.drinks = [];
+    mockPriceCurrency = 'CZK';
   });
 
   it('shows the total, the average and the priciest beer', () => {
@@ -128,6 +130,15 @@ describe('PartyRecapScreen receipt', () => {
     expect(text).toContain('Průměr za nápoj');
     expect(text).not.toContain('Průměr za pivo');
     expect(text).toContain('90');
+  });
+
+  it('converts the exact average before rounding in the display currency', () => {
+    mockNight.drinks = [beer('a', 62), beer('b', 63)];
+    mockPriceCurrency = 'EUR';
+
+    const text = renderText();
+
+    expect(text).toContain('"Průměr za nápoj" "2,5 €"');
   });
 
   it('admits how many of my drinks the total is missing', () => {
