@@ -40,11 +40,16 @@ export function firstDrinkTap(taps: readonly PartyTap[], houseBeer: string): Par
 /**
  * The big number before the night runs: beers this phone logged tonight.
  *
- * Tonight is the drinking day (04:00 to 04:00) — the same evening the running
- * hub counts, so the number does not jump when a night starts, ends, or is
- * closed from another phone. Counting only the open session made the hub read
- * "0" directly above "Naposledy · Dnes · 1 pivo", and an offline queue flush
- * flipped it from 0 to 14 with nothing pressed. Yesterday is not tonight.
+ * Tonight is the drinking day (04:00 to 04:00). Counting only the open session
+ * made the hub read "0" directly above "Naposledy · Dnes · 1 pivo", and an
+ * offline queue flush flipped it from 0 to 14 with nothing pressed. Yesterday
+ * is not tonight.
+ *
+ * It is deliberately NOT the same number the running hub shows. This one is the
+ * day; the running one is THIS evening, because that is what its stopwatch, its
+ * thread and its recap are about. Starting a second night in one day therefore
+ * goes 17 → 1, and that is the honest reading of both: seventeen today, one at
+ * this table.
  */
 export function idleBeerCount(
   current: TallySession | null,

@@ -463,7 +463,11 @@ export default function LivePartyMockScreen() {
     // the stops and the games, so calling it mid-evening throws the whole night
     // away — which is what a running hub with nothing to repeat (just moved
     // pubs, just sat down at somebody's table) used to do on one tap.
-    if (useLivePartyStore.getState().live) return;
+    //
+    // The test is `active`, not the local `live` flag: at somebody else's table
+    // this phone never started a night of its own, so `live` is false while the
+    // evening is very much running.
+    if (active) return;
     const placeName = pubName.trim() || OUTSIDE_PUB_NAME;
     const transition = startParty(placeName, firstDrink.name, pubKey, pubTaps);
     const joinCode = stagedPartyCode ?? generateJoinCode();
@@ -1025,16 +1029,20 @@ export default function LivePartyMockScreen() {
   // One rule for the label in both states (§20.7): alone it is the counted
   // noun, with somebody at the table it says whose beers these are.
   //
-  // While the night runs the counter's own session is the floor: the shared
-  // record needs the server and lands seconds after the first beer, and the
-  // hero sat on "0" through exactly the moment the number matters most. It only
-  // ever fills a gap — a record that knows anything wins — so nothing doubles.
+  // While the night runs the counter's own session is the floor under MY
+  // number: the shared record needs the server and lands seconds after the
+  // first beer, and the hero sat on "0" through exactly the moment the number
+  // matters most. It only ever fills a gap — a record that knows anything wins
+  // — so nothing doubles.
   const stats = active
     ? hubStats({
         beerTimes,
         now: minutes,
         mine: mine > 0 ? mine : sessionBeersHere,
-        table: table > 0 ? table : sessionBeersHere,
+        // Only MY column gets the local floor. At a table for four, filling the
+        // shared total with my own count would briefly tell the table it drank
+        // what I drank.
+        table,
         others: people.length,
       })
     : hubStats({ beerTimes: [], now: 0, mine: idleBeers, table: idleBeers, others: 0 });
@@ -1594,9 +1602,14 @@ export default function LivePartyMockScreen() {
               <PlusIcon size={17} color={Colors.stout} />
               <DrinkGlyph type={latestDrink ? drinkTypeOf(latestDrink) : 'beer'} color={Colors.stout} />
               <View style={styles.primaryText}>
+                {/* Shrink, never truncate (§3.1): at the largest Dynamic Type
+                    "Pilsner Urquell 12° · 0,5 l" came out as "· 0,…", which is
+                    a button that no longer says what it pours. */}
                 <Text
                   style={styles.primaryLabel}
                   numberOfLines={active ? 2 : 1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
                   maxFontSizeMultiplier={FontScaleCap.display}
                 >
                   {primaryLabel}
@@ -1608,6 +1621,8 @@ export default function LivePartyMockScreen() {
                   <Text
                     style={styles.primarySub}
                     numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
                     maxFontSizeMultiplier={FontScaleCap.display}
                   >
                     {firstDrinkLabel}

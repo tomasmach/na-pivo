@@ -20,6 +20,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { t } from '@/i18n';
+import { MockType } from '@/mocks/mockTheme';
 import { formatStopwatch, useNightSeconds } from '@/mocks/livePartyStore';
 import { Colors } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
@@ -143,5 +144,6 @@ const styles = StyleSheet.create({
   rowHero: { marginTop: Spacing.lg, marginBottom: Spacing.sm },
   colHero: { alignItems: 'center' },
   valueHero: { fontSize: 76, lineHeight: 94, letterSpacing: -1 },
-  labelHero: { fontSize: 15, marginTop: 0 },
+  // The scale's second line (§3.1 `bodySmall`), not a private 15 pt step.
+  labelHero: { ...MockType.bodySmall, marginTop: 0 },
 });
