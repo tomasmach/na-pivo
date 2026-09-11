@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.numeral, fontSize: 19, lineHeight: 24, color: Colors.foam,
     letterSpacing: -0.2, fontVariant: ['tabular-nums'], includeFontPadding: false,
   },
-  soubojScoreSplit: { fontSize: 13, color: Colors.mutedText },
+  soubojScoreSplit: { fontSize: 13, lineHeight: 17, color: Colors.mutedText, includeFontPadding: false },
   soubojScoreQuiet: { color: Colors.mutedText },
   primary: {
     minHeight: 54, marginTop: Spacing.lg, borderRadius: Radius.medium,

@@ -31,7 +31,7 @@ import secrets
 import uuid
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -72,6 +72,7 @@ from django.db.models.functions import (
     Radians,
     Sin,
     TruncDate,
+    TruncMonth,
 )
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
@@ -4383,6 +4384,13 @@ class FriendsView(APIView):
         Excludes accounts pending deletion. Visits and beers each come from one
         grouped query; ``shared_count`` is the shared-evening tally with me (0
         for myself). Sorted desc by visits_30d, then shared_count.
+
+        A member who turned the drink feed off, or who is in ghost mode, gets
+        ``null`` tallies rather than real ones. Being an accepted friend is not
+        consent to have your drinking counted at me: the same switch already
+        hides your presence and your feed, and these counters are the same
+        private diary read a different way. Null, not zero — a zero reads as
+        "they stopped drinking" and that is a different lie.
         """
         members = [request.user] + [
             account
@@ -4414,18 +4422,25 @@ class FriendsView(APIView):
         entries = []
         for account in members:
             is_me = account.id == request.user.id
+            # My own numbers are always mine to see; a friend's only when they
+            # share. Ghost mode overrules the switch, exactly like presence.
+            shares = is_me or (account.share_drinks_with_parta and not account.ghost_mode)
             entries.append(
                 {
                     "account": FriendProfileSerializer(account, context=context).data,
-                    "visits_30d": int(visits_by_account.get(account.id, 0)),
-                    "beers_30d": int(beers_by_account.get(account.id, 0)),
+                    "visits_30d": (
+                        int(visits_by_account.get(account.id, 0)) if shares else None
+                    ),
+                    "beers_30d": (
+                        int(beers_by_account.get(account.id, 0)) if shares else None
+                    ),
                     "shared_count": 0
                     if is_me
                     else int(shared_stats.get(account.id, {}).get("shared_count") or 0),
                     "is_me": is_me,
                 }
             )
-        entries.sort(key=lambda e: (e["visits_30d"], e["shared_count"]), reverse=True)
+        entries.sort(key=lambda e: (e["visits_30d"] or 0, e["shared_count"]), reverse=True)
         return entries
 
 
@@ -6016,10 +6031,21 @@ def _duel_month_starts(today: date, count: int) -> list[date]:
 def _duel_evening_rows(account_ids: list[int], since):
     """One grouped row per (account, drinking day, pub).
 
-    That triple is the app's definition of an evening (``statsModel.ts``), so
-    the Souboj counts evenings the same way the Výkon screen does instead of
-    inventing a second meaning for the word. Grouping in SQL keeps this to one
-    query whatever the window.
+    That triple is the app's definition of an evening (``statsModel.ts``), and
+    the 04:00 roll matches it. Two things here deliberately do NOT match the
+    Výkon screen, so the numbers can differ and that is not a bug:
+
+    * only beers count, because every discipline in the duel is about beer —
+      a wine-only night is an evening on Výkon and nothing here;
+    * ``is_suspect`` rows are dropped, because these numbers are shown to
+      somebody else and the anti-abuse flag exists for exactly that.
+
+    The drinking day also rolls in Europe/Prague rather than in the client's own
+    zone (``resolve_stats_timezone``), so a user abroad can see a night land on
+    a different day than Výkon puts it. Acceptable while the audience is CZ/SK;
+    revisit if that stops being true.
+
+    Grouping in SQL keeps this to one query whatever the window.
     """
 
     shifted = ExpressionWrapper(
@@ -6064,18 +6090,47 @@ def _duel_side(rows: list[dict], account_id: int, *, with_spend: bool) -> dict:
     return body
 
 
-def _duel_series(rows: list[dict], me_id: int, friend_id: int, today: date) -> list[dict]:
+def _duel_month_rows(account_ids: list[int], first_month: date):
+    """Beers per (account, month) over the trailing months the chart draws.
+
+    Its own query on purpose. Folding the chart out of the window-filtered rows
+    drew four flat months whenever the window was 30 days — months where the
+    data had been cut away, not months where nobody drank. The chart is a
+    constant six-month backdrop; the window only governs the disciplines.
+    """
+
+    shifted = ExpressionWrapper(
+        F("drank_at") - _DRINKING_DAY_SHIFT,
+        output_field=DateTimeField(),
+    )
+    since = datetime.combine(first_month, time(hour=4), tzinfo=PRAGUE_TZ)
+    return (
+        DrinkLog.objects.filter(
+            account_id__in=account_ids,
+            drink_type=DrinkLog.DrinkType.BEER,
+            is_suspect=False,
+            drank_at__gte=since,
+        )
+        .annotate(month=TruncMonth(shifted, tzinfo=PRAGUE_TZ))
+        .values("account_id", "month")
+        .annotate(beers=Count("id"))
+        .order_by()
+    )
+
+
+def _duel_series(rows, me_id: int, friend_id: int, today: date) -> list[dict]:
     """Trailing months of beers for both sides, oldest first."""
 
     months = _duel_month_starts(today, DUEL_SERIES_MONTHS)
     buckets = {month: {"me": 0, "friend": 0} for month in months}
-    first = months[0]
     for row in rows:
-        day = row["drinking_day"]
-        if day is None:
+        bucket_at = row["month"]
+        if bucket_at is None:
             continue
-        month = date(day.year, day.month, 1)
-        if month < first or month not in buckets:
+        # TruncMonth hands back a datetime on some backends and a date on
+        # others; the bucket key is the first of the month either way.
+        month = date(bucket_at.year, bucket_at.month, 1)
+        if month not in buckets:
             continue
         side = "me" if row["account_id"] == me_id else "friend" if row["account_id"] == friend_id else None
         if side is not None:
@@ -6154,8 +6209,12 @@ class FriendDuelView(APIView):
         now = dj_timezone.now()
         delta = DUEL_WINDOWS[window]
         since = now - delta if delta is not None else None
-        rows = list(_duel_evening_rows([request.user.id, friend.id], since))
+        account_ids = [request.user.id, friend.id]
+        rows = list(_duel_evening_rows(account_ids, since))
         today = dj_timezone.localtime(now, PRAGUE_TZ).date()
+        month_rows = _duel_month_rows(
+            account_ids, _duel_month_starts(today, DUEL_SERIES_MONTHS)[0]
+        )
 
         return Response(
             {
@@ -6169,7 +6228,7 @@ class FriendDuelView(APIView):
                 ),
                 "me": _duel_side(rows, request.user.id, with_spend=with_spend),
                 "them": _duel_side(rows, friend.id, with_spend=with_spend),
-                "series": _duel_series(rows, request.user.id, friend.id, today),
+                "series": _duel_series(month_rows, request.user.id, friend.id, today),
             },
             status=status.HTTP_200_OK,
         )

@@ -246,6 +246,29 @@ def test_duel_series_has_six_months_including_empty_ones(client):
 
 
 @pytest.mark.django_db
+def test_duel_chart_keeps_its_six_months_on_a_short_window(client):
+    """The window governs the disciplines, never the chart.
+
+    Folding the chart out of the window-filtered rows drew four flat months on
+    the 30-day window: months whose data had been cut away, not months where
+    nobody drank.
+    """
+    token_me, me = _register(client, "radek")
+    _, friend = _register(client, "pepa")
+    _befriend(me, friend)
+    now = timezone.now()
+    _drink(me, drank_at=now - timedelta(days=2))
+    _drink(me, drank_at=now - timedelta(days=75))
+
+    body = _duel(client, token_me, friend, "30d").json()
+
+    # One beer inside the window...
+    assert body["me"]["beers"] == 1
+    # ...but the chart still carries the older one.
+    assert sum(row["me"] for row in body["series"]) == 2
+
+
+@pytest.mark.django_db
 def test_duel_window_bounds_the_totals(client):
     token_me, me = _register(client, "radek")
     _, friend = _register(client, "pepa")

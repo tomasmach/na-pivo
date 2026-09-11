@@ -3912,9 +3912,9 @@ export const en: Strings = {
     spendTotal: 'What you spent',
     spendAverage: 'Average per beer',
     spendPriciest: (beer: string) => `Priciest: ${beer}`,
-    spendMineOnly: 'Only your beers count here. What the others spent, I cannot see.',
+    spendMineOnly: 'Only what you logged counts here. What the others spent, I cannot see.',
     spendPartial: (priced: number, total: number) =>
-      `Counting ${priced} of your ${total} beers. The rest have no price.`,
+      `Counting ${priced} of your ${total} drinks. The rest have no price.`,
     gamePaying: (name: string) => `Round on ${name}`,
     gameWinner: (name: string) => `${name} won`,
     gamePlayed: 'Played',

@@ -1639,8 +1639,10 @@ Pravidla:
   Utraceno přibude, jen když ho sdílejí oba.
 - **Kdo vede, má pěnové číslo, kdo ne, hnědé.** Jantar drží jen dráha mého
   podílu — obarvit vedoucí číslo jantarem by z akcentu udělalo medaili.
-- **Večer je večer.** Stejná trojice (účet, pijácký den, hospoda) jako na Výkonu.
-  Druhý význam slova „večer“ by znamenal dvě obrazovky, které si odporují.
+- **Večer je večer.** Stejná trojice (účet, pijácký den, hospoda) jako na Výkonu,
+  včetně čtvrté hodiny ranní. Souboj navíc počítá jen piva a vynechává řádky
+  označené anti-abuse příznakem, takže se od Výkonu o kus liší — piva proto, že
+  na ně jsou všechny disciplíny, příznak proto, že tahle čísla vidí někdo jiný.
 - **Bez souhlasu nejsou čísla.** Kdo nesdílí pití, nemá souboj vůbec; obrazovka
   to řekne větou a nekreslí nuly. Nula čte jako „přestal pít“.
 - **Útrata má vlastní přepínač**, vypnutý, a čte se jen když ho mají zapnutý oba.

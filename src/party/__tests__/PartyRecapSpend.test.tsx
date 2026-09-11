@@ -114,16 +114,16 @@ describe('PartyRecapScreen receipt', () => {
     expect(text).toContain('Matuška Raptor');
   });
 
-  it('says the total is only mine when every beer carried a price', () => {
+  it('says the total is only mine when every drink carried a price', () => {
     mockNight.drinks = [beer('a', 62)];
 
-    expect(renderText()).toContain('jen tvoje piva');
+    expect(renderText()).toContain('jen tvoje zápisy');
   });
 
-  it('admits how many beers the total is missing', () => {
+  it('admits how many of my drinks the total is missing', () => {
     mockNight.drinks = [beer('a', 62), beer('b'), beer('c')];
 
-    expect(renderText()).toContain('1 z 3');
+    expect(renderText()).toContain('1 ze 3');
   });
 
   it('stays away entirely when no beer carried a price', () => {

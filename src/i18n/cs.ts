@@ -3979,9 +3979,9 @@ export const cs = {
     spendTotal: 'Tvoje útrata',
     spendAverage: 'Průměr za pivo',
     spendPriciest: (beer: string) => `Nejdražší: ${beer}`,
-    spendMineOnly: 'Počítám jen tvoje piva. Co utratili ostatní, nevidím.',
+    spendMineOnly: 'Počítám jen tvoje zápisy. Co utratili ostatní, nevidím.',
     spendPartial: (priced: number, total: number) =>
-      `Počítám ${priced} z ${total} tvých piv. U zbytku chybí cena.`,
+      `Počítám ${priced} ze ${total} tvých zápisů. U zbytku chybí cena.`,
     gamePaying: (name: string) => `Platí ${name}`,
     gameWinner: (name: string) => `Vyhrál ${name}`,
     gamePlayed: 'Odehráno',

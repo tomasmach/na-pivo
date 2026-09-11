@@ -227,6 +227,10 @@ export interface NightSpend {
  * IS mine by construction. Making the id mandatory only added a way to lose the
  * receipt entirely while the roster was still resolving.
  *
+ * Counts every drink I logged, not only beers: a wine costs money too, and a
+ * receipt that quietly dropped it would be wrong about the evening. The copy
+ * says "zápisy" for the same reason.
+ *
  * `priced` vs `total` is the honest part: an evening where I filled in four
  * prices out of seven has a real number and a caveat, and the screen has to be
  * able to say both. Returns null when nothing carried a price at all — no

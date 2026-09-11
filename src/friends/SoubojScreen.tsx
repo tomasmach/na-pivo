@@ -389,6 +389,9 @@ const styles = StyleSheet.create({
   vs: {
     fontFamily: Fonts.numeral,
     fontSize: 19,
+    // 19/24 is the documented pair (§3.2). Baloo overshoots its box, and
+    // without the line height iOS clips the top of the glyphs.
+    lineHeight: 24,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
