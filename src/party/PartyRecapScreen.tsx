@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import { beerCountLabel, intlLocale, t } from '@/i18n';
 import { Share2Icon } from '@/components/shared/IconGlyph';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
@@ -18,7 +19,9 @@ import { StatGrid } from '@/mocks/StatGrid';
 import { displayPersonName } from '@/party/nightBuilder';
 import {
   nightByBeer,
+  nightMe,
   nightMinutes,
+  nightSpend,
   nightStandings,
   nightStops,
   nightTally,
@@ -29,6 +32,8 @@ import {
   type NightRecordRecoveryState,
 } from '@/party/useNightRecord';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { formatPrice } from '@/utils/currency';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -61,6 +66,7 @@ export default function PartyRecapScreen() {
     onRecoveryStateChange: setRecoveryState,
   });
   const [shape, setShape] = React.useState<ChartShape>('bar');
+  const priceCurrency = useSettingsStore((state) => state.priceCurrency);
   const [openedAt] = React.useState(() => Date.now());
 
   const now = night.endedAt ? new Date(night.endedAt).getTime() : openedAt;
@@ -74,6 +80,7 @@ export default function PartyRecapScreen() {
   const stops = nightStops(night, now);
   const byBeer = nightByBeer(night);
   const games = night.games.filter((game) => game.result);
+  const spend = nightSpend(night, nightMe(night)?.id);
   const route = stops.map((stop) => stop.pubName).join('  →  ');
   const title = stops[0]?.pubName
     ? t.party.nightTitleAtPub(stops[0].pubName)
@@ -143,7 +150,10 @@ export default function PartyRecapScreen() {
           styles.content,
           {
             paddingTop: insets.top + 52,
-            paddingBottom: insets.bottom + SECTION_GAP,
+            // The recap lives inside the tab navigator, so the last section has
+            // to clear the tab bar. Without this the closing section sits under
+            // the chrome and the ScrollView will not scroll to it at all.
+            paddingBottom: TAB_CHROME + SECTION_GAP,
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -279,6 +289,50 @@ export default function PartyRecapScreen() {
           </View>
         ) : null}
 
+        {spend ? (
+          <View style={styles.section}>
+            <SectionTitle>{t.partyRecap.sectionSpend}</SectionTitle>
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.partyRecap.spendTotal}
+              </Text>
+              <Text style={styles.receiptValue} allowFontScaling={false}>
+                {formatPrice(spend.czk, priceCurrency)}
+              </Text>
+            </View>
+            <View style={styles.receiptRow}>
+              <Text style={styles.receiptLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.partyRecap.spendAverage}
+              </Text>
+              <Text style={styles.receiptValue} allowFontScaling={false}>
+                {formatPrice(Math.round(spend.czk / spend.priced), priceCurrency)}
+              </Text>
+            </View>
+            {spend.topName ? (
+              <View style={styles.receiptRow}>
+                <Text
+                  style={styles.receiptLabel}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {t.partyRecap.spendPriciest(spend.topName)}
+                </Text>
+                <Text style={styles.receiptValue} allowFontScaling={false}>
+                  {formatPrice(spend.topCzk, priceCurrency)}
+                </Text>
+              </View>
+            ) : null}
+            {/* An evening where I priced four beers out of seven still has a
+                real total, but printing it alone would read as the whole night.
+                Same rule the diary already follows. */}
+            <Text style={styles.receiptNote} maxFontSizeMultiplier={FontScaleCap.body}>
+              {spend.priced < spend.total
+                ? t.partyRecap.spendPartial(spend.priced, spend.total)
+                : t.partyRecap.spendMineOnly}
+            </Text>
+          </View>
+        ) : null}
+
         {games.length > 0 ? (
           <View style={styles.section}>
             <SectionTitle>{t.partyRecap.sectionGames}</SectionTitle>
@@ -392,6 +446,31 @@ const styles = StyleSheet.create({
   stopTime: { width: 40, fontSize: 12, color: Colors.mutedText },
   stopName: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.foam },
   stopBeers: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
+  // Hairline-divided rows on the ground, the app's list idiom — a receipt is a
+  // list of facts, not four more cards inside the recap.
+  receiptRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  receiptLabel: { ...MockType.body, flex: 1, minWidth: 0, color: Colors.foamMuted },
+  receiptValue: {
+    fontFamily: Fonts.numeral,
+    fontSize: 19,
+    lineHeight: 24,
+    color: Colors.foam,
+    letterSpacing: -0.2,
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+  },
+  receiptNote: {
+    ...MockType.bodySmall,
+    color: Colors.mutedText,
+    marginTop: Spacing.md,
+  },
   game: {
     padding: Spacing.md,
     borderRadius: Radius.card,

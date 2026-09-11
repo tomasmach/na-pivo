@@ -30,8 +30,13 @@
  *      ends in an argument about the app.
  *   3. An empty hour still gets a bar. Dropping it would draw a night as
  *      steadier than it was, and the tempo chart is read as a shape.
- *   4. Prices, spend, per-mille and BAC do not appear here, ever
+ *   4. Per-mille and time-until-you-can-drive never appear here
  *      (`docs/decisions/no-bac-or-driving-estimates.md`).
+ *   5. Money is mine alone. A drink carries `priceCzk` only when the phone that
+ *      logged it wrote one, so the only spend this record can add up is the
+ *      owner's. A table total would be quietly wrong: prices are optional, and
+ *      a member who opted out of sharing has no rows here at all. Spend also
+ *      never enters a published night.
  */
 
 import { t } from '@/i18n';
@@ -82,6 +87,13 @@ export interface NightDrink {
   beerName: string;
   drinkType: DrinkType;
   volumeMl?: number;
+  /**
+   * What it cost, in CZK, when it is my own drink and I filled a price in.
+   * Absent on everybody else's rows — the wire record carries no prices — and
+   * absent on my own when I skipped the field, which is the normal case at a
+   * table. Read it through `nightSpend`, never by summing blindly.
+   */
+  priceCzk?: number;
   /** `NightStop.id` — where it was drunk. Null outside a pub. */
   stopId: string | null;
 }
@@ -193,6 +205,54 @@ export function nightMe(night: NightRecord): NightPerson | null {
 export function beersOf(night: NightRecord, personId: string | undefined): number {
   if (!personId) return 0;
   return night.drinks.filter((drink) => drink.by === personId && isBeer(drink)).length;
+}
+
+export interface NightSpend {
+  /** Sum of the prices that are actually there, in CZK. */
+  czk: number;
+  /** How many of my drinks carried a price. */
+  priced: number;
+  /** How many of my drinks there were in total. */
+  total: number;
+  /** The priciest one I paid for, for the "nejdražší pivo večera" row. */
+  topName: string | null;
+  topCzk: number;
+}
+
+/**
+ * What the night cost me.
+ *
+ * The id is a hint, not a requirement: a price only ever reaches this record
+ * from the phone that logged the drink (`NightDrink.priceCzk`), so a priced row
+ * IS mine by construction. Making the id mandatory only added a way to lose the
+ * receipt entirely while the roster was still resolving.
+ *
+ * `priced` vs `total` is the honest part: an evening where I filled in four
+ * prices out of seven has a real number and a caveat, and the screen has to be
+ * able to say both. Returns null when nothing carried a price at all — no
+ * number beats a confident zero.
+ */
+export function nightSpend(night: NightRecord, personId?: string): NightSpend | null {
+  // With a known id this is exactly my rows. Without one the roster has not
+  // resolved yet, and every row is a candidate — a priced row can only have
+  // come from this phone anyway, so the total stays right and the "x of y"
+  // caveat only ever errs towards admitting more is missing.
+  const mine = personId ? night.drinks.filter((drink) => drink.by === personId) : night.drinks;
+  let czk = 0;
+  let priced = 0;
+  let topName: string | null = null;
+  let topCzk = 0;
+  for (const drink of mine) {
+    if (typeof drink.priceCzk !== 'number' || drink.priceCzk <= 0) continue;
+    czk += drink.priceCzk;
+    priced += 1;
+    if (drink.priceCzk > topCzk) {
+      topCzk = drink.priceCzk;
+      topName = drink.beerName;
+    }
+  }
+  if (priced === 0) return null;
+  return { czk, priced, total: mine.length, topName, topCzk };
 }
 
 /** The whole night, by category. */
