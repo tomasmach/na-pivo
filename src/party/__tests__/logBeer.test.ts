@@ -414,7 +414,26 @@ describe('logPartyBeer telemetry', () => {
     ]);
   });
 
-  it('keeps a backdate out of tonight and marks it as one', async () => {
+  it('does not invent an evening for a beer written up the morning after', async () => {
+    // Nothing running: a backdate must neither open tonight nor claim one was
+    // already there. Deriving one fact from the other reported both wrong.
+    await loggedBeer({
+      place: PLACE,
+      beerName: 'Plzeň',
+      source: 'form',
+      at: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
+      backdated: true,
+    });
+
+    expect(events()).toEqual([
+      ['drink_added', { source: 'form', had_active_session: false, backdated: true }],
+    ]);
+  });
+
+  it('reports the running evening a backdate was written from', async () => {
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+    trackClientEvent.mockClear();
+
     await loggedBeer({
       place: PLACE,
       beerName: 'Plzeň',
@@ -425,6 +444,20 @@ describe('logPartyBeer telemetry', () => {
 
     expect(events()).toEqual([
       ['drink_added', { source: 'form', had_active_session: true, backdated: true }],
+    ]);
+  });
+
+  it('opens a new evening when the last drink was deleted out of the old one', async () => {
+    const id = await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+    const session = useTallyStore.getState().current;
+    useTallyStore.getState().removeDrinkFromSession(session!.startedAt, id);
+    trackClientEvent.mockClear();
+
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+
+    expect(events()).toEqual([
+      ['counter_session_started', undefined],
+      ['drink_added', { source: 'hub', had_active_session: false }],
     ]);
   });
 

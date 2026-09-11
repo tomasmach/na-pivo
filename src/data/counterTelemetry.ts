@@ -7,6 +7,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import type { DrinkType, OutsidePlaceContext } from '@/drinks/drinkTypes';
+
 import { trackClientEvent } from './telemetryClient';
 
 const STORAGE_KEY = 'na-pivo-counter-telemetry';
@@ -112,10 +114,9 @@ export function trackDrinkAdded(
   context: {
     hadActiveSession: boolean;
     backdated?: boolean;
-    /** Closed enum from `@/drinks/drinkTypes`, never free text. */
-    drinkType?: string;
-    /** Closed enum from `@/drinks/drinkTypes`, never a pub name. */
-    placeContext?: string | null;
+    drinkType?: DrinkType;
+    /** Null at a pub — an outside context is a category, never a pub name. */
+    placeContext?: OutsidePlaceContext | null;
   },
 ): void {
   void trackClientEvent({

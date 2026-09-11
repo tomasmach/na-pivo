@@ -256,14 +256,21 @@ export default function LivePartyMockScreen() {
   useFocusEffect(
     React.useCallback(() => {
       setIsFocused(true);
-      // Same event the 2.x counter tab sent, so "how often does anyone open the
-      // evening" stays one series across the rename.
-      void trackCounterTabOpened(
-        (useTallyStore.getState().current?.drinks.length ?? 0) > 0,
-      );
       return () => setIsFocused(false);
     }, []),
   );
+  // Once per open, NOT per focus — the 2.x counter counted mounts
+  // (`git show v1.5.0:src/counter/CounterScreen.tsx`). Every return from the
+  // pub picker, a game, the finish screen or the evening detail re-focuses this
+  // screen, and counting those would turn "came back the same day" into "tapped
+  // around", double the screen view, and burn two of the session's 120
+  // non-product events plus an AsyncStorage round trip every time.
+  const hadActiveSessionOnOpen = React.useRef(
+    (useTallyStore.getState().current?.drinks.length ?? 0) > 0,
+  );
+  React.useEffect(() => {
+    void trackCounterTabOpened(hadActiveSessionOnOpen.current);
+  }, []);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { joinCode: inviteJoinCode, invite: inviteRequestId } = useLocalSearchParams<{
@@ -382,8 +389,13 @@ export default function LivePartyMockScreen() {
     // and stopwatch underneath the current evening. Explicit joins replace the
     // local night in their success handler below.
     if (evening?.active && !live && !staleEveningCode) {
+      // No `counter_session_resumed` here. In 2.x that event meant a person
+      // tapped "Pokračovat" on a closed evening; this is the app re-attaching
+      // to a table the server still holds, which happens on every cold start
+      // mid-evening. Reporting it under the old name would quietly change what
+      // the metric counts. 3.0 has no user-triggered resume, so the event has
+      // no call site until it grows one.
       resumeParty(evening.pubName, evening.startedAt);
-      void trackClientEvent({ event: 'counter_session_resumed' });
     }
   }, [evening, live, resumeParty, staleEveningCode]);
 

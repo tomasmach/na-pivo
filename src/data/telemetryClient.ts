@@ -94,9 +94,6 @@ const CONTEXT_KEYS = new Set([
   'action',
 ]);
 
-/** The whitelist above, for the drift guard in `__tests__/uxTelemetry.test.ts`. */
-export const CONTEXT_KEYS_FOR_TESTS: ReadonlySet<string> = CONTEXT_KEYS;
-
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const UUID_RE =

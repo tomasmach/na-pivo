@@ -630,6 +630,11 @@ _CLIENT_EVENT_INTERACTION_ACTIONS = {
     "decline",
     "load_more",
 }
+# Values, not just key names. `drink_type` and `place_context` mirror
+# DrinkLog's choices; anything else is dropped rather than stored, so a beer
+# name can never ride in on a key that only checked its own spelling.
+_CLIENT_EVENT_DRINK_TYPES = {choice.value for choice in DrinkLog.DrinkType}
+_CLIENT_EVENT_PLACE_CONTEXTS = {choice.value for choice in DrinkLog.PlaceContext}
 _CLIENT_EVENT_CONTEXT_KEYS = {
     "operation",
     "endpoint",
@@ -704,6 +709,17 @@ def _sanitize_client_scalar(key: str, value: object) -> object | None:
     if key == "action":
         action = str(value).strip()
         return action if action in _CLIENT_EVENT_INTERACTION_ACTIONS else None
+
+    if key == "drink_type":
+        drink_type = str(value).strip()
+        return drink_type if drink_type in _CLIENT_EVENT_DRINK_TYPES else None
+
+    if key == "place_context":
+        place_context = str(value).strip()
+        return place_context if place_context in _CLIENT_EVENT_PLACE_CONTEXTS else None
+
+    if key == "backdated":
+        return value if isinstance(value, bool) else None
 
     if key == "endpoint":
         return _sanitize_client_text(value, max_len=240).split("?", 1)[0]

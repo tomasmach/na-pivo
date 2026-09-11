@@ -153,16 +153,21 @@ export async function logPartyBeer({
       before.addDrink(tallyPlace, tallyDrink);
       landedSession = useTallyStore.getState().current;
     }
-    // Same signal the 2.x counter sent: this drink opened an evening, either
-    // because there was none or because it rolled the tally to a new one. A
-    // backdate edits the diary and never starts tonight.
-    const startsSession =
-      !backdated &&
-      (sessionBefore === null ||
-        useTallyStore.getState().current?.clientId !== sessionBefore.clientId);
+    // Two separate facts, exactly as the 2.x counter kept them
+    // (`git show v1.5.0:src/counter/CounterScreen.tsx`). Whether an evening was
+    // already running is about the tally; whether THIS drink opened one is also
+    // about the backdate. Deriving the first from the second made every
+    // backdated drink claim an evening that was not there — a beer written up
+    // the morning after has no running session, and an emptied session (last
+    // drink deleted) starts a fresh one.
+    const continued =
+      sessionBefore !== null &&
+      sessionBefore.drinks.length > 0 &&
+      useTallyStore.getState().current?.clientId === sessionBefore.clientId;
+    const startsSession = !backdated && !continued;
     if (startsSession) void trackClientEvent({ event: 'counter_session_started' });
     trackDrinkAdded(source, {
-      hadActiveSession: !startsSession,
+      hadActiveSession: continued,
       backdated,
       drinkType,
       placeContext: outside,
