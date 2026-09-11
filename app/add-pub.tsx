@@ -125,6 +125,10 @@ export default function AddPubScreen() {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestedQuery, setSuggestedQuery] = useState('');
   const [resolvingSuggestionId, setResolvingSuggestionId] = useState<string | null>(null);
+  // The place lookup goes through an external geocoder that can be down or
+  // capped. A failure has to stay on screen with a way out — a toast behind the
+  // keyboard left people staring at a form that refused to save.
+  const [failedSuggestion, setFailedSuggestion] = useState<PubLocationSuggestion | null>(null);
   const nameChanged = name.trim() !== initialName;
   const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
@@ -137,6 +141,30 @@ export default function AddPubScreen() {
     resolvingSuggestionId === null &&
     !submitted;
   const currentLocationSelected = locationCorrectionSelected;
+  // A blocked save has to say what is still missing. A dimmed button that does
+  // nothing when tapped reads as a broken screen, not as an unfinished form.
+  const submitHint = useMemo(() => {
+    if (canSubmit || submitted || locating || resolvingSuggestionId !== null) return '';
+    if (name.trim().length === 0) return t.addPub.missingName;
+    const missingAddress = city.trim().length === 0 || address.trim().length === 0;
+    if (isEditing) {
+      if (!nameChanged && !locationCorrectionSelected) return t.addPub.missingEdit;
+      return locationCorrectionSelected && missingAddress ? t.addPub.missingAddress : '';
+    }
+    if (!locationCorrectionSelected) return t.addPub.missingLocation;
+    return missingAddress ? t.addPub.missingAddress : '';
+  }, [
+    address,
+    canSubmit,
+    city,
+    isEditing,
+    locating,
+    locationCorrectionSelected,
+    name,
+    nameChanged,
+    resolvingSuggestionId,
+    submitted,
+  ]);
 
   const selectedLat = selectedLocation?.lat;
   const selectedLng = selectedLocation?.lng;
@@ -222,11 +250,13 @@ export default function AddPubScreen() {
     setSuggestions([]);
     setSuggestedQuery('');
     setLocationError('');
+    setFailedSuggestion(null);
   }, []);
 
   const handleSuggestionPress = useCallback(async (suggestion: PubLocationSuggestion) => {
     setResolvingSuggestionId(suggestion.id);
     setLocationError('');
+    setFailedSuggestion(null);
     try {
       const result =
         suggestion.lat !== undefined && suggestion.lng !== undefined
@@ -243,14 +273,16 @@ export default function AddPubScreen() {
               near: selectedLocation ?? initialCoords,
             });
       if (!result) {
-        showToast(t.addPub.placeLookupUnavailable);
+        // Keep the name the user already typed — only the coordinates are
+        // missing, and the location card above can still supply them.
+        setFailedSuggestion(suggestion);
         return;
       }
       applyResolvedSuggestion(suggestion, result);
     } finally {
       setResolvingSuggestionId(null);
     }
-  }, [applyResolvedSuggestion, initialCoords, selectedLocation, showToast]);
+  }, [applyResolvedSuggestion, initialCoords, selectedLocation]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
@@ -530,6 +562,7 @@ export default function AddPubScreen() {
               setSuggestedQuery('');
               setSuggestions([]);
               setSuggesting(false);
+              setFailedSuggestion(null);
               if (selectedLocation?.source === 'suggestion') {
                 setSelectedLocation(
                   fromMapPin && initialCoords
@@ -600,6 +633,24 @@ export default function AddPubScreen() {
                   Google Maps
                 </Text>
               ) : null}
+            </View>
+          )}
+          {failedSuggestion && (
+            <View style={styles.lookupFailed}>
+              <Text style={styles.lookupFailedText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.addPub.placeLookupUnavailable}
+              </Text>
+              <Pressable
+                onPress={() => void handleSuggestionPress(failedSuggestion)}
+                disabled={resolvingSuggestionId !== null}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t.vycep.retry}
+              >
+                <Text style={styles.lookupFailedRetry} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {t.vycep.retry}
+                </Text>
+              </Pressable>
             </View>
           )}
           {selectedLocation && (
@@ -674,6 +725,12 @@ export default function AddPubScreen() {
         {!!locationError && (
           <Text style={styles.invalidText} maxFontSizeMultiplier={FontScaleCap.body}>
             {locationError}
+          </Text>
+        )}
+
+        {!!submitHint && (
+          <Text style={styles.submitHint} maxFontSizeMultiplier={FontScaleCap.body}>
+            {submitHint}
           </Text>
         )}
 
@@ -936,6 +993,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
+  },
+  lookupFailed: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.22),
+    backgroundColor: withAlpha(Colors.foam, 0.06),
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  lookupFailedText: {
+    flex: 1,
+    fontWeight: '500',
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+  },
+  lookupFailedRetry: {
+    fontWeight: '800',
+    fontSize: 12,
+    color: Colors.amber,
+  },
+  submitHint: {
+    marginTop: -Spacing.sm,
+    textAlign: 'center',
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
   },
   submitButton: {
     position: 'relative',

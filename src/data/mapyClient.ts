@@ -208,6 +208,11 @@ interface BackendLocationLookupResponse {
  *  connection, short enough that a stalled socket cannot pin the map. */
 const PUBS_NEAR_TIMEOUT_MS = 10_000;
 
+/** Hard cap on an explicit location lookup (suggest / geocode / reverse
+ *  geocode). Without it a stalled upstream geocoder leaves the add-pub screen
+ *  in "Dohledávám podnik…" forever, with the save button blocked behind it. */
+const LOCATION_LOOKUP_TIMEOUT_MS = 12_000;
+
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
@@ -336,6 +341,9 @@ async function backendLocationLookup(
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || signal?.aborted) return null;
 
+  const operation =
+    path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend';
+  const abort = chainAbortSignal(signal, LOCATION_LOOKUP_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',
@@ -345,10 +353,10 @@ async function backendLocationLookup(
         ...(near ? { lat: near.lat, lng: near.lng } : {}),
         ...(placeId ? { place_id: placeId } : {}),
       }),
-      signal,
+      signal: abort.signal,
     });
     if (!resp.ok) {
-      trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
+      trackApiFailure(operation, {
         endpoint: path,
         status: resp.status,
       });
@@ -358,14 +366,16 @@ async function backendLocationLookup(
     return data.items ?? [];
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
-      trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
-        endpoint: path,
-        reason: 'exception',
-        error: err,
-      });
-    }
+    if (signal?.aborted) return null;
+    // The caller did not cancel, so an abort here is our own hard timeout.
+    trackApiFailure(operation, {
+      endpoint: path,
+      reason: isAbortError ? 'timeout' : 'exception',
+      ...(isAbortError ? {} : { error: err }),
+    });
     return null;
+  } finally {
+    abort.cleanup();
   }
 }
 
@@ -503,12 +513,13 @@ export async function reverseGeocodePubLocation(
   const endpoint = getBackendEndpoint('/v1/pubs/reverse-geocode');
   if (!endpoint || signal?.aborted) return null;
 
+  const abort = chainAbortSignal(signal, LOCATION_LOOKUP_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(location),
-      signal,
+      signal: abort.signal,
     });
     if (!resp.ok) {
       trackApiFailure('pub_location_geocode_backend', {
@@ -522,14 +533,15 @@ export async function reverseGeocodePubLocation(
     return item ? geocodeResultFromItem(item) : null;
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
-      trackApiFailure('pub_location_geocode_backend', {
-        endpoint: '/v1/pubs/reverse-geocode',
-        reason: 'exception',
-        error: err,
-      });
-    }
+    if (signal?.aborted) return null;
+    trackApiFailure('pub_location_geocode_backend', {
+      endpoint: '/v1/pubs/reverse-geocode',
+      reason: isAbortError ? 'timeout' : 'exception',
+      ...(isAbortError ? {} : { error: err }),
+    });
     return null;
+  } finally {
+    abort.cleanup();
   }
 }
 
