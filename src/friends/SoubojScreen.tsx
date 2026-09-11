@@ -230,7 +230,10 @@ export default function SoubojScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + TAB_CHROME },
+          // TAB_CHROME already carries the safe area (see its docstring), so
+          // adding insets.bottom on top would reserve it twice. Twelve older
+          // screens still do; that is their bug to fix, not a pattern to copy.
+          { paddingBottom: TAB_CHROME },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
