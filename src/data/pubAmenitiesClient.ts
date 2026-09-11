@@ -300,7 +300,7 @@ export async function submitAmenityVotes(
         await parseNonOkPayload(resp),
       );
       if (consentCode) {
-        holdUgcPublishing(session.accountId);
+        holdUgcPublishing(session.accountId, consentCode);
         trackAmenitySyncFailed('submit_votes', {
           status: resp.status,
           reason: 'http_error',
@@ -387,6 +387,9 @@ function parseVotesResponse(data: unknown): WireAmenityVotesResponse | null {
 export async function submitAmenityVotesDetailed(
   votes: WireAmenityVote[],
   signal?: AbortSignal,
+  /** Set by a vote the user just cast, so a 428 can open the consent sheet even
+   *  inside its "not now" quiet period. */
+  options?: { userInitiated?: boolean },
 ): Promise<SubmitAmenityDetailed> {
   if (signal?.aborted) return { status: 'retry', body: null };
 
@@ -442,9 +445,10 @@ export async function submitAmenityVotesDetailed(
       const consentCode = notifyUgcConsentRequiredFromResponse(
         resp.status,
         await parseNonOkPayload(resp),
+        { userInitiated: options?.userInitiated === true },
       );
       if (consentCode) {
-        holdUgcPublishing(session.accountId);
+        holdUgcPublishing(session.accountId, consentCode);
         trackAmenitySyncFailed('submit_votes', {
           status: resp.status,
           reason: 'http_error',

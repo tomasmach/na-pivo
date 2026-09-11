@@ -10,6 +10,7 @@ import {
   clearUgcConsentStateForTests,
   holdUgcPublishing,
   isUgcConsentPending,
+  ugcConsentStatus,
 } from '../ugcConsent';
 
 const VALID_WIRE = {
@@ -118,6 +119,79 @@ describe('ugcConsent', () => {
       rememberUgcConsent('account-1', parseUgcConsentSnapshot(FRESH_ACCOUNT_WIRE)!);
 
       expect(isUgcConsentPending('account-1')).toBe(true);
+    });
+  });
+
+  describe('ugcConsentStatus', () => {
+    const CURRENT_WIRE = {
+      policy_version: CURRENT_UGC_POLICY_VERSION,
+      accepted: true,
+      accepted_version: CURRENT_UGC_POLICY_VERSION,
+      accepted_at: '2026-09-11T20:00:00Z',
+    };
+    const STALE_REFUSAL_WIRE = {
+      policy_version: CURRENT_UGC_POLICY_VERSION,
+      accepted: false,
+      accepted_version: '',
+      accepted_at: null,
+    };
+
+    it('reports nothing known for an untouched account', () => {
+      expect(ugcConsentStatus('account-1')).toEqual({ known: false, requiredCode: null });
+    });
+
+    it('keeps publishing open when a late profile answer contradicts an acceptance', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+      // A /account/me that left before the acceptance finally answers.
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(STALE_REFUSAL_WIRE)!);
+
+      expect(ugcConsentStatus('account-1')).toEqual({ known: true, requiredCode: null });
+      expect(isUgcConsentPending('account-1')).toBe(false);
+    });
+
+    it('ignores a 428 that crossed the acceptance in flight', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+      holdUgcPublishing('account-1', 'ugc_consent_required');
+
+      expect(isUgcConsentPending('account-1')).toBe(false);
+    });
+
+    it('still holds when the server asks for a newer policy than the accepted one', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+      holdUgcPublishing('account-1', 'ugc_policy_update_required');
+
+      expect(ugcConsentStatus('account-1')).toEqual({
+        known: true,
+        requiredCode: 'ugc_policy_update_required',
+      });
+    });
+
+    it('locks again when a bumped policy arrives on the profile', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+      rememberUgcConsent(
+        'account-1',
+        parseUgcConsentSnapshot({
+          policy_version: '2026-12-01',
+          accepted: false,
+          accepted_version: CURRENT_UGC_POLICY_VERSION,
+          accepted_at: '2026-09-11T20:00:00Z',
+        })!,
+      );
+
+      expect(ugcConsentStatus('account-1')).toEqual({
+        known: true,
+        requiredCode: 'ugc_policy_update_required',
+      });
+      expect(ugcPolicyHeaders('account-1')).toEqual({ [UGC_POLICY_HEADER]: '2026-12-01' });
+    });
+
+    it('asks from scratch for an account that never accepted anything', () => {
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(STALE_REFUSAL_WIRE)!);
+
+      expect(ugcConsentStatus('account-1')).toEqual({
+        known: true,
+        requiredCode: 'ugc_consent_required',
+      });
     });
   });
 

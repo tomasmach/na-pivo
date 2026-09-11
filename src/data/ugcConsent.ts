@@ -28,47 +28,126 @@ export function parseUgcConsentSnapshot(input: unknown): UgcConsentSnapshot | nu
 
 export const CURRENT_UGC_POLICY_VERSION = '2026-08-22';
 
-const snapshotsByAccountId = new Map<string, UgcConsentSnapshot>();
+export type UgcConsentRequiredCode = 'ugc_consent_required' | 'ugc_policy_update_required';
 
 /**
- * Accounts the server has already answered 428 for. A profile snapshot can be
- * missing or stale (the queue flushes before the profile loads), so the refusal
- * itself is remembered as the authoritative "this account still owes consent".
+ * What this client knows about one account's UGC consent.
+ *
+ * Everything here is a HIGH-WATER mark, never a plain overwrite: a `/account/me`
+ * that was already in flight when the user accepted comes back saying
+ * `accepted: false`, and letting that answer win would lock the gated queues out
+ * again with no request and no sheet to unlock them.
  */
-const consentOwedAccountIds = new Set<string>();
+interface AccountConsentState {
+  /** The most recent snapshot, kept for deriving which code the sheet needs. */
+  snapshot?: UgcConsentSnapshot;
+  /** Highest policy version the server has asked this client for. */
+  learnedVersion?: string;
+  /** Highest policy version we have first-hand proof this account accepted. */
+  acceptedVersion?: string;
+  /** The unanswered 428 code, if the server has refused a public write. */
+  owedCode?: UgcConsentRequiredCode;
+}
+
+const stateByAccountId = new Map<string, AccountConsentState>();
+
+function stateFor(accountId: string): AccountConsentState {
+  const existing = stateByAccountId.get(accountId);
+  if (existing) return existing;
+  const created: AccountConsentState = {};
+  stateByAccountId.set(accountId, created);
+  return created;
+}
+
+/** The policy version this client sends for the account. */
+function wantedVersion(accountId: string): string {
+  const learned = stateByAccountId.get(accountId)?.learnedVersion;
+  return learned && learned > CURRENT_UGC_POLICY_VERSION ? learned : CURRENT_UGC_POLICY_VERSION;
+}
 
 export function rememberUgcConsent(accountId: string, snapshot: UgcConsentSnapshot): void {
-  snapshotsByAccountId.set(accountId, snapshot);
+  const state = stateFor(accountId);
+  state.snapshot = snapshot;
+  if (!state.learnedVersion || snapshot.policyVersion > state.learnedVersion) {
+    state.learnedVersion = snapshot.policyVersion;
+  }
+  if (!snapshot.accepted) return;
+
   // Acceptance (this device or another one) lifts the hold, so the queues that
   // were waiting on it may publish again.
-  if (snapshot.accepted) consentOwedAccountIds.delete(accountId);
+  const accepted = snapshot.acceptedVersion || snapshot.policyVersion;
+  if (!state.acceptedVersion || accepted > state.acceptedVersion) {
+    state.acceptedVersion = accepted;
+  }
+  state.owedCode = undefined;
 }
 
 export function ugcPolicyHeaders(accountId: string): Record<string, string> {
-  const learned = snapshotsByAccountId.get(accountId)?.policyVersion;
-  const version =
-    learned && learned > CURRENT_UGC_POLICY_VERSION ? learned : CURRENT_UGC_POLICY_VERSION;
-  return { [UGC_POLICY_HEADER]: version };
-}
-
-/** Remember that the server refused this account's public writes with a 428. */
-export function holdUgcPublishing(accountId: string): void {
-  consentOwedAccountIds.add(accountId);
+  return { [UGC_POLICY_HEADER]: wantedVersion(accountId) };
 }
 
 /**
- * True when a public contribution from this account would be refused: the server
- * already answered 428, or the last profile snapshot says the policy is not
- * accepted. Callers use it to ask BEFORE publishing — a queued write that keeps
- * re-sending into a 428 never lands and only burns requests and telemetry.
+ * Remember that the server refused this account's public writes with a 428.
+ *
+ * A `ugc_consent_required` that lands after we have proof of acceptance for the
+ * very version we send is a refusal of a request that left before the user
+ * accepted — it says nothing about now. A policy bump
+ * (`ugc_policy_update_required`) always holds: it asks for a version this
+ * account has not accepted.
  */
-export function isUgcConsentPending(accountId: string): boolean {
-  if (consentOwedAccountIds.has(accountId)) return true;
-  const snapshot = snapshotsByAccountId.get(accountId);
-  return snapshot ? !snapshot.accepted : false;
+export function holdUgcPublishing(
+  accountId: string,
+  code: UgcConsentRequiredCode = 'ugc_consent_required',
+): void {
+  const state = stateFor(accountId);
+  if (code === 'ugc_consent_required' && state.acceptedVersion === wantedVersion(accountId)) {
+    return;
+  }
+  state.owedCode = code;
 }
 
-export type UgcConsentRequiredCode = 'ugc_consent_required' | 'ugc_policy_update_required';
+/**
+ * What this client knows about publishing for the account right now.
+ *
+ * `known` is false only when nothing has been learned about the account yet, so
+ * a caller with a second source (the loaded profile) can fall back to it instead
+ * of reading "nothing owed" as "consent given".
+ */
+export function ugcConsentStatus(accountId: string): {
+  known: boolean;
+  requiredCode: UgcConsentRequiredCode | null;
+} {
+  const state = stateByAccountId.get(accountId);
+  if (!state) return { known: false, requiredCode: null };
+
+  // A policy bump outranks any acceptance we can prove: the server is refusing
+  // the very version this client sends, so a stored acceptance of it is moot.
+  if (state.owedCode === 'ugc_policy_update_required') {
+    return { known: true, requiredCode: state.owedCode };
+  }
+  if (state.acceptedVersion && state.acceptedVersion >= wantedVersion(accountId)) {
+    return { known: true, requiredCode: null };
+  }
+  if (state.owedCode) return { known: true, requiredCode: state.owedCode };
+
+  const snapshot = state.snapshot;
+  if (!snapshot) return { known: false, requiredCode: null };
+  if (snapshot.accepted) return { known: true, requiredCode: null };
+  return {
+    known: true,
+    // An account that accepted an older version needs the "rules changed" copy.
+    requiredCode: snapshot.acceptedVersion ? 'ugc_policy_update_required' : 'ugc_consent_required',
+  };
+}
+
+/**
+ * True when a public contribution from this account would be refused. Callers use
+ * it to ask BEFORE publishing — a queued write that keeps re-sending into a 428
+ * never lands and only burns requests and telemetry.
+ */
+export function isUgcConsentPending(accountId: string): boolean {
+  return ugcConsentStatus(accountId).requiredCode !== null;
+}
 
 export interface UgcConsentRequiredEvent {
   code: UgcConsentRequiredCode;
@@ -112,20 +191,20 @@ export function notifyUgcConsentRequired(
 export function notifyUgcConsentRequiredFromResponse(
   status: number,
   payload: unknown,
+  options?: { userInitiated?: boolean },
 ): UgcConsentRequiredCode | null {
   if (status !== 428) return null;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return null;
 
   const code = (payload as Record<string, unknown>).code;
   if (code === 'ugc_consent_required' || code === 'ugc_policy_update_required') {
-    notifyUgcConsentRequired(code);
+    notifyUgcConsentRequired(code, options);
     return code;
   }
   return null;
 }
 
 export function clearUgcConsentStateForTests(): void {
-  snapshotsByAccountId.clear();
-  consentOwedAccountIds.clear();
+  stateByAccountId.clear();
   listeners.clear();
 }

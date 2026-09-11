@@ -100,7 +100,7 @@ import {
 import { fetchPubAmenities } from '@/data/pubAmenitiesClient';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { notifyUgcConsentRequired } from '@/data/ugcConsent';
-import { amenityVoteNeedsUgcConsent } from '@/components/amenities/amenityVoteConsent';
+import { amenityVoteUgcConsentCode } from '@/components/amenities/amenityVoteConsent';
 import { useToastStore } from '@/stores/toastStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -438,11 +438,10 @@ export function MapPubSheet({
       // silently. The consent sheet cannot present over this one (one modal at a
       // time), so this sheet steps aside first; the vote is already stored and
       // queued and goes out the moment the policy is accepted.
-      if (next != null && amenityVoteNeedsUgcConsent()) {
+      const consentCode = next != null ? amenityVoteUgcConsentCode() : null;
+      if (consentCode) {
         onClose();
-        runAfterSheetClose(() =>
-          notifyUgcConsentRequired('ugc_consent_required', { userInitiated: true }),
-        );
+        runAfterSheetClose(() => notifyUgcConsentRequired(consentCode, { userInitiated: true }));
         return;
       }
 
@@ -455,7 +454,7 @@ export function MapPubSheet({
         value: next,
         clientUpdatedAt,
       });
-      void submitAmenityVotesDetailed([wire]).then((res) => {
+      void submitAmenityVotesDetailed([wire], undefined, { userInitiated: true }).then((res) => {
         if (res.status !== 'ok' || !res.body) {
           return;
         }

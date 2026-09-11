@@ -501,6 +501,39 @@ describe('UGC policy contract', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it('lets a user-cast vote open the consent sheet through the quiet period', async () => {
+    const events: { code: string; userInitiated: boolean }[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event));
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+
+    await submitAmenityVotesDetailed([liveVote], undefined, { userInitiated: true });
+
+    expect(events).toEqual([{ code: 'ugc_consent_required', userInitiated: true }]);
+  });
+
+  it('marks a queue retry as background so it cannot re-open a dismissed sheet', async () => {
+    const events: { code: string; userInitiated: boolean }[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event));
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+
+    await submitAmenityVotes([liveVote]);
+
+    expect(events).toEqual([{ code: 'ugc_consent_required', userInitiated: false }]);
+  });
+
+  it('tries exactly once again after a restart', async () => {
+    const spy = fetchReturning(428, { code: 'ugc_consent_required', detail: 'Potvrď pravidla.' });
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // A fresh process starts without the remembered refusal.
+    clearUgcConsentStateForTests();
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
   it('does not publish when the profile snapshot already says consent is missing', async () => {
     rememberUgcConsent('a', {
       policyVersion: CURRENT_UGC_POLICY_VERSION,
