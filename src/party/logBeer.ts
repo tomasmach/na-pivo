@@ -20,6 +20,7 @@
  */
 
 import { generateUuidV4 } from '@/data/account';
+import { trackDrinkAdded, type DrinkAddedSource } from '@/data/counterTelemetry';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import {
   enqueueDrink,
@@ -37,6 +38,7 @@ import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { isPastEveningBackdate, useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { contextFromPubKey, type DrinkType, type ServingType } from '@/drinks/drinkTypes';
+import { trackClientEvent } from '@/data/telemetryClient';
 
 export interface PartyBeerPlace {
   /** Geohash-8 of the pub — the durable identity of a place. */
@@ -62,6 +64,7 @@ const runAddition = createQueueLock({ protectPrivateAccount: false });
 export async function logPartyBeer({
   place,
   beerName,
+  source,
   drinkType = 'beer',
   priceCzk,
   volumeMl,
@@ -73,6 +76,12 @@ export async function logPartyBeer({
 }: {
   place: PartyBeerPlace;
   beerName: string;
+  /**
+   * Which door this tap came through. Required, because this function is the
+   * only place every write path passes through — an optional value here is how
+   * the 2.0 evening ended up unmeasurable.
+   */
+  source: DrinkAddedSource;
   drinkType?: DrinkType;
   priceCzk?: number;
   volumeMl?: number;
@@ -136,6 +145,7 @@ export async function logPartyBeer({
     if ((await enqueueDrink(entry, { deliver: false })) === 'storage-error') return null;
     if (!isPrivateAccountMutationScopeCurrent(scope)) return null;
     const before = useTallyStore.getState();
+    const sessionBefore = before.current;
     let landedSession: TallySession | null;
     if (backdated && isPastEveningBackdate(drankAt)) {
       landedSession = before.addBackdatedDrink(tallyPlace, tallyDrink);
@@ -143,6 +153,20 @@ export async function logPartyBeer({
       before.addDrink(tallyPlace, tallyDrink);
       landedSession = useTallyStore.getState().current;
     }
+    // Same signal the 2.x counter sent: this drink opened an evening, either
+    // because there was none or because it rolled the tally to a new one. A
+    // backdate edits the diary and never starts tonight.
+    const startsSession =
+      !backdated &&
+      (sessionBefore === null ||
+        useTallyStore.getState().current?.clientId !== sessionBefore.clientId);
+    if (startsSession) void trackClientEvent({ event: 'counter_session_started' });
+    trackDrinkAdded(source, {
+      hadActiveSession: !startsSession,
+      backdated,
+      drinkType,
+      placeContext: outside,
+    });
     // The drink is durable now. A failed visit must not undo it or overwrite
     // another edit made while local storage was pending.
     await syncVisit(landedSession, drankAt, activePartyCode, {

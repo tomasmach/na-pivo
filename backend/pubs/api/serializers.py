@@ -485,11 +485,15 @@ _CLIENT_EVENT_SCREEN_NAMES = {
     "my_added_pubs",
     "profile_photos",
 }
+# Mirror of UI_INTERACTION_TARGETS in src/data/uxTelemetry.ts. A target missing
+# here is silently dropped, which is how a week of 3.0 taps landed as an unknown
+# target; src/data/__tests__/uxTelemetry.test.ts fails when the two drift apart.
 _CLIENT_EVENT_INTERACTION_TARGETS = {
     "tab_compass",
     "tab_beer",
     "tab_friends",
     "tab_profile",
+    "tab_community",
     "compass_mode_nearest",
     "compass_mode_surprise",
     "compass_map_open",
@@ -518,6 +522,7 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "map_pub_detail_open",
     "map_list_open",
     "map_aim_compass",
+    "map_add_pub_open",
     "beer_counter_segment",
     "beer_diary_segment",
     "beer_counter_more",
@@ -531,9 +536,11 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "counter_resume",
     "counter_share_friends",
     "diary_evening_open",
+    "diary_beer_open",
     "diary_historical_open",
     "diary_retry",
     "profile_edit_open",
+    "profile_diary_open",
     "profile_more_open",
     "profile_badges_open",
     "profile_code_open",
@@ -543,6 +550,7 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "profile_leaderboards_open",
     "profile_friends_manage_open",
     "settings_more_open",
+    "settings_privacy_open",
     "settings_distance_change",
     "settings_hide_closed",
     "settings_prefer_rated",
@@ -602,6 +610,10 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "night_publish",
     "night_unpublish",
     "night_react",
+    "night_invite_open",
+    "night_games_open",
+    "night_join_code_open",
+    "night_last_open",
 }
 _CLIENT_EVENT_INTERACTION_ACTIONS = {
     "tap",
@@ -634,6 +646,9 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "delivery_state",
     "return_days",
     "had_active_session",
+    "backdated",
+    "drink_type",
+    "place_context",
     "retryable",
     "distance_m",
     "duration_ms",

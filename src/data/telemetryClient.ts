@@ -81,6 +81,9 @@ const CONTEXT_KEYS = new Set([
   'delivery_state',
   'return_days',
   'had_active_session',
+  'backdated',
+  'drink_type',
+  'place_context',
   'retryable',
   'distance_m',
   'duration_ms',
@@ -90,6 +93,9 @@ const CONTEXT_KEYS = new Set([
   'target',
   'action',
 ]);
+
+/** The whitelist above, for the drift guard in `__tests__/uxTelemetry.test.ts`. */
+export const CONTEXT_KEYS_FOR_TESTS: ReadonlySet<string> = CONTEXT_KEYS;
 
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;

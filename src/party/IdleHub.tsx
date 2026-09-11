@@ -19,6 +19,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { PresenceList } from '@/friends/PresenceList';
 import { useNowTick } from '@/friends/useNowTick';
 import { usePartaDashboard } from '@/friends/usePartaDashboard';
@@ -236,12 +237,13 @@ export function IdleHub({
             first
             title={lastTitle}
             meta={sessionDrinkSummary(lastSession)}
-            onOpen={() =>
+            onOpen={() => {
+              trackUiInteraction('night_last_open');
               router.push({
                 pathname: '/evening',
                 params: { startedAt: lastSession.startedAt },
-              } as Href)
-            }
+              } as Href);
+            }}
             accessibilityLabel={t.liveParty.a11yLastNight(lastTitle)}
           />
         </>
