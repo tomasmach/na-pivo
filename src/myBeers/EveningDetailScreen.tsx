@@ -95,7 +95,7 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
-import { trackClientEvent } from '@/data/telemetryClient';
+import { trackDrinkAdded } from '@/data/counterTelemetry';
 import { useToastStore } from '@/stores/toastStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { deriveReconciledDiarySessions } from '@/data/diarySync';
@@ -382,15 +382,11 @@ export default function EveningDetailScreen() {
         if (!(await isDrinkQueued(id))) markDrinkSynced(id);
       });
       void flushVisitsQueue();
-      void trackClientEvent({
-        event: 'drink_added',
-        context: {
-          had_active_session: isCurrentEvening,
-          backdated: !isCurrentEvening,
-          source: 'evening_detail',
-          ...(result.drinkType === 'beer' ? {} : { drink_type: result.drinkType }),
-          ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
-        },
+      trackDrinkAdded('evening_detail', {
+        hadActiveSession: isCurrentEvening,
+        backdated: !isCurrentEvening,
+        drinkType: result.drinkType,
+        placeContext: placeContext === 'pub' ? null : placeContext,
       });
       showToast(t.myBeers.addDrinkToEveningSaved, {
         icon: <BeerIcon size={20} color={Colors.amber} />,

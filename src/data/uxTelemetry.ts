@@ -132,6 +132,14 @@ export const UI_INTERACTION_TARGETS = [
   'night_publish',
   'night_unpublish',
   'night_react',
+  // The idle hub's doors (§14.4). The pub row keeps `counter_place_open` and
+  // the drink picker keeps `counter_add_drink_open` so the 2.x counter history
+  // and the 3.0 evening are still one series; only the genuinely new doors get
+  // new names.
+  'night_invite_open',
+  'night_games_open',
+  'night_join_code_open',
+  'night_last_open',
 ] as const;
 
 export type UiInteractionTarget = (typeof UI_INTERACTION_TARGETS)[number];

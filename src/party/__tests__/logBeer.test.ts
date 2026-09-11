@@ -59,6 +59,13 @@ jest.mock('@/data/visitsQueue', () => ({
   flushVisitsQueue: (...args: unknown[]) => flushVisitsQueue(...(args as [])),
 }));
 
+// The real counterTelemetry runs on top of this, so the test sees the event
+// names and the source the server will actually receive.
+const trackClientEvent: jest.Mock = jest.fn(async () => undefined);
+jest.mock('@/data/telemetryClient', () => ({
+  trackClientEvent: (...args: unknown[]) => trackClientEvent(...(args as [])),
+}));
+
 /** Praha, roughly — a real geohash-8, because the client decodes it. */
 const PLACE = { pubKey: 'u2fkbjgx', pubName: 'U Fleků', pubCity: 'Praha' };
 
@@ -133,9 +140,13 @@ describe('logPartyBeer', () => {
   it('does not run an addition queued before an account transition', async () => {
     let save!: (result: string) => void;
     enqueueDrink.mockImplementationOnce(() => new Promise<string>((resolve) => { save = resolve; }));
-    const first = logPartyBeer({ place: PLACE, beerName: 'First', deferDelivery: true });
+    const first = logPartyBeer({
+      source: 'hub',
+      place: PLACE, beerName: 'First', deferDelivery: true });
     await flush();
-    const second = logPartyBeer({ place: PLACE, beerName: 'Second', deferDelivery: true });
+    const second = logPartyBeer({
+      source: 'hub',
+      place: PLACE, beerName: 'Second', deferDelivery: true });
     const transition = beginPrivateAccountTransition('test-party-addition');
     try {
       save('queued');
@@ -151,7 +162,9 @@ describe('logPartyBeer', () => {
   it('waits for durable storage before changing the tally', async () => {
     let save!: (result: string) => void;
     enqueueDrink.mockImplementationOnce(() => new Promise<string>((resolve) => { save = resolve; }));
-    const pending = logPartyBeer({ place: PLACE, beerName: 'Plzeň', deferDelivery: true });
+    const pending = logPartyBeer({
+      source: 'hub',
+      place: PLACE, beerName: 'Plzeň', deferDelivery: true });
     await flush();
     expect(useTallyStore.getState().current).toBeNull();
     save('queued');
@@ -161,7 +174,9 @@ describe('logPartyBeer', () => {
 
   it('does not confirm a drink when its durable queue cannot be saved', async () => {
     enqueueDrink.mockResolvedValueOnce('storage-error');
-    const id = await logPartyBeer({ place: PLACE, beerName: 'Plzeň' });
+    const id = await logPartyBeer({
+      source: 'hub',
+      place: PLACE, beerName: 'Plzeň' });
     expect(id).toBeNull();
     expect(useTallyStore.getState().current).toBeNull();
     expect(syncVisit).not.toHaveBeenCalled();
@@ -346,7 +361,9 @@ describe('logPartyBeer', () => {
 
   it('does not change the tally when enqueue rejects', async () => {
     enqueueDrink.mockRejectedValueOnce(new Error('account transition'));
-    expect(await logPartyBeer({ place: PLACE, beerName: 'Plzeň' })).toBeNull();
+    expect(await logPartyBeer({
+      source: 'hub',
+      place: PLACE, beerName: 'Plzeň' })).toBeNull();
     expect(useTallyStore.getState().current).toBeNull();
   });
 
@@ -354,7 +371,9 @@ describe('logPartyBeer', () => {
     const earlierId = await loggedBeer({ place: PLACE, beerName: 'Earlier', deferDelivery: true });
     let finishVisit!: (result: string) => void;
     syncVisit.mockImplementationOnce(() => new Promise<string>((resolve) => { finishVisit = resolve; }));
-    const pending = logPartyBeer({ place: PLACE, beerName: 'New', deferDelivery: true });
+    const pending = logPartyBeer({
+      source: 'hub',
+      place: PLACE, beerName: 'New', deferDelivery: true });
     await flush();
     const current = useTallyStore.getState().current!;
     useTallyStore.getState().updateDrinkNameInSession(current.startedAt, earlierId, 'Edited');
@@ -368,6 +387,106 @@ describe('logPartyBeer', () => {
     expect(removeQueuedDrink).not.toHaveBeenCalled();
   });
 
+});
+
+describe('logPartyBeer telemetry', () => {
+  const events = () =>
+    trackClientEvent.mock.calls.map(([input]) => [input.event, input.context]);
+
+  it('names the door every drink came through', async () => {
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'mini_bar' });
+
+    expect(events()).toContainEqual([
+      'drink_added',
+      { source: 'mini_bar', had_active_session: false },
+    ]);
+  });
+
+  it('opens a session on the first drink and not on the second', async () => {
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+    expect(events().filter(([event]) => event === 'counter_session_started')).toHaveLength(1);
+
+    trackClientEvent.mockClear();
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+
+    expect(events()).toEqual([
+      ['drink_added', { source: 'hub', had_active_session: true }],
+    ]);
+  });
+
+  it('does not invent an evening for a beer written up the morning after', async () => {
+    // Nothing running: a backdate must neither open tonight nor claim one was
+    // already there. Deriving one fact from the other reported both wrong.
+    await loggedBeer({
+      place: PLACE,
+      beerName: 'Plzeň',
+      source: 'form',
+      at: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
+      backdated: true,
+    });
+
+    expect(events()).toEqual([
+      ['drink_added', { source: 'form', had_active_session: false, backdated: true }],
+    ]);
+  });
+
+  it('reports the running evening a backdate was written from', async () => {
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+    trackClientEvent.mockClear();
+
+    await loggedBeer({
+      place: PLACE,
+      beerName: 'Plzeň',
+      source: 'form',
+      at: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
+      backdated: true,
+    });
+
+    expect(events()).toEqual([
+      ['drink_added', { source: 'form', had_active_session: true, backdated: true }],
+    ]);
+  });
+
+  it('opens a new evening when the last drink was deleted out of the old one', async () => {
+    const id = await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+    const session = useTallyStore.getState().current;
+    useTallyStore.getState().removeDrinkFromSession(session!.startedAt, id);
+    trackClientEvent.mockClear();
+
+    await loggedBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+
+    expect(events()).toEqual([
+      ['counter_session_started', undefined],
+      ['drink_added', { source: 'hub', had_active_session: false }],
+    ]);
+  });
+
+  it('carries the drink type and the place, never their names', async () => {
+    await loggedBeer({
+      place: { pubKey: 'ctx:private', pubName: '' },
+      beerName: 'Slivovice',
+      drinkType: 'shot',
+      source: 'picker',
+    });
+
+    expect(events()).toContainEqual([
+      'drink_added',
+      {
+        source: 'picker',
+        had_active_session: false,
+        drink_type: 'shot',
+        place_context: 'private',
+      },
+    ]);
+  });
+
+  it('says nothing when the drink never reached durable storage', async () => {
+    enqueueDrink.mockResolvedValueOnce('storage-error');
+
+    await logPartyBeer({ place: PLACE, beerName: 'Plzeň', source: 'hub' });
+
+    expect(events()).toEqual([]);
+  });
 });
 
 describe('unlogPartyBeer', () => {
@@ -497,8 +616,11 @@ describe('renamePartyBeer', () => {
   });
 });
 
-async function loggedBeer(options: Parameters<typeof logPartyBeer>[0]): Promise<string> {
-  const id = await logPartyBeer(options);
+async function loggedBeer(
+  options: Omit<Parameters<typeof logPartyBeer>[0], 'source'> &
+    Partial<Pick<Parameters<typeof logPartyBeer>[0], 'source'>>,
+): Promise<string> {
+  const id = await logPartyBeer({ source: 'hub', ...options });
   expect(id).not.toBeNull();
   return id!;
 }
@@ -506,6 +628,7 @@ async function loggedBeer(options: Parameters<typeof logPartyBeer>[0]): Promise<
 describe('first drink outside a pub after restart', () => {
   it('keeps the initial nameless place drink editable and removable after rehydration', async () => {
     const id = await logPartyBeer({
+      source: 'hub',
       place: { pubKey: 'ctx:other', pubName: '' },
       beerName: 'Beer',
       volumeMl: 500,

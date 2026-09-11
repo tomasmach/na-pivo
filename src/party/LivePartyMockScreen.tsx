@@ -120,6 +120,9 @@ import {
 } from '@/party/partyPubVisits';
 import { rememberNightRecord, useNightRecord } from '@/party/useNightRecord';
 import { usePartyBeer } from '@/party/usePartyBeer';
+import { trackCounterTabOpened, type DrinkAddedSource } from '@/data/counterTelemetry';
+import { trackClientEvent } from '@/data/telemetryClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import {
   closeAfterDurablePartyBeerMutation,
   createPartyBeerMutationGate,
@@ -256,6 +259,18 @@ export default function LivePartyMockScreen() {
       return () => setIsFocused(false);
     }, []),
   );
+  // Once per open, NOT per focus — the 2.x counter counted mounts
+  // (`git show v1.5.0:src/counter/CounterScreen.tsx`). Every return from the
+  // pub picker, a game, the finish screen or the evening detail re-focuses this
+  // screen, and counting those would turn "came back the same day" into "tapped
+  // around", double the screen view, and burn two of the session's 120
+  // non-product events plus an AsyncStorage round trip every time.
+  const hadActiveSessionOnOpen = React.useRef(
+    (useTallyStore.getState().current?.drinks.length ?? 0) > 0,
+  );
+  React.useEffect(() => {
+    void trackCounterTabOpened(hadActiveSessionOnOpen.current);
+  }, []);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { joinCode: inviteJoinCode, invite: inviteRequestId } = useLocalSearchParams<{
@@ -374,6 +389,12 @@ export default function LivePartyMockScreen() {
     // and stopwatch underneath the current evening. Explicit joins replace the
     // local night in their success handler below.
     if (evening?.active && !live && !staleEveningCode) {
+      // No `counter_session_resumed` here. In 2.x that event meant a person
+      // tapped "Pokračovat" on a closed evening; this is the app re-attaching
+      // to a table the server still holds, which happens on every cold start
+      // mid-evening. Reporting it under the old name would quietly change what
+      // the metric counts. 3.0 has no user-triggered resume, so the event has
+      // no call site until it grows one.
       resumeParty(evening.pubName, evening.startedAt);
     }
   }, [evening, live, resumeParty, staleEveningCode]);
@@ -413,6 +434,7 @@ export default function LivePartyMockScreen() {
     finishFromServer(night.endedAt);
     archiveCurrent('manual');
     endParty();
+    void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'remote' } });
     finishPartyToRecap(router, '/party-live');
   }, [accountId, active, archiveCurrent, confirmedPartyCode, endParty, finishFromServer, night, router]);
 
@@ -423,7 +445,7 @@ export default function LivePartyMockScreen() {
    * in a cellar with no signal. The evening is a best-effort extra — when it
    * lands there is a code to read out, and when it does not the night still runs.
    */
-  const beginNight = async (firstDrink: BeerFormResult) => {
+  const beginNight = async (firstDrink: BeerFormResult, source: DrinkAddedSource) => {
     const placeName = pubName.trim() || OUTSIDE_PUB_NAME;
     const transition = startParty(placeName, firstDrink.name, pubKey, pubTaps);
     const joinCode = stagedPartyCode ?? generateJoinCode();
@@ -435,6 +457,7 @@ export default function LivePartyMockScreen() {
     // path as every other one. Its queue is durable immediately, but delivery
     // waits for the table create so a fast POST cannot outrun its party code.
     const id = await beer.add(firstDrink.name, {
+      source,
       partyCode: joinCode,
       deferDelivery: true,
       drinkType: firstDrink.drinkType,
@@ -456,6 +479,7 @@ export default function LivePartyMockScreen() {
   };
 
   const openInvite = () => {
+    trackUiInteraction('night_invite_open');
     setInviteOpen(true);
     // QR and share must point at a real members-only table. Starting the table
     // is independent from counting the first beer, so inviting before the first
@@ -494,6 +518,7 @@ export default function LivePartyMockScreen() {
   const [formDrink, setFormDrink] = React.useState<TallyDrink | null>(null);
   const [formNonce, setFormNonce] = React.useState(0);
   const formGenerationRef = React.useRef(0);
+  const formSourceRef = React.useRef<DrinkAddedSource>('form');
   const [backdateAt, setBackdateAt] = React.useState<string | null>(null);
   const [scanOpen, setScanOpen] = React.useState(false);
   const [scannedDrinks, setScannedDrinks] = React.useState<ScannedDrink[]>([]);
@@ -698,8 +723,18 @@ export default function LivePartyMockScreen() {
       receiptOtherRows: receiptRows.filter((row) => !beerRows.includes(row)),
     };
   }, [priceCurrency, privateDrinks]);
-  const openDrinkForm = (mode: 'add' | 'edit', type: DrinkType, drink: TallyDrink | null = null) => {
+  const openDrinkForm = (
+    mode: 'add' | 'edit',
+    type: DrinkType,
+    drink: TallyDrink | null = null,
+    // What the drink that lands from this form should be attributed to. The
+    // form is a step, not a door: a scanned beer is a scan even though it is
+    // confirmed here.
+    source: DrinkAddedSource = 'form',
+  ) => {
     setBeersOpen(false);
+    formSourceRef.current = source;
+    void trackClientEvent({ event: 'beer_form_opened', context: { mode } });
     setFormMode(mode);
     setFormDrinkType(type);
     setFormDrink(drink);
@@ -711,6 +746,7 @@ export default function LivePartyMockScreen() {
     setBackdateAt(at);
     openDrinkForm('add', 'beer');
   };
+
   const openBackdatePicker = (now: number) => {
     const CAP_MS = 48 * 60 * 60 * 1000;
     const clamp = (ms: number) => new Date(Math.max(ms, now - CAP_MS)).toISOString();
@@ -737,13 +773,18 @@ export default function LivePartyMockScreen() {
       ],
     });
   };
-  const logDrink = async (result: BeerFormResult, atOverride?: string) => {
+  const logDrink = async (
+    result: BeerFormResult,
+    atOverride?: string,
+    source: DrinkAddedSource = 'form',
+  ) => {
     if (!active) {
-      beginNight(result);
+      beginNight(result, source);
       return;
     }
     const at = atOverride ?? new Date().toISOString();
     const id = await beer.add(result.name, {
+      source,
       deferDelivery: true,
       drinkType: result.drinkType,
       priceCzk: result.priceCzk,
@@ -763,13 +804,14 @@ export default function LivePartyMockScreen() {
       at,
     });
   };
-  const repeatDrink = (drink: TallyDrink) => {
+  const repeatDrink = (drink: TallyDrink, source: DrinkAddedSource) => {
+    trackUiInteraction('counter_repeat_drink');
     if (drinkPlaceById.get(drink.id) !== partyPlaceKey) {
       openDrinkForm('add', drinkTypeOf(drink), {
         ...drink,
         id: '',
         priceCzk: undefined,
-      });
+      }, source);
       return;
     }
     logDrink({
@@ -778,7 +820,7 @@ export default function LivePartyMockScreen() {
       priceCzk: drink.priceCzk,
       volumeMl: drink.volumeMl,
       servingType: drink.servingType,
-    });
+    }, undefined, source);
   };
   const confirmDrinkRemoval = (drinkId: string) => {
     showAppDialog({
@@ -953,7 +995,10 @@ export default function LivePartyMockScreen() {
             // Ending goes THROUGH the finish screen, never straight to nothing:
             // the last thing an evening does is become a post, and dropping the
             // state on the floor is how a good night ends up unrecorded.
-            onPress={() => router.push('/party-finish' as Href)}
+            onPress={() => {
+              trackUiInteraction('counter_finish_open');
+              router.push('/party-finish' as Href);
+            }}
             style={({ pressed }) => [styles.endPill, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={t.liveParty.a11yEndNight}
@@ -1004,7 +1049,10 @@ export default function LivePartyMockScreen() {
               // abandoning the evening. Same screen, presented as a modal.
               // The pickingPub flag is owned by the modal's own lifecycle, so
               // it cannot stay stuck when the route pops without picking.
-              onPress={() => router.push('/pick-pub' as Href)}
+              onPress={() => {
+                trackUiInteraction('counter_place_open');
+                router.push('/pick-pub' as Href);
+              }}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={t.liveParty.a11yChangePub(displayPubName)}
@@ -1316,7 +1364,10 @@ export default function LivePartyMockScreen() {
                           // that knows which private drink the event represents.
                           repeat={{
                             label: t.counter.repeatCta,
-                            onPress: () => privateDrink ? repeatDrink(privateDrink) : beer.add(event.text),
+                            onPress: () => privateDrink
+                              ? repeatDrink(privateDrink, 'repeat')
+                              : (trackUiInteraction('counter_repeat_drink'),
+                                 void beer.add(event.text, { source: 'repeat' })),
                           }}
                           actions={[
                             ...(privateDrink ? [{
@@ -1352,10 +1403,17 @@ export default function LivePartyMockScreen() {
               lastSession={lastSession}
               // A sheet over the hub, not the Hospody screen as a modal: from a
               // hub that already shows the map, that read as jumping tabs.
-              onPickPub={() => setPickPubOpen(true)}
+              onPickPub={() => {
+                trackUiInteraction('counter_place_open');
+                setPickPubOpen(true);
+              }}
               onInvite={openInvite}
-              onOpenGames={() => setGamesOpen(true)}
+              onOpenGames={() => {
+                trackUiInteraction('night_games_open');
+                setGamesOpen(true);
+              }}
               onJoinByCode={() => {
+                trackUiInteraction('night_join_code_open');
                 setPrefilledJoinCode(null);
                 setJoinOpen(true);
               }}
@@ -1429,7 +1487,14 @@ export default function LivePartyMockScreen() {
               right edge would be a seam with nothing on the other side. */}
           <View style={[styles.primaryWrap, !active && styles.primaryWhole]}>
             <Pressable
-              onPress={() => (active && latestDrink ? repeatDrink(latestDrink) : setBeersOpen(true))}
+              onPress={() => {
+                if (active && latestDrink) {
+                  repeatDrink(latestDrink, 'hub');
+                  return;
+                }
+                trackUiInteraction('counter_add_drink_open');
+                setBeersOpen(true);
+              }}
               style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={
@@ -1456,7 +1521,10 @@ export default function LivePartyMockScreen() {
               button you press by accident when you meant to log a beer. */}
           {active ? (
             <Pressable
-              onPress={() => setBeersOpen(true)}
+              onPress={() => {
+                trackUiInteraction('counter_add_drink_open');
+                setBeersOpen(true);
+              }}
               style={({ pressed }) => [styles.primaryPick, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={t.liveParty.a11yPickOtherDrink}
@@ -1470,7 +1538,13 @@ export default function LivePartyMockScreen() {
               the one door to the games (§14.4), and two doors to one sheet on
               one screen is how the old counter got confusing. */}
           {active ? (
-            <CircleButton label={t.liveParty.games} onPress={() => setGamesOpen(true)}>
+            <CircleButton
+              label={t.liveParty.games}
+              onPress={() => {
+                trackUiInteraction('night_games_open');
+                setGamesOpen(true);
+              }}
+            >
               <DicesIcon size={21} color={Colors.foam} />
             </CircleButton>
           ) : null}
@@ -1510,18 +1584,23 @@ export default function LivePartyMockScreen() {
               id: '', beerName: picked.name, drinkType: picked.drinkType,
               priceCzk: picked.priceCzk, volumeMl: picked.volumeMl,
               at: new Date().toISOString(),
-            });
+            }, 'picker');
           } else {
             logDrink({
               name: picked.name, drinkType: picked.drinkType,
               priceCzk: picked.priceCzk, volumeMl: picked.volumeMl,
-            });
+            }, undefined, 'picker');
           }
           setBeersOpen(false);
         }}
         onNew={(type) => openDrinkForm('add', type)}
         onBackdate={active ? openBackdatePicker : undefined}
-        onScan={() => { setBeersOpen(false); setScanOpen(true); }}
+        onScan={() => {
+          trackUiInteraction('counter_menu_scan_open');
+          void trackClientEvent({ event: 'beer_form_scan_opened' });
+          setBeersOpen(false);
+          setScanOpen(true);
+        }}
       />
 
       <ReceiptSheet
@@ -1550,6 +1629,7 @@ export default function LivePartyMockScreen() {
           setBackdateAt(null);
         }}
         onSubmit={(result) => {
+          trackUiInteraction('counter_drink_form_submit', 'submit');
           const closeForm = () => {
             setFormOpen(false);
             setFormDrink(null);
@@ -1573,10 +1653,12 @@ export default function LivePartyMockScreen() {
             );
             return;
           }
-          logDrink(result, backdateAt ?? undefined);
+          logDrink(result, backdateAt ?? undefined, formSourceRef.current);
           closeForm();
         }}
         onScanMenu={backdateAt ? undefined : () => {
+          trackUiInteraction('counter_menu_scan_open');
+          void trackClientEvent({ event: 'beer_form_scan_opened' });
           setFormOpen(false);
           afterModalDismiss(() => setScanOpen(true));
         }}
@@ -1601,7 +1683,7 @@ export default function LivePartyMockScreen() {
               id: '', beerName: drink.name, drinkType: drink.drinkType,
               priceCzk: drink.priceCzk, volumeMl: drink.volumeMl,
               at: new Date().toISOString(),
-            }));
+            }, 'scan'));
         }}
       />
       {partyPub && checkInDrink ? (

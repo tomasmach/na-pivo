@@ -21,6 +21,7 @@
 import React from 'react';
 
 import { GlassWaterIcon } from '@/components/shared/IconGlyph';
+import type { DrinkAddedSource } from '@/data/counterTelemetry';
 import { contextPubKey } from '@/drinks/drinkTypes';
 import { t } from '@/i18n';
 import { useLivePartyStore, type PartyPubVisit } from '@/mocks/livePartyStore';
@@ -68,7 +69,9 @@ export interface PartyBeerActions {
   /** Count one after durable storage succeeds; null means nothing was added. */
   add: (
     beerName: string,
-    options?: {
+    options: {
+      /** Which door was tapped. Required so no write path stays invisible. */
+      source: DrinkAddedSource;
       partyCode?: string | null;
       deferDelivery?: boolean;
       visit?: PartyPubVisit;
@@ -129,7 +132,8 @@ export function usePartyBeer(): PartyBeerActions {
     () => ({
       add: async (
         beerName: string,
-        options?: {
+        options: {
+          source: DrinkAddedSource;
           partyCode?: string | null;
           deferDelivery?: boolean;
           visit?: PartyPubVisit;
@@ -142,6 +146,7 @@ export function usePartyBeer(): PartyBeerActions {
         },
       ) => {
         const id = await logPartyBeer({
+          source: options.source,
           place: options?.visit
             ? {
                 pubKey: options.visit.pubKey,
