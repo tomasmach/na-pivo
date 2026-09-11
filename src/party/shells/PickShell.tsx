@@ -11,7 +11,7 @@
  */
 
 import React from "react";
-import { AccessibilityInfo, Platform, StyleSheet, View } from "react-native";
+import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
 import { SvgXml } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,13 +25,16 @@ import { GameResult, type GameOutcome } from "@/games/GameResult";
 import { t } from "@/i18n";
 import { GameArtwork } from "@/party/GameArtwork";
 import { bottleTableSvg } from "@/party/bottleTableArtwork";
+import { BottleSeats, bottleNeedsRoster } from "@/party/BottleSeats";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
   STAGE_FILL,
   StagePill,
   StageStatus,
+  StageChips,
   stageBody,
+  useStageHeight,
 } from "@/party/shells/GameStage";
 import { Spacing } from "@/theme/layout";
 
@@ -48,7 +51,13 @@ const pickOne = (players: PickPlayer[]): string =>
 /** Bounds an optimistic lock whose canonical pick never arrives. */
 const LOCK_RECOVERY_MS = 1200;
 
-export function PickShell({
+/** A changed ordered roster is a new table, including its WebView and pending spin. */
+export function PickShell(props: React.ComponentProps<typeof PickShellSession>) {
+  const tableKey = JSON.stringify([props.game, props.players.map(({ id, tint }) => [id, tint])]);
+  return <PickShellSession key={tableKey} {...props} />;
+}
+
+function PickShellSession({
   game,
   players,
   action,
@@ -79,6 +88,9 @@ export function PickShell({
   spectator?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const standardStageHeight = useStageHeight();
+  const [tableWidth, setTableWidth] = React.useState(0);
+  const crowdedBottle = game === "bottle" && bottleNeedsRoster(tableWidth, standardStageHeight, players.length);
   const reduceMotion = useReducedMotion();
   const host = React.useRef<GameHostHandle>(null);
   const [localPickedId, setLocalPickedId] = React.useState<string | null>(null);
@@ -201,14 +213,14 @@ export function PickShell({
 
   return (
     <View style={stageBody(insets.bottom)}>
-      <GameStage>
+      <GameStage fraction={crowdedBottle ? 0.46 : 0.54} onLayout={({ nativeEvent: { layout } }) => setTableWidth(layout.width)}>
         {canvas ? (
           <View style={styles.canvas}>
           <GameHost
             ref={host}
             game={game}
             // The canvas gets identity and colour only. Names stay in the
-            // native verdict layer where Dynamic Type and screen readers work.
+            // native seats and verdict where Dynamic Type and screen readers work.
             players={players.map((player) => ({
               id: player.id,
               colour: player.tint,
@@ -267,7 +279,14 @@ export function PickShell({
             <GameArtwork gameKey="bottle" size={240} />
           </>
         )}
+        {game === "bottle" ? <BottleSeats players={players} crowded={crowdedBottle} selectedId={spinning ? null : pickedPlayer?.id ?? null} /> : null}
       </GameStage>
+
+      {crowdedBottle ? (
+        <ScrollView horizontal style={styles.roster} showsHorizontalScrollIndicator={false}>
+          <StageChips players={players.map(player => ({ ...player, name: displayPersonName(player.name), on: !spinning && player.id === pickedPlayer?.id }))} />
+        </ScrollView>
+      ) : null}
 
       {/* The name, UNDER the table rather than over it. Printed on top it landed
           across the seat markers and the bottle it is talking about; the answer
@@ -302,5 +321,6 @@ export function PickShell({
 const styles = StyleSheet.create({
   /** The canvas owns the whole playfield; the stage owns its frame. */
   canvas: STAGE_FILL,
+  roster: { flexGrow: 0, maxHeight: 56, marginTop: Spacing.sm },
   dock: { marginTop: "auto", paddingTop: Spacing.lg },
 });

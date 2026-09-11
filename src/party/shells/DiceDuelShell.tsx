@@ -112,9 +112,10 @@ function StaticDie({ value }: { value: number }) {
     ...(value === 6 ? [[27, 50], [73, 50]] : []),
   ];
   return <Svg width={96} height={96} viewBox="0 0 100 100" accessible={false}>
-    <Path d="M9 5 91 3 96 90 14 96 4 84Z" fill={Colors.amber} />
-    <Path d="M9 5 91 3 88 84 4 84Z" fill={Colors.foam} stroke={Colors.stout} strokeWidth={3} />
-    {dots.map(([cx, cy]) => <Circle key={`${cx}-${cy}`} cx={cx * 0.84 + 4} cy={cy * 0.8 + 3} r={7} fill={Colors.stout} />)}
+    <Path d="M18 12h64q12 0 12 13v57q0 13-13 14H23Q9 95 7 84l-3-9Z" fill={Colors.foamMuted} stroke={Colors.stout} strokeWidth={2} />
+    <Path d="M17 5h61q12 0 12 12v59q0 12-12 12H17Q5 87 5 75V18Q5 6 17 5Z" fill={Colors.foam} stroke={Colors.stout} strokeWidth={2.5} />
+    <Path d="M13 28V19q0-6 7-6h17m18 0h20q7 0 7 7m-5 73H26" fill="none" stroke={Colors.stout} strokeWidth={1.2} opacity={0.25} />
+    {dots.map(([cx, cy]) => <Circle key={`${cx}-${cy}`} cx={cx * 0.84 + 5} cy={cy * 0.8 + 6} r={6.5} fill={Colors.stout} />)}
   </Svg>;
 }
 

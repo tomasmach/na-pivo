@@ -15,7 +15,7 @@
 import React from "react";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
-import Svg, { Circle, G, Line, Path } from "react-native-svg";
+import Svg, { G, Path } from "react-native-svg";
 
 import { t } from "@/i18n";
 import { RoundReceiptPrint } from "@/party/GamePrints";
@@ -194,16 +194,11 @@ export function RoundDrumShell({
     <View style={stageBody(bottomInset)}>
       <GameStage fraction={0.62}>
         <Svg style={styles.ticket} viewBox="0 0 300 430" preserveAspectRatio="none" pointerEvents="none">
-          <Path d="M19 10 37 18 55 10 73 18 91 10 109 18 127 10 145 18 163 10 181 18 199 10 217 18 235 10 253 18 271 10 293 18 298 419 281 427 263 419 245 427 227 419 209 427 191 419 173 427 155 419 137 427 119 419 101 427 83 419 65 427 47 419 23 427Z" fill={withAlpha(Colors.amber, 0.34)} />
-          <Path d="M8 4 26 12 44 4 62 12 80 4 98 12 116 4 134 12 152 4 170 12 188 4 206 12 224 4 242 12 260 4 286 12 292 410 274 418 256 410 238 418 220 410 202 418 184 410 166 418 148 410 130 418 112 410 94 418 76 410 58 418 40 410 14 418Z" fill={Colors.foam} stroke={Colors.stout} strokeWidth={3} />
-          <G opacity={0.7}>
-            <Line x1="29" y1="92" x2="265" y2="88" stroke={Colors.stout} strokeWidth={2} strokeDasharray="8 7" />
-            <Line x1="31" y1="390" x2="263" y2="394" stroke={Colors.stout} strokeWidth={2} strokeDasharray="8 7" />
-          </G>
-          <G fill={withAlpha(Colors.stout, 0.2)}>
-            <Circle cx="42" cy="371" r="3" />
-            <Circle cx="257" cy="373" r="3" />
-            <Circle cx="231" cy="55" r="2.5" />
+          <Path d="M19 14 289 16l8 404-9 7-14-4-13 5-19-4-15 3-17-5-13 4-19-4-15 4-16-4-13 5-18-4-15 4-20-5-16 4-15-3-15 4-15-4Z" fill={Colors.foamMuted} />
+          <Path d="m8 7 9 3 7-5 8 4 9-4 8 4 9-5 9 4 8-4 10 5 8-4 8 4 9-4 8 5 9-5 8 4 9-3 9 4 8-5 8 4 9-3 8 5 10-5 8 4 9-3 9 4 8-4 10 4 9-3 10 4 8-3 11 5 6 396-11 4-9-3-8 5-10-4-9 3-8-4-10 5-8-3-9 4-10-5-8 4-9-3-9 4-10-4-9 5-8-4-10 3-9-4-9 5-8-4-10 4-9-3-8 4-9-5-9 3-8-4-10 5-9-3-9 3-9-4Z" fill={Colors.foam} stroke={Colors.stout} strokeWidth={1.5} strokeLinejoin="round" />
+          <G fill="none" stroke={Colors.stout}>
+            <Path d="M29 88h237m-237 5h237M31 391h233m-233 4h233" strokeWidth={1.2} opacity={0.75} />
+            <Path d="M18 24v64m262 12 3 74m-263 157 1 48m251 20 11-1" strokeWidth={0.8} opacity={0.22} />
           </G>
         </Svg>
         <View style={styles.receiptHeader} pointerEvents="none">
@@ -283,7 +278,7 @@ export function RoundDrumShell({
 
 const styles = StyleSheet.create({
   ticket: { position: "absolute", width: "88%", height: "92%", transform: [{ rotate: "-1.4deg" }] },
-  receiptHeader: { position: "absolute", top: "5%" },
+  receiptHeader: { position: "absolute", top: "9%", width: "50%", height: "12%" },
   drum: {
     height: SLOT_HEIGHT * 5,
     width: "78%",

@@ -13,26 +13,30 @@ import { bottleTableSvg } from '@/party/bottleTableArtwork';
 
 const bottleTextureUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="960" viewBox="0 0 320 960">
-  <path d="M119 27 201 25 204 248 215 294 275 357 282 402 280 878 270 918 245 935 73 937 43 915 37 882 39 405 48 364 107 295 118 249Z" fill="#E8A317" stroke="#15120F" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M202 82 201 270 217 309 265 363 270 416 267 875 252 912 220 919 235 874 238 404 184 321 177 266 177 82Z" fill="#A76C19"/>
-  <path d="M119 95 143 94 140 265 126 308 70 375 63 419 61 857" fill="none" stroke="#FBF6EA" stroke-width="10" stroke-linecap="square"/>
-  <path d="M115 24 203 24 208 62 112 66Z" fill="#BBA07A" stroke="#15120F" stroke-width="10"/>
-  <path d="m125 30 1 24m17-25 1 22m17-22 1 22m18-22 1 23m15-22 1 20" stroke="#15120F" stroke-width="3"/>
-  <path d="m42 482 238-5 0 239-240 7Z" fill="#FBF6EA" stroke="#15120F" stroke-width="8"/>
-  <path d="m57 497 207-4M54 706l211-5" stroke="#15120F" stroke-width="4"/>
-  <path d="m112 554 77 0 0 96-80 0Z" fill="#E8A317" stroke="#15120F" stroke-width="9" stroke-linejoin="round"/>
-  <path d="M190 565h30v63h-30" fill="none" stroke="#15120F" stroke-width="9"/>
-  <path d="M105 560c-17-16-4-38 13-35 6-21 34-19 42-6 20-13 42 3 37 21 18 9 6 29-8 24-14 8-25-2-35-1-17 8-26-5-35-1Z" fill="#FBF6EA" stroke="#15120F" stroke-width="7"/>
-  <path d="m128 582-1 48m20-45 0 45m20-47 0 45" stroke="#15120F" stroke-width="4"/>
-  <g fill="none" stroke="#15120F" stroke-width="4" stroke-linecap="square">
-    <path d="m80 376-11 46m23-35-8 37m156-42 13 39M65 748l-1 126m15-121-1 123m156-125-1 134m14-128-1 102m-62 42-92 2m93-14-94 2M128 112l-1 108m68-104 1 121"/>
-    <path d="m65 458 13-3m9 4 22-4m108-7 26-2m-29 295 22-2m-129 34 13-3m77 97 16-4"/>
-  </g>
+  <!-- The glass has an actual crown lip, long neck and broad Czech beer shoulders. -->
+  <path d="M124 29 Q160 21 196 29 L201 64 193 82 198 260 Q199 305 231 331 Q278 368 279 427 L278 877 Q278 928 239 937 L82 937 Q42 927 42 877 L41 428 Q42 374 87 337 Q121 310 123 260 L128 83 118 66Z" fill="#A76C19" stroke="#15120F" stroke-width="11" stroke-linejoin="round"/>
+  <path d="M150 87 171 86 173 270 Q175 313 203 347 Q246 389 247 438 L246 869 Q245 897 222 907 L94 907 Q71 897 72 869 L70 438 Q70 392 107 352 Q139 318 140 269Z" fill="#E8A317"/>
+  <path d="M193 95 198 270 Q201 308 233 339 Q271 375 269 431 L268 875 Q265 916 233 923 L99 923 80 909 227 904 Q247 891 246 869 L246 427 Q245 384 211 348 Q181 314 179 266 L177 95Z" fill="#613C15"/>
+  <path d="M133 110 144 106 141 264 Q140 315 111 348 Q77 383 76 422 L72 464 62 458 64 421 Q66 375 99 338 Q127 309 129 262Z" fill="#FBF6EA"/>
+  <path d="M76 758 84 762 84 865 Q83 886 99 891 L95 899 Q72 891 73 864Z" fill="#FBF6EA"/>
+  <path d="M118 42 Q160 34 202 42 L201 68 Q160 76 120 68Z" fill="#E8A317" stroke="#15120F" stroke-width="7"/>
+  <path d="M128 49 128 62 M142 46 142 65 M158 46 158 65 M176 46 176 65 M190 48 191 62" stroke="#613C15" stroke-width="4"/>
+  <!-- Neck foil and the paper label wrap around the glass, with a dark return edge. -->
+  <path d="M126 164 Q160 173 195 164 L196 233 Q160 243 124 232Z" fill="#FBF6EA" stroke="#15120F" stroke-width="6"/>
+  <path d="M133 180 Q161 186 188 180 M132 217 Q159 224 188 217" fill="none" stroke="#15120F" stroke-width="3"/>
+  <path d="m151 194 9-8 10 9-10 10Z" fill="#E8A317" stroke="#15120F" stroke-width="3"/>
+  <path d="M47 476 Q159 495 273 477 L271 734 Q161 754 47 735Z" fill="#BBA07A" stroke="#15120F" stroke-width="7"/>
+  <path d="M49 477 Q145 493 253 480 L252 738 Q147 751 48 735Z" fill="#FBF6EA"/>
+  <path d="M59 492 Q154 507 246 494 M59 719 Q151 733 246 721" fill="none" stroke="#15120F" stroke-width="4"/>
+  <!-- A brewer's hop seal, cut in two inks; no tiny simulated typography. -->
+  <ellipse cx="157" cy="608" rx="71" ry="90" fill="#E8A317" stroke="#15120F" stroke-width="5"/>
+  <path d="M157 535 C132 550 119 570 120 600 Q115 635 157 674 Q199 635 194 600 C195 570 180 550 157 535Z" fill="#FBF6EA" stroke="#15120F" stroke-width="6"/>
+  <path d="M157 542 157 663 M134 557 Q141 578 157 584 Q174 576 181 558 M123 582 Q134 604 157 612 Q181 603 191 582 M122 610 Q137 630 157 639 Q180 628 192 610 M134 640 157 662 180 639" fill="none" stroke="#15120F" stroke-width="5" stroke-linejoin="round"/>
+  <path d="m71 553 9 5m-9 17 8 4m151 74 8 5m-10 12 8 5 M106 777l-2 87m115-91-1 95 M121 889l76 1 M108 402l-9 33m123-45 12 38" fill="none" stroke="#613C15" stroke-width="4" stroke-linecap="square"/>
 </svg>` )}`;
 
 class BottleTable {
   private readonly bottle: HTMLImageElement;
-  private readonly seats: SVGSVGElement[] = [];
   private heading = randomTableHeading(Math.random());
   private spinning = false;
   onStopped: ((seat: number) => void) | null = null;
@@ -46,20 +50,7 @@ class BottleTable {
     timber.style.cssText = 'position:absolute;width:100%;height:100%;object-fit:cover';
     table.appendChild(timber);
 
-    for (const colour of colours) {
-      const seat = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      seat.setAttribute('viewBox', '0 0 64 64');
-      seat.setAttribute('aria-hidden', 'true');
-      seat.style.cssText = 'position:absolute;transform:translate(-50%,-50%)';
-      seat.innerHTML = `<path d="M10 9 29 3 48 7 59 23 58 43 44 58 23 60 7 47 3 27Z" fill="#FBF6EA" stroke="#251A12" stroke-width="2"/>
-        <circle cx="32" cy="32" r="23" fill="none" stroke="#251A12" stroke-width="1.2"/>
-        <circle cx="32" cy="32" r="18" stroke="#251A12" stroke-width="1.5"/>
-        <path d="m21 11 7-2m25 23-1 7M19 51l9 3" fill="none" stroke="#A8896A" stroke-width="1.5"/>`;
-      seat.querySelectorAll('circle')[1].style.fill = colour;
-      table.appendChild(seat);
-      this.seats.push(seat);
-    }
-
+    // Coasters and player names are native overlays, outside this decorative WebView.
     this.bottle = new Image();
     this.bottle.src = bottleTextureUrl;
     this.bottle.alt = '';
@@ -78,23 +69,9 @@ class BottleTable {
   private resize(): void {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    const coaster = Math.min(54, width * 0.14);
-    const radiusX = width / 2 - coaster * 0.72;
-    const radiusY = height / 2 - coaster * 0.85;
     const length = Math.min(width * 0.58, height * 0.52);
     this.bottle.style.width = `${length / 3}px`;
     this.bottle.style.height = `${length}px`;
-    this.seats.forEach((seat, index) => {
-      const angle = index / this.seats.length * Math.PI * 2;
-      const sin = Math.sin(angle);
-      const cos = Math.cos(angle);
-      // Every coaster stays on the neck's radial line, even on a tall table.
-      const radius = 1 / Math.sqrt((sin / radiusX) ** 2 + (cos / radiusY) ** 2);
-      seat.style.left = `${width / 2 + sin * radius}px`;
-      seat.style.top = `${height / 2 - cos * radius}px`;
-      seat.style.width = `${coaster}px`;
-      seat.style.height = `${coaster}px`;
-    });
   }
 
   spin(): void {

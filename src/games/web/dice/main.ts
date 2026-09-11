@@ -92,32 +92,37 @@ function faceTexture(value: number, face: string): THREE.CanvasTexture {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  // Warm paper, a player's stamped border and cut ink pips. Material colours
-  // stay legible in both app themes; only the player's stamp changes each turn.
-  ctx.fillStyle = '#FBF6EA';
+  // Ivory with a worn bevel. The player's ink lives in four corner stamps,
+  // leaving the face and its count unmistakably a real die.
+  ctx.fillStyle = '#D9CCB2';
   ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = face;
-  ctx.lineWidth = 9;
+  ctx.fillStyle = '#FBF6EA';
   ctx.beginPath();
-  ctx.moveTo(37, 17);
-  ctx.lineTo(219, 17);
-  ctx.quadraticCurveTo(239, 17, 239, 37);
-  ctx.lineTo(239, 219);
-  ctx.quadraticCurveTo(239, 239, 219, 239);
-  ctx.lineTo(37, 239);
-  ctx.quadraticCurveTo(17, 239, 17, 219);
-  ctx.lineTo(17, 37);
-  ctx.quadraticCurveTo(17, 17, 37, 17);
-  ctx.stroke();
-  // Short, deterministic cuts sit near the edges, clear of all six pip layouts.
-  ctx.strokeStyle = '#B5A58B';
-  ctx.lineWidth = 1.4;
-  for (let cut = 0; cut < 15; cut += 1) {
-    const x = 36 + ((cut * 37 + value * 11) % 181);
+  ctx.moveTo(35, 9);
+  ctx.lineTo(221, 9);
+  ctx.quadraticCurveTo(247, 9, 247, 35);
+  ctx.lineTo(247, 221);
+  ctx.quadraticCurveTo(247, 247, 221, 247);
+  ctx.lineTo(35, 247);
+  ctx.quadraticCurveTo(9, 247, 9, 221);
+  ctx.lineTo(9, 35);
+  ctx.quadraticCurveTo(9, 9, 35, 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = face;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'square';
+  for (let corner = 0; corner < 4; corner += 1) {
+    ctx.save();
+    ctx.translate(128, 128);
+    ctx.rotate(corner * Math.PI / 2);
     ctx.beginPath();
-    ctx.moveTo(x, 29 + cut % 3);
-    ctx.lineTo(x + 5 + cut % 7, 31 + cut % 3);
+    ctx.moveTo(-100, -72);
+    ctx.lineTo(-100, -86);
+    ctx.quadraticCurveTo(-100, -100, -86, -100);
+    ctx.lineTo(-72, -100);
     ctx.stroke();
+    ctx.restore();
   }
 
   const layouts: Record<number, [number, number][]> = {
@@ -154,8 +159,13 @@ function faceTexture(value: number, face: string): THREE.CanvasTexture {
     ],
   };
 
-  ctx.fillStyle = '#15120F';
   for (const [x, y] of layouts[value] ?? []) {
+    // An offset ivory lip gives the ink well depth without another mesh.
+    ctx.fillStyle = '#C6B697';
+    ctx.beginPath();
+    ctx.arc(x * size, y * size + 1, size * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#15120F';
     ctx.beginPath();
     // Slightly irregular silhouette, as if carved into the printing block.
     for (let step = 0; step <= 24; step += 1) {
@@ -186,25 +196,33 @@ function tableTexture(surface: string, accent: string): THREE.CanvasTexture {
   ctx.fillStyle = surface;
   ctx.fillRect(0, 0, size, size);
 
-  ctx.strokeStyle = accent;
-  ctx.globalAlpha = 0.09;
-  ctx.lineWidth = 6;
-  ctx.beginPath();
-  ctx.arc(66, 76, 74, 0.28, Math.PI * 1.72);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(449, 431, 91, Math.PI * 1.08, Math.PI * 2.45);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.07;
-  ctx.lineWidth = 2;
-  for (let cut = 0; cut < 22; cut += 1) {
-    const x = 18 + (cut * 83) % 476;
-    const y = 28 + (cut * 137) % 452;
+  // A quiet woven cloth, not random scratches or oversized decorative rings.
+  // Deterministic weave keeps captures stable and never consumes game entropy.
+  ctx.strokeStyle = '#FBF6EA';
+  ctx.globalAlpha = 0.028;
+  ctx.lineWidth = 1;
+  for (let thread = 0; thread < size; thread += 4) {
     ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 9 + cut % 11, y + (cut % 3) - 1);
+    ctx.moveTo(thread, 0);
+    ctx.lineTo(thread, size);
+    ctx.moveTo(0, thread + 1);
+    ctx.lineTo(size, thread + 1);
     ctx.stroke();
+  }
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.045;
+  ctx.lineWidth = 1.5;
+  for (let row = 0; row < 16; row += 1) {
+    for (let column = 0; column < 16; column += 1) {
+      const x = column * 32 + (row % 2) * 16;
+      const y = row * 32;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 5, y + 8);
+      ctx.moveTo(x + 7, y);
+      ctx.lineTo(x + 12, y + 8);
+      ctx.stroke();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -274,14 +292,14 @@ class DiceTable {
     table.receiveShadow = true;
     this.scene.add(table);
 
-    const railColour = new THREE.Color(surface).lerp(new THREE.Color(accent), 0.16);
+    const railColour = new THREE.Color('#4E3320');
     const railMaterial = new THREE.MeshStandardMaterial({
       color: railColour,
       roughness: 0.92,
       metalness: 0,
     });
     const trimMaterial = new THREE.MeshStandardMaterial({
-      color: accent,
+      color: '#BBA07A',
       roughness: 0.88,
       metalness: 0,
     });

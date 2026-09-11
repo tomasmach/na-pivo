@@ -1,128 +1,109 @@
 import React from "react";
-import Svg, { Circle, G, Line, Path, Rect } from "react-native-svg";
+import Svg, { Circle, G, Path } from "react-native-svg";
 
 import { Colors, withAlpha } from "@/theme/colors";
 
 const INK = "#221B12";
 const PAPER = Colors.foam;
 const AMBER = Colors.amber;
+const cut = { stroke: INK, strokeWidth: 3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
-const roughLine = {
-  stroke: INK,
-  strokeWidth: 5,
-  strokeLinecap: "square" as const,
-  strokeLinejoin: "round" as const,
-};
-
-/** Ink printed directly on a prompt card. No second card hidden inside it. */
-export const PromptCardPrint = React.memo(function PromptCardPrint({
-  gameKey,
-}: {
-  gameKey: string;
-}) {
+/** Standalone impressions: the prompt sheet itself is the paper. */
+export const PromptCardPrint = React.memo(function PromptCardPrint({ gameKey }: { gameKey: string }) {
   return (
-    <Svg
-      width="100%"
-      height="100%"
-      viewBox="0 0 220 120"
-      preserveAspectRatio="xMidYMid meet"
-      accessible={false}
-    >
+    <Svg width="100%" height="100%" viewBox="0 0 220 120" preserveAspectRatio="xMidYMid meet" accessible={false}>
       {gameKey === "thumb" ? (
-        <G rotation={-3} origin="110,60">
-          <Path
-            d="m63 103-5-39 17-19 8-27q3-13 15-10 11 3 9 18l-3 21 55-2q14 0 15 11l-3 10q8 10 0 19 2 12-10 17-5 11-18 11l-49-2Z"
-            fill={withAlpha(AMBER, 0.22)}
-          />
-          <Path
-            d="m61 98-5-38 18-19 8-26q3-12 14-9 12 3 9 19l-3 20 54-2q14 0 15 11l-3 11q8 10 0 19 3 11-10 17-4 12-18 12l-50 4Z"
-            fill={PAPER}
-            {...roughLine}
-          />
-          <Path d="m31 61 29-6 10 54-32 7Z" fill={AMBER} {...roughLine} />
-          <Path d="m112 60 58 1m-60 17 58 2m-57 16 47 2m-52-52-6 20 9 17" fill="none" {...roughLine} strokeWidth={3} />
+        <G>
+          {/* A side-on hand: curled fingers above, thumb planted on the tabletop. */}
+          <Path d="M22 104h178l-5 8H28Z" fill={AMBER} />
+          <Path d="M23 103h176m-160 9h58m46 0h41" fill="none" {...cut} />
+          <Path d="M49 35 78 30q12-15 31-13l41 5q11 2 11 12 19 1 19 13 12 3 10 15-1 13-16 14l-37-1 2 20q0 9-11 9h-11q-10 0-12-11l-6-24-39 5Z" fill={PAPER} stroke={INK} strokeWidth={4} strokeLinejoin="round" />
+          <Path d="M151 23q-12 4-11 15l20 3m-17-2q-12 5-9 16l35 3m-35-3q-9 7-3 19m-35-8q14-17 28-18" fill="none" {...cut} />
+          <Path d="m117 91 13-1 1 9h-12Zm-36-49 8-4m-6 13 9-4m13-20 12 2m-9 6 12 2" fill="none" stroke={INK} strokeWidth={2} />
+          <Path d="m19 31 35-3 10 49-38 8Z" fill={INK} />
+          <Path d="m27 40 21-3m-18 12 20-3m-18 12 20-3" stroke={PAPER} strokeWidth={2} />
+          <Circle cx="47" cy="68" r="3" fill={AMBER} />
+          <Path d="m101 91-9-5m50 4 9-6" {...cut} />
         </G>
       ) : gameKey === "rules" ? (
         <G>
-          <Path d="M36 21 145 14l7 84-111 9Z" fill={withAlpha(AMBER, 0.18)} />
-          <Path d="M29 15 139 9l7 84-112 10Z" fill="none" stroke={INK} strokeWidth={5} strokeLinejoin="round" />
-          <Path d="m48 36 64-4m-62 17 43-3m-42 20 52-4m-50 18 35-3" fill="none" {...roughLine} strokeWidth={3} />
-          <G rotation={7} origin="166,68">
-            <Path d="m165 24 10 7 12-1 5 11 10 7-3 13 4 11-9 9-5 13-13 1-10 8-12-7-13-1-5-12-8-9 4-12-2-13 10-6 6-12 12 1Z" fill={AMBER} {...roughLine} />
-            <Circle cx="166" cy="64" r="25" fill={PAPER} stroke={INK} strokeWidth={5} />
-            <Path d="m152 65 10 10 20-23" fill="none" {...roughLine} strokeWidth={7} />
-          </G>
+          {/* The same approval seal as the cover, impressed directly on paper. */}
+          <Path d="m87 80-9 31 17-6 10 11 7-32m4-4 8 34 10-11 16 4-13-30" fill={INK} />
+          <Path d="m89 92-5 13m43-14 4 12" stroke={PAPER} strokeWidth={2} />
+          <Path d="m109 5 10 5 11-1 7 8 11 3 3 11 8 7-2 11 4 10-7 9-2 11-11 4-7 8-11-1-10 5-10-5-11 1-7-8-10-4-2-11-7-9 4-10-2-11 8-7 3-11 11-3 7-8 11 1Z" fill={AMBER} stroke={INK} strokeWidth={3.5} strokeLinejoin="round" />
+          <Circle cx="109" cy="51" r="32" fill={PAPER} stroke={INK} strokeWidth={2.5} />
+          <Path d="M87 41a25 25 0 0 1 32-13m13 34a25 25 0 0 1-32 13" fill="none" stroke={INK} strokeWidth={1.5} />
+          <Path d="m91 49 12 12 22-27 6 5-27 33-20-19Z" fill={INK} />
+          <Path d="M30 46h28m-17 7h17m103-7h29m-29 7h18" fill="none" {...cut} strokeWidth={2} />
         </G>
       ) : gameKey === "never" ? (
         <G>
-          <Path d="M61 101 52 72 35 50q-7-10 3-16 9-5 16 7l9 10-2-31q0-12 10-12 10 0 11 13l4 28 2-35q1-11 11-10 11 1 9 13l-1 31 9-27q3-11 13-7 9 4 5 15l-9 31 13-17q7-8 15-2 8 7 1 15l-19 27-10 21Z" fill={PAPER} {...roughLine} />
-          <Path d="m60 89 67-2 3 27-68 2Z" fill={AMBER} {...roughLine} />
-          <Circle cx="169" cy="65" r="31" fill={AMBER} {...roughLine} />
-          <Circle cx="169" cy="65" r="22" fill={PAPER} stroke={INK} strokeWidth={4} />
-          <Path d="m157 65 8 9 17-20" fill="none" {...roughLine} />
+          <Path d="M77 110 73 87 53 61q-5-8 2-12 6-4 13 5l9 10-7-40q-2-10 6-12 9-2 11 9l7 29-1-39q0-9 8-9t9 10l3 37 6-30q2-10 10-7 8 2 6 11l-4 31 9-18q4-8 11-4t3 13l-10 35-16 28-1 13Z" fill={PAPER} stroke={INK} strokeWidth={4} strokeLinejoin="round" />
+          <Path d="M77 103h53l-3 13H80Z" fill={AMBER} />
+          <Path d="M84 70q27-10 41 4m-29-14 3 6m14-9 1 8m-21 16 12 13m9-15-4 15" fill="none" {...cut} strokeWidth={2.5} />
+          <Path d="m48 20-9-9m7 25-14-3m127-14 9-10m-6 27 15-3" {...cut} />
         </G>
       ) : (
         <G>
-          <Path d="M20 29 74 17l17 73-54 13Z" fill={withAlpha(AMBER, 0.28)} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
-          <Path d="M82 14h58v82H82Z" fill={PAPER} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
-          <Path d="m145 25 55 13-17 70-54-13Z" fill={withAlpha(AMBER, 0.28)} stroke={INK} strokeWidth={5} strokeLinejoin="round" />
-          <Path d="m35 44 31-7m-27 21 22-5m-18 22 31-7m53-35-28 1m29 18-20 1m21 18-29 1m59-31 28 7m-32 10 20 5m-27 11 29 7" fill="none" {...roughLine} strokeWidth={3} />
-          <Path d="m101 44 10-13 10 13 14-5-5 27-19 13-19-13-4-27Z" fill={AMBER} stroke={INK} strokeWidth={4} strokeLinejoin="round" />
+          {/* Three actual categories, without a second deck inside the card. */}
+          <G rotation={-9} origin="45,66">
+            <Path d="M20 45h42v53q-20 9-40-1Z" fill={AMBER} stroke={INK} strokeWidth={3.5} />
+            <Path d="M63 51h8q12 0 11 13l-1 13q-1 10-18 10m0-28h6q5 0 4 6l-1 8q0 5-9 5" fill="none" {...cut} />
+            <Path d="M18 46q-6-10 3-16 5-4 11 0 5-14 16-7 9-3 13 7 12 0 8 12l-5 7-18-3-8 4-11-4Z" fill={PAPER} stroke={INK} strokeWidth={3.5} />
+            <Path d="m30 58 1 29m10-28 1 32m10-32 1 28" stroke={PAPER} strokeWidth={3} />
+          </G>
+          <G rotation={8} origin="110,50">
+            <Path d="M97 26v51c-12-3-22 2-22 11 0 13 26 11 28-1V42l24-7v32c-11-3-22 3-22 11 0 13 27 11 28-2V15Z" fill={INK} />
+            <Path d="m104 28 22-6v5l-22 7Z" fill={AMBER} />
+          </G>
+          <G rotation={-12} origin="174,65">
+            <Circle cx="174" cy="62" r="31" fill={PAPER} stroke={INK} strokeWidth={3.5} />
+            <Path d="m153 39 13 1 3 8 11 3-2 9-11 1-6 12-9-3-5-15Zm28 27 11-5 10 7-8 15-10 6-1-12-7-4Z" fill={AMBER} stroke={INK} strokeWidth={2} strokeLinejoin="round" />
+            <Path d="M145 47c-13 25 7 54 35 50 16-2 26-12 30-22m-35 23v10m-14 3h29" fill="none" {...cut} />
+            <Path d="m176 35 3 7m-30 18 6 2m38-19 4 5" stroke={INK} strokeWidth={2} />
+          </G>
         </G>
       )}
     </Svg>
   );
 });
 
-/** A quiz seal printed into the question sheet. */
+/** A question cut into a round pub-quiz ink stamp. */
 export const QuizPrint = React.memo(function QuizPrint() {
   return (
     <Svg width={52} height={52} viewBox="0 0 52 52" accessible={false}>
-      <Path d="M5 7 45 4l3 40-42 4Z" fill={AMBER} stroke={INK} strokeWidth={3} strokeLinejoin="round" />
-      <Path d="M18 19c-1-7 11-10 15-4 4 7-6 9-5 15l-7 1c-2-8 7-10 5-13-2-3-5-1-5 2Z" fill={INK} />
-      <Rect x="22" y="35" width="7" height="7" fill={PAPER} />
+      <Path d="M25 3C38 1 49 12 49 25S40 49 26 49 3 40 3 26 12 5 25 3Z" fill={AMBER} stroke={INK} strokeWidth={2.5} />
+      <Path d="M9 25A17 17 0 0 1 25 9m18 18A17 17 0 0 1 27 43" fill="none" stroke={INK} strokeWidth={1.5} />
+      <Path d="M18 20c-1-12 21-13 20-1 0 7-10 8-9 14h-7c-1-10 9-10 9-15 0-4-7-3-7 2Z" fill={INK} />
+      <Path d="m22 36 7-1v7l-7 1Z" fill={INK} />
     </Svg>
   );
 });
 
-/** Receipt header: a beer mat seal and honest printed cuts, not cover art. */
+/** An engraved tankard flanked by receipt rules. */
 export const RoundReceiptPrint = React.memo(function RoundReceiptPrint() {
   return (
-    <Svg width={180} height={62} viewBox="0 0 180 62" accessible={false}>
-      <Line x1="7" y1="14" x2="54" y2="11" stroke={INK} strokeWidth={4} strokeLinecap="square" />
-      <Line x1="8" y1="26" x2="42" y2="24" stroke={INK} strokeWidth={3} strokeLinecap="square" />
-      <Line x1="126" y1="13" x2="173" y2="16" stroke={INK} strokeWidth={4} strokeLinecap="square" />
-      <Line x1="138" y1="26" x2="171" y2="29" stroke={INK} strokeWidth={3} strokeLinecap="square" />
-      <Circle cx="90" cy="31" r="26" fill={AMBER} stroke={INK} strokeWidth={4} />
-      <Circle cx="90" cy="31" r="18" fill={PAPER} stroke={INK} strokeWidth={3} />
-      <Path d="M82 17h15l-2 9 5 4-2 18H81l-2-18 5-4Z" fill={INK} />
-      <Path d="M84 32h11v12H84Zm11 2h5v8h-5" fill="none" stroke={PAPER} strokeWidth={2.5} />
+    <Svg width="100%" height="100%" viewBox="0 0 180 62" preserveAspectRatio="xMidYMid meet" accessible={false}>
+      <Path d="M6 24h47m-36 5h36m74-5h47m-47 5h36M30 45h24m72 0h24" fill="none" {...cut} strokeWidth={2} />
+      <Path d="M68 24h34l-1 29q-17 8-31-1Z" fill={AMBER} stroke={INK} strokeWidth={3} />
+      <Path d="M103 27h7q11 0 8 12-1 9-16 9m1-15h5q5 0 2 7l-8 2" fill="none" {...cut} />
+      <Path d="M67 26q-8-8 0-14 6-4 10 0 1-10 11-7 8-4 12 5 13 0 9 10l-6 8-11-3-8 4-9-3Z" fill={PAPER} stroke={INK} strokeWidth={3} />
+      <Path d="m77 34 1 15m7-16v18m8-17-1 16" stroke={INK} strokeWidth={2} />
+      <Path d="m55 9 6 7m56-8-5 8M86 1v2" {...cut} strokeWidth={2} />
     </Svg>
   );
 });
 
-/** A scored player stands on a printed beer mat, not a dashboard card. */
-export const ResultCoaster = React.memo(function ResultCoaster({
-  first,
-}: {
-  first: boolean;
-}) {
+/** Die-cut pulp beer mats; the middle remains clear for native player text. */
+export const ResultCoaster = React.memo(function ResultCoaster({ first }: { first: boolean }) {
+  const edge = "M59 4C75 3 92 12 103 26c9 13 15 28 12 43-3 17-16 31-31 40-14 8-33 8-47 1C20 102 8 87 5 70 1 53 7 35 20 22 31 10 44 5 59 4Z";
   return (
     <Svg width="100%" height="100%" viewBox="0 0 120 120" accessible={false}>
-      <Path
-        d="M22 12 46 4 75 6 101 20 114 44 111 76 95 101 69 115 38 111 13 94 4 65 9 35Z"
-        fill={withAlpha("#000000", 0.34)}
-        transform="translate(2 4)"
-      />
-      <Path
-        d="M22 12 46 4 75 6 101 20 114 44 111 76 95 101 69 115 38 111 13 94 4 65 9 35Z"
-        fill={first ? AMBER : PAPER}
-        stroke={INK}
-        strokeWidth={4}
-        strokeLinejoin="round"
-      />
-      <Circle cx="59" cy="59" r="43" fill="none" stroke={INK} strokeWidth={2.5} opacity={first ? 0.72 : 0.48} />
-      <Path d="m18 48 10-3m65 57 9-8M43 15l8-2m44 24 8 5" stroke={INK} strokeWidth={2.5} strokeLinecap="square" opacity={0.5} />
+      <Path d={edge} fill={withAlpha("#000000", 0.34)} transform="translate(1 3)" />
+      <Path d={edge} fill={first ? AMBER : PAPER} stroke={INK} strokeWidth={2} />
+      <Path d="M60 12c27 0 49 21 49 48 0 28-23 49-49 49S12 87 12 60c0-26 21-48 48-48Z" fill="none" stroke={INK} strokeWidth={1.5} opacity={0.65} />
+      <Path d="M27 33A40 40 0 0 1 88 31M29 89a40 40 0 0 0 62-2" fill="none" stroke={INK} strokeWidth={3} opacity={first ? 0.9 : 0.6} />
+      <Path d="m20 41 6 2m-9 7 6 1m-6 8h6m-5 9 6-1m-3 10 6-3m71-34-6 3m9 6-6 2m7 8h-6m5 10-6-1m3 10-5-3" stroke={INK} strokeWidth={1.5} opacity={0.6} />
     </Svg>
   );
 });

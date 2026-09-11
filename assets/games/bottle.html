@@ -12,141 +12,81 @@
 </style>
 </head>
 <body>
-<script>"use strict";(()=>{var O="protocol_mismatch";function C(i){try{let t=JSON.parse(i);if(!t||typeof t!="object"||Array.isArray(t))return null;let e=t;if(e.v!==1)return null;if(e.type==="command"&&typeof e.name=="string"&&e.name.length>0)return{v:1,type:"command",name:e.name,payload:e.payload};if(e.type==="turn"&&typeof e.playerId=="string"&&e.playerId.length>0)return{v:1,type:"turn",playerId:e.playerId};if(e.type!=="init"||!Array.isArray(e.players))return null;let n=e.theme;if(!n||typeof n!="object"||Array.isArray(n))return null;let a=n;return!["bg","surface","accent","ink"].every(r=>typeof a[r]=="string")||!e.players.every(r=>{if(!r||typeof r!="object"||Array.isArray(r))return!1;let o=r;return typeof o.id=="string"&&o.id.length>0&&typeof o.colour=="string"&&o.colour.length>0&&(o.label===void 0||typeof o.label=="string")})?null:{v:1,type:"init",players:e.players,theme:a,...e.options&&typeof e.options=="object"&&!Array.isArray(e.options)?{options:e.options}:{}}}catch{return null}}var E=window.ReactNativeWebView??null,B=E!==null;function m(i){let t=JSON.stringify(i);if(E){E.postMessage(t);return}console.info("[game \u2192]",t),f==null||f(i)}var f=null;function F(){return{v:1,type:"init",players:[{id:"Ty",colour:"#E8A317",label:"Ty"},{id:"Honza",colour:"#7DD66B",label:"Honza"},{id:"Petr",colour:"#F0BE5C",label:"Petr"},{id:"Kl\xE1ra",colour:"#A8896A",label:"Kl\xE1ra"}],theme:{bg:"#15120F",surface:"#1C1815",accent:"#E8A317",ink:"#FBF6EA"},options:Object.fromEntries(new URLSearchParams(window.location.search))}}function P(i,t,e){let n=document.createElement("div");n.style.cssText="position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:16px;font:600 14px -apple-system,system-ui,sans-serif;";for(let o of i.commands){let l=document.createElement("button");l.textContent=o.label,l.style.cssText="padding:13px 30px;border:0;border-radius:999px;background:#E8A317;color:#15120F;font:800 16px -apple-system,system-ui,sans-serif;",l.onclick=()=>t(o.name),n.appendChild(l)}let a=document.createElement("button");a.textContent="Dal\u0161\xED hr\xE1\u010D",a.style.cssText="padding:13px 22px;border:1px solid #4a4038;border-radius:999px;background:transparent;color:#FBF6EA;font:600 14px -apple-system,system-ui,sans-serif;",a.onclick=e,n.appendChild(a);let r=document.createElement("span");r.style.cssText="color:#FBF6EA;opacity:.7;min-width:120px;",r.textContent="...",n.appendChild(r),f=o=>{o.type==="state"?r.textContent=JSON.stringify(o.state).slice(0,90):o.type==="event"?r.textContent=JSON.stringify(o.payload):o.type==="result"?r.textContent=`konec: ${JSON.stringify(o.scores)}`:o.type==="error"&&(r.textContent=`chyba: ${o.message}`)},document.body.appendChild(n)}function b(i){let t=[],e={bg:"#15120F",surface:"#1C1815",accent:"#E8A317",ink:"#FBF6EA"},n={},a=null,r=null,o=!1,l=!1,h={get players(){return t},get theme(){return e},get options(){return n},currentPlayer:()=>t.find(s=>s.id===a)??null,push:s=>{o||m({v:1,type:"state",state:s})},emit:(s,c)=>{o||m({v:1,type:"event",name:s,payload:c})},finish:s=>{o||(o=!0,m({v:1,type:"result",...s}))},fail:s=>m({v:1,type:"error",message:s})},y=s=>{var c;if(s.v===1){if(s.type==="init"){if(l)return;l=!0,o=!1,t=s.players,e=s.theme,n=s.options??{},a=((c=t[0])==null?void 0:c.id)??null,r=i.start(h);return}if(!o){if(s.type==="turn"){a=s.playerId,r==null||r("__turn",s.playerId);return}s.type==="command"&&(r==null||r(s.name,s.payload))}}};if(window.napivoGame=s=>{let c=C(s);if(!c){h.fail(O);return}y(c)},m({v:1,type:"ready"}),!B){y(F());let s=0;P(i,(c,k)=>r==null?void 0:r(c,k),()=>{s=(s+1)%Math.max(1,t.length),y({v:1,type:"turn",playerId:t[s].id})})}}var p=Math.PI*2,d=1/120,N=.1,S=12,L=.74,w=4.2,A=Math.round(w/d),V=3,D=.78,g=Math.pow(1-L,d),H=d*g*(1-Math.pow(g,A))/(1-g),x=i=>Math.min(1-Number.EPSILON,Math.max(0,i));function v(i){return x(i)*p}function T(i,t){if(!Number.isInteger(t)||t<1)return 0;let e=p/t,n=(i%p+p)%p;return Math.round(n/e)%t}function _(i,t,e,n){if(!Number.isInteger(t)||t<1)return 0;let a=p/t,r=Math.floor(x(e)*t),o=(x(n)-.5)*a*D,l=r*a+o,h=(i%p+p)%p,y=((l-h)%p+p)%p;return(V*p+y)/H}function I(i,t){return{heading:i,angularVelocity:t,elapsed:0,steps:0,accumulator:0,done:!1}}function G(i,t){if(i.done)return i;let e=Math.min(N,Math.max(0,Number.isFinite(t)?t:0)),n=i.accumulator+e,a=i.heading,r=i.angularVelocity,o=i.steps,l=!1,h=0;for(;n+Number.EPSILON>=d&&h<S;)if(n-=d,r*=g,a+=r*d,o+=1,h+=1,o>=A){l=!0,r=0,n=0;break}return h>=S&&n>=d&&(n%=d),{heading:a,angularVelocity:r,elapsed:o*d,steps:o,accumulator:n,done:l}}var R=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" width="400" height="520">
-  <!-- Oak pub table, top-down. Four flat-sawn planks, linocut B voice: stout ink cuts, amber second plate. -->
-
-  <!-- Planks -->
-  <rect x="0" y="0" width="98" height="520" fill="#4E3320"/>
-  <rect x="98" y="0" width="105" height="520" fill="#452B1A"/>
-  <rect x="203" y="0" width="94" height="520" fill="#3F2718"/>
-  <rect x="297" y="0" width="103" height="520" fill="#4B301D"/>
-
-  <!-- Elbow-worn patches near the long edges (two flat layers, no gradient) -->
-  <g fill="#6A4628">
-    <path d="M0 150 C30 140 52 168 40 210 C30 245 46 280 22 300 C10 310 0 300 0 300Z" fill-opacity="0.10"/>
-    <path d="M0 170 C18 166 30 186 24 214 C18 240 28 268 12 284 C6 290 0 286 0 286Z" fill-opacity="0.08"/>
-    <path d="M400 230 C372 224 350 256 364 296 C374 326 356 356 380 380 C390 390 400 384 400 384Z" fill-opacity="0.10"/>
-    <path d="M400 250 C382 248 372 270 378 296 C382 320 372 344 388 362 C394 368 400 364 400 364Z" fill-opacity="0.08"/>
+<script>"use strict";(()=>{var b="protocol_mismatch";function E(a){try{let t=JSON.parse(a);if(!t||typeof t!="object"||Array.isArray(t))return null;let e=t;if(e.v!==1)return null;if(e.type==="command"&&typeof e.name=="string"&&e.name.length>0)return{v:1,type:"command",name:e.name,payload:e.payload};if(e.type==="turn"&&typeof e.playerId=="string"&&e.playerId.length>0)return{v:1,type:"turn",playerId:e.playerId};if(e.type!=="init"||!Array.isArray(e.players))return null;let n=e.theme;if(!n||typeof n!="object"||Array.isArray(n))return null;let s=n;return!["bg","surface","accent","ink"].every(r=>typeof s[r]=="string")||!e.players.every(r=>{if(!r||typeof r!="object"||Array.isArray(r))return!1;let o=r;return typeof o.id=="string"&&o.id.length>0&&typeof o.colour=="string"&&o.colour.length>0&&(o.label===void 0||typeof o.label=="string")})?null:{v:1,type:"init",players:e.players,theme:s,...e.options&&typeof e.options=="object"&&!Array.isArray(e.options)?{options:e.options}:{}}}catch{return null}}var Q=window.ReactNativeWebView??null,L=Q!==null;function y(a){let t=JSON.stringify(a);if(Q){Q.postMessage(t);return}console.info("[game \u2192]",t),f==null||f(a)}var f=null;function C(){return{v:1,type:"init",players:[{id:"Ty",colour:"#E8A317",label:"Ty"},{id:"Honza",colour:"#7DD66B",label:"Honza"},{id:"Petr",colour:"#F0BE5C",label:"Petr"},{id:"Kl\xE1ra",colour:"#A8896A",label:"Kl\xE1ra"}],theme:{bg:"#15120F",surface:"#1C1815",accent:"#E8A317",ink:"#FBF6EA"},options:Object.fromEntries(new URLSearchParams(window.location.search))}}function N(a,t,e){let n=document.createElement("div");n.style.cssText="position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:16px;font:600 14px -apple-system,system-ui,sans-serif;";for(let o of a.commands){let p=document.createElement("button");p.textContent=o.label,p.style.cssText="padding:13px 30px;border:0;border-radius:999px;background:#E8A317;color:#15120F;font:800 16px -apple-system,system-ui,sans-serif;",p.onclick=()=>t(o.name),n.appendChild(p)}let s=document.createElement("button");s.textContent="Dal\u0161\xED hr\xE1\u010D",s.style.cssText="padding:13px 22px;border:1px solid #4a4038;border-radius:999px;background:transparent;color:#FBF6EA;font:600 14px -apple-system,system-ui,sans-serif;",s.onclick=e,n.appendChild(s);let r=document.createElement("span");r.style.cssText="color:#FBF6EA;opacity:.7;min-width:120px;",r.textContent="...",n.appendChild(r),f=o=>{o.type==="state"?r.textContent=JSON.stringify(o.state).slice(0,90):o.type==="event"?r.textContent=JSON.stringify(o.payload):o.type==="result"?r.textContent=`konec: ${JSON.stringify(o.scores)}`:o.type==="error"&&(r.textContent=`chyba: ${o.message}`)},document.body.appendChild(n)}function w(a){let t=[],e={bg:"#15120F",surface:"#1C1815",accent:"#E8A317",ink:"#FBF6EA"},n={},s=null,r=null,o=!1,p=!1,u={get players(){return t},get theme(){return e},get options(){return n},currentPlayer:()=>t.find(i=>i.id===s)??null,push:i=>{o||y({v:1,type:"state",state:i})},emit:(i,c)=>{o||y({v:1,type:"event",name:i,payload:c})},finish:i=>{o||(o=!0,y({v:1,type:"result",...i}))},fail:i=>y({v:1,type:"error",message:i})},m=i=>{var c;if(i.v===1){if(i.type==="init"){if(p)return;p=!0,o=!1,t=i.players,e=i.theme,n=i.options??{},s=((c=t[0])==null?void 0:c.id)??null,r=a.start(u);return}if(!o){if(i.type==="turn"){s=i.playerId,r==null||r("__turn",i.playerId);return}i.type==="command"&&(r==null||r(i.name,i.payload))}}};if(window.napivoGame=i=>{let c=E(i);if(!c){u.fail(b);return}m(c)},y({v:1,type:"ready"}),!L){m(C());let i=0;N(a,(c,G)=>r==null?void 0:r(c,G),()=>{i=(i+1)%Math.max(1,t.length),m({v:1,type:"turn",playerId:t[i].id})})}}var l=Math.PI*2,d=1/120,P=.1,k=12,F=.74,M=4.2,S=Math.round(M/d),B=3,Z=.78,g=Math.pow(1-F,d),H=d*g*(1-Math.pow(g,S))/(1-g),O=a=>Math.min(1-Number.EPSILON,Math.max(0,a));function v(a){return O(a)*l}function A(a,t){if(!Number.isInteger(t)||t<1)return 0;let e=l/t,n=(a%l+l)%l;return Math.round(n/e)%t}function _(a,t,e,n){if(!Number.isInteger(t)||t<1)return 0;let s=l/t,r=Math.floor(O(e)*t),o=(O(n)-.5)*s*Z,p=r*s+o,u=(a%l+l)%l,m=((p-u)%l+l)%l;return(B*l+m)/H}function I(a,t){return{heading:a,angularVelocity:t,elapsed:0,steps:0,accumulator:0,done:!1}}function x(a,t){if(a.done)return a;let e=Math.min(P,Math.max(0,Number.isFinite(t)?t:0)),n=a.accumulator+e,s=a.heading,r=a.angularVelocity,o=a.steps,p=!1,u=0;for(;n+Number.EPSILON>=d&&u<k;)if(n-=d,r*=g,s+=r*d,o+=1,u+=1,o>=S){p=!0,r=0,n=0;break}return u>=k&&n>=d&&(n%=d),{heading:s,angularVelocity:r,elapsed:o*d,steps:o,accumulator:n,done:p}}var R=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" width="400" height="520">
+  <path d="M0 0H98V520H0Z" fill="#4E3320"/>
+  <path d="M98 0H203V520H98Z" fill="#452B1A"/>
+  <path d="M203 0H297V520H203Z" fill="#3F2718"/>
+  <path d="M297 0H400V520H297Z" fill="#4B301D"/>
+  <!-- Tapered gouges follow the grain. Uncut areas let the bottle read. -->
+  <g fill="#25180F" fill-opacity=".48">
+    <path d="M18 0Q9 58 22 125T22 254Q13 300 19 372L22 421Q9 367 13 318T15 235Q28 179 16 121T18 0Z"/>
+    <path d="M73 0Q61 64 72 118T83 219Q71 165 66 135T62 60Z"/>
+    <path d="M36 213Q27 274 43 339T50 478L44 520H39Q56 424 35 344T36 213Z"/>
+    <path d="M79 278Q69 341 78 397T82 520H77Q86 448 72 400T79 278Z"/>
+    <path d="M117 0Q112 92 120 166T118 309Q115 358 121 392Q110 349 114 302T113 161Q106 80 117 0Z"/>
+    <path d="M176 0Q184 55 173 113T169 219Q160 170 170 115T176 0Z"/>
+    <path d="M189 319Q175 375 183 435L191 520H186L177 437Q170 371 189 319Z"/>
+    <path d="M223 0Q234 64 222 126T220 253Q211 188 217 143T223 0Z"/>
+    <path d="M272 161Q283 223 271 285T270 408Q260 349 266 290T272 161Z"/>
+    <path d="M229 382Q218 445 232 520H226Q214 444 229 382Z"/>
+    <path d="M320 0Q309 81 322 149T324 279Q317 214 315 183T311 71Z"/>
+    <path d="M375 0Q387 105 368 179T371 344Q355 279 363 219T375 0Z"/>
+    <path d="M313 323Q322 367 313 406T318 520H313Q302 452 308 414T313 323Z"/>
+    <path d="M381 380Q371 442 385 520H379Q365 449 381 380Z"/>
   </g>
-
-  <!-- Plank 1 grain (x 0\u201398) -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M22 0 C18 60 30 110 24 170 S10 300 20 380 S30 470 26 520" stroke="#2C1A0F" stroke-opacity="0.55" stroke-width="2"/>
-    <path d="M62 130 C68 190 52 250 60 320 S72 430 64 520" stroke="#5B3B23" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M78 0 C82 50 76 100 84 150 S80 260 86 340 S82 460 84 520" stroke="#2C1A0F" stroke-opacity="0.35" stroke-width="1.5"/>
-    <!-- cathedral arches under the knot -->
-    <path d="M36 182 C42 150 68 140 78 176" stroke="#2C1A0F" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M30 206 C38 162 74 152 86 200" stroke="#2C1A0F" stroke-opacity="0.35" stroke-width="1.5"/>
-    <!-- grain bending around the knot -->
-    <path d="M40 30 C34 55 32 80 36 108 C38 118 44 126 50 132" stroke="#2C1A0F" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M66 26 C72 52 74 80 70 108 C68 118 62 126 56 132" stroke="#2C1A0F" stroke-opacity="0.45" stroke-width="1.5"/>
+  <!-- Flat-sawn oak cathedrals, nested and asymmetric. -->
+  <g fill="none" stroke="#25180F" stroke-opacity=".45" stroke-linecap="square">
+    <path d="M28 146Q22 92 43 62Q61 92 58 139 M33 135Q30 99 43 78Q53 100 53 129 M38 119Q35 105 43 92Q48 107 45 119" stroke-width="2"/>
+    <path d="M130 520Q124 460 150 423Q173 456 166 501 M135 513Q130 466 150 438Q165 465 160 493 M141 493Q137 470 150 451Q158 471 152 489" stroke-width="2"/>
+    <path d="M236 128Q227 60 250 20Q279 53 267 118 M241 113Q237 67 251 37Q270 65 261 105 M246 93Q242 66 252 53Q262 69 254 91" stroke-width="1.8"/>
+    <path d="M330 446Q321 372 349 331Q378 381 364 450 M336 433Q330 381 349 348Q368 382 359 429 M341 414Q338 389 349 367Q359 390 350 412" stroke-width="2"/>
   </g>
-  <!-- Knot, plank 1 -->
-  <ellipse cx="52" cy="84" rx="10" ry="15" fill="#2F1C10" stroke="#1F130B" stroke-width="2"/>
-  <ellipse cx="53" cy="86" rx="4.5" ry="7" fill="#1F130B"/>
-  <path d="M44 74 C48 80 48 92 45 98" fill="none" stroke="#5B3B23" stroke-opacity="0.5" stroke-width="1.2" stroke-linecap="round"/>
-
-  <!-- Plank 2 grain (x 98\u2013203), kept quiet toward the center -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M112 0 C108 80 118 160 110 260 S116 420 112 520" stroke="#2E1B10" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M190 0 C186 90 194 190 188 300 S192 450 190 520" stroke="#5A3A23" stroke-opacity="0.4" stroke-width="1.5"/>
-    <path d="M150 0 C154 90 146 190 152 300 S148 450 150 520" stroke="#3A2314" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M128 400 C136 380 166 376 176 402" stroke="#2E1B10" stroke-opacity="0.35" stroke-width="1.5"/>
-    <path d="M122 428 C132 396 172 392 184 426" stroke="#2E1B10" stroke-opacity="0.25" stroke-width="1.5"/>
+  <g fill="#785333" fill-opacity=".30">
+    <path d="M30 0 33 0Q24 47 31 71L29 100Q22 63 30 0Z M58 189Q66 252 61 294L58 281Q62 244 58 189Z M23 428 26 440 24 500 21 510Z"/>
+    <path d="M136 40 139 22 136 164 133 179Z M157 274Q149 329 158 375L156 391Q144 342 157 274Z"/>
+    <path d="M287 0 290 0 287 122 285 140Z M248 369 252 355 249 454 246 467Z"/>
+    <path d="M345 17 349 8 344 112 342 123Z M392 269 394 253 391 365 388 378Z"/>
   </g>
-
-  <!-- Plank 3 grain (x 203\u2013297) -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M216 0 C220 100 212 220 218 330 S214 470 216 520" stroke="#2A180E" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M282 0 C278 60 288 150 280 250 S286 400 284 520" stroke="#573722" stroke-opacity="0.4" stroke-width="1.5"/>
-    <path d="M250 0 C246 60 254 120 248 180" stroke="#2A180E" stroke-opacity="0.3" stroke-width="1.5"/>
-    <path d="M232 92 C240 62 266 56 274 88" stroke="#2A180E" stroke-opacity="0.45" stroke-width="2"/>
-    <path d="M226 116 C236 74 270 66 282 110" stroke="#2A180E" stroke-opacity="0.3" stroke-width="1.5"/>
-    <path d="M234 470 C240 440 264 432 274 462" stroke="#2A180E" stroke-opacity="0.45" stroke-width="2"/>
-    <path d="M228 492 C236 450 270 442 282 484" stroke="#2A180E" stroke-opacity="0.3" stroke-width="1.5"/>
+  <!-- Joints wander like worn boards, without bevelled framing. -->
+  <g fill="none" stroke="#1B120C" stroke-width="3">
+    <path d="M98 0 97 111 99 242 97 394 98 520 M203 0 202 157 204 303 202 520 M297 0 296 186 298 317 297 520"/>
   </g>
-
-  <!-- Plank 4 grain (x 297\u2013400) -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M318 0 C314 90 326 180 320 280 S312 360 318 380" stroke="#2E1B10" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M376 0 C382 60 370 150 378 250 S372 340 376 380" stroke="#5C3B24" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M346 140 C350 200 342 260 348 320" stroke="#2E1B10" stroke-opacity="0.3" stroke-width="1.5"/>
-    <path d="M322 62 C332 32 362 26 372 58" stroke="#2E1B10" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M316 82 C328 42 366 34 380 74" stroke="#2E1B10" stroke-opacity="0.35" stroke-width="1.5"/>
-    <!-- grain bending around the lower knot -->
-    <path d="M334 380 C330 410 328 450 336 486 C338 496 344 506 348 520" stroke="#2E1B10" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M370 380 C376 410 378 450 368 486 C366 496 360 506 356 520" stroke="#2E1B10" stroke-opacity="0.45" stroke-width="1.5"/>
+  <g fill="none" stroke="#785333" stroke-opacity=".42" stroke-width="1">
+    <path d="M95 0 94 111 96 242 94 394 95 520 M200 0 199 157 201 303 199 520 M294 0 293 186 295 317 294 520"/>
   </g>
-  <!-- Knot, plank 4 -->
-  <ellipse cx="352" cy="432" rx="11" ry="16" fill="#2F1C10" stroke="#1F130B" stroke-width="2"/>
-  <ellipse cx="351" cy="434" rx="5" ry="7.5" fill="#1F130B"/>
-  <path d="M360 422 C356 428 356 440 359 446" fill="none" stroke="#5C3B24" stroke-opacity="0.5" stroke-width="1.2" stroke-linecap="round"/>
-
-  <!-- Seams between planks: dark gap, one worn highlight edge -->
-  <g>
-    <rect x="96" y="0" width="4" height="520" fill="#1B120C"/>
-    <rect x="201" y="0" width="4" height="520" fill="#1B120C"/>
-    <rect x="295" y="0" width="4" height="520" fill="#1B120C"/>
-    <path d="M94.5 0 V520 M199.5 0 V520 M293.5 0 V520" stroke="#6A4628" stroke-opacity="0.35" stroke-width="1.5"/>
-    <path d="M101 0 V520 M206 0 V520 M300 0 V520" stroke="#2A180E" stroke-opacity="0.5" stroke-width="1"/>
+  <!-- Incomplete glass impressions, kept away from the playing area. -->
+  <g fill="none" stroke="#BBA07A" stroke-linecap="butt">
+    <path d="M-12 73C-25 41 1 9 36 15C71 22 88 58 67 88M58 98Q17 119-7 83" stroke-width="5" stroke-opacity=".17"/>
+    <path d="M-5 68C-15 40 7 19 35 23Q75 34 67 68M61 84Q31 109 3 82" stroke-width="1.6" stroke-opacity=".20"/>
+    <path d="M317 456C326 424 375 416 397 450Q419 488 380 510M367 514Q326 511 317 473" stroke-width="4" stroke-opacity=".17"/>
+    <path d="M325 456Q352 416 387 448Q416 482 378 502M363 506Q336 504 325 479" stroke-width="1.5" stroke-opacity=".20"/>
   </g>
-
-  <!-- Dowel plugs at plank ends -->
-  <g fill="#2F1C10" stroke="#1F130B" stroke-width="1.5">
-    <circle cx="49" cy="18" r="4"/>
-    <circle cx="150" cy="16" r="4"/>
-    <circle cx="250" cy="18" r="4"/>
-    <circle cx="349" cy="16" r="4"/>
-    <circle cx="49" cy="504" r="4"/>
-    <circle cx="150" cy="502" r="4"/>
-    <circle cx="250" cy="504" r="4"/>
-    <circle cx="349" cy="502" r="4"/>
+  <g fill="#BBA07A" fill-opacity=".15">
+    <path d="m76 99 5-1 2 3-5 2Z m-2-9 3-3 2 4-3 2Z M305 457l4-3 2 6-4 1Z"/>
   </g>
-
-  <!-- Carving marks: a few square-capped cuts, kept off the center -->
-  <g fill="none" stroke="#5E3D25" stroke-opacity="0.35" stroke-width="2" stroke-linecap="square">
-    <path d="M30 300 l4 -22 M46 336 l3 -18 M14 440 l5 -20"/>
-    <path d="M124 60 l3 -18 M176 88 l-3 20"/>
-    <path d="M262 30 l4 -20 M240 500 l3 -16"/>
-    <path d="M380 130 l4 -18 M334 250 l-3 20 M392 470 l3 -18"/>
-  </g>
-
-  <!-- Beer-ring traces near the edges, amber second plate -->
-  <g fill="none" stroke="#E8A317" stroke-linecap="round">
-    <circle cx="58" cy="44" r="36" stroke-opacity="0.16" stroke-width="5" stroke-dasharray="150 34 40 20"/>
-    <circle cx="58" cy="44" r="30" stroke-opacity="0.09" stroke-width="1.5" stroke-dasharray="90 60"/>
-    <circle cx="342" cy="468" r="40" stroke-opacity="0.14" stroke-width="5" stroke-dasharray="120 40 70 22"/>
-    <circle cx="342" cy="468" r="34" stroke-opacity="0.08" stroke-width="1.5"/>
-    <circle cx="392" cy="232" r="30" stroke-opacity="0.12" stroke-width="4.5" stroke-dasharray="110 30 40 10"/>
-    <circle cx="44" cy="482" r="26" stroke-opacity="0.10" stroke-width="4" stroke-dasharray="80 30 40 14"/>
-  </g>
-  <g fill="#E8A317">
-    <circle cx="92" cy="76" r="3" fill-opacity="0.12"/>
-    <circle cx="300" cy="446" r="2.4" fill-opacity="0.10"/>
-    <circle cx="370" cy="268" r="2" fill-opacity="0.10"/>
-  </g>
-</svg>
-`;var j=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+</svg>`;var V=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="320" height="960" viewBox="0 0 320 960">
-  <path d="M119 27 201 25 204 248 215 294 275 357 282 402 280 878 270 918 245 935 73 937 43 915 37 882 39 405 48 364 107 295 118 249Z" fill="#E8A317" stroke="#15120F" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M202 82 201 270 217 309 265 363 270 416 267 875 252 912 220 919 235 874 238 404 184 321 177 266 177 82Z" fill="#A76C19"/>
-  <path d="M119 95 143 94 140 265 126 308 70 375 63 419 61 857" fill="none" stroke="#FBF6EA" stroke-width="10" stroke-linecap="square"/>
-  <path d="M115 24 203 24 208 62 112 66Z" fill="#BBA07A" stroke="#15120F" stroke-width="10"/>
-  <path d="m125 30 1 24m17-25 1 22m17-22 1 22m18-22 1 23m15-22 1 20" stroke="#15120F" stroke-width="3"/>
-  <path d="m42 482 238-5 0 239-240 7Z" fill="#FBF6EA" stroke="#15120F" stroke-width="8"/>
-  <path d="m57 497 207-4M54 706l211-5" stroke="#15120F" stroke-width="4"/>
-  <path d="m112 554 77 0 0 96-80 0Z" fill="#E8A317" stroke="#15120F" stroke-width="9" stroke-linejoin="round"/>
-  <path d="M190 565h30v63h-30" fill="none" stroke="#15120F" stroke-width="9"/>
-  <path d="M105 560c-17-16-4-38 13-35 6-21 34-19 42-6 20-13 42 3 37 21 18 9 6 29-8 24-14 8-25-2-35-1-17 8-26-5-35-1Z" fill="#FBF6EA" stroke="#15120F" stroke-width="7"/>
-  <path d="m128 582-1 48m20-45 0 45m20-47 0 45" stroke="#15120F" stroke-width="4"/>
-  <g fill="none" stroke="#15120F" stroke-width="4" stroke-linecap="square">
-    <path d="m80 376-11 46m23-35-8 37m156-42 13 39M65 748l-1 126m15-121-1 123m156-125-1 134m14-128-1 102m-62 42-92 2m93-14-94 2M128 112l-1 108m68-104 1 121"/>
-    <path d="m65 458 13-3m9 4 22-4m108-7 26-2m-29 295 22-2m-129 34 13-3m77 97 16-4"/>
-  </g>
-</svg>`)}`,M=class{constructor(t){this.colours=t;let e=document.createElement("div");e.style.cssText="position:absolute;inset:0;overflow:hidden;background:#452B1A";let n=new Image;n.src=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(R)}`,n.alt="",n.style.cssText="position:absolute;width:100%;height:100%;object-fit:cover",e.appendChild(n);for(let a of t){let r=document.createElementNS("http://www.w3.org/2000/svg","svg");r.setAttribute("viewBox","0 0 64 64"),r.setAttribute("aria-hidden","true"),r.style.cssText="position:absolute;transform:translate(-50%,-50%)",r.innerHTML=`<path d="M10 9 29 3 48 7 59 23 58 43 44 58 23 60 7 47 3 27Z" fill="#FBF6EA" stroke="#251A12" stroke-width="2"/>
-        <circle cx="32" cy="32" r="23" fill="none" stroke="#251A12" stroke-width="1.2"/>
-        <circle cx="32" cy="32" r="18" stroke="#251A12" stroke-width="1.5"/>
-        <path d="m21 11 7-2m25 23-1 7M19 51l9 3" fill="none" stroke="#A8896A" stroke-width="1.5"/>`,r.querySelectorAll("circle")[1].style.fill=a,e.appendChild(r),this.seats.push(r)}this.bottle=new Image,this.bottle.src=j,this.bottle.alt="",this.bottle.style.cssText="position:absolute;left:50%;top:50%;object-fit:contain;will-change:transform",this.bottle.style.transform=this.rotation(this.heading),e.appendChild(this.bottle),document.body.appendChild(e),this.resize(),window.addEventListener("resize",()=>this.resize())}colours;bottle;seats=[];heading=v(Math.random());spinning=!1;onStopped=null;rotation(t){return`translate(-50%,-50%) rotate(${t}rad)`}resize(){let t=window.innerWidth,e=window.innerHeight,n=Math.min(54,t*.14),a=t/2-n*.72,r=e/2-n*.85,o=Math.min(t*.58,e*.52);this.bottle.style.width=`${o/3}px`,this.bottle.style.height=`${o}px`,this.seats.forEach((l,h)=>{let y=h/this.seats.length*Math.PI*2,s=Math.sin(y),c=Math.cos(y),k=1/Math.sqrt((s/a)**2+(c/r)**2);l.style.left=`${t/2+s*k}px`,l.style.top=`${e/2-c*k}px`,l.style.width=`${n}px`,l.style.height=`${n}px`})}spin(){if(this.spinning||this.colours.length===0)return;this.spinning=!0;let t=I(this.heading,_(this.heading,this.colours.length,Math.random(),Math.random())),e=[{transform:this.rotation(t.heading),offset:0}];for(;!t.done;)t=G(t,d),e.push({transform:this.rotation(t.heading),offset:t.elapsed/w});let n=t.heading,a=this.bottle.animate(e,{duration:w*1e3,easing:"linear",fill:"forwards"});a.onfinish=()=>{var r;this.heading=n%(Math.PI*2),this.bottle.style.transform=this.rotation(this.heading),a.cancel(),this.spinning=!1,(r=this.onStopped)==null||r.call(this,T(this.heading,this.colours.length))}}};b({commands:[{name:"spin",label:"Rozto\u010D"}],start(i){let t=new M(i.players.map(e=>e.colour));return t.onStopped=e=>{let n=i.players[e];n&&i.emit("picked",{playerId:n.id})},e=>{e==="spin"&&t.spin()}}});})();
+  <!-- The glass has an actual crown lip, long neck and broad Czech beer shoulders. -->
+  <path d="M124 29 Q160 21 196 29 L201 64 193 82 198 260 Q199 305 231 331 Q278 368 279 427 L278 877 Q278 928 239 937 L82 937 Q42 927 42 877 L41 428 Q42 374 87 337 Q121 310 123 260 L128 83 118 66Z" fill="#A76C19" stroke="#15120F" stroke-width="11" stroke-linejoin="round"/>
+  <path d="M150 87 171 86 173 270 Q175 313 203 347 Q246 389 247 438 L246 869 Q245 897 222 907 L94 907 Q71 897 72 869 L70 438 Q70 392 107 352 Q139 318 140 269Z" fill="#E8A317"/>
+  <path d="M193 95 198 270 Q201 308 233 339 Q271 375 269 431 L268 875 Q265 916 233 923 L99 923 80 909 227 904 Q247 891 246 869 L246 427 Q245 384 211 348 Q181 314 179 266 L177 95Z" fill="#613C15"/>
+  <path d="M133 110 144 106 141 264 Q140 315 111 348 Q77 383 76 422 L72 464 62 458 64 421 Q66 375 99 338 Q127 309 129 262Z" fill="#FBF6EA"/>
+  <path d="M76 758 84 762 84 865 Q83 886 99 891 L95 899 Q72 891 73 864Z" fill="#FBF6EA"/>
+  <path d="M118 42 Q160 34 202 42 L201 68 Q160 76 120 68Z" fill="#E8A317" stroke="#15120F" stroke-width="7"/>
+  <path d="M128 49 128 62 M142 46 142 65 M158 46 158 65 M176 46 176 65 M190 48 191 62" stroke="#613C15" stroke-width="4"/>
+  <!-- Neck foil and the paper label wrap around the glass, with a dark return edge. -->
+  <path d="M126 164 Q160 173 195 164 L196 233 Q160 243 124 232Z" fill="#FBF6EA" stroke="#15120F" stroke-width="6"/>
+  <path d="M133 180 Q161 186 188 180 M132 217 Q159 224 188 217" fill="none" stroke="#15120F" stroke-width="3"/>
+  <path d="m151 194 9-8 10 9-10 10Z" fill="#E8A317" stroke="#15120F" stroke-width="3"/>
+  <path d="M47 476 Q159 495 273 477 L271 734 Q161 754 47 735Z" fill="#BBA07A" stroke="#15120F" stroke-width="7"/>
+  <path d="M49 477 Q145 493 253 480 L252 738 Q147 751 48 735Z" fill="#FBF6EA"/>
+  <path d="M59 492 Q154 507 246 494 M59 719 Q151 733 246 721" fill="none" stroke="#15120F" stroke-width="4"/>
+  <!-- A brewer's hop seal, cut in two inks; no tiny simulated typography. -->
+  <ellipse cx="157" cy="608" rx="71" ry="90" fill="#E8A317" stroke="#15120F" stroke-width="5"/>
+  <path d="M157 535 C132 550 119 570 120 600 Q115 635 157 674 Q199 635 194 600 C195 570 180 550 157 535Z" fill="#FBF6EA" stroke="#15120F" stroke-width="6"/>
+  <path d="M157 542 157 663 M134 557 Q141 578 157 584 Q174 576 181 558 M123 582 Q134 604 157 612 Q181 603 191 582 M122 610 Q137 630 157 639 Q180 628 192 610 M134 640 157 662 180 639" fill="none" stroke="#15120F" stroke-width="5" stroke-linejoin="round"/>
+  <path d="m71 553 9 5m-9 17 8 4m151 74 8 5m-10 12 8 5 M106 777l-2 87m115-91-1 95 M121 889l76 1 M108 402l-9 33m123-45 12 38" fill="none" stroke="#613C15" stroke-width="4" stroke-linecap="square"/>
+</svg>`)}`,T=class{constructor(t){this.colours=t;let e=document.createElement("div");e.style.cssText="position:absolute;inset:0;overflow:hidden;background:#452B1A";let n=new Image;n.src=`data:image/svg+xml;charset=utf-8,${encodeURIComponent(R)}`,n.alt="",n.style.cssText="position:absolute;width:100%;height:100%;object-fit:cover",e.appendChild(n),this.bottle=new Image,this.bottle.src=V,this.bottle.alt="",this.bottle.style.cssText="position:absolute;left:50%;top:50%;object-fit:contain;will-change:transform",this.bottle.style.transform=this.rotation(this.heading),e.appendChild(this.bottle),document.body.appendChild(e),this.resize(),window.addEventListener("resize",()=>this.resize())}colours;bottle;heading=v(Math.random());spinning=!1;onStopped=null;rotation(t){return`translate(-50%,-50%) rotate(${t}rad)`}resize(){let t=window.innerWidth,e=window.innerHeight,n=Math.min(t*.58,e*.52);this.bottle.style.width=`${n/3}px`,this.bottle.style.height=`${n}px`}spin(){if(this.spinning||this.colours.length===0)return;this.spinning=!0;let t=I(this.heading,_(this.heading,this.colours.length,Math.random(),Math.random())),e=[{transform:this.rotation(t.heading),offset:0}];for(;!t.done;)t=x(t,d),e.push({transform:this.rotation(t.heading),offset:t.elapsed/M});let n=t.heading,s=this.bottle.animate(e,{duration:M*1e3,easing:"linear",fill:"forwards"});s.onfinish=()=>{var r;this.heading=n%(Math.PI*2),this.bottle.style.transform=this.rotation(this.heading),s.cancel(),this.spinning=!1,(r=this.onStopped)==null||r.call(this,A(this.heading,this.colours.length))}}};w({commands:[{name:"spin",label:"Rozto\u010D"}],start(a){let t=new T(a.players.map(e=>e.colour));return t.onStopped=e=>{let n=a.players[e];n&&a.emit("picked",{playerId:n.id})},e=>{e==="spin"&&t.spin()}}});})();
 </script>
 </body>
 </html>

@@ -1,261 +1,224 @@
 import React from 'react';
-import Svg, {
-  Circle,
-  Ellipse,
-  G,
-  Line,
-  Path,
-  Polygon,
-  Rect,
-} from 'react-native-svg';
+import { StyleSheet, View } from 'react-native';
+import Svg, { Circle, Ellipse, G, Path, Rect } from 'react-native-svg';
 
 import { Colors, withAlpha } from '@/theme/colors';
 
-type ArtworkMode = 'cover' | 'mark';
-
 const PAPER = Colors.foam;
-const PAPER_MUTED = Colors.foamMuted;
+const STOCK = Colors.foamMuted;
 const INK = Colors.stout;
-const SURFACE = Colors.stout2;
-const DEEP = Colors.stout3;
 const AMBER = Colors.amber;
+const edge = { stroke: INK, strokeWidth: 2.8, strokeLinejoin: 'round' as const };
+const cut = { fill: 'none', stroke: INK, strokeWidth: 1.5, strokeLinecap: 'round' as const };
 
-const outline = {
-  stroke: INK,
-  strokeWidth: 4,
-  strokeLinejoin: 'round' as const,
-  strokeLinecap: 'square' as const,
-};
-
-const fine = {
-  fill: 'none',
-  stroke: INK,
-  strokeWidth: 2.4,
-  strokeLinecap: 'square' as const,
-};
-
-function Pips({ points, radius = 7 }: { points: readonly [number, number][]; radius?: number }) {
-  return points.map(([cx, cy]) => (
-    <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={radius} fill={INK} />
-  ));
+/** Gouges follow the object, rather than putting a noise filter over the plate. */
+function Beer({ x = 0, y = 0, scale = 1 }: { x?: number; y?: number; scale?: number }) {
+  return <G transform={`translate(${x} ${y}) scale(${scale})`}>
+    <Path d="M38 20h12c17 0 17 30 0 32H38v-9h10c6 0 7-14 0-14H38" fill={STOCK} {...edge} />
+    <Path d="m5 13 34 1-1 48q-16 7-31 0Z" fill={AMBER} {...edge} />
+    <Path d="M3 18C-3 9 3 3 11 5 15-3 26-1 28 5c12-3 19 8 11 16l-9-2-5 5-8-5-8 3Z" fill={PAPER} {...edge} />
+    <Path d="m13 29 1 24m8-25 1 29m8-28-1 23M10 61q12 4 25 0" {...cut} />
+    <Path d="M10 30v16" stroke={PAPER} strokeWidth={3} />
+  </G>;
 }
 
-function Backdrop({ gameKey }: { gameKey: string }) {
-  const tone = gameKey === 'kings' || gameKey === 'never' ? PAPER : AMBER;
-  return (
-    <G>
-      <Rect width="300" height="200" fill={SURFACE} />
-      <Path d="M-30 177 92-24 192-24 67 214Z" fill={withAlpha(tone, 0.12)} />
-      <Circle cx="268" cy="22" r="88" fill={withAlpha(AMBER, 0.09)} />
-      <Path d="M218 0h82v78l-42 22-40-20Z" fill={withAlpha(PAPER, 0.035)} />
-      <Line x1="18" y1="181" x2="282" y2="181" stroke={withAlpha(PAPER, 0.08)} strokeWidth="2" />
-    </G>
-  );
+function Globe() {
+  return <G>
+    <Circle cx={0} cy={0} r={28} fill={AMBER} {...edge} />
+    <Path d="M-24-10-14-18-3-15 0-7-9-2-2 7-7 19-14 12-15 1-24-3M8-25 6-15 17-10 13-2 24 6 27-6M7 13l8-3 4 8-9 7Z" fill={INK} />
+    <Path d="M-25 11q20 16 40 2M-12-23q-9 15-6 24" stroke={PAPER} strokeWidth={1.8} fill="none" />
+  </G>;
+}
+
+function Backdrop() {
+  return <G>
+    <Rect width={300} height={200} fill={Colors.stout2} />
+    <Path d="M0 155q62-6 111 0t189-1M0 162q49-5 76-2m107 3 117-4M21 184l67-2m143 2 69-3" stroke={withAlpha(PAPER, 0.055)} strokeWidth={1.4} fill="none" />
+    <Path d="M245 112c42-12 82 28 39 52-17 9-35 5-42-2m-5-9c-17-22 3-36 20-37" stroke={withAlpha(AMBER, 0.09)} strokeWidth={2.5} fill="none" />
+  </G>;
 }
 
 function QuizArtwork() {
-  return (
-    <G>
-      <Ellipse cx="163" cy="170" rx="102" ry="17" fill={withAlpha(Colors.black, 0.42)} />
-      <G rotation={-7} origin="143,101">
-        <Path d="M66 25 221 17 232 165 82 181 68 169 56 171 62 157Z" fill={AMBER} />
-        <Path d="M57 16 211 10 220 157 68 170 72 158 59 150 64 137Z" fill={PAPER} {...outline} />
-        <Path d="m78 35 96-6m-93 114 59-5m-57 13 42-4" {...fine} />
-        <Path d="M105 65c-2-22 35-31 46-13 12 20-18 28-14 46l-18 2c-8-24 20-30 13-40-6-8-15-2-14 6Z" fill={INK} />
-        <Path d="m121 112 18-2 2 18-18 2Z" fill={AMBER} />
-        <G fill="none" stroke={INK} strokeWidth="3">
-          <Circle cx="91" cy="143" r="7" />
-          <Circle cx="112" cy="141" r="7" />
-          <Circle cx="133" cy="139" r="7" />
-          <Circle cx="154" cy="137" r="7" />
-        </G>
+  return <G>
+    <G rotation={-8} origin="141,100">
+      <Path d="M60 22 217 18 219 171 66 181Z" fill={INK} />
+      <Path d="M54 14 209 11 211 166 62 174 59 159Z" fill={AMBER} {...edge} />
+      <Path d="m53 10 149-3 3 153-145 10-4-87Z" fill={PAPER} {...edge} />
+      <Path d="m68 27 116-3m-113 5 111-2M71 145l116-6" {...cut} />
+      <Path d="M109 57c-1-22 40-30 49-9 9 20-14 25-16 38l-1 8-14 1c-3-25 19-26 15-39-3-10-17-6-17 1Z" fill={INK} />
+      <Path d="M129 103h13v14h-13Z" fill={AMBER} {...edge} />
+      <G fill="none" stroke={INK} strokeWidth={1.6}>
+        <Circle cx={83} cy={130} r={6} /><Circle cx={111} cy={129} r={6} />
+        <Circle cx={139} cy={128} r={6} /><Circle cx={167} cy={126} r={6} />
       </G>
-      <G rotation={23} origin="233,103">
-        <Path d="M218 23h22l2 128-11 31-13-30Z" fill={AMBER} {...outline} />
-        <Path d="m218 151 24-1-11 32Z" fill={PAPER} {...outline} />
-        <Path d="m226 171 5 11 5-11Z" fill={INK} />
-        <Path d="M222 37h17m-12 8v94m8-94v94" {...fine} />
-      </G>
-      <Path d="m37 46-15-7m20 23-20 1m229 101 17 6" stroke={AMBER} strokeWidth="4" strokeLinecap="square" />
+      <Path d="m106 128 4 5 10-14" fill="none" stroke={INK} strokeWidth={2.8} />
+      <Path d="m70 39 16-1m-15 5 12-1m98 79 6-1m-6 4 6-1" {...cut} />
     </G>
-  );
+    <G rotation={29} origin="232,100">
+      <Path d="M223 23q8-4 16 0v119l-8 29-8-29Z" fill={AMBER} {...edge} />
+      <Path d="m223 142 8 29 8-29Z" fill={STOCK} {...edge} />
+      <Path d="m228 161 3 10 3-10Z" fill={INK} />
+      <Path d="M228 37v103m7-103v103m-12-110h16m-16 4h16" {...cut} />
+      <Path d="M225 23h12v9h-12Z" fill={PAPER} {...edge} />
+    </G>
+  </G>;
+}
+
+function Die({ x, y, angle, five }: { x: number; y: number; angle: number; five?: boolean }) {
+  return <G transform={`translate(${x} ${y}) rotate(${angle})`}>
+    <Path d="M3 18 67 0q8-1 12 5l20 21q4 5 3 11l-4 58q0 6-7 8l-62 14q-7 1-11-5L0 91Z" fill={STOCK} {...edge} />
+    <Path d="m3 18 64-18q8-1 12 5l20 21-70 19Z" fill={PAPER} {...edge} />
+    <Path d="m3 18 26 27-2 70q-5 0-9-5L0 89Z" fill={AMBER} {...edge} />
+    <Path d="m29 45 70-19 3 7-4 62q0 6-7 8l-64 14Z" fill={PAPER} {...edge} />
+    <Path d="m33 50 62-17-4 62-57 13M8 34l14 14m-15-5 14 14M7 58l14 14m-14-5 14 14m-14-5 14 14m18-70 22-6" {...cut} />
+    {(five ? [[51,22]] : [[39,20],[64,24]]).map(([cx,cy]) => <Ellipse key={`top-${cx}`} cx={cx} cy={cy} rx={6} ry={3} fill={INK} transform={`rotate(-15 ${cx} ${cy})`} />)}
+    {(five ? [54,74,94] : [74]).map(cy => <Ellipse key={`side-${cy}`} cx={15} cy={cy} rx={3} ry={5} fill={INK} transform={`rotate(-18 15 ${cy})`} />)}
+    {(five ? [[44,62],[83,51],[63,76],[43,98],[82,88]] : [[45,62],[81,52],[44,98],[80,88]]).map(([cx,cy]) => <Ellipse key={`${cx}-${cy}`} cx={cx} cy={cy} rx={5.3} ry={6.5} fill={INK} transform={`rotate(9 ${cx} ${cy})`} />)}
+    <Path d="m39 54 12-3m35 35-1 7" stroke={STOCK} strokeWidth={2} />
+  </G>;
 }
 
 function DiceArtwork() {
-  return (
-    <G>
-      <Ellipse cx="154" cy="170" rx="117" ry="19" fill={withAlpha(Colors.black, 0.46)} />
-      <G rotation={-12} origin="104,98">
-        <Polygon points="39,42 134,34 157,55 153,139 57,151 33,128" fill={AMBER} {...outline} />
-        <Polygon points="39,42 134,34 132,122 33,128" fill={PAPER} {...outline} />
-        <Polygon points="132,122 157,139 157,55 134,34" fill={PAPER_MUTED} {...outline} />
-        <Path d="m132 122 25 17m-24-12 15 10m-15-20 15 10" {...fine} />
-        <Pips points={[[59,62],[111,58],[85,84],[57,108],[109,104]]} radius={7.5} />
-      </G>
-      <G rotation={17} origin="201,120">
-        <Polygon points="153,71 232,64 254,83 250,153 169,164 151,145" fill={AMBER} {...outline} />
-        <Polygon points="153,71 232,64 232,141 151,145" fill={PAPER} {...outline} />
-        <Polygon points="232,141 250,153 254,83 232,64" fill={PAPER_MUTED} {...outline} />
-        <Pips points={[[174,92],[213,89],[174,128],[213,125]]} radius={7} />
-        <Path d="m232 141 18 12m-17-18 10 8m-9-21 11 8" {...fine} />
-      </G>
-      <Path d="m227 33 8-16m7 29 20-7M44 163l-18 10m34 0-4 18" stroke={AMBER} strokeWidth="4" />
-    </G>
-  );
+  return <G>
+    <Path d="M43 158q94-15 205-3l-17 19-159 8Z" fill={INK} />
+    <Die x={42} y={41} angle={-13} five />
+    <Die x={171} y={41} angle={16} />
+    <Path d="m29 105-9 3m12 4-15 4m139-88 3-11m5 12 4-9" stroke={AMBER} strokeWidth={2} />
+  </G>;
 }
 
 function CategoriesArtwork() {
-  return (
-    <G>
-      <Ellipse cx="157" cy="173" rx="112" ry="15" fill={withAlpha(Colors.black, 0.42)} />
-      <G rotation={-18} origin="99,106">
-        <Rect x="48" y="31" width="101" height="143" rx="7" fill={AMBER} {...outline} />
-        <Path d="m65 52 66-3m-62 102 48-3" {...fine} />
-        <Path d="M75 77h42v51H75Z" fill={INK} />
-        <Path d="M84 90h24v25H84Zm24 4h11v17h-11" fill="none" stroke={PAPER} strokeWidth="4" />
-      </G>
-      <G rotation={2} origin="155,102">
-        <Rect x="101" y="20" width="108" height="155" rx="7" fill={PAPER} {...outline} />
-        <Path d="m118 41 72 1m-68 109 45 1" {...fine} />
-        <Path d="m135 75 17-20 18 18 22-8-2 47-26 19-30-18Z" fill={AMBER} {...outline} />
-        <Path d="m151 82 16 27m12-34-19 37" {...fine} />
-      </G>
-      <G rotation={19} origin="209,110">
-        <Rect x="157" y="37" width="104" height="145" rx="7" fill={PAPER_MUTED} {...outline} />
-        <Path d="m174 57 66 9m-61 91 39 6" {...fine} />
-        <Circle cx="209" cy="106" r="29" fill={DEEP} {...outline} />
-        <Path d="m191 102 12-14 13 14 15-5-5 24-22 8-19-13Z" fill={AMBER} />
-      </G>
+  return <G>
+    <G rotation={-20} origin="107,109">
+      <Rect x={47} y={33} width={105} height={137} rx={8} fill={AMBER} {...edge} />
+      <Rect x={54} y={40} width={91} height={123} rx={4} fill="none" stroke={INK} strokeWidth={1.2} />
+      <Beer x={72} y={66} scale={0.86} />
+      <Path d="m62 51 12-1m-12 5h7m59 91h-12m12 5h-7" {...cut} />
     </G>
-  );
+    <G rotation={-2} origin="154,101">
+      <Rect x={99} y={17} width={107} height={151} rx={8} fill={PAPER} {...edge} />
+      <Rect x={106} y={24} width={93} height={137} rx={4} fill="none" stroke={INK} strokeWidth={1.2} />
+      <G transform="translate(152 90)"><Globe /></G>
+      <Path d="m138 126 28 0m-20 5h13m-44-95 12-1m-12 5h7" {...cut} />
+    </G>
+    <G rotation={18} origin="213,114">
+      <Rect x={163} y={43} width={99} height={132} rx={8} fill={STOCK} {...edge} />
+      <Rect x={170} y={50} width={85} height={118} rx={4} fill="none" stroke={INK} strokeWidth={1.2} />
+      <Path d="M204 81 236 73v43h-5V87l-22 6v31h-5Z" fill={INK} />
+      <Ellipse cx={198} cy={125} rx={11} ry={8} fill={INK} transform="rotate(-20 198 125)" />
+      <Ellipse cx={225} cy={117} rx={11} ry={8} fill={INK} transform="rotate(-20 225 117)" />
+      <Path d="m182 61 12 0m-12 5h7m44 85h12m-7 5h7" {...cut} />
+    </G>
+  </G>;
 }
 
 function NeverArtwork() {
-  return (
-    <G>
-      <Ellipse cx="153" cy="171" rx="104" ry="17" fill={withAlpha(Colors.black, 0.42)} />
-      <G rotation={-8} origin="120,110">
-        <Path d="m76 163-8-41-20-34q-7-13 5-19 10-4 18 10l9 13-3-57q0-14 12-14 10 0 12 14l5 46 1-60q1-13 13-12 12 1 11 16l-1 55 10-47q3-13 14-10 11 4 8 17l-8 53 14-29q6-11 16-6 10 6 4 18l-18 42-13 27-2 24Z" fill={PAPER} {...outline} />
-        <Path d="m76 151 79-4 5 32-80 5Z" fill={AMBER} {...outline} />
-        <Path d="m84 107 17 17 4 18m13-39 22 5 12 15m-53-16 10-7m28 23 13 5M88 38l2 18m31-34v20m28-5-3 18" {...fine} />
-      </G>
-      <G rotation={14} origin="225,132">
-        <Circle cx="225" cy="132" r="41" fill={AMBER} {...outline} />
-        <Circle cx="225" cy="132" r="31" fill={SURFACE} stroke={PAPER} strokeWidth="3" />
-        <Path d="m210 132 10 10 21-24" fill="none" stroke={PAPER} strokeWidth="6" strokeLinecap="square" />
-      </G>
-      <Path d="m215 47 13-18m1 30 22-8" stroke={AMBER} strokeWidth="4" />
+  return <G>
+    <G rotation={-10} origin="132,111">
+      <Path d="M91 161c-6-25-20-38-29-58L44 76c-8-14 7-24 17-13l20 23-6-54c-2-18 17-21 21-3l7 45-1-59c0-17 21-17 22 0l3 58 8-50c3-16 23-12 20 5l-6 49 13-32c6-15 23-8 18 7l-15 47c-1 28-15 41-18 62Z" fill={PAPER} {...edge} />
+      <Path d="m86 147 66 1-2 34-65 1Z" fill={AMBER} {...edge} />
+      <Path d="M83 91q19 11 21 32m-6-26q21-14 42 3m-31 6q18-4 24 7m-32 23 28 0M82 33l4 17m26-31v18m32-8-3 15m27 11-5 12m-65 88v20m6-20v20m6-20v20" {...cut} />
+      <Path d="m91 97-8 19 13 19m46-21-6 18" fill="none" stroke={STOCK} strokeWidth={3} />
     </G>
-  );
+    <G rotation={12} origin="231,126">
+      <Circle cx={231} cy={126} r={39} fill={AMBER} {...edge} />
+      <Circle cx={231} cy={126} r={31} fill="none" stroke={INK} strokeWidth={1.5} />
+      <Path d="m214 110 34 32m-1-32-33 32" stroke={INK} strokeWidth={8} />
+    </G>
+  </G>;
 }
 
 function KingsArtwork() {
-  return (
-    <G>
-      <Ellipse cx="148" cy="173" rx="112" ry="16" fill={withAlpha(Colors.black, 0.44)} />
-      <Path d="M203 114h67l-8 39q-4 20-25 23l2 14h18v8h-52v-8h18l2-14q-21-4-24-23Z" fill={AMBER} {...outline} />
-      <G rotation={-9} origin="143,99">
-        <Rect x="61" y="12" width="164" height="169" rx="10" fill={PAPER} {...outline} />
-        <Path d="m74 27 138 2m-139 136 137 2" {...fine} />
-        <Path d="m95 82-10-32 26 14 28-38 27 38 28-15-10 34-44 8Z" fill={AMBER} {...outline} />
-        <Path d="M105 97q34-25 67 0l-8 46q-26 30-52 0Z" fill={DEEP} {...outline} />
-        <Circle cx="125" cy="106" r="5" fill={PAPER} />
-        <Circle cx="151" cy="106" r="5" fill={PAPER} />
-        <Path d="m119 125 19 11 20-11m-20-12v22" stroke={AMBER} strokeWidth="4" fill="none" />
-        <Path d="m76 42 8-8 8 8-8 10m111 101 8-8 8 8-8 10" fill={INK} />
-        <Path d="M105 97 84 116l25 12m63-31 21 19-25 12" fill={AMBER} {...outline} />
-      </G>
+  return <G>
+    <G rotation={-8} origin="136,100">
+      <Rect x={67} y={13} width={142} height={173} rx={9} fill={AMBER} {...edge} />
+      <Rect x={59} y={7} width={142} height={173} rx={9} fill={PAPER} {...edge} />
+      <Rect x={67} y={15} width={126} height={157} rx={4} fill="none" stroke={INK} strokeWidth={1.2} />
+      <Path d="M84 151q4-25 30-29h31q29 2 34 29Z" fill={INK} />
+      <Path d="m101 82 8 39 19 22 24-22 7-39Z" fill={STOCK} {...edge} />
+      <Path d="M104 104q11 2 21 12l6-1q13-12 23-10l-5 22-20 21-20-21Z" fill={INK} />
+      <Path d="m114 90 9-1m14 0 9 1m-17 3-3 14h8m-17 18 11 10 13-11" fill="none" stroke={PAPER} strokeWidth={2} />
+      <Path d="M99 81 91 47l22 12 15-26 17 26 24-14-10 36Z" fill={AMBER} {...edge} />
+      <Path d="m103 71 52-1m-49 5 46-1m-32 78-18-15m38 16 21-17" {...cut} />
+      <Path d="m129 49 5 10-5 10-5-10Z" fill={PAPER} {...edge} />
+      <Path d="m78 28 6 9-6 9-6-9m110 102 6 9-6 9-6-9" fill={INK} />
     </G>
-  );
+    <Beer x={219} y={113} scale={0.86} />
+  </G>;
 }
 
 function RoundArtwork() {
-  return (
-    <G>
-      <Ellipse cx="151" cy="176" rx="109" ry="15" fill={withAlpha(Colors.black, 0.42)} />
-      <G rotation={-5} origin="142,103">
-        <Path d="M71 16h134l-5 169-10-7-11 8-10-8-11 7-11-8-12 7-11-8-12 7-11-8-12 7-9-8Z" fill={AMBER} />
-        <Path d="M60 8h134l-5 166-10-7-11 8-10-8-11 7-11-8-12 7-11-8-12 7-11-8-12 7-9-8Z" fill={PAPER} {...outline} />
-        <Path d="m79 28 88 1m-88 14 58 1m-61 83 90 2m-89 14 43 1m-44 13 91 2" {...fine} />
-        <Path d="M82 62h50v51H82Z" fill={AMBER} {...outline} />
-        <Path d="M93 74v28m13-28v28m13-28v28m13-17h14v17h-14" {...fine} />
-      </G>
-      <G>
-        <Circle cx="215" cy="139" r="37" fill={AMBER} {...outline} />
-        <Circle cx="215" cy="139" r="27" fill={PAPER} {...outline} />
-        <Path d="m215 119-11 20 11 20 11-20Z" fill={INK} />
-        <Path d="m215 126-5 13 5 13 5-13Z" fill={AMBER} />
-      </G>
-      <Path d="m43 43-18-8m15 24-21 2m223 13 19-5" stroke={AMBER} strokeWidth="4" />
+  return <G>
+    <G rotation={-8} origin="132,98">
+      <Path d="m65 12 124 1 8 170-12-5-10 5-11-5-12 5-11-6-12 5-11-5-11 5-11-5-11 5Z" fill={AMBER} {...edge} />
+      <Path d="m57 7 123 1 8 168-12-5-10 5-11-5-12 5-11-6-12 5-11-5-11 5-11-5-11 5Z" fill={PAPER} {...edge} />
+      <Beer x={101} y={21} scale={0.45} />
+      <Path d="m71 63 99-1m-98 4 99-1m-96 17 40-1m-40 13 53-1m-53 13 32-1m-31 13 49-1m-48 15 94-1m-92 5 93-1m-41 14 42-1" {...cut} />
+      <Path d="m151 78 12 6m-6-6-5 7m2 6 13 6m-6-7-5 8m2 6 13 6m-6-7-5 8m1 6 13 6m-6-6-5 7" {...cut} />
+      <Path d="m86 143 8 15m-3-16 8 15m-3-16 8 15m-24-3 27-7" stroke={INK} strokeWidth={2} />
     </G>
-  );
+    <G rotation={14} origin="223,139">
+      <Ellipse cx={223} cy={146} rx={34} ry={31} fill={INK} />
+      <Circle cx={223} cy={139} r={33} fill={AMBER} {...edge} />
+      <Circle cx={223} cy={139} r={27} fill="none" stroke={INK} strokeWidth={1.5} strokeDasharray="2 3" />
+      <Path d="m223 121 10 18-10 18-10-18Z" fill={INK} />
+      <Path d="m223 128 5 11-5 11-5-11Z" fill={PAPER} />
+    </G>
+  </G>;
 }
 
 function BottleArtwork() {
-  return (
-    <G>
-      <Ellipse cx="150" cy="167" rx="119" ry="17" fill={withAlpha(Colors.black, 0.46)} />
-      <G rotation={63} origin="151,100">
-        <Path d="M132 9h37l-2 46 13 17 7 17 2 81-10 18-20 6h-35l-21-7-9-18 4-81 8-18 15-16Z" fill={AMBER} {...outline} />
-        <Path d="M137 13h20v45l12 21 6 91-7 11" fill="none" stroke={PAPER} strokeWidth="7" strokeLinecap="square" opacity={0.58} />
-        <Path d="m128 8 46 1-1 18-47-1Z" fill={PAPER_MUTED} {...outline} />
-        <Path d="M99 95h88v58H98Z" fill={PAPER} {...outline} />
-        <Path d="m108 106 70-1m-71 38 71-1" {...fine} />
-        <Path d="M127 115h30v20h-30Z" fill={AMBER} {...outline} />
-        <Path d="M157 120h13v11h-13" {...fine} />
-        <Path d="m111 75 7-13m47 2 8 14m-63 88 2 14m58-14-1 15" {...fine} />
-      </G>
-      <G fill={PAPER} stroke={INK} strokeWidth="3">
-        <Circle cx="49" cy="58" r="19" />
-        <Circle cx="251" cy="52" r="19" />
-        <Circle cx="251" cy="153" r="19" />
-      </G>
-      <Circle cx="49" cy="58" r="12" fill={AMBER} />
-      <Circle cx="251" cy="52" r="12" fill={PAPER_MUTED} />
-      <Circle cx="251" cy="153" r="12" fill={DEEP} />
-      <Path d="m32 127-18 8m25 7-16 14" stroke={AMBER} strokeWidth="4" />
+  return <G>
+    <G rotation={58} origin="149,99">
+      <Path d="M139 9h23l-1 46c0 12 26 20 27 37l3 68q1 24-39 24t-38-24l3-68c1-17 24-25 24-37Z" fill={INK} />
+      <Path d="M133 7h23l-1 44c0 15 25 21 27 37l3 67q1 24-38 24t-37-24l3-67c1-16 24-22 24-37Z" fill={AMBER} {...edge} />
+      <Path d="m148 14-1 42c0 17 23 24 24 37l3 61q2 14-20 16" fill="none" stroke={INK} strokeWidth={7} />
+      <Path d="m140 25-1 26c0 16-18 22-19 38l-2 60" fill="none" stroke={PAPER} strokeWidth={3} />
+      <Path d="M111 99q35 8 72-1l1 47q-35 9-74 1Z" fill={PAPER} {...edge} />
+      <Path d="M116 105q29 6 62-1m-60 37q30 5 60-1" {...cut} />
+      <Path d="m147 108 13 7-1 15-13 8-13-8v-15Z" fill={AMBER} {...edge} />
+      <Path d="m146 114-5 7 5 10 6-10Z" fill={INK} />
+      <Path d="m133 7 25 0 2 10-29 0Z" fill={STOCK} {...edge} />
+      <Path d="M137 8v7m5-7v7m5-7v7m5-7v7m-32 142q3 11 21 12m-17-9 9 4" {...cut} />
     </G>
-  );
+    <G fill="none" stroke={AMBER} strokeWidth={2}>
+      <Path d="M45 115c-13-35 8-67 34-79m-11 0 13-2-5 12M254 83c12 36-9 67-34 80m12-1-14 3 5-13" />
+    </G>
+  </G>;
 }
 
 function ThumbArtwork() {
-  return (
-    <G>
-      <Ellipse cx="151" cy="171" rx="108" ry="16" fill={withAlpha(Colors.black, 0.44)} />
-      <G rotation={-5} origin="159,105">
-        <Path d="m108 152-7-56 18-31 7-39q2-15 16-12 15 4 12 27l-4 28 58-3q16 0 17 13l-3 13q10 14-1 26 5 14-8 23-1 17-17 20l-59 10Z" fill={PAPER} {...outline} />
-        <Path d="m72 96 33-6 14 75-38 7Z" fill={AMBER} {...outline} />
-        <Path d="m165 88 55 2m-57 20 56 3m-55 17 46 6m-56 12 39 6m-53-83-7 26 10 25m-12-90-2 21m-45 100 14-3m-15-9 13-3" {...fine} />
-      </G>
-      <Ellipse cx="173" cy="161" rx="67" ry="22" fill={AMBER} {...outline} />
-      <Ellipse cx="173" cy="157" rx="58" ry="17" fill={SURFACE} stroke={PAPER} strokeWidth="3" />
-      <Path d="m224 45 15-20m-2 33 23-10M55 67 35 55m13 29-24-1" stroke={AMBER} strokeWidth="4" />
-    </G>
-  );
+  return <G>
+    <Path d="m38 155 226-2 5 14-225 5Z" fill={AMBER} {...edge} />
+    <Path d="m45 161 75-2m71 2 66-3M55 170l2 14m191-19 2 15" {...cut} />
+    <Path d="M68 68 110 57q19-26 42-21l48 12q13 4 10 17 15 7 10 22 8 11-1 21 3 15-14 19l-40 3-1 13q-1 15-14 15-14 0-14-15l-1-35-31 9-31-4Z" fill={PAPER} {...edge} />
+    <Path d="m53 69 38-8 16 60-40 11Z" fill={AMBER} {...edge} />
+    <Path d="m111 62 25-10q8-3 16 0l43 13m-51 8 66 12m-62 8 63 13m-60 6 43 4m-76-44q15 5 15 22l1 29m9 20h10m-78-69 11 40m-6-39 10 34" {...cut} />
+    <Path d="m173 145 9-8m-6 15 12-1m-63-5-9-6" stroke={AMBER} strokeWidth={2.5} fill="none" />
+    <Path d="m163 41 31 8m-34-4 23 6" {...cut} />
+  </G>;
 }
 
 function RulesArtwork() {
-  return (
-    <G>
-      <Ellipse cx="148" cy="174" rx="106" ry="15" fill={withAlpha(Colors.black, 0.42)} />
-      <G rotation={-6} origin="133,102">
-        <Path d="M59 19 203 10 218 171 70 184Z" fill={AMBER} />
-        <Path d="M48 10 192 4 207 164 60 176Z" fill={PAPER} {...outline} />
-        <Path d="m68 30 91-4m-87 22 62-3m-59 35 57-3m-54 19 47-3m-43 20 63-4m-60 20 43-3m-38 20 29-2" {...fine} />
-      </G>
-      <G rotation={8} origin="206,111">
-        <Path d="m189 65 13 7 16-1 8 14 13 9-2 17 6 14-11 11-6 16-17 2-13 10-15-8-16-1-7-15-11-11 4-16-2-16 14-8 7-15Z" fill={AMBER} {...outline} />
-        <Circle cx="195" cy="116" r="29" fill={PAPER} {...outline} />
-        <Path d="m179 116 11 12 24-27" fill="none" stroke={INK} strokeWidth="7" strokeLinecap="square" />
-        <Path d="m176 151 2 40 18-12 17 10 1-39" fill={AMBER} {...outline} />
-      </G>
-      <G rotation={23} origin="248,96">
-        <Path d="M239 28h16v116l-8 24-9-24Z" fill={PAPER_MUTED} {...outline} />
-        <Path d="m239 144 16-1-8 25Z" fill={PAPER} {...outline} />
-        <Path d="m244 159 3 9 4-9Z" fill={INK} />
-      </G>
+  return <G>
+    <G rotation={-7} origin="128,96">
+      <Path d="M59 17 183 9l15 169-128 8Z" fill={AMBER} {...edge} />
+      <Path d="m50 9 127-4 12 168-129 6Z" fill={PAPER} {...edge} />
+      <Path d="m66 24 96-3m-96 5 97-3m-90 129 97-4" {...cut} />
+      {[48, 78, 108].map((y, i) => <G key={y}>
+        <Rect x={69+i} y={y} width={11} height={11} rx={1} fill="none" stroke={INK} strokeWidth={1.4} />
+        <Path d={`m${71+i} ${y+4} 4 5 9-15m6 12 57-2m-56 7 40-1`} {...cut} />
+      </G>)}
     </G>
-  );
+    <G rotation={12} origin="211,119">
+      <Path d="m191 142-5 43 19-10 14 13 7-46Z" fill={AMBER} {...edge} />
+      <Path d="m211 78 10 5 12 0 7 9 10 6 1 12 5 10-6 10-1 12-11 5-7 9-12-1-10 4-9-7-11-2-5-11-8-8 3-12-2-11 9-8 5-10 12-1Z" fill={AMBER} {...edge} />
+      <Circle cx={211} cy={118} r={28} fill={PAPER} {...edge} />
+      <Circle cx={211} cy={118} r={23} fill="none" stroke={INK} strokeWidth={1} strokeDasharray="1 3" />
+      <Path d="m198 117 10 11 18-24" stroke={INK} strokeWidth={5} fill="none" />
+      <Path d="m195 154-2 16m8-14-2 9m18-11-2 17" {...cut} />
+    </G>
+  </G>;
 }
 
 function Subject({ gameKey }: { gameKey: string }) {
@@ -273,27 +236,17 @@ function Subject({ gameKey }: { gameKey: string }) {
   }
 }
 
-/** One screen-printed prop per game. Covers are full-bleed; cards reuse its central mark. */
-export const GameArtwork = React.memo(function GameArtwork({
-  gameKey,
-  size = 180,
-  mode = 'mark',
-}: {
+/** Native text stays outside the plate. This illustration is purely decorative. */
+export const GameArtwork = React.memo(function GameArtwork({ gameKey, size = 180, mode = 'mark' }: {
   gameKey: string;
   size?: number;
-  mode?: ArtworkMode;
+  mode?: 'cover' | 'mark';
 }) {
   const cover = mode === 'cover';
-  return (
-    <Svg
-      width={cover ? '100%' : size}
-      height={cover ? '100%' : size}
-      viewBox="0 0 300 200"
-      preserveAspectRatio={cover ? 'xMidYMid slice' : 'xMidYMid meet'}
-      accessible={false}
-    >
-      {cover ? <Backdrop gameKey={gameKey} /> : null}
+  return <View style={{ width: cover ? '100%' : size, height: cover ? '100%' : size }} pointerEvents="none" accessible={false}>
+    {cover ? <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice" accessible={false}><Backdrop /></Svg> : null}
+    <Svg width="100%" height="100%" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" accessible={false}>
       <Subject gameKey={gameKey} />
     </Svg>
-  );
+  </View>;
 });

@@ -1727,8 +1727,9 @@ s okrajem**, ne plná výplň (§2.2).
 ### 21.3b Linorytové rekvizity
 
 Schválený směr B: pěnový papír, stoutový inkoust a druhá jantarová tisková barva.
-Každá z devíti her má vlastní SVG kresbu v `GameArtwork`; stejná kresba patří na
-cover, do lobby i rozehrané hry. Kresba má pevnou siluetu, mírně nepravidelné hrany
+Každá z devíti her má vlastní SVG kresbu v `GameArtwork`; stejný motiv patří na
+cover, do lobby i rozehrané hry, kde se tiskne přímo na rekvizitu přes `GamePrints`.
+Kresba má pevnou siluetu, mírně nepravidelné hrany
 a několik řezaných tahů. Papírové karty mají nepravidelný obrys a dvě inkoustové
 linky. Text zůstává nativní. Runda losuje na papírové účtence, fyzické kostky
 zůstávají Three.js se slonovinovými plochami a inkoustovými puntíky.
@@ -1738,6 +1739,11 @@ otisky pivních kroužků a papírové tácky v barvách hráčů. Dřevo použ�
 odstíny `#4E3320`, `#452B1A`, `#3F2718`, `#4B301D`; kresba je společná i pro
 režim omezeného pohybu. Otáčí se pouze SVG flaška na samostatné vrstvě prohlížeče,
 bez WebGL světel a stínového kotouče. Fyzikální dráha a výběr hráče zůstávají stejné.
+Tácky kreslí nativní `BottleSeats`: iniciála a jméno u každého místa, vybraný hráč
+má jantarový okraj i jmenovku. Jména nejdou do WebView. Do osmi hráčů jsou všechna
+jména na stole (do šesti při šířce stolu pod 320 nebo standardní výšce pod 380 bodů);
+větší parta má nativní posuvný seznam pod stolem a na stole jméno
+vybraného hráče. Její stůl zabírá 46 % výšky, aby zůstalo místo na seznam i akci.
 
 Akce ve hře je pilulka podle šířky textu (`StagePill`, horizontální padding 44),
 nikoli pruh přes celou obrazovku. Lobby si může výslovně ponechat širokou akci.

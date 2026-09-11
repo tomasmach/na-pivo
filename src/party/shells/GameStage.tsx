@@ -138,16 +138,18 @@ export function StageCard({
       <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 400" preserveAspectRatio="none" pointerEvents="none" accessible={false}>
         {stacked ? (
           <>
-            <Path d="M24 2 298 16 290 397 17 386Z" fill={withAlpha(Colors.amber, 0.32)} />
-            <Path d="M13 7 291 5 295 390 12 397Z" fill={Colors.foamMuted} stroke={withAlpha(Colors.stout, 0.6)} strokeWidth={2} />
-            <Path d="M2 15 280 2 289 382 5 396 1 208Z" fill={Colors.foam} />
-            {ruled ? <Path d="M19 29 265 17M18 378 274 366" stroke={Colors.stout} strokeWidth={2} /> : null}
+            <Path d="M25 5 294 17q4 0 4 7l-9 365q0 8-7 8L18 386Z" fill={Colors.amber} />
+            <Path d="M17 9 286 6q6 0 6 7l3 374q0 5-6 5L17 397q-5 0-5-6L10 16q0-7 7-7Z" fill={Colors.foamMuted} stroke={withAlpha(Colors.stout, 0.6)} strokeWidth={2} />
+            <Path d="m7 16 268-12q6-1 7 6l9 368q0 6-6 6L11 396q-6 0-6-7L2 24q0-7 5-8Z" fill={Colors.foam} />
+            <Path d="m16 389 259-12m15-20 1 26-17 1M292 45l-1 37" fill="none" stroke={Colors.stout} strokeWidth={1} opacity={0.3} />
+            {ruled ? <Path d="m20 31 87-4 17 1 141-8M20 376l136-7 15 1 101-5" fill="none" stroke={Colors.stout} strokeWidth={1.6} /> : null}
           </>
         ) : (
           <>
-            <Path d="M10 12 298 7 295 398 5 394Z" fill={withAlpha(Colors.amber, 0.18)} />
-            <Path d="M4 5 290 1 299 388 7 399 1 210Z" fill={Colors.foam} />
-            {ruled ? <Path d="M18 19 276 16M17 383 283 373" stroke={Colors.stout} strokeWidth={2} /> : null}
+            <Path d="M11 12 293 8l5 384-7 6-281-2Z" fill={Colors.foamMuted} />
+            <Path d="M8 5 283 2q7 0 7 7l7 373-3 8-279 7q-7 0-8-7L3 14q0-8 5-9Z" fill={Colors.foam} />
+            <Path d="m11 389 108-3m147-2 23-1 1-23M7 30l1 26" fill="none" stroke={Colors.stout} strokeWidth={1} opacity={0.25} />
+            {ruled ? <Path d="m20 22 102-2 13 1 139-3M20 378l136-3 12 1 112-3" fill="none" stroke={Colors.stout} strokeWidth={1.6} /> : null}
           </>
         )}
       </Svg>

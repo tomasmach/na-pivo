@@ -1,116 +1,54 @@
-/** Shared static linocut table for the WebView and reduced-motion fallback. */
+/** Shared oak print for the spinning bottle and reduced-motion table. */
 export const bottleTableSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520" width="400" height="520">
-  <!-- Oak pub table, top-down. Four flat-sawn planks, linocut B voice: stout ink cuts, amber second plate. -->
-
-  <!-- Planks -->
-  <rect x="0" y="0" width="98" height="520" fill="#4E3320"/>
-  <rect x="98" y="0" width="105" height="520" fill="#452B1A"/>
-  <rect x="203" y="0" width="94" height="520" fill="#3F2718"/>
-  <rect x="297" y="0" width="103" height="520" fill="#4B301D"/>
-
-  <!-- Elbow-worn patches near the long edges (two flat layers, no gradient) -->
-  <g fill="#6A4628">
-    <path d="M0 150 C30 140 52 168 40 210 C30 245 46 280 22 300 C10 310 0 300 0 300Z" fill-opacity="0.10"/>
-    <path d="M0 170 C18 166 30 186 24 214 C18 240 28 268 12 284 C6 290 0 286 0 286Z" fill-opacity="0.08"/>
-    <path d="M400 230 C372 224 350 256 364 296 C374 326 356 356 380 380 C390 390 400 384 400 384Z" fill-opacity="0.10"/>
-    <path d="M400 250 C382 248 372 270 378 296 C382 320 372 344 388 362 C394 368 400 364 400 364Z" fill-opacity="0.08"/>
+  <path d="M0 0H98V520H0Z" fill="#4E3320"/>
+  <path d="M98 0H203V520H98Z" fill="#452B1A"/>
+  <path d="M203 0H297V520H203Z" fill="#3F2718"/>
+  <path d="M297 0H400V520H297Z" fill="#4B301D"/>
+  <!-- Tapered gouges follow the grain. Uncut areas let the bottle read. -->
+  <g fill="#25180F" fill-opacity=".48">
+    <path d="M18 0Q9 58 22 125T22 254Q13 300 19 372L22 421Q9 367 13 318T15 235Q28 179 16 121T18 0Z"/>
+    <path d="M73 0Q61 64 72 118T83 219Q71 165 66 135T62 60Z"/>
+    <path d="M36 213Q27 274 43 339T50 478L44 520H39Q56 424 35 344T36 213Z"/>
+    <path d="M79 278Q69 341 78 397T82 520H77Q86 448 72 400T79 278Z"/>
+    <path d="M117 0Q112 92 120 166T118 309Q115 358 121 392Q110 349 114 302T113 161Q106 80 117 0Z"/>
+    <path d="M176 0Q184 55 173 113T169 219Q160 170 170 115T176 0Z"/>
+    <path d="M189 319Q175 375 183 435L191 520H186L177 437Q170 371 189 319Z"/>
+    <path d="M223 0Q234 64 222 126T220 253Q211 188 217 143T223 0Z"/>
+    <path d="M272 161Q283 223 271 285T270 408Q260 349 266 290T272 161Z"/>
+    <path d="M229 382Q218 445 232 520H226Q214 444 229 382Z"/>
+    <path d="M320 0Q309 81 322 149T324 279Q317 214 315 183T311 71Z"/>
+    <path d="M375 0Q387 105 368 179T371 344Q355 279 363 219T375 0Z"/>
+    <path d="M313 323Q322 367 313 406T318 520H313Q302 452 308 414T313 323Z"/>
+    <path d="M381 380Q371 442 385 520H379Q365 449 381 380Z"/>
   </g>
-
-  <!-- Plank 1 grain (x 0–98) -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M22 0 C18 60 30 110 24 170 S10 300 20 380 S30 470 26 520" stroke="#2C1A0F" stroke-opacity="0.55" stroke-width="2"/>
-    <path d="M62 130 C68 190 52 250 60 320 S72 430 64 520" stroke="#5B3B23" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M78 0 C82 50 76 100 84 150 S80 260 86 340 S82 460 84 520" stroke="#2C1A0F" stroke-opacity="0.35" stroke-width="1.5"/>
-    <!-- cathedral arches under the knot -->
-    <path d="M36 182 C42 150 68 140 78 176" stroke="#2C1A0F" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M30 206 C38 162 74 152 86 200" stroke="#2C1A0F" stroke-opacity="0.35" stroke-width="1.5"/>
-    <!-- grain bending around the knot -->
-    <path d="M40 30 C34 55 32 80 36 108 C38 118 44 126 50 132" stroke="#2C1A0F" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M66 26 C72 52 74 80 70 108 C68 118 62 126 56 132" stroke="#2C1A0F" stroke-opacity="0.45" stroke-width="1.5"/>
+  <!-- Flat-sawn oak cathedrals, nested and asymmetric. -->
+  <g fill="none" stroke="#25180F" stroke-opacity=".45" stroke-linecap="square">
+    <path d="M28 146Q22 92 43 62Q61 92 58 139 M33 135Q30 99 43 78Q53 100 53 129 M38 119Q35 105 43 92Q48 107 45 119" stroke-width="2"/>
+    <path d="M130 520Q124 460 150 423Q173 456 166 501 M135 513Q130 466 150 438Q165 465 160 493 M141 493Q137 470 150 451Q158 471 152 489" stroke-width="2"/>
+    <path d="M236 128Q227 60 250 20Q279 53 267 118 M241 113Q237 67 251 37Q270 65 261 105 M246 93Q242 66 252 53Q262 69 254 91" stroke-width="1.8"/>
+    <path d="M330 446Q321 372 349 331Q378 381 364 450 M336 433Q330 381 349 348Q368 382 359 429 M341 414Q338 389 349 367Q359 390 350 412" stroke-width="2"/>
   </g>
-  <!-- Knot, plank 1 -->
-  <ellipse cx="52" cy="84" rx="10" ry="15" fill="#2F1C10" stroke="#1F130B" stroke-width="2"/>
-  <ellipse cx="53" cy="86" rx="4.5" ry="7" fill="#1F130B"/>
-  <path d="M44 74 C48 80 48 92 45 98" fill="none" stroke="#5B3B23" stroke-opacity="0.5" stroke-width="1.2" stroke-linecap="round"/>
-
-  <!-- Plank 2 grain (x 98–203), kept quiet toward the center -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M112 0 C108 80 118 160 110 260 S116 420 112 520" stroke="#2E1B10" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M190 0 C186 90 194 190 188 300 S192 450 190 520" stroke="#5A3A23" stroke-opacity="0.4" stroke-width="1.5"/>
-    <path d="M150 0 C154 90 146 190 152 300 S148 450 150 520" stroke="#3A2314" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M128 400 C136 380 166 376 176 402" stroke="#2E1B10" stroke-opacity="0.35" stroke-width="1.5"/>
-    <path d="M122 428 C132 396 172 392 184 426" stroke="#2E1B10" stroke-opacity="0.25" stroke-width="1.5"/>
+  <g fill="#785333" fill-opacity=".30">
+    <path d="M30 0 33 0Q24 47 31 71L29 100Q22 63 30 0Z M58 189Q66 252 61 294L58 281Q62 244 58 189Z M23 428 26 440 24 500 21 510Z"/>
+    <path d="M136 40 139 22 136 164 133 179Z M157 274Q149 329 158 375L156 391Q144 342 157 274Z"/>
+    <path d="M287 0 290 0 287 122 285 140Z M248 369 252 355 249 454 246 467Z"/>
+    <path d="M345 17 349 8 344 112 342 123Z M392 269 394 253 391 365 388 378Z"/>
   </g>
-
-  <!-- Plank 3 grain (x 203–297) -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M216 0 C220 100 212 220 218 330 S214 470 216 520" stroke="#2A180E" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M282 0 C278 60 288 150 280 250 S286 400 284 520" stroke="#573722" stroke-opacity="0.4" stroke-width="1.5"/>
-    <path d="M250 0 C246 60 254 120 248 180" stroke="#2A180E" stroke-opacity="0.3" stroke-width="1.5"/>
-    <path d="M232 92 C240 62 266 56 274 88" stroke="#2A180E" stroke-opacity="0.45" stroke-width="2"/>
-    <path d="M226 116 C236 74 270 66 282 110" stroke="#2A180E" stroke-opacity="0.3" stroke-width="1.5"/>
-    <path d="M234 470 C240 440 264 432 274 462" stroke="#2A180E" stroke-opacity="0.45" stroke-width="2"/>
-    <path d="M228 492 C236 450 270 442 282 484" stroke="#2A180E" stroke-opacity="0.3" stroke-width="1.5"/>
+  <!-- Joints wander like worn boards, without bevelled framing. -->
+  <g fill="none" stroke="#1B120C" stroke-width="3">
+    <path d="M98 0 97 111 99 242 97 394 98 520 M203 0 202 157 204 303 202 520 M297 0 296 186 298 317 297 520"/>
   </g>
-
-  <!-- Plank 4 grain (x 297–400) -->
-  <g fill="none" stroke-linecap="round">
-    <path d="M318 0 C314 90 326 180 320 280 S312 360 318 380" stroke="#2E1B10" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M376 0 C382 60 370 150 378 250 S372 340 376 380" stroke="#5C3B24" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M346 140 C350 200 342 260 348 320" stroke="#2E1B10" stroke-opacity="0.3" stroke-width="1.5"/>
-    <path d="M322 62 C332 32 362 26 372 58" stroke="#2E1B10" stroke-opacity="0.5" stroke-width="2"/>
-    <path d="M316 82 C328 42 366 34 380 74" stroke="#2E1B10" stroke-opacity="0.35" stroke-width="1.5"/>
-    <!-- grain bending around the lower knot -->
-    <path d="M334 380 C330 410 328 450 336 486 C338 496 344 506 348 520" stroke="#2E1B10" stroke-opacity="0.45" stroke-width="1.5"/>
-    <path d="M370 380 C376 410 378 450 368 486 C366 496 360 506 356 520" stroke="#2E1B10" stroke-opacity="0.45" stroke-width="1.5"/>
+  <g fill="none" stroke="#785333" stroke-opacity=".42" stroke-width="1">
+    <path d="M95 0 94 111 96 242 94 394 95 520 M200 0 199 157 201 303 199 520 M294 0 293 186 295 317 294 520"/>
   </g>
-  <!-- Knot, plank 4 -->
-  <ellipse cx="352" cy="432" rx="11" ry="16" fill="#2F1C10" stroke="#1F130B" stroke-width="2"/>
-  <ellipse cx="351" cy="434" rx="5" ry="7.5" fill="#1F130B"/>
-  <path d="M360 422 C356 428 356 440 359 446" fill="none" stroke="#5C3B24" stroke-opacity="0.5" stroke-width="1.2" stroke-linecap="round"/>
-
-  <!-- Seams between planks: dark gap, one worn highlight edge -->
-  <g>
-    <rect x="96" y="0" width="4" height="520" fill="#1B120C"/>
-    <rect x="201" y="0" width="4" height="520" fill="#1B120C"/>
-    <rect x="295" y="0" width="4" height="520" fill="#1B120C"/>
-    <path d="M94.5 0 V520 M199.5 0 V520 M293.5 0 V520" stroke="#6A4628" stroke-opacity="0.35" stroke-width="1.5"/>
-    <path d="M101 0 V520 M206 0 V520 M300 0 V520" stroke="#2A180E" stroke-opacity="0.5" stroke-width="1"/>
+  <!-- Incomplete glass impressions, kept away from the playing area. -->
+  <g fill="none" stroke="#BBA07A" stroke-linecap="butt">
+    <path d="M-12 73C-25 41 1 9 36 15C71 22 88 58 67 88M58 98Q17 119-7 83" stroke-width="5" stroke-opacity=".17"/>
+    <path d="M-5 68C-15 40 7 19 35 23Q75 34 67 68M61 84Q31 109 3 82" stroke-width="1.6" stroke-opacity=".20"/>
+    <path d="M317 456C326 424 375 416 397 450Q419 488 380 510M367 514Q326 511 317 473" stroke-width="4" stroke-opacity=".17"/>
+    <path d="M325 456Q352 416 387 448Q416 482 378 502M363 506Q336 504 325 479" stroke-width="1.5" stroke-opacity=".20"/>
   </g>
-
-  <!-- Dowel plugs at plank ends -->
-  <g fill="#2F1C10" stroke="#1F130B" stroke-width="1.5">
-    <circle cx="49" cy="18" r="4"/>
-    <circle cx="150" cy="16" r="4"/>
-    <circle cx="250" cy="18" r="4"/>
-    <circle cx="349" cy="16" r="4"/>
-    <circle cx="49" cy="504" r="4"/>
-    <circle cx="150" cy="502" r="4"/>
-    <circle cx="250" cy="504" r="4"/>
-    <circle cx="349" cy="502" r="4"/>
+  <g fill="#BBA07A" fill-opacity=".15">
+    <path d="m76 99 5-1 2 3-5 2Z m-2-9 3-3 2 4-3 2Z M305 457l4-3 2 6-4 1Z"/>
   </g>
-
-  <!-- Carving marks: a few square-capped cuts, kept off the center -->
-  <g fill="none" stroke="#5E3D25" stroke-opacity="0.35" stroke-width="2" stroke-linecap="square">
-    <path d="M30 300 l4 -22 M46 336 l3 -18 M14 440 l5 -20"/>
-    <path d="M124 60 l3 -18 M176 88 l-3 20"/>
-    <path d="M262 30 l4 -20 M240 500 l3 -16"/>
-    <path d="M380 130 l4 -18 M334 250 l-3 20 M392 470 l3 -18"/>
-  </g>
-
-  <!-- Beer-ring traces near the edges, amber second plate -->
-  <g fill="none" stroke="#E8A317" stroke-linecap="round">
-    <circle cx="58" cy="44" r="36" stroke-opacity="0.16" stroke-width="5" stroke-dasharray="150 34 40 20"/>
-    <circle cx="58" cy="44" r="30" stroke-opacity="0.09" stroke-width="1.5" stroke-dasharray="90 60"/>
-    <circle cx="342" cy="468" r="40" stroke-opacity="0.14" stroke-width="5" stroke-dasharray="120 40 70 22"/>
-    <circle cx="342" cy="468" r="34" stroke-opacity="0.08" stroke-width="1.5"/>
-    <circle cx="392" cy="232" r="30" stroke-opacity="0.12" stroke-width="4.5" stroke-dasharray="110 30 40 10"/>
-    <circle cx="44" cy="482" r="26" stroke-opacity="0.10" stroke-width="4" stroke-dasharray="80 30 40 14"/>
-  </g>
-  <g fill="#E8A317">
-    <circle cx="92" cy="76" r="3" fill-opacity="0.12"/>
-    <circle cx="300" cy="446" r="2.4" fill-opacity="0.10"/>
-    <circle cx="370" cy="268" r="2" fill-opacity="0.10"/>
-  </g>
-</svg>
-`;
+</svg>`;
