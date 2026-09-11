@@ -56,10 +56,17 @@ function Stopwatch({ startedAt }: { startedAt: number }) {
 export function PulsePanel({
   stats,
   startedAt,
+  clock = true,
 }: {
   /** Whatever is worth knowing right now; the clock is added after them. */
   stats: PulseStat[];
   startedAt: number | null;
+  /**
+   * Off before the night starts. A stopwatch reading "0:00 večer" over a hub
+   * where nothing has happened is a number about nothing (§20.5) — but the beer
+   * count beside it is real from the first glance, so the block itself stays.
+   */
+  clock?: boolean;
 }) {
   return (
     <View style={styles.row}>
@@ -79,24 +86,26 @@ export function PulsePanel({
           </Text>
         </View>
       ))}
-      <View style={styles.col}>
-        {startedAt === null ? (
-          <Text
-            style={styles.value}
-            allowFontScaling={false}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-          >
-            0:00
+      {clock ? (
+        <View style={styles.col}>
+          {startedAt === null ? (
+            <Text
+              style={styles.value}
+              allowFontScaling={false}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              0:00
+            </Text>
+          ) : (
+            <Stopwatch startedAt={startedAt} />
+          )}
+          <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.liveParty.clockUnit}
           </Text>
-        ) : (
-          <Stopwatch startedAt={startedAt} />
-        )}
-        <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.liveParty.clockUnit}
-        </Text>
-      </View>
+        </View>
+      ) : null}
     </View>
   );
 }

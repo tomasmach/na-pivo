@@ -1,17 +1,20 @@
 /**
- * The hub before the first beer.
+ * What sits UNDER the counter before the first beer.
  *
- * It used to be the running hub with the numbers switched off: a pub picker, an
- * invite pill, one line about a code and six hundred points of nothing down to
- * the button. A screen you open to START an evening said nothing about the
- * evening. Now it says what the night is going to collect — where, who, what
- * to play — each as the row it will be once the night runs, with its one
- * action sitting on it; then who from the parta is already sitting somewhere,
- * only when somebody is; then the last night, so the hub has a memory.
+ * The hub used to open on a headline saying nothing had happened yet and three
+ * rows about the table, the games and a code. People came to the tab to count a
+ * beer and had to read a page first — the 2.0 complaint in one screen. The pub,
+ * the number and the button now live in the hub header and the control row
+ * (`LivePartyMockScreen`), exactly where they are once the night runs, and what
+ * is left here is what may quietly follow them:
  *
- * Everything above the parta section is local, so the screen is whole with no
- * signal. The parta section is the one thing that needs the server and it
- * simply is not there until the server answers.
+ *   table       one line, two words: start one, or sit down at somebody's
+ *   naposledy   the last evening, so the tab has a memory
+ *
+ * Both are local, so the screen is whole with no signal. The parta's presence
+ * ("Kdo už sedí") used to sit between them and is gone from here: three server
+ * rows pushed the last night off a 402×874 screen, they arrive late enough to
+ * shove the layout when they do, and Kocoviny already lists every one of them.
  */
 
 import React from 'react';
@@ -19,148 +22,26 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
-import { PresenceList } from '@/friends/PresenceList';
 import { useNowTick } from '@/friends/useNowTick';
-import { usePartaDashboard } from '@/friends/usePartaDashboard';
 import { t } from '@/i18n';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockType } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { eveningDateLabel, sessionDrinkSummary } from '@/myBeers/eveningModel';
-import { GAME_CATALOG, GAMES_COMING_SOON } from '@/party/gameCatalog';
-import { gamesLine } from '@/party/idleHubModel';
-import { useAccountStore } from '@/stores/accountStore';
 import type { TallySession } from '@/stores/tallyStore';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
-/** Friends shown seated; the full list lives in Kocoviny. */
-const SEATED_LIMIT = 3;
-
-function IdleRow({
-  label,
-  title,
-  meta,
-  link,
-  first = false,
-  onOpen,
-  accessibilityLabel,
-}: {
-  /** What the row is about, in the gutter: "Hospoda", "U stolu". Optional. */
-  label?: string;
-  title: string;
-  meta?: string;
-  /**
-   * Amber word at the end instead of a chevron. With a link the ROW is inert
-   * and only the word presses: "U stolu · Ty" reads as information, and a tap
-   * on it that quietly opens a table on the server is a trap, not a shortcut.
-   */
-  link?: string;
-  first?: boolean;
-  onOpen: () => void;
-  accessibilityLabel: string;
-}) {
-  const body = (
-    <>
-      {label ? (
-        <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {label}
-        </Text>
-      ) : null}
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {title}
-        </Text>
-        {meta ? (
-          // Two lines: "2 m · Otevírací doba neznámá · Pilsner Urquell 12°" is
-          // the whole point of the pub row and one line cut it at the beer.
-          <Text style={styles.rowMeta} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-            {meta}
-          </Text>
-        ) : null}
-      </View>
-    </>
-  );
-  if (link) {
-    return (
-      <View style={[styles.row, first && styles.rowFirst]}>
-        {body}
-        <Pressable
-          onPress={onOpen}
-          style={({ pressed }) => [styles.rowLinkHit, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-        >
-          <Text style={styles.rowLink} maxFontSizeMultiplier={FontScaleCap.body}>
-            {link}
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
-  return (
-    <Pressable
-      onPress={onOpen}
-      style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-    >
-      {body}
-      <ChevronRightIcon size={18} color={Colors.mutedText} />
-    </Pressable>
-  );
-}
-
-/**
- * Who from the parta is sitting somewhere right now. Its own component so the
- * dashboard hook mounts only for someone with an account — anonymous has no
- * parta, and the request would only fail — and only while the hub is idle, so
- * the running night never pays for the poll.
- */
-function SeatedFriends() {
-  const router = useRouter();
-  const { dashboard, stale, reload } = usePartaDashboard();
-  const seated = React.useMemo(
-    () => (dashboard?.presence ?? []).slice(0, SEATED_LIMIT),
-    [dashboard?.presence],
-  );
-  if (seated.length === 0) return null;
-  return (
-    <>
-      <SectionBreak title={t.liveParty.idleSeatedTitle} />
-      <PresenceList
-        flat
-        presence={seated}
-        myPresence={null}
-        stale={stale}
-        onOpenProfile={(id) => router.push(`/parta/${id}` as Href)}
-        onChanged={reload}
-      />
-    </>
-  );
-}
-
 export function IdleHub({
-  pubName,
-  pubMeta,
   lastSession,
-  onPickPub,
   onInvite,
-  onOpenGames,
   onJoinByCode,
 }: {
-  /** The chosen or detected pub, or the placeholder asking for one. */
-  pubName: string;
-  /** Distance, opening state, first tap — whatever is known. */
-  pubMeta: string[];
   lastSession: TallySession | null;
-  onPickPub: () => void;
   onInvite: () => void;
-  onOpenGames: () => void;
   onJoinByCode: () => void;
 }) {
   const router = useRouter();
-  const hasAccount = useAccountStore((state) => state.session != null);
   // Ticks, so a hub left open past the 04:00 cutoff stops saying "Včera".
   const now = useNowTick();
   // "Včera · U Kotvy" — the same day label and drink summary the evening
@@ -173,77 +54,66 @@ export function IdleHub({
 
   return (
     <View style={styles.root}>
-      <View style={styles.lead}>
-        <Text style={styles.leadTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.liveParty.pulseIdle}
-        </Text>
-        <Text style={styles.leadSub} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.liveParty.pulseIdleBasis}
-        </Text>
-      </View>
-
-      <View style={styles.rows}>
-        <IdleRow
-          first
-          label={t.liveParty.idlePubLabel}
-          title={pubName}
-          meta={pubMeta.join(' · ')}
-          onOpen={onPickPub}
-          accessibilityLabel={t.liveParty.a11yChangePub(pubName)}
-        />
-        <IdleRow
-          label={t.liveParty.idleTableLabel}
-          title={t.liveParty.you}
-          link={t.liveParty.invitePill}
-          onOpen={onInvite}
+      {/* Two text links, not two pills: the table is the evening's second
+          question and the screen already has its one amber button (§6.3). */}
+      <View style={styles.tableRow}>
+        <Pressable
+          onPress={onInvite}
+          style={({ pressed }) => [styles.linkHit, pressed && styles.pressed]}
+          accessibilityRole="button"
           accessibilityLabel={t.liveParty.a11yInvite}
-        />
-        {/* The dice disc in the control row is the running night's door to the
-            games; before the night this row is the only one. The catalogue is
-            locked until the next version and the row says so rather than
-            hiding the fact behind a tap. */}
-        <IdleRow
-          label={t.liveParty.idleGamesLabel}
-          title={gamesLine(GAME_CATALOG)}
-          meta={GAMES_COMING_SOON ? t.liveParty.idleGamesSoon : undefined}
-          onOpen={onOpenGames}
-          accessibilityLabel={t.liveParty.a11yOpenGames}
-        />
-      </View>
-
-      {/* The other door. You can start a table here, but somebody may have
-          started one already. */}
-      <Pressable
-        onPress={onJoinByCode}
-        style={({ pressed }) => [styles.joinRow, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={t.liveParty.a11yJoinWithCode}
-      >
-        <Text style={styles.joinText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.liveParty.joinPrompt}{' '}
-          <Text style={styles.joinLink} maxFontSizeMultiplier={FontScaleCap.body}>
+        >
+          <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.liveParty.idleInviteLink}
+          </Text>
+        </Pressable>
+        <Text style={styles.linkDot} maxFontSizeMultiplier={FontScaleCap.body}>
+          ·
+        </Text>
+        <Pressable
+          onPress={onJoinByCode}
+          style={({ pressed }) => [styles.linkHit, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={t.liveParty.a11yJoinWithCode}
+        >
+          <Text style={styles.link} maxFontSizeMultiplier={FontScaleCap.body}>
             {t.liveParty.joinLink}
           </Text>
-        </Text>
-      </Pressable>
-
-      {hasAccount ? <SeatedFriends /> : null}
+        </Pressable>
+      </View>
 
       {lastSession ? (
         <>
           <SectionBreak title={t.liveParty.idleLastTitle} />
-          <IdleRow
-            first
-            title={lastTitle}
-            meta={sessionDrinkSummary(lastSession)}
-            onOpen={() =>
+          <Pressable
+            onPress={() =>
               router.push({
                 pathname: '/evening',
                 params: { startedAt: lastSession.startedAt },
               } as Href)
             }
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            accessibilityRole="button"
             accessibilityLabel={t.liveParty.a11yLastNight(lastTitle)}
-          />
+          >
+            <View style={styles.rowText}>
+              <Text
+                style={styles.rowTitle}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {lastTitle}
+              </Text>
+              <Text
+                style={styles.rowMeta}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {sessionDrinkSummary(lastSession)}
+              </Text>
+            </View>
+            <ChevronRightIcon size={18} color={Colors.mutedText} />
+          </Pressable>
         </>
       ) : null}
     </View>
@@ -253,34 +123,27 @@ export function IdleHub({
 const styles = StyleSheet.create({
   // Air under the last row so it does not sit on the control row.
   root: { paddingBottom: Spacing.lg },
-  lead: { marginTop: Spacing.xs },
-  leadTitle: { ...MockType.titleXL, color: Colors.foam },
-  leadSub: { ...MockType.bodySmall, color: Colors.foamMuted, marginTop: 2 },
-  rows: { marginTop: MockLayout.controlGap },
-  // The canonical sheet row (§7.3); 68 because these are two-line rows (§4.1).
+  // Its own block, not a caption to the number above it (§4).
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  linkHit: { minHeight: HitArea.min, justifyContent: 'center' },
+  link: { fontSize: 14, fontWeight: '800', color: Colors.amber },
+  linkDot: { fontSize: 14, fontWeight: '800', color: Colors.mutedText },
+  // The canonical row (§5.1); 68 because it is a two-line row (§4.1). It is the
+  // only one here, so it never draws the hairline a list needs.
   row: {
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingVertical: Spacing.sm + 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  rowFirst: { borderTopWidth: 0 },
-  rowLabel: { ...MockType.bodySmall, color: Colors.mutedText, width: 84 },
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { ...MockType.bodySemibold, color: Colors.foam },
   rowMeta: { ...MockType.bodySmall, color: Colors.mutedText, marginTop: 2 },
-  rowLinkHit: { minHeight: HitArea.min, justifyContent: 'center', paddingLeft: Spacing.sm },
-  rowLink: { fontSize: 14, fontWeight: '800', color: Colors.amber },
-  joinRow: {
-    minHeight: HitArea.min,
-    marginTop: Spacing.md,
-    alignSelf: 'flex-start',
-    justifyContent: 'center',
-  },
-  joinText: { ...MockType.body, color: Colors.mutedText },
-  joinLink: { color: Colors.amber, fontWeight: '800' },
   pressed: { opacity: 0.65 },
 });
