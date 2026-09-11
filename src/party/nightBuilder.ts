@@ -149,6 +149,9 @@ function myDrinks(sessions: TallySession[], meId: string, stops: NightStop[]) {
         beerName: drink.beerName,
         drinkType: drink.drinkType ?? ('beer' as const),
         ...(drink.volumeMl !== undefined ? { volumeMl: drink.volumeMl } : {}),
+        // Only my own rows can carry this: the shared record has no prices on
+        // the wire. It is what lets the recap add up what the night cost me.
+        ...(typeof drink.priceCzk === 'number' ? { priceCzk: drink.priceCzk } : {}),
         stopId,
       }];
     });

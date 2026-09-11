@@ -170,6 +170,47 @@ export interface LeaderboardEntry {
   isMe: boolean;
 }
 
+/** How long back a Souboj looks. */
+export type DuelWindow = '30d' | '180d' | 'all';
+
+/** One side of a Souboj. Spend fields only exist when both accounts opted in. */
+export interface DuelSide {
+  beers: number;
+  evenings: number;
+  pubs: number;
+  beersPerEvening: number;
+  spendCzk: number | null;
+  /** How many of those beers carried a price; null when spend is off. */
+  pricedBeers: number | null;
+}
+
+/** One month of the head-to-head chart. `month` is an ISO date on the 1st. */
+export interface DuelMonth {
+  month: string;
+  me: number;
+  friend: number;
+}
+
+/**
+ * Me against one friend, discipline by discipline.
+ *
+ * `available` is false when the friend keeps their drink feed to themselves;
+ * the screen then shows the friend and an explanation, never a zero, because a
+ * zero reads as "they stopped drinking" rather than "they did not share".
+ */
+export interface Duel {
+  friend: FriendProfile;
+  window: DuelWindow;
+  available: boolean;
+  unavailableReason: 'not_sharing' | null;
+  spendAvailable: boolean;
+  /** The friend shares spend and I do not, so the missing half is my own doing. */
+  spendBlockedByMe: boolean;
+  me: DuelSide | null;
+  them: DuelSide | null;
+  series: DuelMonth[];
+}
+
 export interface FriendSocialSettings {
   ghostMode: boolean;
   quietHoursEnabled: boolean;
@@ -182,6 +223,12 @@ export interface FriendSocialSettings {
    * default is simply the server's own default (on).
    */
   shareDrinksWithParta: boolean;
+  /**
+   * Whether a Souboj may compare what I spent. Off by default and separate from
+   * the drink feed: how many beers you had and what they cost are two different
+   * things to hand over, and joining a parta was consent to neither.
+   */
+  shareSpendWithParta: boolean;
 }
 
 export const DEFAULT_FRIEND_SOCIAL_SETTINGS: FriendSocialSettings = {
@@ -190,6 +237,7 @@ export const DEFAULT_FRIEND_SOCIAL_SETTINGS: FriendSocialSettings = {
   quietHoursStart: 23,
   quietHoursEnd: 9,
   shareDrinksWithParta: true,
+  shareSpendWithParta: false,
 };
 
 /**
@@ -442,6 +490,7 @@ interface RawFriendSocialSettings {
   quiet_hours_start?: number;
   quiet_hours_end?: number;
   share_drinks_with_parta?: boolean;
+  share_spend_with_parta?: boolean;
 }
 
 interface RawFriendPresence {
@@ -669,6 +718,77 @@ function parseSocialSettings(raw: RawFriendSocialSettings | undefined | null): F
     quietHoursStart: typeof raw?.quiet_hours_start === 'number' ? raw.quiet_hours_start : 23,
     quietHoursEnd: typeof raw?.quiet_hours_end === 'number' ? raw.quiet_hours_end : 9,
     shareDrinksWithParta: raw?.share_drinks_with_parta !== false,
+    // Default off, and off on an older backend that has never heard of it.
+    shareSpendWithParta: raw?.share_spend_with_parta === true,
+  };
+}
+
+interface RawDuelSide {
+  beers?: number;
+  evenings?: number;
+  pubs?: number;
+  beers_per_evening?: number;
+  spend_czk?: number;
+  priced_beers?: number;
+}
+
+interface RawDuelMonth {
+  month?: string;
+  me?: number;
+  friend?: number;
+}
+
+interface RawDuel {
+  friend?: RawFriendProfile;
+  window?: string;
+  available?: boolean;
+  unavailable_reason?: string | null;
+  spend_available?: boolean;
+  spend_blocked_by_me?: boolean;
+  me?: RawDuelSide | null;
+  them?: RawDuelSide | null;
+  series?: RawDuelMonth[];
+}
+
+function parseDuelSide(raw: RawDuelSide | null | undefined): DuelSide | null {
+  if (!raw) return null;
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  return {
+    beers: num(raw.beers),
+    evenings: num(raw.evenings),
+    pubs: num(raw.pubs),
+    beersPerEvening: num(raw.beers_per_evening),
+    spendCzk: typeof raw.spend_czk === 'number' ? raw.spend_czk : null,
+    pricedBeers: typeof raw.priced_beers === 'number' ? raw.priced_beers : null,
+  };
+}
+
+function parseDuel(raw: RawDuel): Duel {
+  const window: DuelWindow =
+    raw.window === '30d' || raw.window === 'all' ? raw.window : '180d';
+  const available = raw.available === true;
+  return {
+    friend: parseProfile(raw.friend),
+    window,
+    available,
+    unavailableReason: raw.unavailable_reason === 'not_sharing' ? 'not_sharing' : null,
+    // Spend can never be on while the duel itself is unavailable; guarding here
+    // keeps a malformed body from drawing a money row over an empty screen.
+    spendAvailable: available && raw.spend_available === true,
+    spendBlockedByMe: raw.spend_blocked_by_me === true,
+    me: available ? parseDuelSide(raw.me) : null,
+    them: available ? parseDuelSide(raw.them) : null,
+    series: Array.isArray(raw.series)
+      ? raw.series.flatMap((row) =>
+          typeof row?.month === 'string'
+            ? [{
+                month: row.month,
+                me: typeof row.me === 'number' ? row.me : 0,
+                friend: typeof row.friend === 'number' ? row.friend : 0,
+              }]
+            : [],
+        )
+      : [],
   };
 }
 
@@ -1338,6 +1458,28 @@ export async function fetchFriendProfile(
 }
 
 /** Block an account: removes the friendship and filters them both ways (§G1). */
+/**
+ * One friend's numbers against mine (`GET /v1/friends/<id>/duel`).
+ *
+ * Null means the request failed or the friendship is gone — the screen falls
+ * back to its error state rather than drawing a duel of zeroes.
+ */
+export async function fetchFriendDuel(
+  accountId: string,
+  window: DuelWindow,
+  signal?: AbortSignal,
+): Promise<Duel | null> {
+  // A screen opened without an id asks for nothing rather than requesting
+  // `/v1/friends//duel`; the caller treats null as the same dead end either way.
+  if (!accountId) return null;
+  const res = await requestJson(
+    `/v1/friends/${encodeURIComponent(accountId)}/duel?window=${window}`,
+    { signal },
+  );
+  if (!res.ok) return null;
+  return parseDuel(res.data as RawDuel);
+}
+
 export async function blockFriend(accountId: string): Promise<FriendActionResult> {
   const res = await requestJson('/v1/friends/blocks', {
     method: 'POST',
@@ -1461,6 +1603,9 @@ export async function updateFriendSettings(
   if (patch.quietHoursEnd !== undefined) body.quiet_hours_end = patch.quietHoursEnd;
   if (patch.shareDrinksWithParta !== undefined) {
     body.share_drinks_with_parta = patch.shareDrinksWithParta;
+  }
+  if (patch.shareSpendWithParta !== undefined) {
+    body.share_spend_with_parta = patch.shareSpendWithParta;
   }
   const res = await requestJson('/v1/friends/settings', { method: 'PATCH', body });
   return res.ok ? { ok: true } : res.result;

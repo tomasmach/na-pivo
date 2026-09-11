@@ -31,7 +31,7 @@ import secrets
 import uuid
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -55,6 +55,7 @@ from django.db.models import (
     Prefetch,
     Q,
     Subquery,
+    Sum,
     TextField,
     Value,
     When,
@@ -71,6 +72,7 @@ from django.db.models.functions import (
     Radians,
     Sin,
     TruncDate,
+    TruncMonth,
 )
 from django.utils import timezone as dj_timezone
 from django.utils.translation import gettext, gettext_lazy
@@ -511,6 +513,10 @@ PRAGUE_TZ = ZoneInfo("Europe/Prague")
 
 # Party leaderboard window: pub visits in the trailing 30 days.
 LEADERBOARD_WINDOW = timedelta(days=30)
+# The drinking day rolls at 04:00 local (see api/stats.py); shifting before
+# TruncDate is how the existing leaderboard buckets nights, and the Souboj
+# must bucket them identically or the two screens disagree.
+_DRINKING_DAY_SHIFT = timedelta(hours=4)
 GLOBAL_LEADERBOARD_CACHE_TTL = 300
 GLOBAL_LEADERBOARD_CACHE_ROWS = 200
 # Friend dashboard shared-evening stats stay recent enough to be useful while
@@ -1052,6 +1058,7 @@ def _friend_settings_payload(account: Account) -> dict:
     return {
         "ghost_mode": bool(account.ghost_mode),
         "share_drinks_with_parta": bool(account.share_drinks_with_parta),
+        "share_spend_with_parta": bool(account.share_spend_with_parta),
         "quiet_hours_enabled": bool(account.quiet_hours_enabled),
         "quiet_hours_start": int(account.quiet_hours_start),
         "quiet_hours_end": int(account.quiet_hours_end),
@@ -4377,6 +4384,13 @@ class FriendsView(APIView):
         Excludes accounts pending deletion. Visits and beers each come from one
         grouped query; ``shared_count`` is the shared-evening tally with me (0
         for myself). Sorted desc by visits_30d, then shared_count.
+
+        A member who turned the drink feed off, or who is in ghost mode, gets
+        ``null`` tallies rather than real ones. Being an accepted friend is not
+        consent to have your drinking counted at me: the same switch already
+        hides your presence and your feed, and these counters are the same
+        private diary read a different way. Null, not zero — a zero reads as
+        "they stopped drinking" and that is a different lie.
         """
         members = [request.user] + [
             account
@@ -4408,18 +4422,25 @@ class FriendsView(APIView):
         entries = []
         for account in members:
             is_me = account.id == request.user.id
+            # My own numbers are always mine to see; a friend's only when they
+            # share. Ghost mode overrules the switch, exactly like presence.
+            shares = is_me or (account.share_drinks_with_parta and not account.ghost_mode)
             entries.append(
                 {
                     "account": FriendProfileSerializer(account, context=context).data,
-                    "visits_30d": int(visits_by_account.get(account.id, 0)),
-                    "beers_30d": int(beers_by_account.get(account.id, 0)),
+                    "visits_30d": (
+                        int(visits_by_account.get(account.id, 0)) if shares else None
+                    ),
+                    "beers_30d": (
+                        int(beers_by_account.get(account.id, 0)) if shares else None
+                    ),
                     "shared_count": 0
                     if is_me
                     else int(shared_stats.get(account.id, {}).get("shared_count") or 0),
                     "is_me": is_me,
                 }
             )
-        entries.sort(key=lambda e: (e["visits_30d"], e["shared_count"]), reverse=True)
+        entries.sort(key=lambda e: (e["visits_30d"] or 0, e["shared_count"]), reverse=True)
         return entries
 
 
@@ -5981,6 +6002,236 @@ class FriendDetailView(APIView):
             )
         ).delete()
         return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
+
+# Souboj windows. "all" is unbounded; the query is scoped to two accounts, so
+# the row count stays small enough not to need a cap.
+DUEL_WINDOWS: dict[str, timedelta | None] = {
+    "30d": timedelta(days=30),
+    "180d": timedelta(days=180),
+    "all": None,
+}
+# How many trailing months the head-to-head chart draws. A month with no beer
+# still gets a column — without it the stretch reads calmer than it was.
+DUEL_SERIES_MONTHS = 6
+
+
+def _duel_month_starts(today: date, count: int) -> list[date]:
+    """The first day of the trailing ``count`` months, oldest first."""
+
+    months: list[date] = []
+    year, month = today.year, today.month
+    for _ in range(count):
+        months.append(date(year, month, 1))
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    return list(reversed(months))
+
+
+def _duel_evening_rows(account_ids: list[int], since):
+    """One grouped row per (account, drinking day, pub).
+
+    That triple is the app's definition of an evening (``statsModel.ts``), and
+    the 04:00 roll matches it. Two things here deliberately do NOT match the
+    Výkon screen, so the numbers can differ and that is not a bug:
+
+    * only beers count, because every discipline in the duel is about beer —
+      a wine-only night is an evening on Výkon and nothing here;
+    * ``is_suspect`` rows are dropped, because these numbers are shown to
+      somebody else and the anti-abuse flag exists for exactly that.
+
+    The drinking day also rolls in Europe/Prague rather than in the client's own
+    zone (``resolve_stats_timezone``), so a user abroad can see a night land on
+    a different day than Výkon puts it. Acceptable while the audience is CZ/SK;
+    revisit if that stops being true.
+
+    Grouping in SQL keeps this to one query whatever the window.
+    """
+
+    shifted = ExpressionWrapper(
+        F("drank_at") - _DRINKING_DAY_SHIFT,
+        output_field=DateTimeField(),
+    )
+    rows = DrinkLog.objects.filter(
+        account_id__in=account_ids,
+        drink_type=DrinkLog.DrinkType.BEER,
+        is_suspect=False,
+    )
+    if since is not None:
+        rows = rows.filter(drank_at__gte=since)
+    return (
+        rows.annotate(drinking_day=TruncDate(shifted, tzinfo=PRAGUE_TZ))
+        .values("account_id", "drinking_day", "cache_key")
+        .annotate(beers=Count("id"), spend=Sum("price_czk"), priced=Count("price_czk"))
+        .order_by()
+    )
+
+
+def _duel_side(rows: list[dict], account_id: int, *, with_spend: bool) -> dict:
+    """Fold one account's evening rows into the Souboj disciplines."""
+
+    mine = [row for row in rows if row["account_id"] == account_id]
+    beers = sum(int(row["beers"]) for row in mine)
+    evenings = len(mine)
+    pubs = len({row["cache_key"] for row in mine if row["cache_key"]})
+    body = {
+        "beers": beers,
+        "evenings": evenings,
+        "pubs": pubs,
+        # One decimal: the difference between 4.7 and 5.8 beers a night is the
+        # whole point of the row, and rounding to whole numbers hides it.
+        "beers_per_evening": round(beers / evenings, 1) if evenings else 0.0,
+    }
+    if with_spend:
+        body["spend_czk"] = sum(int(row["spend"] or 0) for row in mine)
+        # Price is optional in the app, so say how much of the total is actually
+        # backed by a filled-in price instead of showing a confident wrong sum.
+        body["priced_beers"] = sum(int(row["priced"]) for row in mine)
+    return body
+
+
+def _duel_month_rows(account_ids: list[int], first_month: date):
+    """Beers per (account, month) over the trailing months the chart draws.
+
+    Its own query on purpose. Folding the chart out of the window-filtered rows
+    drew four flat months whenever the window was 30 days — months where the
+    data had been cut away, not months where nobody drank. The chart is a
+    constant six-month backdrop; the window only governs the disciplines.
+    """
+
+    shifted = ExpressionWrapper(
+        F("drank_at") - _DRINKING_DAY_SHIFT,
+        output_field=DateTimeField(),
+    )
+    since = datetime.combine(first_month, time(hour=4), tzinfo=PRAGUE_TZ)
+    return (
+        DrinkLog.objects.filter(
+            account_id__in=account_ids,
+            drink_type=DrinkLog.DrinkType.BEER,
+            is_suspect=False,
+            drank_at__gte=since,
+        )
+        .annotate(month=TruncMonth(shifted, tzinfo=PRAGUE_TZ))
+        .values("account_id", "month")
+        .annotate(beers=Count("id"))
+        .order_by()
+    )
+
+
+def _duel_series(rows, me_id: int, friend_id: int, today: date) -> list[dict]:
+    """Trailing months of beers for both sides, oldest first."""
+
+    months = _duel_month_starts(today, DUEL_SERIES_MONTHS)
+    buckets = {month: {"me": 0, "friend": 0} for month in months}
+    for row in rows:
+        bucket_at = row["month"]
+        if bucket_at is None:
+            continue
+        # TruncMonth hands back a datetime on some backends and a date on
+        # others; the bucket key is the first of the month either way.
+        month = date(bucket_at.year, bucket_at.month, 1)
+        if month not in buckets:
+            continue
+        side = "me" if row["account_id"] == me_id else "friend" if row["account_id"] == friend_id else None
+        if side is not None:
+            buckets[month][side] += int(row["beers"])
+    return [
+        {"month": month.isoformat(), "me": buckets[month]["me"], "friend": buckets[month]["friend"]}
+        for month in months
+    ]
+
+
+class FriendDuelView(APIView):
+    """
+    GET /v1/friends/<account_id>/duel?window=30d|180d|all
+
+    The Souboj: my numbers against one accepted friend's, discipline by
+    discipline. Deliberately NOT a board — a board has a first place, and a
+    drinking game has no winner (DESIGN.md §"Co nedělat"). Several disciplines
+    against one person is a comparison; one discipline against everyone is a
+    podium for who drank most.
+
+    Only accepted friends, and only when the friend shares their drink feed:
+    counters built from ``DrinkLog`` are the private diary, and being findable
+    is not consent to expose it. Spend needs its own opt-in from BOTH sides.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request, account_id) -> Response:
+        window = (request.query_params.get("window") or "180d").strip()
+        if window not in DUEL_WINDOWS:
+            window = "180d"
+
+        friend = Account.objects.filter(public_id=account_id, status=Account.Status.ACTIVE).first()
+        blocked_ids = _blocked_account_ids(request.user)
+        is_friend = bool(
+            friend is not None
+            and friend.id not in blocked_ids
+            and Friendship.objects.filter(
+                status=Friendship.Status.ACCEPTED,
+            )
+            .filter(
+                Q(requester=request.user, recipient=friend)
+                | Q(requester=friend, recipient=request.user)
+            )
+            .exists()
+        )
+        if friend is None or not is_friend:
+            return Response(
+                {"detail": gettext("Tenhle kámoš tu není."), "code": "friend_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        context = _friend_profile_context(request)
+        profile = FriendProfileSerializer(friend, context=context).data
+
+        # Ghost mode overrules the feed toggle, exactly like presence does.
+        if friend.ghost_mode or not friend.share_drinks_with_parta:
+            return Response(
+                {
+                    "friend": profile,
+                    "window": window,
+                    "available": False,
+                    "unavailable_reason": "not_sharing",
+                    "spend_available": False,
+                    "me": None,
+                    "them": None,
+                    "series": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        with_spend = bool(request.user.share_spend_with_parta and friend.share_spend_with_parta)
+        now = dj_timezone.now()
+        delta = DUEL_WINDOWS[window]
+        since = now - delta if delta is not None else None
+        account_ids = [request.user.id, friend.id]
+        rows = list(_duel_evening_rows(account_ids, since))
+        today = dj_timezone.localtime(now, PRAGUE_TZ).date()
+        month_rows = _duel_month_rows(
+            account_ids, _duel_month_starts(today, DUEL_SERIES_MONTHS)[0]
+        )
+
+        return Response(
+            {
+                "friend": profile,
+                "window": window,
+                "available": True,
+                "unavailable_reason": None,
+                "spend_available": with_spend,
+                "spend_blocked_by_me": bool(
+                    friend.share_spend_with_parta and not request.user.share_spend_with_parta
+                ),
+                "me": _duel_side(rows, request.user.id, with_spend=with_spend),
+                "them": _duel_side(rows, friend.id, with_spend=with_spend),
+                "series": _duel_series(month_rows, request.user.id, friend.id, today),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class FriendActivityView(APIView):
@@ -8376,6 +8627,9 @@ class FriendSettingsView(APIView):
         if "share_drinks_with_parta" in data:
             account.share_drinks_with_parta = data["share_drinks_with_parta"]
             update_fields.append("share_drinks_with_parta")
+        if "share_spend_with_parta" in data:
+            account.share_spend_with_parta = data["share_spend_with_parta"]
+            update_fields.append("share_spend_with_parta")
         if "quiet_hours_enabled" in data:
             account.quiet_hours_enabled = data["quiet_hours_enabled"]
             update_fields.append("quiet_hours_enabled")

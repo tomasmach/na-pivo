@@ -140,6 +140,7 @@ function makeDashboard(
       quietHoursStart: 23,
       quietHoursEnd: 9,
       shareDrinksWithParta: true,
+      shareSpendWithParta: false,
     },
     streak: { currentWeeks: 0, thisWeekLit: false },
     leaderboard: [],

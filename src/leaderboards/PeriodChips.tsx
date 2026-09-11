@@ -6,38 +6,40 @@
  *
  * The Mapér board has a single all-time window, so the screen swaps this row
  * for a one-line note instead of offering a choice that does nothing.
+ *
+ * Generic over its key type so the Souboj's window row is this control rather
+ * than a second one that looks almost the same.
  */
 
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import type { LeaderboardPeriod } from '@/data/leaderboardsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 
-export interface PeriodChipsProps {
-  options: readonly { key: LeaderboardPeriod; label: string }[];
-  value: LeaderboardPeriod;
-  onChange: (period: LeaderboardPeriod) => void;
+export interface PeriodChipsProps<T extends string> {
+  options: readonly { key: T; label: string }[];
+  value: T;
+  onChange: (period: T) => void;
   /** Screen-reader label for a single chip; defaults to its visible label. */
   describeOption?: (label: string, selected: boolean) => string;
   accessibilityLabel?: string;
 }
 
-function PeriodChipsBase({
+function PeriodChipsBase<T extends string>({
   options,
   value,
   onChange,
   describeOption,
   accessibilityLabel,
-}: PeriodChipsProps) {
+}: PeriodChipsProps<T>) {
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
 
   const handlePress = useCallback(
-    (period: LeaderboardPeriod) => {
+    (period: T) => {
       if (period !== value && hapticEnabled) fireLightImpactHaptic();
       onChange(period);
     },
@@ -113,4 +115,6 @@ const styles = StyleSheet.create({
   },
 });
 
-export default memo(PeriodChipsBase);
+// `memo` erases the generic, so the cast puts it back: the component is used
+// with two different key unions (the global boards and the Souboj window).
+export default memo(PeriodChipsBase) as typeof PeriodChipsBase;

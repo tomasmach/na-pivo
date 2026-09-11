@@ -1695,6 +1695,17 @@ export const cs = {
     streakDead: 'Série spadla. Zapal ji novým pivem s partou.',
     streakEmpty: 'Bez série',
 
+    // — Souboje na hubu: jeden řádek na parťáka, stav jednou větou —
+    soubojeHeader: 'Souboje',
+    soubojAhead: (beers: number) => `Vedeš o ${beerCountLabel(beers)}`,
+    soubojBehind: (beers: number) => `Vede o ${beerCountLabel(beers)}`,
+    soubojTied: 'Přesně nastejno',
+    soubojNoNumbers: 'Svoje piva zatím nesdílí',
+    soubojRowA11y: (name: string) => `Otevřít souboj s ${name}`,
+
+    // — Souboj: dveře z profilu parťáka —
+    soubojOpen: 'Souboj',
+
     // — Party leaderboard —
     leaderboardHeader: 'Žebříček party · 30 dní',
     // Nouns only — the numeral renders separately.
@@ -1716,6 +1727,7 @@ export const cs = {
     ghostSubtitle:
       'Parta nevidí, kde sedíš, ani co jsi vypil. Tvoje cinknutí zůstanou jen u tebe.',
     shareDrinksTitle: 'Ukazovat partě, kde sedím',
+    shareSpendTitle: 'Ukazovat v souboji, kolik utrácím',
     shareDrinksSubtitle:
       'Kámoši uvidí, ve které hospodě zrovna jsi a co ti večer teklo. Nikdo jiný ne.',
     ghostActive: 'Neviditelný režim je zapnutý',
@@ -2056,6 +2068,55 @@ export const cs = {
           : `${n} kámošů čeká na tebe v Partě`,
     fallbackName: 'Kámoš',
     pubFallback: 'Hospoda',
+  },
+
+  // Souboj — já proti jednomu parťákovi. Vědomě to není žebříček: žádný
+  // vítěz, žádné pořadí, jen kdo vede v které disciplíně.
+  souboj: {
+    title: 'Souboj',
+    me: 'Ty',
+    vs: 'vs',
+    openFriendA11y: (name: string) => `Otevřít profil ${name}`,
+
+    window30d: '30 dní',
+    window180d: 'Půl roku',
+    windowAll: 'Celkem',
+    windowA11y: 'Za jaké období se měříte',
+
+    headlineTied: 'Jste na pivech nastejno.',
+    headlineAhead: (beers: number) =>
+      `Vedeš o ${beerCountLabel(beers)}.`,
+    headlineBehind: (name: string, beers: number) =>
+      `${name} vede o ${beerCountLabel(beers)}.`,
+
+    chartHeader: 'Piva po měsících',
+    legendMe: 'Ty',
+    chartMonthA11y: (month: string, mine: number, name: string, theirs: number) =>
+      `${month}: ty ${mine}, ${name} ${theirs}`,
+
+    rowsHeader: 'V čem kdo vede',
+    rowBeers: 'Piva',
+    rowEvenings: 'Večery',
+    rowPubs: 'Hospody',
+    rowPace: 'Piv na večer',
+    rowSpend: 'Zapsaná útrata',
+    spendCoverage: (mine: number, myBeers: number, name: string, theirs: number, theirBeers: number) =>
+      `Ty: cena u ${mine} z ${myBeers} ${czechPlural(myBeers, { one: 'piva', few: 'piv', many: 'piv' })}. ${name}: cena u ${theirs} z ${theirBeers} ${czechPlural(theirBeers, { one: 'piva', few: 'piv', many: 'piv' })}.`,
+    paceValue: (value: number) => value.toFixed(1).replace('.', ','),
+    rowA11y: (label: string, mine: string, name: string, theirs: string) =>
+      `${label}: ty ${mine}, ${name} ${theirs}`,
+
+    spendOff: (name: string) =>
+      `Útratu porovnám, až ji budete sdílet oba. ${name} ji zatím nesdílí.`,
+    spendOffMine: (name: string) =>
+      `${name} svoji útratu sdílí. Zapni si ji v nastavení party a porovnám vás.`,
+
+    privateTitle: 'Tenhle souboj nejde.',
+    privateBody: (name: string) =>
+      `${name} si svoje piva nechává pro sebe. Bez toho nemám co porovnávat.`,
+
+    errorTitle: 'Souboj teď nenačtu.',
+    retry: 'Zkusit znovu',
   },
 
   // Global leaderboards — /leaderboards (Žebříčky). Countrywide boards over
@@ -3179,6 +3240,7 @@ export const cs = {
       'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
       'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka z tohohle zařízení vyčistí lokální soukromý deníček, hodnocení i zápisy, které čekají na odeslání.',
       'Sdílení večera s Partou je ve výchozím stavu zapnuté: přijatí kamarádi můžou vidět, že jsi v hospodě, kolik piv máš a tvůj poslední zápis. V nastavení Party to vypneš, nebo zapneš neviditelný režim. Nikdo jiný než přijatí kamarádi tyhle údaje nevidí.',
+      'V Souboji může přijatý kamarád vidět součet tvé zapsané útraty za piva, jen když sdílení útraty zapnete oba. Ve výchozím stavu je vypnuté. Kdykoli ho vypneš v nastavení Party přepínačem „Ukazovat v souboji, kolik utrácím“.',
       'Fotky piv ukládám na serveru bez metadat a GPS polohy. Ve výchozím stavu je vidí jen tvoje Parta; veřejné jsou jen fotky, které přihlásíš do fotosoutěže.',
       'Když vyfotíš pivní lístek přes „Vyfoť menu“, fotka se přes můj server pošle ke zpracování AI modelu (přes službu OpenRouter). Fotku neukládám a poskytovatel ji podle mého nastavení nesmí použít k trénování.',
       'Když povolíš notifikace, uložím si push token zařízení a zprávy z Party doručuju přes Expo Push Service. Hospodské připomínky se zobrazují přímo v telefonu a nikam se neposílají.',
@@ -3915,6 +3977,14 @@ export const cs = {
     sectionStops: 'Štace',
     sectionChart: 'Jak to šlo',
     sectionGames: 'Hry',
+    // — Účtenka. Jen moje útrata: cizí piva na drátě cenu nenesou. —
+    sectionSpend: 'Účtenka',
+    spendTotal: 'Tvoje útrata',
+    spendAverage: 'Průměr za nápoj',
+    spendPriciest: (beer: string) => `Nejdražší: ${beer}`,
+    spendMineOnly: 'Počítám jen tvoje zápisy. Co utratili ostatní, nevidím.',
+    spendPartial: (priced: number, total: number) =>
+      `Počítám ${priced} ze ${total} tvých zápisů. U zbytku chybí cena.`,
     gamePaying: (name: string) => `Platí ${name}`,
     gameWinner: (name: string) => `Vyhrál ${name}`,
     gamePlayed: 'Odehráno',
