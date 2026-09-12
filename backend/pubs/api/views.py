@@ -9987,9 +9987,16 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
                 )
         except GooglePlacesUnavailableError as exc:
             logger.warning(
-                "pubs-suggest: Google Places unavailable: %s",
+                "pubs-suggest: Google Places unavailable: %s: %s",
                 type(exc).__name__,
+                exc,
             )
+            return Response({"items": local_items}, status=status.HTTP_200_OK)
+        except Exception:
+            # The Google leg is a fallback on top of the local directory. An
+            # unexpected failure there (budget row, DNS, library error) must
+            # degrade to local results, never 500 the whole autocomplete.
+            logger.exception("pubs-suggest: Google Places fallback failed")
             return Response({"items": local_items}, status=status.HTTP_200_OK)
 
         seen_names = {
@@ -10060,9 +10067,16 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
                 )
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
-                "pubs-geocode: Google lookup unavailable: %s",
+                "pubs-geocode: Google lookup unavailable: %s: %s",
                 type(exc).__name__,
+                exc,
             )
+            return Response(
+                {"detail": "Location lookup is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception("pubs-geocode: Google lookup failed")
             return Response(
                 {"detail": "Location lookup is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -10123,9 +10137,16 @@ class PubLocationReverseGeocodeView(APIView):
                 candidate = source.reverse_geocode(lat=data["lat"], lng=data["lng"])
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
-                "pubs-reverse-geocode: Google lookup unavailable: %s",
+                "pubs-reverse-geocode: Google lookup unavailable: %s: %s",
                 type(exc).__name__,
+                exc,
             )
+            return Response(
+                {"detail": "Location lookup is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception("pubs-reverse-geocode: Google lookup failed")
             return Response(
                 {"detail": "Location lookup is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,

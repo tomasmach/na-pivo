@@ -27,6 +27,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
+import { StatusStrip } from '@/components/shared/StatusStrip';
 import { ensureAccount } from '@/data/account';
 import {
   fetchNightsFeed,
@@ -823,23 +824,20 @@ function FeedScreenContent() {
           inset={MockLayout.screenPad}
         />
         {feedNights.length > 0 && (showingCache || loadError) ? (
-          <View style={[styles.statusBar, loadError && styles.statusBarError]}>
-            <Text style={styles.statusText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {loadError ? t.feed.staleWithError : t.feed.staleChecking}
-            </Text>
-            {loadError ? (
-              <Pressable
-                onPress={refresh}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t.feed.refreshA11y}
-              >
-                <Text style={styles.statusRetry} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.vycep.retry}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
+          <StatusStrip
+            message={loadError ? t.feed.staleWithError : t.feed.staleChecking}
+            tone={loadError ? 'error' : 'info'}
+            style={styles.statusBar}
+            action={
+              loadError
+                ? {
+                    label: t.vycep.retry,
+                    onPress: refresh,
+                    accessibilityLabel: t.feed.refreshA11y,
+                  }
+                : undefined
+            }
+          />
         ) : null}
       </View>
     ),
@@ -1017,22 +1015,8 @@ const styles = StyleSheet.create({
   },
 
   statusBar: {
-    minHeight: HitArea.min,
     marginBottom: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.medium,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: withAlpha(Colors.foam, 0.06),
   },
-  statusBarError: {
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.22),
-  },
-  statusText: { flex: 1, fontSize: 12, fontWeight: '500', color: Colors.mutedText },
-  statusRetry: { fontSize: 12, fontWeight: '800', color: Colors.amber },
 
   card: {
     paddingTop: Spacing.lg,
