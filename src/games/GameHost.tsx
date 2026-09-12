@@ -102,7 +102,7 @@ export const GameHost = React.forwardRef<
     onError?: (message: string) => void;
   }
 >(function GameHost({ game, players, options, onState, onEvent, onResult, onError }, ref) {
-  const webRef = React.useRef<WebViewType>(null);
+  const webRef = React.useRef<WebViewType<unknown>>(null);
   const [uri, setUri] = React.useState<string | null>(null);
   const [attempt, setAttempt] = React.useState(0);
   const [status, setStatus] = React.useState<'loading' | 'ready' | 'error'>('loading');
@@ -300,7 +300,7 @@ export const GameHost = React.forwardRef<
   return (
     <View style={styles.wrap}>
       {WebView && uri ? (
-        <WebView
+        <WebView<unknown>
           key={`${game}:${attempt}`}
           ref={webRef}
           source={{ uri }}
