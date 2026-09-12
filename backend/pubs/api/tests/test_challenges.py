@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock
 
 import pytest
 from django.core.cache import cache
@@ -164,7 +165,7 @@ def test_challenge_friend_progress_does_not_expose_private_diary_aggregates():
 
 
 @pytest.mark.django_db
-def test_challenge_friend_progress_includes_public_accepted_friend_with_absolute_avatar():
+def test_challenge_friend_progress_includes_public_accepted_friend_with_absolute_avatar(monkeypatch):
     client = APIClient()
     viewer = _account()
     friend = _account()
@@ -178,7 +179,11 @@ def test_challenge_friend_progress_includes_public_accepted_friend_with_absolute
         recipient=friend,
         status=Friendship.Status.ACCEPTED,
     )
-    now = timezone.now()
+    # Keep the visit and beer in the endpoint's month, including runs on its first day.
+    now = datetime(2026, 8, 20, 12, tzinfo=UTC)
+    clock = Mock(wraps=datetime)
+    clock.now.return_value = now
+    monkeypatch.setattr(challenge_views, "datetime", clock)
     _visit(friend, "new-pub", now - timedelta(days=1))
     _beer(friend, "New Brewery", now - timedelta(hours=2))
 
