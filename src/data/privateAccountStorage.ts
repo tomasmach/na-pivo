@@ -3,6 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+  PrivateAccountMutationFrozenError,
   runPrivateAccountCleanupMutation,
   runPrivateAccountMutation,
 } from './privateAccountBoundary';
@@ -105,11 +106,17 @@ const privateAccountStorage: typeof AsyncStorage = {
         throw error;
       });
     }
-    return memoryResetDepth > 0
-      ? Promise.resolve()
-      : runPrivateAccountMutation(async () => {
-          await AsyncStorage.setItem(name, value);
-        });
+    if (memoryResetDepth > 0) return Promise.resolve();
+    let writeStarted = false;
+    return runPrivateAccountMutation(async () => {
+      writeStarted = true;
+      await AsyncStorage.setItem(name, value);
+    }).catch((error: unknown) => {
+      // Zustand actions do not await persist writes. A started write may finish
+      // while the boundary drains it before cleanup; that cancellation is safe.
+      // Keep refusals before writing and actual storage errors observable.
+      if (!writeStarted || !(error instanceof PrivateAccountMutationFrozenError)) throw error;
+    });
   },
   removeItem: (name: string) =>
     runPrivateAccountMutation(async () => {
