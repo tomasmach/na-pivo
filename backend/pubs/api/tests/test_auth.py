@@ -416,7 +416,8 @@ def test_login_merge_recounts_existing_amenity_aggregate(client, sent_emails):
 @pytest.mark.django_db
 @pytest.mark.parametrize("deleted_by_source", [False, True])
 def test_login_merge_keeps_removed_drinks_removed(client, sent_emails, deleted_by_source):
-    _register(client, "merge-deletion@x.cz")
+    password = f"test-{uuid.uuid4().hex}"
+    _register(client, "merge-deletion@x.cz", password=password)
     target = EmailCredential.objects.get(email="merge-deletion@x.cz").account
     anon_token, anon_id = _bootstrap_anon(client)
     source = Account.objects.get(public_id=anon_id)
@@ -437,7 +438,7 @@ def test_login_merge_keeps_removed_drinks_removed(client, sent_emails, deleted_b
 
     login = client.post(
         "/v1/auth/login",
-        data={"email": "merge-deletion@x.cz", "password": "Tr0ub4dor&3"},
+        data={"email": "merge-deletion@x.cz", "password": password},
         format="json",
         **_auth(anon_token),
     )
@@ -468,7 +469,8 @@ def test_login_merge_keeps_removed_drinks_removed(client, sent_emails, deleted_b
      ("00", "20", True, False), ("00", "20", True, True)],
 )
 def test_login_merge_preserves_latest_visit_deletion_revision(client, sent_emails, visit_minute, source_minute, retained, target_closed):
-    _register(client, "merge-visit-deletion@x.cz")
+    password = f"test-{uuid.uuid4().hex}"
+    _register(client, "merge-visit-deletion@x.cz", password=password)
     target = EmailCredential.objects.get(email="merge-visit-deletion@x.cz").account
     anon_token, anon_id = _bootstrap_anon(client)
     source = Account.objects.get(public_id=anon_id)
@@ -491,7 +493,7 @@ def test_login_merge_preserves_latest_visit_deletion_revision(client, sent_email
             client_updated_at=f"2026-06-12T19:{source_minute}:00Z",
         )
     login = client.post(
-        "/v1/auth/login", data={"email": "merge-visit-deletion@x.cz", "password": "Tr0ub4dor&3"},
+        "/v1/auth/login", data={"email": "merge-visit-deletion@x.cz", "password": password},
         format="json", **_auth(anon_token),
     )
     assert login.status_code == 200, login.content
