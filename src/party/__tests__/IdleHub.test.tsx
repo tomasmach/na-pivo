@@ -1,5 +1,4 @@
 import React from 'react';
-import { Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 
 import { IdleHub } from '@/party/IdleHub';
@@ -18,25 +17,6 @@ jest.mock('@/friends/useNowTick', () => ({
   useNowTick: () => Date.parse('2026-08-27T10:00:00+02:00'),
 }));
 
-let session: { accountId: string } | null = { accountId: 'me' };
-jest.mock('@/stores/accountStore', () => ({
-  useAccountStore: (selector: (state: { session: unknown }) => unknown) =>
-    selector({ session }),
-}));
-
-let presence: { account: { id: string; nickname: string } }[] = [];
-const dashboardHook = jest.fn(() => ({
-  dashboard: presence.length > 0 ? { presence } : null,
-  stale: false,
-  reload: jest.fn(),
-}));
-jest.mock('@/friends/usePartaDashboard', () => ({ usePartaDashboard: () => dashboardHook() }));
-jest.mock('@/friends/PresenceList', () => ({
-  PresenceList: ({ presence: rows, flat }: { presence: { account: { nickname: string } }[]; flat?: boolean }) => (
-    <Text>{`${flat ? 'flat' : 'card'}:${rows.map((row) => row.account.nickname).join(',')}`}</Text>
-  ),
-}));
-
 const lastSession: TallySession = {
   clientId: 'c1',
   pubKey: 'u2fkbnyx',
@@ -48,49 +28,33 @@ const lastSession: TallySession = {
   ] as TallySession['drinks'],
 };
 
-const handlers = () => ({
-  onPickPub: jest.fn(),
-  onInvite: jest.fn(),
-  onOpenGames: jest.fn(),
-  onJoinByCode: jest.fn(),
-});
+const handlers = () => ({ onOpenTable: jest.fn() });
 
 beforeEach(() => {
   push.mockClear();
-  dashboardHook.mockClear();
-  presence = [];
-  session = { accountId: 'me' };
 });
 
-it('shows the three rows and no parta or history section when there is nothing', () => {
-  const screen = render(
-    <IdleHub pubName="U Kotvy" pubMeta={['40 m', 'Otevřeno']} lastSession={null} {...handlers()} />,
-  );
-  expect(screen.getByText('U Kotvy')).toBeTruthy();
-  expect(screen.getByText('40 m · Otevřeno')).toBeTruthy();
-  expect(screen.queryByText('Kdo už sedí')).toBeNull();
+it('offers the table as one quiet pill, with no amber word beside it', () => {
+  const h = handlers();
+  const screen = render(<IdleHub lastSession={null} {...h} />);
+  expect(screen.getByText('Stůl')).toBeTruthy();
+  // The two doors live in the sheet behind it, not on the hub.
+  expect(screen.queryByText('Pozvat ke stolu')).toBeNull();
+  expect(screen.queryByText('Přisednout kódem')).toBeNull();
   expect(screen.queryByText('Naposledy')).toBeNull();
+  fireEvent.press(screen.getByLabelText('Stůl. Pozvat ke stolu, nebo přisednout kódem.'));
+  expect(h.onOpenTable).toHaveBeenCalledTimes(1);
 });
 
-it('lists seated friends as flat rows only when somebody sits', () => {
-  presence = [{ account: { id: 'f1', nickname: 'Tonda' } }];
-  const screen = render(
-    <IdleHub pubName="U Kotvy" pubMeta={[]} lastSession={null} {...handlers()} />,
-  );
-  expect(screen.getByText('Kdo už sedí')).toBeTruthy();
-  expect(screen.getByText('flat:Tonda')).toBeTruthy();
-});
-
-it('does not ask for the parta without an account', () => {
-  session = null;
-  render(<IdleHub pubName="U Kotvy" pubMeta={[]} lastSession={null} {...handlers()} />);
-  expect(dashboardHook).not.toHaveBeenCalled();
+it('keeps the games and the parta off the screen before the first beer', () => {
+  const screen = render(<IdleHub lastSession={lastSession} {...handlers()} />);
+  expect(screen.queryByText('Kdo už sedí')).toBeNull();
+  expect(screen.queryByText(/Hry|Pub kvíz/)).toBeNull();
 });
 
 it('names the last night with the diary date label and honest drink counts', () => {
-  const screen = render(
-    <IdleHub pubName="U Kotvy" pubMeta={[]} lastSession={lastSession} {...handlers()} />,
-  );
+  const screen = render(<IdleHub lastSession={lastSession} {...handlers()} />);
+  expect(screen.getByText('Naposledy')).toBeTruthy();
   expect(screen.getByText('Včera · U Kotvy')).toBeTruthy();
   expect(screen.getByText('1 pivo · 1 víno')).toBeTruthy();
   fireEvent.press(screen.getByLabelText('Poslední večer, Včera · U Kotvy. Otevřít.'));
@@ -100,11 +64,4 @@ it('names the last night with the diary date label and honest drink counts', () 
   });
 });
 
-it('opens the invite only from the amber word, not from the row', () => {
-  const h = handlers();
-  const screen = render(<IdleHub pubName="U Kotvy" pubMeta={[]} lastSession={null} {...h} />);
-  fireEvent.press(screen.getByLabelText('Přizvat ke stolu'));
-  expect(h.onInvite).toHaveBeenCalledTimes(1);
-  fireEvent.press(screen.getByText('Ty'));
-  expect(h.onInvite).toHaveBeenCalledTimes(1);
-});
+

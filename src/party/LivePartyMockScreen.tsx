@@ -45,6 +45,7 @@ import {
   DicesIcon,
   ChevronDownIcon,
   GlassWaterIcon,
+  KeyRoundIcon,
   MapPinIcon,
   PlayIcon,
   PlusIcon,
@@ -65,13 +66,18 @@ import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
 import { useAfterModalDismiss } from '@/components/shared/useAfterModalDismiss';
 import { ScanMenuSheet, type MenuScanSource } from '@/components/contribute/ScanMenuSheet';
+import { MoreSheet } from '@/components/shared/MoreSheet';
 import { menuPhotoPickFeedback, menuScanFailureCopy } from '@/contribute/menuScanFeedback';
 import { showMenuScanPermissionBlocked } from '@/contribute/menuScanPermission';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { GameCover } from '@/party/GameCover';
 import { GAME_CATALOG, gameDisplayName } from '@/party/gameCatalog';
 import { IdleHub } from '@/party/IdleHub';
-import { lastArchivedSession } from '@/party/idleHubModel';
+import {
+  firstDrinkTap,
+  primaryTapAction,
+} from '@/party/idleHubModel';
+import { useIdleHubDay } from '@/party/useIdleHubDay';
 import { Avatar } from '@/profile/Avatar';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
@@ -86,13 +92,12 @@ import { NightRoute } from '@/mocks/NightRoute';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
+import { fetchPubHours } from '@/data/hoursClient';
 import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
-import { formatDistanceCs } from '@/compass/distance';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { lastKnownDevicePosition } from '@/compass/useDevicePosition';
-import { presentOpenStatus } from '@/pubs/pubPresentation';
-import { drinkingDayKey, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
+import { drinkingDayKey, sessionCount, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
 import {
   clockAt,
   DEFAULT_HOUSE_BEER,
@@ -171,6 +176,23 @@ const MAP_IDLE = 300;
  *  cut through the back chevron and "Ukončit" on a tall phone. */
 const MAP_LIVE_MIN = 128;
 const TOP_BAR_H = HitArea.min + Spacing.sm * 2;
+/** The half litre a tap row logs, and what the first-beer button promises. */
+const DEFAULT_TAP_ML = 500;
+/** A fumbled double tap in a pub must never pour two beers. */
+const FIRST_DRINK_DEBOUNCE_MS = 700;
+
+/**
+ * True when this tap came too soon after the accepted one.
+ *
+ * A ref, not state: a swallowed tap must not repaint anything (§6.1). Module
+ * scope because the clock read belongs outside render.
+ */
+function swallowsRepeatTap(last: { current: number }): boolean {
+  const now = Date.now();
+  if (now - last.current < FIRST_DRINK_DEBOUNCE_MS) return true;
+  last.current = now;
+  return false;
+}
 
 const drinkTypeOf = (drink: TallyDrink): DrinkType => drink.drinkType ?? 'beer';
 const drinkIdentity = (drink: Pick<TallyDrink, 'beerName' | 'drinkType' | 'priceCzk' | 'volumeMl'>) =>
@@ -298,7 +320,7 @@ export default function LivePartyMockScreen() {
   const nearby = useNearbyPub();
   const tallyCurrent = useTallyStore((s) => s.current);
   const tallyHistory = useTallyStore((s) => s.history);
-  const lastSession = React.useMemo(() => lastArchivedSession(tallyHistory), [tallyHistory]);
+  const { beerCount: idleDayBeers, lastSession } = useIdleHubDay(tallyCurrent, tallyHistory);
   const archiveCurrent = useTallyStore((s) => s.archiveCurrent);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const [undoDrink, setUndoDrink] = React.useState<TallyDrink | null>(null);
@@ -380,20 +402,32 @@ export default function LivePartyMockScreen() {
 
   React.useEffect(() => {
     const detected = nearby.selected;
-    if (active || pubName.trim() || !detected) return;
+    if (active || !detected) return;
+    const detectedKey = geohash8(detected.lat, detected.lng);
     const detectedTaps = (detected.beers ?? []).flatMap((tap) => {
       const name = tap.name.trim();
       return name
         ? [{ name, priceCzk: typeof tap.priceCzk === 'number' ? tap.priceCzk : null }]
         : [];
     });
-    setPartyPub(
-      detected.name,
-      detectedTaps[0]?.name ?? DEFAULT_HOUSE_BEER,
-      geohash8(detected.lat, detected.lng),
-      detectedTaps,
-    );
-  }, [active, nearby.selected, pubName, setPartyPub]);
+    // Nothing chosen yet: the pub under your feet is the answer.
+    if (!pubName.trim()) {
+      setPartyPub(
+        detected.name,
+        detectedTaps[0]?.name ?? DEFAULT_HOUSE_BEER,
+        detectedKey,
+        detectedTaps,
+      );
+      return;
+    }
+    // Already sitting at this one, and its tap list only just arrived: the pub
+    // comes from `/v1/pubs/near` without beers and the community menu lands a
+    // moment later. Without this the button kept offering "Pivo" at a pub whose
+    // detail page says "Na čepu: Pilsner Urquell 12°".
+    if (detectedKey === pubKey && detectedTaps.length > 0 && pubTaps.length === 0) {
+      setPartyPub(detected.name, detectedTaps[0].name, detectedKey, detectedTaps);
+    }
+  }, [active, nearby.selected, pubKey, pubName, pubTaps.length, setPartyPub]);
 
   const latestSharedStop = night.stops.at(-1) ?? null;
   React.useEffect(() => {
@@ -424,6 +458,15 @@ export default function LivePartyMockScreen() {
    * lands there is a code to read out, and when it does not the night still runs.
    */
   const beginNight = async (firstDrink: BeerFormResult) => {
+    // Starting is not a way to log a beer. `startParty` rewrites the stopwatch,
+    // the stops and the games, so calling it mid-evening throws the whole night
+    // away — which is what a running hub with nothing to repeat (just moved
+    // pubs, just sat down at somebody's table) used to do on one tap.
+    //
+    // The test is `active`, not the local `live` flag: at somebody else's table
+    // this phone never started a night of its own, so `live` is false while the
+    // evening is very much running.
+    if (active) return;
     const placeName = pubName.trim() || OUTSIDE_PUB_NAME;
     const transition = startParty(placeName, firstDrink.name, pubKey, pubTaps);
     const joinCode = stagedPartyCode ?? generateJoinCode();
@@ -483,6 +526,7 @@ export default function LivePartyMockScreen() {
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [joinOpen, setJoinOpen] = React.useState(false);
+  const [tableOpen, setTableOpen] = React.useState(false);
   const [pickPubOpen, setPickPubOpen] = React.useState(false);
   const [prefilledJoinCode, setPrefilledJoinCode] = React.useState<string | null>(null);
   const [beersOpen, setBeersOpen] = React.useState(false);
@@ -560,6 +604,41 @@ export default function LivePartyMockScreen() {
   // 460pt of the screen was a black hole. The evening always has a WHERE even
   // before it starts: the chosen or detected pub, or — outside a pub — the
   // neighbourhood you are standing in, framed without a marker.
+  // The chosen pub as a plain place, good enough to ask the menu endpoint with.
+  // Its geohash cell is the durable identity everything else here uses, so the
+  // cell centre is the position — no second source of truth about where it is.
+  const hoursPub = React.useMemo<Pub | null>(() => {
+    const name = pubName.trim();
+    if (!name || !pubKey || !/^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(pubKey)) return null;
+    return { id: `party:${pubKey}`, name, ...decodeGeohash8(pubKey) };
+  }, [pubKey, pubName]);
+
+  // The pub's tap list, for a pub we are NOT standing in.
+  //
+  // `/v1/pubs/near` returns no beers, so a pub chosen from the sheet arrives
+  // with an empty tap list and the button offered a generic "Pivo" at a pub
+  // whose own detail page lists "Pilsner Urquell 12°". The menu comes from
+  // `/v1/pub-hours` — the same call the detail and the old counter make — and
+  // it is best effort: no signal simply means the fallback beer.
+  React.useEffect(() => {
+    if (active || pubTaps.length > 0 || !hoursPub) return undefined;
+    const controller = new AbortController();
+    const lookupId = hoursPub.id;
+    void fetchPubHours([hoursPub], controller.signal).then((byId) => {
+      if (controller.signal.aborted) return;
+      const beers = byId.get(lookupId)?.beers ?? [];
+      const mapped = beers.flatMap((beer) => {
+        const name = beer.name.trim();
+        return name
+          ? [{ name, priceCzk: typeof beer.priceCzk === 'number' ? beer.priceCzk : null }]
+          : [];
+      });
+      if (mapped.length === 0) return;
+      setPartyPub(hoursPub.name, mapped[0].name, pubKey, mapped);
+    });
+    return () => controller.abort();
+  }, [active, hoursPub, pubKey, pubTaps.length, setPartyPub]);
+
   const idleStop = React.useMemo(
     () =>
       /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/i.test(partyPlaceKey)
@@ -574,9 +653,6 @@ export default function LivePartyMockScreen() {
   const detectedPub = nearby.selected && pubKey === geohash8(nearby.selected.lat, nearby.selected.lng)
     ? nearby.selected
     : null;
-  // A pub picked from the sheet rather than detected under your feet: still
-  // one of the candidates, so the hub row keeps its distance and hours.
-  const pickedCandidate = nearby.candidates.find((candidate) => candidate.pubKey === pubKey) ?? null;
   // Stable identity for the sheet: a fresh object each render restarted its
   // search debounce on every GPS tick.
   const positionLat = nearby.position?.lat;
@@ -603,7 +679,7 @@ export default function LivePartyMockScreen() {
       ),
     [byType, detectedTaps, houseBeer, pubTaps],
   );
-  const { privateDrinks, privateDrinksAtPlace, drinkPlaceById, privateById, latestDrink } =
+  const { privateDrinks, privateDrinksAtPlace, drinkPlaceById, privateById } =
     React.useMemo(() => {
       const myDrinkIds = new Set(myDrinks.map((drink) => drink.id));
       const tallySessions = [tallyCurrent, ...tallyHistory]
@@ -622,10 +698,27 @@ export default function LivePartyMockScreen() {
           session.drinks.map((drink) => [drink.id, session.pubKey] as const),
         )),
         privateById: new Map(drinks.map((drink) => [drink.id, drink])),
-        latestDrink:
-          [...drinksAtPlace].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null,
       };
     }, [myDrinks, partyPlaceKey, tallyCurrent, tallyHistory]);
+  /**
+   * What "+1" repeats: the last drink this phone logged HERE, tonight.
+   *
+   * Read straight from the counter's open session, not from the shared night
+   * record — the record needs the server and arrives seconds later, and in that
+   * window the button forgot the beer you had just ordered. The session is
+   * per pub and per drinking day, so after a move to another pub it is empty
+   * and the button asks instead of repeating a beer from the last place.
+   */
+  const { latestDrink, sessionBeersHere } = React.useMemo(() => {
+    if (!tallyCurrent || tallyCurrent.pubKey !== partyPlaceKey) {
+      return { latestDrink: null, sessionBeersHere: 0 };
+    }
+    return {
+      latestDrink:
+        [...tallyCurrent.drinks].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null,
+      sessionBeersHere: sessionCount(tallyCurrent),
+    };
+  }, [partyPlaceKey, tallyCurrent]);
   // What you already drank here, then the pub's taps — merged so one beer is
   // one row however the three sources spell it (§13 of the QA pass: "Pilsner
   // Urquell · 0,5 l · 60 Kč ×2" sat right above "Pilsner Urquell 12° · 0,5 l").
@@ -642,7 +735,7 @@ export default function LivePartyMockScreen() {
         name: tap.name,
         drinkType: 'beer' as DrinkType,
         priceCzk: tap.priceCzk ?? undefined,
-        volumeMl: 500,
+        volumeMl: DEFAULT_TAP_ML,
         count: 0,
       })),
     ];
@@ -839,16 +932,47 @@ export default function LivePartyMockScreen() {
         }
       : null
   );
-  const idlePub = detectedPub ?? pickedCandidate?.pub ?? null;
-  const idlePubMeta = idlePub
-    ? [
-        pickedCandidate ? formatDistanceCs(pickedCandidate.distanceMeters) : null,
-        presentOpenStatus(idlePub).label,
-        taps[0]
-          ? `${taps[0].name}${taps[0].priceCzk == null ? '' : ` · ${t.liveParty.tapPrice(taps[0].priceCzk)}`}`
-          : null,
-      ].filter((value): value is string => !!value)
-    : [];
+  // What the amber button pours before the night starts: the pub's house tap,
+  // named on the button so one press is never a surprise. Outside a pub, or at
+  // one nobody has mapped, it falls back to plain "Pivo" — still a beer, still
+  // one press.
+  const houseTap = firstDrinkTap(taps, houseBeer);
+  const firstDrink: BeerFormResult = {
+    name: houseTap.name,
+    drinkType: 'beer',
+    priceCzk: houseTap.priceCzk ?? undefined,
+    // The same half litre the tap rows in "Co si dáš?" log, and the button says
+    // so — a button that quietly guesses the volume is a button you check.
+    volumeMl: DEFAULT_TAP_ML,
+  };
+  const firstDrinkLabel = [
+    displayHouseBeer(firstDrink.name),
+    formatVolume(DEFAULT_TAP_ML),
+  ].join(' · ');
+  // Beers already on tonight's tab when the hub opens without a running night.
+  // Beers this phone logged tonight, for the hub before a night runs.
+  const idleBeers = active ? 0 : idleDayBeers;
+  /**
+   * What the one amber button says, in each of its three states. The label is
+   * the promise, so it also decides the debounce window below: a new label is a
+   * new action and must not be swallowed (§6.1).
+   */
+  const primaryLabel = active
+    ? (latestDrink?.beerName ?? t.liveParty.pickDrink)
+    : idleBeers > 0
+      ? t.liveParty.logBeer
+      : t.liveParty.startNight;
+  /** Pour the first one. */
+  const firstDrinkTapRef = React.useRef(0);
+  React.useEffect(() => {
+    firstDrinkTapRef.current = 0;
+  }, [primaryLabel]);
+  const logFirstDrink = (drink: BeerFormResult) => {
+    // A second tap 200 ms later would find `active` still false and start a
+    // second night with a second beer in it.
+    if (swallowsRepeatTap(firstDrinkTapRef)) return;
+    void beginNight(drink);
+  };
 
   /**
    * The thread, in the shape the rows below draw.
@@ -901,9 +1025,26 @@ export default function LivePartyMockScreen() {
             .map((drink) => minutesBetween(effectiveStartedAt, new Date(drink.at).getTime())),
     [effectiveStartedAt, myDrinks],
   );
+  // One rule for the label in both states (§20.7): alone it is the counted
+  // noun, with somebody at the table it says whose beers these are.
+  //
+  // While the night runs the counter's own session is the floor under MY
+  // number: the shared record needs the server and lands seconds after the
+  // first beer, and the hero sat on "0" through exactly the moment the number
+  // matters most. It only ever fills a gap — a record that knows anything wins
+  // — so nothing doubles.
   const stats = active
-    ? hubStats({ beerTimes, now: minutes, mine, table, others: people.length })
-    : [];
+    ? hubStats({
+        beerTimes,
+        now: minutes,
+        mine: mine > 0 ? mine : sessionBeersHere,
+        // Only MY column gets the local floor. At a table for four, filling the
+        // shared total with my own count would briefly tell the table it drank
+        // what I drank.
+        table,
+        others: people.length,
+      })
+    : hubStats({ beerTimes: [], now: 0, mine: idleBeers, table: idleBeers, others: 0 });
 
   return (
     <View style={styles.screen}>
@@ -991,9 +1132,12 @@ export default function LivePartyMockScreen() {
               pill floating on the map and the table was buried three sections
               down, so the top of a screen about an evening with friends said
               nothing about either. */}
-          {/* Only once the night runs. Before it, the place, the table and the
-              games are rows in IdleHub below, each with its own action. */}
-          {active ? (
+          {/* The place is the first line of the hub before AND during the
+              night: the counter opened on the pub it picked for you, and that
+              is the one fact the screen owes you before you press anything.
+              What the header drops when the night has not started is the
+              table — the faces and the invite pill belong to an evening that
+              exists (IdleHub carries the two quiet words instead). */}
           <View style={styles.hub}>
             <View style={styles.hubTop}>
             <Pressable
@@ -1004,12 +1148,16 @@ export default function LivePartyMockScreen() {
               // abandoning the evening. Same screen, presented as a modal.
               // The pickingPub flag is owned by the modal's own lifecycle, so
               // it cannot stay stuck when the route pops without picking.
-              onPress={() => router.push('/pick-pub' as Href)}
+              // Before the night a sheet over the hub does the same job without
+              // reading as a jump to another tab.
+              onPress={() => (active ? router.push('/pick-pub' as Href) : setPickPubOpen(true))}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
               accessibilityLabel={t.liveParty.a11yChangePub(displayPubName)}
             >
-              <View style={styles.pubDot} />
+              {/* The dot says "this evening is running". Before it starts there
+                  is nothing to be live about. */}
+              {active ? <View style={styles.pubDot} /> : null}
               <Text
                 style={styles.hubPubName}
                 numberOfLines={1}
@@ -1024,22 +1172,26 @@ export default function LivePartyMockScreen() {
                 "who and where" row, and that is what asking someone to join
                 changes. Down in the control row it sat among the things you do
                 over and over all evening; you invite people once. */}
-            {/* Before the night the same door is the "U stolu" row in IdleHub.
+            {/* Before the night the same door is the quiet "Pozvat ke stolu"
+                line in IdleHub.
 
                 With a word on it: a bare glyph in a corner is a guess, and this
                 is the one control here whose job no icon says on its own. */}
-            <GlassPill accessibilityLabel={t.liveParty.a11yInvite} onPress={openInvite}>
-              <UserPlusIcon size={17} color={Colors.amber} />
-              <Text style={styles.invitePill} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.liveParty.invitePill}
-              </Text>
-            </GlassPill>
+            {active ? (
+              <GlassPill accessibilityLabel={t.liveParty.a11yInvite} onPress={openInvite}>
+                <UserPlusIcon size={17} color={Colors.amber} />
+                <Text style={styles.invitePill} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {t.liveParty.invitePill}
+                </Text>
+              </GlassPill>
+            ) : null}
             </View>
 
             {/* The table: who is actually sitting at it.
 
                 Not a button, and no "+" face: inviting is the pill above. Two
                 ways to do it made the header read as a control panel. */}
+            {active ? (
               <View
                 style={styles.hubPeople}
                 accessibilityLabel={
@@ -1072,23 +1224,26 @@ export default function LivePartyMockScreen() {
                   {[t.liveParty.you, ...people.map((p) => p.name)].join(', ')}
                 </Text>
               </View>
+            ) : null}
           </View>
-          ) : null}
 
-          {/* Only once the night is running. A stopwatch reading "0:00 večer"
-              before anything has happened is a number about nothing — and it
-              stayed on screen after a shared table ended, which read as an
-              evening still going. Before the first drink the hub is a place,
-              some people and a way to start.
+          {/* The number, before and during the night.
 
-              Which numbers these are is a product rule with tests, not a fixed
-              row: alone the table is your own count twice over. */}
-          {active ? (
-            <PulsePanel
-              startedAt={startedAt}
-              stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
-            />
-          ) : null}
+              It used to appear only once something had happened, so the tab
+              opened on a headline about nothing and people could not find the
+              count they came for. Tonight's beers are a true number at zero —
+              what is NOT true before the night is the stopwatch, so the clock
+              column stays off until there is an evening to time (§20.5).
+
+              Which numbers these are while it runs is a product rule with
+              tests, not a fixed row: alone the table is your own count twice
+              over. */}
+          <PulsePanel
+            startedAt={active ? startedAt : null}
+            clock={active}
+            hero={!active}
+            stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
+          />
 
           {/* The thread. Every kind of thing the row of buttons can add lands
               here, in order, with the name of whoever added it — at a table of
@@ -1346,23 +1501,14 @@ export default function LivePartyMockScreen() {
             // Before the first beer the thread is empty, and an empty thread
             // was six hundred points of nothing. What goes there instead is
             // what the night will collect.
-            <IdleHub
-              pubName={displayPubName}
-              pubMeta={idlePubMeta}
-              lastSession={lastSession}
-              // A sheet over the hub, not the Hospody screen as a modal: from a
-              // hub that already shows the map, that read as jumping tabs.
-              onPickPub={() => setPickPubOpen(true)}
-              onInvite={openInvite}
-              onOpenGames={() => setGamesOpen(true)}
-              onJoinByCode={() => {
-                setPrefilledJoinCode(null);
-                setJoinOpen(true);
-              }}
-            />
+            <IdleHub lastSession={lastSession} onOpenTable={() => setTableOpen(true)} />
           )}
         </ScrollView>
 
+        {/* A fixed slot so the controls never jump (§14.8) — but only once the
+            night runs: before it there is nothing to undo, and 44 empty points
+            above the button is a hole. */}
+        {active ? (
         <View style={styles.undoSlot}>
           {undoDrink ? <View style={styles.undoStrip}>
             <Text style={styles.undoText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -1384,6 +1530,7 @@ export default function LivePartyMockScreen() {
             </Pressable>
           </View> : null}
         </View>
+        ) : null}
 
         {/* The controls float ON the thread, not on a plate under a rule. The
             hairline said "this is a different panel" and pushed the buttons up
@@ -1425,50 +1572,86 @@ export default function LivePartyMockScreen() {
               that happened to be near each other; this reads as one thing whose
               end does something slightly different. */}
           <View style={styles.primaryGroup}>
-          {/* Before a night starts there is no picker beside it, so the flat
-              right edge would be a seam with nothing on the other side. */}
-          <View style={[styles.primaryWrap, !active && styles.primaryWhole]}>
+          <View style={styles.primaryWrap}>
             <Pressable
-              onPress={() => (active && latestDrink ? repeatDrink(latestDrink) : setBeersOpen(true))}
+              // Before the night this POURS a beer rather than opening a menu.
+              // The old counter did it in one press and the 2.0 hub made it
+              // two; the button names the beer it is about to log, so one press
+              // is the honest answer to "I want a beer".
+              //
+              // Mid-evening it repeats the last drink — and when there is none
+              // to repeat it ASKS. Falling through to "start the night" there
+              // was how a tap after moving pubs reset the stopwatch to zero.
+              onPress={() => {
+                const tap = primaryTapAction(active, latestDrink !== null);
+                if (tap === 'repeat' && latestDrink) repeatDrink(latestDrink);
+                else if (tap === 'pick') setBeersOpen(true);
+                else logFirstDrink(firstDrink);
+              }}
               style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={
-                active && latestDrink
-                  ? t.liveParty.a11yAddDrink(latestDrink.beerName)
-                  : t.liveParty.a11yStartNight
+                active
+                  ? latestDrink
+                    ? t.liveParty.a11yAddDrink(latestDrink.beerName)
+                    : t.liveParty.a11yPickDrink
+                  : t.liveParty.a11yFirstDrink(primaryLabel, firstDrinkLabel)
               }
             >
               <PlusIcon size={17} color={Colors.stout} />
               <DrinkGlyph type={latestDrink ? drinkTypeOf(latestDrink) : 'beer'} color={Colors.stout} />
-              <Text
-                style={[styles.primaryLabel, !active && styles.primaryLabelWhole]}
-                numberOfLines={2}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {active ? (latestDrink?.beerName ?? displayHouseBeer(houseBeer)) : t.liveParty.startNight}
-              </Text>
+              <View style={styles.primaryText}>
+                {/* Shrink, never truncate (§3.1): at the largest Dynamic Type
+                    "Pilsner Urquell 12° · 0,5 l" came out as "· 0,…", which is
+                    a button that no longer says what it pours. */}
+                <Text
+                  style={styles.primaryLabel}
+                  numberOfLines={active ? 2 : 1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  maxFontSizeMultiplier={FontScaleCap.display}
+                >
+                  {primaryLabel}
+                </Text>
+                {/* What the press pours, under what the press does — the old
+                    counter's "Staropramen 11° · 0,5 l". While the night runs
+                    the label IS the beer, so there is nothing to repeat. */}
+                {active ? null : (
+                  <Text
+                    style={styles.primarySub}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    maxFontSizeMultiplier={FontScaleCap.display}
+                  >
+                    {firstDrinkLabel}
+                  </Text>
+                )}
+              </View>
             </Pressable>
           </View>
 
           {/* Changing the beer is its OWN button, outside the amber. Inside it,
               a chevron behind a hairline was a second action hiding in the
               middle of the one thing on this screen you press all night — and a
-              button you press by accident when you meant to log a beer. */}
-          {active ? (
-            <Pressable
-              onPress={() => setBeersOpen(true)}
-              style={({ pressed }) => [styles.primaryPick, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={t.liveParty.a11yPickOtherDrink}
-            >
-              <ChevronDownIcon size={18} color={Colors.stout} />
-            </Pressable>
-          ) : null}
+              button you press by accident when you meant to log a beer.
+
+              It is there before the night too: it is the one tap to "Co si
+              dáš?", which holds "Jiné pivo" and "Naskenovat lístek" — the old
+              counter's two chips, one door. */}
+          <Pressable
+            onPress={() => setBeersOpen(true)}
+            style={({ pressed }) => [styles.primaryPick, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t.liveParty.a11yPickOtherDrink}
+          >
+            <ChevronDownIcon size={18} color={Colors.stout} />
+          </Pressable>
           </View>
 
-          {/* Only while the night runs: before it the "Hry" row in IdleHub is
-              the one door to the games (§14.4), and two doors to one sheet on
-              one screen is how the old counter got confusing. */}
+          {/* Only while the night runs: before it the hub is a counter and a
+              third disc beside the beer is one more thing to read past. Games
+              are on the table once there is a table. */}
           {active ? (
             <CircleButton label={t.liveParty.games} onPress={() => setGamesOpen(true)}>
               <DicesIcon size={21} color={Colors.foam} />
@@ -1656,6 +1839,42 @@ export default function LivePartyMockScreen() {
           setPartyPub(OUTSIDE_PUB_NAME, DEFAULT_HOUSE_BEER, null, []);
           setPickPubOpen(false);
         }}
+      />
+
+      {/* The two table doors, one tap deeper (§6.3) — the app's one overflow
+          sheet, so this is not a third way of drawing a list of actions. */}
+      <MoreSheet
+        visible={tableOpen}
+        title={t.liveParty.idleTable}
+        rows={[
+          {
+            key: 'invite',
+            label: t.liveParty.idleInviteLink,
+            icon: UserPlusIcon,
+            accessibilityLabel: t.liveParty.a11yInvite,
+            onPress: () => {
+              setTableOpen(false);
+              afterModalDismiss(openInvite);
+            },
+          },
+          {
+            key: 'join',
+            label: t.liveParty.joinLink,
+            // When to reach for it, not what it is: the code comes from
+            // somebody else's phone.
+            value: t.liveParty.joinHint,
+            icon: KeyRoundIcon,
+            accessibilityLabel: t.liveParty.a11yJoinWithCode,
+            onPress: () => {
+              setTableOpen(false);
+              afterModalDismiss(() => {
+                setPrefilledJoinCode(null);
+                setJoinOpen(true);
+              });
+            },
+          },
+        ]}
+        onClose={() => setTableOpen(false)}
       />
 
       <JoinTableSheet
@@ -2034,13 +2253,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
     overflow: 'hidden',
   },
-  // Centred when it is the whole button; left-aligned when a beer name has to
-  // share the capsule with the picker.
-  primaryLabelWhole: { textAlign: 'center' },
-  primaryWhole: {
-    borderTopRightRadius: Radius.pill,
-    borderBottomRightRadius: Radius.pill,
-  },
   primaryBody: {
     flex: 1,
     flexDirection: 'row',
@@ -2092,12 +2304,21 @@ const styles = StyleSheet.create({
   },
   circleSolid: { backgroundColor: MockColors.surfaceHigh },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
+  primaryText: { flex: 1, minWidth: 0 },
   primaryLabel: {
     flexShrink: 1,
     fontWeight: '800',
     fontSize: 15,
     lineHeight: 18,
     color: Colors.stout,
+  },
+  // Quieter than the label above it, on the same amber: what the press pours.
+  // The scale's second line (§3.1 `bodySmall`), not a private 13/600.
+  primarySub: {
+    ...MockType.bodySmall,
+    flexShrink: 1,
+    lineHeight: 17,
+    color: withAlpha(Colors.stout, 0.72),
   },
   /**
    * Full width of the control row, not the width of the disc above it. Clipped

@@ -10,7 +10,7 @@
  *     last beer was written.
  */
 
-import { t } from '@/i18n';
+import { beerNoun, t } from '@/i18n';
 
 /** Kept in full for compatibility with callers typed against older kinds. */
 export type PulseKind = 'idle' | 'first' | 'fast' | 'steady' | 'slow' | 'paused';
@@ -83,7 +83,13 @@ export function hubStats({
   others,
 }: PulseInput & { mine: number; table: number; others: number }): PulseStat[] {
   const stats: PulseStat[] = [
-    { label: others > 0 ? t.liveParty.statMyBeers : t.liveParty.statBeers, value: String(mine) },
+    {
+      // Alone the number needs no owner, so the label is just the counted noun
+      // — and a counted noun has to decline: "1 piva" was the first thing you
+      // read after the first beer (§20.5).
+      label: others > 0 ? t.liveParty.statMyBeers : beerNoun(mine),
+      value: String(mine),
+    },
   ];
   if (others > 0) {
     stats.push({ label: t.counter.partyTotalBeersLabel, value: String(table) });

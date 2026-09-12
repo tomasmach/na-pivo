@@ -58,9 +58,13 @@ describe('hubStats', () => {
     expect(stats).toEqual([{ label: 'piva', value: '2' }]);
   });
 
-  it('stands on one number when you are alone with one beer', () => {
-    const stats = hubStats({ beerTimes: [0], now: 12, mine: 1, table: 1, others: 0 });
-    expect(stats).toEqual([{ label: 'piva', value: '1' }]);
+  it('declines the label of the lone number, so one beer is never "1 piva"', () => {
+    expect(hubStats({ beerTimes: [0], now: 12, mine: 1, table: 1, others: 0 })).toEqual([
+      { label: 'pivo', value: '1' },
+    ]);
+    expect(hubStats({ beerTimes: [], now: 0, mine: 0, table: 0, others: 0 })).toEqual([
+      { label: 'piv', value: '0' },
+    ]);
   });
 });
 

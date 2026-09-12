@@ -404,11 +404,18 @@ Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se t
 | `MockType.label` | 12 / 600 | — | Kapsle, caption |
 | `MockType.buttonLabel` | 16 / 700 | — | Label tlačítka |
 
-Displejové stupně nad škálou: hero číslice `34/42` (`StatGrid`), streak `40/50`, handle `24/800`,
-recap titulek `32/800`. Rodina je u číslic `Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
+Displejové stupně nad škálou: **počítadlo `76/94`** (`letterSpacing: -1`), hero číslice `34/42`
+(`StatGrid`), streak `40/50`, handle `24/800`, recap titulek `32/800`. Rodina je u číslic
+`Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
+
+**Počítadlo `76/94` je jediné číslo na obrazovce, vycentrované, s popiskem pod sebou.** Používá se
+tam, kde je počet piv celá odpověď a kolem něj není co číst — idle Večer před prvním pivem
+(`PulsePanel hero`). Jakmile na obrazovce stojí čísla vedle sebe (běžící večer, recap, profil), platí
+`34/42` a mřížka; dvě velikosti velkého čísla vedle sebe jsou dva hrdinové. Povinné je `tabular-nums`,
+`allowFontScaling={false}` a `lineHeight` 1,24× (§3.2).
 
 **Negativní tracking roste s velikostí:** −0.2 u titulků sekcí a zvýrazněných názvů, přes
-−0.4/−0.5 u titulků obrazovek, po −0.7 u největších displejových stupňů. Běžný body text jede bez
+−0.4/−0.5 u titulků obrazovek a −0.7 u displejových stupňů, po −1 u počítadla. Běžný body text jede bez
 trackingu. Jediný **pozitivní** tracking mají verzálkové mikro-labely (+0.2 label tab baru a `PR`;
 caption typu „ODEHRÁNO“ až +1.2).
 
