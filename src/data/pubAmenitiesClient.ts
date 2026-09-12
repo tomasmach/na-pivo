@@ -36,6 +36,7 @@ import {
   isUgcConsentPending,
   notifyUgcConsentRequired,
   ugcConsentRequiredCode,
+  ugcAcceptanceRevision,
   ugcPolicyHeaders,
 } from './ugcConsent';
 import { trackClientEvent } from './telemetryClient';
@@ -278,6 +279,7 @@ export async function submitAmenityVotes(
     return 'consent-blocked';
   }
 
+  const acceptanceRevision = ugcAcceptanceRevision(session.accountId);
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
@@ -300,7 +302,7 @@ export async function submitAmenityVotes(
       if (consentCode) {
         // A refusal that crossed the acceptance in flight says nothing about
         // now: it must not re-open the sheet or log a failure.
-        if (holdUgcPublishing(session.accountId, consentCode)) {
+        if (holdUgcPublishing(session.accountId, consentCode, acceptanceRevision)) {
           notifyUgcConsentRequired(consentCode);
           trackAmenitySyncFailed('submit_votes', {
             status: resp.status,
@@ -420,6 +422,7 @@ export async function submitAmenityVotesDetailed(
     return { status: 'consent-blocked', body: null };
   }
 
+  const acceptanceRevision = ugcAcceptanceRevision(session.accountId);
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
@@ -446,7 +449,7 @@ export async function submitAmenityVotesDetailed(
     if (isPublicContribution) {
       const consentCode = ugcConsentRequiredCode(resp.status, await parseNonOkPayload(resp));
       if (consentCode) {
-        if (holdUgcPublishing(session.accountId, consentCode)) {
+        if (holdUgcPublishing(session.accountId, consentCode, acceptanceRevision)) {
           notifyUgcConsentRequired(consentCode, {
             userInitiated: options?.userInitiated === true,
           });

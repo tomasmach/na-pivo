@@ -557,6 +557,49 @@ describe('UGC policy contract', () => {
     expect(failures).toEqual([]);
   });
 
+  it.each([
+    ['queue', submitAmenityVotes],
+    ['detailed', submitAmenityVotesDetailed],
+  ] as const)('%s ignores an old policy refusal after this device accepts', async (_name, submit) => {
+    rememberUgcConsent('a', {
+      policyVersion: CURRENT_UGC_POLICY_VERSION,
+      accepted: true,
+      acceptedVersion: CURRENT_UGC_POLICY_VERSION,
+      acceptedAt: '2026-09-11T20:00:00Z',
+    });
+    const events: string[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event.code));
+    let release!: (response: unknown) => void;
+    const fetch = installFetch(jest.fn(() => new Promise((resolve) => { release = resolve; })));
+    const pending = submit([liveVote]);
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // The server processed the old header before this device accepted the new
+    // version, but that refusal arrives after the successful acceptance.
+    rememberUgcConsent('a', {
+      policyVersion: '2026-09-12',
+      accepted: true,
+      acceptedVersion: '2026-09-12',
+      acceptedAt: '2026-09-12T20:00:00Z',
+    }, { acceptedOnDevice: true });
+    release({ ok: false, status: 428, json: async () => ({ code: 'ugc_policy_update_required' }) });
+    await pending;
+
+    expect(events).toEqual([]);
+    expect((trackClientEvent as jest.Mock).mock.calls.filter(
+      ([event]) => event.event === 'amenity_vote_failed',
+    )).toEqual([]);
+    fetchReturning(200, { results: [], mapper: null });
+    expect(await submitAmenityVotes([liveVote])).toBe('ok');
+
+    // A later request can discover a genuinely newer policy. It still holds
+    // publishing even though this process remembers a successful acceptance.
+    fetchReturning(428, { code: 'ugc_policy_update_required' });
+    await submit([liveVote]);
+    expect(events).toEqual(['ugc_policy_update_required']);
+  });
+
   it('does not publish when the profile snapshot already says consent is missing', async () => {
     rememberUgcConsent('a', {
       policyVersion: CURRENT_UGC_POLICY_VERSION,

@@ -41,6 +41,8 @@ export type UgcConsentRequiredCode = 'ugc_consent_required' | 'ugc_policy_update
 interface AccountConsentState {
   /** The most recent snapshot, kept for deriving which code the sheet needs. */
   snapshot?: UgcConsentSnapshot;
+  /** Successful policy confirmations on this device, excluding profile reads. */
+  acceptanceRevision?: number;
   /**
    * The version the server last said it wants. Follows the server in BOTH
    * directions — a reverted bump has to take the header back down, or every
@@ -70,11 +72,18 @@ function wantedVersion(accountId: string): string {
   return learned && learned > CURRENT_UGC_POLICY_VERSION ? learned : CURRENT_UGC_POLICY_VERSION;
 }
 
-export function rememberUgcConsent(accountId: string, snapshot: UgcConsentSnapshot): void {
+export function rememberUgcConsent(
+  accountId: string,
+  snapshot: UgcConsentSnapshot,
+  options?: { acceptedOnDevice?: boolean },
+): void {
   const state = stateFor(accountId);
   state.snapshot = snapshot;
   state.learnedVersion = snapshot.policyVersion;
   if (!snapshot.accepted) return;
+  if (options?.acceptedOnDevice) {
+    state.acceptanceRevision = (state.acceptanceRevision ?? 0) + 1;
+  }
 
   // Acceptance (this device or another one) lifts the hold, so the queues that
   // were waiting on it may publish again.
@@ -83,6 +92,11 @@ export function rememberUgcConsent(accountId: string, snapshot: UgcConsentSnapsh
     state.acceptedVersion = accepted;
   }
   state.owedCode = undefined;
+}
+
+/** Capture before a write so a delayed refusal cannot undo a later acceptance. */
+export function ugcAcceptanceRevision(accountId: string): number {
+  return stateByAccountId.get(accountId)?.acceptanceRevision ?? 0;
 }
 
 export function ugcPolicyHeaders(accountId: string): Record<string, string> {
@@ -96,13 +110,19 @@ export function ugcPolicyHeaders(accountId: string): Record<string, string> {
  * after we have proof of acceptance for the version we send is a refusal of a
  * request that left before the user accepted — it says nothing about now, so it
  * gets no hold, no sheet and no failure event. A policy bump
- * (`ugc_policy_update_required`) always holds: it asks for a version this
- * account has not accepted.
+ * (`ugc_policy_update_required`) holds unless this device successfully
+ * confirmed the policy while that request was in flight. Profile reads alone
+ * do not obsolete a refusal: an old profile can also arrive out of order.
  */
 export function holdUgcPublishing(
   accountId: string,
   code: UgcConsentRequiredCode = 'ugc_consent_required',
+  acceptanceRevisionAtSend?: number,
 ): boolean {
+  if (
+    acceptanceRevisionAtSend !== undefined &&
+    acceptanceRevisionAtSend !== ugcAcceptanceRevision(accountId)
+  ) return false;
   const state = stateFor(accountId);
   const accepted = state.acceptedVersion;
   if (code === 'ugc_consent_required' && accepted && accepted >= wantedVersion(accountId)) {

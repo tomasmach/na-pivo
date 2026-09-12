@@ -4,6 +4,7 @@ import {
   parseUgcConsentSnapshot,
   rememberUgcConsent,
   ugcPolicyHeaders,
+  ugcAcceptanceRevision,
   subscribeUgcConsentRequired,
   notifyUgcConsentRequired,
   notifyUgcConsentRequiredFromResponse,
@@ -212,6 +213,14 @@ describe('ugcConsent', () => {
         [UGC_POLICY_HEADER]: CURRENT_UGC_POLICY_VERSION,
       });
       expect(ugcConsentStatus('account-1')).toEqual({ known: true, requiredCode: null });
+    });
+
+    it('does not let a late accepted profile hide a real policy refusal', () => {
+      const revisionAtSend = ugcAcceptanceRevision('account-1');
+      rememberUgcConsent('account-1', parseUgcConsentSnapshot(CURRENT_WIRE)!);
+
+      expect(holdUgcPublishing('account-1', 'ugc_policy_update_required', revisionAtSend)).toBe(true);
+      expect(isUgcConsentPending('account-1')).toBe(true);
     });
 
     it('reports whether a hold was recorded', () => {
