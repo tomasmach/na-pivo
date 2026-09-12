@@ -797,12 +797,12 @@ function sessionById(clientId: string): TallySession | null {
   return history.find((session) => session.clientId === clientId) ?? null;
 }
 
-async function queueSessionVisit(session: TallySession | null): Promise<void> {
+async function queueSessionVisit(session: TallySession | null, updatedAt?: string): Promise<void> {
   if (!session) return;
   // buildVisitEntry decodes pubKey to a representative coordinate. Never let a
   // malformed/provider id be interpreted as a geohash and fabricate a place.
   if (!GEOHASH_8_RE.test(session.pubKey)) return;
-  const entry = buildVisitEntry(session);
+  const entry = buildVisitEntry(session, updatedAt);
   if (!entry) return;
   await ensureVisitOpQueued({ op: 'upsert', clientId: entry.client_id, entry });
 }
@@ -819,6 +819,7 @@ async function queueDrink(
   pub: WearablePubRef,
   drink: WearableDrinkSpec,
   session: TallySession,
+  updatedAt?: string,
 ): Promise<void> {
   assertCanonicalPubRef(pub);
   await ensureDrinkQueued(
@@ -842,7 +843,7 @@ async function queueDrink(
       drink.id,
     ),
   );
-  await queueSessionVisit(session);
+  await queueSessionVisit(session, updatedAt);
 }
 
 function canonicalEveningId(state: WearableSyncState, incomingId: string): string {
@@ -861,6 +862,7 @@ async function commitDrinkCommand(
   drink: WearableDrinkSpec,
   pub: WearablePubRef,
   status: WearableApplyStatus,
+  updatedAt?: string,
 ): Promise<void> {
   const tally = useTallyStore.getState();
   if (tally.isDrinkRemoved(drink.id)) {
@@ -895,13 +897,14 @@ async function commitDrinkCommand(
         .addExternalDrink(tallyPubFromWearable(pub), beer, canonicalId);
     }
   }
-  if (session) await queueDrink(pub, drink, session);
+  if (session) await queueDrink(pub, drink, session, updatedAt);
 }
 
 async function commitRemoveCommand(
   nextState: WearableSyncState,
   eveningId: string,
   drinkId: string,
+  updatedAt: string,
 ): Promise<void> {
   const canonicalId = canonicalEveningId(nextState, eveningId);
   const removed = useTallyStore.getState().removeDrinkById(drinkId);
@@ -910,11 +913,12 @@ async function commitRemoveCommand(
 
   const session = sessionById(removed?.sessionClientId ?? canonicalId);
   if (session && session.drinks.length > 0) {
-    await queueSessionVisit(session);
+    await queueSessionVisit(session, updatedAt);
   } else {
     await ensureVisitOpQueued({
       op: 'delete',
       clientId: removed?.sessionClientId ?? canonicalId,
+      updatedAt,
     });
   }
 }
@@ -1132,17 +1136,18 @@ async function commitCommand(
         command.drink,
         command.pub,
         status,
+        envelope.sentAt,
       );
       return;
     case 'add_drink': {
       const canonicalId = canonicalEveningId(nextState, command.eveningId);
       const pub = nextState.evenings[canonicalId]?.pub;
       if (!pub) throw new Error('Wearable evening is unavailable');
-      await commitDrinkCommand(nextState, canonicalId, command.drink, pub, status);
+      await commitDrinkCommand(nextState, canonicalId, command.drink, pub, status, envelope.sentAt);
       return;
     }
     case 'remove_drink':
-      await commitRemoveCommand(nextState, command.eveningId, command.drinkId);
+      await commitRemoveCommand(nextState, command.eveningId, command.drinkId, envelope.sentAt);
       return;
     case 'close_evening':
       await commitCloseCommand(nextState, command.eveningId, command.closedAt);

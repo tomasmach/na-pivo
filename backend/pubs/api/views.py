@@ -238,6 +238,7 @@ from .serializers import (
     PubReportRequestSerializer,
     PubReportSerializer,
     PubsNearQuerySerializer,
+    PubVisitDeleteRequestSerializer,
     PubVisitRequestSerializer,
     PushDeviceDeleteSerializer,
     PushDeviceRequestSerializer,
@@ -2903,16 +2904,16 @@ class PubVisitView(APIView):
         try:
             with transaction.atomic():
                 account = Account.objects.select_for_update().get(pk=request.user.pk)
-                tombstoned = OfflineMutationTombstone.objects.filter(
+                tombstone = OfflineMutationTombstone.objects.filter(
                     account=account,
                     resource=OfflineMutationTombstone.Resource.PUB_VISIT,
                     client_id=data["client_id"],
-                ).exists()
-                if tombstoned:
-                    PubVisit.objects.filter(
-                        account=account,
-                        client_id=data["client_id"],
-                    ).delete()
+                ).first()
+                if (
+                    tombstone is not None
+                    and tombstone.client_updated_at is not None
+                    and data["updated_at"] <= tombstone.client_updated_at
+                ):
                     return Response(
                         {
                             "accepted": True,
@@ -2977,16 +2978,35 @@ class PubVisitView(APIView):
         )
 
     def delete(self, request: Request, client_id) -> Response:
-        # Idempotent delete scoped to the account (a foreign / missing / already
-        # deleted client_id matches nothing → deleted: false, never a 404).
-        return _idempotent_delete_with_tombstone(
-            PubVisit.objects.filter(account=request.user, client_id=client_id),
-            account=request.user,
-            resource=OfflineMutationTombstone.Resource.PUB_VISIT,
-            scope="pub-visits",
-            key_label="visit",
-            key_value=client_id,
-        )
+        serializer = PubVisitDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        revision = serializer.validated_data.get("updated_at")
+        try:
+            with transaction.atomic():
+                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                visits = PubVisit.objects.filter(account=account, client_id=client_id)
+                existing = visits.first()
+                # The counter keeps a visit UUID after removing its last drink.
+                # A deletion wins against older writes, not future additions.
+                if revision is None and existing is not None:
+                    revision = existing.client_updated_at
+                if revision is not None:
+                    marker, _ = OfflineMutationTombstone.objects.get_or_create(
+                        account=account,
+                        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+                        client_id=client_id,
+                    )
+                    if marker.client_updated_at is None or revision > marker.client_updated_at:
+                        marker.client_updated_at = revision
+                        marker.save(update_fields=["client_updated_at"])
+                    visits = visits.filter(client_updated_at__lte=marker.client_updated_at)
+                # Legacy DELETE of a missing UUID carries no revision. Retain its
+                # successful no-op instead of permanently banning that visit.
+                deleted_count, _ = visits.delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-visits: unexpected error deleting visit (%s)", type(exc).__name__)
+            return _internal_error()
+        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
 
 
 class MyStatsView(APIView):

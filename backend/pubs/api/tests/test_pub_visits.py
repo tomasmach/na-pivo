@@ -348,6 +348,32 @@ def test_get_empty_when_no_visits(client):
     assert resp.json() == {"visits": []}
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("created_before_delete", [False, True])
+def test_released_client_can_count_again_after_removing_last_drink(client, created_before_delete):
+    """An empty pinned counter reuses its visit UUID for the next drink."""
+    token = _register(client)
+    if created_before_delete:
+        first = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+        assert first.status_code == status.HTTP_201_CREATED
+    deleted = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token))
+    assert deleted.status_code == status.HTTP_200_OK
+
+    counted_again = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            ended_at="2026-06-12T19:20:00+02:00",
+            updated_at="2026-06-12T19:20:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert counted_again.status_code == status.HTTP_201_CREATED, counted_again.json()
+    assert counted_again.json()["applied"] is True
+    listed = client.get("/v1/pub-visits", **_auth(token))
+    assert [visit["client_id"] for visit in listed.json()["visits"]] == [_CLIENT_ID]
+
+
 # ---------------------------------------------------------------------------
 # DELETE
 # ---------------------------------------------------------------------------
@@ -375,7 +401,7 @@ def test_delete_unknown_client_id_is_idempotent_success(client):
     resp = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token))
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": False}
-    assert OfflineMutationTombstone.objects.filter(
+    assert not OfflineMutationTombstone.objects.filter(
         resource=OfflineMutationTombstone.Resource.PUB_VISIT,
         client_id=_CLIENT_ID,
     ).exists()
@@ -405,7 +431,12 @@ def test_stale_visit_post_after_delete_is_successful_remove_wins_noop(client):
 @pytest.mark.django_db
 def test_visit_delete_before_first_post_is_remove_wins(client):
     token = _register(client)
-    assert client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token)).json() == {
+    assert client.delete(
+        f"/v1/pub-visits/{_CLIENT_ID}",
+        data={"updated_at": "2026-06-12T19:10:00+02:00"},
+        format="json",
+        **_auth(token),
+    ).json() == {
         "deleted": False
     }
 
@@ -413,6 +444,35 @@ def test_visit_delete_before_first_post_is_remove_wins(client):
     assert delayed.status_code == status.HTTP_200_OK
     assert delayed.json()["removed"] is True
     assert PubVisit.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("minutes", ["00", "10"])
+def test_versioned_delete_blocks_older_and_equal_posts_but_allows_newer(client, minutes):
+    token = _register(client)
+    removed_at = "2026-06-12T19:10:00+02:00"
+    delete_data = {"updated_at": removed_at}
+    url = f"/v1/pub-visits/{_CLIENT_ID}"
+    assert client.delete(url, data=delete_data, format="json", **_auth(token)).status_code == 200
+    stale = client.post(
+        "/v1/pub-visits", data=_payload(updated_at=f"2026-06-12T19:{minutes}:00+02:00"),
+        format="json", **_auth(token),
+    )
+    assert stale.status_code == 200
+    assert stale.json()["removed"] is True
+    assert not PubVisit.objects.exists()
+
+    new_version = "2026-06-12T19:20:00+02:00"
+    fresh = client.post(
+        "/v1/pub-visits", data=_payload(ended_at=new_version, updated_at=new_version),
+        format="json", **_auth(token),
+    )
+    assert fresh.status_code == 201, fresh.json()
+    # Retried old DELETE and POST must not remove the newly resumed visit.
+    assert client.delete(url, data=delete_data, format="json", **_auth(token)).json() == {"deleted": False}
+    replay = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert replay.json()["removed"] is True
+    assert client.get("/v1/pub-visits", **_auth(token)).json()["visits"][0]["ended_at"] == "2026-06-12T17:20:00+00:00"
 
 
 @pytest.mark.django_db

@@ -110,6 +110,17 @@ describe('buildVisitEntry', () => {
 });
 
 describe('syncVisit', () => {
+  it('uses the edit time for a backdated drink after a deletion', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-30T20:05:00.000Z'));
+    try {
+      syncVisit(session());
+      expect(enqueueVisitOp).toHaveBeenCalledWith(expect.objectContaining({
+        entry: expect.objectContaining({ updated_at: '2026-07-30T20:05:00.000Z' }),
+      }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   it('enqueues an upsert for a session', () => {
     syncVisit(session());
     expect(enqueueVisitOp).toHaveBeenCalledWith(

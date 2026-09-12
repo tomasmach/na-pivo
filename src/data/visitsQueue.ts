@@ -37,12 +37,14 @@ const STORAGE_KEY = 'na-pivo-visits-queue';
 /** One pending sync operation, keyed (and deduped) by client_id. */
 export type VisitQueueItem =
   | { op: 'upsert'; clientId: string; entry: VisitEntry }
-  | { op: 'delete'; clientId: string };
+  | { op: 'delete'; clientId: string; updatedAt?: string };
 
 function isQueueItem(value: unknown): value is VisitQueueItem {
   const i = value as VisitQueueItem;
   if (!i || typeof i.clientId !== 'string') return false;
-  if (i.op === 'delete') return true;
+  if (i.op === 'delete') return i.updatedAt === undefined || (
+    typeof i.updatedAt === 'string' && Number.isFinite(Date.parse(i.updatedAt))
+  );
   if (i.op === 'upsert') {
     const e = (i as { entry?: VisitEntry }).entry;
     return (
@@ -69,7 +71,9 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<VisitQueueItem>(
 const runMutation = createQueueLock();
 
 async function deliver(item: VisitQueueItem): Promise<SubmitVisitResult> {
-  return item.op === 'upsert' ? submitVisit(item.entry) : deleteVisit(item.clientId);
+  return item.op === 'upsert' ? submitVisit(item.entry) : item.updatedAt
+    ? deleteVisit(item.clientId, undefined, item.updatedAt)
+    : deleteVisit(item.clientId);
 }
 
 /** Stable content signature for an op, used to tell whether the queued op for a

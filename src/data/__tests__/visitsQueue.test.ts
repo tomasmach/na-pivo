@@ -72,6 +72,19 @@ beforeEach(async () => {
 });
 
 describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
+  it('keeps the deletion revision unchanged across offline retries', async () => {
+    deleteVisit.mockResolvedValueOnce('retry');
+    const updatedAt = '2026-07-30T20:05:00.000Z';
+    await enqueueVisitOp({ op: 'delete', clientId: 'watch-evening', updatedAt });
+    expect(await readQueue()).toEqual([{ op: 'delete', clientId: 'watch-evening', updatedAt }]);
+    await flushVisitsQueue();
+    expect(deleteVisit.mock.calls).toEqual([
+      ['watch-evening', undefined, updatedAt],
+      ['watch-evening', undefined, updatedAt],
+    ]);
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('can persist an external watch visit before transport acknowledgement', async () => {
     await ensureVisitOpQueued(upsert('watch-evening'));
 

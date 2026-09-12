@@ -2022,6 +2022,10 @@ class PubRatingRequestSerializer(PubInputSerializer):
     updated_at = serializers.DateTimeField()
 
 
+class PubVisitDeleteRequestSerializer(serializers.Serializer):
+    updated_at = serializers.DateTimeField(required=False)
+
+
 class PubVisitRequestSerializer(PubInputSerializer):
     """Request body for POST /v1/pub-visits (push one explicit visit).
 

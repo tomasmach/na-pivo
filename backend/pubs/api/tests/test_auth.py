@@ -40,6 +40,7 @@ from pubs.models import (
     AuthToken,
     DrinkLog,
     EmailCredential,
+    OfflineMutationTombstone,
     OneTimeToken,
     PubAmenity,
     PubAmenityVote,
@@ -410,6 +411,97 @@ def test_login_merge_recounts_existing_amenity_aggregate(client, sent_emails):
     aggregate.refresh_from_db()
     assert aggregate.yes_count == 1
     assert aggregate.distinct_voter_count == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("deleted_by_source", [False, True])
+def test_login_merge_keeps_removed_drinks_removed(client, sent_emails, deleted_by_source):
+    _register(client, "merge-deletion@x.cz")
+    target = EmailCredential.objects.get(email="merge-deletion@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+    removed_account, stale_account = (source, target) if deleted_by_source else (target, source)
+    drink_id = uuid.uuid4()
+    OfflineMutationTombstone.objects.create(
+        account=removed_account,
+        resource=OfflineMutationTombstone.Resource.DRINK,
+        client_id=drink_id,
+    )
+    DrinkLog.objects.create(
+        account=stale_account,
+        client_id=drink_id,
+        beer_name="Plzeň",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+
+    login = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-deletion@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+    assert login.status_code == status.HTTP_200_OK, login.content
+    assert OfflineMutationTombstone.objects.filter(
+        account=target, resource=OfflineMutationTombstone.Resource.DRINK, client_id=drink_id,
+    ).exists()
+    assert not DrinkLog.objects.filter(account=target, client_id=drink_id).exists()
+    replay = client.post(
+        "/v1/drinks",
+        data={
+            "client_id": str(drink_id), "name": "Review pub", "lat": 50.08, "lng": 14.45,
+            "beer": {"name": "Plzeň", "price_czk": 55, "volume_ml": 500},
+            "drank_at": "2026-06-01T18:00:00Z",
+        },
+        format="json",
+        **_auth(login.json()["token"]),
+    )
+    assert replay.status_code == status.HTTP_200_OK, replay.content
+    assert replay.json()["removed"] is True
+    assert not DrinkLog.objects.filter(account=target, client_id=drink_id).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "visit_minute,source_minute,retained,target_closed",
+    [("00", None, False, False), ("10", None, False, False), ("20", None, True, False),
+     ("00", "20", True, False), ("00", "20", True, True)],
+)
+def test_login_merge_preserves_latest_visit_deletion_revision(client, sent_emails, visit_minute, source_minute, retained, target_closed):
+    _register(client, "merge-visit-deletion@x.cz")
+    target = EmailCredential.objects.get(email="merge-visit-deletion@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+    visit_id = uuid.uuid4()
+    for account, minute in [(target, "05"), (source, "10")]:
+        OfflineMutationTombstone.objects.create(
+            account=account, resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+            client_id=visit_id, client_updated_at=f"2026-06-12T19:{minute}:00Z",
+        )
+    PubVisit.objects.create(
+        account=target, client_id=visit_id, cache_key="u2fkbnhz", name="Review pub",
+        lat=50.08, lng=14.45, started_at="2026-06-12T19:00:00Z",
+        client_updated_at=f"2026-06-12T19:{visit_minute}:00Z",
+        closed_at="2026-06-12T19:05:00Z" if target_closed else None,
+    )
+    if source_minute is not None:
+        PubVisit.objects.create(
+            account=source, client_id=visit_id, cache_key="u2fkbnhz", name="Review pub",
+            lat=50.08, lng=14.45, started_at="2026-06-12T19:00:00Z",
+            client_updated_at=f"2026-06-12T19:{source_minute}:00Z",
+        )
+    login = client.post(
+        "/v1/auth/login", data={"email": "merge-visit-deletion@x.cz", "password": "Tr0ub4dor&3"},
+        format="json", **_auth(anon_token),
+    )
+    assert login.status_code == 200, login.content
+    marker = OfflineMutationTombstone.objects.get(account=target, client_id=visit_id)
+    assert marker.client_updated_at.isoformat() == "2026-06-12T19:10:00+00:00"
+    assert PubVisit.objects.filter(account=target, client_id=visit_id).exists() is retained
+    if retained:
+        assert PubVisit.objects.get(account=target, client_id=visit_id).client_updated_at.isoformat() == "2026-06-12T19:20:00+00:00"
+    if target_closed:
+        assert PubVisit.objects.get(account=target, client_id=visit_id).closed_at.isoformat() == "2026-06-12T19:05:00+00:00"
 
 
 @pytest.mark.django_db

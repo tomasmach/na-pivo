@@ -3450,6 +3450,11 @@ class OfflineMutationTombstone(models.Model):
     resource = models.CharField(max_length=16, choices=Resource.choices)
     client_id = models.UUIDField()
     deleted_at = models.DateTimeField(auto_now_add=True)
+    client_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last removed visit revision; null for immutable drink deletions.",
+    )
 
     class Meta:
         verbose_name = "Offline mutation tombstone"

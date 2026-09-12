@@ -892,5 +892,35 @@ describe('mobile wearable coordinator', () => {
     expect(accountShadows.byAccount?.[accountB]).toMatchObject({
       state: { evenings: {} },
     });
+
+    // Removing the last watch drink keeps the same evening open. Its deletion
+    // and the next backdated addition need mutation times, not drinking times.
+    const resumeEvening = '98989898-9898-4989-8989-989898989898';
+    const resumeDrink = '97979797-9797-4979-8979-979797979797';
+    const reviewCommand = (sequence: number, body: WearableCommandEnvelope['payload']['command']) => command(
+      sequence, `96969696-9696-4969-8969-96969696969${sequence}`, body,
+      { actorId: 'watch-resume-review', baseRevision: latestSnapshot().payload.revision, sentAt: `2026-07-30T21:0${sequence}:00.000Z` },
+    );
+    const resumeSpec = {
+      id: resumeDrink, name: 'Pilsner Urquell 12°', drinkType: 'beer' as const,
+      volumeMl: 500, priceCzk: 68, servingType: 'draft' as const,
+      recordedAt: '2026-07-30T20:00:00.000Z',
+    };
+    await wakeWithPending([reviewCommand(1, {
+      type: 'start_evening_and_add_drink', eveningId: resumeEvening, pub: PUB,
+      drinkingDayKey: '2026-07-30', drink: resumeSpec,
+    })]);
+    await wakeWithPending([reviewCommand(2, { type: 'remove_drink', eveningId: resumeEvening, drinkId: resumeDrink, reason: 'undo' })]);
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-visits-queue')) ?? '[]')).toContainEqual({
+      op: 'delete', clientId: resumeEvening, updatedAt: '2026-07-30T21:02:00.000Z',
+    });
+    await wakeWithPending([reviewCommand(3, {
+      type: 'add_drink', eveningId: resumeEvening,
+      drink: { ...resumeSpec, id: '95959595-9595-4959-8959-959595959595' },
+    })]);
+    expect(JSON.parse((await AsyncStorage.getItem('na-pivo-visits-queue')) ?? '[]')).toContainEqual(expect.objectContaining({
+      op: 'upsert', clientId: resumeEvening,
+      entry: expect.objectContaining({ updated_at: '2026-07-30T21:03:00.000Z' }),
+    }));
   });
 });

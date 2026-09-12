@@ -72,7 +72,7 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
  * current session) so the backend tracks the evening as it grows. Fire-and-
  * forget, never throws.
  */
-export function syncVisit(session: TallySession | null, updatedAt?: string): void {
+export function syncVisit(session: TallySession | null, updatedAt = new Date().toISOString()): void {
   if (!session) return;
   const entry = buildVisitEntry(session, updatedAt);
   if (!entry) return;
@@ -82,7 +82,7 @@ export function syncVisit(session: TallySession | null, updatedAt?: string): voi
 /** Enqueue a delete for a removed evening. Fire-and-forget, never throws. */
 export function deleteVisitByClientId(clientId: string): void {
   if (!clientId) return;
-  void enqueueVisitOp({ op: 'delete', clientId });
+  void enqueueVisitOp({ op: 'delete', clientId, updatedAt: new Date().toISOString() });
 }
 
 /**

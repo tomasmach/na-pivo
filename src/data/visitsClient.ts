@@ -166,6 +166,7 @@ export async function submitVisit(
 export async function deleteVisit(
   clientId: string,
   signal?: AbortSignal,
+  updatedAt?: string,
 ): Promise<SubmitVisitResult> {
   if (signal?.aborted) return 'retry';
 
@@ -193,7 +194,8 @@ export async function deleteVisit(
   try {
     const resp = await fetch(endpoint, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${session.token}` },
+      headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'application/json' },
+      ...(updatedAt ? { body: JSON.stringify({ updated_at: updatedAt }) } : {}),
       signal: abort.signal,
     });
 

@@ -32,6 +32,14 @@ class Migration(migrations.Migration):
                 ),
                 ("client_id", models.UUIDField()),
                 ("deleted_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "client_updated_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="Last removed visit revision; null for immutable drink deletions.",
+                        null=True,
+                    ),
+                ),
             ],
             options={
                 "verbose_name": "Offline mutation tombstone",
