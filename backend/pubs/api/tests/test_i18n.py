@@ -235,6 +235,11 @@ _PUSH_BODY = LocalizedText(
 @pytest.mark.django_db
 def test_push_renders_per_device_locale(client, monkeypatch):
     _token, account = _register(client)
+    # Quiet hours are on by default (23:00-09:00 Prague) and drop the push
+    # before it is rendered. This test is about per-device language, so take
+    # that gate out instead of letting the suite pass only in the daytime.
+    account.quiet_hours_enabled = False
+    account.save(update_fields=["quiet_hours_enabled"])
     PushDevice.objects.create(
         account=account,
         push_token=_PUSH_TOKEN,
