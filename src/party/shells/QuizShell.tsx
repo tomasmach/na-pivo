@@ -38,6 +38,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckIcon } from "@/components/shared/IconGlyph";
 import { GameResult } from "@/games/GameResult";
 import { t } from "@/i18n";
+import { QuizPrint } from "@/party/GamePrints";
 import { displayPersonName } from "@/party/nightBuilder";
 import {
   GameStage,
@@ -266,12 +267,14 @@ export function QuizShell({
         }
       >
         <View style={styles.tileTop}>
-          <Text
-            style={[styles.letter, picked && styles.letterOn]}
-            allowFontScaling={false}
-          >
-            {LETTERS[optionIndex]}
-          </Text>
+          <View style={[styles.letterPlate, picked && styles.letterPlateOn]}>
+            <Text
+              style={[styles.letter, picked && styles.letterOn]}
+              allowFontScaling={false}
+            >
+              {LETTERS[optionIndex]}
+            </Text>
+          </View>
           {right ? <CheckIcon size={16} color={Colors.success} /> : null}
         </View>
         <Text
@@ -286,7 +289,7 @@ export function QuizShell({
   };
 
   return (
-    <ScrollView
+    <ScrollView bounces={false} overScrollMode="never"
       contentContainerStyle={styles.scroll}
       style={styles.body}
       showsVerticalScrollIndicator={false}
@@ -301,16 +304,21 @@ export function QuizShell({
           style={styles.stage}
         >
           <StageCard wide style={styles.questionCard}>
-            <Animated.Text
-              key={question.id}
-              entering={reduceMotion ? undefined : FadeIn.duration(220)}
-              style={styles.question}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-              accessibilityRole="header"
-              accessibilityLiveRegion="polite"
-            >
-              {question.text}
-            </Animated.Text>
+            <View style={styles.questionSheet}>
+              <View style={styles.quizPrint} pointerEvents="none">
+                <QuizPrint />
+              </View>
+              <Animated.Text
+                key={question.id}
+                entering={reduceMotion ? undefined : FadeIn.duration(220)}
+                style={styles.question}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+                accessibilityRole="header"
+                accessibilityLiveRegion="polite"
+              >
+                {question.text}
+              </Animated.Text>
+            </View>
           </StageCard>
 
           {/* Four tiles, two by two, taking everything the question card
@@ -389,13 +397,16 @@ const styles = StyleSheet.create({
 
   stage: { padding: Spacing.md, justifyContent: "flex-start" },
   questionCard: { marginTop: Spacing.xl },
+  questionSheet: { flexDirection: "row", alignItems: "center", gap: Spacing.md },
+  quizPrint: { flexShrink: 0 },
   question: {
+    flex: 1,
     fontSize: 22,
     lineHeight: 28,
     fontWeight: "800",
     color: StageInk.strong,
     letterSpacing: -0.3,
-    textAlign: "center",
+    textAlign: "left",
   },
 
   grid: {
@@ -424,10 +435,24 @@ const styles = StyleSheet.create({
   tileRight: { borderColor: Colors.success },
   tileWrong: { backgroundColor: withAlpha(StageInk.red, 0.24) },
   tileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  letterPlate: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: withAlpha(Colors.foam, 0.18),
+    transform: [{ rotate: "-2deg" }],
+  },
+  letterPlateOn: {
+    borderColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
   letter: {
     fontFamily: Fonts.numeral,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 24,
+    lineHeight: 29,
     includeFontPadding: false,
     color: Colors.mutedText,
   },

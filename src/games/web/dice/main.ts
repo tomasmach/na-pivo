@@ -27,6 +27,7 @@
 
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 // Talks to the app only through the SDK — see `src/games/protocol.ts`. Nothing
 // here knows about `ReactNativeWebView`, query strings or message shapes, which
@@ -58,7 +59,7 @@ const HALF = DIE_SIZE / 2;
 /** How still a die has to be before we call it landed. */
 const REST_SPEED = 0.12;
 const REST_FRAMES = 12;
-/** A throw that somehow never settles must not hang the game. */
+/** Retry a stuck throw physically instead of accepting an unreadable face. */
 const MAX_FRAMES = 60 * 8;
 
 /**
@@ -84,15 +85,45 @@ const FACE_NORMALS = [
  * Textures rather than geometry for the pips: six little spheres per die is
  * twelve more bodies for the renderer to sort, and at this size nobody can tell.
  */
-function faceTexture(value: number, face: string, pip: string): THREE.CanvasTexture {
+function faceTexture(value: number, face: string): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = face;
+  // Ivory with a worn bevel. The player's ink lives in four corner stamps,
+  // leaving the face and its count unmistakably a real die.
+  ctx.fillStyle = '#D9CCB2';
   ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#FBF6EA';
+  ctx.beginPath();
+  ctx.moveTo(35, 9);
+  ctx.lineTo(221, 9);
+  ctx.quadraticCurveTo(247, 9, 247, 35);
+  ctx.lineTo(247, 221);
+  ctx.quadraticCurveTo(247, 247, 221, 247);
+  ctx.lineTo(35, 247);
+  ctx.quadraticCurveTo(9, 247, 9, 221);
+  ctx.lineTo(9, 35);
+  ctx.quadraticCurveTo(9, 9, 35, 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = face;
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'square';
+  for (let corner = 0; corner < 4; corner += 1) {
+    ctx.save();
+    ctx.translate(128, 128);
+    ctx.rotate(corner * Math.PI / 2);
+    ctx.beginPath();
+    ctx.moveTo(-100, -72);
+    ctx.lineTo(-100, -86);
+    ctx.quadraticCurveTo(-100, -100, -86, -100);
+    ctx.lineTo(-72, -100);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   const layouts: Record<number, [number, number][]> = {
     1: [[0.5, 0.5]],
@@ -128,15 +159,79 @@ function faceTexture(value: number, face: string, pip: string): THREE.CanvasText
     ],
   };
 
-  ctx.fillStyle = pip;
   for (const [x, y] of layouts[value] ?? []) {
+    // An offset ivory lip gives the ink well depth without another mesh.
+    ctx.fillStyle = '#C6B697';
     ctx.beginPath();
-    ctx.arc(x * size, y * size, size * 0.085, 0, Math.PI * 2);
+    ctx.arc(x * size, y * size + 1, size * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#15120F';
+    ctx.beginPath();
+    // Slightly irregular silhouette, as if carved into the printing block.
+    for (let step = 0; step <= 24; step += 1) {
+      const angle = step / 24 * Math.PI * 2;
+      const radius = size * (0.081 + Math.sin(step * 2.1 + value) * 0.002);
+      const px = x * size + Math.cos(angle) * radius;
+      const py = y * size + Math.sin(angle) * radius;
+      if (step === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
     ctx.fill();
   }
 
   const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
+  return texture;
+}
+
+/** A quiet screen-printed dice tray. The dice stay the loudest object. */
+function tableTexture(surface: string, accent: string): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = surface;
+  ctx.fillRect(0, 0, size, size);
+
+  // A quiet woven cloth, not random scratches or oversized decorative rings.
+  // Deterministic weave keeps captures stable and never consumes game entropy.
+  ctx.strokeStyle = '#FBF6EA';
+  ctx.globalAlpha = 0.028;
+  ctx.lineWidth = 1;
+  for (let thread = 0; thread < size; thread += 4) {
+    ctx.beginPath();
+    ctx.moveTo(thread, 0);
+    ctx.lineTo(thread, size);
+    ctx.moveTo(0, thread + 1);
+    ctx.lineTo(size, thread + 1);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = accent;
+  ctx.globalAlpha = 0.045;
+  ctx.lineWidth = 1.5;
+  for (let row = 0; row < 16; row += 1) {
+    for (let column = 0; column < 16; column += 1) {
+      const x = column * 32 + (row % 2) * 16;
+      const y = row * 32;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 5, y + 8);
+      ctx.moveTo(x + 7, y);
+      ctx.lineTo(x + 12, y + 8);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2.2, 2.2);
   return texture;
 }
 
@@ -147,6 +242,9 @@ class DiceTable {
   private readonly world = new CANNON.World({ gravity: new CANNON.Vec3(0, -32, 0) });
   private readonly meshes: THREE.Mesh[] = [];
   private readonly bodies: CANNON.Body[] = [];
+  private readonly sideWalls: CANNON.Body[] = [];
+  private readonly sideRails: THREE.Mesh[] = [];
+  private readonly endRails: THREE.Mesh[] = [];
   private readonly ownedMaterials = new Set<THREE.Material>();
   private readonly materialCache = new Map<string, THREE.MeshStandardMaterial[]>();
   private readonly resizeHandler = () => this.resize();
@@ -157,7 +255,7 @@ class DiceTable {
   /** Set by the game once the app has said who is playing. */
   onSettled: ((dice: number[]) => void) | null = null;
 
-  constructor(face: string, pip: string, count: number) {
+  constructor(face: string, pip: string, surface: string, accent: string, count: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -181,14 +279,59 @@ class DiceTable {
     key.shadow.camera.bottom = -8;
     this.scene.add(key);
 
-    // The table. It only exists to catch shadows — the felt colour comes from
-    // the app so the canvas does not read as a foreign web page.
-    const tableMaterial = new THREE.ShadowMaterial({ opacity: 0.45 });
+    // A shallow pub tray makes the invisible collision walls legible. Its felt
+    // carries only worn print marks; no label or result lives in the canvas.
+    const tableMaterial = new THREE.MeshStandardMaterial({
+      map: tableTexture(surface, accent),
+      roughness: 1,
+      metalness: 0,
+    });
     this.ownedMaterials.add(tableMaterial);
     const table = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), tableMaterial);
     table.rotation.x = -Math.PI / 2;
     table.receiveShadow = true;
     this.scene.add(table);
+
+    const railColour = new THREE.Color('#4E3320');
+    const railMaterial = new THREE.MeshStandardMaterial({
+      color: railColour,
+      roughness: 0.92,
+      metalness: 0,
+    });
+    const trimMaterial = new THREE.MeshStandardMaterial({
+      color: '#BBA07A',
+      roughness: 0.88,
+      metalness: 0,
+    });
+    this.ownedMaterials.add(railMaterial);
+    this.ownedMaterials.add(trimMaterial);
+    const rail = (
+      width: number,
+      depth: number,
+      x: number,
+      z: number,
+      material: THREE.Material,
+      height = 0.13,
+    ) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+      mesh.position.set(x, height / 2, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      return mesh;
+    };
+    this.endRails.push(
+      rail(7, 0.2, 0, -2.9, railMaterial),
+      rail(7, 0.2, 0, 2.9, railMaterial),
+      rail(6.8, 0.035, 0, -2.77, trimMaterial, 0.025),
+      rail(6.8, 0.035, 0, 2.77, trimMaterial, 0.025),
+    );
+    this.sideRails.push(
+      rail(0.2, 5.8, -2.8, 0, railMaterial),
+      rail(0.2, 5.8, 2.8, 0, railMaterial),
+      rail(0.035, 5.54, -2.67, 0, trimMaterial, 0.025),
+      rail(0.035, 5.54, 2.67, 0, trimMaterial, 0.025),
+    );
 
     this.world.defaultContactMaterial.restitution = 0.28;
     this.world.defaultContactMaterial.friction = 0.42;
@@ -202,19 +345,23 @@ class DiceTable {
       body.position.set(x, 0, z);
       body.quaternion.setFromEuler(0, ry, 0);
       this.world.addBody(body);
+      return body;
     };
-    wall(0, -5, 0);
-    wall(0, 5, Math.PI);
-    wall(-4.2, 0, Math.PI / 2);
-    wall(4.2, 0, -Math.PI / 2);
+    // Keep the physical table inside the camera, including each die's edges.
+    // A smaller table preserves large dice instead of zooming the camera out.
+    wall(0, -2.8, 0);
+    wall(0, 2.8, Math.PI);
+    this.sideWalls.push(wall(-2.8, 0, Math.PI / 2), wall(2.8, 0, -Math.PI / 2));
 
     faceColour = face;
     pipColour = pip;
     const materials = this.buildMaterials(face, pip);
 
     for (let index = 0; index < count; index += 1) {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE), materials);
+      const mesh = new THREE.Mesh(new RoundedBoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE, 3, 0.075), materials);
       mesh.castShadow = true;
+      mesh.position.set((index - (count - 1) / 2) * 1.45, HALF, 0);
+      mesh.rotation.set(0, index % 2 === 0 ? -0.22 : 0.19, 0);
       this.scene.add(mesh);
       this.meshes.push(mesh);
 
@@ -238,6 +385,20 @@ class DiceTable {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    const halfWidth = Math.min(3.2, 2.65 * this.camera.aspect);
+    this.sideWalls.forEach((wall, index) => {
+      wall.position.x = index === 0 ? -halfWidth : halfWidth;
+      wall.aabbNeedsUpdate = true;
+    });
+    this.sideRails.forEach((rail, index) => {
+      const side = index % 2 === 0 ? -1 : 1;
+      rail.position.x = side * (halfWidth - (index < 2 ? 0 : 0.13));
+    });
+    this.endRails.forEach((rail, index) => {
+      const originalWidth = index < 2 ? 7 : 6.8;
+      const visibleWidth = index < 2 ? halfWidth * 2 + 0.2 : halfWidth * 2 - 0.26;
+      rail.scale.x = visibleWidth / originalWidth;
+    });
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -247,9 +408,9 @@ class DiceTable {
     if (cached) return cached;
     const materials = FACE_VALUES.map((value) => {
       const material = new THREE.MeshStandardMaterial({
-        map: faceTexture(value, face, pip),
-        roughness: 0.42,
-        metalness: 0.02,
+        map: faceTexture(value, face),
+        roughness: 0.86,
+        metalness: 0,
       });
       this.ownedMaterials.add(material);
       return material;
@@ -310,7 +471,7 @@ class DiceTable {
     this.bodies.forEach((body, index) => {
       const lane = index - (this.bodies.length - 1) / 2;
       body.wakeUp();
-      body.position.set(lane * 1.6, 4.2 + index * 0.6, 2.4);
+      body.position.set(lane * 1.6, 2.6 + index * 0.3, 1.2);
       body.quaternion.setFromEuler(
         Math.random() * Math.PI,
         Math.random() * Math.PI,
@@ -318,7 +479,7 @@ class DiceTable {
       );
       // Thrown away from the camera and down the table, with spin. The numbers
       // are small enough that dice never fly off, big enough that they tumble.
-      body.velocity.set((Math.random() - 0.5) * 4, -3, -6 - Math.random() * 2);
+      body.velocity.set((Math.random() - 0.5) * 4, -3, -4 - Math.random());
       body.angularVelocity.set(
         (Math.random() - 0.5) * 22,
         (Math.random() - 0.5) * 22,
@@ -340,6 +501,28 @@ class DiceTable {
       }
     });
     return FACE_VALUES[best];
+  }
+
+  private hasLanded(body: CANNON.Body): boolean {
+    const rotation = new THREE.Quaternion(
+      body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w,
+    );
+    const faceUp = FACE_NORMALS.some((normal) =>
+      normal.clone().applyQuaternion(rotation).y >= 0.999,
+    );
+    return faceUp && body.position.y <= HALF + 0.05;
+  }
+
+  private unstick(body: CANNON.Body): void {
+    // A die can stop against a wall or another die while balanced on an edge.
+    // Give it a physical shove towards the table; never choose or snap a face.
+    body.wakeUp();
+    body.applyImpulse(new CANNON.Vec3(-body.position.x * 0.45, 1.2, -body.position.z * 0.45));
+    body.angularVelocity.set(
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+      (Math.random() - 0.5) * 8,
+    );
   }
 
   private tick = (): void => {
@@ -364,11 +547,16 @@ class DiceTable {
       );
       this.still = moving ? 0 : this.still + 1;
 
-      // Settled, or gave up waiting. Either way the table has an answer, and a
-      // game that hangs on a stuck die is worse than one that reads it early.
       if (this.still >= REST_FRAMES || this.frames > MAX_FRAMES) {
-        this.rolling = false;
-        this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
+        const unlanded = this.bodies.filter((body) => !this.hasLanded(body));
+        if (unlanded.length === 0 && !moving) {
+          this.rolling = false;
+          this.onSettled?.(this.meshes.map((mesh) => this.valueOf(mesh)));
+        } else {
+          unlanded.forEach((body) => this.unstick(body));
+          this.still = 0;
+          this.frames = 0;
+        }
       }
     }
 
@@ -397,7 +585,13 @@ connect({
   ],
   start(session: GameSession) {
     const count = Number(session.options.count ?? 2);
-    const table = new DiceTable(session.theme.ink, session.theme.bg, count);
+    const table = new DiceTable(
+      session.theme.ink,
+      session.theme.bg,
+      session.theme.surface,
+      session.theme.accent,
+      count,
+    );
 
     // The game owns its own progression. The app draws the words from the
     // snapshots below and never recomputes any of this — one set of rules,

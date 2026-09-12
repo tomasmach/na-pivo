@@ -2656,6 +2656,8 @@ export const cs = {
     nightTitleAtPub: (pubName: string) => `Večer v ${pubName}`,
     nightTitleFallback: 'Pivní večer',
     gamesTitle: 'Hry',
+    gameToolsTitle: 'Pomůcky ke stolu',
+    eveningExtrasTitle: 'Na celý večer',
     scoringPoints: 'Na body',
     scoringNoPoints: 'Bez bodů',
   },
@@ -4264,6 +4266,7 @@ export const cs = {
   },
 
   gameShell: {
+    retiredGame: 'Tuhle hru už nově nespustíš.',
     fallbackTitle: 'Hra',
     whoPlays: 'Kdo hraje',
     invite: 'Přizvat ke stolu',

@@ -42,6 +42,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PersonAvatar } from '@/components/shared/PersonAvatar';
 import { t } from '@/i18n';
 import type { GameScore } from '@/games/protocol';
+import { ResultCoaster } from '@/party/GamePrints';
 import { ME_NAME } from '@/party/nightBuilder';
 import {
   GameStage,
@@ -53,7 +54,7 @@ import {
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
 export interface ResultPlayer {
   id?: string;
@@ -201,6 +202,9 @@ export function GameResult({
       {star ? <PersonAvatar name={star} tint={starTint} size={72} /> : null}
       <Text
         style={[styles.title, ranking.length === 0 && styles.titleInk]}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
         {title}
@@ -252,11 +256,19 @@ export function GameResult({
                     accessible
                     accessibilityLabel={`${place}. ${row.name} ${row.suffix ?? row.score}`}
                   >
-                    <PersonAvatar
-                      name={row.name}
-                      tint={row.tint ?? Colors.amber}
-                      size={first ? 64 : 44}
-                    />
+                    <View style={[styles.coaster, first && styles.coasterFirst]}>
+                      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                        <ResultCoaster first={first} />
+                      </View>
+                      <Text style={[styles.place, first && styles.placeFirst]} allowFontScaling={false}>
+                        {place}
+                      </Text>
+                      <PersonAvatar
+                        name={row.name}
+                        tint={row.tint ?? Colors.amber}
+                        size={first ? 64 : 48}
+                      />
+                    </View>
                     <Text
                       style={[styles.stepName, first && styles.stepNameFirst]}
                       numberOfLines={1}
@@ -284,7 +296,7 @@ export function GameResult({
         {ranking.length > 0 ? summary : null}
 
         {rest.length > 0 ? (
-          <ScrollView
+          <ScrollView bounces={false} overScrollMode="never"
             style={styles.board}
             contentContainerStyle={styles.boardRows}
             showsVerticalScrollIndicator={false}
@@ -353,15 +365,41 @@ const styles = StyleSheet.create({
     maxWidth: 132,
     alignItems: 'center',
     gap: Spacing.xs,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.xs,
-    borderRadius: Radius.medium,
-    backgroundColor: Colors.stout3,
+    backgroundColor: 'transparent',
   },
   stepFirst: {
-    paddingVertical: Spacing.xl,
-    backgroundColor: withAlpha(Colors.amber, 0.18),
+    paddingTop: 0,
+    paddingBottom: Spacing.md,
   },
+  coaster: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coasterFirst: {
+    width: 118,
+    height: 118,
+  },
+  place: {
+    position: 'absolute',
+    left: 35,
+    top: 5,
+    width: 18,
+    textAlign: 'center',
+    backgroundColor: Colors.foam,
+    borderRadius: 3,
+    overflow: 'hidden',
+    zIndex: 1,
+    fontFamily: Fonts.numeral,
+    fontSize: 12,
+    lineHeight: 14,
+    includeFontPadding: false,
+    color: StageInk.strong,
+  },
+  placeFirst: { left: 49, top: 7, width: 20, fontSize: 15, lineHeight: 18, backgroundColor: Colors.amber },
   stepName: {
     maxWidth: '100%',
     fontSize: 14,

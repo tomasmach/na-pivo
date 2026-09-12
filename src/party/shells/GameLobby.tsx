@@ -72,7 +72,7 @@ export function GameLobby({
 
   return (
     <View style={styles.wrap}>
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView bounces={false} overScrollMode="never" contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {def ? (
           <GameStage fraction={COVER_FRACTION} style={styles.hero}>
             <View style={STAGE_FILL}>

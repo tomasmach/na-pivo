@@ -33,7 +33,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, RadialGradient, Rect, Stop, Path } from "react-native-svg";
 
 import { PersonAvatar } from "@/components/shared/PersonAvatar";
 import { MockLayout, MockType } from "@/mocks/mockTheme";
@@ -121,15 +121,38 @@ export function StageCard({
   children,
   /** Full width and only as tall as its text — a quiz question, not a deck card. */
   wide = false,
+  ruled = true,
+  /** Show dealt cards underneath. Only real decks use this. */
+  stacked = false,
   style,
   ...rest
 }: {
   children?: React.ReactNode;
   wide?: boolean;
+  ruled?: boolean;
+  stacked?: boolean;
   style?: StyleProp<ViewStyle>;
 } & React.ComponentProps<typeof View>) {
   return (
     <View style={[wide ? styles.paperWide : styles.paper, style]} {...rest}>
+      <Svg style={StyleSheet.absoluteFill} viewBox="0 0 300 400" preserveAspectRatio="none" pointerEvents="none" accessible={false}>
+        {stacked ? (
+          <>
+            <Path d="M25 5 294 17q4 0 4 7l-9 365q0 8-7 8L18 386Z" fill={Colors.amber} />
+            <Path d="M17 9 286 6q6 0 6 7l3 374q0 5-6 5L17 397q-5 0-5-6L10 16q0-7 7-7Z" fill={Colors.foamMuted} stroke={withAlpha(Colors.stout, 0.6)} strokeWidth={2} />
+            <Path d="m7 16 268-12q6-1 7 6l9 368q0 6-6 6L11 396q-6 0-6-7L2 24q0-7 5-8Z" fill={Colors.foam} />
+            <Path d="m16 389 259-12m15-20 1 26-17 1M292 45l-1 37" fill="none" stroke={Colors.stout} strokeWidth={1} opacity={0.3} />
+            {ruled ? <Path d="m20 31 87-4 17 1 141-8M20 376l136-7 15 1 101-5" fill="none" stroke={Colors.stout} strokeWidth={1.6} /> : null}
+          </>
+        ) : (
+          <>
+            <Path d="M11 12 293 8l5 384-7 6-281-2Z" fill={Colors.foamMuted} />
+            <Path d="M8 5 283 2q7 0 7 7l7 373-3 8-279 7q-7 0-8-7L3 14q0-8 5-9Z" fill={Colors.foam} />
+            <Path d="m11 389 108-3m147-2 23-1 1-23M7 30l1 26" fill="none" stroke={Colors.stout} strokeWidth={1} opacity={0.25} />
+            {ruled ? <Path d="m20 22 102-2 13 1 139-3M20 378l136-3 12 1 112-3" fill="none" stroke={Colors.stout} strokeWidth={1.6} /> : null}
+          </>
+        )}
+      </Svg>
       {children}
     </View>
   );
@@ -339,7 +362,7 @@ export function StagePill({
   disabled = false,
   tone = "primary",
   accessibilityLabel,
-  stretch = true,
+  stretch = false,
 }: {
   label: string;
   onPress: () => void;
@@ -419,7 +442,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.lg,
-    backgroundColor: Colors.foam,
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: Colors.black,
@@ -434,7 +457,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.lg,
-    backgroundColor: Colors.foam,
+    backgroundColor: "transparent",
     justifyContent: "center",
     shadowColor: Colors.black,
     shadowOpacity: 0.35,
