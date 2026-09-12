@@ -72,6 +72,8 @@ function FriendSettingsSheet({
   const setFriendPushEnabled = useSettingsStore((s) => s.setFriendPushEnabled);
   const setFriendPushOptedOut = useSettingsStore((s) => s.setFriendPushOptedOut);
   const [pushBusy, setPushBusy] = useState(false);
+  const [spendBusy, setSpendBusy] = useState(false);
+  const spendBusyRef = useRef(false);
 
   // Optimistic display state. `draftRef` mirrors it so the (stable) handlers can
   // read the freshest value without listing `draft` in their deps. The ref is
@@ -151,7 +153,7 @@ function FriendSettingsSheet({
   // ── Network PATCH with revert-on-fail ──
   const sendPatch = useCallback(
     (patch: Partial<FriendSocialSettings>) => {
-      void updateFriendSettings(patch).then((res) => {
+      return updateFriendSettings(patch).then((res) => {
         if (!mountedRef.current) return;
         if (res.ok) {
           // Confirm the server-accepted keys (so a flushed hour value can't later
@@ -197,6 +199,19 @@ function FriendSettingsSheet({
     const shareDrinksWithParta = !draftRef.current.shareDrinksWithParta;
     applyOptimistic({ shareDrinksWithParta });
     sendPatch({ shareDrinksWithParta });
+  }, [applyOptimistic, sendPatch]);
+
+  const handleShareSpendToggle = useCallback(() => {
+    // A privacy choice must not be overwritten by an older PATCH finishing last.
+    if (spendBusyRef.current) return;
+    spendBusyRef.current = true;
+    setSpendBusy(true);
+    const shareSpendWithParta = !draftRef.current.shareSpendWithParta;
+    applyOptimistic({ shareSpendWithParta });
+    void sendPatch({ shareSpendWithParta }).finally(() => {
+      spendBusyRef.current = false;
+      if (mountedRef.current) setSpendBusy(false);
+    });
   }, [applyOptimistic, sendPatch]);
 
   const handleQuietToggle = useCallback(() => {
@@ -297,6 +312,26 @@ function FriendSettingsSheet({
                   onToggle={handleShareDrinksToggle}
                   disabled={draft.ghostMode}
                   accessibilityLabel={t.friends.shareDrinksTitle}
+                />
+              </View>
+            </View>
+
+            {/* Spend is its own switch, and off until you say otherwise: how
+                many beers you had and what they cost are two different things
+                to hand over. Only the Souboj reads it, and only when the other
+                side has it on too. */}
+            <View style={styles.settingItem}>
+              <View style={styles.settingRow}>
+                <View style={styles.settingText}>
+                  <Text style={styles.settingTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {t.friends.shareSpendTitle}
+                  </Text>
+                </View>
+                <Toggle
+                  value={draft.shareSpendWithParta && draft.shareDrinksWithParta && !draft.ghostMode}
+                  onToggle={handleShareSpendToggle}
+                  disabled={spendBusy || draft.ghostMode || !draft.shareDrinksWithParta}
+                  accessibilityLabel={t.friends.shareSpendTitle}
                 />
               </View>
             </View>

@@ -60,6 +60,7 @@ function makeSettings() {
     quietHoursStart: 23,
     quietHoursEnd: 9,
     shareDrinksWithParta: true,
+    shareSpendWithParta: false,
   };
 }
 

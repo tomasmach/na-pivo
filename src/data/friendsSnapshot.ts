@@ -313,6 +313,7 @@ function sanitizeDashboard(value: unknown): FriendsDashboard | null {
       quietHoursStart: hour(settings?.quietHoursStart, 23),
       quietHoursEnd: hour(settings?.quietHoursEnd, 9),
       shareDrinksWithParta: settings?.shareDrinksWithParta !== false,
+      shareSpendWithParta: settings?.shareSpendWithParta === true,
     },
     streak: {
       currentWeeks: count(streak?.currentWeeks),

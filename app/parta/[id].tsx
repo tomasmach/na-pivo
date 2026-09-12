@@ -26,6 +26,7 @@ import {
   MapPinIcon,
   XIcon,
   UserPlusIcon,
+  ChevronRightIcon,
 } from '@/components/shared/IconGlyph';
 import { fetchFriendBeerPhotos, type BeerPhoto } from '@/data/beerPhotosClient';
 import {
@@ -465,6 +466,34 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
+          {/* Souboj — the friends-only door to the head-to-head. A quiet row, not
+              a second amber button: this screen already spends its one amber
+              plane on the compass / follow action (§2.2, §6.3). */}
+          {isFriend && accountId ? (
+            <View style={styles.recentSection}>
+              <HairlineRow first>
+                <Pressable
+                  onPress={() =>
+                    router.push(
+                      `/friends/parta/souboj?accountId=${encodeURIComponent(accountId)}` as Href,
+                    )
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={t.friends.soubojOpen}
+                  style={({ pressed }) => [styles.soubojRow, pressed && { opacity: 0.65 }]}
+                >
+                  <Text
+                    style={[styles.soubojText, styles.soubojTitle]}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {t.friends.soubojOpen}
+                  </Text>
+                  <ChevronRightIcon size={20} color={Colors.mutedText} />
+                </Pressable>
+              </HairlineRow>
+            </View>
+          ) : null}
+
           {/* Vitrína — unlocked badges only; a locked grid is nobody's business. */}
           {showcase.length > 0 ? (
             <View style={styles.recentSection}>
@@ -732,6 +761,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.mutedText,
   },
+
+  // — Souboj door —
+  soubojRow: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  soubojText: { flex: 1, minWidth: 0 },
+  soubojTitle: { fontWeight: '700', fontSize: 17, color: Colors.foam },
 
   // — Badge showcase —
   showcaseWrap: {
