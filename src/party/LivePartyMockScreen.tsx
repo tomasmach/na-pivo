@@ -75,10 +75,9 @@ import { GAME_CATALOG, gameDisplayName } from '@/party/gameCatalog';
 import { IdleHub } from '@/party/IdleHub';
 import {
   firstDrinkTap,
-  idleBeerCount,
-  lastArchivedSession,
   primaryTapAction,
 } from '@/party/idleHubModel';
+import { useIdleHubDay } from '@/party/useIdleHubDay';
 import { Avatar } from '@/profile/Avatar';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
@@ -321,7 +320,7 @@ export default function LivePartyMockScreen() {
   const nearby = useNearbyPub();
   const tallyCurrent = useTallyStore((s) => s.current);
   const tallyHistory = useTallyStore((s) => s.history);
-  const lastSession = React.useMemo(() => lastArchivedSession(tallyHistory, new Date()), [tallyHistory]);
+  const { beerCount: idleDayBeers, lastSession } = useIdleHubDay(tallyCurrent, tallyHistory);
   const archiveCurrent = useTallyStore((s) => s.archiveCurrent);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const [undoDrink, setUndoDrink] = React.useState<TallyDrink | null>(null);
@@ -952,7 +951,7 @@ export default function LivePartyMockScreen() {
   ].join(' · ');
   // Beers already on tonight's tab when the hub opens without a running night.
   // Beers this phone logged tonight, for the hub before a night runs.
-  const idleBeers = active ? 0 : idleBeerCount(tallyCurrent, tallyHistory, new Date());
+  const idleBeers = active ? 0 : idleDayBeers;
   /**
    * What the one amber button says, in each of its three states. The label is
    * the promise, so it also decides the debounce window below: a new label is a
