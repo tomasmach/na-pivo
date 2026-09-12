@@ -7,6 +7,7 @@ import {
   notifyUgcConsentRequired,
 } from '@/data/ugcConsent';
 import { flushNightsQueue } from '@/data/nightsQueue';
+import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
 
 import { UgcConsentGate } from '../UgcConsentGate';
 
@@ -60,6 +61,9 @@ jest.mock('@/data/nightsQueue', () => ({ flushNightsQueue: jest.fn(async () => u
 jest.mock('@/data/pubNameCorrectionsQueue', () => ({
   flushPubNameCorrectionsQueue: jest.fn(async () => undefined),
 }));
+jest.mock('@/data/pubAmenitiesQueue', () => ({
+  flushPubAmenitiesQueue: jest.fn(async () => undefined),
+}));
 
 function renderGate(): TestRenderer.ReactTestRenderer {
   let renderer!: TestRenderer.ReactTestRenderer;
@@ -112,6 +116,8 @@ describe('UgcConsentGate', () => {
     expect(acceptUgcConsent).toHaveBeenCalledWith(CURRENT_UGC_POLICY_VERSION);
     expect(sheetProps(renderer).visible).toBe(false);
     expect(flushNightsQueue).toHaveBeenCalled();
+    // The amenity votes the user was blocked on must go out with the rest.
+    expect(flushPubAmenitiesQueue).toHaveBeenCalled();
   });
 
   it('opens by itself when the profile says consent is missing', () => {
@@ -140,6 +146,16 @@ describe('UgcConsentGate', () => {
 
     act(() => notifyUgcConsentRequired('ugc_consent_required'));
     expect(sheetProps(renderer).visible).toBe(false);
+  });
+
+  it('re-opens right after "Teď ne" when the user taps a gated action', () => {
+    accountState.profile = { ugcConsent: { accepted: false } };
+    const renderer = renderGate();
+    act(() => sheetProps(renderer).onLater());
+    expect(sheetProps(renderer).visible).toBe(false);
+
+    act(() => notifyUgcConsentRequired('ugc_consent_required', { userInitiated: true }));
+    expect(sheetProps(renderer).visible).toBe(true);
   });
 
   it('keeps the sheet open and complains when accepting fails', async () => {

@@ -70,6 +70,7 @@ import {
   clearUgcConsentStateForTests,
   UGC_POLICY_HEADER,
   ugcPolicyHeaders,
+  ugcAcceptanceRevision,
 } from '@/data/ugcConsent';
 import * as efs from 'expo-file-system';
 
@@ -4481,6 +4482,7 @@ describe('UGC consent', () => {
         }),
       );
 
+      const revisionBefore = ugcAcceptanceRevision('a');
       const result = await requireAcceptUgcConsent()('2026-09-01');
 
       expect(result).toEqual({
@@ -4502,6 +4504,7 @@ describe('UGC consent', () => {
 
       // The 200 snapshot updates the header cache for the durable account.
       expect(ugcPolicyHeaders('a')).toEqual({ [UGC_POLICY_HEADER]: '2026-09-01' });
+      expect(ugcAcceptanceRevision('a')).toBe(revisionBefore + 1);
     });
 
     it.each([

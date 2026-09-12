@@ -233,6 +233,54 @@ describe('flushPubAmenitiesQueue', () => {
     expect((queue[0] as { payload: WireAmenityVote }).payload.value).toBe('no');
   });
 
+  it('keeps every vote when the account owes UGC consent', async () => {
+    submitAmenityVotes.mockResolvedValue('consent-blocked');
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'practical_wifi'));
+
+    await flushPubAmenitiesQueue();
+    expect(await readQueue()).toHaveLength(2);
+
+    // A later flush (launch / foreground) keeps them too; the client answers
+    // consent-blocked without touching the network.
+    await flushPubAmenitiesQueue();
+    expect(await readQueue()).toHaveLength(2);
+
+    // Consent accepted → the pending votes go out and leave the queue.
+    submitAmenityVotes.mockResolvedValue('ok');
+    await flushPubAmenitiesQueue();
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('stops at one refused request per pass', async () => {
+    submitAmenityVotes.mockResolvedValue('consent-blocked');
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'practical_wifi'));
+    await enqueueAmenityOp(upsert('bbbbbbbb', 'game_darts'));
+
+    await flushPubAmenitiesQueue();
+
+    expect(submitAmenityVotes).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toHaveLength(3);
+  });
+
+  it('still delivers a retraction queued behind a consent-blocked vote', async () => {
+    // The server lets a null-only batch through without consent, so a vote the
+    // user just deleted must not stay public until they accept the rules.
+    submitAmenityVotes.mockImplementation(async (votes: WireAmenityVote[]) =>
+      votes[0]?.value === null ? 'ok' : 'consent-blocked',
+    );
+    await enqueueAmenityOp(upsert('aaaaaaaa', 'game_darts'));
+    await enqueueAmenityOp(tombstone('aaaaaaaa', 'practical_wifi'));
+
+    await flushPubAmenitiesQueue();
+
+    expect(submitAmenityVotes).toHaveBeenCalledTimes(2);
+    const queue = await readQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0].amenityKey).toBe('game_darts');
+  });
+
   it('does nothing on an empty queue', async () => {
     await flushPubAmenitiesQueue();
     expect(submitAmenityVotes).not.toHaveBeenCalled();

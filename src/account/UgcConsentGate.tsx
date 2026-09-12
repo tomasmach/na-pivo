@@ -3,10 +3,13 @@
  *
  * Two triggers, one sheet:
  *
- *   reactive   any gated write answered 428 — `ugcConsent` publishes it on the
- *              event bus and this opens the sheet. Never stacks, and after
- *              "Teď ne" it stays out of the way for a minute so a queue flush
- *              retrying in the background cannot re-open it in the user's face.
+ *   reactive   any gated write answered 428 — or a tap that would produce one —
+ *              is published on `ugcConsent`'s event bus and opens the sheet.
+ *              Never stacks, and after "Teď ne" it stays out of the way for a
+ *              minute so a queue flush retrying in the background cannot
+ *              re-open it in the user's face. A request the user just triggered
+ *              (`userInitiated`) ignores that quiet period, because a tap that
+ *              opens nothing reads as a dead button.
  *   proactive  the profile loaded with `ugcConsent.accepted === false`, so the
  *              first publish would fail anyway. Once per account.
  *
@@ -28,6 +31,7 @@ import { flushBeerPhotosQueue } from '@/data/beerPhotosQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { flushNightsQueue } from '@/data/nightsQueue';
+import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
 import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
 import {
   CURRENT_UGC_POLICY_VERSION,
@@ -58,6 +62,7 @@ function flushGatedQueues(): void {
   void flushFriendsQueue();
   void flushAddedPubsQueue();
   void flushPubNameCorrectionsQueue();
+  void flushPubAmenitiesQueue();
 }
 
 export function UgcConsentGate() {
@@ -76,9 +81,13 @@ export function UgcConsentGate() {
   // trigger still catches their first real attempt.
   const firstLaunchSession = useOnboardingStore((s) => s.firstLaunchSession);
 
-  const open = useCallback((): boolean => {
+  const open = useCallback((options?: { force?: boolean }): boolean => {
     if (visibleRef.current) return false;
-    if (Date.now() - closedAtRef.current < REOPEN_COOLDOWN_MS) return false;
+    // "Teď ne" mutes background retries for a minute — but not a tap the user
+    // just made, which would otherwise do nothing at all.
+    if (options?.force !== true && Date.now() - closedAtRef.current < REOPEN_COOLDOWN_MS) {
+      return false;
+    }
     visibleRef.current = true;
     setVisible(true);
     return true;
@@ -90,7 +99,13 @@ export function UgcConsentGate() {
     setVisible(false);
   }, []);
 
-  useEffect(() => subscribeUgcConsentRequired(() => void open()), [open]);
+  useEffect(
+    () =>
+      subscribeUgcConsentRequired((event) => {
+        void open({ force: event.userInitiated });
+      }),
+    [open],
+  );
 
   useEffect(() => {
     if (consentAccepted !== false || !accountId || firstLaunchSession) return;
