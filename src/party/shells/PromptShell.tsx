@@ -19,11 +19,12 @@
  * a table decides the app is broken. When it runs out it reshuffles and says so.
  */
 
-import React, { type ComponentType } from "react";
+import React from "react";
 import {
   AccessibilityInfo,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -38,6 +39,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { t } from "@/i18n";
+import { PromptCardPrint } from "@/party/GamePrints";
 import {
   GameStage,
   STAGE_FILL,
@@ -97,7 +99,7 @@ export function PromptShell({
   seed,
   step,
   onNext,
-  Icon,
+  gameKey,
   spectator = false,
 }: {
   prompts: readonly string[];
@@ -107,8 +109,7 @@ export function PromptShell({
   /** Shared append-only position. Omit for a local-only game. */
   step?: number;
   onNext?: () => void;
-  /** The game's glyph, small, at the top of the card. */
-  Icon?: ComponentType<{ size?: number; color: string }>;
+  gameKey?: string;
   /** Read-only view: the card shows, but nobody advances the deck from here. */
   spectator?: boolean;
 }) {
@@ -176,6 +177,7 @@ export function PromptShell({
 
   const stage = (
     <GameStage
+      fraction={single ? 0.68 : undefined}
       topRight={
         single ? undefined : (
           <StageChip label={`${index + 1}/${deck.length}`} />
@@ -201,20 +203,29 @@ export function PromptShell({
               : SlideOutLeft.duration(DEAL_MS)
         }
         style={styles.dealt}
-        pointerEvents="none"
       >
-        <StageCard>
-          {Icon ? (
-            <View style={styles.glyph}>
-              <Icon size={20} color={StageInk.soft} />
-            </View>
-          ) : null}
-          <Text
-            style={styles.prompt}
-            maxFontSizeMultiplier={FontScaleCap.heading}
+        <StageCard style={styles.paper} stacked={!single}>
+          <ScrollView bounces={false} overScrollMode="never"
+            style={styles.cardScroll}
+            contentContainerStyle={styles.cardContent}
+            showsVerticalScrollIndicator={false}
           >
-            {deck[index]}
-          </Text>
+            <View
+              style={[
+                styles.print,
+                gameKey === "thumb" && styles.printThumb,
+              ]}
+              pointerEvents="none"
+            >
+              <PromptCardPrint gameKey={gameKey ?? "categories"} />
+            </View>
+            <Text
+              style={styles.prompt}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              {deck[index]}
+            </Text>
+          </ScrollView>
         </StageCard>
       </Animated.View>
     </GameStage>
@@ -261,10 +272,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  glyph: { position: "absolute", top: Spacing.md },
+  paper: { paddingHorizontal: 0, paddingVertical: 24, overflow: "hidden" },
+  cardScroll: { alignSelf: "stretch", flex: 1 },
+  cardContent: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  print: {
+    width: "82%",
+    height: 90,
+    marginBottom: Spacing.md,
+  },
+  printThumb: { width: "92%", height: 112, marginBottom: Spacing.sm },
   prompt: {
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: 25,
+    lineHeight: 32,
     fontWeight: "800",
     color: StageInk.strong,
     textAlign: "center",

@@ -2588,6 +2588,8 @@ export const en: Strings = {
     nightTitleAtPub: (pubName: string) => `A night at ${pubName}`,
     nightTitleFallback: 'Beer night',
     gamesTitle: 'Games',
+    gameToolsTitle: 'Table tools',
+    eveningExtrasTitle: 'For the evening',
     scoringPoints: 'On points',
     scoringNoPoints: 'No points',
   },
@@ -4197,6 +4199,7 @@ export const en: Strings = {
   },
 
   gameShell: {
+    retiredGame: 'This game is no longer available to start.',
     fallbackTitle: 'Game',
     whoPlays: 'Who is playing',
     invite: 'Invite to the table',

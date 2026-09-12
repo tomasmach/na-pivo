@@ -10,8 +10,8 @@ jest.mock('@/party/PartyGameScreen', () => ({
 }));
 jest.mock('expo-router', () => ({ Redirect: () => null }));
 
-test('does not mount the game runtime through a direct route while games are disabled', () => {
-  expect(GAMES_COMING_SOON).toBe(true);
+test('mounts the game runtime through a direct route when games are released', () => {
+  expect(GAMES_COMING_SOON).toBe(false);
   act(() => { TestRenderer.create(<PartyGameRoute />); });
-  expect(mockGameRuntime).not.toHaveBeenCalled();
+  expect(mockGameRuntime).toHaveBeenCalled();
 });

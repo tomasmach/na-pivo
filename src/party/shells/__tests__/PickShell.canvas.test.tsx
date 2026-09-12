@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
 
 const mockCommand = jest.fn();
+const mockHostMounted = jest.fn();
 let mockReducedMotion = false;
 type MockOutcome = { scores: never[]; winnerId: null; payingId: string | null };
 let mockLastOutcome: MockOutcome | null = null;
@@ -39,6 +40,7 @@ jest.mock('@/games/GameHost', () => {
   return {
     GAME_HOST_AVAILABLE: true,
     GameHost: ReactModule.forwardRef((props: typeof mockGameHostProps, ref) => {
+      ReactModule.useEffect(() => { mockHostMounted(); }, []);
       mockGameHostProps = props;
       ReactModule.useImperativeHandle(ref, () => ({ command: mockCommand }));
       return ReactModule.createElement(View, { accessibilityLabel: 'game-host' });
@@ -72,6 +74,18 @@ const PLAYERS = [
   { id: 'me', name: 'Ty', tint: '#111' },
   { id: 'honza', name: 'Honza', tint: '#222' },
 ];
+
+it('restarts the bottle and spin lock when eight seats become sixty-four', () => {
+  const roster = Array.from({ length: 64 }, (_, i) => ({ id: `player-${i}`, name: `Player ${i}`, tint: '#7DD66B' }));
+  const props = { game: 'bottle', action: 'Roztoč', verdict: (name: string) => name };
+  const view = render(<PickShell {...props} players={roster.slice(0, 8)} />);
+  const mounts = mockHostMounted.mock.calls.length;
+  fireEvent.press(screen.getByLabelText('Roztoč'));
+  view.rerender(<PickShell {...props} players={roster} />);
+  expect(mockHostMounted).toHaveBeenCalledTimes(mounts + 1);
+  expect(screen.getByLabelText('Roztoč').props.accessibilityState.disabled).toBe(false);
+  expect(mockGameHostProps?.players).toHaveLength(64);
+});
 
 it('reserves the safe bottom lane for the game beer action', () => {
   render(

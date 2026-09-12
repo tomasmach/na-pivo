@@ -21,9 +21,9 @@ jest.mock('@/components/shared/CloseButton', () => ({ CloseButton: () => null })
 jest.mock('@/components/shared/IconGlyph', () => ({ CheckIcon: () => null, LockKeyholeIcon: () => null }));
 jest.mock('@/party/GameCover', () => ({ GameCover: () => null }));
 
-describe('GamesSheet while games are coming soon', () => {
-  it('locks every tile and never lets a game be picked', () => {
-    expect(GAMES_COMING_SOON).toBe(true);
+describe('GamesSheet released games', () => {
+  it('lets each game be placed on the table', () => {
+    expect(GAMES_COMING_SOON).toBe(false);
     const onPick = jest.fn();
     let renderer: ReturnType<typeof TestRenderer.create>;
     act(() => {
@@ -31,20 +31,24 @@ describe('GamesSheet while games are coming soon', () => {
         <GamesSheet visible onTable={[]} onClose={() => {}} onPick={onPick} />,
       );
     });
-    const tiles = renderer!.root.findAll(
-      (node) =>
+    for (const game of GAME_CATALOG) {
+      const tile = renderer!.root.findAll((node) =>
         typeof node.type !== 'string' &&
         node.props.accessibilityRole === 'button' &&
-        typeof node.props.accessibilityLabel === 'string' &&
-        node.props.accessibilityLabel.includes(cs.party.gamesComingSoon),
-    );
-    expect(tiles.length).toBe(GAME_CATALOG.length);
-    for (const tile of tiles) {
-      expect(tile.props.disabled).toBe(true);
-      expect(tile.props.onPress).toBeUndefined();
+        node.props.accessibilityLabel === `${game.name}. ${game.how}`,
+      )[0];
+      expect(tile.props.disabled).toBe(false);
+      act(() => tile.props.onPress());
+      expect(onPick).toHaveBeenLastCalledWith(game.key, game.name);
     }
-    expect(onPick).not.toHaveBeenCalled();
+    expect(onPick).toHaveBeenCalledTimes(GAME_CATALOG.length);
+    for (const retiredName of [cs.games.never.name, cs.games.kings.name]) {
+      expect(renderer!.root.findAll((node) =>
+        typeof node.props.accessibilityLabel === 'string' &&
+        node.props.accessibilityLabel.startsWith(`${retiredName}.`),
+      )).toHaveLength(0);
+    }
     const badges = renderer!.root.findAll((node) => node.props.children === cs.party.gamesSoonBadge);
-    expect(badges.length).toBeGreaterThanOrEqual(GAME_CATALOG.length);
+    expect(badges).toHaveLength(0);
   });
 });

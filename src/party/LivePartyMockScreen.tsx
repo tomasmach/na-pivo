@@ -69,7 +69,7 @@ import { menuPhotoPickFeedback, menuScanFailureCopy } from '@/contribute/menuSca
 import { showMenuScanPermissionBlocked } from '@/contribute/menuScanPermission';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { GameCover } from '@/party/GameCover';
-import { GAME_CATALOG, gameDisplayName } from '@/party/gameCatalog';
+import { GAME_CATALOG, findGame, gameDisplayName } from '@/party/gameCatalog';
 import { IdleHub } from '@/party/IdleHub';
 import { lastArchivedSession } from '@/party/idleHubModel';
 import { Avatar } from '@/profile/Avatar';
@@ -152,7 +152,7 @@ type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
 
 /** The catalogue entry behind a game on the table — the cover art lives there,
  *  and the live store only keeps the key. */
-const gameDef = (key: string) => GAME_CATALOG.find((game) => game.key === key) ?? GAME_CATALOG[0];
+const gameDef = (key: string) => findGame(key) ?? GAME_CATALOG[0];
 
 /**
  * The map of last resort: Prague, framed wide enough to read as "Czechia".
