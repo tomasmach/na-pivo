@@ -102,11 +102,10 @@ function distanceReadout(km: number | null): { value: string; unit: string } {
   if (km === 0.5) {
     return { value: '500', unit: t.compass.distanceUnitMeters };
   }
-  const singularForm = km === 1 || km === 1.5 || km === 2.5;
-  return {
-    value: formatCzKm(km),
-    unit: t.compass.distanceUnitKm(singularForm ? 1 : km),
-  };
+  // Hand the real number over: the unit helper already knows that a whole 1 is
+  // "KILOMETR" while 1,5 and 2,5 are "KILOMETRU". Forcing 1 for every decimal
+  // is what put "2,5 KILOMETR" on screen.
+  return { value: formatCzKm(km), unit: t.compass.distanceUnitKm(km) };
 }
 
 function numeralFontSize(value: string): number {

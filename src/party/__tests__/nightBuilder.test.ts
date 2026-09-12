@@ -70,7 +70,44 @@ const drinkEvent = (accountId: string, quantity = 1) => ({
   quantity,
 });
 
+function pricedSession(prices: (number | undefined)[]): TallySession {
+  return {
+    clientId: 'sess-priced',
+    pubKey: 'u2fkbjgx',
+    pubName: 'U Fleků',
+    startedAt: '2026-07-30T18:00:00.000Z',
+    drinks: prices.map((priceCzk, index) => ({
+      id: `p${index}`,
+      beerName: 'Plzeň',
+      at: `2026-07-30T${String(18 + index).padStart(2, '0')}:00:00.000Z`,
+      ...(priceCzk !== undefined ? { priceCzk } : {}),
+    })),
+  };
+}
+
 describe('buildNightRecord', () => {
+  it('carries my own price through to the record, so the recap can add it up', () => {
+    const record = buildNightRecord({
+      evening: null,
+      session: pricedSession([62, undefined, 89]),
+      meId: ME,
+    });
+
+    expect(record.drinks.map((drink) => drink.priceCzk)).toEqual([62, undefined, 89]);
+  });
+
+  it('never invents a price for somebody else at the table', () => {
+    const record = buildNightRecord({
+      evening: evening({ events: [drinkEvent('h-id')] }),
+      session: pricedSession([62]),
+      meId: ME,
+    });
+
+    const theirs = record.drinks.filter((drink) => drink.by !== ME);
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0].priceCzk).toBeUndefined();
+  });
+
   it('counts my beer once, even after the server has read it back', () => {
     // Two on the counter, and the server echoing one of them back as an event.
     const record = buildNightRecord({

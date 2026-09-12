@@ -1649,6 +1649,14 @@ export const en: Strings = {
     streakEmpty: 'No streak',
 
     // Crew leaderboard
+    soubojeHeader: 'Duels',
+    soubojAhead: (beers: number) => `You lead by ${beerCountLabel(beers)}`,
+    soubojBehind: (beers: number) => `Leads by ${beerCountLabel(beers)}`,
+    soubojTied: 'Dead level',
+    soubojNoNumbers: 'Not sharing their beers yet',
+    soubojRowA11y: (name: string) => `Open the duel with ${name}`,
+    soubojOpen: 'Duel',
+
     leaderboardHeader: 'Crew leaderboard · 30 days',
     // Nouns only; the numeral renders separately.
     leaderboardVisits: (n: number) => englishPlural(n, { one: 'visit', other: 'visits' }),
@@ -1667,6 +1675,7 @@ export const en: Strings = {
     ghostSubtitle:
       'The crew cannot see where you are sitting or what you have drunk. Your pings stay with you.',
     shareDrinksTitle: 'Show the crew where I am',
+    shareSpendTitle: 'Show what I spend in a duel',
     shareDrinksSubtitle:
       "Your mates see which pub you're in and what you've had tonight. Nobody else does.",
     ghostActive: 'Invisible mode is on',
@@ -1987,6 +1996,54 @@ export const en: Strings = {
     pubFallback: 'Pub',
   },
 
+
+  // Souboj (the duel) - me against one friend. Not a board on purpose: no
+  // winner, no ranking, only who leads which discipline.
+  souboj: {
+    title: 'Duel',
+    me: 'You',
+    vs: 'vs',
+    openFriendA11y: (name: string) => `Open ${name}'s profile`,
+
+    window30d: '30 days',
+    window180d: 'Six months',
+    windowAll: 'All time',
+    windowA11y: 'Which stretch you compare',
+
+    headlineTied: 'Dead level on beers.',
+    headlineAhead: (beers: number) => `You lead by ${beerCountLabel(beers)}.`,
+    headlineBehind: (name: string, beers: number) =>
+      `${name} leads by ${beerCountLabel(beers)}.`,
+
+    chartHeader: 'Beers by month',
+    legendMe: 'You',
+    chartMonthA11y: (month: string, mine: number, name: string, theirs: number) =>
+      `${month}: you ${mine}, ${name} ${theirs}`,
+
+    rowsHeader: 'Who leads what',
+    rowBeers: 'Beers',
+    rowEvenings: 'Nights',
+    rowPubs: 'Pubs',
+    rowPace: 'Beers a night',
+    rowSpend: 'Recorded spend',
+    spendCoverage: (mine: number, myBeers: number, name: string, theirs: number, theirBeers: number) =>
+      `You: ${mine} of ${beerCountLabel(myBeers)} priced. ${name}: ${theirs} of ${beerCountLabel(theirBeers)} priced.`,
+    paceValue: (value: number) => value.toFixed(1),
+    rowA11y: (label: string, mine: string, name: string, theirs: string) =>
+      `${label}: you ${mine}, ${name} ${theirs}`,
+
+    spendOff: (name: string) =>
+      `I compare spending once you both share it. ${name} does not share theirs yet.`,
+    spendOffMine: (name: string) =>
+      `${name} shares their spending. Turn yours on in the crew settings and I will compare you.`,
+
+    privateTitle: 'No duel here.',
+    privateBody: (name: string) =>
+      `${name} keeps their beers private. Without that there is nothing to compare.`,
+
+    errorTitle: 'I cannot load the duel right now.',
+    retry: 'Try again',
+  },
 
   // Global leaderboards, /leaderboards. Countrywide boards over logged beers,
   // discovered pubs and Mapper XP. Copy measures diary activity (logged beers,
@@ -3118,6 +3175,7 @@ export const en: Strings = {
       'A profile can hold a nickname, a name and an avatar. With a public profile, other people can find you by your nickname and photo; your exact location, your diary and individual beers are not shown publicly.',
       'The counter, the history of your nights, pub visits and your private ratings are stored locally and sync only to your account. When you log out or delete the account, the app clears the local private diary, the ratings and the entries waiting to be sent from this device.',
       'Sharing a night with your crew is on by default: friends you have accepted can see that you are in a pub, how many beers you have and your last entry. You can turn it off in the crew settings, or switch on ghost mode. Nobody other than the friends you have accepted sees any of this.',
+      'In a duel, an accepted friend can see your total recorded spending on beers only when both of you enable spend sharing. It is off by default. You can turn it off any time with the spend-sharing switch in the crew settings.',
       'I store beer photos on the server without metadata or GPS location. By default only your crew sees them; the only public ones are the photos you enter into the photo contest.',
       'When you photograph a beer menu with "Snap the menu", the photo goes through my server to an AI model for processing (via the OpenRouter service). I do not store the photo and, under my settings, the provider must not use it for training.',
       'If you allow notifications, I store the device push token and deliver Crew messages through Expo Push Service. Pub reminders show up on the phone itself and are not sent anywhere.',
@@ -3830,10 +3888,8 @@ export const en: Strings = {
     gamePlayed: (game: string) => `${game} · played`,
     roastLabel: 'Roast of the night',
     a11yRoastSwitch: 'Add the roast to the post',
-    titlePlaceholder: 'What do you call it',
     a11yTitleInput: 'Night title',
-    previewLabel: 'This is how it goes out',
-    visibility: 'Your crew will see it',
+    visibility: 'Your crew will see it.',
     a11yPublish: 'End and publish the night',
     publishing: 'Saving…',
     publish: 'End and publish',
@@ -3853,6 +3909,13 @@ export const en: Strings = {
     sectionStops: 'Stops',
     sectionChart: 'How it went',
     sectionGames: 'Games',
+    sectionSpend: 'The bill',
+    spendTotal: 'What you spent',
+    spendAverage: 'Average per drink',
+    spendPriciest: (beer: string) => `Priciest: ${beer}`,
+    spendMineOnly: 'Only what you logged counts here. What the others spent, I cannot see.',
+    spendPartial: (priced: number, total: number) =>
+      `Counting ${priced} of your ${total} drinks. The rest have no price.`,
     gamePaying: (name: string) => `Round on ${name}`,
     gameWinner: (name: string) => `${name} won`,
     gamePlayed: 'Played',

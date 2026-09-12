@@ -24,17 +24,21 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+import { Avatar } from '@/profile/Avatar';
 
 import ComposeSheet from './ComposeSheet';
 import FriendActiveCard from './FriendActiveCard';
 import FriendsSkeleton from './FriendsSkeleton';
 import MyActivityCard from './MyActivityCard';
 import OfflineBanner from './OfflineBanner';
+import { friendDisplayName } from './FriendMini';
 import { PartaScreenHeader } from './PartaScreenHeader';
 import PlanCard from './PlanCard';
 import { PresenceList } from './PresenceList';
+import { soubojRows } from './soubojList';
 import { usePartaDashboard } from './usePartaDashboard';
 
 function SectionBreak() {
@@ -66,6 +70,9 @@ export default function PartaHubScreen() {
     const timer = setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, target - 12), animated: true }), 60);
     return () => clearTimeout(timer);
   }, [activityId, dashboard, focus]);
+
+  // The dashboard has carried these tallies unread since 3.0 dropped the board.
+  const souboje = useMemo(() => soubojRows(dashboard?.leaderboard ?? []), [dashboard?.leaderboard]);
 
   const broadcastIds = useMemo(
     () => new Set((dashboard?.activeFriends ?? []).map((activity) => activity.account.id)),
@@ -222,6 +229,79 @@ export default function PartaHubScreen() {
           ) : null}
           </View>
 
+          {souboje.length > 0 ? (
+            <View>
+              <SectionBreak />
+              <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.friends.soubojeHeader}
+              </Text>
+              {souboje.map((row, index) => {
+                const name = friendDisplayName(row.entry.account);
+                return (
+                  <Pressable
+                    key={row.entry.account.id}
+                    onPress={() =>
+                      router.push(
+                        `/friends/parta/souboj?accountId=${encodeURIComponent(row.entry.account.id)}` as Href,
+                      )
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={t.friends.soubojRowA11y(name)}
+                    style={({ pressed }) => [
+                      styles.soubojRow,
+                      index === 0 && styles.soubojRowFirst,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Avatar
+                      uri={row.entry.account.avatarUrl}
+                      nickname={row.entry.account.nickname}
+                      displayName={row.entry.account.displayName}
+                      size={40}
+                    />
+                    <View style={styles.soubojText}>
+                      <Text
+                        style={styles.soubojName}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {name}
+                      </Text>
+                      <Text
+                        style={styles.soubojState}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {row.mine === null || row.theirs === null
+                          ? t.friends.soubojNoNumbers
+                          : row.diff === 0
+                            ? t.friends.soubojTied
+                            : row.diff > 0
+                              ? t.friends.soubojAhead(row.diff)
+                              : t.friends.soubojBehind(-row.diff)}
+                      </Text>
+                    </View>
+                    {row.mine !== null && row.theirs !== null ? (
+                      // Whoever is behind goes quiet, either side. Drawing both
+                      // numerals in foam made a row I was losing look like a
+                      // row I was winning.
+                      <Text style={styles.soubojScore} allowFontScaling={false}>
+                        <Text style={row.diff < 0 ? styles.soubojScoreQuiet : undefined}>
+                          {row.mine}
+                        </Text>
+                        <Text style={styles.soubojScoreSplit}>{' : '}</Text>
+                        <Text style={row.diff > 0 ? styles.soubojScoreQuiet : undefined}>
+                          {row.theirs}
+                        </Text>
+                      </Text>
+                    ) : null}
+                    <ChevronRightIcon size={18} color={Colors.mutedText} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
         </ScrollView>
       )}
 
@@ -261,6 +341,20 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.12),
   },
   planActionText: { flex: 1, color: Colors.foamMuted, fontSize: 15, fontWeight: '700' },
+  soubojRow: {
+    minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  soubojRowFirst: { borderTopWidth: 0 },
+  soubojText: { flex: 1, minWidth: 0 },
+  soubojName: { color: Colors.foam, fontSize: 16, fontWeight: '600' },
+  soubojState: { marginTop: 2, color: Colors.mutedText, fontSize: 13, fontWeight: '500' },
+  soubojScore: {
+    fontFamily: Fonts.numeral, fontSize: 19, lineHeight: 24, color: Colors.foam,
+    letterSpacing: -0.2, fontVariant: ['tabular-nums'], includeFontPadding: false,
+  },
+  soubojScoreSplit: { fontSize: 13, lineHeight: 17, color: Colors.mutedText, includeFontPadding: false },
+  soubojScoreQuiet: { color: Colors.mutedText },
   primary: {
     minHeight: 54, marginTop: Spacing.lg, borderRadius: Radius.medium,
     alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.amber,

@@ -1847,6 +1847,7 @@ class FriendSettingsPatchSerializer(serializers.Serializer):
 
     ghost_mode = serializers.BooleanField(required=False)
     share_drinks_with_parta = serializers.BooleanField(required=False)
+    share_spend_with_parta = serializers.BooleanField(required=False)
     quiet_hours_enabled = serializers.BooleanField(required=False)
     quiet_hours_start = serializers.IntegerField(required=False, min_value=0, max_value=23)
     quiet_hours_end = serializers.IntegerField(required=False, min_value=0, max_value=23)
