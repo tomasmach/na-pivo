@@ -1563,7 +1563,7 @@ export default function PartyGameScreen() {
           under your thumb, not up by the exit. */}
       {roster && !canonicalFinish ? (
         <Pressable
-          onPress={() => beer.add(houseBeer)}
+          onPress={() => void beer.add(houseBeer, { source: 'game' })}
           style={({ pressed }) => [
             styles.counter,
             { bottom: insets.bottom + Spacing.sm },

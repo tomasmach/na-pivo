@@ -22,6 +22,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useNowTick } from '@/friends/useNowTick';
 import { t } from '@/i18n';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -56,12 +57,13 @@ export function IdleHub({
         <>
           <SectionBreak title={t.liveParty.idleLastTitle} />
           <Pressable
-            onPress={() =>
+            onPress={() => {
+              trackUiInteraction('night_last_open');
               router.push({
                 pathname: '/evening',
                 params: { startedAt: lastSession.startedAt },
-              } as Href)
-            }
+              } as Href);
+            }}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={t.liveParty.a11yLastNight(lastTitle)}

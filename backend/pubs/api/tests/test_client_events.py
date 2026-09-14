@@ -262,6 +262,58 @@ def test_counter_product_events_are_accepted_and_sanitized(client):
 
 
 @pytest.mark.django_db
+def test_drink_added_keeps_only_closed_enum_values(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "drink_added",
+            "context": {
+                "source": "hub",
+                "had_active_session": True,
+                "backdated": True,
+                "drink_type": "shot",
+                "place_context": "private",
+            },
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "source": "hub",
+        "had_active_session": True,
+        "backdated": True,
+        "drink_type": "shot",
+        "place_context": "private",
+    }
+
+
+@pytest.mark.django_db
+def test_drink_added_drops_free_text_on_the_drink_keys(client):
+    """A beer name must not be storable by smuggling it into a typed key."""
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "drink_added",
+            "context": {
+                "source": "hub",
+                "had_active_session": False,
+                "drink_type": "Plzeňský Prazdroj 12°",
+                "place_context": "U Zlatého tygra",
+                "backdated": "yesterday",
+            },
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "source": "hub",
+        "had_active_session": False,
+    }
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("event_name", ["counter_session_closed", "counter_session_resumed"])
 def test_counter_session_lifecycle_events_are_accepted(client, event_name):
     resp = client.post(

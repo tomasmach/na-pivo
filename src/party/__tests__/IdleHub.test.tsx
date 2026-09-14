@@ -1,11 +1,13 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { IdleHub } from '@/party/IdleHub';
 import type { TallySession } from '@/stores/tallyStore';
 
 const push = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push }) }));
+jest.mock('@/data/uxTelemetry', () => ({ trackUiInteraction: jest.fn() }));
 jest.mock('@/components/shared/IconGlyph', () => ({ ChevronRightIcon: () => null }));
 jest.mock('@/mocks/SectionBreak', () => ({
   SectionBreak: ({ title }: { title?: string }) => {
@@ -31,7 +33,7 @@ const lastSession: TallySession = {
 const handlers = () => ({ onOpenTable: jest.fn() });
 
 beforeEach(() => {
-  push.mockClear();
+  jest.clearAllMocks();
 });
 
 it('offers the table as one quiet pill, with no amber word beside it', () => {
@@ -58,10 +60,11 @@ it('names the last night with the diary date label and honest drink counts', () 
   expect(screen.getByText('Včera · U Kotvy')).toBeTruthy();
   expect(screen.getByText('1 pivo · 1 víno')).toBeTruthy();
   fireEvent.press(screen.getByLabelText('Poslední večer, Včera · U Kotvy. Otevřít.'));
+  expect(trackUiInteraction).toHaveBeenCalledTimes(1);
+  expect(trackUiInteraction).toHaveBeenCalledWith('night_last_open');
   expect(push).toHaveBeenCalledWith({
     pathname: '/evening',
     params: { startedAt: lastSession.startedAt },
   });
 });
-
 
