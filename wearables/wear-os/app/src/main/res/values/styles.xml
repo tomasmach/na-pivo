@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NaPivoWear" parent="android:style/Theme.DeviceDefault">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#E8A317</item>
+        <item name="android:navigationBarColor">#1F1308</item>
+        <item name="android:windowBackground">#1F1308</item>
+    </style>
+</resources>

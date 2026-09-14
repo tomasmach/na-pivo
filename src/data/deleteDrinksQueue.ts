@@ -76,14 +76,18 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * deletion queue. Never throws. Deduped: enqueuing the same client_id twice is
  * a no-op (the DELETE is idempotent, but there is no point queueing it twice).
  */
-export async function enqueueDelete(clientId: string): Promise<DeleteDrinkEnqueueResult> {
+export async function ensureDeleteQueued(clientId: string): Promise<DeleteDrinkEnqueueResult> {
   const persisted = await runMutation(async () => {
     const queue = await loadQueue();
     if (queue.includes(clientId)) return true;
     queue.push(clientId);
     return saveQueue(preserveDurableQueue(queue, MAX_QUEUE_LENGTH));
   });
-  if (!persisted) return 'storage-error';
+  return persisted ? 'queued' : 'storage-error';
+}
+
+export async function enqueueDelete(clientId: string): Promise<DeleteDrinkEnqueueResult> {
+  if (await ensureDeleteQueued(clientId) === 'storage-error') return 'storage-error';
   await flushDeleteDrinksQueue();
   return 'queued';
 }

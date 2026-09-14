@@ -57,6 +57,14 @@ beforeEach(async () => {
 });
 
 describe('buildVisitEntry', () => {
+  it('carries an explicit wearable close time and uses it as the latest update', () => {
+    const closedAt = '2026-06-14T22:00:00.000Z';
+    const entry = buildVisitEntry(session({ closedAt }));
+
+    expect(entry?.closed_at).toBe(closedAt);
+    expect(entry?.updated_at).toBe(closedAt);
+  });
+
   it('derives lat/lng from the pubKey cell that re-encodes to the same key', () => {
     const entry = buildVisitEntry(session());
     expect(entry).not.toBeNull();
@@ -123,6 +131,17 @@ describe('buildVisitEntry', () => {
 });
 
 describe('syncVisit', () => {
+  it('uses the edit time for a backdated drink after a deletion', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-30T20:05:00.000Z'));
+    try {
+      syncVisit(session());
+      expect(enqueueVisitOp).toHaveBeenCalledWith(expect.objectContaining({
+        entry: expect.objectContaining({ updated_at: '2026-07-30T20:05:00.000Z' }),
+      }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
   it('enqueues an upsert for a session', async () => {
     await expect(syncVisit(session())).resolves.toBe('queued');
     expect(enqueueVisitOp).toHaveBeenCalledWith(
@@ -140,7 +159,9 @@ describe('syncVisit', () => {
     enqueueVisitOp.mockResolvedValueOnce('storage-error');
 
     await expect(deleteVisitByClientId('v1')).resolves.toBe('storage-error');
-    expect(enqueueVisitOp).toHaveBeenCalledWith({ op: 'delete', clientId: 'v1' });
+    expect(enqueueVisitOp).toHaveBeenCalledWith({
+      op: 'delete', clientId: 'v1', updatedAt: expect.any(String),
+    });
   });
 
   it('keeps the party code in the queued visit entry', () => {

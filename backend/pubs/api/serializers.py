@@ -2258,9 +2258,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
 class DrinkItemSerializer(serializers.Serializer):
     """The named item inside a drink-log request.
 
-    The wire key remains ``beer`` so released clients stay compatible. Beer
-    volumes retain the strict community-menu set; soft drinks and shots accept
-    real menu sizes from 10 ml to 3 l and never enter the beer catalogue.
+    The wire key remains ``beer`` so released clients stay compatible. Private
+    drinks accept real custom sizes from 10 ml to 3 l (shots stop at 200 ml).
+    Beer sizes outside the public community-menu presets remain private.
     """
 
     name = serializers.CharField(max_length=80, trim_whitespace=True)
@@ -2301,6 +2301,7 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     )
 
     client_id = serializers.UUIDField()
+    evening_client_id = serializers.UUIDField(required=False, allow_null=True)
     external_id = serializers.CharField(
         max_length=128,
         required=False,
@@ -2347,11 +2348,6 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
 
         item = attrs["beer"]
         if attrs["drink_type"] == DrinkLog.DrinkType.BEER:
-            volume_ml = item.get("volume_ml")
-            if volume_ml is not None and volume_ml not in ALLOWED_BEER_VOLUMES_ML:
-                raise serializers.ValidationError(
-                    {"beer": {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}}
-                )
             normalized = normalize_beer_payload(
                 item,
                 match_cache=self.context.get("beer_match_cache"),
@@ -2450,6 +2446,10 @@ class PubRatingRequestSerializer(PubInputSerializer):
         max_length=280, required=False, allow_null=True, allow_blank=True, trim_whitespace=True
     )
     updated_at = serializers.DateTimeField()
+
+
+class PubVisitDeleteRequestSerializer(serializers.Serializer):
+    updated_at = serializers.DateTimeField(required=False)
 
 
 class PubVisitRequestSerializer(PubInputSerializer):

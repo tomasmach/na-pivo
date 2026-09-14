@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   clearVisitsQueue,
   enqueueVisitOp,
+  ensureVisitOpQueued,
   flushVisitsQueue,
   type VisitQueueItem,
 } from '../visitsQueue';
@@ -79,6 +80,26 @@ beforeEach(async () => {
 });
 
 describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
+  it('keeps the deletion revision unchanged across offline retries', async () => {
+    deleteVisit.mockResolvedValueOnce('retry');
+    const updatedAt = '2026-07-30T20:05:00.000Z';
+    await enqueueVisitOp({ op: 'delete', clientId: UUID_A, updatedAt });
+    expect(await readQueue()).toEqual([{ op: 'delete', clientId: UUID_A, updatedAt }]);
+    await flushVisitsQueue();
+    expect(deleteVisit.mock.calls).toEqual([
+      [UUID_A, undefined, updatedAt],
+      [UUID_A, undefined, updatedAt],
+    ]);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('can persist an external watch visit before transport acknowledgement', async () => {
+    await ensureVisitOpQueued(upsert(UUID_A));
+
+    expect((await readQueue()).map((item) => item.clientId)).toEqual([UUID_A]);
+    expect(submitVisit).not.toHaveBeenCalled();
+  });
+
   it('reports storage failure and does not attempt delivery', async () => {
     (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
 
@@ -141,6 +162,20 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
     await enqueueVisitOp(upsert(UUID_B));
     const queue = await readQueue();
     expect(queue.map((i) => i.clientId).sort()).toEqual([UUID_A, UUID_B]);
+  });
+
+  it('does not evict an older evening when the legacy queue limit is exceeded', async () => {
+    const existing = Array.from({ length: 500 }, (_, index) =>
+      upsert(`00000000-0000-4000-8000-${index.toString().padStart(12, '0')}`),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+
+    await ensureVisitOpQueued(upsert('00000000-0000-4000-8000-000000000500'));
+
+    const queue = await readQueue();
+    expect(queue).toHaveLength(501);
+    expect(queue[0].clientId).toBe('00000000-0000-4000-8000-000000000000');
+    expect(queue[500].clientId).toBe('00000000-0000-4000-8000-000000000500');
   });
 
   it('clears the queue once delivery succeeds', async () => {

@@ -31,6 +31,7 @@
     "games:dev": "node scripts/build-games.mjs && open assets/games/dice.html"
   },
   "dependencies": {
+    "@bacons/apple-targets": "5.0.0",
     "@expo/ui": "~57.0.16",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.5",
@@ -70,6 +71,7 @@
     "geokdbush": "^2.1.0",
     "kdbush": "^4.1.0",
     "lucide-react-native": "^1.41.0",
+    "na-pivo-wearable-bridge": "file:wearables/shared/mobile-bridge",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
@@ -106,6 +108,10 @@
     "js-yaml@^3.0.0": "3.15.2",
     "js-yaml@^4.0.0": "4.3.2",
     "xcode": {
+      "uuid": "11.1.1"
+    },
+    "@bacons/xcode": {
+      "@expo/plist": "0.8.1",
       "uuid": "11.1.1"
     }
   }

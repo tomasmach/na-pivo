@@ -1,0 +1,34 @@
+{
+  "protocolVersion": 1,
+  "messageId": "0fa34236-bbd6-4f15-aaf6-ed531ba85a51",
+  "accountEpoch": "83d78467-da0d-4bed-9d75-d99a5e50c63b",
+  "actorId": "watchos-7d4310f8",
+  "actorKind": "watchos",
+  "actorSequence": 1,
+  "baseRevision": 7,
+  "sentAt": "2026-07-30T19:00:00+02:00",
+  "kind": "command",
+  "payload": {
+    "command": {
+      "type": "start_evening_and_add_drink",
+      "eveningId": "9277be1d-cd42-4dd0-af57-1414e1c96eb6",
+      "pub": {
+        "pubKey": "u2fkbn4f",
+        "name": "U Zlatého tygra",
+        "latitude": 50.08706,
+        "longitude": 14.41786,
+        "city": "Praha"
+      },
+      "drinkingDayKey": "2026-07-30",
+      "drink": {
+        "id": "269c719f-8be2-4cf9-a8cc-d17e2ab17ccd",
+        "name": "Pilsner Urquell 12°",
+        "drinkType": "beer",
+        "volumeMl": 500,
+        "priceCzk": 68,
+        "servingType": "draft",
+        "recordedAt": "2026-07-30T19:00:00+02:00"
+      }
+    }
+  }
+}
