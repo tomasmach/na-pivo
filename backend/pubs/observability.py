@@ -10,8 +10,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from asgiref.sync import iscoroutinefunction, markcoroutinefunction
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
+
+from pubs.privacy import redact_party_codes
 
 logger = logging.getLogger("pubs.request")
 
@@ -55,7 +58,7 @@ def _request_fields(
     fields: dict[str, Any] = {
         "request_id": request_id,
         "method": request.method,
-        "path": request.path,
+        "path": redact_party_codes(request.path),
         "status_code": status_code,
         "duration_ms": duration_ms,
         "client_ip_hash": get_client_ip_hash(request),
@@ -81,10 +84,19 @@ def _request_fields(
 class RequestLogMiddleware:
     """Log every HTTP request once with duration, status and request id."""
 
+    sync_capable = True
+    async_capable = True
+
     def __init__(self, get_response):
         self.get_response = get_response
+        self.is_async = iscoroutinefunction(get_response)
+        if self.is_async:
+            markcoroutinefunction(self)
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
+        if self.is_async:
+            return self.__acall__(request)
+
         started = time.perf_counter()
         request_id = _safe_request_id(request.headers.get("X-Request-ID"))
         request.na_pivo_request_id = request_id
@@ -107,6 +119,40 @@ class RequestLogMiddleware:
             )
             raise
 
+        return self._complete_request(request, response, started, request_id)
+
+    async def __acall__(self, request: HttpRequest) -> HttpResponse:
+        started = time.perf_counter()
+        request_id = _safe_request_id(request.headers.get("X-Request-ID"))
+        request.na_pivo_request_id = request_id
+
+        try:
+            response = await self.get_response(request)
+        except Exception:
+            duration_ms = round((time.perf_counter() - started) * 1000)
+            logger.exception(
+                "request failed",
+                extra={
+                    "event": "http_request_error",
+                    "observability": _request_fields(
+                        request,
+                        request_id=request_id,
+                        status_code=500,
+                        duration_ms=duration_ms,
+                    ),
+                },
+            )
+            raise
+
+        return self._complete_request(request, response, started, request_id)
+
+    @staticmethod
+    def _complete_request(
+        request: HttpRequest,
+        response: HttpResponse,
+        started: float,
+        request_id: str,
+    ) -> HttpResponse:
         duration_ms = round((time.perf_counter() - started) * 1000)
         status_code = getattr(response, "status_code", 0)
         response["X-Request-ID"] = request_id
@@ -142,7 +188,7 @@ class JsonLogFormatter(logging.Formatter):
             "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_party_codes(record.getMessage()),
         }
 
         event = getattr(record, "event", None)
@@ -154,6 +200,8 @@ class JsonLogFormatter(logging.Formatter):
             payload.update(observability)
 
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload["exception"] = redact_party_codes(
+                self.formatException(record.exc_info)
+            )
 
         return json.dumps(payload, ensure_ascii=False, default=str)

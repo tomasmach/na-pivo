@@ -15,7 +15,7 @@ jest.mock('@/utils/haptics', () => ({
   fireSuccessHaptic: jest.fn(),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 async function flushEffects() {

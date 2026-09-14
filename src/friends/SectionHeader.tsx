@@ -9,11 +9,12 @@
 import React, { memo } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 
+import { intlLocale } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
-import LiveDot from './LiveDot';
+import LiveDotView from './LiveDot';
 
 export interface SectionHeaderProps {
   /** Section title copy. */
@@ -25,11 +26,11 @@ export interface SectionHeaderProps {
 }
 
 function SectionHeaderComponent({ label, live = false, stale = false }: SectionHeaderProps) {
-  const compactCaption = label.length <= 4 && label === label.toLocaleUpperCase('cs-CZ');
+  const compactCaption = label.length <= 4 && label === label.toLocaleUpperCase(intlLocale);
 
   return (
     <View style={styles.row}>
-      {live ? <LiveDot size={7} stale={stale} /> : null}
+      {live ? <LiveDotView size={7} stale={stale} /> : null}
       <Text
         style={[styles.label, compactCaption && styles.labelCompact, live && styles.labelLive]}
         numberOfLines={1}
@@ -58,7 +59,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     lineHeight: 22,
     letterSpacing: -0.15,
@@ -68,7 +69,7 @@ const styles = StyleSheet.create({
     color: Colors.amberLight,
   },
   labelCompact: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     lineHeight: 16,
     letterSpacing: 1.4,

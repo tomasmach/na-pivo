@@ -18,3 +18,11 @@ export async function setItemAsync(key: string, value: string): Promise<void> {
 export async function deleteItemAsync(key: string): Promise<void> {
   delete store[key];
 }
+
+export function getItem(key: string): string | null {
+  return key in store ? store[key] : null;
+}
+
+export function setItem(key: string, value: string): void {
+  store[key] = value;
+}

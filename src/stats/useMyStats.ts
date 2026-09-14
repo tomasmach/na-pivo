@@ -6,29 +6,55 @@
  * account simply leaves the local view in place.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
 import { useAccountStore } from '@/stores/accountStore';
 
-export function useMyStats(): RemoteStats | null {
+export interface MyStatsState {
+  stats: RemoteStats | null;
+  status: 'loading' | 'ready' | 'unavailable';
+  retry: () => void;
+}
+
+export function useMyStatsState(): MyStatsState {
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const [snapshot, setSnapshot] = useState<{
+    requestKey: string;
     accountId: string | null;
-    stats: RemoteStats;
+    stats: RemoteStats | null;
+    status: Exclude<MyStatsState['status'], 'loading'>;
   } | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
+  const retry = useCallback(() => setRetryNonce((value) => value + 1), []);
+  const requestKey = `${accountId ?? 'anonymous'}:${retryNonce}`;
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     void fetchMyStats(controller.signal).then((result) => {
-      if (active && result) setSnapshot({ accountId, stats: result });
+      if (!active) return;
+      if (result) {
+        setSnapshot({ requestKey, accountId, stats: result, status: 'ready' });
+      } else {
+        setSnapshot({ requestKey, accountId, stats: null, status: 'unavailable' });
+      }
     });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [accountId]);
+  }, [accountId, requestKey]);
 
-  return snapshot?.accountId === accountId ? snapshot.stats : null;
+  const current = snapshot?.requestKey === requestKey ? snapshot : null;
+
+  return {
+    stats: current?.accountId === accountId ? current.stats : null,
+    status: current?.status ?? 'loading',
+    retry,
+  };
+}
+
+export function useMyStats(): RemoteStats | null {
+  return useMyStatsState().stats;
 }

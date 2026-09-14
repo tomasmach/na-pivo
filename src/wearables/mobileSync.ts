@@ -1,19 +1,25 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import {
+  isPrivateAccountMutationFrozen,
+  registerPrivateAccountFreezeListener,
+  registerPrivateAccountThawListener,
+  runPrivateAccountMutation,
+} from '@/data/privateAccountBoundary';
 import * as SecureStore from 'expo-secure-store';
 import { AppState } from 'react-native';
 
 import { generateUuidV4 } from '@/data/account';
-import { ensureDeleteQueued, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
+import { ensureDeleteQueued as persistDelete, flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import {
-  ensureDrinkQueued,
+  ensureDrinkQueued as persistDrink,
   flushDrinksQueue,
   removeQueuedDrink,
 } from '@/data/drinksQueue';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { getAllLoadedPubs } from '@/data/pubs';
 import { buildVisitEntry } from '@/data/visitsSync';
-import { ensureVisitOpQueued, flushVisitsQueue } from '@/data/visitsQueue';
+import { ensureVisitOpQueued as persistVisit, flushVisitsQueue } from '@/data/visitsQueue';
 import {
   isDrinkType,
   isServingType,
@@ -60,6 +66,7 @@ import {
   type WearableSyncState,
 } from './stateReducer';
 import {
+  beginMobileWearableAccountBoundary,
   beginMobileWearableSyncOperation,
   getMobileWearableSyncBoundary,
   MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
@@ -130,8 +137,16 @@ interface CoordinatorContext {
   boundaryGeneration: number;
 }
 
+async function requireDurable(result: Promise<string>): Promise<void> {
+  if (await result === 'storage-error') throw new Error('Offline queue is unavailable');
+}
+const ensureDrinkQueued = (...args: Parameters<typeof persistDrink>) => requireDurable(persistDrink(...args));
+const ensureDeleteQueued = (...args: Parameters<typeof persistDelete>) => requireDurable(persistDelete(...args));
+const ensureVisitOpQueued = (...args: Parameters<typeof persistVisit>) => requireDurable(persistVisit(...args));
+
 function enqueueSerial(work: () => Promise<void>): Promise<void> {
-  const next = serialWork.then(work, work);
+  const guardedWork = () => runPrivateAccountMutation(async () => work());
+  const next = serialWork.then(guardedWork, guardedWork);
   serialWork = next.catch(() => undefined);
   return next;
 }
@@ -151,6 +166,7 @@ function captureCoordinatorContext(): CoordinatorContext | null {
   const boundary = getMobileWearableSyncBoundary();
   const accountId = useAccountStore.getState().session?.accountId ?? null;
   if (
+    isPrivateAccountMutationFrozen() ||
     boundary.suspended ||
     !shadow ||
     !activeAccountId ||
@@ -167,6 +183,7 @@ function captureCoordinatorContext(): CoordinatorContext | null {
 function coordinatorContextIsCurrent(context: CoordinatorContext): boolean {
   const boundary = getMobileWearableSyncBoundary();
   return (
+    !isPrivateAccountMutationFrozen() &&
     !boundary.suspended &&
     boundary.generation === context.boundaryGeneration &&
     activeAccountId === context.accountId &&
@@ -1455,7 +1472,7 @@ function schedulePublish(): void {
   if (publishTimer) clearTimeout(publishTimer);
   publishTimer = setTimeout(() => {
     publishTimer = null;
-    void enqueueSerial(publishPhoneSnapshot);
+    void enqueueSerial(publishPhoneSnapshot).catch(() => undefined);
   }, 250);
 }
 
@@ -1570,9 +1587,17 @@ export async function initializeMobileWearableSync(): Promise<void> {
     await waitForHydration();
     if (installed) return;
     installed = true;
+    registerPrivateAccountFreezeListener(() => {
+      beginMobileWearableAccountBoundary();
+      shadow = null;
+      activeAccountId = null;
+    });
+    registerPrivateAccountThawListener(() => {
+      void enqueueSerial(() => activateCurrentAccount({ resumeBoundary: true })).catch(() => undefined);
+    });
 
     addWearableCommandListener(() => {
-      void enqueueSerial(processPendingCommands);
+      void enqueueSerial(processPendingCommands).catch(() => undefined);
     });
     useTallyStore.subscribe((state, previous) => {
       if (
@@ -1606,15 +1631,15 @@ export async function initializeMobileWearableSync(): Promise<void> {
         activeAccountId = null;
         void enqueueSerial(() =>
           activateCurrentAccount({ resumeBoundary: true }),
-        );
+        ).catch(() => undefined);
       }
     });
     AppState.addEventListener('change', (state) => {
-      if (state === 'active') void enqueueSerial(activateCurrentAccount);
+      if (state === 'active') void enqueueSerial(activateCurrentAccount).catch(() => undefined);
     });
     setInterval(() => {
       if (AppState.currentState === 'active') {
-        void enqueueSerial(processPendingCommands);
+        void enqueueSerial(processPendingCommands).catch(() => undefined);
       }
     }, BACKGROUND_POLL_MS);
 

@@ -1,0 +1,31 @@
+name: Question or setup help
+description: Ask about contributing or running the project locally
+title: "question: "
+labels:
+  - question
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Link the relevant documentation and include cleaned command output.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: macOS 27, Node 24, Python 3.14, iOS or Android
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed tokens, credentials, personal data and exact locations from this question.
+          required: true

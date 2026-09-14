@@ -1,12 +1,17 @@
 import React from 'react';
-import { AppState } from 'react-native';
+import { AppState, Pressable } from 'react-native';
 import * as Location from 'expo-location';
-import { useDevicePosition } from '../useDevicePosition';
+import {
+  clearLastKnownDevicePosition,
+  lastKnownDevicePosition,
+  useDevicePosition,
+} from '../useDevicePosition';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('expo-location', () => ({
   Accuracy: {
+    High: 4,
     BestForNavigation: 6,
   },
   getLastKnownPositionAsync: jest.fn(),
@@ -17,7 +22,7 @@ jest.mock('@/location/locationCurrency', () => ({
   updateCurrencyFromCoordinates: jest.fn(),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 type DevicePositionHookProps = {
@@ -63,6 +68,7 @@ describe('useDevicePosition', () => {
 
   beforeEach(() => {
     appStateHandler = undefined;
+    clearLastKnownDevicePosition();
     jest.clearAllMocks();
     (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
     (AppState as { currentState: string }).currentState = 'active';
@@ -103,7 +109,7 @@ describe('useDevicePosition', () => {
     });
     expect(Location.watchPositionAsync).toHaveBeenCalledWith(
       {
-        accuracy: Location.Accuracy.BestForNavigation,
+        accuracy: Location.Accuracy.High,
         distanceInterval: 0,
         timeInterval: 1000,
       },
@@ -127,6 +133,78 @@ describe('useDevicePosition', () => {
     });
 
     hook.unmount();
+  });
+
+  it('queues a retry tapped while the first watcher registration is pending', async () => {
+    let rejectFirst: ((error: Error) => void) | undefined;
+    let emitSecond:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    const removeSecond = jest.fn();
+    (Location.watchPositionAsync as jest.Mock)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockImplementationOnce(async (_options, callback) => {
+        emitSecond = callback;
+        return { remove: removeSecond };
+      });
+
+    let latestResult: ReturnType<typeof useDevicePosition> | undefined;
+
+    function RetryHarness() {
+      latestResult = useDevicePosition(true);
+      return React.createElement(Pressable, {
+        accessibilityLabel: 'Zkusit polohu znovu',
+        onPress: () => void latestResult?.retry(),
+      });
+    }
+
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(RetryHarness));
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      const retryButton = renderer.root.findByProps({
+        accessibilityLabel: 'Zkusit polohu znovu',
+      });
+      retryButton.props.onPress();
+      retryButton.props.onPress();
+      await Promise.resolve();
+    });
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rejectFirst?.(new Error('native watcher unavailable'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      emitSecond?.({
+        coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 },
+      });
+    });
+    expect(latestResult?.position).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+
+    act(() => renderer.unmount());
+    expect(removeSecond).toHaveBeenCalledTimes(1);
   });
 
   it('publishes a recent accurate cached fix before the live watcher emits', async () => {
@@ -210,6 +288,48 @@ describe('useDevicePosition', () => {
       lng: 16.607,
       accuracyMeters: 10,
     });
+    hook.unmount();
+  });
+
+  it('drops stationary GPS jitter but publishes real movement', async () => {
+    let emitLocation:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_options, callback) => {
+      emitLocation = callback;
+      return { remove: jest.fn() };
+    });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      emitLocation?.({ coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 } });
+    });
+    const first = hook.result.position;
+    expect(first).toEqual({ lat: 50.087, lng: 14.421, accuracyMeters: 12 });
+
+    // ~1 m of jitter with a similar accuracy: same object, no re-render churn.
+    act(() => {
+      emitLocation?.({ coords: { latitude: 50.087009, longitude: 14.421, accuracy: 13 } });
+    });
+    expect(hook.result.position).toBe(first);
+
+    // ~110 m of real movement publishes.
+    act(() => {
+      emitLocation?.({ coords: { latitude: 50.088, longitude: 14.421, accuracy: 12 } });
+    });
+    expect(hook.result.position).toEqual({ lat: 50.088, lng: 14.421, accuracyMeters: 12 });
+
+    // A large accuracy change publishes even without movement.
+    act(() => {
+      emitLocation?.({ coords: { latitude: 50.088, longitude: 14.421, accuracy: 40 } });
+    });
+    expect(hook.result.position).toEqual({ lat: 50.088, lng: 14.421, accuracyMeters: 40 });
+
     hook.unmount();
   });
 
@@ -334,5 +454,82 @@ describe('useDevicePosition', () => {
     expect(remove).not.toHaveBeenCalled();
     hook.unmount();
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+  // A JS reload gives the fresh runtime an AppState it has never been told
+  // about. Treating that as "not foreground" left the pub list on "Zkusit
+  // polohu znovu" with no distances until the app was relaunched, because the
+  // only way back was an AppState change event that never fires while the app
+  // is already in front of you.
+  it('starts watching after a reload leaves the app state unreported', async () => {
+    (AppState as { currentState: string }).currentState = 'unknown';
+    (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
+  it('still refuses to watch while the app is in the background', async () => {
+    (AppState as { currentState: string }).currentState = 'background';
+    (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+});
+
+describe('last known device position', () => {
+  beforeEach(() => {
+    clearLastKnownDevicePosition();
+    jest.clearAllMocks();
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
+    (AppState as { currentState: string }).currentState = 'active';
+    (AppState.addEventListener as jest.Mock).mockImplementation(() => ({ remove: jest.fn() }));
+  });
+
+  it('hands a freshly mounted screen the fix the previous one already had', async () => {
+    let emitLocation:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_options, callback) => {
+      emitLocation = callback;
+      return { remove: jest.fn() };
+    });
+
+    const first = renderDevicePositionHook({ enabled: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      emitLocation?.({ coords: { latitude: 50.087, longitude: 14.421, accuracy: 12 } });
+    });
+    first.unmount();
+
+    expect(lastKnownDevicePosition()).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+
+    // The pub picker opening over the Hospody tab: a brand new hook instance,
+    // which used to start at null and show "no location" until GPS answered.
+    const second = renderDevicePositionHook({ enabled: true });
+    expect(second.result.position).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+    second.unmount();
   });
 });

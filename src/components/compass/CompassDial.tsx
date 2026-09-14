@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { CompassSize } from '@/theme/layout';
 
 interface CompassDialProps {
@@ -10,7 +10,7 @@ interface CompassDialProps {
 
 // Cardinal letters in Czech compass order:
 // S = Sever (North), V = Východ (East), J = Jih (South), Z = Západ (West)
-const CARDINALS: Array<{ label: string; angleDeg: number }> = [
+const CARDINALS: { label: string; angleDeg: number }[] = [
   { label: 'S', angleDeg: 0 },   // top = North
   { label: 'V', angleDeg: 90 },  // right = East
   { label: 'J', angleDeg: 180 }, // bottom = South
@@ -22,7 +22,7 @@ const CARDINALS: Array<{ label: string; angleDeg: number }> = [
 const CARDINAL_DISTANCE = 88;
 
 // Decorative dot texture inside foam disk
-const TEXTURE_DOTS: Array<{ cx: number; cy: number; r: number }> = [
+const TEXTURE_DOTS: { cx: number; cy: number; r: number }[] = [
   { cx: 135, cy: 120, r: 3 },
   { cx: 180, cy: 100, r: 2 },
   { cx: 200, cy: 150, r: 2.5 },
@@ -56,7 +56,7 @@ export const CompassDial = memo(function CompassDial({ size = CompassSize }: Com
   const TICK_RING_R = 145;
 
   // Build tick marks
-  const ticks: Array<{ x: number; y: number; isCardinal: boolean }> = [];
+  const ticks: { x: number; y: number; isCardinal: boolean }[] = [];
   for (let i = 0; i < 24; i++) {
     const angleDeg = i * 15;
     const isCardinal = i % 6 === 0;
@@ -157,7 +157,6 @@ export const CompassDial = memo(function CompassDial({ size = CompassSize }: Com
           key={label}
           x={x}
           y={y}
-          fontFamily={Fonts.display.extrabold}
           fontSize={20}
           fontWeight="800"
           fill={Colors.stout}

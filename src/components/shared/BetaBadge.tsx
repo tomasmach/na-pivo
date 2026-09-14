@@ -11,7 +11,7 @@ import React, { memo } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 interface BetaBadgeProps {
@@ -40,6 +40,9 @@ export const BetaBadge = memo(BetaBadgeImpl);
 
 const styles = StyleSheet.create({
   badge: {
+    // Never give up width to a shrinking label beside it: inside the scan pill
+    // the badge was the thing that got pushed off the edge.
+    flexShrink: 0,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: Radius.pill,
@@ -54,7 +57,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.2),
   },
   text: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',

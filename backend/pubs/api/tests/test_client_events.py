@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from django.core.cache import cache
 from rest_framework import status
@@ -144,6 +146,73 @@ def test_client_event_payload_is_sanitized(client):
     stats_row = AccountUsageStats.objects.get()
     assert stats_row.client_error_count == 1
     assert stats_row.walked_distance_m == 0
+
+
+@pytest.mark.django_db
+def test_client_event_redacts_party_join_code_from_message_and_endpoint(client):
+    token = _register(client)
+    response = client.post(
+        "/v1/client-events",
+        data={
+            "event": "console_error",
+            "message": "Failed /v1/party-evenings/PRAH24/games/stream join_code=PRAH24",
+            "context": {
+                "endpoint": "/v1/party-evenings/PRAH24/games?since=4",
+                "error_message": "party_code=PRAH24",
+            },
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    serialized = f"{event.message} {event.context}"
+    assert "PRAH24" not in serialized
+    assert "[redacted-party-code]" in serialized
+
+
+@pytest.mark.django_db
+def test_client_event_redacts_coordinates_from_message_and_stack(client):
+    """Old clients that leak GPS into telemetry must not store coordinates."""
+
+    token = _register(client)
+    response = client.post(
+        "/v1/client-events",
+        data={
+            "event": "unhandled_error",
+            "message": "Geolocation error at lat=50.0875, lng: 14.4208",
+            "context": {
+                "stack": (
+                    "at locate (50.0875111, 14.4208000)\n"
+                    "at map (lat: -33.865143, longitude: 151.209900)"
+                ),
+                "error_message": "position 50.0875111,14.4208000 unavailable",
+                # Useful non-sensitive diagnostics stay intact.
+                "operation": "locate_pub",
+                "status": 503,
+            },
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    stored = json.dumps({"m": event.message, "c": event.context})
+    for raw in (
+        "50.0875",
+        "14.4208",
+        "50.0875111",
+        "14.4208000",
+        "-33.865143",
+        "151.209900",
+    ):
+        assert raw not in stored
+    assert "[redacted-coords]" in event.message
+    assert "[redacted-coords]" in event.context["error_message"]
+    assert event.context["operation"] == "locate_pub"
+    assert event.context["status"] == 503
 
 
 @pytest.mark.django_db
@@ -312,6 +381,24 @@ def test_screen_view_event_accepts_only_coarse_screen_names(client):
     assert event.context == {
         "screen": "friend_profile",
         "previous_screen": "friends",
+    }
+
+
+@pytest.mark.django_db
+def test_screen_view_event_accepts_released_diary_screen_name(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "screen_viewed",
+            "context": {"screen": "diary", "previous_screen": "beer"},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "screen": "diary",
+        "previous_screen": "beer",
     }
 
 

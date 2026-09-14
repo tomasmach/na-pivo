@@ -16,7 +16,13 @@ from django.utils import timezone as dj_tz
 
 from pubs.api.cache import get_or_enrich
 from pubs.enrichment import RawHours, geohash8
-from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
+from pubs.models import (
+    EnrichTask,
+    ExternalApiDailyUsage,
+    PubCommunityData,
+    PubExternalBeerMenu,
+    PubHours,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -226,6 +232,22 @@ def test_cache_miss_within_budget_triggers_fetch_and_persists():
     assert row.rating_label == "Velmi dobré"
     assert row.has_garden is False
     assert row.venue_tags == []
+
+
+@pytest.mark.django_db
+def test_production_firmy_source_uses_shared_database_daily_budget(settings):
+    settings.FIRMY_DAILY_CAP = 1
+    mock_source = MagicMock()
+    mock_source.fetch.return_value = _GOOD_RAW
+
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source) as source_class:
+        get_or_enrich([_PUB_ENTRY], sync_budget=1)
+
+    budget = source_class.call_args.kwargs["request_budget"]
+    assert budget(1) is True
+    assert budget(1) is False
+    usage = ExternalApiDailyUsage.objects.get(provider="firmy", operation="http")
+    assert usage.request_count == 1
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.utils import timezone
 
 from . import community_event_admin, pub_event_admin  # noqa: F401
+from .enrichment import geohash8
 from .models import (
     Account,
     AccountUsageStats,
@@ -24,6 +25,7 @@ from .models import (
     PubExternalBeerMenu,
     PubHours,
     PublishedNight,
+    PublishedNightComment,
     PubMergeAudit,
     PubNameCorrection,
     PubRating,
@@ -168,6 +170,11 @@ class UserAddedPubAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "city", "address")
     readonly_fields = ("cache_key", "client_id", "created_at", "updated_at")
     ordering = ("-updated_at",)
+
+    def save_model(self, request, obj, form, change) -> None:
+        if {"lat", "lng"}.intersection(form.changed_data):
+            obj.cache_key = geohash8(obj.lat, obj.lng)
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(EnrichTask)
@@ -344,6 +351,44 @@ class PublishedNightAdmin(admin.ModelAdmin):
         "updated_at",
     )
     ordering = ("-created_at", "-id")
+
+
+@admin.register(PublishedNightComment)
+class PublishedNightCommentAdmin(admin.ModelAdmin):
+    """Moderation surface for night comments: authored content is immutable,
+    moderation only flips the soft-removed kill switch."""
+
+    list_display = ("created_at", "account", "night", "short_body", "is_removed")
+    list_select_related = ("account", "night")
+    list_filter = ("is_removed", "created_at")
+    search_fields = (
+        "body",
+        "public_id",
+        "account__public_id",
+        "account__nickname",
+        "night__public_id",
+    )
+    readonly_fields = (
+        "public_id",
+        "night",
+        "account",
+        "client_id",
+        "body",
+        "created_at",
+        "updated_at",
+    )
+    actions = ("remove_comments",)
+    ordering = ("-created_at", "-id")
+
+    @admin.display(description="body")
+    def short_body(self, obj: PublishedNightComment) -> str:
+        return _truncate(obj.body, 60)
+
+    @admin.action(description="Remove selected comments")
+    def remove_comments(self, request, queryset) -> None:  # noqa: ARG002
+        # One shared timestamp for the whole bulk update, matching the API view
+        # delete (which saves is_removed + updated_at together).
+        queryset.filter(is_removed=False).update(is_removed=True, updated_at=timezone.now())
 
 
 @admin.register(PubReport)
@@ -689,12 +734,14 @@ class PubVisitAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 class ReleaseNoteItemInline(admin.TabularInline):
     model = ReleaseNoteItem
     extra = 1
-    fields = ("order", "icon", "text")
+    fields = ("order", "icon", "text", "text_en")
     ordering = ("order",)
 
 
 @admin.register(ReleaseNote)
 class ReleaseNoteAdmin(admin.ModelAdmin):
+    # Leave title_en and text_en empty to keep a note Czech-only; the app then
+    # hides the popup for users running the app in English.
     list_display = ("version", "title", "is_published", "published_at", "updated_at")
     list_filter = ("is_published",)
     search_fields = ("version", "title")

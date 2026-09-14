@@ -25,6 +25,7 @@ OpenRouterVisionSource — AI vision client for the beer-menu scan; see openrout
 OpenRouterDailyCapExceededError — raised by OpenRouterVisionSource when the daily cap is hit
 OpenRouterUnavailableError — raised by OpenRouterVisionSource when OpenRouter is unreachable
 GoogleGeocodingSource — narrow Google Geocoding v4 address client
+GooglePlacesAutocompleteSource — Google Places name autocomplete client
 """
 
 from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
@@ -33,6 +34,12 @@ from .google_geocoding import (  # noqa: F401
     GoogleGeocodingDailyCapExceededError,
     GoogleGeocodingSource,
     GoogleGeocodingUnavailableError,
+)
+from .google_places import (  # noqa: F401
+    GooglePlacePrediction,
+    GooglePlacesAutocompleteSource,
+    GooglePlacesDailyCapExceededError,
+    GooglePlacesUnavailableError,
 )
 from .is_open import is_open_now, next_change  # noqa: F401
 from .matcher import (  # noqa: F401
@@ -63,6 +70,10 @@ __all__ = [
     "GoogleGeocodingSource",
     "GoogleGeocodingUnavailableError",
     "GoogleGeocodingDailyCapExceededError",
+    "GooglePlacePrediction",
+    "GooglePlacesAutocompleteSource",
+    "GooglePlacesUnavailableError",
+    "GooglePlacesDailyCapExceededError",
     "normalize_to_osm",
     "community_hours_to_osm",
     "is_open_now",

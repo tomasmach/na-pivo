@@ -1,0 +1,13 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Na pivo",
+    "NSLocationWhenInUseUsageDescription": "I need your location to find pubs nearby and point the arrow. Your current or approximate location may be sent to my server; I never store a GPS trail or location history.",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "In the evening, Na pivo can occasionally check whether you are sitting at a pub and remind you to pick the pub and count your beers, even when the app is closed or not in use. I never store a GPS trail or location history.",
+    "NSMotionUsageDescription": "I use the motion sensors to turn the arrow when you turn.",
+    "NSPhotoLibraryUsageDescription": "I open your gallery so you can pick a profile photo, a photo of the beer menu, or a beer photo for your diary.",
+    "NSCameraUsageDescription": "I need the camera to read beers off a menu and to let you snap a beer for your diary."
+  },
+  "android": {
+    "app_name": "Na pivo"
+  }
+}

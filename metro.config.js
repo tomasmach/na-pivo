@@ -11,4 +11,9 @@ config.resolver.blockList = [
   new RegExp(`^${path.join(__dirname, 'backend')}/.*`),
 ];
 
+// WebView games ship as one self-contained .html each (see
+// `scripts/build-games.mjs`). Metro has to treat them as assets, or `require()`
+// of the built file resolves to nothing.
+config.resolver.assetExts = [...config.resolver.assetExts, 'html'];
+
 module.exports = config;

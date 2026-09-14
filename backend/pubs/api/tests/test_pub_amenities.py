@@ -18,6 +18,7 @@ daily-cap behaviour is covered in test_pub_amenities_mapper.py.
 from __future__ import annotations
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
@@ -25,6 +26,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
@@ -109,10 +111,10 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     # Exactly the 11 active kinds; the two reserved (active=False), smoking, and the four
     # deactivated kinds (seating_kids_corner, payment_cash_only,
     # atmosphere_dogs_welcome, practical_food) are excluded.
-    assert len(keys) == 11
+    assert len(keys) == 12
     assert "atmosphere_smoking" not in keys
     assert "practical_outdoor_tap" not in keys
-    assert "practical_tank_beer" not in keys
+    assert "practical_tank_beer" in keys
     assert "seating_kids_corner" not in keys
     assert "payment_cash_only" not in keys
 
@@ -120,13 +122,19 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     orders = [k["order"] for k in body["kinds"]]
     assert orders == sorted(orders)
 
-    # Canonical wire field names, exactly 8 per item.
+    # Canonical wire field names. The _cs pair released apps read never moves;
+    # label_en/short_label_en and the request-language label/short_label pair are
+    # additive for the clients that speak English.
     first = body["kinds"][0]
     assert set(first.keys()) == {
         "key",
         "group",
         "label_cs",
         "short_label_cs",
+        "label_en",
+        "short_label_en",
+        "label",
+        "short_label",
         "icon",
         "map_filterable",
         "is_active",
@@ -404,11 +412,11 @@ def test_unknown_amenity_key_is_ignored_not_400(client):
 @pytest.mark.django_db
 def test_inactive_amenity_key_is_ignored(client):
     token = _register(client)
-    # practical_tank_beer is seeded but active=False → write ignored.
+    # practical_tank_beer was seeded inactive until 2.0.0 activated it for the
+    # "Tank" filter chip; a vote on it is a real vote now.
     resp = _put(client, token, _vote(amenity_key="practical_tank_beer"))
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["results"][0]["ignored_unknown_amenity"] is True
-    assert PubAmenityVote.objects.count() == 0
+    assert resp.json()["results"][0]["ignored_unknown_amenity"] is False
 
 
 @pytest.mark.django_db
@@ -613,10 +621,10 @@ def test_read_aggregates_and_completeness(client):
     pub = resp.json()["pubs"][0]
     assert pub["cache_key"] == _KEY
     assert pub["mapper_count"] == 3  # distinct accounts (garden had 3)
-    assert pub["completeness"]["total_kinds"] == 11
+    assert pub["completeness"]["total_kinds"] == 12
     # Only garden has status != unknown (wifi has 1 vote).
     assert pub["completeness"]["mapped_count"] == 1
-    assert pub["completeness"]["pct"] == pytest.approx(1 / 11, abs=1e-4)
+    assert pub["completeness"]["pct"] == pytest.approx(1 / 12, abs=1e-4)
 
     by_key = {a["amenity_key"]: a for a in pub["amenities"]}
     assert by_key["seating_garden"]["status"] == "yes"
@@ -694,7 +702,7 @@ def test_read_deactivated_kind_excluded_and_completeness_clamped(client):
     # Deactivated kind is excluded from amenities AND completeness numerator;
     # the denominator drops to 10. pct stays clamped within [0, 1].
     assert all(a["amenity_key"] != "seating_garden" for a in pub["amenities"])
-    assert pub["completeness"]["total_kinds"] == 10
+    assert pub["completeness"]["total_kinds"] == 11
     assert pub["completeness"]["mapped_count"] == 0
     assert 0.0 <= pub["completeness"]["pct"] <= 1.0
 
@@ -705,7 +713,7 @@ def test_read_empty_for_unmapped_cell(client):
     pub = resp.json()["pubs"][0]
     assert pub["amenities"] == []
     assert pub["completeness"]["mapped_count"] == 0
-    assert pub["completeness"]["total_kinds"] == 11
+    assert pub["completeness"]["total_kinds"] == 12
 
 
 @pytest.mark.django_db
@@ -1126,3 +1134,132 @@ def test_amenity_status_boundaries_pin_min_votes_before_dispute(settings):
     # Confidence is exact agreement×volume rounded to 4 (pins the formula).
     assert _amenity_status(3, 0)[1] == round((3 / 3) * (3 / 5), 4)
     assert _amenity_status(2, 1)[1] == round((2 / 3) * (3 / 5), 4)
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", ["yes", "no"])
+def test_shared_vote_with_current_header_and_no_acceptance_returns_428(client, value):
+    token = _register(client)
+
+    denied = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [_vote(value=value)]},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert PubAmenityVote.objects.count() == 0
+    assert PubAmenity.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_mixed_batch_with_any_shared_vote_is_gated(client):
+    """One null retraction plus one affirmative vote → the whole PUT is gated."""
+    token = _register(client)
+
+    denied = client.put(
+        "/v1/pub-amenities/votes",
+        data={
+            "votes": [
+                _vote(
+                    amenity_key="practical_wifi",
+                    value=None,
+                    client_updated_at="2026-06-23T18:30:00+02:00",
+                ),
+                _vote(value="yes"),
+            ]
+        },
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert PubAmenityVoteTombstone.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_null_retraction_with_current_header_bypasses_gate(client):
+    token = _register(client)
+
+    resp = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [_vote(value=None)]},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    result = resp.json()["results"][0]
+    assert result["applied"] is True
+    assert result["deleted"] is False
+    assert PubAmenityVote.objects.count() == 0
+    assert PubAmenityVoteTombstone.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_accepted_account_votes_with_current_header(client):
+    token = _register(client)
+    _accept_ugc(client, token)
+
+    resp = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [_vote()]},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["results"][0]["applied"] is True
+    assert PubAmenityVote.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_reads_and_delete_retract_are_not_blocked(client):
+    token = _register(client)
+    _put(client, token, _vote(value="yes"))  # legacy write without header
+
+    own = client.get("/v1/pub-amenities/votes", **_auth(token), **_policy_header())
+    assert own.status_code == status.HTTP_200_OK
+
+    aggregates = client.get(
+        "/v1/pub-amenities",
+        {"cache_keys": _KEY},
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert aggregates.status_code == status.HTTP_200_OK
+
+    deleted = client.delete(
+        f"/v1/pub-amenities/votes/{_KEY}/seating_garden",
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert deleted.json() == {"deleted": True}
+    assert PubAmenityVote.objects.count() == 0

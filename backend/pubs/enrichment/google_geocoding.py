@@ -175,6 +175,17 @@ class GoogleGeocodingSource:
         url = f"{_GEOCODING_URL}/places/{quote(place_id, safe='')}"
         return self._geocode(url=url, require_precise=False)
 
+    def reverse_geocode(
+        self,
+        *,
+        lat: float,
+        lng: float,
+    ) -> GoogleAddressCandidate | None:
+        """Resolve an explicitly selected map point to its nearest address."""
+
+        url = f"{_GEOCODING_URL}/location/{lat:.7f},{lng:.7f}"
+        return self._geocode(url=url, require_precise=False)
+
     def _geocode(
         self,
         *,

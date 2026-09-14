@@ -1,5 +1,7 @@
 // The helper under test is pure, but importing the module pulls Reanimated in,
 // and Reanimated is not transformed for this project's test runner.
+import { countNumeralSize } from '@/counter/CoasterCard';
+
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
   default: { View: 'AnimatedView' },
@@ -9,8 +11,6 @@ jest.mock('react-native-reanimated', () => ({
   withSequence: jest.fn(),
   withTiming: jest.fn(),
 }));
-
-import { countNumeralSize } from '@/counter/CoasterCard';
 
 /**
  * The counter card is one big number, so the number's size is the whole design.

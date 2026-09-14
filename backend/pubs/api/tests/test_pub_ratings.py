@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
@@ -117,6 +118,29 @@ def test_put_creates_rating_with_geohash_cache_key(client):
     assert rating.tag == "útulná"
     assert rating.note == "Skvělá Plzeň"
     assert rating.client_updated_at.isoformat() == "2026-06-12T17:45:00+00:00"
+
+
+@pytest.mark.django_db
+def test_future_device_clock_cannot_poison_later_rating_sync(client):
+    token = _register(client)
+    poisoned = client.put(
+        "/v1/pub-ratings",
+        data=_payload(note="future", updated_at="2999-01-01T00:00:00Z"),
+        format="json",
+        **_auth(token),
+    )
+    assert poisoned.status_code == status.HTTP_200_OK
+    assert PubRating.objects.get().client_updated_at <= timezone.now()
+
+    corrected = client.put(
+        "/v1/pub-ratings",
+        data=_payload(note="corrected", updated_at=timezone.now().isoformat()),
+        format="json",
+        **_auth(token),
+    )
+    assert corrected.status_code == status.HTTP_200_OK
+    assert corrected.json()["applied"] is True
+    assert PubRating.objects.get().note == "corrected"
 
 
 @pytest.mark.django_db
@@ -389,6 +413,33 @@ def test_get_lists_all_ratings(client):
     assert brno["verdict"] == "dislike"
     # updated_at is the client timestamp (ISO).
     assert by_key[_KEY]["updated_at"] == "2026-06-12T17:45:00+00:00"
+
+
+@pytest.mark.django_db
+def test_get_legacy_rating_snapshot_is_complete_without_pagination(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    now = timezone.now()
+    PubRating.objects.bulk_create(
+        [
+            PubRating(
+                account=account,
+                cache_key=f"{index:012x}",
+                name=f"Hospoda {index}",
+                lat=_LAT,
+                lng=_LNG,
+                verdict=PubRating.Verdict.LIKE,
+                client_updated_at=now,
+            )
+            for index in range(501)
+        ]
+    )
+
+    response = client.get("/v1/pub-ratings", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["ratings"]) == 501
+    assert "truncated" not in response.json()
 
 
 @pytest.mark.django_db

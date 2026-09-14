@@ -4,10 +4,31 @@
  * XP is fully server-authoritative: POST /v1/drinks returns a compact `pivar`
  * snapshot ({xp, level, title, …, xp_awarded}) alongside the drink result.
  * The current product has one combined account level (drink XP + mapping XP),
- * so this module only patches the authoritative drink component into the live
+ * so this module only publishes the authoritative drink component to the live
  * account profile. It deliberately does not announce a separate Pivař level.
+ *
+ * This data-layer module must not import accountStore: drinksClient is also
+ * reachable from account-boundary cleanup, so importing the store here creates
+ * a runtime require cycle while that store is still being initialized. The
+ * store installs the single listener after its definition instead.
  */
-import { useAccountStore } from '@/stores/accountStore';
+
+export interface PivarSnapshot {
+  xp: number;
+  level: number;
+  title: string;
+  xpIntoLevel: number;
+  xpForNextLevel?: number | null;
+}
+
+type PivarSnapshotListener = (snapshot: PivarSnapshot) => void;
+
+let snapshotListener: PivarSnapshotListener | null = null;
+
+/** Install the live account-store sink without making the data layer import it. */
+export function setPivarSnapshotListener(listener: PivarSnapshotListener | null): void {
+  snapshotListener = listener;
+}
 
 /** The compact `pivar` envelope on the POST /v1/drinks response. */
 export interface PivarWireSnapshot {
@@ -31,7 +52,7 @@ export function notePivarSnapshot(raw: unknown): void {
     typeof xpIntoLevel !== 'number' || !Number.isFinite(xpIntoLevel) || xpIntoLevel < 0
   ) return;
 
-  useAccountStore.getState().applyPivarSnapshot({
+  snapshotListener?.({
     xp,
     level,
     title: typeof snapshot?.title === 'string' ? snapshot.title : '',

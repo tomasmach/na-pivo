@@ -17,8 +17,8 @@ import CelebrationScreen from '../celebration';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 jest.mock('@/utils/haptics', () => ({ fireSuccessHaptic: jest.fn() }));

@@ -11,6 +11,7 @@
  */
 
 import { decodeGeohash8 } from '@/data/geohash';
+import { t } from '@/i18n';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 
 export function focusPubFromActivity(activity: {
@@ -23,7 +24,7 @@ export function focusPubFromActivity(activity: {
   useFocusedPubStore.getState().setFocusedPub({
     lat,
     lng,
-    name: activity.name?.trim() || 'Hospoda',
+    name: activity.name?.trim() || t.friends.pubFallback,
     cacheKey: key,
   });
   return true;

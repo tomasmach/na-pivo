@@ -1,4 +1,4 @@
-const getBabelConfig = require('../babel.config');
+const getBabelConfig = jest.requireActual('../babel.config');
 
 describe('babel config', () => {
   it('loads the Reanimated worklets plugin last', () => {

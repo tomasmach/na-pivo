@@ -7,10 +7,12 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.enrichment import GoogleGeocodingUnavailableError, geohash8
 from pubs.models import Account, PubReport, UserAddedPub
 from pubs.user_added_pub_geocoding import ResolvedPubLocation
@@ -39,7 +41,8 @@ def _generous_throttle(settings):
             "added_pubs": "10000/min",
         },
     }
-    yield
+    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=None):
+        yield
     cache.clear()
 
 
@@ -99,14 +102,23 @@ def test_add_pub_creates_live_row(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_trusts_confirmed_client_coords_without_google(client):
+def test_add_pub_keeps_submitted_coords_when_location_cannot_be_resolved(client):
     token = _register(client)
 
-    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=None,
+    ) as resolver:
         resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    resolver.assert_not_called()
+    resolver.assert_called_once_with(
+        name=_NAME,
+        address="Testovací 12",
+        city="Praha",
+        lat=_LAT,
+        lng=_LNG,
+    )
     pub = UserAddedPub.objects.get()
     assert pub.lat == _LAT
     assert pub.lng == _LNG
@@ -115,6 +127,107 @@ def test_add_pub_trusts_confirmed_client_coords_without_google(client):
     assert pub.google_place_id == ""
     assert pub.location_synced_at is None
     assert resp.json()["cache_key"] == _KEY
+
+
+@pytest.mark.django_db
+def test_add_pub_keeps_submitted_coords_when_verification_errors(client):
+    token = _register(client)
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        side_effect=GoogleGeocodingUnavailableError("unavailable"),
+    ):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+
+
+@pytest.mark.django_db
+def test_add_pub_snaps_legacy_coords_to_distant_resolved_address(client, settings):
+    settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
+    token = _register(client)
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=49.1951,
+        lng=16.6068,
+        city="Brno",
+        address="Testovací 12",
+        result_type="street_address",
+        place_id="ChIJ-resolved-pub",
+    )
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=resolved,
+    ):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == resolved.lat
+    assert pub.lng == resolved.lng
+    assert pub.cache_key == geohash8(resolved.lat, resolved.lng)
+    assert pub.location_source == UserAddedPub.LocationSource.GOOGLE_GEOCODE
+    assert pub.google_place_id == "ChIJ-resolved-pub"
+    assert pub.location_synced_at is not None
+    assert resp.json()["lat"] == resolved.lat
+    assert resp.json()["lng"] == resolved.lng
+    assert resp.json()["cache_key"] == geohash8(resolved.lat, resolved.lng)
+
+
+@pytest.mark.django_db
+def test_add_pub_keeps_legacy_coords_near_resolved_address(client, settings):
+    settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
+    token = _register(client)
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=_LAT + 0.0001,
+        lng=_LNG + 0.0001,
+        city="Praha",
+        address="Testovací 12",
+        result_type="street_address",
+        place_id="ChIJ-nearby-pub",
+    )
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=resolved,
+    ):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.cache_key == _KEY
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+    assert pub.google_place_id == ""
+    assert pub.location_synced_at is None
+
+
+@pytest.mark.django_db
+def test_add_pub_trusts_explicit_map_pin_without_resolving(client):
+    token = _register(client)
+
+    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+        resp = client.post(
+            "/v1/pubs",
+            data=_payload(location_source="map_pin"),
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    resolver.assert_not_called()
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.cache_key == _KEY
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
 
 
 @pytest.mark.django_db
@@ -520,3 +633,93 @@ def test_add_pub_validation(client):
     assert bad_lat.status_code == status.HTTP_400_BAD_REQUEST
     assert missing_location.status_code == status.HTTP_400_BAD_REQUEST
     assert UserAddedPub.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — writes are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _policy_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+def test_add_pub_with_current_header_and_no_acceptance_returns_428(client):
+    token = _register(client)
+
+    denied = client.post(
+        "/v1/pubs",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert denied.json()["code"] == "ugc_consent_required"
+    assert UserAddedPub.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_edit_pub_with_current_header_and_no_acceptance_returns_428(client):
+    token = _register(client)
+    created = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+
+    denied = client.patch(
+        f"/v1/pubs/{_CLIENT_ID}",
+        data={"name": "Nový název hospody"},
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert denied.status_code == 428, denied.content
+    assert UserAddedPub.objects.get().name == _NAME
+
+
+@pytest.mark.django_db
+def test_accepted_account_adds_pub_with_current_header(client):
+    token = _register(client)
+    _accept_ugc(client, token)
+
+    resp = client.post(
+        "/v1/pubs",
+        data=_payload(),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert UserAddedPub.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_list_and_report_are_not_blocked_by_consent_gate(client):
+    token = _register(client)
+
+    listed = client.get("/v1/pubs", **_auth(token), **_policy_header())
+    assert listed.status_code == status.HTTP_200_OK
+
+    reported = client.post(
+        "/v1/pub-reports",
+        data=_payload(reason="not_pub"),
+        format="json",
+        **_auth(token),
+        **_policy_header(),
+    )
+    assert reported.status_code == status.HTTP_201_CREATED

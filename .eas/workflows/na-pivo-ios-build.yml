@@ -1,0 +1,9 @@
+name: Na pivo
+
+jobs:
+  build:
+    name: Build iOS production
+    type: build
+    params:
+      platform: ios
+      profile: production

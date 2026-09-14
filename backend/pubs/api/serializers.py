@@ -42,6 +42,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
+from django.db.models import Q
 from django.utils import timezone as dj_timezone
 from rest_framework import serializers
 
@@ -53,6 +54,7 @@ from pubs.beer_catalog import (
     BEER_PRICE_MIN_CZK,
     normalize_beer_payload,
 )
+from pubs.i18n import current_locale, normalize_locale
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
 from pubs.models import (
     BEER_CHECKIN_MAX_TAGS,
@@ -68,14 +70,17 @@ from pubs.models import (
     FeedbackReport,
     FriendActivityReaction,
     FriendActivityResponse,
+    FriendBlock,
     FriendInviteCode,
     FriendNotification,
     FriendPubActivity,
     Friendship,
+    PartyGame,
     PhotoContest,
     PhotoContestEntry,
     PubAmenityVote,
     PublishedNight,
+    PublishedNightComment,
     PubNameCorrection,
     PubRating,
     PubReport,
@@ -84,11 +89,13 @@ from pubs.models import (
     UserAddedPub,
 )
 from pubs.pivar import pivar_levels, pivar_progress, pivar_xp_rules
+from pubs.privacy import redact_party_codes
 
 from .profile_helpers import (
     derive_account_achievements,
     derive_account_profile_stats,
 )
+from .ugc_consent import ugc_consent_snapshot
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -240,6 +247,12 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
     lat = serializers.FloatField(required=False)
     lng = serializers.FloatField(required=False)
     client_id = serializers.UUIDField()
+    location_source = serializers.CharField(
+        max_length=32,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
     address = serializers.CharField(
         max_length=255,
         required=False,
@@ -370,10 +383,17 @@ class ContentReportRequestSerializer(serializers.Serializer):
     # Additive (Výčep): pin a report to one explicitly published night. The
     # view verifies both ownership and visibility before snapshotting it.
     night_id = serializers.UUIDField(required=False, allow_null=True)
+    # Additive (moderation): pin a report to one specific night comment. The
+    # view re-checks the full comment-list visibility contract and snapshots
+    # the comment body with its author for moderation.
+    comment_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
-        if attrs.get("photo_id") is not None and attrs.get("night_id") is not None:
-            raise serializers.ValidationError("Report either a photo or a night, not both.")
+        targets = [
+            key for key in ("photo_id", "night_id", "comment_id") if attrs.get(key) is not None
+        ]
+        if len(targets) > 1:
+            raise serializers.ValidationError("Report only one target: photo, night or comment.")
         return attrs
 
 
@@ -400,6 +420,28 @@ class RestorePurchasesRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class AccountDeletionOperationSerializer(serializers.Serializer):
+    """Validate the client-generated capability used to recover a lost 204.
+
+    Only RFC-4122 UUIDv4 values are accepted: unlike sequential/time-based UUIDs,
+    a v4 UUID carries enough unpredictable entropy to be safe as the sole key on
+    the unauthenticated completion-status endpoint.
+    """
+
+    operation_id = serializers.UUIDField()
+
+    def validate_operation_id(self, value: uuid.UUID) -> uuid.UUID:
+        if value.version != 4 or value.variant != uuid.RFC_4122:
+            raise serializers.ValidationError("operation_id must be an RFC-4122 UUIDv4.")
+        return value
+
+
+class UGCConsentRequestSerializer(serializers.Serializer):
+    """Request body for PUT /v1/account/me/ugc-consent."""
+
+    version = serializers.CharField(max_length=32)
+
+
 # ---------------------------------------------------------------------------
 # Client observability (POST /v1/client-events)
 # ---------------------------------------------------------------------------
@@ -410,6 +452,7 @@ _MAX_CLIENT_EVENT_SLIDE = 100
 _CLIENT_EVENT_SCREEN_NAMES = {
     "compass",
     "beer",
+    "diary",
     "friends",
     "profile",
     "onboarding",
@@ -549,6 +592,7 @@ _CLIENT_EVENT_INTERACTION_TARGETS = {
     "community_request_decline",
     "community_cancel_event",
     "community_report",
+    "friend_follow",
     "friend_invite_share",
     "friend_request_send",
     "parta_activity_share",
@@ -606,16 +650,27 @@ _UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _LONG_TOKEN_RE = re.compile(r"\b[A-Za-z0-9._~+/=-]{32,}\b")
+# GPS coordinates from any client generation: labeled lat/lng values
+# ("lat=50.08", "longitude: 14.42") and bare high-precision pairs. Three
+# decimals already resolve to ~100 m, so finer values never get stored.
+_LABELED_COORD_RE = re.compile(
+    r"\b[\"']?(?:lat|lng|lon|latitude|longitude)[\"']?\s*[:=]\s*-?\d{1,3}(?:\.\d+)?",
+    re.IGNORECASE,
+)
+_COORD_PAIR_RE = re.compile(r"-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}")
 
 
 def _sanitize_client_text(value: object, *, max_len: int) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
+    text = _COORD_PAIR_RE.sub("[redacted-coords]", text)
+    text = _LABELED_COORD_RE.sub("[redacted-coords]", text)
     text = _BEARER_RE.sub("Bearer [redacted]", text)
     text = _EMAIL_RE.sub("[redacted-email]", text)
     text = _UUID_RE.sub("[redacted-uuid]", text)
     text = _LONG_TOKEN_RE.sub("[redacted-token]", text)
+    text = redact_party_codes(text)
     return text[:max_len]
 
 
@@ -757,6 +812,18 @@ class PushDeviceRequestSerializer(serializers.Serializer):
         default="",
         trim_whitespace=True,
     )
+    # Additive: released app versions never send this. Anything unrecognised is
+    # normalized to "cs" instead of rejected, so a newer client can never brick
+    # its offline queue on a language tag.
+    locale = serializers.CharField(
+        # Generous bound so a full BCP-47 tag ("en-US-POSIX") normalizes instead
+        # of 400ing; validate_locale collapses it to "cs" or "en" anyway.
+        max_length=64,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
 
     def validate_push_token(self, value: str) -> str:
         if not value:
@@ -764,6 +831,9 @@ class PushDeviceRequestSerializer(serializers.Serializer):
         if EXPO_PUSH_TOKEN_RE.fullmatch(value) is None:
             raise serializers.ValidationError("push_token must be a valid Expo push token.")
         return value
+
+    def validate_locale(self, value: str) -> str:
+        return normalize_locale(value) if value else ""
 
 
 class PushDeviceDeleteSerializer(serializers.Serializer):
@@ -790,6 +860,7 @@ class PushDeviceResponseSerializer(serializers.ModelSerializer):
             "permission_status",
             "enabled",
             "app_version",
+            "locale",
             "created_at",
             "updated_at",
             "last_registered_at",
@@ -834,12 +905,23 @@ class FriendProfileSerializer(serializers.ModelSerializer):
 class FriendSearchQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/friends/search."""
 
-    q = serializers.CharField(max_length=40, trim_whitespace=True)
+    q = serializers.CharField(
+        max_length=40,
+        trim_whitespace=True,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    suggest = serializers.BooleanField(required=False, default=False)
 
-    def validate_q(self, value: str) -> str:
-        if len(value.strip()) < 2:
-            raise serializers.ValidationError("q must contain at least 2 characters.")
-        return value.strip()
+    def validate(self, attrs: dict) -> dict:
+        query = attrs.get("q", "").strip().removeprefix("@")
+        if not attrs.get("suggest") and len(query) < 2:
+            raise serializers.ValidationError(
+                {"q": "q must contain at least 2 characters."}
+            )
+        attrs["q"] = query
+        return attrs
 
 
 class LeaderboardQuerySerializer(serializers.Serializer):
@@ -850,6 +932,8 @@ class LeaderboardQuerySerializer(serializers.Serializer):
 
     category = serializers.CharField(required=False, default="beers")
     period = serializers.CharField(required=False, default="week")
+    limit = serializers.IntegerField(required=False, default=50, min_value=1, max_value=50)
+    cursor = serializers.IntegerField(required=False, min_value=1)
 
     def validate_category(self, value: str) -> str:
         value = value.strip().lower()
@@ -1141,10 +1225,13 @@ class PublishedNightRequestSerializer(serializers.Serializer):
     drinking_day = serializers.DateField()
     started_at = serializers.DateTimeField()
     ended_at = serializers.DateTimeField()
-    beer_count = serializers.IntegerField(min_value=0, max_value=99)
-    wine_count = serializers.IntegerField(min_value=0, max_value=99)
-    soft_drink_count = serializers.IntegerField(min_value=0, max_value=99)
-    shot_count = serializers.IntegerField(min_value=0, max_value=99)
+    # PositiveSmallIntegerField stores up to 65,535. Keeping the wire contract
+    # aligned with storage prevents a long offline evening from appearing
+    # published locally and then being dropped permanently on a 400 retry.
+    beer_count = serializers.IntegerField(min_value=0, max_value=65_535)
+    wine_count = serializers.IntegerField(min_value=0, max_value=65_535)
+    soft_drink_count = serializers.IntegerField(min_value=0, max_value=65_535)
+    shot_count = serializers.IntegerField(min_value=0, max_value=65_535)
     pub_names = serializers.ListField(
         child=serializers.CharField(max_length=80, trim_whitespace=True, allow_blank=False),
         max_length=5,
@@ -1162,6 +1249,48 @@ class PublishedNightRequestSerializer(serializers.Serializer):
         allow_null=True,
         min_value=1,
     )
+    title = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    roast_line = serializers.CharField(
+        max_length=280,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    roast_basis = serializers.CharField(
+        max_length=280,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    # Transient proof used to validate every referenced participant/photo/game.
+    # The join code is never copied into PublishedNight or returned in a feed.
+    party_code = serializers.CharField(
+        max_length=8,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        write_only=True,
+    )
+    participant_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        max_length=8,
+    )
+    photo_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        max_length=6,
+    )
+    game_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        max_length=3,
+    )
     visibility = serializers.ChoiceField(choices=PublishedNight.Visibility.choices)
     updated_at = serializers.DateTimeField()
 
@@ -1176,15 +1305,51 @@ class PublishedNightRequestSerializer(serializers.Serializer):
                 {"non_field_errors": ["A published night must contain at least one drink."]}
             )
         attrs["city"] = attrs.get("city") or ""
+        for field in ("participant_ids", "photo_ids", "game_ids"):
+            if field in attrs:
+                attrs[field] = list(dict.fromkeys(attrs[field]))
+        if any(attrs.get(field) for field in ("participant_ids", "game_ids")):
+            if not (attrs.get("party_code") or "").strip():
+                raise serializers.ValidationError(
+                    {"party_code": "party_code is required for shared snapshot references."}
+                )
+        if "roast_line" in attrs and not attrs["roast_line"]:
+            # Clearing a roast must not leave its old explanation behind.
+            attrs["roast_basis"] = ""
         return attrs
+
+
+class PublishedNightCommentRequestSerializer(serializers.Serializer):
+    """One idempotent, bounded comment write."""
+
+    client_id = serializers.UUIDField()
+    body = serializers.CharField(max_length=500, trim_whitespace=True)
+
+    def validate_body(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Comment must not be empty.")
+        return value
 
 
 class PublishedNightFeedQuerySerializer(serializers.Serializer):
     """Query parameters for GET /v1/nights/feed."""
 
     scope = serializers.ChoiceField(choices=("friends", "global"), default="global")
+    mine = serializers.BooleanField(required=False, default=False)
+    author = serializers.UUIDField(required=False)
+    public_author = serializers.UUIDField(required=False)
+    pub = serializers.CharField(required=False, max_length=80, trim_whitespace=True)
     cursor = serializers.CharField(required=False, allow_blank=True, default="")
     limit = serializers.IntegerField(required=False, min_value=1, max_value=30, default=30)
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs.get("public_author") is not None and (
+            attrs.get("author") is not None or attrs.get("mine")
+        ):
+            raise serializers.ValidationError(
+                "public_author cannot be combined with author or mine."
+            )
+        return attrs
 
 
 class PublishedNightSerializer(serializers.ModelSerializer):
@@ -1195,6 +1360,10 @@ class PublishedNightSerializer(serializers.ModelSerializer):
     rounds = serializers.SerializerMethodField()
     my_round = serializers.SerializerMethodField()
     is_mine = serializers.SerializerMethodField()
+    participants = serializers.SerializerMethodField()
+    hero_photos = serializers.SerializerMethodField()
+    hero_games = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
 
     class Meta:
         model = PublishedNight
@@ -1212,11 +1381,18 @@ class PublishedNightSerializer(serializers.ModelSerializer):
             "pub_names",
             "city",
             "duration_minutes",
+            "title",
+            "roast_line",
+            "roast_basis",
+            "participants",
+            "hero_photos",
+            "hero_games",
             "visibility",
             "created_at",
             "rounds",
             "my_round",
             "is_mine",
+            "comment_count",
         ]
         read_only_fields = fields
 
@@ -1234,11 +1410,182 @@ class PublishedNightSerializer(serializers.ModelSerializer):
     def get_is_mine(self, obj: PublishedNight) -> bool:
         return self._is_mine(obj)
 
+    def _viewer(self):
+        return self.context.get("account")
+
+    def _blocked_between(self, first_id: int, second_id: int) -> bool:
+        pair = tuple(sorted((first_id, second_id)))
+        viewer = self._viewer()
+        viewer_id = getattr(viewer, "pk", None)
+        if viewer_id in pair and "viewer_blocked_ids" in self.context:
+            other_id = pair[0] if pair[1] == viewer_id else pair[1]
+            return other_id in self.context["viewer_blocked_ids"]
+        memo = getattr(self, "_blocked_between_memo", None)
+        if memo is None:
+            memo = self._blocked_between_memo = {}
+        if pair not in memo:
+            memo[pair] = FriendBlock.objects.filter(
+                Q(blocker_id=first_id, blocked_id=second_id)
+                | Q(blocker_id=second_id, blocked_id=first_id)
+            ).exists()
+        return memo[pair]
+
+    def _accepted_between(self, first_id: int, second_id: int) -> bool:
+        pair = tuple(sorted((first_id, second_id)))
+        viewer = self._viewer()
+        viewer_id = getattr(viewer, "pk", None)
+        # NOTE: viewer_accepted_friend_ids comes from _accepted_friend_ids and
+        # therefore also requires the counterpart to be an ACTIVE account; the
+        # memoized query below does not. Every current call site pre-filters
+        # counterparts to ACTIVE, so the two paths agree — keep it that way.
+        if viewer_id in pair and "viewer_accepted_friend_ids" in self.context:
+            other_id = pair[0] if pair[1] == viewer_id else pair[1]
+            return other_id in self.context["viewer_accepted_friend_ids"]
+        memo = getattr(self, "_accepted_between_memo", None)
+        if memo is None:
+            memo = self._accepted_between_memo = {}
+        if pair not in memo:
+            memo[pair] = Friendship.objects.filter(
+                Q(requester_id=first_id, recipient_id=second_id)
+                | Q(requester_id=second_id, recipient_id=first_id),
+                status=Friendship.Status.ACCEPTED,
+            ).exists()
+        return memo[pair]
+
+    def _may_see_social_snapshot(self, obj: PublishedNight) -> bool:
+        viewer = self._viewer()
+        if viewer is None:
+            return False
+        if viewer.pk == obj.account_id:
+            return True
+        return (
+            not self._blocked_between(viewer.pk, obj.account_id)
+            and self._accepted_between(viewer.pk, obj.account_id)
+        )
+
+    def get_participants(self, obj: PublishedNight) -> list[dict]:
+        if not obj.participant_ids or not self._may_see_social_snapshot(obj):
+            return []
+        viewer = self._viewer()
+        requested = [str(value) for value in obj.participant_ids]
+        rows = Account.objects.filter(
+            public_id__in=requested,
+            status=Account.Status.ACTIVE,
+            ghost_mode=False,
+            share_drinks_with_parta=True,
+        )
+        visible = {
+            str(row.public_id): row
+            for row in rows
+            if row.pk != obj.account_id
+            and self._accepted_between(row.pk, obj.account_id)
+            and (
+                viewer.pk in (obj.account_id, row.pk)
+                or self._accepted_between(row.pk, viewer.pk)
+            )
+            and not self._blocked_between(row.pk, viewer.pk)
+            and not self._blocked_between(row.pk, obj.account_id)
+        }
+        ordered = [visible[value] for value in requested if value in visible]
+        return FriendProfileSerializer(ordered, many=True, context=self.context).data
+
+    def get_hero_photos(self, obj: PublishedNight) -> list[dict]:
+        if not obj.photo_ids or not self._may_see_social_snapshot(obj):
+            return []
+        requested = [str(value) for value in obj.photo_ids]
+        rows = BeerPhoto.objects.filter(
+            Q(public_id__in=requested) | Q(client_id__in=requested),
+            account=obj.account,
+            visibility=BeerPhoto.Visibility.FRIENDS,
+        )
+        by_reference = {}
+        for row in rows:
+            by_reference[str(row.public_id)] = row
+            by_reference[str(row.client_id)] = row
+        result = []
+        seen = set()
+        for value in requested:
+            row = by_reference.get(value)
+            if row is None or row.pk in seen:
+                continue
+            image_url = _photo_image_url(row.image, self.context.get("request"))
+            if not image_url:
+                continue
+            seen.add(row.pk)
+            result.append(
+                {
+                    "id": str(row.public_id),
+                    "image_url": image_url,
+                    "caption": row.caption,
+                }
+            )
+        return result
+
+    def get_hero_games(self, obj: PublishedNight) -> list[dict]:
+        if not obj.game_ids:
+            return []
+        requested = [str(value) for value in obj.game_ids]
+        rows = PartyGame.objects.filter(public_id__in=requested, started_by=obj.account)
+        by_id = {str(row.public_id): row for row in rows}
+        return [
+            {
+                "id": value,
+                "catalog_key": by_id[value].catalog_key,
+                "name": by_id[value].name,
+                "scoring": by_id[value].scoring,
+            }
+            for value in requested
+            if value in by_id
+        ]
+
+    def get_comment_count(self, obj: PublishedNight) -> int:
+        annotated = getattr(obj, "comments_count", None)
+        if annotated is not None:
+            return int(annotated)
+        viewer = self._viewer()
+        comments = obj.comments.filter(
+            is_removed=False,
+            account__status=Account.Status.ACTIVE,
+        )
+        if viewer is not None:
+            blocked = FriendBlock.objects.filter(
+                Q(blocker=viewer) | Q(blocked=viewer)
+            ).values_list("blocker_id", "blocked_id")
+            blocked_ids = {
+                blocked_id if blocker_id == viewer.pk else blocker_id
+                for blocker_id, blocked_id in blocked
+            }
+            comments = comments.exclude(account_id__in=blocked_ids)
+        return comments.count()
+
     def to_representation(self, instance: PublishedNight) -> dict:
         representation = super().to_representation(instance)
         if not self._is_mine(instance):
             representation.pop("client_id", None)
         return representation
+
+
+class PublishedNightCommentSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    author = FriendProfileSerializer(source="account", read_only=True)
+    is_mine = serializers.SerializerMethodField()
+    can_delete = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PublishedNightComment
+        fields = ["id", "author", "body", "created_at", "is_mine", "can_delete"]
+        read_only_fields = fields
+
+    def _viewer_id(self):
+        viewer = self.context.get("account")
+        return getattr(viewer, "pk", None)
+
+    def get_is_mine(self, obj: PublishedNightComment) -> bool:
+        return obj.account_id == self._viewer_id()
+
+    def get_can_delete(self, obj: PublishedNightComment) -> bool:
+        viewer_id = self._viewer_id()
+        return viewer_id is not None and viewer_id in (obj.account_id, obj.night.account_id)
 
 
 def _photo_image_url(image_field, request) -> str | None:
@@ -1297,6 +1644,15 @@ class BeerPhotoUploadSerializer(serializers.Serializer):
         default=BeerPhoto.Visibility.FRIENDS,
     )
     taken_at = serializers.DateTimeField(required=False, allow_null=True)
+    # Best-effort association only. An ended/foreign table must never reject
+    # the photo itself when an offline upload finally reaches the server.
+    party_code = serializers.CharField(
+        max_length=6,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        trim_whitespace=True,
+    )
 
     def validate_taken_at(self, value):
         if value is None:
@@ -1491,6 +1847,7 @@ class FriendSettingsPatchSerializer(serializers.Serializer):
 
     ghost_mode = serializers.BooleanField(required=False)
     share_drinks_with_parta = serializers.BooleanField(required=False)
+    share_spend_with_parta = serializers.BooleanField(required=False)
     quiet_hours_enabled = serializers.BooleanField(required=False)
     quiet_hours_start = serializers.IntegerField(required=False, min_value=0, max_value=23)
     quiet_hours_end = serializers.IntegerField(required=False, min_value=0, max_value=23)
@@ -1632,6 +1989,14 @@ class FriendNotificationSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class FriendNotificationReadSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        max_length=100,
+    )
 
 
 class FriendInviteSerializer(serializers.ModelSerializer):
@@ -1884,8 +2249,10 @@ class DrinkItemSerializer(serializers.Serializer):
 class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/drinks.
 
-    Pub identity and price remain mandatory when ``place_context`` is ``pub``.
-    Outside a pub, pub identity fields are forbidden and price is optional.
+    Pub identity remains mandatory when ``place_context`` is ``pub``. Price is
+    optional so quick-add clients can durably preserve the private drink; an
+    unpriced drink is never published into the community menu. Outside a pub,
+    pub identity fields are forbidden.
     Missing ``place_context`` and ``serving_type`` retain released-client
     defaults of ``pub`` and ``unknown``.
     """
@@ -1917,6 +2284,18 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     )
     beer = DrinkItemSerializer()
     drank_at = serializers.DateTimeField(required=False, allow_null=True)
+    # The shared evening this was drunk during, if the phone is in one.
+    #
+    # Never validated against a real evening here and never a reason to reject
+    # the drink: the queue may flush hours later, into a night that has ended.
+    # A drink that fails to link is still a drink — see DrinksView.
+    party_code = serializers.CharField(
+        max_length=6,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        trim_whitespace=True,
+    )
 
     def validate(self, attrs: dict) -> dict:
         place_context = attrs["place_context"]
@@ -1925,8 +2304,6 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
             for field in ("name", "lat", "lng"):
                 if attrs.get(field) in (None, ""):
                     required_errors[field] = "This field is required."
-            if "price_czk" not in attrs["beer"]:
-                required_errors.setdefault("beer", {})["price_czk"] = "This field is required."
             if required_errors:
                 raise serializers.ValidationError(required_errors)
         else:
@@ -1969,17 +2346,35 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
 class DrinkUpdateSerializer(serializers.Serializer):
     """Request body for PATCH /v1/drinks/<client_id>.
 
-    This is deliberately narrow: the mobile app only needs to fix a typo in the
-    user's private drink log. Pub, price, time and community menu contributions
-    are not rewritten by this endpoint.
+    The original released client only sends ``beer_name``. Newer clients may
+    also correct the private type, price, volume and serving without moving the
+    drink to another pub or timestamp.
     """
 
-    beer_name = serializers.CharField(max_length=80, trim_whitespace=True)
+    beer_name = serializers.CharField(max_length=80, trim_whitespace=True, required=False)
+    drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices, required=False)
+    price_czk = serializers.IntegerField(min_value=1, max_value=1000, required=False, allow_null=True)
+    volume_ml = serializers.IntegerField(min_value=10, max_value=3000, required=False, allow_null=True)
+    serving_type = serializers.ChoiceField(choices=DrinkLog.ServingType.choices, required=False)
 
     def validate_beer_name(self, value: str) -> str:
         if not value:
             raise serializers.ValidationError("Beer name must not be empty.")
         return value
+
+    def validate(self, attrs: dict) -> dict:
+        if not attrs:
+            raise serializers.ValidationError("At least one drink field must be provided.")
+        drink_type = attrs.get("drink_type")
+        volume_ml = attrs.get("volume_ml")
+        if drink_type == DrinkLog.DrinkType.BEER and volume_ml is not None:
+            if volume_ml not in ALLOWED_BEER_VOLUMES_ML:
+                raise serializers.ValidationError(
+                    {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}
+                )
+        if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
+            raise serializers.ValidationError({"volume_ml": "A shot volume must not exceed 200 ml."})
+        return attrs
 
 
 # ---------------------------------------------------------------------------
@@ -2045,6 +2440,14 @@ class PubVisitRequestSerializer(PubInputSerializer):
     ended_at = serializers.DateTimeField(required=False, allow_null=True)
     closed_at = serializers.DateTimeField(required=False, allow_null=True)
     updated_at = serializers.DateTimeField()
+    # Best-effort association only; resolved by PubVisitView after validation.
+    party_code = serializers.CharField(
+        max_length=6,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        trim_whitespace=True,
+    )
 
     def validate(self, attrs: dict) -> dict:
         ended_at = attrs.get("ended_at")
@@ -2066,6 +2469,8 @@ class PubReportBlockedQuerySerializer(_LatLngBoundsValidationMixin, serializers.
     lat = serializers.FloatField()
     lng = serializers.FloatField()
     radius_km = serializers.FloatField(required=False, min_value=0.1, max_value=100.0)
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=500)
+    cursor = serializers.IntegerField(required=False, min_value=1)
 
 
 # Default radius for GET /v1/pubs/near when the client omits radius_km.
@@ -2089,6 +2494,15 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         required=False,
         allow_blank=True,
         max_length=80,
+        trim_whitespace=True,
+    )
+    # Additive multi-select used by the redesigned pub list. Released clients
+    # keep sending the scalar `beer_brand`; new clients send comma-separated
+    # brand slugs and expect ANY-of matching.
+    beer_brands = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=400,
         trim_whitespace=True,
     )
     amenities = serializers.CharField(
@@ -2115,6 +2529,26 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         attrs.setdefault("radius_km", PUBS_NEAR_DEFAULT_RADIUS_KM)
         if not attrs.get("beer_brand"):
             attrs.pop("beer_brand", None)
+        raw_beer_brands = attrs.get("beer_brands", "")
+        if raw_beer_brands:
+            keys = []
+            seen = set()
+            for raw_key in raw_beer_brands.split(","):
+                key = raw_key.strip()
+                if not key or key in seen:
+                    continue
+                if not re.fullmatch(r"[a-z0-9_-]+", key):
+                    raise serializers.ValidationError(
+                        {"beer_brands": ["Beer brand keys must be lowercase slugs."]}
+                    )
+                seen.add(key)
+                keys.append(key)
+            if keys:
+                attrs["beer_brands"] = keys
+            else:
+                attrs.pop("beer_brands", None)
+        else:
+            attrs.pop("beer_brands", None)
         raw_amenities = attrs.get("amenities", "")
         if raw_amenities:
             keys = []
@@ -2142,6 +2576,12 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
     """Query params for local-first pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
+    place_id = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
     lat = serializers.FloatField(required=False)
     lng = serializers.FloatField(required=False)
 
@@ -2156,6 +2596,16 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
         if has_lat != has_lng:
             raise serializers.ValidationError("lat and lng must be provided together.")
         return attrs
+
+
+class PubLocationReverseGeocodeSerializer(
+    _LatLngBoundsValidationMixin,
+    serializers.Serializer,
+):
+    """An explicit map point that should be converted to a display address."""
+
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
 
 
 # ---------------------------------------------------------------------------
@@ -2483,6 +2933,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     achievements = serializers.SerializerMethodField()
     mapper = serializers.SerializerMethodField()
     pivar = serializers.SerializerMethodField()
+    ugc_consent = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
@@ -2506,6 +2957,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "achievements",
             "mapper",
             "pivar",
+            "ugc_consent",
             "usage",
             "created_at",
             "last_seen_at",
@@ -2645,10 +3097,12 @@ class AccountMeSerializer(serializers.ModelSerializer):
         # block uses ``xp`` / ``distinct_mapped_pubs`` / ``first_mapper_count`` /
         # ``levels[].xp``. The PUT-response snapshot in mapper.py uses the SAME
         # ``xp`` key so the two endpoints can never disagree.
+        # Level titles are lazy msgids, so str() them HERE: the ladder is a
+        # module-level table imported once, while the language is per request.
         return {
             "xp": xp,
             "level": progress["level"],
-            "title": progress["title"],
+            "title": str(progress["title"]),
             "xp_into_level": progress["xp_into_level"],
             "xp_for_next_level": progress["xp_for_next_level"],
             "distinct_mapped_pubs": stats["mapped_pubs_count"],
@@ -2656,7 +3110,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "first_mapper_count": stats["first_mapper_count"],
             "completed_pubs_count": stats["completed_pubs_count"],
             "levels": [
-                {"level": lvl["level"], "title": lvl["title"], "xp": lvl["xp"]}
+                {"level": lvl["level"], "title": str(lvl["title"]), "xp": lvl["xp"]}
                 for lvl in maper_levels()
             ],
             "xp_rules": maper_xp_rules(),
@@ -2669,12 +3123,18 @@ class AccountMeSerializer(serializers.ModelSerializer):
         return {
             "xp": xp,
             "level": progress["level"],
-            "title": progress["title"],
+            "title": str(progress["title"]),
             "xp_into_level": progress["xp_into_level"],
             "xp_for_next_level": progress["xp_for_next_level"],
-            "levels": pivar_levels(),
+            "levels": [
+                {"level": lvl["level"], "title": str(lvl["title"]), "xp": lvl["xp"]}
+                for lvl in pivar_levels()
+            ],
             "xp_rules": pivar_xp_rules(),
         }
+
+    def get_ugc_consent(self, obj: Account) -> dict:
+        return ugc_consent_snapshot(obj)
 
 
 class AccountUpdateSerializer(serializers.ModelSerializer):
@@ -2748,23 +3208,30 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
 
 
 class ReleaseNoteItemSerializer(serializers.Serializer):
-    """A single highlight bullet in the response body."""
+    """A single highlight bullet in the response body.
+
+    ``text_en`` is additive and may be empty: older notes were written before
+    the app spoke English, and the client hides the popup rather than showing
+    Czech to an English user.
+    """
 
     icon = serializers.CharField(allow_blank=True)
     text = serializers.CharField()
+    text_en = serializers.CharField(allow_blank=True)
 
 
 class ReleaseNoteSerializer(serializers.ModelSerializer):
     """Response body for GET /v1/release-notes.
 
     ``items`` reads the related ReleaseNoteItem rows in their ``order`` (the
-    related manager honours ReleaseNoteItem.Meta.ordering)."""
+    related manager honours ReleaseNoteItem.Meta.ordering). ``title_en`` is
+    additive and blank on notes that have no English copy."""
 
     items = ReleaseNoteItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = ReleaseNote
-        fields = ["version", "title", "items"]
+        fields = ["version", "title", "title_en", "items"]
         read_only_fields = fields
 
 
@@ -2826,16 +3293,37 @@ class PubAmenityKindSerializer(serializers.Serializer):
     The model keeps the columns named label/short_label/filter_candidate/rank/
     active; the wire contract (and the mobile WireAmenityKind type) uses
     label_cs/short_label_cs/map_filterable/is_active/order.
+
+    ``label``/``short_label`` are additive and already resolved for the
+    requesting language, so a new client can render them without knowing which
+    language it asked for. The ``_cs`` pair stays byte-identical for released
+    app versions.
     """
 
     key = serializers.CharField()
     group = serializers.CharField()
     label_cs = serializers.CharField(source="label")
     short_label_cs = serializers.CharField(source="short_label")
+    label_en = serializers.SerializerMethodField()
+    short_label_en = serializers.SerializerMethodField()
+    label = serializers.SerializerMethodField()
+    short_label = serializers.SerializerMethodField()
     icon = serializers.CharField()
     map_filterable = serializers.BooleanField(source="filter_candidate")
     is_active = serializers.BooleanField(source="active")
     order = serializers.IntegerField(source="rank")
+
+    def get_label_en(self, obj) -> str:
+        return obj.label_en or obj.label
+
+    def get_short_label_en(self, obj) -> str:
+        return obj.short_label_en or obj.short_label
+
+    def get_label(self, obj) -> str:
+        return self.get_label_en(obj) if current_locale() == "en" else obj.label
+
+    def get_short_label(self, obj) -> str:
+        return self.get_short_label_en(obj) if current_locale() == "en" else obj.short_label
 
 
 class PubAmenityReadQuerySerializer(serializers.Serializer):

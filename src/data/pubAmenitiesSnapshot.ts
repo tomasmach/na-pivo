@@ -11,7 +11,7 @@
  * background and overwrite the cache. AsyncStorage; never throws.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from './privateAccountStorage';
 
 import type { WireAmenityAggregate, WireAmenityCompleteness } from './pubAmenitiesClient';
 

@@ -18,9 +18,9 @@ import { forwardRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Defs, G, Path, Text as SvgText, TextPath } from 'react-native-svg';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import type { NightSummary } from '@/vycep/nightModel';
 
 /** Logical sticker width; capture upscales 3x to ~1080px. */
@@ -50,15 +50,16 @@ function OutlinedText(props: {
   fill: string;
   strokeWidth: number;
   letterSpacing?: number;
-  family?: string;
+  /** System weight; the app has no custom families any more (§3.1). */
+  weight?: string;
   children: string;
 }) {
-  const { x, y, size, fill, strokeWidth, letterSpacing, family, children } = props;
+  const { x, y, size, fill, strokeWidth, letterSpacing, weight, children } = props;
   const common = {
     x,
     y,
     fontSize: size,
-    fontFamily: family ?? Fonts.display.extrabold,
+    fontWeight: weight ?? '800',
     letterSpacing,
     textAnchor: 'middle' as const,
   };
@@ -92,7 +93,7 @@ function OutlinedArcText(props: {
   const { href, size, fill, strokeWidth, letterSpacing, children } = props;
   const common = {
     fontSize: size,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     letterSpacing,
     textAnchor: 'middle' as const,
   };
@@ -126,7 +127,7 @@ export function stickerLayout(night: NightSummary, mode: StickerMode) {
   const numberHero = !live || night.beerCount > 0;
   const extras = live
     ? ''
-    : cs.vycep.storySecondaryLine(
+    : t.vycep.storySecondaryLine(
         night.wineCount,
         night.shotCount,
         night.softDrinkCount,
@@ -199,11 +200,11 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
     } = stickerLayout(night, mode);
     const city = night.city?.trim();
     const topLabel = live
-      ? cs.vycep.storyLiveTopArc
+      ? t.vycep.storyLiveTopArc
       : city
         ? `${city.toUpperCase()} · ${dateLabel}`
         : dateLabel;
-    const heroUnit = cs.vycep.storyStatBeers(night.beerCount).toUpperCase();
+    const heroUnit = t.vycep.storyStatBeers(night.beerCount).toUpperCase();
     const pubs = night.pubNames.map(fit);
 
     return (
@@ -236,7 +237,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
               strokeWidth={numberHero ? 16 : 12}
               letterSpacing={numberHero ? undefined : 2}
             >
-              {numberHero ? String(night.beerCount) : cs.vycep.storyLiveHero}
+              {numberHero ? String(night.beerCount) : t.vycep.storyLiveHero}
             </OutlinedText>
             {numberHero ? (
               <OutlinedText
@@ -258,7 +259,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
                 size={17}
                 fill={INK}
                 strokeWidth={6}
-                family={Fonts.display.bold}
+                weight="700"
               >
                 {extras}
               </OutlinedText>
@@ -272,7 +273,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
                 size={21}
                 fill={INK}
                 strokeWidth={7}
-                family={Fonts.display.bold}
+                weight="700"
               >
                 {i > 0 ? `→ ${name}` : name}
               </OutlinedText>
@@ -287,7 +288,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
                 strokeWidth={9}
                 letterSpacing={1}
               >
-                {cs.vycep.storyLiveCta}
+                {t.vycep.storyLiveCta}
               </OutlinedText>
             ) : null}
 
@@ -298,7 +299,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
               strokeWidth={8}
               letterSpacing={5}
             >
-              {cs.vycep.storyBrand}
+              {t.vycep.storyBrand}
             </OutlinedArcText>
           </G>
         </Svg>

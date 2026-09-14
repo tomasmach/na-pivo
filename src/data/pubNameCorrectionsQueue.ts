@@ -11,7 +11,9 @@ import {
   type PubNameCorrectionEntry,
 } from './pubNameCorrectionsClient';
 import { clearPubsSnapshot } from './pubs';
-import { createQueueStorage, createQueueLock } from './createQueue';
+import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
+import { preserveDurableQueue } from './durableQueuePolicy';
+import { runPrivateAccountMutation } from './privateAccountBoundary';
 
 const STORAGE_KEY = 'na-pivo-pub-name-corrections-queue';
 const MAX_QUEUE_LENGTH = 30;
@@ -36,43 +38,105 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<PubNameCorrectio
   isPubNameCorrectionEntry,
 );
 
-const enqueueTask = createQueueLock();
+const storageTask = createQueueLock();
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
+export type PubNameCorrectionQueueResult =
+  | 'synced'
+  | 'queued'
+  | 'rejected'
+  | 'storage-error';
+
+export type PersistedPubNameCorrection =
+  | { persisted: false }
+  | { persisted: true; sync: Promise<PubNameCorrectionQueueResult> };
+
+async function deliverQueue(signal: AbortSignal): Promise<void> {
+  const queue = await storageTask(loadQueue);
   if (queue.length === 0) return;
 
-  const remaining: PubNameCorrectionEntry[] = [];
+  const deliveredIds = new Set<string>();
   for (const entry of queue) {
-    const result = await submitPubNameCorrection(entry);
+    if (signal.aborted) return;
+    const result = await submitPubNameCorrection(entry, signal);
     if (result === 'ok') {
-      await clearPubsSnapshot();
-    } else if (result === 'retry') {
-      remaining.push(entry);
+      await clearPubsSnapshot().catch(() => undefined);
+      deliveredIds.add(entry.client_id);
+    } else if (result === 'permanent-error') {
+      deliveredIds.add(entry.client_id);
     }
   }
-  await saveQueue(remaining);
+  if (deliveredIds.size === 0) return;
+  await storageTask(async () => {
+    const latest = await loadQueue();
+    await saveQueue(latest.filter((entry) => !deliveredIds.has(entry.client_id)));
+  });
 }
 
+const correctionDelivery = createCoalescingFlush(deliverQueue);
+
 export function enqueuePubNameCorrection(entry: PubNameCorrectionEntry): Promise<boolean> {
-  return enqueueTask(async () => {
+  return storageTask(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
     deduped.push(entry);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    const persisted = await saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+    if (!persisted) throw new Error('Could not persist pub name correction');
 
-    await flushLocked();
-    const after = await loadQueue();
+    return true;
+  }).then(async (persisted) => {
+    if (!persisted) return false;
+    await correctionDelivery.flush();
+    const after = await storageTask(loadQueue);
     return !after.some((queued) => queued.client_id === entry.client_id);
   });
 }
 
+async function syncOne(
+  entry: PubNameCorrectionEntry,
+  signal: AbortSignal,
+): Promise<PubNameCorrectionQueueResult> {
+  const result = await submitPubNameCorrection(entry, signal);
+  if (result === 'retry') return 'queued';
+
+  await storageTask(async () => {
+    const latest = await loadQueue();
+    await saveQueue(latest.filter((queued) => queued.client_id !== entry.client_id));
+  });
+  if (result === 'ok') {
+    await clearPubsSnapshot().catch(() => undefined);
+    return 'synced';
+  }
+  return 'rejected';
+}
+
+/**
+ * Stores an interactive rename first and returns immediately. Its own network
+ * attempt runs next, ahead of an old backlog, so the form never waits through
+ * several eight-second retry timeouts. The caller may observe `sync` to roll
+ * back a permanent rejection without blocking the sheet.
+ */
+export async function persistPubNameCorrection(
+  entry: PubNameCorrectionEntry,
+): Promise<PersistedPubNameCorrection> {
+  const persisted = await storageTask(async () => {
+    const queue = await loadQueue();
+    const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
+    deduped.push(entry);
+    return saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+  });
+  if (!persisted) return { persisted: false };
+  const sync = runPrivateAccountMutation((scope) => syncOne(entry, scope.signal))
+    .catch(() => 'queued' as const);
+  return { persisted: true, sync };
+}
+
 export function flushPubNameCorrectionsQueue(): Promise<void> {
-  return enqueueTask(flushLocked);
+  return correctionDelivery.flush();
 }
 
 export function clearPubNameCorrectionsQueue(): Promise<void> {
-  return enqueueTask(async () => {
+  correctionDelivery.abortInFlight();
+  return storageTask(async () => {
     await saveQueue([]);
-  });
+  }, { allowDuringPrivateTransition: true });
 }

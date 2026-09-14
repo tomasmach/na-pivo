@@ -1,4 +1,8 @@
-import { suggestBeerBrands } from '../beerSuggestionsClient';
+import {
+  fallbackPopularBeerBrands,
+  fetchPopularBeerBrands,
+  suggestBeerBrands,
+} from '../beerSuggestionsClient';
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -145,5 +149,64 @@ describe('suggestBeerBrands', () => {
 
     await expect(suggestBeerBrands('plz', controller.signal)).resolves.toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchPopularBeerBrands', () => {
+  it('loads bounded canonical brand keys and labels from blank suggestions', async () => {
+    setBackend('https://api.example.com/');
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        suggestions: [
+          {
+            slug: 'gambrinus-10',
+            name: 'Gambrinus 10°',
+            kind: 'product',
+            brand_slug: 'gambrinus',
+            brand_name: 'Gambrinus',
+          },
+          {
+            slug: 'gambrinus-11',
+            name: 'Gambrinus 11°',
+            kind: 'product',
+            brand_slug: 'gambrinus',
+            brand_name: 'Gambrinus',
+          },
+          {
+            slug: 'pilsner-urquell',
+            name: 'Pilsner Urquell',
+            kind: 'brand',
+            brand_slug: 'pilsner-urquell',
+            brand_name: 'Pilsner Urquell',
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(fetchPopularBeerBrands()).resolves.toEqual([
+      { key: 'gambrinus', label: 'Gambrinus' },
+      { key: 'pilsner-urquell', label: 'Pilsner Urquell' },
+    ]);
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string];
+    expect(url).toBe('https://api.example.com/v1/beer-brands/suggest?q=&limit=20');
+  });
+
+  it('uses the bounded bundled popular list while offline', async () => {
+    setBackend(undefined);
+
+    await expect(fetchPopularBeerBrands()).resolves.toEqual(fallbackPopularBeerBrands());
+    expect(fallbackPopularBeerBrands()).toHaveLength(5);
+  });
+
+  it('falls back when the popular response has no canonical brand identities', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ suggestions: [{ slug: 'orphan-product', name: 'Orphan' }] }),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchPopularBeerBrands()).resolves.toEqual(fallbackPopularBeerBrands());
   });
 });

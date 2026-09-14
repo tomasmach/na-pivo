@@ -1,11 +1,12 @@
 /**
- * One row in the party leaderboard (ŽEBŘÍČEK PARTY). Rendered as a hairline row
- * on the bare stout ground — no card. Layout spec §8.
+ * One row in the party leaderboard (Žebříček party). Lives inside the section's
+ * stout2 card, so rows divide with a top hairline like SittingRow does.
  *
- * Columns: rank (crown for #1, numeral otherwise) · Avatar · name · big visits
- * count with a quiet caption. The current user's row is gently highlighted with
- * an amber tint, a 3px amber left bar, and an amber visit numeral. The row dips
- * its opacity on press but is otherwise inert (there is nothing to navigate to).
+ * Columns: rank (crown for #1, numeral otherwise) · Avatar · name · the big
+ * metric numeral with a quiet unit caption. Which metric (beers or visits) is
+ * the section's choice — the row only renders the value it is handed. The
+ * current user's row is gently highlighted with an amber tint, a 3px amber left
+ * bar, and an amber numeral.
  */
 
 import React, { memo } from 'react';
@@ -13,18 +14,22 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import { Avatar } from '@/profile/Avatar';
 import { CrownIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { LeaderboardEntry } from '@/data/friendsClient';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface LeaderboardRowProps {
   entry: LeaderboardEntry;
   /** 1-based standing in the list. */
   rank: number;
-  /** Highest visits30d in the list (kept for the optional visits-meter; unused). */
-  maxVisits: number;
+  /** The metric numeral this row shows (beers or visits, section's call). */
+  value: number;
+  /** Declined unit under the numeral, e.g. "piv" / "návštěvy". */
+  caption: string;
+  /** First row in the card skips the divider. */
+  divided?: boolean;
   /**
    * Opens the friend's profile (§F1/§F4). Omitted for my own row, which stays a
    * plain no-op node without the misleading press feedback (a11y §15).
@@ -36,24 +41,24 @@ const AVATAR_SIZE = 34;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function resolveName(entry: LeaderboardEntry): string {
-  if (entry.isMe) return cs.friends.leaderboardMe;
+  if (entry.isMe) return t.friends.leaderboardMe;
   const { nickname, displayName } = entry.account;
   if (nickname) return `@${nickname}`;
-  return displayName || 'Kámoš';
+  return displayName || t.friends.fallbackName;
 }
 
 export const LeaderboardRow = memo(function LeaderboardRow({
   entry,
   rank,
-  maxVisits,
+  value,
+  caption,
+  divided = false,
   onPress,
 }: LeaderboardRowProps) {
-  const { account, visits30d, sharedCount, isMe } = entry;
+  const { account, sharedCount, isMe } = entry;
 
   // The whole row is a single a11y node summarising rank + name + count.
-  const a11yLabel = `${rank}. ${resolveName(entry)}, ${visits30d} ${cs.friends.leaderboardVisits(
-    visits30d,
-  )}`;
+  const a11yLabel = `${rank}. ${resolveName(entry)}, ${value} ${caption}`;
 
   const rowContent = (
     <>
@@ -101,18 +106,18 @@ export const LeaderboardRow = memo(function LeaderboardRow({
 
       <View style={styles.metricCol}>
         <Text
-          style={[styles.visits, isMe && styles.visitsMe]}
+          style={[styles.metric, isMe && styles.metricMe]}
           allowFontScaling={false}
           maxFontSizeMultiplier={FontScaleCap.display}
         >
-          {visits30d}
+          {value}
         </Text>
         <Text
-          style={styles.visitsCaption}
+          style={styles.metricCaption}
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {cs.friends.leaderboardVisits(visits30d)}
+          {caption}
         </Text>
       </View>
     </>
@@ -126,14 +131,23 @@ export const LeaderboardRow = memo(function LeaderboardRow({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        style={({ pressed }) => [styles.row, isMe && styles.rowMe, pressed && styles.rowPressed]}
+        style={({ pressed }) => [
+          styles.row,
+          divided && styles.rowDivided,
+          isMe && styles.rowMe,
+          pressed && styles.rowPressed,
+        ]}
       >
         {rowContent}
       </Pressable>
     );
   }
   return (
-    <View accessible accessibilityLabel={a11yLabel} style={[styles.row, isMe && styles.rowMe]}>
+    <View
+      accessible
+      accessibilityLabel={a11yLabel}
+      style={[styles.row, divided && styles.rowDivided, isMe && styles.rowMe]}
+    >
       {rowContent}
     </View>
   );
@@ -146,12 +160,17 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     minHeight: 56,
     paddingVertical: Spacing.sm,
-    paddingHorizontal: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.border, 0.4),
+  },
+  rowDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.border, 0.4),
   },
   rowMe: {
     backgroundColor: withAlpha(Colors.amber, 0.08),
+    borderRadius: Radius.card,
+    // The tint needs its own breathing room; the card's padding sits outside.
+    paddingHorizontal: 10,
+    marginHorizontal: -10,
   },
   rowPressed: {
     opacity: 0.6,
@@ -171,13 +190,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankMedal: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 16,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   rankPlain: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -188,13 +207,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   name: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },
   sharedLine: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -202,19 +221,20 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     alignItems: 'flex-end',
   },
-  visits: {
-    fontFamily: Fonts.display.extrabold,
+  metric: {
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
-  visitsMe: {
+  metricMe: {
     color: Colors.amber,
   },
   // Quiet unit label under the big number.
-  visitsCaption: {
+  metricCaption: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
   },

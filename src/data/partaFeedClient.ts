@@ -59,6 +59,10 @@ export interface PartaFeedSitting {
   endedAt: string;
   /** Every drink in the sitting, including any beyond the listed `items`. */
   total: number;
+  beerCount?: number;
+  wineCount?: number;
+  softDrinkCount?: number;
+  shotCount?: number;
   items: PartaFeedDrink[];
 }
 
@@ -87,6 +91,10 @@ interface RawFeedSitting {
   started_at?: string;
   ended_at?: string;
   total?: number;
+  beer_count?: number;
+  wine_count?: number;
+  soft_drink_count?: number;
+  shot_count?: number;
   items?: RawFeedDrink[];
 }
 
@@ -116,6 +124,12 @@ function parseDrink(raw: RawFeedDrink): PartaFeedDrink {
   };
 }
 
+function parseCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : undefined;
+}
+
 function parseSitting(raw: RawFeedSitting): PartaFeedSitting {
   const items = Array.isArray(raw.items) ? raw.items.map(parseDrink) : [];
   const listed = items.reduce((sum, item) => sum + item.count, 0);
@@ -134,6 +148,10 @@ function parseSitting(raw: RawFeedSitting): PartaFeedSitting {
     // The server truncates `items` but keeps `total` honest; a server that sends
     // neither still yields a count the row can print.
     total: typeof raw.total === 'number' && raw.total > 0 ? Math.floor(raw.total) : listed,
+    beerCount: parseCount(raw.beer_count),
+    wineCount: parseCount(raw.wine_count),
+    softDrinkCount: parseCount(raw.soft_drink_count),
+    shotCount: parseCount(raw.shot_count),
     items,
   };
 }

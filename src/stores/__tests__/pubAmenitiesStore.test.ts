@@ -1,15 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import {
   usePubAmenitiesStore,
   selectPubVotes,
   migratePubAmenities,
 } from '../pubAmenitiesStore';
 import type { AmenityKey } from '@/data/amenities';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 /** Local non-reactive read for assertions (mirrors the store snapshot). */
 const getPubVotes = (pubKey: string) => usePubAmenitiesStore.getState().votes[pubKey];
@@ -169,15 +169,15 @@ describe('hydrateVotes — per-(pubKey, amenityKey) LWW', () => {
 describe('migratePubAmenities', () => {
   it('keeps known keys with valid entries', () => {
     const migrated = migratePubAmenities(
-      { votes: { [PUB]: { game_darts: { vote: 'yes', updatedAt: 't' } } } },
+      { votes: { [PUB]: { game_darts: { vote: 'yes', updatedAt: '2026-06-14T10:00:00.000Z' } } } },
       1,
     );
-    expect(migrated.votes[PUB].game_darts).toEqual({ vote: 'yes', updatedAt: 't' });
+    expect(migrated.votes[PUB].game_darts).toEqual({ vote: 'yes', updatedAt: '2026-06-14T10:00:00.000Z' });
   });
 
   it('drops unknown persisted keys and prunes the now-empty pub', () => {
     const migrated = migratePubAmenities(
-      { votes: { [PUB]: { totally_made_up: { vote: 'yes', updatedAt: 't' } } } },
+      { votes: { [PUB]: { totally_made_up: { vote: 'yes', updatedAt: '2026-06-14T10:00:00.000Z' } } } },
       1,
     );
     expect(migrated.votes[PUB]).toBeUndefined();
@@ -188,20 +188,39 @@ describe('migratePubAmenities', () => {
       {
         votes: {
           [PUB]: {
-            game_darts: { vote: 'maybe', updatedAt: 't' },
-            practical_wifi: { vote: 'no', updatedAt: 't' },
+            game_darts: { vote: 'maybe', updatedAt: '2026-06-14T10:00:00.000Z' },
+            practical_wifi: { vote: 'no', updatedAt: '2026-06-14T10:00:00.000Z' },
           },
         },
       },
       1,
     );
     expect(migrated.votes[PUB].game_darts).toBeUndefined();
-    expect(migrated.votes[PUB].practical_wifi).toEqual({ vote: 'no', updatedAt: 't' });
+    expect(migrated.votes[PUB].practical_wifi).toEqual({ vote: 'no', updatedAt: '2026-06-14T10:00:00.000Z' });
   });
 
   it('tolerates missing or malformed input', () => {
     expect(migratePubAmenities(undefined, 1).votes).toEqual({});
     expect(migratePubAmenities({ votes: { [PUB]: null } }, 1).votes).toEqual({});
+  });
+
+  it('sanitizes malformed v1 votes during real Zustand rehydration', async () => {
+    await AsyncStorage.setItem('na-pivo-pub-amenities', JSON.stringify({
+      version: 1,
+      state: {
+        votes: {
+          [PUB]: {
+            game_darts: { vote: 'maybe', updatedAt: 42 },
+            practical_wifi: { vote: 'yes', updatedAt: 'bad-date' },
+          },
+        },
+      },
+    }));
+
+    await usePubAmenitiesStore.persist.rehydrate();
+
+    expect(usePubAmenitiesStore.getState().votes).toEqual({});
+    expect(typeof usePubAmenitiesStore.getState().setVote).toBe('function');
   });
 });
 

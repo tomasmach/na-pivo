@@ -1,5 +1,19 @@
+import { ensureAccount } from '../account';
+import {
+  restorePubRatings,
+  installPubRatingsSync,
+  runWithoutPubRatingsSync,
+  resetPubRatingsPullGateForTests,
+} from '../pubRatingsSync';
+import {
+  beginPrivateAccountTransition,
+  resetPrivateAccountBoundaryForTests,
+} from '../privateAccountBoundary';
+import { usePubRatingsStore } from '@/stores/pubRatingsStore';
+import { useTallyStore } from '@/stores/tallyStore';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const fetchRatings = jest.fn();
@@ -16,9 +30,14 @@ jest.mock('../pubRatingsQueue', () => ({
   getQueuedRatingDeletePubKeys: () => getQueuedRatingDeletePubKeys(),
 }));
 
-import { restorePubRatings, installPubRatingsSync, runWithoutPubRatingsSync } from '../pubRatingsSync';
-import { usePubRatingsStore } from '@/stores/pubRatingsStore';
-import { useTallyStore } from '@/stores/tallyStore';
+jest.mock('../account', () => ({
+  ensureAccount: jest.fn(async () => ({
+    deviceId: 'dev-1',
+    accountId: 'acc-1',
+    token: 'tok-1',
+    authenticated: false,
+  })),
+}));
 
 const PUB = 'aaaaaaaa';
 const OTHER = 'bbbbbbbb';
@@ -40,6 +59,8 @@ function wire(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetPrivateAccountBoundaryForTests();
+  resetPubRatingsPullGateForTests();
   getQueuedRatingDeletePubKeys.mockResolvedValue(new Set<string>());
   usePubRatingsStore.setState({ ratings: {} });
   useTallyStore.setState({ current: null, history: [] });
@@ -51,6 +72,28 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     await restorePubRatings();
     expect(usePubRatingsStore.getState().ratings[PUB]?.verdict).toBe('like');
     expect(flushPubRatingsQueue).toHaveBeenCalled();
+  });
+
+  it('gates a repeat pull for the same account, but pulls immediately for a new account', async () => {
+    fetchRatings.mockResolvedValue([wire()]);
+    await restorePubRatings();
+    expect(fetchRatings).toHaveBeenCalledTimes(1);
+
+    // Same account within the freshness window: pull skipped, flush still runs.
+    await restorePubRatings();
+    expect(fetchRatings).toHaveBeenCalledTimes(1);
+    expect(flushPubRatingsQueue).toHaveBeenCalledTimes(3);
+
+    // Account switch (anonymous → claim keeps stores, so the gate must be
+    // per-account): the new owner pulls without waiting out the window.
+    jest.mocked(ensureAccount).mockResolvedValueOnce({
+      deviceId: 'dev-1',
+      accountId: 'acc-2',
+      token: 'tok-2',
+      authenticated: true,
+    });
+    await restorePubRatings();
+    expect(fetchRatings).toHaveBeenCalledTimes(2);
   });
 
   it('does NOT echo a pulled rating back out as an upsert (suppress flag)', async () => {
@@ -109,9 +152,68 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
     expect(enqueueRatingOp).not.toHaveBeenCalled();
   });
+
+  it('drops an old-account response when credentials change during the fetch', async () => {
+    let fetchStarted!: () => void;
+    let resolveFetch!: (ratings: ReturnType<typeof wire>[]) => void;
+    let fetchSignal: AbortSignal | undefined;
+    const started = new Promise<void>((resolve) => {
+      fetchStarted = resolve;
+    });
+    fetchRatings.mockImplementationOnce((signal: AbortSignal) => {
+      fetchSignal = signal;
+      fetchStarted();
+      return new Promise((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+
+    const restoring = restorePubRatings();
+    await started;
+    const transition = beginPrivateAccountTransition('test-account-switch', 'acc-1');
+    expect(transition).not.toBeNull();
+    const drained = transition!.drain();
+    let didDrain = false;
+    void drained.then(() => {
+      didDrain = true;
+    });
+
+    expect(fetchSignal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(didDrain).toBe(false);
+    resolveFetch([wire()]);
+    await restoring;
+    await drained;
+
+    expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
+    expect(enqueueRatingOp).not.toHaveBeenCalled();
+    transition!.release();
+
+    jest.mocked(ensureAccount).mockResolvedValueOnce({
+      deviceId: 'dev-2',
+      accountId: 'acc-2',
+      token: 'tok-2',
+      authenticated: true,
+    });
+    fetchRatings.mockResolvedValueOnce([wire({ cache_key: OTHER })]);
+    await restorePubRatings();
+    expect(usePubRatingsStore.getState().ratings[OTHER]?.verdict).toBe('like');
+  });
 });
 
 describe('installPubRatingsSync — push subscribe-diff', () => {
+  it('does not surface a rejected background enqueue to the UI', async () => {
+    enqueueRatingOp.mockRejectedValueOnce(new Error('credential transition'));
+    const unsub = installPubRatingsSync();
+
+    usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(enqueueRatingOp).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
   it('enqueues an upsert when a rating is added locally', () => {
     const unsub = installPubRatingsSync();
     usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });

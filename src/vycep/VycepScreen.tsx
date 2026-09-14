@@ -27,7 +27,8 @@ import {
   type PublishedNight,
 } from '@/data/nightsClient';
 import { TallyCoaster } from '@/diary/TallyCoaster';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
+import { leaveRoute } from '@/navigation/leaveRoute';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   allSessionsNewestFirst,
@@ -36,7 +37,7 @@ import {
 } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { NightCard } from '@/vycep/NightCard';
@@ -59,7 +60,7 @@ const ScopeSegment = memo(function ScopeSegment({
   onChange,
 }: ScopeSegmentProps) {
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
-  const options = [cs.vycep.scopeParta, cs.vycep.scopeWorld] as const;
+  const options = [t.vycep.scopeParta, t.vycep.scopeWorld] as const;
 
   const handlePress = useCallback(
     (next: 0 | 1) => {
@@ -74,7 +75,7 @@ const ScopeSegment = memo(function ScopeSegment({
     <View
       style={styles.segment}
       accessibilityRole="tablist"
-      accessibilityLabel={cs.vycep.title}
+      accessibilityLabel={t.vycep.title}
     >
       {options.map((label, index) => {
         const next = index as 0 | 1;
@@ -261,8 +262,8 @@ export default function VycepScreen() {
     if (!failed) return null;
     return {
       kind: 'counted',
-      text: cs.vycep.loadError,
-      undoLabel: cs.vycep.retry,
+      text: t.vycep.loadError,
+      undoLabel: t.vycep.retry,
       onUndo: load,
     };
   }, [failed, load]);
@@ -289,16 +290,16 @@ export default function VycepScreen() {
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
         {scope === 'friends'
-          ? cs.vycep.emptyPartaTitle
-          : cs.vycep.emptyWorldTitle}
+          ? t.vycep.emptyPartaTitle
+          : t.vycep.emptyWorldTitle}
       </Text>
       <Text
         style={styles.emptyBody}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
         {scope === 'friends'
-          ? cs.vycep.emptyPartaBody
-          : cs.vycep.emptyWorldBody}
+          ? t.vycep.emptyPartaBody
+          : t.vycep.emptyWorldBody}
       </Text>
     </View>
   );
@@ -315,14 +316,14 @@ export default function VycepScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           hitSlop={8}
           style={({ pressed }) => [
             styles.backButton,
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.vycepBack}
+          accessibilityLabel={t.a11y.vycepBack}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
@@ -367,8 +368,8 @@ export default function VycepScreen() {
       <GlowButton
         label={
           latestUnpublishedNight
-            ? cs.vycep.publishLatestCta
-            : cs.vycep.logBeerCta
+            ? t.vycep.publishLatestCta
+            : t.vycep.logBeerCta
         }
         onPress={handleCta}
         variant="primary"
@@ -376,8 +377,8 @@ export default function VycepScreen() {
         height={62}
         accessibilityLabel={
           latestUnpublishedNight
-            ? cs.a11y.publishNightButton
-            : cs.vycep.logBeerCta
+            ? t.a11y.publishNightButton
+            : t.vycep.logBeerCta
         }
       />
 
@@ -437,7 +438,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     letterSpacing: 0.2,
     includeFontPadding: false,
@@ -477,14 +478,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.foam,
     textAlign: 'center',
     includeFontPadding: false,
   },
   emptyBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,

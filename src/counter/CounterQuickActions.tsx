@@ -16,9 +16,9 @@ import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MapPinnedIcon, PlusIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 export interface CounterQuickActionsProps {
@@ -38,16 +38,16 @@ export const CounterQuickActions = memo(function CounterQuickActions({
     <View style={styles.row}>
       {onPickOther ? (
         <Chip
-          label={cs.counter.quickOtherBeer}
-          a11yLabel={cs.a11y.counterQuickOtherBeer}
+          label={t.counter.quickOtherBeer}
+          a11yLabel={t.a11y.counterQuickOtherBeer}
           icon={<PlusIcon size={17} color={Colors.amber} />}
           onPress={onPickOther}
         />
       ) : null}
       {onMapPub ? (
         <Chip
-          label={cs.counter.quickMapPub}
-          a11yLabel={cs.a11y.counterQuickMapPub}
+          label={t.counter.quickMapPub}
+          a11yLabel={t.a11y.counterQuickMapPub}
           icon={<MapPinnedIcon size={17} color={Colors.amber} />}
           onPress={onMapPub}
         />
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flexShrink: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,

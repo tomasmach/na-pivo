@@ -1,0 +1,7 @@
+<resources>
+  <plurals name="beer_live_activity_beer_count">
+    <item quantity="one">1 pivo</item>
+    <item quantity="few">%d piva</item>
+    <item quantity="other">%d piv</item>
+  </plurals>
+</resources>

@@ -2,12 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeMobileWearableSync } from '../mobileSync';
 import type { WearableCommandEnvelope } from '../protocol';
 import {
-  beginMobileWearableAccountBoundary,
   getMobileWearableSyncBoundary,
   MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
   MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
 } from '../mobileSyncBoundary';
 import { createWearableSyncState } from '../stateReducer';
+import { beginPrivateAccountTransition } from '@/data/privateAccountBoundary';
 import { geohash8 } from '@/data/geohash';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useWearableTargetStore } from '@/stores/wearableTargetStore';
@@ -620,7 +620,7 @@ describe('mobile wearable coordinator', () => {
     expect(
       conflictVisits.find((item) => item.clientId === eveningC)?.entry
         ?.closed_at,
-    ).toBeUndefined();
+    ).toBeNull();
 
     // A phone-side Dopito must clear activeEvening on both watches.
     const revisionBeforeArchive = latestSnapshot().payload.revision;
@@ -684,7 +684,21 @@ describe('mobile wearable coordinator', () => {
         ),
       ),
     ]);
-    beginMobileWearableAccountBoundary();
+    // Freeze while the native inbox read is already in flight. Draining the
+    // global lease must finish without ACK or a late tally mutation.
+    const heldCommands = await mockGetPendingCommands();
+    let inboxStarted = false;
+    let releaseInbox!: (commands: string[]) => void;
+    mockGetPendingCommands.mockImplementationOnce(() => {
+      inboxStarted = true;
+      return new Promise((resolve) => { releaseInbox = resolve; });
+    });
+    listeners[0]?.();
+    await waitForExpectation(() => expect(inboxStarted).toBe(true));
+    const transition = beginPrivateAccountTransition('wearable-test', ACCOUNT_ID);
+    if (!transition) throw new Error('Test account transition did not start');
+    releaseInbox(heldCommands);
+    await transition.drain();
     listeners[0]?.();
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await Promise.resolve();
@@ -700,6 +714,11 @@ describe('mobile wearable coordinator', () => {
     for (const accountListener of mockAccountListeners) {
       accountListener(mockAccountState, previousAccountState);
     }
+    // Replacing the credential while still frozen cannot resume the inbox.
+    await transition.drain();
+    expect(mockAckPendingCommands).toHaveBeenCalledTimes(acksBeforeBoundary);
+    expect(useTallyStore.getState().hasDrink(boundaryDrink)).toBe(false);
+    transition.release();
     await waitForExpectation(() => {
       expect(mockAckPendingCommands).toHaveBeenCalledTimes(
         acksBeforeBoundary + 1,

@@ -5,10 +5,10 @@
 
 export const Radius = {
   none: 0,
-  small: 8,
-  medium: 16,
-  card: 22,
-  cardLarge: 28,
+  small: 10,
+  medium: 20,
+  card: 28,
+  cardLarge: 34,
   pill: 999,
 } as const;
 

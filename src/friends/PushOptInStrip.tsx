@@ -16,9 +16,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BellRingIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface PushOptInStripProps {
@@ -39,17 +39,17 @@ function PushOptInStripComponent({ mode, onEnable, onDismiss, onOpenSettings }: 
           numberOfLines={2}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {cs.friends.pushDeniedHint}
+          {t.friends.pushDeniedHint}
         </Text>
         <Pressable
           onPress={onOpenSettings}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.pushDeniedCta}
+          accessibilityLabel={t.friends.pushDeniedCta}
           hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
           style={({ pressed }) => [styles.deniedCta, pressed && styles.pressed]}
         >
           <Text style={styles.deniedCtaText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.pushDeniedCta}
+            {t.friends.pushDeniedCta}
           </Text>
         </Pressable>
       </View>
@@ -64,17 +64,17 @@ function PushOptInStripComponent({ mode, onEnable, onDismiss, onOpenSettings }: 
         </View>
         <View style={styles.copy}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.pushPromptTitle}
+            {t.friends.pushPromptTitle}
           </Text>
           <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.pushPromptBody}
+            {t.friends.pushPromptBody}
           </Text>
         </View>
       </View>
       <View style={styles.actions}>
         <View style={styles.enableWrap}>
           <GlowButton
-            label={cs.friends.pushPromptCta}
+            label={t.friends.pushPromptCta}
             onPress={onEnable}
             variant="primary"
             glow="soft"
@@ -85,12 +85,12 @@ function PushOptInStripComponent({ mode, onEnable, onDismiss, onOpenSettings }: 
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.pushPromptDismiss}
+          accessibilityLabel={t.friends.pushPromptDismiss}
           hitSlop={8}
           style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}
         >
           <Text style={styles.dismissText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.pushPromptDismiss}
+            {t.friends.pushPromptDismiss}
           </Text>
         </Pressable>
       </View>
@@ -125,13 +125,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 16,
     color: Colors.foam,
   },
   body: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dismissText: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
   },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   deniedText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   deniedCtaText: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },

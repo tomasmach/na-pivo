@@ -34,11 +34,14 @@ export interface VisitEntry {
   lng: number;
   city?: string;
   external_id?: string | null;
+  /** Shared table this visit belongs to; best-effort and members-only. */
+  party_code?: string;
   /** ISO-8601 of the session start (first beer). */
   started_at: string;
   /** ISO-8601 of the last beer, or null while the evening is still open. */
   ended_at?: string | null;
-  /** Explicit "Dopito" time. Missing keeps compatibility with older clients. */
+  /** ISO-8601 of an explicit session closure (for example "Dopito"). Older
+   *  clients omit it, so the backend keeps its bounded recency fallback. */
   closed_at?: string | null;
   /** ISO-8601 of the last local change — drives last-write-wins on the server. */
   updated_at: string;
@@ -53,6 +56,7 @@ export interface WireVisit {
   lng: number;
   city: string | null;
   external_id: string | null;
+  party_code?: string | null;
   started_at: string;
   ended_at: string | null;
   closed_at?: string | null;

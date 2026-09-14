@@ -42,7 +42,6 @@ import {
 import {
   ActivityIndicator,
   AppState,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -53,10 +52,12 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
   CheckIcon,
@@ -81,31 +82,26 @@ import {
 } from '@/data/beerCheckinsClient';
 import {
   DEFAULT_FRIEND_SOCIAL_SETTINGS,
-  endFriendPubActivity,
   fetchFriendsDashboard,
   fetchFriendsLive,
   markFriendNotificationsRead,
   respondFriendRequest,
   type FriendPubActivity,
+  type FriendProfile,
   type FriendsDashboard,
   type Friendship,
 } from '@/data/friendsClient';
-import {
-  enqueueFriendOp,
-  isRetriableFriendError,
-} from '@/data/friendsQueue';
+import { endFriendActivityDurably } from '@/data/friendsQueue';
+import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import {
-  fetchLeaderboard,
-  type Leaderboard,
-} from '@/data/leaderboardsClient';
 import { fetchPartaFeed, type PartaFeedSitting } from '@/data/partaFeedClient';
 import {
   fetchPhotoContestTeaser,
   type PhotoContestSnapshot,
 } from '@/data/photoContestClient';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
 import {
   selectIsSignedIn,
@@ -114,11 +110,11 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
-import { usePartaSignalStore } from '@/stores/partaSignalStore';
+import { hasLiveFriendSignal, usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
@@ -159,7 +155,7 @@ function timestamp(value: string | null | undefined): number {
 function planTimeLabel(iso: string): string {
   const parsed = timestamp(iso);
   if (parsed === 0) return '';
-  return new Date(parsed).toLocaleTimeString('cs-CZ', {
+  return new Date(parsed).toLocaleTimeString(intlLocale, {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -212,6 +208,7 @@ function SheetScaffold({
       contentContainerStyle={styles.sheetListContent}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      keyboardAvoidedExternally
     >
       {children}
     </KeyboardAwareScrollView>
@@ -226,45 +223,20 @@ function SheetScaffold({
   );
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      statusBarTranslucent
-      presentationStyle="overFullScreen"
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={styles.sheetBackdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
-          <Pressable
-            style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}
-            onPress={() => undefined}
-          >
-            <View style={styles.sheetGrabber} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {title}
-              </Text>
-              <Pressable
-                onPress={onClose}
-                style={({ pressed }) => [styles.sheetClose, pressed && styles.dim]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
-              >
-                <XIcon size={20} color={Colors.foamMuted} />
-              </Pressable>
-            </View>
-            {content}
-          </Pressable>
+    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift={keyboardAware}>
+      <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
+        <View style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          <View style={styles.sheetGrabber} />
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {title}
+            </Text>
+            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
+          </View>
+          {content}
         </View>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -275,6 +247,10 @@ function AddFriendSheet({
   onOpenCode,
   onChanged,
   onClose,
+  query,
+  results,
+  onQueryChange,
+  onResultsChange,
 }: {
   visible: boolean;
   hasIdentity: boolean;
@@ -282,11 +258,15 @@ function AddFriendSheet({
   onOpenCode: () => void;
   onChanged: () => void;
   onClose: () => void;
+  query: string;
+  results: FriendProfile[];
+  onQueryChange: (query: string) => void;
+  onResultsChange: (results: FriendProfile[]) => void;
 }) {
   return (
     <SheetScaffold
       visible={visible}
-      title={cs.friends.growthHeader}
+      title={t.friends.growthHeader}
       onClose={onClose}
       keyboardAware
     >
@@ -296,6 +276,10 @@ function AddFriendSheet({
         onOpenCode={onOpenCode}
         onChanged={onChanged}
         showSearch
+        queryValue={query}
+        resultsValue={results}
+        onQueryChange={onQueryChange}
+        onResultsChange={onResultsChange}
       />
     </SheetScaffold>
   );
@@ -348,7 +332,7 @@ function RosterSheet({
     : [];
 
   return (
-    <SheetScaffold visible={visible} title={cs.friends.ctaWhoIsComing} onClose={onClose}>
+    <SheetScaffold visible={visible} title={t.friends.ctaWhoIsComing} onClose={onClose}>
       {dashboard?.myActiveActivity ? (
         <MyActivityCard
           activity={dashboard.myActiveActivity}
@@ -364,7 +348,7 @@ function RosterSheet({
       ))}
       {!dashboard?.myActiveActivity && activities.length === 0 ? (
         <Text style={styles.sheetEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.friends.rosterEmpty}
+          {t.friends.rosterEmpty}
         </Text>
       ) : null}
     </SheetScaffold>
@@ -384,7 +368,10 @@ export default function FriendsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+  // Opened straight from Nastavení: the privacy switches live here, but nobody
+  // looks for "kdo mě vidí" on the Parta screen. `?settings=1` is the door.
+  const settingsParam = useLocalSearchParams<{ settings?: string }>().settings;
+  const [settingsVisible, setSettingsVisible] = useState(settingsParam === '1');
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
@@ -392,8 +379,9 @@ export default function FriendsScreen() {
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
-  const [weeklyBoard, setWeeklyBoard] = useState<Leaderboard | null>(null);
   const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
+  const [addFriendQuery, setAddFriendQuery] = useState('');
+  const [addFriendResults, setAddFriendResults] = useState<FriendProfile[]>([]);
   const [respondingRequestActions, setRespondingRequestActions] = useState<
     Record<string, 'accept' | 'decline'>
   >({});
@@ -480,10 +468,7 @@ export default function FriendsScreen() {
             usePartaSignalStore.getState().setSignal({
               pendingRequests: next.incomingRequests.length,
               unread: willMarkRead ? 0 : next.unreadCount,
-              liveNow:
-                next.presence.length > 0 ||
-                next.activeFriends.length > 0 ||
-                next.myActiveActivity != null,
+              liveNow: hasLiveFriendSignal(next),
             });
           } else {
             setLoadError(true);
@@ -561,10 +546,7 @@ export default function FriendsScreen() {
     usePartaSignalStore.getState().setSignal({
       pendingRequests: slice.incomingCount,
       unread: slice.unreadCount,
-      liveNow:
-        slice.presence.length > 0 ||
-        slice.activeFriends.length > 0 ||
-        slice.myActiveActivity != null,
+      liveNow: hasLiveFriendSignal(slice),
     });
   }, []);
 
@@ -605,9 +587,6 @@ export default function FriendsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void fetchLeaderboard('beers', 'week').then((board) => {
-        if (mountedRef.current && board) setWeeklyBoard(board);
-      });
       void fetchPhotoContestTeaser().then((snapshot) => {
         if (!snapshot) return;
         if (mountedRef.current) setContestSnapshot(snapshot);
@@ -685,7 +664,7 @@ export default function FriendsScreen() {
       });
       if (result.ok) {
         showToast(
-          action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined,
+          action === 'accept' ? t.friends.requestAccepted : t.friends.requestDeclined,
           {
             icon:
               action === 'accept' ? (
@@ -708,38 +687,43 @@ export default function FriendsScreen() {
     if (!activity || endingBroadcastRef.current) return;
     trackUiInteraction('friends_end_broadcast');
     showAppDialog({
-      title: cs.friends.endActivityConfirmTitle,
-      message: cs.friends.endActivityConfirmBody,
+      title: t.friends.endActivityConfirmTitle,
+      message: t.friends.endActivityConfirmBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.friends.endActivityConfirmConfirm,
+          text: t.friends.endActivityConfirmConfirm,
           style: 'destructive',
           onPress: () => {
             endingBroadcastRef.current = true;
-            void endFriendPubActivity(activity.id).then((result) => {
-              endingBroadcastRef.current = false;
-              if (result.ok) {
-                showToast(cs.friends.endedToast, {
-                  icon: <Undo2Icon size={20} color={Colors.amber} />,
-                });
-                reload();
-                return;
-              }
-              if (isRetriableFriendError(result)) {
-                void enqueueFriendOp({
-                  op: 'end',
-                  clientId: activity.id,
-                  activityId: activity.id,
-                });
-                showToast(cs.friends.endQueued, {
-                  icon: <Undo2Icon size={20} color={Colors.amber} />,
-                });
-                reload();
-                return;
-              }
-              showToast(result.detail);
-            });
+            void endFriendActivityDurably(activity.id)
+              .then((result) => {
+                if (!mountedRef.current) return;
+                if (result.state === 'delivered' || result.state === 'queued') {
+                  showToast(
+                    result.state === 'delivered' ? t.friends.endedToast : t.friends.endQueued,
+                    { icon: <Undo2Icon size={20} color={Colors.amber} /> },
+                  );
+                  reload();
+                  return;
+                }
+                showToast(
+                  result.state === 'storage-error'
+                    ? t.friends.queueSaveError
+                    : result.error.detail,
+                );
+              })
+              .catch((error) => {
+                if (
+                  mountedRef.current &&
+                  !(error instanceof PrivateAccountMutationFrozenError)
+                ) {
+                  showToast(t.friends.queueSaveError);
+                }
+              })
+              .finally(() => {
+                endingBroadcastRef.current = false;
+              });
           },
         },
       ],
@@ -751,7 +735,7 @@ export default function FriendsScreen() {
     void registerFriendPush().then((result) => {
       if (!mountedRef.current) return;
       if (result.ok) {
-        showToast(cs.friends.pushEnabledToast);
+        showToast(t.friends.pushEnabledToast);
       }
     });
   }, [showToast]);
@@ -793,13 +777,13 @@ export default function FriendsScreen() {
     () => [
       {
         key: 'add-friend',
-        label: cs.friends.secondaryAddFriend,
+        label: t.friends.secondaryAddFriend,
         icon: UserPlusIcon,
         onPress: () => runAfterMoreClose(() => setAddFriendVisible(true)),
       },
       {
         key: 'party',
-        label: cs.friends.moreWholeParty,
+        label: t.friends.moreWholeParty,
         icon: UsersIcon,
         onPress: () =>
           runAfterMoreClose(() => {
@@ -809,13 +793,13 @@ export default function FriendsScreen() {
       },
       {
         key: 'settings',
-        label: cs.friends.moreSettings,
+        label: t.friends.moreSettings,
         icon: SettingsIcon,
         onPress: () => runAfterMoreClose(() => setSettingsVisible(true)),
       },
       {
         key: 'code',
-        label: cs.friends.moreMyCode,
+        label: t.friends.moreMyCode,
         icon: QrCodeIcon,
         onPress: () => runAfterMoreClose(() => setCodeVisible(true)),
       },
@@ -825,13 +809,13 @@ export default function FriendsScreen() {
 
   // Žebříčky, FotoPivař and Výčep are three whole features that used to be
   // invisible behind the "…" glyph. They belong on the card, in the same rail
-  // idiom the counter uses (docs/design-system.md §5.5).
+  // idiom the counter uses (DESIGN.md §5.5).
   const railTiles = useMemo<DoorRailTile[]>(
     () => [
       {
         key: 'vycep',
-        label: cs.friends.railVycep,
-        a11yLabel: cs.a11y.vycepLink,
+        label: t.friends.railVycep,
+        a11yLabel: t.a11y.vycepLink,
         Icon: HandPlatterIcon,
         onPress: () => {
           trackUiInteraction('friends_taproom_open');
@@ -840,8 +824,8 @@ export default function FriendsScreen() {
       },
       {
         key: 'leaderboards',
-        label: cs.friends.railLeaderboards,
-        a11yLabel: cs.a11y.leaderboardsLink,
+        label: t.friends.railLeaderboards,
+        a11yLabel: t.a11y.leaderboardsLink,
         Icon: TrophyIcon,
         onPress: () => {
           trackUiInteraction('friends_leaderboards_open');
@@ -850,8 +834,8 @@ export default function FriendsScreen() {
       },
       {
         key: 'photo-contest',
-        label: cs.friends.railPhotoContest,
-        a11yLabel: cs.a11y.photoContestLink,
+        label: t.friends.railPhotoContest,
+        a11yLabel: t.a11y.photoContestLink,
         Icon: ImagesIcon,
         onPress: () => {
           trackUiInteraction('friends_photo_contest_open');
@@ -953,13 +937,13 @@ export default function FriendsScreen() {
     // Sitting together outranks whoever is freshest: the party's own table is
     // the more interesting fact than a friend three districts away.
     if (sharedTable) {
-      return cs.friends.headlineTogether(
+      return t.friends.headlineTogether(
         friendDisplayName(sharedTable.friends[0].account),
         sharedTable.friends.length - 1,
       );
     }
     if (freshestSitting) {
-      return cs.friends.headlineSitting(
+      return t.friends.headlineSitting(
         friendDisplayName(freshestSitting.account),
         sittingCount - 1,
       );
@@ -967,42 +951,33 @@ export default function FriendsScreen() {
     if (freshestPlan) {
       const time = planTimeLabel(freshestPlan.scheduledFor ?? freshestPlan.startedAt);
       return time
-        ? `${cs.friends.planAt(time)} · ${freshestPlan.name}`
+        ? `${t.friends.planAt(time)} · ${freshestPlan.name}`
         : freshestPlan.name;
     }
-    if (d?.myActiveActivity) return cs.friends.pulseMineBody;
-    return cs.friends.emptyActive;
+    if (d?.myActiveActivity) return t.friends.pulseMineBody;
+    return t.friends.emptyActive;
   }, [d?.myActiveActivity, freshestPlan, freshestSitting, sharedTable, sittingCount]);
-
-  const rankLine = useMemo(() => {
-    if (d?.settings.ghostMode) return cs.friends.hiddenRank;
-    const rank = weeklyBoard?.me.rank;
-    if (rank == null) return null;
-    return `${cs.leaderboards.teaserTitleBefore}${cs.leaderboards.teaserTitleRank(rank)}${cs.leaderboards.teaserTitleAfter}`;
-  }, [d?.settings.ghostMode, weeklyBoard?.me.rank]);
 
   const lastResults = contestSnapshot?.lastResults ?? null;
   const contestResultsUnseen =
     lastResults != null && lastResults.contest.id !== lastSeenResultsId;
   const pushAudience = friendCount > 0 || (d?.incomingRequests.length ?? 0) > 0;
-  const streakAtRisk =
-    (d?.streak.currentWeeks ?? 0) > 0 && d?.streak.thisWeekLit === false;
 
   const nudge = useMemo<Nudge | null>(() => {
     const request = d?.incomingRequests[0];
     if (request) {
       return {
         kind: 'rapid',
-        text: cs.friends.nudgeRequest(friendDisplayName(request.requester)),
-        confirmLabel: cs.friends.nudgeRequestAccept,
+        text: t.friends.nudgeRequest(friendDisplayName(request.requester)),
+        confirmLabel: t.friends.nudgeRequestAccept,
         onConfirm: () => void respond(request.id, 'accept'),
       };
     }
     if (loadError) {
       return {
         kind: 'counted',
-        text: cs.friends.nudgeOffline,
-        undoLabel: cs.friends.nudgeOfflineRetry,
+        text: t.friends.nudgeOffline,
+        undoLabel: t.friends.nudgeOfflineRetry,
         onUndo: () => void load('refresh'),
       };
     }
@@ -1015,16 +990,16 @@ export default function FriendsScreen() {
     if (d?.myActiveActivity) {
       return {
         kind: 'counted',
-        text: cs.friends.nudgeBroadcasting,
-        undoLabel: cs.friends.nudgeBroadcastEnd,
+        text: t.friends.nudgeBroadcasting,
+        undoLabel: t.friends.nudgeBroadcastEnd,
         onUndo: handleEndBroadcast,
       };
     }
     if (!friendPushEnabled && !friendPushPrompted && pushAudience) {
       return {
         kind: 'checkin',
-        text: cs.friends.nudgePush,
-        ctaLabel: cs.friends.nudgePushEnable,
+        text: t.friends.nudgePush,
+        ctaLabel: t.friends.nudgePushEnable,
         onPress: handleEnablePush,
         onDismiss: dismissPush,
       };
@@ -1032,16 +1007,12 @@ export default function FriendsScreen() {
     if (contestResultsUnseen && lastResults) {
       return {
         kind: 'checkin',
-        text: cs.friends.nudgeContest,
-        ctaLabel: cs.friends.nudgeContestOpen,
+        text: t.friends.nudgeContest,
+        ctaLabel: t.friends.nudgeContestOpen,
         onPress: () => router.push('/photo-contest' as Href),
         onDismiss: () => markContestResultsSeen(lastResults.contest.id),
       };
     }
-    // A streak at risk is deliberately NOT a nudge: its only action is the
-    // footer's own button, so a chip above it was a second button that said the
-    // same thing and stole 64pt from the stream. It lives in the card's footer
-    // fact instead, next to the streak it is about.
     return null;
   }, [
     contestResultsUnseen,
@@ -1064,36 +1035,36 @@ export default function FriendsScreen() {
   const cta = useMemo(() => {
     if (!isSignedIn) {
       return {
-        label: cs.friends.ctaSignIn,
+        label: t.friends.ctaSignIn,
         onPress: () => router.push('/auth' as Href),
       };
     }
     if (nickname == null) {
       return {
-        label: cs.friends.ctaNickname,
+        label: t.friends.ctaNickname,
         onPress: () => router.push('/profile/edit' as Href),
       };
     }
     if (friendCount === 0) {
       return {
-        label: cs.friends.ctaAddFriend,
+        label: t.friends.ctaAddFriend,
         onPress: () => setAddFriendVisible(true),
       };
     }
     if (d?.myActiveActivity) {
       return {
-        label: cs.friends.ctaWhoIsComing,
+        label: t.friends.ctaWhoIsComing,
         onPress: () => setRosterVisible(true),
       };
     }
     if ((d?.activeFriends.length ?? 0) > 0) {
       return {
-        label: cs.friends.ctaPingToo,
+        label: t.friends.ctaPingToo,
         onPress: () => setComposeVisible(true),
       };
     }
     return {
-      label: cs.friends.ctaPing,
+      label: t.friends.ctaPing,
       onPress: () => setComposeVisible(true),
     };
   }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, nickname, router]);
@@ -1114,7 +1085,7 @@ export default function FriendsScreen() {
             <IconButton
               onPress={() => void respond(request.id, 'decline')}
               disabled={respondingRequestActions[request.id] != null}
-              accessibilityLabel={cs.friends.decline}
+              accessibilityLabel={t.friends.decline}
               style={styles.declineBtn}
             >
               {respondingRequestActions[request.id] === 'decline' ? (
@@ -1126,7 +1097,7 @@ export default function FriendsScreen() {
             <IconButton
               onPress={() => void respond(request.id, 'accept')}
               disabled={respondingRequestActions[request.id] != null}
-              accessibilityLabel={cs.friends.accept}
+              accessibilityLabel={t.friends.accept}
               style={styles.acceptBtn}
             >
               {respondingRequestActions[request.id] === 'accept' ? (
@@ -1151,7 +1122,7 @@ export default function FriendsScreen() {
           onPress={() => router.push('/profile/parta' as Href)}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.partaChip(cs.friends.pulseFriendCount(friendCount))}
+          accessibilityLabel={t.a11y.partaChip(t.friends.pulseFriendCount(friendCount))}
           style={({ pressed }) => [styles.partyChip, pressed && styles.dim]}
         >
           <UsersIcon size={16} color={Colors.amber} />
@@ -1160,14 +1131,14 @@ export default function FriendsScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {cs.friends.pulseFriendCount(friendCount)}
+            {t.friends.pulseFriendCount(friendCount)}
           </Text>
         </Pressable>
       ) : (
         <View
           style={styles.partyChip}
           accessibilityRole="text"
-          accessibilityLabel={cs.friends.soloChip}
+          accessibilityLabel={t.friends.soloChip}
         >
           <UsersIcon size={16} color={Colors.amber} />
           <Text
@@ -1175,7 +1146,7 @@ export default function FriendsScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {cs.friends.soloChip}
+            {t.friends.soloChip}
           </Text>
         </View>
       )}
@@ -1188,7 +1159,7 @@ export default function FriendsScreen() {
         style={({ pressed }) => [styles.moreButton, pressed && styles.dim]}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.partaMore}
+        accessibilityLabel={t.a11y.partaMore}
       >
         <MenuIcon size={20} color={Colors.mutedText} />
       </Pressable>
@@ -1234,17 +1205,12 @@ export default function FriendsScreen() {
               count={sittingCount}
               countLabel={
                 sittingCount > 0
-                  ? cs.friends.tableCaptionSitting
-                  : cs.friends.tableCaptionQuiet
+                  ? t.friends.tableCaptionSitting
+                  : t.friends.tableCaptionQuiet
               }
               headline={headline}
-              factStrong={
-                (d?.streak.currentWeeks ?? 0) > 0
-                  ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
-                  : cs.friends.noStreak
-              }
-              // The risk outranks the rank: it expires this week, the rank does not.
-              factMuted={streakAtRisk ? cs.friends.streakRiskFact : rankLine}
+              factStrong={null}
+              factMuted={null}
               // The door is the screen's action, not a second way into the
               // roster — the card itself already opens that when anyone is
               // sitting, and the numeral plus the table say how many.
@@ -1258,7 +1224,7 @@ export default function FriendsScreen() {
               onPress={
                 sittingCount > 0 || maybeCount > 0 ? () => setRosterVisible(true) : null
               }
-              accessibilityLabel={cs.a11y.partaCard(String(sittingCount), headline)}
+              accessibilityLabel={t.a11y.partaCard(String(sittingCount), headline)}
               rail={<DoorRail tiles={railTiles} />}
               topRow={chromeRow}
             />
@@ -1266,7 +1232,7 @@ export default function FriendsScreen() {
 
           {/* 1. Kdo kde sedí — the block the whole rebuild is about. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.presenceHeader}
+            {t.friends.presenceHeader}
           </Text>
 
           {hasSitting ? (
@@ -1294,7 +1260,7 @@ export default function FriendsScreen() {
             </View>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.presenceEmpty}
+              {t.friends.presenceEmpty}
             </Text>
           )}
 
@@ -1323,7 +1289,7 @@ export default function FriendsScreen() {
 
           {/* 3. Co se pilo — automatic, chronological, one row per evening. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.sittingsHeader}
+            {t.friends.sittingsHeader}
           </Text>
 
           {feed.length > 0 ? (
@@ -1345,7 +1311,7 @@ export default function FriendsScreen() {
                   onPress={loadMoreSittings}
                   disabled={feedLoadingMore}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.friends.sittingsMore}
+                  accessibilityLabel={t.friends.sittingsMore}
                   style={({ pressed }) => [
                     styles.moreFeedButton,
                     (pressed || feedLoadingMore) && styles.dim,
@@ -1355,14 +1321,14 @@ export default function FriendsScreen() {
                     style={styles.moreFeedLabel}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {feedLoadingMore ? cs.friends.sittingsLoading : cs.friends.sittingsMore}
+                    {feedLoadingMore ? t.friends.sittingsLoading : t.friends.sittingsMore}
                   </Text>
                 </Pressable>
               ) : null}
             </>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.sittingsEmpty}
+              {t.friends.sittingsEmpty}
             </Text>
           )}
 
@@ -1386,7 +1352,7 @@ export default function FriendsScreen() {
 
       <MoreSheet
         visible={moreVisible}
-        title={cs.friends.moreTitle}
+        title={t.friends.moreTitle}
         rows={moreRows}
         onClose={() => setMoreVisible(false)}
       />
@@ -1415,6 +1381,10 @@ export default function FriendsScreen() {
         onOpenCode={openCodeFromAdd}
         onChanged={reload}
         onClose={() => setAddFriendVisible(false)}
+        query={addFriendQuery}
+        results={addFriendResults}
+        onQueryChange={setAddFriendQuery}
+        onResultsChange={setAddFriendResults}
       />
 
       <RosterSheet
@@ -1449,7 +1419,7 @@ const styles = StyleSheet.create({
   },
   partyChipLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1487,7 +1457,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginTop: 24,
     marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1500,7 +1470,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   blockEmpty: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -1528,7 +1498,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.18),
   },
   moreFeedLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1561,11 +1531,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.08),
   },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: withAlpha(Colors.black, 0.6),
-    justifyContent: 'flex-end',
-  },
   sheetCardWrap: {
     width: '100%',
     // Let the card measure its content until this cap. A percentage minHeight
@@ -1574,20 +1539,18 @@ const styles = StyleSheet.create({
   },
   sheetCard: {
     flexShrink: 1,
-    backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
     paddingTop: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: MockLayout.screenPad,
     ...softDrop(),
   },
   sheetGrabber: {
-    width: 40,
+    width: 44,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -1600,20 +1563,9 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
     includeFontPadding: false,
-  },
-  sheetClose: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sheetList: {
     // Shrink only after the card reaches its cap, then scroll inside it.
@@ -1627,7 +1579,7 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     paddingVertical: 24,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1640,7 +1592,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rosterPub: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,

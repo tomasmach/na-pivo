@@ -1,7 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  buildHistoricalDrinkEntry,
+  cancelDrinksHistorySeed,
+  DRINKS_HISTORY_SEEDED_KEY,
+  seedDrinksFromHistory,
+} from '../drinksHistorySync';
+import { geohash8 } from '../geohash';
+import { useTallyStore, type TallyDrink, type TallySession } from '@/stores/tallyStore';
+
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const mockEnsureBatch = jest.fn();
@@ -16,15 +25,6 @@ jest.mock('../drinksQueue', () => ({
   getQueuedDrinkIds: (ids: readonly string[]) => mockGetQueuedIds(ids),
   releaseHistoricalDrinkBatch: jest.fn(),
 }));
-
-import {
-  buildHistoricalDrinkEntry,
-  cancelDrinksHistorySeed,
-  DRINKS_HISTORY_SEEDED_KEY,
-  seedDrinksFromHistory,
-} from '../drinksHistorySync';
-import { geohash8 } from '../geohash';
-import { useTallyStore, type TallyDrink, type TallySession } from '@/stores/tallyStore';
 
 const PUB_KEY = geohash8(50.0876, 14.4214);
 

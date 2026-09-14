@@ -5,16 +5,24 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.core.management import call_command
+from django.db import connection, transaction
+from django.db.models import Q
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+import pubs.accounts as accounts
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
+    AccountIdentityAlias,
     AccountUsageStats,
     DrinkLog,
+    Follow,
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
@@ -22,6 +30,7 @@ from pubs.models import (
     FriendNotification,
     FriendPubActivity,
     Friendship,
+    PublishedNight,
     PubVisit,
     PushDevice,
 )
@@ -122,7 +131,14 @@ def _visit(account: Account, *, day: str = "2026-06-12", pub_name: str = _PUB_NA
     )
 
 
-def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> DrinkLog:
+def _drink(
+    account: Account,
+    *,
+    drank_at=None,
+    cache_key: str = "u2fkbn1z",
+    drink_type: str = DrinkLog.DrinkType.BEER,
+    is_suspect: bool = False,
+) -> DrinkLog:
     return DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -133,6 +149,8 @@ def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> D
         city="Praha",
         external_id="mapy:test",
         beer_name="Plzeň",
+        drink_type=drink_type,
+        is_suspect=is_suspect,
         price_czk=65,
         drank_at=drank_at or timezone.now(),
     )
@@ -177,6 +195,567 @@ def test_friend_request_accept_and_remove(client):
     assert remove.status_code == status.HTTP_200_OK
     assert remove.json() == {"removed": True}
     assert Friendship.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_friends_dashboard_keeps_released_request_keys(client):
+    token, _account = _register(client, "janek")
+
+    response = client.get("/v1/friends", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "incoming_requests" in response.json()
+    assert "outgoing_requests" in response.json()
+
+
+@pytest.mark.django_db
+def test_friends_dashboard_paginates_relationships_and_follows(client):
+    token, owner = _register(client, "janek")
+    others = [_register(client, f"friend{index}")[1] for index in range(3)]
+    friendships = [
+        Friendship.objects.create(
+            requester=owner,
+            recipient=other,
+            status=Friendship.Status.ACCEPTED,
+        )
+        for other in others
+    ]
+    follows = [Follow.objects.create(follower=owner, target=other) for other in others]
+
+    first = client.get("/v1/friends?limit=2", **_auth(token))
+
+    assert first.status_code == status.HTTP_200_OK
+    assert [row["nickname"] for row in first.json()["friends"]] == [
+        "friend0",
+        "friend1",
+    ]
+    assert [row["nickname"] for row in first.json()["following"]] == [
+        "friend0",
+        "friend1",
+    ]
+    assert first.json()["next_cursor"] == friendships[1].id
+    assert first.json()["following_next_cursor"] == follows[1].id
+    assert first.json()["truncated"] is True
+    assert first.json()["friends_count"] == 3
+    assert first.json()["following_count"] == 3
+    assert first.json()["friends_truncated"] is True
+    assert first.json()["following_truncated"] is True
+
+    second = client.get(
+        "/v1/friends",
+        {
+            "limit": 2,
+            "cursor": first.json()["next_cursor"],
+            "following_cursor": first.json()["following_next_cursor"],
+        },
+        **_auth(token),
+    )
+
+    assert second.status_code == status.HTTP_200_OK
+    assert [row["nickname"] for row in second.json()["friends"]] == ["friend2"]
+    assert [row["nickname"] for row in second.json()["following"]] == [
+        "friend2"
+    ]
+    assert second.json()["next_cursor"] is None
+    assert second.json()["following_next_cursor"] is None
+    assert second.json()["truncated"] is False
+    assert second.json()["friends_count"] == 3
+    assert second.json()["following_count"] == 3
+    assert second.json()["friends_truncated"] is False
+    assert second.json()["following_truncated"] is False
+
+
+@pytest.mark.django_db
+def test_paginated_dashboard_keeps_live_and_presence_for_friend_outside_page(client):
+    token, owner = _register(client, "viewer")
+    _first_token, first_friend = _register(client, "firstfriend")
+    _second_token, second_friend = _register(client, "livefriend")
+    _make_friends(owner, first_friend)
+    _make_friends(owner, second_friend)
+    _make_live_row(second_friend)
+    visit = _visit(second_friend)
+    recent = timezone.now() - timedelta(minutes=10)
+    visit.started_at = recent
+    visit.client_updated_at = recent
+    visit.save(update_fields=["started_at", "client_updated_at"])
+
+    response = client.get("/v1/friends?limit=1", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["nickname"] for row in response.json()["friends"]] == ["firstfriend"]
+    assert [row["account"]["nickname"] for row in response.json()["active_friends"]] == ["livefriend"]
+    assert [row["account"]["nickname"] for row in response.json()["presence"]] == ["livefriend"]
+    assert response.json()["friends_count"] == 2
+
+
+@pytest.mark.django_db
+def test_paginated_dashboard_counts_only_visible_active_relationships(client):
+    token, owner = _register(client, "janek")
+    _active_token, activefriend = _register(client, "aktivni")
+    _blocked_token, blockedfriend = _register(client, "bloknuty")
+    _deleting_token, deletingfriend = _register(client, "mazanej")
+    for other in (activefriend, blockedfriend, deletingfriend):
+        Friendship.objects.create(
+            requester=owner,
+            recipient=other,
+            status=Friendship.Status.ACCEPTED,
+        )
+        Follow.objects.create(follower=owner, target=other)
+    deletingfriend.status = Account.Status.PENDING_DELETION
+    deletingfriend.save(update_fields=["status"])
+    FriendBlock.objects.create(blocker=owner, blocked=blockedfriend)
+
+    response = client.get("/v1/friends?limit=100", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["nickname"] for row in response.json()["friends"]] == ["aktivni"]
+    assert [row["nickname"] for row in response.json()["following"]] == ["aktivni"]
+    assert response.json()["friends_count"] == 1
+    assert response.json()["following_count"] == 1
+    assert response.json()["friends_truncated"] is False
+    assert response.json()["following_truncated"] is False
+
+
+@pytest.mark.django_db
+def test_friends_dashboard_legacy_snapshot_ignores_new_page_limit_setting(
+    client, settings
+):
+    settings.FRIENDS_DASHBOARD_SNAPSHOT_LIMIT = 1
+    token, owner = _register(client, "legacyowner")
+    others = [_register(client, f"legacy{index}")[1] for index in range(3)]
+    for other in others:
+        Friendship.objects.create(
+            requester=owner,
+            recipient=other,
+            status=Friendship.Status.ACCEPTED,
+        )
+        Follow.objects.create(follower=owner, target=other)
+
+    response = client.get("/v1/friends", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert {row["nickname"] for row in response.json()["friends"]} == {
+        "legacy0",
+        "legacy1",
+        "legacy2",
+    }
+    assert {row["nickname"] for row in response.json()["following"]} == {
+        "legacy0",
+        "legacy1",
+        "legacy2",
+    }
+    assert "truncated" not in response.json()
+    for page_key in (
+        "friends_count",
+        "following_count",
+        "friends_truncated",
+        "following_truncated",
+        "next_cursor",
+        "following_next_cursor",
+    ):
+        assert page_key not in response.json()
+
+
+@pytest.mark.django_db
+def test_follow_create_dashboard_detail_and_delete_are_idempotent(client):
+    follower_token, follower = _register(client, "janek")
+    target_token, target = _register(client, "petr")
+    public_drink_at = timezone.now() - timedelta(hours=2)
+    _drink(target, drank_at=public_drink_at)
+    PublishedNight.objects.create(
+        account=target,
+        client_id=str(uuid.uuid4()),
+        drinking_day=timezone.localdate(public_drink_at),
+        started_at=public_drink_at - timedelta(minutes=30),
+        ended_at=public_drink_at + timedelta(minutes=30),
+        beer_count=1,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=[_PUB_NAME],
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=timezone.now(),
+    )
+    private_drink = _drink(target, drank_at=timezone.now() - timedelta(minutes=1))
+    private_drink.beer_name = "Tajné pivo"
+    private_drink.save(update_fields=["beer_name"])
+
+    first = client.post(
+        "/v1/follows",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **_auth(follower_token),
+    )
+    second = client.post(
+        "/v1/follows",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **_auth(follower_token),
+    )
+
+    assert first.status_code == status.HTTP_201_CREATED
+    assert second.status_code == status.HTTP_201_CREATED
+    assert first.json() == second.json() == {"ok": True}
+    assert Follow.objects.filter(follower=follower, target=target).count() == 1
+
+    dashboard = client.get("/v1/friends", **_auth(follower_token))
+    assert dashboard.status_code == status.HTTP_200_OK
+    followed = dashboard.json()["following"]
+    assert followed == [
+        {
+            "id": str(target.public_id),
+            "nickname": "petr",
+            "display_name": "Petr",
+            "avatar_url": None,
+            "is_public": True,
+            "last_drink": "Plzeň",
+        }
+    ]
+    assert set(followed[0]) == {
+        "id",
+        "nickname",
+        "display_name",
+        "avatar_url",
+        "is_public",
+        "last_drink",
+    }
+    assert client.get("/v1/friends", **_auth(target_token)).json()["followers_count"] == 1
+    assert (
+        client.get(f"/v1/friends/{target.public_id}", **_auth(follower_token)).json()[
+            "is_following"
+        ]
+        is True
+    )
+
+    removed = client.delete(f"/v1/follows/{target.public_id}", **_auth(follower_token))
+    replayed = client.delete(f"/v1/follows/{target.public_id}", **_auth(follower_token))
+    assert removed.status_code == status.HTTP_204_NO_CONTENT
+    assert replayed.status_code == status.HTTP_204_NO_CONTENT
+    assert not Follow.objects.exists()
+    assert (
+        client.get(f"/v1/friends/{target.public_id}", **_auth(follower_token)).json()[
+            "is_following"
+        ]
+        is False
+    )
+
+    assert client.delete("/v1/follows", **_auth(follower_token)).status_code == 405
+    assert (
+        client.post(
+            f"/v1/follows/{target.public_id}",
+            data={"account_id": str(target.public_id)},
+            format="json",
+            **_auth(follower_token),
+        ).status_code
+        == 405
+    )
+
+
+@pytest.mark.django_db
+def test_follow_rejects_private_and_blocked_profiles_and_block_removes_existing(client):
+    token, follower = _register(client, "janek")
+    _private_token, private = _register(client, "tajny", is_public=False)
+    _public_token, public = _register(client, "petr")
+
+    private_response = client.post(
+        "/v1/follows",
+        data={"account_id": str(private.public_id)},
+        format="json",
+        **_auth(token),
+    )
+    assert private_response.status_code == status.HTTP_403_FORBIDDEN
+    assert private_response.json() == {
+        "ok": False,
+        "code": "private_profile",
+        "detail": "Soukromý profil sledovat nejde.",
+    }
+
+    Follow.objects.create(follower=follower, target=public)
+    blocked = client.post(
+        "/v1/friends/blocks",
+        data={"account_id": str(public.public_id)},
+        format="json",
+        **_auth(token),
+    )
+    assert blocked.status_code == status.HTTP_200_OK
+    assert not Follow.objects.exists()
+
+    blocked_response = client.post(
+        "/v1/follows",
+        data={"account_id": str(public.public_id)},
+        format="json",
+        **_auth(token),
+    )
+    assert blocked_response.status_code == status.HTTP_403_FORBIDDEN
+    assert blocked_response.json() == {
+        "ok": False,
+        "code": "blocked",
+        "detail": "Tenhle profil sledovat nejde.",
+    }
+
+
+@pytest.mark.django_db
+def test_block_bypasses_ugc_gate_without_stored_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    _target_token, target = _register(client, "petr")
+
+    response = client.post(
+        "/v1/friends/blocks",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **{
+            **_auth(token),
+            "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION,
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"blocked": True}
+    assert FriendBlock.objects.filter(blocker=account, blocked=target).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["request", "block", "follow"])
+def test_social_writes_reject_a_target_removed_while_waiting_for_account_locks(
+    client,
+    monkeypatch,
+    operation,
+):
+    token, actor = _register(client, f"actor-{operation}")
+    _target_token, target = _register(client, f"target-{operation}")
+    original_select_for_update = Account.objects.select_for_update
+    removed = False
+
+    def remove_target_before_lock(*args, **kwargs):
+        nonlocal removed
+        if not removed:
+            removed = True
+            Account.objects.filter(pk=target.pk).delete()
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        remove_target_before_lock,
+    )
+
+    if operation == "request":
+        response = client.post(
+            "/v1/friends/requests",
+            data={"target_account_id": str(target.public_id)},
+            format="json",
+            **_auth(token),
+        )
+    elif operation == "block":
+        response = client.post(
+            "/v1/friends/blocks",
+            data={"account_id": str(target.public_id)},
+            format="json",
+            **_auth(token),
+        )
+    else:
+        response = client.post(
+            "/v1/follows",
+            data={"account_id": str(target.public_id)},
+            format="json",
+            **_auth(token),
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "profile_not_found"
+    assert not Friendship.objects.filter(requester=actor).exists()
+    assert not FriendBlock.objects.filter(blocker=actor).exists()
+    assert not Follow.objects.filter(follower=actor).exists()
+
+
+@pytest.mark.django_db
+def test_friend_request_resolves_a_retired_target_across_merge_chain_and_retry(
+    client,
+    monkeypatch,
+):
+    requester_token, requester = _register(client, "alias-requester")
+    _source_token, source = _register(client, "alias-source")
+    _middle_token, middle = _register(client, "alias-middle")
+    _target_token, target = _register(client, "alias-target")
+    _final_token, final = _register(client, "alias-final")
+    retired_public_id = source.public_id
+
+    with transaction.atomic():
+        accounts._merge_anonymous_account(source, middle)
+    with transaction.atomic():
+        accounts._merge_anonymous_account(middle, target)
+
+    real_select_for_update = Account.objects.select_for_update
+    merged_while_waiting = False
+
+    def merge_target_before_account_lock(*args, **kwargs):
+        nonlocal merged_while_waiting
+        if not merged_while_waiting:
+            merged_while_waiting = True
+            accounts._merge_anonymous_account(target, final)
+        return real_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        merge_target_before_account_lock,
+    )
+
+    first = client.post(
+        "/v1/friends/requests",
+        data={"target_account_id": str(retired_public_id)},
+        format="json",
+        **_auth(requester_token),
+    )
+    retry = client.post(
+        "/v1/friends/requests",
+        data={"target_account_id": str(retired_public_id)},
+        format="json",
+        **_auth(requester_token),
+    )
+    repeated_retry = client.post(
+        "/v1/friends/requests",
+        data={"target_account_id": str(retired_public_id)},
+        format="json",
+        **_auth(requester_token),
+    )
+
+    assert first.status_code == status.HTTP_409_CONFLICT
+    assert first.json()["code"] == "auth"
+    assert retry.status_code == status.HTTP_201_CREATED
+    assert repeated_retry.status_code == status.HTTP_200_OK
+    assert Friendship.objects.filter(
+        requester=requester,
+        recipient=final,
+        status=Friendship.Status.PENDING,
+    ).count() == 1
+    assert FriendNotification.objects.filter(
+        recipient=final,
+        actor=requester,
+        kind=FriendNotification.Kind.FRIEND_REQUEST,
+    ).count() == 1
+    assert set(
+        AccountIdentityAlias.objects.filter(account=final).values_list(
+            "public_id",
+            flat=True,
+        )
+    ) == {source.public_id, middle.public_id, target.public_id}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("via_invite", [False, True])
+def test_friend_request_rechecks_a_block_after_the_optimistic_lookup(
+    client,
+    monkeypatch,
+    via_invite,
+):
+    token, requester = _register(client, f"requester-{via_invite}")
+    target_token, target = _register(client, f"target-{via_invite}")
+    request_data = {"nickname": target.nickname}
+    if via_invite:
+        code = client.get("/v1/friends/invite", **_auth(target_token)).json()["code"]
+        request_data = {"invite_code": code}
+
+    FriendBlock.objects.create(blocker=target, blocked=requester)
+    # Simulate a request whose pre-lock visibility snapshot was taken just
+    # before the block committed. The locked database recheck must still win.
+    monkeypatch.setattr("pubs.api.views._blocked_account_ids", lambda _account: set())
+
+    response = client.post(
+        "/v1/friends/requests",
+        data=request_data,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "profile_not_found"
+    assert not Friendship.objects.filter(
+        Q(requester=requester, recipient=target)
+        | Q(requester=target, recipient=requester)
+    ).exists()
+    assert not FriendNotification.objects.filter(
+        Q(recipient=requester) | Q(recipient=target)
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_friend_request_rechecks_private_profile_after_account_lock(client, monkeypatch):
+    token, requester = _register(client, "private-requester")
+    _target_token, target = _register(client, "private-target")
+    original_select_for_update = Account.objects.select_for_update
+    changed = False
+
+    def make_target_private_before_lock(*args, **kwargs):
+        nonlocal changed
+        if not changed:
+            changed = True
+            Account.objects.filter(pk=target.pk).update(is_public=False)
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(
+        Account.objects,
+        "select_for_update",
+        make_target_private_before_lock,
+    )
+
+    response = client.post(
+        "/v1/friends/requests",
+        data={"nickname": target.nickname},
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "profile_not_found"
+    assert not Friendship.objects.filter(requester=requester, recipient=target).exists()
+    assert not FriendNotification.objects.filter(recipient=target).exists()
+
+
+def _current_ugc_header(token: str) -> dict[str, str]:
+    return {
+        **_auth(token),
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION,
+    }
+
+
+@pytest.mark.django_db
+def test_friend_request_bypasses_ugc_gate_without_stored_acceptance(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    assert account_a.ugc_terms_accepted_at is None
+
+    response = client.post(
+        "/v1/friends/requests",
+        data={"nickname": "petr"},
+        format="json",
+        **_current_ugc_header(token_a),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert Friendship.objects.filter(
+        requester=account_a,
+        recipient=account_b,
+        status=Friendship.Status.PENDING,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_follow_bypasses_ugc_gate_without_stored_acceptance(client):
+    token, follower = _register(client, "janek")
+    _target_token, target = _register(client, "petr")
+    assert follower.ugc_terms_accepted_at is None
+
+    response = client.post(
+        "/v1/follows",
+        data={"account_id": str(target.public_id)},
+        format="json",
+        **_current_ugc_header(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert Follow.objects.filter(follower=follower, target=target).exists()
 
 
 @pytest.mark.django_db
@@ -241,6 +820,124 @@ def test_accepted_private_friend_is_visible_even_when_not_public(client):
     dashboard = client.get("/v1/friends", **_auth(token_a))
     assert dashboard.status_code == status.HTTP_200_OK
     assert dashboard.json()["friends"][0]["nickname"] == "tajny"
+
+
+@pytest.mark.django_db
+def test_friend_search_ranks_normalized_exact_nickname_first(client):
+    token, _viewer = _register(client, "hledajici")
+    _register(client, "amatys")
+    _register(client, "MatysJunior")
+    _register(client, "Matys")
+    _register(client, "xmatysx")
+
+    search = client.get("/v1/friends/search", {"q": "mAtYs"}, **_auth(token))
+
+    assert search.status_code == status.HTTP_200_OK
+    assert [profile["nickname"] for profile in search.json()["results"]] == [
+        "Matys",
+        "MatysJunior",
+        "amatys",
+        "xmatysx",
+    ]
+
+
+@pytest.mark.django_db
+def test_friend_suggestions_are_public_unrelated_and_privacy_filtered(client):
+    viewer_token, viewer = _register(client, "divak")
+    _public_token, public = _register(client, "novy")
+    _friend_token, friend = _register(client, "kamos")
+    _ghost_token, ghost = _register(client, "duch")
+    _private_token, private = _register(client, "tajny", is_public=False)
+    _blocked_token, blocked = _register(client, "blok")
+    ghost.ghost_mode = True
+    ghost.save(update_fields=["ghost_mode"])
+    _make_friends(viewer, friend)
+    _make_friends(public, friend)
+    _make_friends(ghost, friend)
+    _make_friends(private, friend)
+    _make_friends(blocked, friend)
+    FriendBlock.objects.create(blocker=blocked, blocked=viewer)
+
+    response = client.get("/v1/friends/search?suggest=true", **_auth(viewer_token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.json()["results"] == [
+        {
+            "id": str(public.public_id),
+            "nickname": "novy",
+            "display_name": "Novy",
+            "avatar_url": None,
+            "is_public": True,
+            "suggestion_reason": {"kind": "mutual_friends", "count": 1},
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_friend_search_ignores_optional_at_sign_and_case(client):
+    token, _viewer = _register(client, "hledajici")
+    _register(client, "Matys")
+
+    search = client.get("/v1/friends/search", {"q": "@mAtYs"}, **_auth(token))
+
+    assert search.status_code == status.HTTP_200_OK
+    assert [profile["nickname"] for profile in search.json()["results"]] == ["Matys"]
+
+
+@pytest.mark.django_db
+def test_friend_search_rejects_query_made_only_of_at_sign(client):
+    token, _viewer = _register(client, "hledajici")
+
+    search = client.get("/v1/friends/search", {"q": "@"}, **_auth(token))
+
+    assert search.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_friend_suggestions_never_use_private_pub_overlap_for_non_friends(client):
+    viewer_token, viewer = _register(client, "divak")
+    _bridge_token, bridge = _register(client, "spojka")
+    _shared_token, shared = _register(client, "stejnastamgast")
+    _mutual_token, mutual = _register(client, "preskamarada")
+    _private_diary_token, private_diary = _register(client, "skrytypijan")
+    _unrelated_token, unrelated = _register(client, "nahodny")
+    _make_friends(viewer, bridge)
+    _make_friends(mutual, bridge)
+    _visit(viewer, pub_name="Tajná společná hospoda")
+    _visit(shared, pub_name="Jiné jméno stejného místa")
+    _visit(private_diary, pub_name="Ještě jiné jméno")
+    shared.share_drinks_with_parta = True
+    shared.save(update_fields=["share_drinks_with_parta"])
+    private_diary.share_drinks_with_parta = False
+    private_diary.save(update_fields=["share_drinks_with_parta"])
+
+    with CaptureQueriesContext(connection) as queries:
+        response = client.get("/v1/friends/search?suggest=true", **_auth(viewer_token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    results = response.json()["results"]
+    assert [item["id"] for item in results] == [str(mutual.public_id)]
+    assert results[0]["suggestion_reason"] == {"kind": "mutual_friends", "count": 1}
+    assert str(shared.public_id) not in {item["id"] for item in results}
+    assert str(private_diary.public_id) not in {item["id"] for item in results}
+    assert str(unrelated.public_id) not in {item["id"] for item in results}
+    assert "Tajná společná hospoda" not in str(results)
+    assert "u2fkbn1z" not in str(results)
+    assert str(_LAT) not in str(results)
+    assert len(queries) <= 11
+
+
+@pytest.mark.django_db
+def test_ghost_profile_is_hidden_from_direct_friend_search(client):
+    viewer_token, _viewer = _register(client, "divak")
+    _ghost_token, ghost = _register(client, "duch")
+    ghost.ghost_mode = True
+    ghost.save(update_fields=["ghost_mode"])
+
+    response = client.get("/v1/friends/search?q=duch", **_auth(viewer_token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["results"] == []
 
 
 @pytest.mark.django_db
@@ -825,6 +1522,8 @@ def test_friend_settings_get_and_patch(client):
     assert initial.json() == {
         "ghost_mode": False,
         "share_drinks_with_parta": True,
+        # Spend is its own, stricter switch: off until the user says otherwise.
+        "share_spend_with_parta": False,
         "quiet_hours_enabled": True,
         "quiet_hours_start": 23,
         "quiet_hours_end": 9,
@@ -840,6 +1539,7 @@ def test_friend_settings_get_and_patch(client):
     assert patched.json() == {
         "ghost_mode": True,
         "share_drinks_with_parta": True,
+        "share_spend_with_parta": False,
         "quiet_hours_enabled": True,
         "quiet_hours_start": 22,
         "quiet_hours_end": 7,
@@ -919,6 +1619,71 @@ def test_dashboard_leaderboard_ranks_by_visits(client):
         ("janek", 2, True),
         ("karel", 1, False),
     ]
+
+
+@pytest.mark.django_db
+def test_dashboard_leaderboard_counts_recent_non_suspect_beers(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    now = timezone.now()
+
+    _drink(account_a, drank_at=now - timedelta(days=29))
+    _drink(account_a, drank_at=now - timedelta(days=31))
+    _drink(account_a, drank_at=now - timedelta(days=1), is_suspect=True)
+    _drink(
+        account_a,
+        drank_at=now - timedelta(days=1),
+        drink_type=DrinkLog.DrinkType.WINE,
+    )
+
+    resp = client.get("/v1/friends", **_auth(token_a))
+    assert resp.status_code == status.HTTP_200_OK
+    beers_by_nickname = {
+        row["account"]["nickname"]: row["beers_30d"] for row in resp.json()["leaderboard"]
+    }
+    assert beers_by_nickname == {"janek": 1, "petr": 0}
+
+
+@pytest.mark.django_db
+def test_leaderboard_hides_tallies_from_a_member_who_does_not_share(client):
+    """Being an accepted friend is not consent to be counted at somebody.
+
+    Null, not zero: the app draws "nesdílí" from a null and would draw a zero
+    as "they stopped drinking".
+    """
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    now = timezone.now()
+    _drink(account_a, drank_at=now - timedelta(days=1))
+    _drink(account_b, drank_at=now - timedelta(days=1))
+    _visit(account_b, day="2026-06-12")
+
+    account_b.share_drinks_with_parta = False
+    account_b.save(update_fields=["share_drinks_with_parta"])
+
+    rows = {row["account"]["nickname"]: row for row in client.get("/v1/friends", **_auth(token_a)).json()["leaderboard"]}
+
+    assert rows["petr"]["beers_30d"] is None
+    assert rows["petr"]["visits_30d"] is None
+    # Mine stay mine.
+    assert rows["janek"]["beers_30d"] == 1
+
+
+@pytest.mark.django_db
+def test_leaderboard_hides_tallies_in_ghost_mode(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    _drink(account_b, drank_at=timezone.now() - timedelta(days=1))
+
+    account_b.ghost_mode = True
+    account_b.save(update_fields=["ghost_mode"])
+
+    rows = {row["account"]["nickname"]: row for row in client.get("/v1/friends", **_auth(token_a)).json()["leaderboard"]}
+
+    assert rows["petr"]["beers_30d"] is None
 
 
 @pytest.mark.django_db
@@ -1098,7 +1863,10 @@ def test_request_via_invite_code_bypasses_public_gate(client, monkeypatch):
     friendship = Friendship.objects.get()
     assert friendship.requester_id == account_a.id
     assert friendship.recipient_id == account_b.id
-    assert friendship.status == Friendship.Status.PENDING
+    # Handing out the code is the consent, so redeeming it is a friendship, not
+    # a request the inviter would have to approve afterwards.
+    assert friendship.status == Friendship.Status.ACCEPTED
+    assert friendship.responded_at is not None
 
 
 @pytest.mark.django_db
@@ -1310,9 +2078,9 @@ def test_friend_profile_detail(client):
     assert body["friendship_status"] == "accepted"
     assert body["incoming_request_id"] is None
     assert body["profile"]["nickname"] == "petr"
-    assert body["public_stats"]["total_beers"] == 1
+    assert body["public_stats"]["total_beers"] == 0
     assert body["public_stats"]["mapper_level"] == 3
-    assert body["achievements"]["first_beer"] is True
+    assert body["achievements"]["first_beer"] is False
     assert body["stats"]["shared_pub_count"] == 1
     assert body["stats"]["nights_together"] == 1
     assert len(body["recent_together"]) == 1
@@ -1339,6 +2107,39 @@ def test_public_non_friend_profile_is_visible_without_private_activity_leaks(cli
         expires_at=now + timedelta(hours=2),
     )
     _drink(account_b)
+    local_today = timezone.localtime(now, _PRAGUE).date()
+    PublishedNight.objects.create(
+        account=account_b,
+        client_id="public-today",
+        drinking_day=local_today,
+        started_at=now - timedelta(hours=2),
+        ended_at=now,
+        beer_count=2,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=["Veřejná hospoda"],
+        city="Praha",
+        duration_minutes=120,
+        visibility=PublishedNight.Visibility.PUBLIC,
+        updated_at=now,
+    )
+    PublishedNight.objects.create(
+        account=account_b,
+        client_id="friends-yesterday",
+        drinking_day=local_today - timedelta(days=1),
+        started_at=now - timedelta(days=1, hours=3),
+        ended_at=now - timedelta(days=1),
+        beer_count=7,
+        wine_count=0,
+        soft_drink_count=0,
+        shot_count=0,
+        pub_names=["Tajná hospoda"],
+        city="Praha",
+        duration_minutes=180,
+        visibility=PublishedNight.Visibility.FRIENDS,
+        updated_at=now,
+    )
 
     resp = client.get(f"/v1/friends/{account_b.public_id}", **_auth(token_a))
     assert resp.status_code == status.HTTP_200_OK
@@ -1360,8 +2161,11 @@ def test_public_non_friend_profile_is_visible_without_private_activity_leaks(cli
     assert body["plan"] is None
     assert body["recent_together"] == []
     assert body["latest_beers"] == []
-    assert body["public_stats"]["total_beers"] == 1
+    assert body["public_stats"]["total_beers"] == 2
     assert body["achievements"]["first_beer"] is True
+    assert body["published_timeline"]["windows"]["week"]["beers"] == 2
+    assert "Veřejná hospoda" not in str(body["published_timeline"])
+    assert "Tajná hospoda" not in str(body["published_timeline"])
 
 
 @pytest.mark.django_db
@@ -2155,3 +2959,22 @@ def test_new_notification_kinds_carry_title_and_body_for_old_clients(client, mon
     for kind in ("friend_plan", "friend_cheers"):
         assert notes[kind]["title"]
         assert notes[kind]["body"]
+@pytest.mark.django_db
+def test_notification_read_rejects_malformed_and_unbounded_ids(client):
+    token, _account = _register(client, "reader")
+
+    malformed = client.post(
+        "/v1/friends/notifications/read",
+        data={"ids": ["not-a-uuid"]},
+        format="json",
+        **_auth(token),
+    )
+    too_many = client.post(
+        "/v1/friends/notifications/read",
+        data={"ids": [str(uuid.uuid4()) for _ in range(101)]},
+        format="json",
+        **_auth(token),
+    )
+
+    assert malformed.status_code == status.HTTP_400_BAD_REQUEST
+    assert too_many.status_code == status.HTTP_400_BAD_REQUEST

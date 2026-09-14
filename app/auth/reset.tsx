@@ -8,22 +8,21 @@
  * to the tabs; on error we surface `detail`.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   TextInput,
-  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -49,40 +48,43 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const operationInFlight = useRef(false);
 
   const leave = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)' as Href);
     }
   }, [router]);
 
   const handleSubmit = useCallback(async () => {
-    if (busy) return;
+    if (operationInFlight.current) return;
     const token = linkToken || code.trim();
     if (!token) {
-      setError(cs.account.errorResetCodeMissing);
+      setError(t.account.errorResetCodeMissing);
       return;
     }
     if (password.length < MIN_PASSWORD) {
-      setError(cs.account.errorPasswordShort);
+      setError(t.account.errorPasswordShort);
       return;
     }
+    operationInFlight.current = true;
     setError('');
     setBusy(true);
     try {
       const result = await resetPassword({ token, password });
       if (result.ok) {
-        showToast(cs.account.resetDoneToast);
-        router.replace('/(tabs)');
+        showToast(t.account.resetDoneToast);
+        router.replace('/(tabs)' as Href);
         return;
       }
-      setError(result.detail || cs.account.errorGeneric);
+      setError(result.detail || t.account.errorGeneric);
     } finally {
+      operationInFlight.current = false;
       setBusy(false);
     }
-  }, [busy, code, linkToken, password, resetPassword, showToast, router]);
+  }, [code, linkToken, password, resetPassword, showToast, router]);
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -90,12 +92,14 @@ export default function ResetPasswordScreen() {
         onPress={leave}
         style={styles.backButton}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.backButton}
+        accessibilityLabel={t.a11y.backButton}
         hitSlop={4}
       >
         <ChevronLeftIcon size={22} color={Colors.foam} />
       </Pressable>
-      <Text style={styles.headerTitle}>{cs.account.resetTitle}</Text>
+      <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {t.account.resetTitle}
+      </Text>
       <View style={styles.headerSpacer} />
     </View>
   );
@@ -114,7 +118,9 @@ export default function ResetPasswordScreen() {
       >
           {!linkToken && (
             <View style={styles.fieldGroup}>
-              <Text style={styles.label}>{cs.account.resetCodeLabel}</Text>
+              <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.account.resetCodeLabel}
+              </Text>
               <TextInput
                 style={styles.input}
                 value={code}
@@ -122,20 +128,22 @@ export default function ResetPasswordScreen() {
                   setCode(value.trim());
                   if (error) setError('');
                 }}
-                placeholder={cs.account.resetCodePlaceholder}
+                placeholder={t.account.resetCodePlaceholder}
                 placeholderTextColor={Colors.mutedText}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="one-time-code"
                 textContentType="oneTimeCode"
-                accessibilityLabel={cs.a11y.authResetCodeInput}
+                accessibilityLabel={t.a11y.authResetCodeInput}
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
             </View>
           )}
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>{cs.account.resetNewPasswordLabel}</Text>
+            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.account.resetNewPasswordLabel}
+            </Text>
             <TextInput
               style={styles.input}
               value={password}
@@ -143,14 +151,14 @@ export default function ResetPasswordScreen() {
                 setPassword(value);
                 if (error) setError('');
               }}
-              placeholder={cs.account.passwordPlaceholder}
+              placeholder={t.account.passwordPlaceholder}
               placeholderTextColor={Colors.mutedText}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
               autoComplete="new-password"
               textContentType="newPassword"
-              accessibilityLabel={cs.a11y.authNewPasswordInput}
+              accessibilityLabel={t.a11y.authNewPasswordInput}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
           </View>
@@ -163,16 +171,12 @@ export default function ResetPasswordScreen() {
 
           <View style={styles.submitButton}>
             <GlowButton
-              label={busy ? cs.account.loading : cs.account.resetSubmit}
+              label={busy ? t.account.loading : t.account.resetSubmit}
               onPress={handleSubmit}
               glow={busy ? 'none' : 'soft'}
-              accessibilityLabel={cs.account.resetSubmit}
+              loading={busy}
+              accessibilityLabel={t.account.resetSubmit}
             />
-            {busy && (
-              <View style={styles.buttonSpinner} pointerEvents="none">
-                <ActivityIndicator color={Colors.stout} />
-              </View>
-            )}
           </View>
       </KeyboardAwareScrollView>
     </View>
@@ -208,7 +212,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -227,7 +231,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   label: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
     textTransform: 'uppercase',
@@ -240,12 +244,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 16,
     color: Colors.foam,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
@@ -254,12 +258,4 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: Spacing.xs,
   },
-  buttonSpinner: {
-    position: 'absolute',
-    top: 0,
-    right: 24,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-
 });

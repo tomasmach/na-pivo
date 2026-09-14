@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { cs } from '@/i18n/cs';
 import { DrinkPickSheet, type DrinkPickRow } from '../DrinkPickSheet';
 
@@ -18,8 +19,14 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
+// This suite owns the sheet's pure content contract. Native presentation and
+// cross-sheet serialization are covered by BottomSheetModal's lifecycle tests.
+jest.mock('@/components/shared/BottomSheetModal', () => ({
+  BottomSheetModal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 jest.mock('react-native-reanimated', () => {
-  const ReactModule = require('react');
+  const ReactModule = jest.requireActual('react');
   return {
     __esModule: true,
     default: {
@@ -35,7 +42,7 @@ jest.mock('react-native-reanimated', () => {
 });
 
 jest.mock('@/components/shared/IconGlyph', () => {
-  const ReactModule = require('react');
+  const ReactModule = jest.requireActual('react');
   const icon = () => ReactModule.createElement('Icon');
   return { CupSodaIcon: icon, PlusIcon: icon, RefreshCwIcon: icon, XIcon: icon };
 });
@@ -50,7 +57,7 @@ jest.mock('@/theme/fonts', () => ({
 
 jest.mock('@/theme/shadows', () => ({ softDrop: () => ({}) }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 type Renderer = ReturnType<typeof TestRenderer.create>;
@@ -277,5 +284,22 @@ describe('DrinkPickSheet', () => {
     // Both remove labels share this stem — nothing in the sheet may use it.
     const removeStem = cs.a11y.counterRemoveBeer('').trim();
     expect(rendered.filter((label) => label.includes(removeStem))).toHaveLength(0);
+  });
+
+  it('lets short content size the sheet and does not group it into one accessibility element', () => {
+    const { renderer } = render({ tonightRows: [], menuRows: [] });
+    const allNodes = renderer.root.findAll(() => true, { deep: true });
+    expect(allNodes.some((node: { props?: { style?: unknown } }) => {
+      const style = StyleSheet.flatten(node.props?.style) as Record<string, unknown> | undefined;
+      return typeof style?.minHeight === 'string';
+    })).toBe(false);
+    const unlabeledGroupingPressables = allNodes.filter(
+      (node: { props?: Record<string, unknown> }) =>
+        typeof node.props?.onPress === 'function' &&
+        node.props.accessibilityRole === undefined &&
+        node.props.accessibilityElementsHidden !== true &&
+        node.props.importantForAccessibility !== 'no-hide-descendants',
+    );
+    expect(unlabeledGroupingPressables).toHaveLength(0);
   });
 });

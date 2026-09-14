@@ -18,10 +18,10 @@ import { useRouter, type Href } from 'expo-router';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import type { BeerCheckIn } from '@/data/beerCheckinsClient';
 import type { PartaFeedSitting } from '@/data/partaFeedClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 import CheersPill from './CheersPill';
@@ -64,7 +64,7 @@ function SittingRowComponent({
     if (!sitting.mine) onLongPress?.(sitting);
   }, [onLongPress, sitting]);
 
-  const name = sitting.mine ? cs.friends.presenceMe : friendDisplayName(account);
+  const name = sitting.mine ? t.friends.presenceMe : friendDisplayName(account);
   const when = dayLabel(sitting.endedAt);
   const headline = sittingHeadline(sitting);
   const detail = sittingDetail(sitting);
@@ -79,7 +79,7 @@ function SittingRowComponent({
           onPress={open}
           onLongPress={handleLongPress}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.sittingRow(name, headline, sittingPlace(sitting), when)}
+          accessibilityLabel={t.a11y.sittingRow(name, headline, sittingPlace(sitting), when)}
           style={({ pressed }) => [styles.identity, pressed && styles.dim]}
         >
           <Avatar
@@ -114,7 +114,7 @@ function SittingRowComponent({
 
             {rated?.rating != null ? (
               <Text style={styles.rating} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.sittingRating(rated.rating, rated.beerName)}
+                {t.friends.sittingRating(rated.rating, rated.beerName)}
               </Text>
             ) : null}
             {rated?.note ? (
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   // The count and the beer are what the row is for; everything else is context.
   headline: {
     marginTop: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     lineHeight: 21,
     color: Colors.foam,
@@ -183,28 +183,28 @@ const styles = StyleSheet.create({
   },
   detail: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   where: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
   rating: {
     marginTop: 6,
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,
   },
   note: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foam,

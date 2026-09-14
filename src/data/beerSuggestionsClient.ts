@@ -187,6 +187,9 @@ export interface PopularBeerBrand {
   short: string;
 }
 
+/** Canonical brand identity used by server-backed pub filters. */
+export type BeerBrandFilterOption = Pick<PopularBeerBrand, 'key' | 'label'>;
+
 export const POPULAR_BEER_BRANDS: PopularBeerBrand[] = [
   { key: 'pilsner-urquell', label: 'Pilsner Urquell', short: 'Plzeň' },
   { key: 'gambrinus', label: 'Gambrinus', short: 'Gambrinus' },
@@ -197,6 +200,19 @@ export const POPULAR_BEER_BRANDS: PopularBeerBrand[] = [
   { key: 'krusovice', label: 'Krušovice', short: 'Krušovice' },
   { key: 'starobrno', label: 'Starobrno', short: 'Starobrno' },
 ];
+
+/** The nearby endpoint accepts at most five simultaneous brand filters. Keep
+ * the quick-pick catalogue inside that same bound so every visible combination
+ * can be submitted successfully. */
+export const POPULAR_BEER_BRAND_FILTER_LIMIT = 5;
+
+const POPULAR_BEER_BRAND_REQUEST_LIMIT = 20;
+
+export function fallbackPopularBeerBrands(): BeerBrandFilterOption[] {
+  return POPULAR_BEER_BRANDS.slice(0, POPULAR_BEER_BRAND_FILTER_LIMIT).map(
+    ({ key, label }) => ({ key, label }),
+  );
+}
 
 function normalizeText(value: string): string {
   return value
@@ -253,6 +269,57 @@ function normalizeSuggestions(raw: unknown, limit: number): BeerBrandSuggestion[
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * Load the ranked quick-pick brands used by the redesigned Hospody filter.
+ *
+ * The suggestion endpoint is product-first, so a blank query can contain
+ * several products from one brewery. Collapse those rows to their canonical
+ * `brand_slug` / `brand_name` identity and keep a small, deterministic list.
+ * On any unavailable/malformed response the bundled Czech/Slovak popular list
+ * keeps the filter usable offline.
+ */
+export async function fetchPopularBeerBrands(
+  signal?: AbortSignal,
+): Promise<BeerBrandFilterOption[]> {
+  const fallback = fallbackPopularBeerBrands();
+  if (signal?.aborted) return fallback;
+
+  const endpoint = getBackendEndpoint('/v1/beer-brands/suggest');
+  if (!endpoint) return fallback;
+
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  try {
+    const url = new URL(endpoint);
+    url.searchParams.set('q', '');
+    url.searchParams.set('limit', String(POPULAR_BEER_BRAND_REQUEST_LIMIT));
+    const resp = await fetch(url.toString(), {
+      method: 'GET',
+      signal: abort.signal,
+    });
+    if (!resp.ok) return fallback;
+
+    const data = (await resp.json()) as WireResponse;
+    const suggestions = normalizeSuggestions(data?.suggestions, POPULAR_BEER_BRAND_REQUEST_LIMIT);
+    const brands: BeerBrandFilterOption[] = [];
+    const seen = new Set<string>();
+    for (const suggestion of suggestions) {
+      const key = suggestion.brandSlug?.trim() ||
+        (suggestion.kind === 'brand' ? suggestion.slug.trim() : '');
+      const label = suggestion.brandName?.trim() ||
+        (suggestion.kind === 'brand' ? suggestion.name.trim() : '');
+      if (!key || !label || seen.has(key)) continue;
+      seen.add(key);
+      brands.push({ key, label });
+      if (brands.length >= POPULAR_BEER_BRAND_FILTER_LIMIT) break;
+    }
+    return brands.length > 0 ? brands : fallback;
+  } catch {
+    return fallback;
+  } finally {
+    abort.cleanup();
+  }
 }
 
 export async function suggestBeerBrands(

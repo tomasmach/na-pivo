@@ -13,6 +13,7 @@ export const PRODUCT_SCREEN_NAMES = [
   'beer',
   'friends',
   'profile',
+  'diary',
   'onboarding',
   'settings',
   'home_point',
@@ -49,8 +50,17 @@ export type ProductScreenName = (typeof PRODUCT_SCREEN_NAMES)[number];
 const EXACT_SCREENS: Readonly<Record<string, ProductScreenName>> = {
   '/': 'compass',
   '/beer': 'beer',
+  '/party-live': 'beer',
+  '/party-game': 'beer',
+  '/party-finish': 'beer',
   '/friends': 'friends',
+  '/friends/party-recap': 'friends',
+  '/friends/parta': 'friends',
+  '/friends/parta/add': 'friends',
+  '/friends/parta/people': 'friends',
+  '/community': 'community_events',
   '/profile': 'profile',
+  '/profile/diary': 'diary',
   '/onboarding': 'onboarding',
   '/settings': 'settings',
   '/home-point': 'home_point',
@@ -60,6 +70,8 @@ const EXACT_SCREENS: Readonly<Record<string, ProductScreenName>> = {
   '/report': 'report',
   '/contribute': 'contribute',
   '/add-pub': 'add_pub',
+  '/pick-pub': 'compass',
+  '/search': 'compass',
   '/suggest-pub-event': 'suggest_pub_event',
   '/evening': 'evening_detail',
   '/beer-detail': 'beer_detail',
@@ -78,6 +90,7 @@ const EXACT_SCREENS: Readonly<Record<string, ProductScreenName>> = {
   '/community-events': 'community_events',
   '/my-added-pubs': 'my_added_pubs',
   '/profile/photos': 'profile_photos',
+  '/user': 'friend_profile',
 };
 
 export function productScreenFromPathname(pathname: string): ProductScreenName | null {
@@ -86,6 +99,11 @@ export function productScreenFromPathname(pathname: string): ProductScreenName |
   if (exact) return exact;
   if (/^\/parta\/[^/]+$/.test(cleanPathname)) return 'friend_profile';
   if (/^\/photo\/[^/]+$/.test(cleanPathname)) return 'photo_detail';
+  if (/^\/night\/[^/]+$/.test(cleanPathname)) return 'friends';
+  if (/^\/community\/(?:event|challenge)\/[^/]+$/.test(cleanPathname)) {
+    return 'community_events';
+  }
+  if (/^\/pub\/[^/]+$/.test(cleanPathname)) return 'compass';
   return null;
 }
 

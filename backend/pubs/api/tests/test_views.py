@@ -20,6 +20,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from pubs.enrichment import RawHours, geohash8
 from pubs.models import EnrichTask, PubHours
 
+pytestmark = pytest.mark.django_db
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

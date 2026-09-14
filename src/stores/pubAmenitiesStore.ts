@@ -29,7 +29,8 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 
 import { isKnownAmenityKey, type AmenityKey } from '@/data/amenities';
 
@@ -105,12 +106,18 @@ function isStrictlyNewer(candidate: string, existing: string | undefined): boole
  * unknown persisted keys can't crash rehydrate. Exported for unit testing.
  */
 export function migratePubAmenities(persisted: unknown, _version: number): PubAmenitiesState {
-  const base = (persisted ?? {}) as Partial<PubAmenitiesState>;
-  const legacy = (base.votes ?? {}) as Record<string, Record<string, unknown>>;
+  const base =
+    persisted !== null && typeof persisted === 'object' && !Array.isArray(persisted)
+      ? persisted as Partial<PubAmenitiesState>
+      : {};
+  const legacy =
+    base.votes !== null && typeof base.votes === 'object' && !Array.isArray(base.votes)
+      ? base.votes as Record<string, unknown>
+      : {};
   const votes: Record<string, PubAmenityVotes> = {};
 
   for (const [pubKey, rawPub] of Object.entries(legacy)) {
-    if (!rawPub || typeof rawPub !== 'object') continue;
+    if (!pubKey || !rawPub || typeof rawPub !== 'object' || Array.isArray(rawPub)) continue;
     const pubVotes: PubAmenityVotes = {};
     for (const [amenityKey, rawEntry] of Object.entries(rawPub)) {
       if (!isKnownAmenityKey(amenityKey)) continue;
@@ -118,7 +125,8 @@ export function migratePubAmenities(persisted: unknown, _version: number): PubAm
       if (
         entry &&
         (entry.vote === 'yes' || entry.vote === 'no') &&
-        typeof entry.updatedAt === 'string'
+        typeof entry.updatedAt === 'string' &&
+        Number.isFinite(Date.parse(entry.updatedAt))
       ) {
         pubVotes[amenityKey] = { vote: entry.vote, updatedAt: entry.updatedAt };
       }
@@ -126,12 +134,12 @@ export function migratePubAmenities(persisted: unknown, _version: number): PubAm
     if (Object.keys(pubVotes).length > 0) votes[pubKey] = pubVotes;
   }
 
-  return { ...(base as PubAmenitiesState), votes };
+  return { votes } as PubAmenitiesState;
 }
 
 export const usePubAmenitiesStore = create<PubAmenitiesState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       votes: {},
 
       setVote: (pubKey, amenityKey, vote) =>
@@ -199,13 +207,17 @@ export const usePubAmenitiesStore = create<PubAmenitiesState>()(
 
           return changed ? { votes: next } : state;
         }),
-    }),
+    })),
     {
       name: 'na-pivo-pub-amenities',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ votes: state.votes }),
       migrate: migratePubAmenities,
+      merge: (persisted, current) => ({
+        ...current,
+        ...migratePubAmenities(persisted, 1),
+      }),
     },
   ),
 );

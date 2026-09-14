@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -20,9 +21,11 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
     AccountUsageStats,
+    ContentReport,
     FriendBlock,
     PhotoContest,
     PhotoContestEntry,
@@ -67,6 +70,18 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
+def _ugc(version: str | None = settings.UGC_POLICY_VERSION) -> dict[str, str]:
+    if version is None:
+        return {}
+    return {f"HTTP_{UGC_POLICY_HEADER.replace('-', '_').upper()}": version}
+
+
+def _accept(account: Account, version: str = settings.UGC_POLICY_VERSION) -> None:
+    account.ugc_terms_version = version
+    account.ugc_terms_accepted_at = timezone.now()
+    account.save(update_fields=["ugc_terms_version", "ugc_terms_accepted_at"])
+
+
 def _jpeg_bytes(size: tuple[int, int] = (400, 300), color=(210, 160, 40)) -> bytes:
     img = Image.new("RGB", size, color)
     buf = io.BytesIO()
@@ -90,12 +105,13 @@ def _upload_photo(client: APIClient, token: str, **overrides) -> str:
     return resp.json()["photo"]["id"]
 
 
-def _enter(client: APIClient, token: str, photo_id: str):
+def _enter(client: APIClient, token: str, photo_id: str, headers: dict[str, str] | None = None):
     return client.post(
         "/v1/photo-contest/entries",
         data={"photo_id": photo_id},
         format="json",
         **_auth(token),
+        **(headers or {}),
     )
 
 
@@ -238,6 +254,87 @@ def test_withdraw_entry_is_idempotent_204(client):
     assert first.status_code == status.HTTP_204_NO_CONTENT
     assert second.status_code == status.HTTP_204_NO_CONTENT
     assert PhotoContestEntry.objects.count() == 0
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gate
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_ugc_gate_blocks_entry_post_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token)
+
+    resp = _enter(client, token, photo_id, headers=_ugc())
+
+    assert resp.status_code == 428, resp.content
+    assert resp.json()["code"] == "ugc_consent_required"
+    assert PhotoContestEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_allows_accepted_account_with_current_header(client):
+    token, account = _register(client, "janek")
+    _accept(account)
+    photo_id = _upload_photo(client, token)
+
+    resp = _enter(client, token, photo_id, headers=_ugc())
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert PhotoContestEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_keeps_no_header_entry_post_legacy_compatible(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token)
+
+    resp = _enter(client, token, photo_id)
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert PhotoContestEntry.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_withdraw_without_acceptance(client):
+    token, account = _register(client, "janek")
+    assert account.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token)
+    assert _enter(client, token, photo_id).status_code == status.HTTP_201_CREATED
+
+    resp = client.delete("/v1/photo-contest/entries", **_auth(token), **_ugc())
+
+    assert resp.status_code == status.HTTP_204_NO_CONTENT, resp.content
+    assert PhotoContestEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ugc_gate_does_not_block_content_report_without_acceptance(client):
+    token_owner, owner = _register(client, "janek")
+    token_stranger, stranger = _register(client, "cizinec")
+    assert stranger.ugc_terms_accepted_at is None
+    photo_id = _upload_photo(client, token_owner)
+    assert _enter(client, token_owner, photo_id).status_code == status.HTTP_201_CREATED
+
+    resp = client.post(
+        "/v1/content-reports",
+        data={
+            "target_account_id": str(owner.public_id),
+            "reason": "inappropriate_photo",
+            "photo_id": photo_id,
+        },
+        format="json",
+        **_auth(token_stranger),
+        **_ugc(),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    report = ContentReport.objects.get()
+    assert report.target_account == owner
+    assert report.target_snapshot["photo_id"] == photo_id
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +487,112 @@ def test_contest_get_query_count_is_bounded(client, django_assert_max_num_querie
         resp = client.get("/v1/photo-contest", **_auth(viewer_token))
     assert resp.status_code == status.HTTP_200_OK
     assert len(resp.json()["entries"]) == 5
+
+
+@pytest.mark.django_db
+def test_explicit_contest_pagination_is_stable_and_non_overlapping(client):
+    for i in range(5):
+        token, _account = _register(client, f"strankovani{i}")
+        assert _enter(client, token, _upload_photo(client, token)).status_code == 201
+    viewer_token, _viewer = _register(client, "listujici")
+
+    first = client.get("/v1/photo-contest?limit=2", **_auth(viewer_token))
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    body_one = first.json()
+    assert len(body_one["entries"]) == 2
+    assert body_one["truncated"] is True
+    assert isinstance(body_one["next_cursor"], str)
+    assert body_one["next_cursor"]
+    # Pagination is additive: the legacy wire shape stays intact.
+    assert {
+        "contest",
+        "entries",
+        "my_entry_id",
+        "my_entry_photo_id",
+        "my_vote_entry_id",
+        "last_results",
+    } <= set(body_one.keys())
+    ids_one = [e["id"] for e in body_one["entries"]]
+    assert len(set(ids_one)) == 2
+
+    second = client.get(
+        f"/v1/photo-contest?limit=2&cursor={body_one['next_cursor']}",
+        **_auth(viewer_token),
+    )
+
+    assert second.status_code == status.HTTP_200_OK, second.content
+    body_two = second.json()
+    assert len(body_two["entries"]) == 2
+    assert body_two["truncated"] is True
+    assert body_two["next_cursor"]
+    assert {"truncated", "next_cursor"} <= set(body_two.keys())
+    ids_two = [e["id"] for e in body_two["entries"]]
+    assert not set(ids_one) & set(ids_two)
+    assert len(set(ids_one) | set(ids_two)) == 4
+
+
+@pytest.mark.django_db
+def test_legacy_contest_request_keeps_complete_snapshot(client):
+    entry_ids = []
+    for i in range(3):
+        token, _account = _register(client, f"stary{i}")
+        resp = _enter(client, token, _upload_photo(client, token))
+        assert resp.status_code == status.HTTP_201_CREATED
+        entry_ids.append(resp.json()["entry"]["id"])
+    viewer_token, viewer = _register(client, "divak")
+    photo_id = _upload_photo(client, viewer_token)
+    my_entry_id = _enter(client, viewer_token, photo_id).json()["entry"]["id"]
+    vote_target = entry_ids[0]
+    assert _vote(client, viewer_token, vote_target).status_code == status.HTTP_200_OK
+
+    resp = client.get("/v1/photo-contest", **_auth(viewer_token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    # No query params: every entry comes back in one shot.
+    assert [e["id"] for e in body["entries"]] == list(reversed(entry_ids + [my_entry_id]))
+    # Legacy root fields keep working alongside the new additive pagination keys.
+    assert body["contest"]["status"] == "open"
+    assert body["my_entry_id"] == my_entry_id
+    assert body["my_vote_entry_id"] == vote_target
+    assert body["last_results"] is None
+
+
+@pytest.mark.django_db
+def test_paginated_contest_surfaces_own_entry_and_visible_count(client):
+    owner_token, _owner = _register(client, "majitel")
+    photo_owner = _upload_photo(client, owner_token)
+    own_entry_id = _enter(client, owner_token, photo_owner).json()["entry"]["id"]
+    for i in range(3):
+        token, _account = _register(client, f"cizi{i}")
+        resp = _enter(client, token, _upload_photo(client, token))
+        assert resp.status_code == status.HTTP_201_CREATED
+    voter_token, _voter = _register(client, "hlasujici")
+    assert _vote(client, voter_token, own_entry_id).status_code == status.HTTP_200_OK
+
+    resp = client.get("/v1/photo-contest?limit=2", **_auth(owner_token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert len(body["entries"]) == 2
+    # The owner's (oldest) entry is not on page one.
+    assert own_entry_id not in [e["id"] for e in body["entries"]]
+    # Visible count reflects the whole round, not the page.
+    assert body["visible_entry_count"] == 4
+    assert body["my_entry"]["id"] == own_entry_id
+    assert body["my_entry"]["votes"] == 1
+    assert body["my_entry"]["is_mine"] is True
+    assert body["my_entry"]["photo_id"] == photo_owner
+
+
+@pytest.mark.django_db
+def test_contest_pagination_rejects_invalid_params(client):
+    token, _account = _register(client, "janek")
+    for query in ("limit=0", "limit=101", "cursor=not-a-number"):
+        resp = client.get(f"/v1/photo-contest?{query}", **_auth(token))
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+        assert resp.json()["code"] == "invalid_params"
 
 
 # ---------------------------------------------------------------------------

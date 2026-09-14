@@ -79,15 +79,28 @@ npx expo run:ios      # a/nebo run:android
 Mobilní `.env` (nebo EAS secrets) musí mít `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`,
 `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` a `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME`.
 
-## 5. Cron na purge smazaných účtů
+## 5. Purge smazaných účtů
 
-Na serveru (Hetzner, `/opt/na-pivo`) přidej denní cron:
+Žádný cron není potřeba. Nasazený `worker` z `docker-compose.yml` spouští
+`purge_deleted_accounts` automaticky v rámci svého 5minutového cyklu.
+
+Důsledky:
+
+- Soft-smazaný účet („zrušit účet" v appce) zůstává 14 dní obnovitelný —
+  přihlášením se do této lhůty mazání zruší. Lhůtu drží
+  `ACCOUNT_DELETION_GRACE_DAYS` (default 14).
+- Po lhůtě purge tvrdě smaže účet a jeho osobní data. Zákonně uchovávané
+  záznamy (podpora, moderace) tímto okamžitě nezmizí — řídí je vlastní
+  retenční pravidla.
+- Ruční náhled / provoz na serveru (`/opt/na-pivo`):
 
 ```bash
-docker compose exec -T web python manage.py purge_deleted_accounts
+docker compose exec -T napivo-web python manage.py purge_deleted_accounts --dry-run
+# a bez --dry-run pro reálné provedení
 ```
 
-(`--dry-run` na náhled, `--grace-days N` na změnu lhůty.)
+- `--grace-days N` přebije lhůtu jen pro tenhle běh (např. `--grace-days 0`
+  pro okamžitý purge všeho po lhůtě).
 
 ## 6. Migrace
 
@@ -103,6 +116,7 @@ do `AuthToken`, aby už nainstalované appky nepřišly o účet). **Otestuj na 
 - [ ] Resend: klíč + ověřená doména + `EMAIL_ENABLED=True`
 - [ ] `WEB_BASE_URL` ukazuje na GitHub Pages (kde je i `delete-account.html`)
 - [ ] Mobilní `expo prebuild` + rebuild dev clientu
-- [ ] Cron na `purge_deleted_accounts`
+- [ ] Purge smazaných účtů: ověř, že `worker` v logu po nasazení spouští
+      `purge_deleted_accounts` (běží automaticky každých 5 minut)
 - [ ] Migrace ověřené na Postgresu
 - [ ] V App Store / Play doplnit odkaz na `…/na-pivo/delete-account.html`

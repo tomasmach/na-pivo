@@ -14,8 +14,7 @@ import {
   type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+import { t , beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** A grouped line in an evening's breakdown: one row per beer + volume. */
@@ -162,7 +161,7 @@ export function formatEveningDate(startedAt: string, now: Date): string {
 /** Human date label for an evening: "Dnes" / "Včera" / "12. 6.". */
 export function eveningDateLabel(startedAt: string, now: Date): string {
   const rel = eveningDayRelation(startedAt, now);
-  if (rel === 'today') return cs.myBeers.today;
-  if (rel === 'yesterday') return cs.myBeers.yesterday;
+  if (rel === 'today') return t.myBeers.today;
+  if (rel === 'yesterday') return t.myBeers.yesterday;
   return formatEveningDate(startedAt, now);
 }

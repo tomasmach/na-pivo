@@ -4,12 +4,14 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from pubs.api.ugc_consent import UGC_POLICY_HEADER
 from pubs.models import (
     Account,
     BeerCheckIn,
@@ -816,3 +818,146 @@ def test_account_export_includes_social_and_beer_checkins(client):
     friend_body = friend_export.json()
     assert friend_body["social"]["reactions"][0]["target"] == "beer_checkin"
     assert friend_body["social"]["blocks"] == []
+
+
+# ---------------------------------------------------------------------------
+# UGC consent gating (RED — beer checkins are not gated yet)
+# ---------------------------------------------------------------------------
+
+
+def _ugc_header() -> dict[str, str]:
+    return {
+        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
+    }
+
+
+def _accept_ugc(client: APIClient, token: str) -> None:
+    accepted = client.put(
+        "/v1/account/me/ugc-consent",
+        data={"version": settings.UGC_POLICY_VERSION},
+        format="json",
+        **_auth(token),
+    )
+    assert accepted.status_code == status.HTTP_200_OK, accepted.content
+
+
+@pytest.mark.django_db
+def test_friends_checkin_with_current_header_and_no_acceptance_returns_428(client):
+    token, _account = _register(client, "janek")
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=_payload(visibility="friends"),
+        format="json",
+        **_auth(token),
+        **_ugc_header(),
+    )
+
+    assert response.status_code == 428, response.content
+    assert response.json()["code"] == "ugc_consent_required"
+    assert BeerCheckIn.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_accepted_account_can_checkin_friends_with_current_header(client):
+    token, account = _register(client, "janek")
+    _accept_ugc(client, token)
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=_payload(visibility="friends"),
+        format="json",
+        **_auth(token),
+        **_ugc_header(),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    row = BeerCheckIn.objects.get(account=account)
+    assert row.visibility == BeerCheckIn.Visibility.FRIENDS
+
+
+@pytest.mark.django_db
+def test_checkin_without_ugc_header_keeps_legacy_success(client):
+    token, _account = _register(client, "janek")
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=_payload(visibility="friends"),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert BeerCheckIn.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_private_checkin_with_current_header_and_no_acceptance_succeeds(client):
+    token, account = _register(client, "janek")
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=_payload(visibility="private"),
+        format="json",
+        **_auth(token),
+        **_ugc_header(),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    row = BeerCheckIn.objects.get(account=account)
+    assert row.visibility == BeerCheckIn.Visibility.PRIVATE
+
+
+@pytest.mark.django_db
+def test_upsert_cannot_flip_private_to_friends_without_consent(client):
+    token, account = _register(client, "janek")
+    client_id = uuid.uuid4()
+    first = client.post(
+        "/v1/beer-checkins",
+        data=_payload(client_id, visibility="private"),
+        format="json",
+        **_auth(token),
+    )
+    assert first.status_code == status.HTTP_201_CREATED, first.content
+
+    update_payload = _payload(client_id, visibility="friends")
+    second = client.post(
+        "/v1/beer-checkins",
+        data=update_payload,
+        format="json",
+        **_auth(token),
+        **_ugc_header(),
+    )
+
+    assert second.status_code == 428, second.content
+    row = BeerCheckIn.objects.get(account=account)
+    assert row.visibility == BeerCheckIn.Visibility.PRIVATE
+
+
+@pytest.mark.django_db
+def test_checkin_reaction_bypasses_ugc_gate_without_stored_acceptance(client):
+    token_owner, owner = _register(client, "janek")
+    token_friend, friend = _register(client, "petr")
+    assert friend.ugc_terms_accepted_at is None
+    _make_friends(owner, friend)
+    create = client.post(
+        "/v1/beer-checkins",
+        data=_payload(visibility="friends"),
+        format="json",
+        **_auth(token_owner),
+    )
+    checkin_id = create.json()["id"]
+
+    response = client.post(
+        f"/v1/beer-checkins/{checkin_id}/react",
+        data={"reaction": "cheers"},
+        format="json",
+        **_auth(token_friend),
+        **_ugc_header(),
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.json()["reactions"]["cheers"] == 1
+    assert BeerCheckInReaction.objects.filter(
+        checkin__public_id=checkin_id, account=friend
+    ).exists()

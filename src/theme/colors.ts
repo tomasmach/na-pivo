@@ -4,11 +4,22 @@
  */
 
 export const Colors = {
-  // Backgrounds — dark stout palette
-  stout: '#1F1308',
-  stout2: '#2B1A0E',
-  stout3: '#3A2515',
-  border: '#5A3A20',
+  // Backgrounds — deep and nearly neutral (§2.1).
+  //
+  // These were a warm brown panel (#1F1308 / #2B1A0E / #3A2515). Against the
+  // references — Strava and Packeta both sit on near-black — that brown read as
+  // a tint laid over the whole app rather than as depth, and it is most of what
+  // made early passes look cheaper than they were. The brown did not leave the
+  // product; it moved OUT of the background and INTO the light, as the header
+  // gradients (§16).
+  //
+  // Never pure black: on a warm-accented app that reads as a void, and OLED
+  // smear on scroll costs more than the tint it saves. A hair of warmth keeps it
+  // Na pivo without painting the walls.
+  stout: '#15120F',
+  stout2: '#1C1815',
+  stout3: '#262019',
+  border: '#3A322A',
 
   // Amber accent
   amber: '#E8A317',

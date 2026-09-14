@@ -39,6 +39,9 @@ import {
   buildLivePubs,
   buildVisitedCities,
   buildVisitedPubs,
+  mapViewportCoverageKm,
+  mapViewportRadiusKm,
+  mergeMapPubs,
   type LivePubSummary,
   type VisitedCitySummary,
   type VisitedPubSummary,
@@ -46,30 +49,6 @@ import {
 
 const VIEWPORT_DEBOUNCE_MS = 650;
 const LIVE_REFRESH_MS = 35_000;
-
-function viewportRadiusKm(region: Region): number {
-  return Math.min(100, Math.max(1, viewportCoverageKm(region) * 1.25));
-}
-
-/** Half-diagonal of the visible viewport (km) — what a fetch must actually
- *  cover. Passed to the pubs cache gate so a short pan that reveals uncovered
- *  map refetches instead of hitting the old fixed 2 km move threshold. */
-function viewportCoverageKm(region: Region): number {
-  const latKm = region.latitudeDelta * 111;
-  const lngKm = region.longitudeDelta * 111 * Math.cos((region.latitude * Math.PI) / 180);
-  return Math.hypot(latKm / 2, lngKm / 2);
-}
-
-function mergePubs(previous: Pub[], incoming: Pub[]): Pub[] {
-  const map = new Map(previous.map((pub) => [pub.id, pub]));
-  for (const pub of incoming) {
-    map.delete(pub.id);
-    map.set(pub.id, pub);
-  }
-  return [...map.values()]
-    .filter((pub) => pub.venueKind !== 'not_pub')
-    .slice(-600);
-}
 
 export interface BeerMapData {
   pubs: Pub[];
@@ -113,6 +92,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [requestedRegion, setRequestedRegion] = useState<Region | null>(null);
   const requestSerial = useRef(0);
+  const forceNextPubFetch = useRef(false);
   const privateReadsSuspended = useRef(false);
   const current = useTallyStore((state) => state.current);
   const history = useTallyStore((state) => state.history);
@@ -152,7 +132,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     let cancelled = false;
     void hydratePubsSnapshot().then(() => {
       if (!cancelled) {
-        setPubs((previous) => mergePubs(previous, getAllLoadedPubs()));
+        setPubs((previous) => mergeMapPubs(previous, getAllLoadedPubs()));
         setLoadedFiltersKey(filtersKey);
       }
     });
@@ -234,7 +214,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
 
   useEffect(() => {
     if (!focused || !requestedRegion) return;
-    const radiusKm = viewportRadiusKm(requestedRegion);
+    const radiusKm = mapViewportRadiusKm(requestedRegion);
     // The current nearby endpoint is not a country-scale catalogue. Waiting for
     // a city/region zoom avoids a costly, misleading 100 km search on the Czech
     // overview while cached pubs and visited-city markers remain visible.
@@ -242,10 +222,13 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     const serial = ++requestSerial.current;
     const controller = new AbortController();
     const timer = setTimeout(() => {
+      const force = forceNextPubFetch.current;
+      forceNextPubFetch.current = false;
       setLoadingPubs(true);
       void fetchPubsNear(requestedRegion.latitude, requestedRegion.longitude, controller.signal, {
+        ...(force ? { force: true } : {}),
         radiusKm,
-        coverageKm: Math.min(viewportCoverageKm(requestedRegion), radiusKm),
+        coverageKm: Math.min(mapViewportCoverageKm(requestedRegion), radiusKm),
         beerBrandKey,
         amenityKeys,
         includeOtherPlaces,
@@ -260,7 +243,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
               : previous.filter(
                   (pub) => pub.discoveryKind === undefined || pub.discoveryKind === 'pub',
                 );
-            return mergePubs(compatiblePrevious, loaded);
+            return mergeMapPubs(compatiblePrevious, loaded);
           });
           setLoadedFiltersKey(filtersKey);
         })
@@ -308,7 +291,10 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   }, []);
 
   const loadRegion = useCallback((region: Region) => setRequestedRegion(region), []);
-  const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    forceNextPubFetch.current = true;
+    setRefreshNonce((value) => value + 1);
+  }, []);
   // Hide the previous catalogue while a different filter request is pending;
   // unfiltered pubs must never masquerade as confirmed matches. Locally
   // reported pubs disappear immediately (and stay hidden offline) by both

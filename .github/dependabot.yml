@@ -1,0 +1,103 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Prague
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+    groups:
+      expo:
+        patterns:
+          - expo
+          - expo-*
+          - "@expo/*"
+          - react-native
+          - react-native-*
+          - "@react-native/*"
+        update-types:
+          - patch
+      npm:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - expo
+          - expo-*
+          - "@expo/*"
+          - react-native
+          - react-native-*
+          - "@react-native/*"
+        update-types:
+          - minor
+          - patch
+    # Expo SDK releases pin a compatible native dependency set. Keep routine
+    # updates to patches and handle larger upgrades with the Expo SDK workflow.
+    # SemVer ignore rules affect version updates, not security updates.
+    ignore:
+      - dependency-name: expo
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: expo-*
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: "@expo/*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: react-native-*
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: "@react-native/*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:15"
+      timezone: Europe/Prague
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+    groups:
+      backend:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+    groups:
+      github-actions:
+        patterns:
+          - "*"

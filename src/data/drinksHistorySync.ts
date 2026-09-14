@@ -14,7 +14,7 @@
  * A permanent API rejection counts as processed, matching the queue contract.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from './privateAccountStorage';
 
 import { buildDrinkEntry, type DrinkEntry } from './drinksClient';
 import {
@@ -205,6 +205,12 @@ async function runHistorySeed(): Promise<void> {
   const queueBoundaryAtStart = getDrinksQueueBoundaryGeneration();
 
   await waitForTallyHydration();
+  if (cancellationAtStart !== cancellationGeneration) return;
+
+  // Retry already-queued drinks even after the one-time history seed completed.
+  // Root startup delegates this queue here so the same coalescer is not invoked
+  // once from the seed and once from the generic launch sweep.
+  await flushDrinksQueue();
   if (cancellationAtStart !== cancellationGeneration) return;
 
   try {

@@ -7,12 +7,13 @@ import {
   loadAddedPubSubmissions,
   retryAddedPub,
   syncOwnAddedPubs,
+  type AddedPubSubmission,
 } from '../addedPubsQueue';
 import { fetchOwnAddedPubs, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
-import { removeLocalPub, upsertLocalPub } from '../pubs';
+import { removeLocalPub, upsertLocalPub, upsertLocalPubs } from '../pubs';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 jest.mock('../addedPubsClient', () => ({
@@ -26,6 +27,7 @@ jest.mock('../pubs', () => ({
   pubIdForCoords: jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`),
   removeLocalPub: jest.fn(),
   upsertLocalPub: jest.fn(),
+  upsertLocalPubs: jest.fn(),
 }));
 
 const ENTRY = {
@@ -43,6 +45,36 @@ beforeEach(async () => {
 });
 
 describe('added pub state registry', () => {
+  it('persists a new pub while an older submit is still pending', async () => {
+    await AsyncStorage.setItem('na-pivo-added-pubs-queue', JSON.stringify([{
+      ...ENTRY,
+      syncState: 'pending',
+      pendingOperation: 'create',
+      updatedAt: '2026-07-21T10:00:00.000Z',
+    }]));
+    let releaseDelivery!: (result: 'retry') => void;
+    (submitAddedPub as jest.Mock).mockImplementationOnce(
+      () => new Promise((resolve) => { releaseDelivery = resolve; }),
+    );
+
+    const flush = flushAddedPubsQueue();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(submitAddedPub).toHaveBeenCalledTimes(1);
+    const enqueue = enqueueAddedPub({
+      ...ENTRY,
+      client_id: 'second-client',
+      name: 'Nová hospoda',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const persistedBeforeDeliverySettled = JSON.parse(
+      (await AsyncStorage.getItem('na-pivo-added-pubs-queue')) ?? '[]',
+    ) as AddedPubSubmission[];
+
+    releaseDelivery('retry');
+    await Promise.all([flush, enqueue]);
+    expect(persistedBeforeDeliverySettled.map((entry) => entry.client_id)).toContain('second-client');
+  });
+
   it('keeps a retryable submit visible as pending and syncs after connectivity returns', async () => {
     (submitAddedPub as jest.Mock).mockResolvedValueOnce('retry');
 
@@ -245,6 +277,11 @@ describe('added pub state registry', () => {
     expect(rows.map((row) => row.client_id)).toEqual(
       Array.from({ length: 30 }, (_, index) => `remote-${index}`),
     );
+    expect(upsertLocalPubs).toHaveBeenCalledTimes(1);
+    expect(upsertLocalPubs).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ name: 'Server 0' }),
+      expect.objectContaining({ name: 'Server 29' }),
+    ]));
   });
 
   it('uses insertion order to break equal history timestamps in favor of newer rows', async () => {
@@ -286,7 +323,7 @@ describe('added pub state registry', () => {
     expect(submitAddedPubEdit).toHaveBeenCalledWith({
       client_id: ENTRY.client_id,
       name: 'U Krátkého patche',
-    });
+    }, expect.any(AbortSignal));
     await expect(loadAddedPubSubmissions()).resolves.toEqual([
       expect.objectContaining({
         name: 'U Krátkého patche',

@@ -11,9 +11,9 @@ import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Undo2Icon, WifiIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface OfflineBannerProps {
@@ -29,12 +29,12 @@ function OfflineBannerComponent({ onRetry }: OfflineBannerProps) {
         numberOfLines={2}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {cs.friends.offline}
+        {t.friends.offline}
       </Text>
       <Pressable
         onPress={onRetry}
         accessibilityRole="button"
-        accessibilityLabel={cs.friends.retry}
+        accessibilityLabel={t.friends.retry}
         hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
         style={({ pressed }) => [styles.retry, pressed && styles.retryPressed]}
       >
@@ -44,7 +44,7 @@ function OfflineBannerComponent({ onRetry }: OfflineBannerProps) {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {cs.friends.retry}
+          {t.friends.retry}
         </Text>
       </Pressable>
     </View>
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   retryLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },

@@ -1,0 +1,2 @@
+# Firebase Android client config is public by design and belongs in the codebase.
+google-services.json:gcp-api-key:23

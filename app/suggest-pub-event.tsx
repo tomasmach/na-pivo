@@ -16,8 +16,10 @@ import { ChevronLeftIcon, ClockIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { submitPubEventSuggestion } from '@/data/pubEventsClient';
 import { useToastStore } from '@/stores/toastStore';
+import { leaveRoute } from '@/navigation/leaveRoute';
+import { intlLocale, t } from '@/i18n';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 function stringParam(value: string | string[] | undefined): string {
@@ -33,12 +35,27 @@ function twoDigits(value: number): string {
   return String(value).padStart(2, '0');
 }
 
-export function formatCzechDateTime(date: Date): string {
-  return `${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()} ${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
+/** cs-CZ gives "19. 7. 2026", en-GB "19/07/2026". The time is assembled by hand
+ *  so the string always round-trips through the parser below, whatever hour
+ *  cycle the platform's Intl happens to prefer. */
+const dateFormatter = new Intl.DateTimeFormat(intlLocale, {
+  day: 'numeric',
+  month: 'numeric',
+  year: 'numeric',
+});
+
+export function formatEventDateTime(date: Date): string {
+  return `${dateFormatter.format(date)} ${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
 }
 
-export function parseCzechDateTime(value: string): Date | null {
-  const match = value.trim().match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\s+(\d{1,2}):(\d{2})$/);
+/** Accepts both day-first shapes the field can hold: "19. 7. 2026 19:00" and
+ *  "19/07/2026 19:00", with or without the comma Intl puts between date and
+ *  time in some locales. */
+export function parseEventDateTime(value: string): Date | null {
+  const match = value
+    .replace(/,/g, ' ')
+    .trim()
+    .match(/^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]?\s*(\d{4})\s+(\d{1,2}):(\d{2})$/);
   if (!match) return null;
   const [, dayRaw, monthRaw, yearRaw, hourRaw, minuteRaw] = match;
   const day = Number(dayRaw);
@@ -59,12 +76,16 @@ export function parseCzechDateTime(value: string): Date | null {
   return date;
 }
 
+/** Sample times in the placeholders, formatted the same way as the defaults. */
+const PLACEHOLDER_START = formatEventDateTime(new Date(2026, 6, 19, 19, 0));
+const PLACEHOLDER_END = formatEventDateTime(new Date(2026, 6, 19, 22, 0));
+
 function defaultTimes(): { starts: string; ends: string } {
   const startsAt = new Date();
   startsAt.setSeconds(0, 0);
   startsAt.setMinutes(Math.ceil(startsAt.getMinutes() / 15) * 15);
   const endsAt = new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
-  return { starts: formatCzechDateTime(startsAt), ends: formatCzechDateTime(endsAt) };
+  return { starts: formatEventDateTime(startsAt), ends: formatEventDateTime(endsAt) };
 }
 
 export default function SuggestPubEventScreen() {
@@ -84,8 +105,8 @@ export default function SuggestPubEventScreen() {
   const name = stringParam(params.name);
   const lat = numberParam(params.lat);
   const lng = numberParam(params.lng);
-  const startsAt = parseCzechDateTime(starts);
-  const endsAt = parseCzechDateTime(ends);
+  const startsAt = parseEventDateTime(starts);
+  const endsAt = parseEventDateTime(ends);
   const canSubmit =
     !submitting &&
     title.trim().length >= 3 &&
@@ -104,7 +125,7 @@ export default function SuggestPubEventScreen() {
       !endsAt ||
       endsAt.getTime() <= Date.now()
     ) {
-      setError('Mrkni na název a časy. Konec musí být po začátku.');
+      setError(t.suggestPubEvent.invalidError);
       return;
     }
     setSubmitting(true);
@@ -123,33 +144,33 @@ export default function SuggestPubEventScreen() {
     });
     setSubmitting(false);
     if (result === 'ok') {
-      showToast('Návrh je u výčepu na kontrole.');
-      router.back();
+      showToast(t.suggestPubEvent.submitted);
+      leaveRoute(router);
       return;
     }
     if (result === 'auth-required') {
-      setError('Přihlášení vypršelo. Přihlas se a zkus to znovu.');
+      setError(t.suggestPubEvent.authError);
       return;
     }
     if (result === 'permanent-error') {
-      setError('Tenhle návrh server nevzal. Zkontroluj časy a délku akce.');
+      setError(t.suggestPubEvent.rejectedError);
       return;
     }
-    setError('Teď se k serveru nedostaneme. Návrh zůstal ve formuláři, zkus to za chvíli.');
+    setError(t.suggestPubEvent.offlineError);
   };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => leaveRoute(router)}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel="Zpět"
+          accessibilityLabel={t.a11y.vycepBack}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
-        <Text style={styles.headerTitle}>Navrhnout akci</Text>
+        <Text style={styles.headerTitle}>{t.suggestPubEvent.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -169,17 +190,17 @@ export default function SuggestPubEventScreen() {
             <View style={styles.flex}>
               <Text style={styles.pubName} maxFontSizeMultiplier={FontScaleCap.heading}>{name}</Text>
               <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-                Napiš, co se děje. Po kontrole se akce ukáže v detailu hospody.
+                {t.suggestPubEvent.intro}
               </Text>
             </View>
           </View>
 
-          <Field label="Název akce">
+          <Field label={t.suggestPubEvent.nameLabel}>
             <TextInput
               value={title}
               onChangeText={setTitle}
               style={styles.input}
-              placeholder="Třeba hospodský kvíz"
+              placeholder={t.suggestPubEvent.namePlaceholder}
               placeholderTextColor={Colors.mutedText}
               maxLength={120}
               autoFocus
@@ -188,24 +209,24 @@ export default function SuggestPubEventScreen() {
 
           <View style={styles.timeRow}>
             <View style={styles.timeField}>
-              <Field label="Začátek">
+              <Field label={t.suggestPubEvent.startLabel}>
                 <TextInput
                   value={starts}
                   onChangeText={setStarts}
                   style={styles.input}
-                  placeholder="19. 7. 2026 19:00"
+                  placeholder={PLACEHOLDER_START}
                   placeholderTextColor={Colors.mutedText}
                   keyboardType="numbers-and-punctuation"
                 />
               </Field>
             </View>
             <View style={styles.timeField}>
-              <Field label="Konec">
+              <Field label={t.suggestPubEvent.endLabel}>
                 <TextInput
                   value={ends}
                   onChangeText={setEnds}
                   style={styles.input}
-                  placeholder="19. 7. 2026 22:00"
+                  placeholder={PLACEHOLDER_END}
                   placeholderTextColor={Colors.mutedText}
                   keyboardType="numbers-and-punctuation"
                 />
@@ -213,12 +234,12 @@ export default function SuggestPubEventScreen() {
             </View>
           </View>
 
-          <Field label="Podrobnosti (nepovinné)">
+          <Field label={t.suggestPubEvent.detailsLabel}>
             <TextInput
               value={details}
               onChangeText={setDetails}
               style={[styles.input, styles.multiline]}
-              placeholder="Vstupné, rezervace nebo co čekat"
+              placeholder={t.suggestPubEvent.detailsPlaceholder}
               placeholderTextColor={Colors.mutedText}
               maxLength={500}
               multiline
@@ -227,7 +248,7 @@ export default function SuggestPubEventScreen() {
           </Field>
 
           <Text style={styles.moderation} maxFontSizeMultiplier={FontScaleCap.body}>
-            Návrh nejdřív zkontrolujeme. Neověřené a skončené akce ostatní neuvidí.
+            {t.suggestPubEvent.moderation}
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -240,10 +261,10 @@ export default function SuggestPubEventScreen() {
               pressed && canSubmit && styles.pressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel="Poslat návrh ke kontrole"
+            accessibilityLabel={t.suggestPubEvent.submitA11y}
             accessibilityState={{ disabled: !canSubmit }}
           >
-            <Text style={styles.submitText}>{submitting ? 'Posílám...' : 'Poslat ke kontrole'}</Text>
+            <Text style={styles.submitText}>{submitting ? t.suggestPubEvent.submitting : t.suggestPubEvent.submit}</Text>
           </Pressable>
         </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
@@ -272,7 +293,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', color: Colors.foam, fontFamily: Fonts.display.bold, fontSize: 20 },
+  headerTitle: { flex: 1, textAlign: 'center', color: Colors.foam, fontWeight: '700', fontSize: 20 },
   headerSpacer: { width: HitArea.min },
   content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl, gap: Spacing.lg },
   introRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
@@ -286,10 +307,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  pubName: { color: Colors.foam, fontFamily: Fonts.display.bold, fontSize: 22, lineHeight: 27 },
-  intro: { marginTop: 3, color: Colors.foamMuted, fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20 },
+  pubName: { color: Colors.foam, fontWeight: '700', fontSize: 22, lineHeight: 27 },
+  intro: { marginTop: 3, color: Colors.foamMuted, fontWeight: '400', fontSize: 14, lineHeight: 20 },
   field: { gap: Spacing.sm },
-  label: { color: Colors.foamMuted, fontFamily: Fonts.ui.semibold, fontSize: 13 },
+  label: { color: Colors.foamMuted, fontWeight: '600', fontSize: 13 },
   input: {
     minHeight: 50,
     borderRadius: Radius.medium,
@@ -299,14 +320,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: 12,
     color: Colors.foam,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
   },
   multiline: { minHeight: 106 },
   timeRow: { flexDirection: 'row', gap: Spacing.md },
   timeField: { flex: 1 },
-  moderation: { color: Colors.mutedText, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 19 },
-  error: { color: Colors.amberLight, fontFamily: Fonts.ui.medium, fontSize: 13, lineHeight: 19 },
+  moderation: { color: Colors.mutedText, fontWeight: '400', fontSize: 13, lineHeight: 19 },
+  error: { color: Colors.amberLight, fontWeight: '500', fontSize: 13, lineHeight: 19 },
   submitButton: {
     minHeight: 52,
     alignItems: 'center',
@@ -315,6 +336,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   submitDisabled: { opacity: 0.42 },
-  submitText: { color: Colors.stout, fontFamily: Fonts.display.bold, fontSize: 17 },
+  submitText: { color: Colors.stout, fontWeight: '700', fontSize: 17 },
   pressed: { opacity: 0.72 },
 });

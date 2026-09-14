@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Na pivo — audit funkční parity redesignu</title>
+    <style>
+      :root {
+        --ink: #271a12;
+        --muted: #75665d;
+        --paper: #f8f1e5;
+        --card: #fffaf2;
+        --line: #dfd1bf;
+        --amber: #d88a13;
+        --amber-soft: #f6dfb3;
+        --red: #ae3b2f;
+        --red-soft: #f3d8d2;
+        --green: #2f7151;
+        --green-soft: #dcebdd;
+        --blue: #386b82;
+        --blue-soft: #dceaf0;
+        --shadow: 0 18px 50px rgba(74, 47, 28, 0.09);
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% 0%, rgba(216, 138, 19, 0.16), transparent 25rem),
+          linear-gradient(180deg, #f5ecdd 0, var(--paper) 38rem);
+        font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      a { color: inherit; }
+
+      .shell {
+        width: min(1160px, calc(100% - 36px));
+        margin: 0 auto;
+      }
+
+      .hero {
+        padding: 72px 0 44px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+        gap: 48px;
+        align-items: end;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-bottom: 20px;
+        color: #7c4c05;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--amber);
+        box-shadow: 0 0 0 6px rgba(216, 138, 19, 0.14);
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 760px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(3rem, 7vw, 6.6rem);
+        font-weight: 500;
+        letter-spacing: -0.06em;
+        line-height: 0.92;
+      }
+
+      .hero-copy {
+        max-width: 720px;
+        margin: 28px 0 0;
+        color: #58483f;
+        font-size: clamp(1.04rem, 1.8vw, 1.28rem);
+      }
+
+      .verdict {
+        padding: 24px;
+        border: 1px solid rgba(174, 59, 47, 0.2);
+        border-radius: 22px;
+        background: rgba(255, 250, 242, 0.72);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .verdict-label {
+        color: var(--red);
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .verdict strong {
+        display: block;
+        margin: 8px 0 10px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 2rem;
+        font-weight: 500;
+        line-height: 1.08;
+      }
+
+      .verdict p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.93rem;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin: 14px 0 50px;
+      }
+
+      .summary-card {
+        min-height: 142px;
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 250, 242, 0.7);
+      }
+
+      .summary-card .number {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 2.8rem;
+        line-height: 1;
+      }
+
+      .summary-card .label {
+        margin-top: 12px;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .section {
+        padding: 52px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 32px;
+        align-items: end;
+        margin-bottom: 24px;
+      }
+
+      h2 {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2rem, 4vw, 3.6rem);
+        font-weight: 500;
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+
+      .section-note {
+        max-width: 470px;
+        margin: 0;
+        color: var(--muted);
+        text-align: right;
+      }
+
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 22px;
+      }
+
+      .filter-button {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 9px 14px;
+        color: var(--ink);
+        background: transparent;
+        font: inherit;
+        font-size: 0.84rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .filter-button:hover,
+      .filter-button.active {
+        border-color: var(--ink);
+        color: var(--card);
+        background: var(--ink);
+      }
+
+      .issues {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .issue {
+        position: relative;
+        overflow: hidden;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--card);
+        box-shadow: 0 9px 30px rgba(74, 47, 28, 0.045);
+      }
+
+      .issue::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 5px;
+        background: var(--amber);
+      }
+
+      .issue[data-priority="p0"]::before { background: var(--red); }
+      .issue[data-priority="p1"]::before { background: var(--amber); }
+      .issue[data-priority="p2"]::before { background: var(--blue); }
+      .issue[hidden] { display: none; }
+
+      .issue-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 16px;
+      }
+
+      .priority {
+        display: inline-block;
+        flex: 0 0 auto;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 0.69rem;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .p0 { color: var(--red); background: var(--red-soft); }
+      .p1 { color: #845306; background: var(--amber-soft); }
+      .p2 { color: var(--blue); background: var(--blue-soft); }
+
+      .issue h3 {
+        margin: 0;
+        font-size: 1.25rem;
+        line-height: 1.2;
+      }
+
+      .issue .lead {
+        margin: 14px 0 0;
+        color: #5f4f45;
+      }
+
+      .issue ul {
+        margin: 16px 0 0;
+        padding-left: 20px;
+      }
+
+      .issue li + li { margin-top: 7px; }
+
+      details {
+        margin-top: 18px;
+        border-top: 1px solid var(--line);
+        padding-top: 14px;
+      }
+
+      summary {
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      .code-ref {
+        display: block;
+        margin-top: 9px;
+        overflow-wrap: anywhere;
+        color: #6b4b31;
+        font: 0.76rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .route-map {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 12px 20px;
+        align-items: center;
+        padding: 26px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: #30231b;
+        color: #fff8ed;
+      }
+
+      .route-cell {
+        padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        border-radius: 13px;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .route-cell small {
+        display: block;
+        margin-bottom: 3px;
+        color: #cdbdaf;
+      }
+
+      .arrow { color: #efb550; font-size: 1.25rem; }
+
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .list-card {
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: rgba(255, 250, 242, 0.72);
+      }
+
+      .list-card h3 { margin: 0 0 14px; }
+      .list-card ul { margin: 0; padding-left: 20px; }
+      .list-card li + li { margin-top: 8px; }
+      .list-card.good { border-top: 5px solid var(--green); }
+      .list-card.check { border-top: 5px solid var(--blue); }
+
+      .recommendation {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 28px;
+        align-items: start;
+        padding: 34px;
+        border-radius: 28px;
+        color: #fff8ed;
+        background: var(--ink);
+        box-shadow: var(--shadow);
+      }
+
+      .recommendation h2 { color: #fff8ed; }
+
+      .recommendation p {
+        margin: 18px 0 0;
+        color: #cfbeb0;
+      }
+
+      .release-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: release;
+      }
+
+      .release-list li {
+        counter-increment: release;
+        display: grid;
+        grid-template-columns: 32px 1fr;
+        gap: 12px;
+        align-items: start;
+        padding: 14px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.13);
+      }
+
+      .release-list li::before {
+        content: counter(release);
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 50%;
+        color: var(--ink);
+        background: #efb550;
+        font-size: 0.76rem;
+        font-weight: 850;
+      }
+
+      footer {
+        padding: 38px 0 54px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .print-button {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        z-index: 5;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 17px;
+        color: #fffaf2;
+        background: var(--ink);
+        box-shadow: 0 8px 24px rgba(39, 26, 18, 0.25);
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      @media (max-width: 820px) {
+        .hero,
+        .recommendation { grid-template-columns: 1fr; }
+        .summary-grid { grid-template-columns: repeat(2, 1fr); }
+        .issues,
+        .split { grid-template-columns: 1fr; }
+        .section-head { align-items: start; flex-direction: column; }
+        .section-note { text-align: left; }
+        .route-map { grid-template-columns: 1fr; }
+        .arrow { transform: rotate(90deg); text-align: center; }
+      }
+
+      @media (max-width: 480px) {
+        .shell { width: min(100% - 24px, 1160px); }
+        .hero { padding-top: 46px; gap: 28px; }
+        .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+        .summary-card { min-height: 126px; padding: 16px; }
+        .issue, .list-card, .route-map, .recommendation { padding: 20px; }
+      }
+
+      @media print {
+        body { background: white; }
+        .shell { width: 100%; }
+        .hero { padding-top: 20px; }
+        .filter-button, .print-button { display: none; }
+        .issue, .summary-card, .list-card, .recommendation { break-inside: avoid; box-shadow: none; }
+        details { display: block; }
+        details > * { display: block; }
+      }
+    </style>
+  </head>
+  <body>
+    <button class="print-button" onclick="window.print()">Uložit jako PDF</button>
+
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Audit funkční parity · 10. srpna 2026</div>
+          <h1>Co se ztratilo v redesignu</h1>
+          <p class="hero-copy">
+            Porovnání produkční větve <strong>main</strong> s aktuálním redesignem. Audit sleduje nejen to,
+            jestli kód stále existuje, ale hlavně zda se k funkci uživatel dostane z běžné navigace.
+          </p>
+        </div>
+        <aside class="verdict">
+          <span class="verdict-label">Verdikt</span>
+          <strong>Ano, funkční parita teď není zachovaná.</strong>
+          <p>Data ani většina backendových funkcí nezmizely. Problém je především v nedostupném UI a přesměrovaných tabech.</p>
+        </aside>
+      </header>
+
+      <section class="summary-grid" aria-label="Souhrn auditu">
+        <div class="summary-card">
+          <div class="number">4</div>
+          <div class="label">produkční taby přepojené na nové obrazovky</div>
+        </div>
+        <div class="summary-card">
+          <div class="number">7</div>
+          <div class="label">potvrzených oblastí s chybějícími funkcemi</div>
+        </div>
+        <div class="summary-card">
+          <div class="number">4</div>
+          <div class="label">kritické oblasti doporučené před vydáním</div>
+        </div>
+        <div class="summary-card">
+          <div class="number">0</div>
+          <div class="label">nalezených důkazů o smazání uživatelských dat</div>
+        </div>
+      </section>
+
+      <section class="section" id="routes">
+        <div class="section-head">
+          <h2>Kde se to stalo</h2>
+          <p class="section-note">Staré obrazovky v projektu většinou zůstaly. Čtyři hlavní routy ale nyní otevírají nové obrazovky.</p>
+        </div>
+        <div class="route-map" aria-label="Mapa přepojených rout">
+          <div class="route-cell"><small>Produkce</small>Kompas</div><div class="arrow">→</div><div class="route-cell"><small>Redesign</small>Seznam hospod</div>
+          <div class="route-cell"><small>Produkce</small>Počítadlo + deník</div><div class="arrow">→</div><div class="route-cell"><small>Redesign</small>Party</div>
+          <div class="route-cell"><small>Produkce</small>Parta</div><div class="arrow">→</div><div class="route-cell"><small>Redesign</small>Feed večerů</div>
+          <div class="route-cell"><small>Produkce</small>Plný profil</div><div class="arrow">→</div><div class="route-cell"><small>Redesign</small>Profilové statistiky</div>
+        </div>
+      </section>
+
+      <section class="section" id="gaps">
+        <div class="section-head">
+          <h2>Potvrzené mezery</h2>
+          <p class="section-note">P0 je blokující před vydáním, P1 je významná regrese a P2 menší ztráta nebo horší cesta.</p>
+        </div>
+
+        <div class="filters" aria-label="Filtr priorit">
+          <button class="filter-button active" data-filter="all">Vše</button>
+          <button class="filter-button" data-filter="p0">Jen P0</button>
+          <button class="filter-button" data-filter="p1">Jen P1</button>
+          <button class="filter-button" data-filter="p2">Jen P2</button>
+        </div>
+
+        <div class="issues">
+          <article class="issue" data-priority="p0">
+            <div class="issue-top"><h3>Soukromý pivní deník a historie</h3><span class="priority p0">P0</span></div>
+            <p class="lead">Tab Pivo nyní otevírá Party. Uživatel se běžnou cestou nedostane ke své kompletní historii.</p>
+            <ul>
+              <li>chybí přehled všech večerů včetně neveřejných a lokálních;</li>
+              <li>chybí detail starého večera a ruční dopsání historického piva;</li>
+              <li>chybí celoživotní statistiky: útrata, top hospody, roky, tempo a hodnocení;</li>
+              <li>nová Aktivita ukazuje jen publikované večery a pouze přihlášeným.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">app/(tabs)/beer.tsx<br />src/beer/BeerScreen.tsx<br />src/diary/DiaryScreen.tsx<br />src/myBeers/EveningDetailScreen.tsx</code></details>
+          </article>
+
+          <article class="issue" data-priority="p0">
+            <div class="issue-top"><h3>Pokročilé zapisování nápojů</h3><span class="priority p0">P0</span></div>
+            <p class="lead">Party zachovává základní +1 pivo, vlastní název a fotku, ale ne plný produkční counter.</p>
+            <ul>
+              <li>chybí víno, panáky a nealko;</li>
+              <li>chybí cena, objem, typ čepování, účtenka a celková útrata;</li>
+              <li>chybí zpětné datum, rychlé undo a plná editace položky;</li>
+              <li>chybí sken nápojového lístku, podrobný check-in a hodnocení večera.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">src/counter/CounterScreen.tsx<br />src/counter/components/DrinkPickSheet.tsx<br />src/counter/components/BeerFormModal.tsx<br />src/counter/components/ReceiptSheet.tsx</code></details>
+          </article>
+
+          <article class="issue" data-priority="p0">
+            <div class="issue-top"><h3>Dashboard Parta</h3><span class="priority p0">P0</span></div>
+            <p class="lead">Původní Partu nahradil feed publikovaných večerů. Feed je nová hodnota, ale nenahrazuje realtime sociální funkce.</p>
+            <ul>
+              <li>chybí přijetí a odmítnutí žádostí i správa seznamu kamarádů;</li>
+              <li>chybí QR/kód, kdo kde sedí, plány, RSVP a „Cinkni partě“;</li>
+              <li>push na žádost stále otevírá <code>/friends</code>, ale nová obrazovka signál nezpracuje;</li>
+              <li>pozvánka se po úspěchu také vrací na nesprávný cíl.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">app/(tabs)/friends/index.tsx<br />src/friends/FriendsScreen.tsx<br />src/feed/FeedScreen.tsx<br />app/_layout.tsx<br />app/parta/pozvanka.tsx</code></details>
+          </article>
+
+          <article class="issue" data-priority="p0">
+            <div class="issue-top"><h3>Správa vlastního profilu</h3><span class="priority p0">P0</span></div>
+            <p class="lead">Nový profil dobře ukazuje statistiky a odznaky, ale zmizely běžné dveře k úpravám vlastní identity.</p>
+            <ul>
+              <li>chybí stabilní vstup k avataru, přezdívce, jménu a veřejnosti profilu;</li>
+              <li>chybí vlastní QR/kód a správa party;</li>
+              <li>chybí fotodeník a detail úrovně/XP odznaků;</li>
+              <li>Nastavení zůstalo dostupné, ale tyto profilové operace nenahrazuje.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">src/profile/ProfileMockScreen.tsx<br />src/profile/ProfileScreen.tsx<br />app/(tabs)/profile/_layout.tsx<br />app/profile/edit.tsx<br />app/profile/photos.tsx</code></details>
+          </article>
+
+          <article class="issue" data-priority="p1">
+            <div class="issue-top"><h3>Příspěvky a opravy hospod</h3><span class="priority p1">P1</span></div>
+            <p class="lead">Nový detail hospody informace čte, ale nenabízí produkční mapérské a opravné akce.</p>
+            <ul>
+              <li>chybí doplnění otevíračky, nabídky piv a cen;</li>
+              <li>chybí hlasování ANO/NE u vybavení hospody;</li>
+              <li>chybí navržení akce, nahlášení chyby a oprava názvu;</li>
+              <li>chybí přímá editace vlastní přidané hospody.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">src/pubs/PubDetailBody.tsx<br />src/components/amenities/MapPubSheet.tsx</code></details>
+          </article>
+
+          <article class="issue" data-priority="p1">
+            <div class="issue-top"><h3>Část flow kompasu</h3><span class="priority p1">P1</span></div>
+            <p class="lead">Samotná živá šipka kompasu zůstává. Okolní produkční flow je ale ořezané.</p>
+            <ul>
+              <li>chybí automatické „Dorazil jsi“ a oslava příchodu;</li>
+              <li>chybí zaměření hospody kamaráda přes „Ukaž na kompasu“;</li>
+              <li>chybí skrytí a odhalení názvu cílové hospody;</li>
+              <li>filtry jsou redukované; nastavení <code>hidePubNames</code> je nyní prakticky bez efektu.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">src/pubs/CompassCell.tsx — živá šipka zachována<br />src/pubs/PubListMockScreen.tsx<br />src/pubs/CompassHomeScreen.tsx</code></details>
+          </article>
+
+          <article class="issue" data-priority="p2">
+            <div class="issue-top"><h3>Menší navigační regrese</h3><span class="priority p2">P2</span></div>
+            <p class="lead">Několik funkcí stále fyzicky existuje, ale nemá spolehlivou cestu z aktivních obrazovek.</p>
+            <ul>
+              <li>z nového žebříčku nejde otevřít profil člověka;</li>
+              <li>chybí stabilní vstup do Fotosoutěže a galerie pivních fotek;</li>
+              <li>některé routy fungují jen přes deeplink nebo výjimečný modal;</li>
+              <li>reminder a Live Activity stále míří na <code>/beer</code>, který nyní znamená Party.</li>
+            </ul>
+            <details><summary>Důkazy v kódu</summary><code class="code-ref">src/community/CommunityMockScreen.tsx<br />app/photo-contest.tsx<br />app/profile/photos.tsx<br />app/_layout.tsx</code></details>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="status">
+        <div class="section-head">
+          <h2>Co naopak zůstalo</h2>
+          <p class="section-note">Redesign není plošné odstranění produktu. Řadu důležitých částí zachovává nebo rozšiřuje.</p>
+        </div>
+        <div class="split">
+          <article class="list-card good">
+            <h3>Zachováno nebo rozšířeno</h3>
+            <ul>
+              <li>živý kompas, seznam a mapa hospod;</li>
+              <li>vyhledání hospody, navigace a start Party;</li>
+              <li>základní +1 pivo, vlastní název, fotky a offline fronta;</li>
+              <li>pozvánky do Party, hry, ukončení a publikování večera;</li>
+              <li>komunitní feed, reakce, komentáře, žebříčky a akce;</li>
+              <li>nastavení, účet, export a smazání účtu.</li>
+            </ul>
+          </article>
+          <article class="list-card check">
+            <h3>Ověřit ručně na zařízení</h3>
+            <ul>
+              <li>cold start z reminderu a Live Activity na nové routě <code>/beer</code>;</li>
+              <li>obnova staré aktivní tally session po upgradu aplikace;</li>
+              <li>návrat z modální Party při otevření deeplinkem;</li>
+              <li>dostupnost osiřelých rout přes produkční nudges a push notifikace.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="recommendation">
+          <div>
+            <h2>Doporučení před releasem</h2>
+            <p>Nemusí se vracet starý vzhled. Stačí dát produkčním schopnostem nové, jasné dveře a opravit routování.</p>
+          </div>
+          <ol class="release-list">
+            <li>Vrátit vstup do soukromého deníku a pokročilého zápisu nápojů.</li>
+            <li>Vrátit inbox žádostí a správu Party; přesměrovat push notifikace na správný cíl.</li>
+            <li>Přidat stabilní úpravu vlastního profilu a přístup k fotodeníku.</li>
+            <li>Přidat z detailu hospody příspěvky, opravy a report.</li>
+            <li>Obnovit arrival a friend-focus flow kompasu a otestovat deeplinky na zařízení.</li>
+          </ol>
+        </div>
+      </section>
+
+      <footer>
+        Statický audit zdrojového kódu · porovnání produkční větve <strong>main</strong> s aktuálním redesignem · bez zásahu do dat nebo backendu
+      </footer>
+    </main>
+
+    <script>
+      const buttons = document.querySelectorAll("[data-filter]");
+      const issues = document.querySelectorAll(".issue[data-priority]");
+
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const filter = button.dataset.filter;
+          buttons.forEach((item) => item.classList.toggle("active", item === button));
+          issues.forEach((issue) => {
+            issue.hidden = filter !== "all" && issue.dataset.priority !== filter;
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

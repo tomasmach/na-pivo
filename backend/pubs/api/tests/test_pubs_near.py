@@ -288,7 +288,13 @@ def test_local_first_hides_actively_reported_cache_key(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = True
     visible = _directory_pub("Viditelná")
     reported = _directory_pub("Nahlášená", lat=_LAT + 0.001)
-    accounts = [Account.objects.create(device_id=f"reporter-{index}") for index in range(3)]
+    accounts = [
+        Account.objects.create(
+            device_id=f"reporter-{index}",
+            quorum_trusted_at=dj_tz.now() - timedelta(hours=24),
+        )
+        for index in range(3)
+    ]
     for account, reason in zip(
         accounts[:2],
         (PubReport.Reason.NOT_PUB, PubReport.Reason.CLOSED),
@@ -752,6 +758,55 @@ def test_beer_brand_filter_returns_only_known_brand_pubs_from_cache(client):
 
 
 @pytest.mark.django_db
+def test_beer_brand_filter_keeps_only_qualifying_user_added_pub(client):
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    qualifying = UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key=geohash8(_LAT, _LNG),
+        name="Komunitní s Plzní",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    UserAddedPub.objects.create(
+        client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        cache_key=geohash8(_LAT + 0.002, _LNG),
+        name="Komunitní bez Plzně",
+        lat=_LAT + 0.002,
+        lng=_LNG,
+    )
+    PubBeerBrand.objects.create(
+        cache_key=qualifying.cache_key,
+        name=qualifying.name,
+        lat=qualifying.lat,
+        lng=qualifying.lng,
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.COMMUNITY,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "beer_brand": brand.key,
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == [qualifying.name]
+    assert resp.json()["items"][0]["source"] == "community"
+    # The suite's DRF throttle uses the shared local cache. This added request
+    # must not push unrelated later tests over the process-wide test limit.
+    default_cache.clear()
+
+
+@pytest.mark.django_db
 def test_beer_brand_filter_can_serve_known_pub_without_search_cache(client):
     brand, _ = BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
@@ -791,6 +846,53 @@ def test_beer_brand_filter_can_serve_known_pub_without_search_cache(client):
 
 
 @pytest.mark.django_db
+def test_community_pub_does_not_require_a_beer_filter_to_be_discoverable(client):
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    community = PubCommunityData.objects.create(
+        cache_key=geohash8(_LAT, _LNG),
+        name="Hospoda Se Záznamem",
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        beers=[{"name": brand.name, "price_czk": 62, "volume_ml": 500}],
+        beers_updated_at=dj_tz.now(),
+    )
+    PubBeerBrand.objects.create(
+        cache_key=community.cache_key,
+        name=community.name,
+        lat=community.lat,
+        lng=community.lng,
+        city=community.city or "",
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.DRINK,
+    )
+
+    unfiltered = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
+    filtered = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "beer_brand": brand.key,
+        },
+    )
+
+    assert unfiltered.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in unfiltered.json()["items"]] == [community.name]
+    assert unfiltered.json()["items"][0]["source"] == "community_signal"
+    assert [item["name"] for item in filtered.json()["items"]] == [community.name]
+
+
+@pytest.mark.django_db
 def test_beer_brand_filter_returns_empty_when_no_local_signals(client):
     BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
@@ -808,6 +910,95 @@ def test_beer_brand_filter_returns_empty_when_no_local_signals(client):
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []
+
+
+@pytest.mark.django_db
+def test_multi_beer_filter_returns_any_selected_brand_and_acknowledges_contract(client):
+    pilsner, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell", defaults={"name": "Pilsner Urquell"}
+    )
+    radegast, _ = BeerBrand.objects.get_or_create(
+        key="radegast", defaults={"name": "Radegast"}
+    )
+    kozel, _ = BeerBrand.objects.get_or_create(
+        key="velkopopovicky-kozel", defaults={"name": "Kozel"}
+    )
+    rows = [
+        ("U Plzně", 50.080, 14.420, pilsner),
+        ("U Radegastu", 50.081, 14.421, radegast),
+        ("U Kozla", 50.082, 14.422, kozel),
+    ]
+    for name, lat, lng, brand in rows:
+        PubBeerBrand.objects.create(
+            cache_key=geohash8(lat, lng),
+            name=name,
+            lat=lat,
+            lng=lng,
+            brand=brand,
+            brand_key=brand.key,
+            brand_name=brand.name,
+            source=PubBeerBrand.Source.COMMUNITY,
+        )
+    # One physical pub can carry a signal for both selected brands; it still
+    # belongs in the response only once.
+    PubBeerBrand.objects.create(
+        cache_key=geohash8(50.080, 14.420),
+        name="U Plzně",
+        lat=50.080,
+        lng=14.420,
+        brand=radegast,
+        brand_key=radegast.key,
+        brand_name=radegast.name,
+        source=PubBeerBrand.Source.DRINK,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "beer_brands": "radegast,pilsner-urquell,radegast",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["items"]]
+    assert set(names) == {"U Plzně", "U Radegastu"}
+    assert len(names) == 2
+    assert resp.json()["applied_filters"] == {
+        "version": 3,
+        "match": "all",
+        "amenities": [],
+        "beer_brand": None,
+        "beer_brands": ["radegast", "pilsner-urquell"],
+        "beer_match": "any",
+    }
+
+
+@pytest.mark.django_db
+def test_multi_beer_filter_rejects_unknown_and_over_limit_brands(client, settings):
+    for key in ("pilsner-urquell", "radegast", "gambrinus"):
+        BeerBrand.objects.get_or_create(key=key, defaults={"name": key})
+    settings.PUBS_NEAR_MAX_BEER_FILTERS = 2
+
+    unknown = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "beer_brands": "pilsner-urquell,not-a-beer"},
+    )
+    too_many = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "beer_brands": "pilsner-urquell,radegast,gambrinus",
+        },
+    )
+
+    assert unknown.status_code == status.HTTP_400_BAD_REQUEST
+    assert "not-a-beer" in str(unknown.json()["beer_brands"])
+    assert too_many.status_code == status.HTTP_400_BAD_REQUEST
+    assert "At most 2" in str(too_many.json()["beer_brands"])
 
 
 @pytest.mark.django_db
@@ -909,6 +1100,47 @@ def test_amenity_filter_requires_every_selected_amenity(client):
         "amenities": ["payment_card", "game_foosball"],
         "beer_brand": None,
     }
+
+
+@pytest.mark.django_db
+def test_amenity_filter_keeps_only_qualifying_user_added_pub(client):
+    qualifying = UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key=geohash8(_LAT, _LNG),
+        name="Komunitní s kartou",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    UserAddedPub.objects.create(
+        client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        cache_key=geohash8(_LAT + 0.002, _LNG),
+        name="Komunitní bez karty",
+        lat=_LAT + 0.002,
+        lng=_LNG,
+    )
+    _amenity(
+        "payment_card",
+        name=qualifying.name,
+        lat=qualifying.lat,
+        lng=qualifying.lng,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "amenities": "payment_card",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == [qualifying.name]
+    assert resp.json()["items"][0]["source"] == "community"
+    # See the throttle note above: keep the shared throttle counter clean for
+    # unrelated later tests.
+    default_cache.clear()
 
 
 @pytest.mark.django_db
@@ -1404,7 +1636,7 @@ def test_user_added_scan_limit_keeps_old_nearby_pub(client):
 
     old_near = UserAddedPub.objects.create(
         client_id=str(_uuid.uuid4()),
-        cache_key="u2fk-old-near",
+        cache_key="u2fkoldnear",
         name="Stará blízká",
         lat=_LAT + 0.00001,
         lng=_LNG,
@@ -1414,7 +1646,7 @@ def test_user_added_scan_limit_keeps_old_nearby_pub(client):
     for i in range(_USER_ADDED_SCAN_LIMIT):
         UserAddedPub.objects.create(
             client_id=str(_uuid.uuid4()),
-            cache_key=f"u2fk-far-{i:04d}",
+                cache_key=f"u2f{i:09d}",
             name=f"Novější dál {i:03d}",
             lat=_LAT + 0.01 + i * 0.000001,
             lng=_LNG,

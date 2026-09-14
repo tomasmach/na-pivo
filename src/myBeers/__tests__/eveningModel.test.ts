@@ -1,7 +1,3 @@
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import {
   sessionBreakdown,
   sessionDrinkActionGroups,
@@ -12,6 +8,10 @@ import {
   sessionDrinkSummary,
 } from '../eveningModel';
 import type { TallySession } from '@/stores/tallyStore';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 let idSeq = 0;
 function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string; drinkType: 'beer' | 'soft_drink' | 'shot'; servingType: 'draft' | 'bottle' }> = {}) {

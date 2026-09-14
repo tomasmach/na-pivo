@@ -10,13 +10,22 @@
  */
 
 import {
+  clearPhotoContestCache,
   clearPhotoContestVote,
   enterPhotoContest,
   fetchPhotoContest,
+  fetchPhotoContestPage,
+  fetchPhotoContestTeaser,
   votePhotoContest,
   withdrawPhotoContestEntry,
 } from '@/data/photoContestClient';
+import { ensureAccount } from '@/data/account';
 import { getBackendEndpoint } from '@/data/backendConfig';
+import {
+  clearUgcConsentStateForTests,
+  subscribeUgcConsentRequired,
+  UGC_POLICY_HEADER,
+} from '@/data/ugcConsent';
 
 jest.mock('@/data/backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
@@ -36,6 +45,7 @@ jest.mock('@/data/account', () => ({
 jest.mock('@/data/telemetryClient', () => ({ trackApiFailure: jest.fn() }));
 
 const mockGetBackendEndpoint = getBackendEndpoint as jest.MockedFunction<typeof getBackendEndpoint>;
+const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
 const ORIGINAL_FETCH = global.fetch;
 
 /** Resolve global.fetch like the WinterCG fetch: text() then JSON.parse. */
@@ -97,6 +107,13 @@ const APP_ENTRY = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearPhotoContestCache();
+  mockEnsureAccount.mockResolvedValue({
+    deviceId: 'd',
+    accountId: 'a',
+    token: 'cur-tok',
+    authenticated: false,
+  });
   mockGetBackendEndpoint.mockImplementation((path: string) => `https://api.test${path}`);
 });
 
@@ -137,6 +154,7 @@ describe('fetchPhotoContest', () => {
     const snapshot = await fetchPhotoContest();
 
     expect(snapshot).toEqual({
+      viewerAccountId: 'a',
       contest: {
         id: 'contest-7',
         periodStart: '2026-06-29T00:00:00.000Z',
@@ -145,6 +163,9 @@ describe('fetchPhotoContest', () => {
       },
       entries: [APP_ENTRY],
       myEntryId: 'e9',
+      myEntry: null,
+      entryCount: 1,
+      nextCursor: null,
       myVoteEntryId: 'e1',
       lastResults: {
         contest: {
@@ -179,7 +200,7 @@ describe('fetchPhotoContest', () => {
       },
     });
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://api.test/v1/photo-contest');
+    expect(url).toBe('https://api.test/v1/photo-contest?limit=20');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer cur-tok');
   });
 
@@ -187,9 +208,13 @@ describe('fetchPhotoContest', () => {
     fetchResolving(200, { entries: [], my_entry_id: null, last_results: null });
 
     expect(await fetchPhotoContest()).toEqual({
+      viewerAccountId: 'a',
       contest: null,
       entries: [],
+      myEntry: null,
       myEntryId: null,
+      entryCount: 0,
+      nextCursor: null,
       myVoteEntryId: null,
       lastResults: null,
     });
@@ -201,6 +226,126 @@ describe('fetchPhotoContest', () => {
 
     mockGetBackendEndpoint.mockReturnValue(null);
     expect(await fetchPhotoContest()).toBeNull();
+  });
+
+  it('keeps personalized teaser snapshots strictly account-scoped', async () => {
+    let accountId = 'account-a';
+    mockEnsureAccount.mockImplementation(async () => ({
+      deviceId: `device-${accountId}`,
+      accountId,
+      token: `token-${accountId}`,
+      authenticated: true,
+    }));
+    const fetchSpy = jest.fn(async (_url: string, init: RequestInit) => {
+      const token = (init.headers as Record<string, string>).Authorization;
+      const ownId = token === 'Bearer token-account-a' ? 'entry-a' : 'entry-b';
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            entries: [],
+            my_entry_id: ownId,
+            my_vote_entry_id: `vote-${ownId}`,
+            last_results: {
+              contest: WIRE_CONTEST,
+              winners: [],
+              my_result: { entered: true, rank: ownId === 'entry-a' ? 1 : 2 },
+            },
+          }),
+      };
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    expect((await fetchPhotoContestTeaser())?.myEntryId).toBe('entry-a');
+    expect((await fetchPhotoContestTeaser())?.lastResults?.myResult?.rank).toBe(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    accountId = 'account-b';
+    const snapshotB = await fetchPhotoContestTeaser();
+
+    expect(snapshotB?.myEntryId).toBe('entry-b');
+    expect(snapshotB?.myVoteEntryId).toBe('vote-entry-b');
+    expect(snapshotB?.lastResults?.myResult?.rank).toBe(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('forces a fresh personalized teaser after account-boundary cleanup', async () => {
+    let ownId = 'entry-a';
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ entries: [], my_entry_id: ownId }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    expect((await fetchPhotoContestTeaser())?.myEntryId).toBe('entry-a');
+    ownId = 'entry-b';
+    expect((await fetchPhotoContestTeaser())?.myEntryId).toBe('entry-a');
+
+    clearPhotoContestCache();
+
+    expect((await fetchPhotoContestTeaser())?.myEntryId).toBe('entry-b');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops personalized teaser state and in-flight responses at logout', async () => {
+    let resolveResponse: ((value: unknown) => void) | undefined;
+    global.fetch = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveResponse = resolve;
+        }),
+    ) as unknown as typeof fetch;
+
+    const pending = fetchPhotoContestTeaser();
+    await Promise.resolve();
+    await Promise.resolve();
+    clearPhotoContestCache();
+    resolveResponse?.({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ entries: [], my_entry_id: 'old-entry' }),
+    });
+
+    expect(await pending).toBeNull();
+  });
+
+  it('paginates modern contest snapshots and keeps legacy fallbacks', async () => {
+    const spy = fetchResolving(200, {
+      entries: [{ ...WIRE_ENTRY, is_mine: true }],
+      my_entry: { ...WIRE_ENTRY, is_mine: true },
+      visible_entry_count: 37,
+      next_cursor: '123',
+      truncated: true,
+    });
+
+    const snapshot = await fetchPhotoContest();
+
+    expect(snapshot).toMatchObject({
+      entries: [{ id: 'e1' }],
+      myEntry: { id: 'e1', isMine: true },
+      entryCount: 37,
+      nextCursor: '123',
+    });
+    const [url] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.test/v1/photo-contest?limit=20');
+
+    clearPhotoContestCache();
+    fetchResolving(200, { entries: [], my_entry_id: null, last_results: null });
+
+    expect(await fetchPhotoContest()).toMatchObject({
+      myEntry: null,
+      entryCount: 0,
+      nextCursor: null,
+    });
+
+    clearPhotoContestCache();
+    const pageSpy = fetchResolving(200, { entries: [], next_cursor: null });
+
+    await fetchPhotoContestPage('cursor+/=');
+    const [pageUrl] = pageSpy.mock.calls[0] as [string, RequestInit];
+    expect(pageUrl).toBe('https://api.test/v1/photo-contest?limit=20&cursor=cursor%2B%2F%3D');
   });
 });
 
@@ -289,4 +434,64 @@ describe('clearPhotoContestVote', () => {
       detail: 'Kolo skončilo.',
     });
   });
+});
+
+describe('UGC consent gate — photo contest requests', () => {
+  function lastFetchInit(spy: jest.Mock): { method?: string; headers?: Record<string, string> } {
+    const call = spy.mock.calls[spy.mock.calls.length - 1] as unknown as [
+      string,
+      { method?: string; headers?: Record<string, string> },
+    ];
+    return call[1];
+  }
+
+  beforeEach(() => {
+    clearUgcConsentStateForTests();
+  });
+
+  it('enterPhotoContest POST carries the canonical UGC policy header (2026-08-22)', async () => {
+    const spy = fetchResolving(201, { entry: WIRE_ENTRY });
+
+    await enterPhotoContest('p1');
+
+    const init = lastFetchInit(spy);
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer cur-tok',
+        [UGC_POLICY_HEADER]: '2026-08-22',
+      }),
+    );
+  });
+
+  it.each([
+    ['withdrawPhotoContestEntry DELETE', () => withdrawPhotoContestEntry(), 204],
+    ['votePhotoContest POST', () => votePhotoContest('e1'), 200],
+  ])('%s has NO UGC policy header (not a gated write)', async (_name, call, status) => {
+    const spy = fetchResolving(status as number, {});
+
+    await call();
+
+    const init = lastFetchInit(spy);
+    expect(init.headers?.Authorization).toBe('Bearer cur-tok');
+    expect(init.headers?.[UGC_POLICY_HEADER]).toBeUndefined();
+  });
+
+  it.each(['ugc_consent_required', 'ugc_policy_update_required'])(
+    'enter on 428 %s returns the exact existing coded error and emits exactly one consent signal',
+    async (code) => {
+      const signals: string[] = [];
+      subscribeUgcConsentRequired((event) => signals.push(event.code));
+      fetchResolving(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
+
+      // The direct result contract/copy must not change.
+      expect(await enterPhotoContest('p1')).toEqual({
+        ok: false,
+        code,
+        detail: 'Potřebujeme aktuální souhlas.',
+      });
+      expect(signals).toEqual([code]);
+    },
+  );
 });

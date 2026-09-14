@@ -9,12 +9,10 @@ import {
   sittingPlace,
 } from '../partaFeedCopy';
 
-const BEERS: CzechCounts = { one: 'pivo', few: 'piva', many: 'piv' };
-interface CzechCounts {
-  one: string;
-  few: string;
-  many: string;
-}
+const BEERS = {
+  cs: { one: 'pivo', few: 'piva', many: 'piv' },
+  en: { one: 'beer', other: 'beers' },
+};
 
 function drink(partial: Partial<PartaFeedDrink> = {}): PartaFeedDrink {
   return {
@@ -117,7 +115,7 @@ describe('sittingHeadline', () => {
       total: 7,
       items: [drink({ drinkType: 'shot', count: 1, name: 'Fernet' }), drink({ count: 6 })],
     });
-    expect(sittingHeadline(row)).toBe('6 piv Pilsner Urquell + 1 dalších');
+    expect(sittingHeadline(row)).toBe('6 piv Pilsner Urquell + 1 další');
     expect(sittingDetail(row)).toBe('1 panák Fernet');
   });
 

@@ -103,4 +103,5 @@ describe('pub search filters', () => {
     expect(pubMatchesPriceFilter(unknown, null, null)).toBe(true);
     jest.restoreAllMocks();
   });
+
 });

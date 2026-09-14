@@ -9,24 +9,21 @@
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
 import { MenuIcon } from '@/components/shared/IconGlyph';
-import { reportProfileContent } from '@/data/auth';
+import type { PublishedNight } from '@/data/nightsClient';
+import { useNightActions } from '@/feed/useNightActions';
 import {
-  isRetriableNightError,
-  unpublishNight,
-  type PublishedNight,
-} from '@/data/nightsClient';
-import { enqueueNightOp } from '@/data/nightsQueue';
-import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+  beerCountLabel,
+  intlLocale,
+  shotCountLabel,
+  softDrinkCountLabel,
+  t,
+  wineCountLabel,
+} from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { Avatar } from '@/profile/Avatar';
-import { useToastStore } from '@/stores/toastStore';
-import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { TallyMarks } from '@/vycep/TallyMarks';
 import RoundPill from '@/vycep/RoundPill';
@@ -42,12 +39,10 @@ interface NightCardProps {
 function authorLabel(night: PublishedNight): string {
   if (night.author.nickname) return `@${night.author.nickname}`;
   if (night.author.displayName) return night.author.displayName;
-  return cs.vycep.anonymousAuthor;
+  return t.vycep.anonymousAuthor;
 }
 
 function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
-  const showToast = useToastStore((s) => s.show);
-  const markUnpublished = useVycepStore((s) => s.markUnpublished);
   const now = useMemo(() => new Date(), []);
 
   const metaLine = useMemo(
@@ -55,7 +50,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
       [
         night.pubNames.length > 0 ? night.pubNames.slice(0, 5).join(' → ') : null,
         night.durationMinutes != null && night.durationMinutes > 0
-          ? cs.vycep.nightDuration(
+          ? t.vycep.nightDuration(
               Math.floor(night.durationMinutes / 60),
               night.durationMinutes % 60,
             )
@@ -78,69 +73,14 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     ],
   );
 
-  const handleUnpublish = useCallback(() => {
-    showAppDialog({
-      title: cs.vycep.unpublishCta,
-      message: cs.vycep.publishBody,
-      buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        {
-          text: cs.vycep.unpublishCta,
-          style: 'destructive',
-          onPress: () => {
-            const clientId = night.clientId;
-            if (!clientId) return;
-            trackUiInteraction('night_unpublish', 'submit');
-            void unpublishNight(clientId).then((res) => {
-              if (!res.ok) {
-                if (isRetriableNightError(res)) {
-                  // Offline / transient: keep the removal intent in the durable
-                  // queue so the night really comes down once we're back online.
-                  void enqueueNightOp({ op: 'unpublish', clientId });
-                } else {
-                  trackUiInteraction('night_unpublish', 'failure');
-                  showToast(cs.vycep.roundErrorToast);
-                  return;
-                }
-              }
-              trackUiInteraction('night_unpublish', 'success');
-              markUnpublished(clientId);
-              showToast(cs.vycep.unpublishedToast);
-              onRemoved?.(clientId);
-            });
-          },
-        },
-      ],
-    });
-  }, [markUnpublished, night.clientId, onRemoved, showToast]);
-
-  const handleReport = useCallback(() => {
-    showAppDialog({
-      title: cs.vycep.reportTitle,
-      message: cs.vycep.reportBody,
-      buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        {
-          text: cs.vycep.reportConfirm,
-          style: 'destructive',
-          onPress: () => {
-            void reportProfileContent({
-              targetAccountId: night.author.id,
-              reason: 'spam',
-              nightId: night.id,
-            }).then((res) => {
-              showToast(res.ok ? cs.vycep.reportSentToast : cs.vycep.reportErrorToast);
-            });
-          },
-        },
-      ],
-    });
-  }, [night.author.id, night.id, showToast]);
-
-  const openMenu = useCallback(() => {
-    if (night.isMine) handleUnpublish();
-    else handleReport();
-  }, [handleReport, handleUnpublish, night.isMine]);
+  const removed = useCallback(
+    (value: PublishedNight) => {
+      if (value.clientId) onRemoved?.(value.clientId);
+    },
+    [onRemoved],
+  );
+  const openNightActions = useNightActions(removed);
+  const openMenu = useCallback(() => openNightActions(night), [night, openNightActions]);
 
   const owner = authorLabel(night);
   const dateCaption = [
@@ -148,9 +88,9 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     night.isMine
       ? (
           night.visibility === 'public'
-            ? cs.vycep.visibilityChipWorld
-            : cs.vycep.visibilityChipFriends
-        ).toLocaleLowerCase('cs-CZ')
+            ? t.vycep.visibilityChipWorld
+            : t.vycep.visibilityChipFriends
+        ).toLocaleLowerCase(intlLocale)
       : null,
   ]
     .filter((part): part is string => part !== null)
@@ -160,7 +100,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     <View
       style={styles.card}
       accessibilityRole="text"
-      accessibilityLabel={cs.a11y.nightCard(owner)}
+      accessibilityLabel={t.a11y.nightCard(owner)}
     >
       <View style={styles.header}>
         <Avatar
@@ -181,7 +121,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
           onPress={openMenu}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.nightMenu}
+          accessibilityLabel={t.a11y.nightMenu}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
         >
           <MenuIcon size={18} color={Colors.mutedText} />
@@ -205,7 +145,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
         {night.isMine ? (
           night.rounds > 0 ? (
             <Text style={styles.mineRoundsText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.vycep.roundCount(night.rounds)}
+              {t.vycep.roundCount(night.rounds)}
             </Text>
           ) : (
             <View />
@@ -243,14 +183,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   author: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   date: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -269,13 +209,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tallyLabel: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
   metaText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -286,7 +226,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mineRoundsText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,

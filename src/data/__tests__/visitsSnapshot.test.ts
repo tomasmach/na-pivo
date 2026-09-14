@@ -1,9 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
 import type { WireVisit } from '../visitsClient';
 import {
   VISITS_MAP_SNAPSHOT_KEY,
@@ -13,6 +9,10 @@ import {
   subscribeVisitsBoundary,
   visitsSnapshotGeneration,
 } from '../visitsSnapshot';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 const visit: WireVisit = {
   client_id: 'visit-1',

@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a focused improvement to Na pivo
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Start with the user's situation, not the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should happen instead?
+      description: Describe how the app or API should behave.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Is there a smaller option?
+      description: Could a simpler change solve the same problem?
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: What could this affect?
+      options:
+        - label: This may affect offline behavior or sync.
+        - label: This may affect privacy or sensitive data.
+        - label: This may add server or third-party API cost.
+        - label: This may change an existing API contract.
+        - label: None of the above.

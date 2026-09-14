@@ -23,6 +23,9 @@ from collections import OrderedDict
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from django.conf import settings
+from django.db.models import Subquery
+
 from pubs.models import Account, DrinkLog
 
 # The app's drinking day rolls at 04:00 device-local. New clients send their
@@ -82,6 +85,8 @@ def _empty_payload() -> dict:
     return {
         "total_beers": 0,
         "total_evenings": 0,
+        # Additive 3.0 count: one 04:00 drinking day, even across several pubs.
+        "total_nights": 0,
         "distinct_pubs": 0,
         "total_spent_czk": 0,
         "first_drink_at": None,
@@ -92,11 +97,40 @@ def _empty_payload() -> dict:
             "most_beers_date": None,
             "fastest_beer_seconds": None,
             "longest_evening_seconds": None,
+            "longest_evening_pub_name": None,
+            "longest_evening_date": None,
+        },
+        # Whole drinking-day records for the 3.0 recap. Kept separate from the
+        # released per-pub ``records`` contract above.
+        "night_records": {
+            "most_beers": 0,
+            "longest_seconds": 0,
+            "most_stops": 0,
+            "most_beers_date": None,
+            "most_beers_pub_names": [],
+            "longest_date": None,
+            "longest_pub_names": [],
         },
         "periods": {
             "timezone": _DEFAULT_TIMEZONE_NAME,
             "months": [],
             "years": [],
+        },
+        "timeline": {
+            "days": [],
+            "weeks": [],
+            "months": [],
+            "streak": {"current_weeks": 0, "best_weeks": 0},
+            "windows": {},
+        },
+        # Same privacy-safe shape as `timeline`, grouped by drinking day rather
+        # than the released per-pub sitting definition.
+        "night_timeline": {
+            "days": [],
+            "weeks": [],
+            "months": [],
+            "streak": {"current_weeks": 0, "best_weeks": 0},
+            "windows": {},
         },
     }
 
@@ -118,31 +152,261 @@ def _period_payload(
     }
 
 
-def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> dict:
+def _empty_timeline_bucket(period: str) -> dict:
+    """One privacy-safe profile chart bucket.
+
+    These buckets deliberately omit spend, concrete beer names and locations.
+    A profile chart needs rhythm, not a second export of somebody's diary.
+    """
+
+    return {
+        "period": period,
+        "beers": 0,
+        "evenings": 0,
+        "distinct_pubs": 0,
+        "longest_evening_seconds": None,
+    }
+
+
+def _timeline_payload(
+    *,
+    evening_times: OrderedDict[tuple[str | None, date], list[datetime]],
+    evening_beer_times: OrderedDict[tuple[str | None, date], list[datetime]],
+    stats_tz: ZoneInfo,
+    pub_keys_by_evening: dict[tuple[str | None, date], set[str]] | None = None,
+) -> dict:
+    """Return fixed-width day/week/month series plus the weekly streak.
+
+    Empty buckets are material: omitting a quiet day makes the graph claim a
+    busier rhythm than the diary contains.  The windows end today in the
+    caller's timezone and stay small (7 + 12 + 12 rows), so the response size
+    does not grow with account age.
+    """
+
+    today = datetime.now(stats_tz).date()
+    day_starts = [today - timedelta(days=offset) for offset in range(6, -1, -1)]
+    current_monday = today - timedelta(days=today.weekday())
+    week_starts = [
+        current_monday - timedelta(weeks=offset) for offset in range(11, -1, -1)
+    ]
+
+    month_starts: list[date] = []
+    year, month = today.year, today.month
+    for offset in range(11, -1, -1):
+        absolute = year * 12 + (month - 1) - offset
+        month_starts.append(date(absolute // 12, absolute % 12 + 1, 1))
+
+    day_rows = {
+        start: _empty_timeline_bucket(start.isoformat()) for start in day_starts
+    }
+    week_rows = {
+        start: _empty_timeline_bucket(start.isoformat()) for start in week_starts
+    }
+    month_rows = {
+        start: _empty_timeline_bucket(start.strftime("%Y-%m"))
+        for start in month_starts
+    }
+    day_pub_keys = {start: set() for start in day_starts}
+    week_pub_keys = {start: set() for start in week_starts}
+    month_pub_keys = {start: set() for start in month_starts}
+
+    active_weeks: set[date] = set()
+    for ekey, times in evening_times.items():
+        pub_key, day = ekey
+        record_pub_keys = (
+            pub_keys_by_evening.get(ekey, set())
+            if pub_keys_by_evening is not None
+            else ({pub_key} if pub_key is not None else set())
+        )
+        monday = day - timedelta(days=day.weekday())
+        month_start = date(day.year, day.month, 1)
+        active_weeks.add(monday)
+        duration_seconds = None
+        if len(times) >= 2:
+            duration = times[-1] - times[0]
+            if duration > timedelta(0):
+                duration_seconds = int(duration.total_seconds())
+        beer_count = len(evening_beer_times.get(ekey, ()))
+
+        for key, rows, pub_keys in (
+            (day, day_rows, day_pub_keys),
+            (monday, week_rows, week_pub_keys),
+            (month_start, month_rows, month_pub_keys),
+        ):
+            row = rows.get(key)
+            if row is None:
+                continue
+            row["beers"] += beer_count
+            row["evenings"] += 1
+            pub_keys[key].update(record_pub_keys)
+            previous = row["longest_evening_seconds"]
+            if duration_seconds is not None and (
+                previous is None or duration_seconds > previous
+            ):
+                row["longest_evening_seconds"] = duration_seconds
+
+    for rows, pub_keys in (
+        (day_rows, day_pub_keys),
+        (week_rows, week_pub_keys),
+        (month_rows, month_pub_keys),
+    ):
+        for key, row in rows.items():
+            row["distinct_pubs"] = len(pub_keys[key])
+
+    best_streak = 0
+    run = 0
+    previous: date | None = None
+    for week in sorted(active_weeks):
+        if previous is not None and week == previous + timedelta(weeks=1):
+            run += 1
+        else:
+            run = 1
+        best_streak = max(best_streak, run)
+        previous = week
+
+    current_streak = 0
+    cursor = current_monday
+    while cursor in active_weeks:
+        current_streak += 1
+        cursor -= timedelta(weeks=1)
+
+    def window_summary(start: date) -> dict:
+        selected = [
+            (ekey, times)
+            for ekey, times in evening_times.items()
+            if start <= ekey[1] <= today
+        ]
+        selected_pub_keys: set[str] = set()
+        for ekey, _ in selected:
+            if pub_keys_by_evening is not None:
+                selected_pub_keys.update(pub_keys_by_evening.get(ekey, set()))
+            elif ekey[0] is not None:
+                selected_pub_keys.add(ekey[0])
+        longest: int | None = None
+        for _, times in selected:
+            if len(times) < 2:
+                continue
+            duration = times[-1] - times[0]
+            if duration <= timedelta(0):
+                continue
+            seconds = int(duration.total_seconds())
+            longest = seconds if longest is None else max(longest, seconds)
+        return {
+            "beers": sum(len(evening_beer_times.get(ekey, ())) for ekey, _ in selected),
+            "evenings": len(selected),
+            "distinct_pubs": len(selected_pub_keys),
+            "longest_evening_seconds": longest,
+        }
+
+    return {
+        "days": list(day_rows.values()),
+        "weeks": list(week_rows.values()),
+        "months": list(month_rows.values()),
+        "streak": {
+            "current_weeks": current_streak,
+            "best_weeks": best_streak,
+        },
+        "windows": {
+            "week": window_summary(today - timedelta(days=6)),
+            "month": window_summary(today - timedelta(days=29)),
+            "year": window_summary(month_starts[0]),
+        },
+    }
+
+
+def _night_records_payload(
+    *,
+    night_times: OrderedDict[date, list[datetime]],
+    night_beer_times: OrderedDict[date, list[datetime]],
+    night_pub_keys: dict[date, set[str]],
+    night_pub_names: dict[date, dict[str, str]],
+    exclude_drinking_day: date | None,
+) -> dict:
+    """Personal bests over whole 04:00 drinking days, never per pub sitting."""
+
+    most_beers = 0
+    longest_seconds = 0
+    most_stops = 0
+    most_beers_day: date | None = None
+    longest_day: date | None = None
+    for day, times in night_times.items():
+        if day == exclude_drinking_day:
+            continue
+        beer_count = len(night_beer_times.get(day, ()))
+        if beer_count > most_beers or (
+            beer_count == most_beers and beer_count > 0 and (most_beers_day is None or day > most_beers_day)
+        ):
+            most_beers = beer_count
+            most_beers_day = day
+        most_stops = max(most_stops, len(night_pub_keys.get(day, ())))
+        if len(times) >= 2:
+            duration = max(0, int((times[-1] - times[0]).total_seconds()))
+            if duration > longest_seconds or (
+                duration == longest_seconds
+                and duration > 0
+                and (longest_day is None or day > longest_day)
+            ):
+                longest_seconds = duration
+                longest_day = day
+
+    def names_for(day: date | None) -> list[str]:
+        if day is None:
+            return []
+        return list(dict.fromkeys(night_pub_names.get(day, {}).values()))
+
+    return {
+        "most_beers": most_beers,
+        "longest_seconds": longest_seconds,
+        "most_stops": most_stops,
+        "most_beers_date": most_beers_day.isoformat() if most_beers_day else None,
+        "most_beers_pub_names": names_for(most_beers_day),
+        "longest_date": longest_day.isoformat() if longest_day else None,
+        "longest_pub_names": names_for(longest_day),
+    }
+
+
+def compute_my_stats(
+    account: Account,
+    *,
+    timezone_name: str | None = None,
+    exclude_drinking_day: date | None = None,
+) -> dict:
     """Aggregate ``account``'s drinks into the ``/v1/me/stats`` payload.
 
-    Pure and read-only. Pulls the (small) per-user drink history ascending by
-    ``drank_at`` — covered by the ``(account, drank_at)`` index — and folds it in
-    Python so the rules stay aligned with the device model. ``timezone_name``
-    affects drinking-day and period buckets without changing the wire shape for
-    older clients. Returns the empty payload (200, never 404) when the account
-    has logged nothing.
+    Pure and read-only. Streams the supported product-history window ascending
+    by ``drank_at`` — covered by the ``(account, drank_at)`` index — and folds it
+    in Python so the rules stay aligned with the device model. The explicit
+    calendar-year horizon bounds detailed period/record work without affecting
+    any real Na Pivo diary. ``timezone_name`` affects drinking-day and period
+    buckets without changing the wire shape for older clients. Returns the empty
+    payload (200, never 404) when the account has logged nothing.
     """
 
     resolved_timezone_name, stats_tz = resolve_stats_timezone(timezone_name)
-    drinks = list(
-        account.drinks.only(
+    history_years = max(1, min(int(settings.STATS_HISTORY_YEARS), 50))
+    today = datetime.now(stats_tz).date()
+    history_start = datetime.combine(
+        date(max(1, today.year - history_years + 1), 1, 1),
+        time(hour=4),
+        tzinfo=stats_tz,
+    ).astimezone(UTC)
+    max_drink_rows = max(1, min(int(settings.STATS_MAX_DRINK_ROWS), 500_000))
+    recent_drink_ids = (
+        account.drinks.filter(drank_at__gte=history_start)
+        .order_by("-drank_at", "-id")
+        .values("id")[:max_drink_rows]
+    )
+    drinks = (
+        account.drinks.filter(id__in=Subquery(recent_drink_ids))
+        .only(
             "cache_key",
             "name",
             "price_czk",
             "drink_type",
             "drank_at",
-        ).order_by("drank_at")
+        )
+        .order_by("drank_at", "id")
     )
-    if not drinks:
-        payload = _empty_payload()
-        payload["periods"]["timezone"] = resolved_timezone_name
-        return payload
 
     # Fold the ascending drinks into evenings (cache_key, drinking_day) and
     # per-pub tallies. Insertion order = ascending drank_at, so within each
@@ -150,14 +414,21 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
     evening_times: OrderedDict[tuple[str | None, date], list[datetime]] = OrderedDict()
     evening_beer_times: OrderedDict[tuple[str | None, date], list[datetime]] = OrderedDict()
     evening_name: dict[tuple[str | None, date], str | None] = {}
+    night_times: OrderedDict[date, list[datetime]] = OrderedDict()
+    night_beer_times: OrderedDict[date, list[datetime]] = OrderedDict()
+    night_pub_keys: dict[date, set[str]] = {}
+    night_pub_names: dict[date, dict[str, str]] = {}
     pubs: OrderedDict[str, dict] = OrderedDict()
     months: OrderedDict[str, dict] = OrderedDict()
     years: OrderedDict[str, dict] = OrderedDict()
 
     total_spent = 0
     total_beers = 0
-    for drink in drinks:
+    first_drink_at: datetime | None = None
+    for drink in drinks.iterator(chunk_size=1_000):
         at = _as_utc(drink.drank_at)
+        if first_drink_at is None:
+            first_drink_at = at
         total_spent += drink.price_czk or 0
         is_beer = drink.drink_type == DrinkLog.DrinkType.BEER
         if is_beer:
@@ -166,8 +437,15 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
         day = drinking_day(drink.drank_at, stats_tz)
         ekey = (drink.cache_key, day)
         evening_times.setdefault(ekey, []).append(at)
+        night_times.setdefault(day, []).append(at)
         if is_beer:
             evening_beer_times.setdefault(ekey, []).append(at)
+            night_beer_times.setdefault(day, []).append(at)
+        if drink.cache_key is not None:
+            night_pub_keys.setdefault(day, set()).add(drink.cache_key)
+            # Dict order follows the first stop; assigning the latest observed
+            # name updates spelling without changing the crawl order.
+            night_pub_names.setdefault(day, {})[drink.cache_key] = drink.name
         # Non-pub evenings participate in day-based records, but never pretend
         # to have a pub name.
         evening_name[ekey] = drink.name if drink.cache_key is not None else None
@@ -198,6 +476,29 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
             pub["name"] = drink.name  # ascending → newest name / timestamp win
             pub["last_drank_at"] = at
 
+    if first_drink_at is None:
+        payload = _empty_payload()
+        payload["periods"]["timezone"] = resolved_timezone_name
+        payload["timeline"] = _timeline_payload(
+            evening_times=OrderedDict(),
+            evening_beer_times=OrderedDict(),
+            stats_tz=stats_tz,
+        )
+        payload["night_records"] = _night_records_payload(
+            night_times=night_times,
+            night_beer_times=night_beer_times,
+            night_pub_keys=night_pub_keys,
+            night_pub_names=night_pub_names,
+            exclude_drinking_day=exclude_drinking_day,
+        )
+        payload["night_timeline"] = _timeline_payload(
+            evening_times=OrderedDict(),
+            evening_beer_times=OrderedDict(),
+            stats_tz=stats_tz,
+            pub_keys_by_evening={},
+        )
+        return payload
+
     # top_pubs: most beers first, ties broken by the most recent drink, capped.
     top_pubs = sorted(
         pubs.values(),
@@ -221,6 +522,8 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
     best_newest: datetime | None = None
     fastest_gap: timedelta | None = None
     longest_duration: timedelta | None = None
+    longest_key: tuple[str | None, date] | None = None
+    longest_newest: datetime | None = None
 
     for ekey, beer_times in evening_beer_times.items():
         size = len(beer_times)
@@ -240,14 +543,23 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
             if fastest_gap is None or smallest < fastest_gap:
                 fastest_gap = smallest
 
-    for times in evening_times.values():
+    for ekey, times in evening_times.items():
         if len(times) >= 2:
             # Mirror the app: only a positive span counts as a "longest evening".
             duration = times[-1] - times[0]
+            newest = times[-1]
             if duration > timedelta(0) and (
-                longest_duration is None or duration > longest_duration
+                longest_duration is None
+                or duration > longest_duration
+                or (
+                    duration == longest_duration
+                    and longest_newest is not None
+                    and newest > longest_newest
+                )
             ):
                 longest_duration = duration
+                longest_key = ekey
+                longest_newest = newest
 
     records = {
         "most_beers_in_evening": best_size,
@@ -258,6 +570,12 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
         ),
         "longest_evening_seconds": (
             int(longest_duration.total_seconds()) if longest_duration is not None else None
+        ),
+        "longest_evening_pub_name": (
+            evening_name[longest_key] if longest_key is not None else None
+        ),
+        "longest_evening_date": (
+            longest_key[1].isoformat() if longest_key is not None else None
         ),
     }
 
@@ -270,14 +588,48 @@ def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> d
             _period_payload(period, **summary) for period, summary in years.items()
         ],
     }
+    timeline = _timeline_payload(
+        evening_times=evening_times,
+        evening_beer_times=evening_beer_times,
+        stats_tz=stats_tz,
+    )
+    # Adapt one drinking day to the existing fixed-width timeline fold. The
+    # synthetic key is only an internal grouping identity; the explicit map
+    # supplies all pubs visited during that crawl.
+    night_timeline_times = OrderedDict(
+        ((None, day), times) for day, times in night_times.items()
+    )
+    night_timeline_beer_times = OrderedDict(
+        ((None, day), times) for day, times in night_beer_times.items()
+    )
+    night_timeline_pub_keys = {
+        (None, day): keys for day, keys in night_pub_keys.items()
+    }
+    night_timeline = _timeline_payload(
+        evening_times=night_timeline_times,
+        evening_beer_times=night_timeline_beer_times,
+        stats_tz=stats_tz,
+        pub_keys_by_evening=night_timeline_pub_keys,
+    )
+    night_records = _night_records_payload(
+        night_times=night_times,
+        night_beer_times=night_beer_times,
+        night_pub_keys=night_pub_keys,
+        night_pub_names=night_pub_names,
+        exclude_drinking_day=exclude_drinking_day,
+    )
 
     return {
         "total_beers": total_beers,
         "total_evenings": len(evening_times),
+        "total_nights": len(night_times),
         "distinct_pubs": len(pubs),
         "total_spent_czk": total_spent,
-        "first_drink_at": _as_utc(drinks[0].drank_at).isoformat(),  # ascending → oldest
+        "first_drink_at": first_drink_at.isoformat(),
         "top_pubs": top_pubs_payload,
         "records": records,
+        "night_records": night_records,
         "periods": periods,
+        "timeline": timeline,
+        "night_timeline": night_timeline,
     }

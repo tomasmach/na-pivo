@@ -13,6 +13,15 @@
 
 import { create } from 'zustand';
 
+interface FriendLiveSignalSlice {
+  presence: readonly unknown[];
+  activeFriends: readonly unknown[];
+}
+
+export function hasLiveFriendSignal(slice: FriendLiveSignalSlice): boolean {
+  return slice.presence.length > 0 || slice.activeFriends.length > 0;
+}
+
 /** Optional row to scroll to / highlight after a push-driven refresh. */
 export interface PartaFocusTarget {
   activityId: string | null;

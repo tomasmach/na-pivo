@@ -1,9 +1,11 @@
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
+import { haversineMeters } from '@/compass/distance';
 import type { FriendPubActivity } from '@/data/friendsClient';
 import type { Pub } from '@/data/pubs';
 import type { WireVisit } from '@/data/visitsClient';
 import type { TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
+import { intlLocale, t } from '@/i18n';
 
 export interface VisitedPubSummary {
   cacheKey: string;
@@ -51,6 +53,61 @@ export interface MapCluster<T> {
   lat: number;
   lng: number;
   items: T[];
+}
+
+/** Half-diagonal of a map viewport in kilometres. Viewport fetchers use this
+ *  as the honest area that must be covered around the camera centre. */
+export function mapViewportCoverageKm(region: {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}): number {
+  const latKm = region.latitudeDelta * 111;
+  const lngKm =
+    region.longitudeDelta * 111 * Math.cos((region.latitude * Math.PI) / 180);
+  return Math.hypot(latKm / 2, lngKm / 2);
+}
+
+/** Fetch a little beyond the visible edge so a short follow-up pan does not
+ *  expose an empty strip before the next request settles. */
+export function mapViewportRadiusKm(region: {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}): number {
+  return Math.min(100, Math.max(1, mapViewportCoverageKm(region) * 1.25));
+}
+
+export function mapViewportCacheCovers(
+  cache: { centerLat: number; centerLng: number; coveredKm: number },
+  region: {
+    latitude: number;
+    longitude: number;
+    latitudeDelta: number;
+    longitudeDelta: number;
+  },
+): boolean {
+  const movedKm =
+    haversineMeters(
+      { lat: cache.centerLat, lng: cache.centerLng },
+      { lat: region.latitude, lng: region.longitude },
+    ) / 1000;
+  return movedKm + mapViewportCoverageKm(region) <= cache.coveredKm;
+}
+
+/** Merge viewport pages without making pubs at the previous edge disappear.
+ *  The cap bounds marker work during a long browsing session. */
+export function mergeMapPubs(previous: Pub[], incoming: Pub[]): Pub[] {
+  const pubs = new Map(previous.map((pub) => [pub.id, pub]));
+  for (const pub of incoming) {
+    pubs.delete(pub.id);
+    pubs.set(pub.id, pub);
+  }
+  return [...pubs.values()]
+    .filter((pub) => pub.venueKind !== 'not_pub')
+    .slice(-600);
 }
 
 function normalizedCity(city: string | null | undefined): string {
@@ -195,7 +252,7 @@ export function buildVisitedPubs(
     if (!previous) {
       grouped.set(key, {
         cacheKey: key,
-        name: visit.name || match?.name || 'Hospoda',
+        name: visit.name || match?.name || t.map.pubNameFallback,
         lat: visit.lat,
         lng: visit.lng,
         city,
@@ -219,7 +276,7 @@ export function buildVisitedCities(visited: VisitedPubSummary[]): VisitedCitySum
   const cities = new Map<string, VisitedCitySummary & { latSum: number; lngSum: number }>();
   for (const pub of visited) {
     if (!pub.city) continue;
-    const key = pub.city.toLocaleLowerCase('cs-CZ');
+    const key = pub.city.toLocaleLowerCase(intlLocale);
     const previous = cities.get(key);
     if (!previous) {
       cities.set(key, {
@@ -273,7 +330,7 @@ export function buildLivePubs(
     const { lat, lng } = decodeGeohash8(key);
     grouped.set(key, {
       cacheKey: key,
-      name: activity.name || 'Hospoda',
+      name: activity.name || t.map.pubNameFallback,
       city: normalizedCity(activity.city),
       lat,
       lng,

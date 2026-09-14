@@ -15,9 +15,9 @@ import React, { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -63,7 +63,7 @@ const HourStepper = memo(function HourStepper({
         onPress={handleDecrement}
         hitSlop={Spacing.xs}
         accessibilityRole="button"
-        accessibilityLabel={`${accessibilityLabel}: ${cs.friends.hourStepperDecrement}`}
+        accessibilityLabel={`${accessibilityLabel}: ${t.friends.hourStepperDecrement}`}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
       >
         <MinusIcon size={20} color={Colors.foamMuted} />
@@ -90,7 +90,7 @@ const HourStepper = memo(function HourStepper({
         onPress={handleIncrement}
         hitSlop={Spacing.xs}
         accessibilityRole="button"
-        accessibilityLabel={`${accessibilityLabel}: ${cs.friends.hourStepperIncrement}`}
+        accessibilityLabel={`${accessibilityLabel}: ${t.friends.hourStepperIncrement}`}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
       >
         <PlusIcon size={20} color={Colors.foamMuted} />
@@ -122,12 +122,12 @@ const styles = StyleSheet.create({
   value: {
     minWidth: 72,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 26,
     color: Colors.foam,
   },
   suffix: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 20,
     color: Colors.mutedText,
   },

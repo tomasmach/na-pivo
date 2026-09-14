@@ -13,7 +13,7 @@ jest.mock('react-native-reanimated', () => ({
   useSharedValue: (value: unknown) => ({ value }),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
 type DeviceHeadingHookProps = {

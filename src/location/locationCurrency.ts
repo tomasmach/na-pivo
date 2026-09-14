@@ -15,6 +15,13 @@ let lastCell: string | null = null;
 let lastDetectedCurrency: string | null = null;
 let detectionInFlight = false;
 
+/** A failed detection (offline, throttled geocoder, unknown currency) must not
+ * retry on every GPS sample — iOS rate-limits CLGeocoder and makes the failure
+ * permanent for the session. Retry only after a cooldown or in a new cell. */
+const FAILED_DETECTION_COOLDOWN_MS = 5 * 60 * 1000;
+let lastFailedCell: string | null = null;
+let lastFailedAt = 0;
+
 function coordinateCell(lat: number, lng: number): string {
   return `${Math.floor(lat / COUNTRY_CELL_DEGREES)}:${Math.floor(lng / COUNTRY_CELL_DEGREES)}`;
 }
@@ -92,8 +99,10 @@ export async function updateCurrencyFromCoordinates(lat: number, lng: number): P
     (cell === lastCell && useSettingsStore.getState().priceCurrency === lastDetectedCurrency) ||
     detectionInFlight
   ) return;
+  if (cell === lastFailedCell && Date.now() - lastFailedAt < FAILED_DETECTION_COOLDOWN_MS) return;
 
   detectionInFlight = true;
+  let detected = false;
   try {
     const addresses = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
     const currency = currencyForCountryCode(addresses[0]?.isoCountryCode);
@@ -102,12 +111,19 @@ export async function updateCurrencyFromCoordinates(lat: number, lng: number): P
     const rate = await resolveRate(currency);
     // Unknown/offline exotic rates must not silently treat local units as CZK.
     if (!rate) return;
+    detected = true;
     lastCell = cell;
     lastDetectedCurrency = currency;
     useSettingsStore.getState().setPriceCurrency(currency, rate);
   } catch {
     // Keep the last working currency when reverse geocoding is unavailable.
   } finally {
+    if (detected) {
+      lastFailedCell = null;
+    } else {
+      lastFailedCell = cell;
+      lastFailedAt = Date.now();
+    }
     detectionInFlight = false;
   }
 }

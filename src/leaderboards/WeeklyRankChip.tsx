@@ -17,10 +17,10 @@ import { useRouter, type Href } from 'expo-router';
 import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchLeaderboard, type Leaderboard } from '@/data/leaderboardsClient';
 import { optimisticRankAfter } from '@/leaderboards/rankMath';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number }) {
@@ -59,7 +59,7 @@ export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number 
     const prev = celebratedRef.current;
     if (prev == null || projectedRank < prev) {
       celebratedRef.current = projectedRank;
-      showToast(cs.leaderboards.rankUpToast(projectedRank), {
+      showToast(t.leaderboards.rankUpToast(projectedRank), {
         icon: <TrophyIcon size={20} color={Colors.amber} />,
       });
     }
@@ -73,13 +73,13 @@ export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number 
     <Pressable
       onPress={() => router.push({ pathname: '/leaderboards', params: { source: 'counter' } } as Href)}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.leaderboardsOpen}
+      accessibilityLabel={t.a11y.leaderboardsOpen}
       style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
     >
       <TrophyIcon size={14} color={Colors.amber} />
       <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         <Text style={styles.rank}>{`${projectedRank}.`}</Text>
-        {cs.leaderboards.chipLabelSuffix}
+        {t.leaderboards.chipLabelSuffix}
       </Text>
     </Pressable>
   );
@@ -103,12 +103,12 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   label: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },
   rank: {
     color: Colors.amber,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
   },
 });

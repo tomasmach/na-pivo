@@ -67,6 +67,7 @@ def _visit(
     *,
     started_at,
     ended_at=None,
+    closed_at=None,
     cache_key: str = _CACHE_KEY,
     name: str = "Bar Na Pile",
 ) -> PubVisit:
@@ -81,6 +82,7 @@ def _visit(
         external_id="mapy:test",
         started_at=started_at,
         ended_at=ended_at,
+        closed_at=closed_at,
         client_updated_at=ended_at or started_at,
     )
 
@@ -181,6 +183,45 @@ def test_presence_expires_after_configured_window(client, settings):
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["presence"] == []
+
+
+@pytest.mark.django_db
+def test_explicitly_closed_visit_disappears_from_presence_immediately(client):
+    token_owner, owner = _register(client, "majitel")
+    _token_friend, friend = _register(client, "jarek")
+    _make_friends(owner, friend)
+    now = timezone.now()
+    _visit(
+        friend,
+        started_at=now - timedelta(hours=1),
+        ended_at=now - timedelta(minutes=5),
+        closed_at=now,
+    )
+
+    response = client.get("/v1/friends/live", **_auth(token_owner))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["presence"] == []
+
+
+@pytest.mark.django_db
+def test_presence_includes_recent_open_visit(client, settings):
+    settings.FRIEND_PRESENCE_WINDOW_MINUTES = 180
+    token_owner, owner = _register(client, "majitel")
+    _token_friend, friend = _register(client, "jarek")
+    _make_friends(owner, friend)
+    _visit(
+        friend,
+        started_at=timezone.now() - timedelta(hours=2, minutes=59),
+        ended_at=None,
+    )
+
+    response = client.get("/v1/friends/live", **_auth(token_owner))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["account"]["nickname"] for row in response.json()["presence"]] == [
+        "jarek"
+    ]
 
 
 @pytest.mark.django_db
@@ -324,6 +365,10 @@ def test_drink_feed_groups_session_items_omits_suspect_and_prices(client):
     assert session["pub_city"] == "Trutnov"
     assert session["cache_key"] == _CACHE_KEY
     assert session["total"] == 4
+    assert session["beer_count"] == 3
+    assert session["wine_count"] == 0
+    assert session["soft_drink_count"] == 0
+    assert session["shot_count"] == 1
     assert session["items"] == [
         {
             "drink_type": DrinkLog.DrinkType.BEER,

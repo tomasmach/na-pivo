@@ -35,9 +35,20 @@ AuthKey.p8
 google-service-account.json
 *-service-account*.json
 
+# Local screenshots and generated design renders
+/output/
+/screenshots*/
+/Simulator Screenshot*.png
+/*-preview.png
+/*.jpg
+/*.jpeg
+/design/*-concept.png
+/na-pivo-feature-graphic-*.png
+/store-assets/reference/
+
 # Local environment
-.env
-.env.local
+.env*
+!.env.example
 .codex/
 
 # macOS
@@ -64,3 +75,13 @@ expo-env.d.ts
 # @end expo-cli
 store-assets/logs/
 .pubmatch/
+
+# Compiled gettext catalogues: the .po sources are checked in, the .mo files
+# are built by compilemessages (Docker image build, and on demand for tests).
+backend/locale/**/*.mo
+
+# ImageMagick scratch from store-assets/compose-appstore-2.0.sh
+store-assets/.work-*/
+# 2.0 style exploration; only background-B.png is a build input
+store-assets/variants-2.0/*
+!store-assets/variants-2.0/background-B.png

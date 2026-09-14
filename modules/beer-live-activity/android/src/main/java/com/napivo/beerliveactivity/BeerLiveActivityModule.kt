@@ -31,5 +31,9 @@ class BeerLiveActivityModule : Module() {
     AsyncFunction("ackPendingAdds") { ids: List<String> ->
       BeerLiveActivityNotification.ackPendingAdds(context, ids)
     }
+
+    AsyncFunction("clearPendingAdds") {
+      BeerLiveActivityNotification.clearPendingAdds(context)
+    }
   }
 }

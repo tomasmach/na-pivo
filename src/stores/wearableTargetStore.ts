@@ -1,4 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/data/privateAccountStorage';
+import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -38,7 +39,7 @@ function uniquePubs(pubs: WearablePubRef[]): WearablePubRef[] {
 
 export const useWearableTargetStore = create<WearableTargetState>()(
   persist(
-    (set) => ({
+    guardPrivateAccountStateCreator((set) => ({
       manualTarget: null,
       nearestTarget: null,
       nearbyPubs: [],
@@ -77,7 +78,7 @@ export const useWearableTargetStore = create<WearableTargetState>()(
           menuPubKey: null,
           menuDrinks: [],
         }),
-    }),
+    })),
     {
       name: 'na-pivo-wearable-target-v1',
       storage: createJSONStorage(() => AsyncStorage),

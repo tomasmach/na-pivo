@@ -21,14 +21,14 @@ import { useCompass } from '../useCompass';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 // The compass focus-gates its sensors via expo-router's useFocusEffect; under
 // test the screen is treated as focused, so the effect runs on mount (and its
 // cleanup on unmount) exactly like a focused tab.
 jest.mock('expo-router', () => {
-  const { useEffect } = require('react');
+  const { useEffect } = jest.requireActual('react');
   return {
     useFocusEffect: (cb: () => void | (() => void)) => {
       useEffect(() => cb(), [cb]);
@@ -84,9 +84,9 @@ jest.mock('@/compass/permissions', () => ({
   openSystemSettings: jest.fn(async () => undefined),
 }));
 
-const TestRenderer = require('react-test-renderer');
+const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
-const hookCleanups: Array<() => void> = [];
+const hookCleanups: (() => void)[] = [];
 
 function renderCompassHook() {
   let latestResult: ReturnType<typeof useCompass> | undefined;
@@ -459,7 +459,7 @@ describe('useCompass — opening hours enrichment', () => {
   it('refetches and resolves hours when reselecting a pub whose first lookup was aborted in flight', async () => {
     // Per-call control: each fetchPubHours invocation gets its own pending
     // promise + resolver, so we can hold A's first request open across the switch.
-    const resolvers: Array<(m: Map<string, PubHoursResult>) => void> = [];
+    const resolvers: ((m: Map<string, PubHoursResult>) => void)[] = [];
     (fetchPubHours as jest.Mock).mockImplementation(
       () =>
         new Promise<Map<string, PubHoursResult>>((resolve) => {

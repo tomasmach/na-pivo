@@ -1,18 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
-// The store mints a clientId per session via account.generateUuidV4 and, on
-// reset, lazily requires visitsSync to retract visits. Keep both deterministic
-// and network-free here.
-let uuidSeq = 0;
-jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => `uuid-${++uuidSeq}`) }));
-
-const deleteVisitByClientId = jest.fn();
-jest.mock('@/data/visitsSync', () => ({ deleteVisitByClientId, syncVisit: jest.fn() }));
-
 import {
   useTallyStore,
   drinkingDayKey,
@@ -29,6 +16,19 @@ import {
   migrateTally,
   type TallySession,
 } from '../tallyStore';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+// The store mints a clientId per session via account.generateUuidV4 and, on
+// reset, lazily requires visitsSync to retract visits. Keep both deterministic
+// and network-free here.
+let uuidSeq = 0;
+jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => `uuid-${++uuidSeq}`) }));
+
+const deleteVisitByClientId = jest.fn();
+jest.mock('@/data/visitsSync', () => ({ deleteVisitByClientId, syncVisit: jest.fn() }));
 
 const PUB_A = { pubKey: 'aaaaaaaa', pubName: 'U Zlatého tygra' };
 const PUB_B = { pubKey: 'bbbbbbbb', pubName: 'U Černého vola' };
@@ -75,6 +75,39 @@ describe('addDrink', () => {
     const { current, history } = useTallyStore.getState();
     expect(current?.drinks).toHaveLength(2);
     expect(history).toHaveLength(0);
+  });
+
+  it('reuses the explicit Party PubVisit identity selected before the first beer', () => {
+    useTallyStore.getState().addDrink(
+      {
+        ...PUB_A,
+        visitClientId: 'party-stop-a',
+        visitStartedAt: '2026-06-12T18:45:00.000Z',
+      },
+      beer({ at: '2026-06-12T19:00:00.000Z' }),
+    );
+
+    expect(useTallyStore.getState().current).toMatchObject({
+      clientId: 'party-stop-a',
+      startedAt: '2026-06-12T18:45:00.000Z',
+      pubKey: PUB_A.pubKey,
+    });
+  });
+
+  it('starts a distinct session when a crawl returns to the same pub with a new visit id', () => {
+    useTallyStore.getState().addDrink(
+      { ...PUB_A, visitClientId: 'party-stop-a' },
+      beer({ at: '2026-06-12T19:00:00.000Z' }),
+    );
+    useTallyStore.getState().addDrink(
+      { ...PUB_A, visitClientId: 'party-stop-a-return' },
+      beer({ at: '2026-06-12T22:00:00.000Z' }),
+    );
+
+    expect(useTallyStore.getState().current?.clientId).toBe('party-stop-a-return');
+    expect(useTallyStore.getState().history.map((session) => session.clientId)).toEqual([
+      'party-stop-a',
+    ]);
   });
 
   it('rolls into a new session and archives the old one when the pub changes', () => {
@@ -593,6 +626,21 @@ describe('updateDrinkNameInSession', () => {
   });
 });
 
+describe('updateDrinkInSession', () => {
+  it('updates type, name, price and volume together', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ beerName: 'Plzeň', priceCzk: 62, volumeMl: 500 }));
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+
+    expect(useTallyStore.getState().updateDrinkInSession(startedAt, 'id-1', {
+      beerName: 'Ryzlink', drinkType: 'wine', priceCzk: 85, volumeMl: 200,
+    })).toBe(true);
+
+    expect(useTallyStore.getState().current?.drinks[0]).toMatchObject({
+      beerName: 'Ryzlink', drinkType: 'wine', priceCzk: 85, volumeMl: 200,
+    });
+  });
+});
+
 describe('markDrinkSynced', () => {
   it('marks a newly added drink in archived history as sent', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
@@ -773,11 +821,13 @@ describe('maybeAutoArchive', () => {
 describe('archiveCurrent (Dopito)', () => {
   it('archives the current session with the given reason and clears it', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
-    useTallyStore.getState().archiveCurrent('manual');
+    const archived = useTallyStore.getState().archiveCurrent('manual');
     const { current, history } = useTallyStore.getState();
     expect(current).toBeNull();
     expect(history).toHaveLength(1);
     expect(history[0].archivedReason).toBe('manual');
+    expect(history[0].closedAt).toEqual(expect.any(String));
+    expect(archived).toBe(history[0]);
   });
 
   it('drops an empty pinned session without archiving it', () => {
@@ -837,6 +887,7 @@ describe('resumeLast', () => {
     expect(current?.clientId).toBe(archivedClientId); // same backend visit
     expect(current?.drinks).toHaveLength(1);
     expect(current?.archivedReason).toBeUndefined();
+    expect(current?.closedAt).toBeUndefined();
   });
 
   it('refuses to resume an evening at a different pub', () => {
@@ -891,10 +942,10 @@ describe('resumableSession', () => {
 describe('migrateTally — v0/v1 → v2', () => {
   it('mints a clientId for the current and every history session', () => {
     const v0 = {
-      current: { pubKey: 'aaaaaaaa', pubName: 'A', startedAt: 't', drinks: [] },
+      current: { pubKey: 'u2fkbjgx', pubName: 'A', startedAt: '2026-06-12T18:00:00.000Z', drinks: [] },
       history: [
-        { pubKey: 'bbbbbbbb', pubName: 'B', startedAt: 't2', drinks: [] },
-        { pubKey: 'cccccccc', pubName: 'C', startedAt: 't3', drinks: [] },
+        { pubKey: 'u2fkbjgy', pubName: 'B', startedAt: '2026-06-11T18:00:00.000Z', drinks: [] },
+        { pubKey: 'u2fkbjgz', pubName: 'C', startedAt: '2026-06-10T18:00:00.000Z', drinks: [] },
       ],
     };
     const migrated = migrateTally(v0, 0);
@@ -919,7 +970,7 @@ describe('migrateTally — v0/v1 → v2', () => {
     const v1 = {
       current: {
         clientId: 'current',
-        pubKey: PUB_A.pubKey,
+        pubKey: 'u2fkbjgx',
         pubName: PUB_A.pubName,
         startedAt: duplicate.at,
         drinks: [duplicate, { ...duplicate, id: 'removed' }],
@@ -927,7 +978,7 @@ describe('migrateTally — v0/v1 → v2', () => {
       history: [
         {
           clientId: 'history',
-          pubKey: PUB_B.pubKey,
+          pubKey: 'u2fkbn1x',
           pubName: PUB_B.pubName,
           startedAt: duplicate.at,
           drinks: [duplicate],
@@ -942,9 +993,168 @@ describe('migrateTally — v0/v1 → v2', () => {
     expect(migrated.removedDrinkIds).toEqual(['removed']);
   });
 
-  it('passes already-current v2 state through untouched', () => {
-    const v2 = { current: null, history: [], removedDrinkIds: [] };
-    expect(migrateTally(v2, 2)).toBe(v2);
+  it('keeps a valid current-version state', () => {
+    const v1 = { current: null, history: [] };
+    expect(migrateTally(v1, 1)).toMatchObject(v1);
+  });
+
+  it('sanitizes malformed current-version sessions and drink rows', () => {
+    const migrated = migrateTally({
+      current: {
+        clientId: 'current',
+        pubKey: 'u2fkbjgx',
+        pubName: ' U Testu ',
+        startedAt: '2026-06-12T18:00:00.000Z',
+        drinks: [
+          { id: 'good', beerName: ' Plzeň ', at: '2026-06-12T18:05:00.000Z', priceCzk: 62 },
+          { id: 'bad-date', beerName: 'Kozel', at: 'not-a-date' },
+          null,
+        ],
+      },
+      history: [{ drinks: 'not-an-array' }],
+    }, 1);
+
+    expect(migrated.current).toMatchObject({
+      clientId: 'current',
+      pubName: 'U Testu',
+      drinks: [{ id: 'good', beerName: 'Plzeň', priceCzk: 62 }],
+    });
+    expect(migrated.history).toEqual([]);
+  });
+
+  it.each(['ctx:other', 'ctx:private', 'ctx:future'])('keeps unnamed persisted outside sessions (%s)', (pubKey) => {
+    const session = {
+      clientId: 'outside', pubKey, pubName: '',
+      startedAt: '2026-06-12T18:00:00.000Z',
+      drinks: [{ id: 'first', beerName: 'Pivo', at: '2026-06-12T18:01:00.000Z' }],
+    };
+    const migrated = migrateTally({ current: session, history: [{ ...session, drinks: [{ ...session.drinks[0], id: 'history-first' }] }] }, 1);
+    expect(migrated.current?.drinks[0].id).toBe('first');
+    expect(migrated.history[0]?.drinks[0].id).toBe('history-first');
+  });
+
+  it('still rejects an unnamed real pub session', () => {
+    expect(migrateTally({ current: {
+      clientId: 'pub', pubKey: 'u2fkbjgx', pubName: '',
+      startedAt: '2026-06-12T18:00:00.000Z', drinks: [],
+    }, history: [] }, 1).current).toBeNull();
+  });
+
+  it('derives outside privacy context from its synthetic key', () => {
+    const migrated = migrateTally({
+      current: {
+        clientId: 'outside',
+        pubKey: 'ctx:private',
+        pubName: 'Doma',
+        startedAt: '2026-06-12T18:00:00.000Z',
+        drinks: [],
+      },
+      history: [],
+    }, 1);
+
+    expect(migrated.current?.placeContext).toBe('private');
+  });
+
+  it.each([
+    'not-a-geohash',
+    'aaaaaaaa',
+    'u2fkbjg',
+    'u2fkbjgx9',
+  ])('drops a persisted session with malformed pubKey %s', (pubKey) => {
+    const migrated = migrateTally({
+      current: {
+        clientId: 'broken-place',
+        pubKey,
+        pubName: 'Nemá se načíst',
+        startedAt: '2026-06-12T18:00:00.000Z',
+        drinks: [],
+      },
+      history: [],
+    }, 1);
+
+    expect(migrated.current).toBeNull();
+  });
+
+  it('keeps a session with an unknown future ctx:* key under ctx:other, never as GPS', () => {
+    // A NEWER app version wrote ctx:somewhere-new; this build downgraded.
+    // The evening and its drinks must survive, remapped to a known context —
+    // an unknown ctx:* key is never a place, so nothing may decode it as
+    // coordinates.
+    const migrated = migrateTally({
+      current: null,
+      history: [
+        {
+          clientId: 'future-context',
+          pubKey: 'ctx:somewhere-new',
+          pubName: 'Chata',
+          startedAt: '2026-06-12T18:00:00.000Z',
+          drinks: [{ id: 'd1', beerName: 'Kozel', at: '2026-06-12T18:30:00.000Z' }],
+        },
+      ],
+    }, 1);
+
+    expect(migrated.history).toHaveLength(1);
+    expect(migrated.history[0]).toMatchObject({
+      clientId: 'future-context',
+      pubKey: 'ctx:other',
+      placeContext: 'other',
+    });
+    expect(migrated.history[0].drinks.map((drink) => drink.id)).toEqual(['d1']);
+  });
+
+  it('rehydrating an unknown ctx:* key twice is stable and keeps valid older sessions', () => {
+    const blob = {
+      current: {
+        clientId: 'current-good',
+        pubKey: 'u2fkbjgx',
+        pubName: 'U Testu',
+        startedAt: '2026-06-12T18:00:00.000Z',
+        drinks: [],
+      },
+      history: [
+        {
+          clientId: 'old-outside',
+          pubKey: 'ctx:private',
+          pubName: 'Doma',
+          startedAt: '2026-06-11T18:00:00.000Z',
+          drinks: [],
+        },
+        {
+          clientId: 'unknown-context',
+          pubKey: 'ctx:mystery',
+          pubName: 'Někde',
+          startedAt: '2026-06-10T18:00:00.000Z',
+          drinks: [],
+        },
+      ],
+    };
+    const first = migrateTally(blob, 1);
+    const second = migrateTally(
+      { current: first.current, history: first.history },
+      1,
+    );
+
+    expect(second.current?.clientId).toBe('current-good');
+    expect(second.history.map((s) => [s.clientId, s.pubKey])).toEqual([
+      ['old-outside', 'ctx:private'],
+      ['unknown-context', 'ctx:other'],
+    ]);
+  });
+
+  it('sanitizes a malformed v1 blob during real Zustand rehydration', async () => {
+    await AsyncStorage.setItem('na-pivo-tally', JSON.stringify({
+      version: 1,
+      state: {
+        current: { pubKey: 42, drinks: 'bad' },
+        history: [null, { pubKey: 'x', pubName: 'X', startedAt: 'bad', drinks: [] }],
+      },
+    }));
+
+    await useTallyStore.persist.rehydrate();
+
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history).toEqual([]);
+    expect(typeof useTallyStore.getState().addDrink).toBe('function');
   });
 
   it('tolerates missing input', () => {

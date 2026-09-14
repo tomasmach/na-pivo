@@ -5,11 +5,19 @@
  */
 
 import React from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import { normalizeEditableHhMm } from '@/data/communityHours';
+import { t } from '@/i18n';
+import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 function sanitizeTimePart(raw: string): string {
@@ -42,48 +50,55 @@ export function SplitTimeInput({
     if (normalized && normalized !== value) onChange(normalized);
   };
 
+  // Size the chip from the effective font scale so two digits always fit —
+  // Android renders slightly wider glyphs and clips fixed-width inputs.
+  const { fontScale } = useWindowDimensions();
+  const scale = Math.min(Math.max(fontScale, 1), FontScaleCap.body);
+  const partStyle = [styles.part, { width: Math.ceil(23 * scale) }];
+  const fieldStyle = [styles.field, { height: Math.ceil(36 * scale) }];
+
   return (
-    <View style={styles.field}>
+    <View style={fieldStyle}>
       <TextInput
-        style={styles.part}
+        style={partStyle}
         value={hours}
         onChangeText={(part) => onChange(withTimePart(value, 0, part))}
         onBlur={normalize}
         placeholder="11"
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus
         maxFontSizeMultiplier={FontScaleCap.body}
-        accessibilityLabel={`${accessibilityLabel} hodiny`}
+        accessibilityLabel={t.a11y.contributeTimeHours(accessibilityLabel)}
       />
       <Text style={styles.colon} maxFontSizeMultiplier={FontScaleCap.body}>
         :
       </Text>
       <TextInput
-        style={styles.part}
+        style={partStyle}
         value={minutes}
         onChangeText={(part) => onChange(withTimePart(value, 1, part))}
         onBlur={normalize}
         placeholder="00"
-        placeholderTextColor={Colors.mutedText}
+        placeholderTextColor={MockColors.fieldHint}
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus
         maxFontSizeMultiplier={FontScaleCap.body}
-        accessibilityLabel={`${accessibilityLabel} minuty`}
+        accessibilityLabel={t.a11y.contributeTimeMinutes(accessibilityLabel)}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // A compact HH:MM chip — two tight number fields with a colon, ~56×34.
+  // A compact HH:MM chip — two tight number fields with a colon; width and
+  // height are finished inline from the effective font scale.
   field: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 34,
     borderRadius: Radius.small,
     backgroundColor: Colors.stout3,
     borderWidth: 1,
@@ -91,17 +106,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   part: {
-    width: 19,
+    height: '100%',
     color: Colors.foam,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14.5,
-    paddingVertical: 0,
+    // Android TextInput ships default internal padding that eats the tight
+    // width and clips digits — zero it explicitly on every side.
+    padding: 0,
+    margin: 0,
     textAlign: 'center',
+    textAlignVertical: 'center',
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   colon: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14.5,
     color: Colors.foamMuted,
     includeFontPadding: false,

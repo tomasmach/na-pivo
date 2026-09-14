@@ -52,7 +52,10 @@ yarn-error.log*
 
 expo-env.d.ts
 # @end expo-cli
-store-assets/logs/
-
 # The backend is server-side and is not part of the mobile bundle.
 /backend
+
+# Repo-only docs and assets that are not part of the mobile bundle.
+/docs/
+/store-assets/
+/artifacts/

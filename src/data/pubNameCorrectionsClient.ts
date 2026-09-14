@@ -9,6 +9,7 @@
 import { ensureAccount, clearCachedAnonymousAccount, generateUuidV4 } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
+import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 
@@ -24,6 +25,17 @@ export interface PubNameCorrectionEntry {
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
+
+async function parseResponsePayload(resp: Response): Promise<Record<string, unknown>> {
+  try {
+    const parsed: unknown = await resp.json();
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 export type SubmitPubNameCorrectionResult = 'ok' | 'permanent-error' | 'retry';
 
@@ -66,10 +78,14 @@ export async function submitPubNameCorrection(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
+        ...ugcPolicyHeaders(session.accountId),
       },
       body: JSON.stringify(entry),
       signal: abort.signal,
     });
+
+    const data = await parseResponsePayload(resp);
+    notifyUgcConsentRequiredFromResponse(resp.status, data);
 
     if (resp.status === 401) {
       await clearCachedAnonymousAccount(session, {

@@ -22,6 +22,24 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
 
+// This suite owns the receipt's pure content contract. Native presentation and
+// cross-sheet serialization are covered by BottomSheetModal's lifecycle tests.
+jest.mock('@/components/shared/BottomSheetModal', () => {
+  const ReactModule = jest.requireActual('react') as typeof import('react');
+  const { Pressable } = jest.requireActual('react-native') as typeof import('react-native');
+  return {
+    BottomSheetModal: ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
+      <>
+        {ReactModule.createElement(Pressable, {
+          importantForAccessibility: 'no',
+          onPress: onClose,
+        })}
+        {children}
+      </>
+    ),
+  };
+});
+
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
   default: { View: 'AnimatedView', createAnimatedComponent: (c: unknown) => c },
@@ -51,6 +69,14 @@ jest.mock('@/theme/fonts', () => ({
 jest.mock('@/components/shared/IconGlyph', () => ({
   MinusIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
+}));
+jest.mock('@/components/shared/CloseButton', () => ({
+  CloseButton: ({ onPress, label }: { onPress: () => void; label: string }) =>
+    jest.requireActual('react').createElement(jest.requireActual('react-native').Pressable, {
+      onPress,
+      accessibilityRole: 'button',
+      accessibilityLabel: label,
+    }),
 }));
 
 const t = cs.counter;
@@ -286,12 +312,14 @@ describe('ReceiptSheet — controls', () => {
 
     // The backdrop dismisses but is hidden from screen readers — only the real
     // close button announces itself, so VoiceOver hears "Zavřít" exactly once.
-    const backdrop = renderer.root.find(
+    // The first one is the scrim: `BottomSheetModal` renders it before the card,
+    // and the card has a hidden press-swallower of its own further down.
+    const backdrop = renderer.root.findAll(
       (node) =>
         typeof node.type === 'string' &&
         node.props.importantForAccessibility === 'no' &&
         typeof node.props.onPress === 'function',
-    );
+    )[0];
     press(backdrop);
 
     expect(props.onClose).toHaveBeenCalledTimes(1);

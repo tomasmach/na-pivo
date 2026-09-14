@@ -8,6 +8,7 @@ account shape returned after auth).
 
 from __future__ import annotations
 
+from django.utils.translation import gettext_lazy
 from rest_framework import serializers
 
 from pubs.models import AuthIdentity
@@ -19,7 +20,21 @@ _PROVIDER_CHOICES = list(AuthIdentity.Provider.values)  # ["google", "apple"]
 _UNLINK_CHOICES = ["email", *AuthIdentity.Provider.values]
 
 
+class MergeOperationIdField(serializers.UUIDField):
+    default_error_messages = {
+        **serializers.UUIDField.default_error_messages,
+        "not_uuid4": gettext_lazy("Musí být náhodné UUIDv4."),
+    }
+
+    def to_internal_value(self, data):
+        value = super().to_internal_value(data)
+        if value.version != 4:
+            self.fail("not_uuid4")
+        return value
+
+
 class RegisterSerializer(serializers.Serializer):
+    merge_operation_id = MergeOperationIdField(required=False, default=None)
     email = serializers.EmailField()
     password = serializers.CharField(
         write_only=True, min_length=_MIN_PASSWORD_LEN, max_length=128, trim_whitespace=False
@@ -30,6 +45,7 @@ class RegisterSerializer(serializers.Serializer):
 
 
 class LoginSerializer(serializers.Serializer):
+    merge_operation_id = MergeOperationIdField(required=False, default=None)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, max_length=128, trim_whitespace=False)
 
@@ -37,6 +53,7 @@ class LoginSerializer(serializers.Serializer):
 class GoogleAuthSerializer(serializers.Serializer):
     """Body for /auth/google and /auth/link (provider=google)."""
 
+    merge_operation_id = MergeOperationIdField(required=False, default=None)
     id_token = serializers.CharField(trim_whitespace=True)
 
 
@@ -48,6 +65,7 @@ class AppleAuthSerializer(serializers.Serializer):
     exchanged for a refresh token so deletion can revoke it.
     """
 
+    merge_operation_id = MergeOperationIdField(required=False, default=None)
     identity_token = serializers.CharField(trim_whitespace=True)
     authorization_code = serializers.CharField(
         required=False, allow_blank=True, default="", trim_whitespace=True

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -38,9 +37,12 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
+import { useAfterModalDismiss } from '@/components/shared/useAfterModalDismiss';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
@@ -61,10 +63,11 @@ import { useAccountStore } from '@/stores/accountStore';
 import { openPubInMaps } from '@/utils/maps';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { intlLocale, t } from '@/i18n';
+import { MockType } from '@/mocks/mockTheme';
 import {
   buildMapPubPoints,
   clusterCoordinates,
@@ -82,7 +85,6 @@ const DEFAULT_REGION: Region = {
 };
 
 const PUB_DETAIL_LOADING_TIMEOUT_MS = 3_000;
-const SHEET_DISMISS_MS = 260;
 
 type Layer = 'all' | 'visited' | 'friends';
 type MapSelection =
@@ -93,6 +95,23 @@ type MapSelection =
 let rememberedRegion: Region | null = null;
 let rememberedLayer: Layer = 'all';
 let rememberedSelection: MapSelection | null = null;
+const layerListeners = new Set<() => void>();
+
+function setRememberedLayer(layer: Layer): void {
+  if (rememberedLayer === layer) return;
+  rememberedLayer = layer;
+  for (const listener of layerListeners) listener();
+}
+
+function subscribeRememberedLayer(listener: () => void): () => void {
+  layerListeners.add(listener);
+  return () => layerListeners.delete(listener);
+}
+
+/** Return map-pin additions to the catalogue layer without moving the aimed viewport. */
+export function resetBeerMapLayerForAddedPub(): void {
+  setRememberedLayer('all');
+}
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
@@ -103,11 +122,11 @@ export interface BeerMapScreenProps {
 
 function friendName(live: LivePubSummary): string {
   const first = live.activities[0]?.account;
-  return first?.displayName?.trim() || first?.nickname?.trim() || cs.map.friendFallback;
+  return first?.displayName?.trim() || first?.nickname?.trim() || t.map.friendFallback;
 }
 
 function formatRating(value: number): string {
-  return value.toLocaleString('cs-CZ', {
+  return value.toLocaleString(intlLocale, {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
     maximumFractionDigits: 1,
   });
@@ -128,26 +147,26 @@ function openingMeta(
   status: Pub['hoursStatus'] | 'loading' | undefined,
 ): { text: string; tone: MetaTone } {
   if ((status === 'loading' || status === 'pending') && pub.isOpenNow == null) {
-    return { text: cs.compass.detailsLoading, tone: 'neutral' };
+    return { text: t.compass.detailsLoading, tone: 'neutral' };
   }
 
   const time = localTimeFromIso(pub.nextChange);
   if (pub.isOpenNow === true) {
     return {
-      text: time ? cs.compass.openUntil(time) : cs.compass.openNow,
+      text: time ? t.compass.openUntil(time) : t.compass.openNow,
       tone: 'open',
     };
   }
   if (pub.isOpenNow === false) {
     return {
-      text: time ? cs.compass.closedUntil(time) : cs.compass.closedNow,
+      text: time ? t.compass.closedUntil(time) : t.compass.closedNow,
       tone: 'closed',
     };
   }
   // 'unknown' still earns the dot: the line is about opening hours either way,
   // and the compass card draws it the same. 'neutral' is for lines that are not
   // hours at all (the viewport summary, a city, a friend).
-  return { text: cs.compass.hoursUnknown, tone: 'unknown' };
+  return { text: t.compass.hoursUnknown, tone: 'unknown' };
 }
 
 function metaToneColor(tone: MetaTone): string {
@@ -317,9 +336,9 @@ function LayerSwitch({
   onSelect: (next: Layer) => void;
 }) {
   const segments: { key: Layer; label: string; badge?: number }[] = [
-    { key: 'all', label: cs.map.layerAll },
-    { key: 'visited', label: cs.map.layerVisited },
-    { key: 'friends', label: cs.map.layerFriends, badge: liveCount },
+    { key: 'all', label: t.map.layerAll },
+    { key: 'visited', label: t.map.layerVisited },
+    { key: 'friends', label: t.map.layerFriends, badge: liveCount },
   ];
 
   return (
@@ -453,7 +472,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
             style={styles.liveInitial}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {friendName(live).charAt(0).toLocaleUpperCase('cs-CZ')}
+            {friendName(live).charAt(0).toLocaleUpperCase(intlLocale)}
           </Text>
         )}
       </View>
@@ -511,7 +530,11 @@ export default function BeerMapScreen({
     [initialPub],
   );
   const [region, setRegion] = useState<Region>(initialRegion);
-  const [layer, setLayer] = useState<Layer>(rememberedLayer);
+  const layer = useSyncExternalStore(
+    subscribeRememberedLayer,
+    () => rememberedLayer,
+    () => rememberedLayer,
+  );
   const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -523,14 +546,7 @@ export default function BeerMapScreen({
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
   const didAutoLocate = useRef(Boolean(initialPub || rememberedRegion));
-  const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
-    },
-    [],
-  );
+  const afterModalDismiss = useAfterModalDismiss();
 
   useEffect(() => {
     loadRegion(initialRegion);
@@ -635,7 +651,7 @@ export default function BeerMapScreen({
       : null;
   const selectedRatingCount =
     typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
-      ? selectedDetailPub.ratingCount.toLocaleString('cs-CZ')
+      ? selectedDetailPub.ratingCount.toLocaleString(intlLocale)
       : null;
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -794,7 +810,7 @@ export default function BeerMapScreen({
       rememberedSelection = next;
       setSelection(next);
       void AccessibilityInfo.announceForAccessibility(
-        cs.a11y.mapLive(friendName(live), live.name),
+        t.a11y.mapLive(friendName(live), live.name),
       );
       mapRef.current?.animateCamera(
         {
@@ -818,9 +834,8 @@ export default function BeerMapScreen({
           : 'map_layer_friends',
       'select',
     );
-    rememberedLayer = next;
+    setRememberedLayer(next);
     rememberedSelection = null;
-    setLayer(next);
     setSelection(null);
   }, []);
 
@@ -893,10 +908,14 @@ export default function BeerMapScreen({
   const visitedInView = visiblePoints.filter((point) => point.visit).length;
   const viewportHeadline =
     layer === 'friends'
-      ? cs.map.liveShort(visibleLivePubs.length)
-      : cs.map.viewportPubs(visiblePoints.length);
+      ? t.map.liveShort(visibleLivePubs.length)
+      : t.map.viewportPubs(visiblePoints.length);
   const viewportDetail =
-    layer === 'friends' || visitedInView === 0 ? null : cs.map.viewportKnown(visitedInView);
+    layer === 'friends' || visiblePoints.length === 0
+      ? null
+      : visitedInView === 0
+        ? t.map.viewportKnownNone
+        : t.map.viewportKnown(visitedInView);
 
   const cardState = useMemo(() => {
     if (selectedPub) {
@@ -916,7 +935,7 @@ export default function BeerMapScreen({
           ? { value: selectedRating, count: selectedRatingCount }
           : null,
         fact:
-          [selectedPub.pub.city, selectedPub.visit ? cs.map.visited : null]
+          [selectedPub.pub.city, selectedPub.visit ? t.map.visited : null]
             .filter(Boolean)
             .join(' · ') || null,
       };
@@ -929,8 +948,8 @@ export default function BeerMapScreen({
         metaTone: 'neutral' as const,
         fact:
           selectedLive.activities.length === 1
-            ? cs.map.friendIsHere(friendName(selectedLive))
-            : cs.map.friendsAreHere(
+            ? t.map.friendIsHere(friendName(selectedLive))
+            : t.map.friendsAreHere(
                 friendName(selectedLive),
                 selectedLive.activities.length - 1,
               ),
@@ -942,7 +961,7 @@ export default function BeerMapScreen({
         title: selectedCity.name,
         meta: null,
         metaTone: 'neutral' as const,
-        fact: cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
+        fact: t.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
       };
     }
     // Nothing selected: what the viewport holds is the whole message. The layer
@@ -970,37 +989,37 @@ export default function BeerMapScreen({
     if (stale) {
       return {
         kind: 'counted',
-        text: cs.map.offline,
-        undoLabel: cs.map.retry,
+        text: t.map.offline,
+        undoLabel: t.map.retry,
         onUndo: refresh,
       };
     }
     if (activeFilterCount > 0) {
       return {
         kind: 'rapid',
-        text: cs.compass.nudgeFilters(activeFilterCount),
-        confirmLabel: cs.compass.nudgeFiltersClear,
+        text: t.compass.nudgeFilters(activeFilterCount),
+        confirmLabel: t.compass.nudgeFiltersClear,
         onConfirm: () => onApplyFilters(EMPTY_PUB_SEARCH_FILTERS),
       };
     }
     if (loadingPubs) {
       return {
         kind: 'dopito',
-        label: cs.map.loading,
+        label: t.map.loading,
         onPress: () => undefined,
       };
     }
     if (region.latitudeDelta > 1.5 && layer !== 'friends') {
       return {
         kind: 'dopito',
-        label: cs.map.zoomForPubs,
+        label: t.map.zoomForPubs,
         onPress: () => undefined,
       };
     }
     // Without the big "Najdi mě · potřebuju tvoji polohu" button, the permission
     // ask needs a home. The strip offers it and the glyph fires it.
     if (permissionState !== 'granted') {
-      return { kind: 'dopito', label: cs.map.permissionHint, onPress: locate };
+      return { kind: 'dopito', label: t.map.permissionHint, onPress: locate };
     }
     return null;
   }, [
@@ -1018,9 +1037,9 @@ export default function BeerMapScreen({
   const primaryAction = useMemo(() => {
     if (cardState.kind === 'pub' && selectedPub) {
       return {
-        label: cs.map.aimCompass,
+        label: t.map.aimCompass,
         subLabel: null as string | null,
-        accessibilityLabel: cs.map.aimCompass,
+        accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
             lat: selectedPub.pub.lat,
@@ -1032,9 +1051,9 @@ export default function BeerMapScreen({
     }
     if (cardState.kind === 'live' && selectedLive) {
       return {
-        label: cs.map.aimCompass,
+        label: t.map.aimCompass,
         subLabel: null as string | null,
-        accessibilityLabel: cs.map.aimCompass,
+        accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
             lat: selectedLive.lat,
@@ -1046,9 +1065,9 @@ export default function BeerMapScreen({
     }
     if (cardState.kind === 'city' && selectedCity) {
       return {
-        label: cs.map.showMyPubs,
+        label: t.map.showMyPubs,
         subLabel: null as string | null,
-        accessibilityLabel: cs.map.showMyPubs,
+        accessibilityLabel: t.map.showMyPubs,
         onPress: () => focusCity(selectedCity),
       };
     }
@@ -1058,47 +1077,43 @@ export default function BeerMapScreen({
     // `cardState.kind`, because branching on this object itself makes the React
     // Compiler rules treat its ref-capturing closures as a ref read in render.
     return {
-      label: cs.map.findMe,
+      label: t.map.findMe,
       subLabel: null as string | null,
-      accessibilityLabel: cs.a11y.mapLocate,
+      accessibilityLabel: t.a11y.mapLocate,
       onPress: locate,
     };
   }, [aimCompass, cardState.kind, focusCity, locate, selectedCity, selectedLive, selectedPub]);
 
   const runAfterMoreClose = useCallback((action: () => void) => {
     setMoreOpen(false);
-    if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
-    sheetActionTimer.current = setTimeout(() => {
-      sheetActionTimer.current = null;
-      action();
-    }, SHEET_DISMISS_MS);
-  }, []);
+    afterModalDismiss(action);
+  }, [afterModalDismiss]);
 
   const moreRows = useMemo<MoreRow[]>(() => {
     const rows: MoreRow[] = [
       {
         key: 'filters',
-        label: cs.compass.moreFilters,
+        label: t.compass.moreFilters,
         value:
           activeFilterCount > 0
-            ? cs.compass.moreFiltersActive(activeFilterCount)
+            ? t.compass.moreFiltersActive(activeFilterCount)
             : null,
         icon: ListFilterIcon,
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
       {
         key: 'refresh',
-        label: cs.map.refresh,
+        label: t.map.refresh,
         icon: RefreshCwIcon,
         onPress: () => {
           setMoreOpen(false);
           refresh();
         },
-        accessibilityLabel: cs.a11y.mapRefresh,
+        accessibilityLabel: t.a11y.mapRefresh,
       },
       {
         key: 'add-pub',
-        label: cs.compass.moreAddPub,
+        label: t.compass.moreAddPub,
         icon: MapPinPlusIcon,
         onPress: () => runAfterMoreClose(startPinPlacement),
       },
@@ -1108,10 +1123,10 @@ export default function BeerMapScreen({
           ...rows,
           {
             key: 'report',
-            label: cs.compass.moreReport,
+            label: t.compass.moreReport,
             icon: FlagIcon,
             onPress: () => runAfterMoreClose(openSelectedPubReport),
-            accessibilityLabel: cs.a11y.mapReportClosed(selectedPub.pub.name),
+            accessibilityLabel: t.a11y.mapReportClosed(selectedPub.pub.name),
           },
         ]
       : rows;
@@ -1143,23 +1158,26 @@ export default function BeerMapScreen({
         toolbarEnabled={false}
         loadingBackgroundColor={mapColorScheme === 'dark' ? Colors.stout : Colors.foam}
         loadingIndicatorColor={Colors.amber}
-        accessibilityLabel={cs.a11y.beerMap}
+        accessibilityLabel={t.a11y.beerMap}
       >
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
               <Marker
-                key={`city:${city.key}`}
+                // visitCount in the key: with tracksViewChanges off the marker
+                // never re-rasterizes, so a changed count must remount it.
+                key={`city:${city.key}:${city.visitCount}`}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
+                tracksViewChanges={false}
                 onPress={() => {
                   const next: MapSelection = { kind: 'city', key: city.key, accountId };
                   rememberedSelection = next;
                   setSelection(next);
                   void AccessibilityInfo.announceForAccessibility(
-                    cs.a11y.mapCity(city.name, city.visitCount),
+                    t.a11y.mapCity(city.name, city.visitCount),
                   );
                 }}
-                accessibilityLabel={cs.a11y.mapCity(city.name, city.visitCount)}
+                accessibilityLabel={t.a11y.mapCity(city.name, city.visitCount)}
               >
                 <View style={styles.cityMarker}>
                   <MapPinnedIcon size={17} color={Colors.stout} />
@@ -1192,7 +1210,7 @@ export default function BeerMapScreen({
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
                 tracksViewChanges={selected}
-                accessibilityLabel={cs.a11y.mapPub(
+                accessibilityLabel={t.a11y.mapPub(
                   point.pub.name,
                   point.visit?.visitCount ?? 0,
                 )}
@@ -1208,7 +1226,7 @@ export default function BeerMapScreen({
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
               tracksViewChanges={false}
-              accessibilityLabel={cs.a11y.mapCluster(cluster.items.length)}
+              accessibilityLabel={t.a11y.mapCluster(cluster.items.length)}
             >
               <ClusterMarker
                 count={cluster.items.length}
@@ -1225,7 +1243,7 @@ export default function BeerMapScreen({
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
             zIndex={10}
-            accessibilityLabel={cs.a11y.mapLive(friendName(live), live.name)}
+            accessibilityLabel={t.a11y.mapLive(friendName(live), live.name)}
           >
             <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
           </Marker>
@@ -1255,14 +1273,14 @@ export default function BeerMapScreen({
               style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.mapPinCancel}
+              accessibilityLabel={t.a11y.mapPinCancel}
             >
               <XIcon size={19} color={Colors.foamMuted} />
             </Pressable>
             <View style={styles.pinHintWrap} pointerEvents="none">
               <View style={styles.pinHintPill}>
                 <Text style={styles.pinHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.map.pinHint}
+                  {t.map.pinHint}
                 </Text>
               </View>
             </View>
@@ -1284,7 +1302,7 @@ export default function BeerMapScreen({
             style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.mapLocate}
+            accessibilityLabel={t.a11y.mapLocate}
           >
             <LocateFixedIcon size={19} color={Colors.amber} />
           </Pressable>
@@ -1299,7 +1317,7 @@ export default function BeerMapScreen({
             ]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.compassMore}
+            accessibilityLabel={t.a11y.compassMore}
           >
             <MenuIcon size={20} color={Colors.foamMuted} />
           </Pressable>
@@ -1321,12 +1339,12 @@ export default function BeerMapScreen({
       >
         {placingPin ? (
           <GlowButton
-            label={cs.map.pinConfirm}
+            label={t.map.pinConfirm}
             onPress={() => void confirmPinPlacement()}
             variant="primary"
             glow="soft"
             height={62}
-            accessibilityLabel={cs.map.pinConfirm}
+            accessibilityLabel={t.map.pinConfirm}
           />
         ) : (
         <>
@@ -1341,7 +1359,7 @@ export default function BeerMapScreen({
               ? {
                   onPress: () =>
                     void openPubInMaps(selectedDetailPub ?? selectedPub.pub),
-                  accessibilityLabel: cs.a11y.pubPillRevealed(
+                  accessibilityLabel: t.a11y.pubPillRevealed(
                     selectedPub.pub.name,
                   ),
                 }
@@ -1350,21 +1368,21 @@ export default function BeerMapScreen({
           door={
             cardState.kind === 'pub'
               ? {
-                  label: cs.compass.mapPubLink,
+                  label: t.compass.mapPubLink,
                   onPress: () => {
                     trackUiInteraction('map_pub_detail_open');
                     setDetailOpen(true);
                   },
-                  accessibilityLabel: cs.compass.mapPubLink,
+                  accessibilityLabel: t.compass.mapPubLink,
                 }
               : cardState.kind === 'idle'
                 ? {
-                    label: cs.map.listLink,
+                    label: t.map.listLink,
                     onPress: () => {
                       trackUiInteraction('map_list_open');
                       setListOpen(true);
                     },
-                    accessibilityLabel: cs.a11y.mapList,
+                    accessibilityLabel: t.a11y.mapList,
                   }
                 : undefined
           }
@@ -1392,30 +1410,13 @@ export default function BeerMapScreen({
         )}
       </View>
 
-      <Modal
-        visible={listOpen}
-        transparent
-        statusBarTranslucent
-        presentationStyle="overFullScreen"
-        animationType="fade"
-        onRequestClose={() => setListOpen(false)}
-      >
-        <View style={styles.listBackdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setListOpen(false)}
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          />
-          <View
-            style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}
-          >
-            <Pressable
+      <BottomSheetModal visible={listOpen} onClose={() => setListOpen(false)}>
+          <View style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}>
+            <View
               style={[
                 styles.listCard,
                 { paddingBottom: insets.bottom + Spacing.lg },
               ]}
-              onPress={() => undefined}
             >
               <View style={styles.listGrabber} />
               <View style={styles.listHeader}>
@@ -1424,19 +1425,9 @@ export default function BeerMapScreen({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.heading}
                 >
-                  {layer === 'friends' ? cs.map.layerFriends : cs.map.listTitle}
+                  {layer === 'friends' ? t.map.layerFriends : t.map.listTitle}
                 </Text>
-                <Pressable
-                  onPress={() => setListOpen(false)}
-                  style={({ pressed }) => [
-                    styles.closeButton,
-                    pressed && styles.pressedSoft,
-                  ]}
-                  accessibilityLabel={cs.map.closeList}
-                  accessibilityRole="button"
-                >
-                  <XIcon size={20} color={Colors.foamMuted} />
-                </Pressable>
+                <CloseButton onPress={() => setListOpen(false)} label={t.map.closeList} />
               </View>
               {layer === 'friends' ? (
                 <FlatList
@@ -1467,7 +1458,7 @@ export default function BeerMapScreen({
                         index > 0 && styles.listRowDivider,
                         pressed && styles.pressedSoft,
                       ]}
-                      accessibilityLabel={cs.a11y.mapLive(
+                      accessibilityLabel={t.a11y.mapLive(
                         friendName(item),
                         item.name,
                       )}
@@ -1486,7 +1477,7 @@ export default function BeerMapScreen({
                           numberOfLines={1}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {cs.map.friendIsHere(friendName(item))}
+                          {t.map.friendIsHere(friendName(item))}
                         </Text>
                       </View>
                       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -1497,7 +1488,7 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.map.emptyList}
+                      {t.map.emptyList}
                     </Text>
                   }
                 />
@@ -1530,7 +1521,7 @@ export default function BeerMapScreen({
                         index > 0 && styles.listRowDivider,
                         pressed && styles.pressedSoft,
                       ]}
-                      accessibilityLabel={cs.a11y.mapPub(
+                      accessibilityLabel={t.a11y.mapPub(
                         item.pub.name,
                         item.visit?.visitCount ?? 0,
                       )}
@@ -1550,7 +1541,7 @@ export default function BeerMapScreen({
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
                           {item.pub.city ||
-                            (item.visit ? cs.map.visited : cs.map.notVisited)}
+                            (item.visit ? t.map.visited : t.map.notVisited)}
                         </Text>
                       </View>
                       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -1561,15 +1552,14 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.map.emptyList}
+                      {t.map.emptyList}
                     </Text>
                   }
                 />
               )}
-            </Pressable>
+            </View>
           </View>
-        </View>
-      </Modal>
+      </BottomSheetModal>
 
       <MoreSheet
         visible={moreOpen}
@@ -1577,15 +1567,13 @@ export default function BeerMapScreen({
         onClose={() => setMoreOpen(false)}
       />
 
-      {filterSheetOpen ? (
-        <PubFilterSheet
-          visible
-          value={filters}
-          nearbyPrices={nearbyPrices}
-          onClose={() => setFilterSheetOpen(false)}
-          onApply={onApplyFilters}
-        />
-      ) : null}
+      <PubFilterSheet
+        visible={filterSheetOpen}
+        value={filters}
+        nearbyPrices={nearbyPrices}
+        onClose={() => setFilterSheetOpen(false)}
+        onApply={onApplyFilters}
+      />
 
       {selectedPub ? (
         <MapPubSheet
@@ -1602,7 +1590,7 @@ export default function BeerMapScreen({
           onClose={() => setDetailOpen(false)}
           onReport={() => {
             setDetailOpen(false);
-            setTimeout(() => setReportOpen(true), 250);
+            afterModalDismiss(() => setReportOpen(true));
           }}
         />
       ) : null}
@@ -1702,7 +1690,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   pinHintText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foam,
   },
@@ -1785,7 +1773,7 @@ const styles = StyleSheet.create({
   },
   clusterPinVisited: { borderColor: Colors.amber, borderWidth: 2.5 },
   clusterText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1811,7 +1799,7 @@ const styles = StyleSheet.create({
   livePinSelected: { transform: [{ scale: 1.14 }], borderColor: Colors.neon },
   liveAvatar: { width: '100%', height: '100%' },
   liveInitial: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 19,
     color: Colors.stout,
     includeFontPadding: false,
@@ -1831,7 +1819,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveCountText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     color: Colors.stout,
     includeFontPadding: false,
@@ -1851,13 +1839,13 @@ const styles = StyleSheet.create({
   },
   cityMarkerText: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 15,
     color: Colors.stout,
     includeFontPadding: false,
   },
   cityMarkerCount: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: withAlpha(Colors.stout, 0.72),
     includeFontPadding: false,
@@ -1905,7 +1893,7 @@ const styles = StyleSheet.create({
   placeTitle: {
     flexShrink: 1,
     minWidth: 0,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1925,14 +1913,14 @@ const styles = StyleSheet.create({
   placeMeta: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   placeFact: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1953,7 +1941,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   placeDoorLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1986,7 +1974,7 @@ const styles = StyleSheet.create({
   },
   layerLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1995,41 +1983,33 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   layerBadge: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 12,
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
 
-  listBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.6),
-  },
   listCardWrap: {
     width: '100%',
-    minHeight: '56%',
     maxHeight: '92%',
   },
   listCard: {
-    flex: 1,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flexShrink: 1,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
+    backgroundColor: Colors.stout,
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     ...softDrop(),
   },
   listGrabber: {
     alignSelf: 'center',
-    width: 40,
+    width: 44,
     height: 4,
     marginBottom: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.border,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
   },
   listHeader: {
     flexDirection: 'row',
@@ -2040,23 +2020,12 @@ const styles = StyleSheet.create({
   },
   listTitle: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    ...MockType.titleS,
     color: Colors.foam,
-    includeFontPadding: false,
-  },
-  closeButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   list: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -2075,14 +2044,14 @@ const styles = StyleSheet.create({
   },
   listRowCopy: { flex: 1, minWidth: 0 },
   listRowTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   listRowMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -2090,7 +2059,7 @@ const styles = StyleSheet.create({
   emptyList: {
     paddingVertical: 40,
     textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

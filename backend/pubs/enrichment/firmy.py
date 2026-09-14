@@ -64,6 +64,7 @@ import math
 import re
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from html import unescape
 from urllib.parse import quote_plus, urlparse
@@ -341,10 +342,12 @@ class FirmyHoursSource:
         timeout: int = 15,
         daily_cap: int = 2000,
         min_confidence: float = MIN_CONFIDENCE,
+        request_budget: Callable[[int], bool] | None = None,
     ) -> None:
         self._min_interval = min_interval
         self._timeout = timeout
         self._daily_cap = daily_cap
+        self._request_budget = request_budget or _global_counter.increment_and_check
         self._min_confidence = min_confidence
         self._last_request_at: float = 0.0
         self._lock = threading.Lock()
@@ -391,7 +394,7 @@ class FirmyHoursSource:
             self._last_request_at = time.monotonic()
 
     def _check_cap(self) -> bool:
-        return _global_counter.increment_and_check(self._daily_cap)
+        return self._request_budget(self._daily_cap)
 
     # ------------------------------------------------------------------
     # HTTP helpers

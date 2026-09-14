@@ -8,7 +8,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 /**
@@ -16,12 +16,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
  * NEW AsyncStorage mock instance (mirrors releaseStore.test).
  */
 function currentAsyncStorage() {
-  const mod = require('@react-native-async-storage/async-storage');
+  const mod = jest.requireMock('@react-native-async-storage/async-storage');
   return mod.default ?? mod;
 }
 
 function requireStore() {
-  return require('../onboardingStore') as typeof import('../onboardingStore');
+  return jest.requireActual('../onboardingStore') as typeof import('../onboardingStore');
 }
 
 beforeEach(() => {
