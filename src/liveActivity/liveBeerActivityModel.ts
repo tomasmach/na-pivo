@@ -30,6 +30,7 @@ export interface BeerEveningLiveActivityProps {
   openCounterLabel: string;
   /** Exact metadata repeated by a native `+ pivo` action. Not rendered. */
   repeatBeerName: string;
+  repeatMetadataLabel?: string;
   repeatBeerPriceCzk?: number;
   repeatBeerVolumeMl?: number;
   repeatBeerServingType?: ServingType;
@@ -121,5 +122,12 @@ export function buildBeerEveningLiveActivityProps(
   if (typeof latestBeer?.priceCzk === 'number') props.repeatBeerPriceCzk = latestBeer.priceCzk;
   if (typeof latestBeer?.volumeMl === 'number') props.repeatBeerVolumeMl = latestBeer.volumeMl;
   if (latestBeer?.servingType) props.repeatBeerServingType = latestBeer.servingType;
+  props.repeatMetadataLabel = [
+    t.liveActivity.beerWord(1),
+    typeof latestBeer?.volumeMl === 'number'
+      ? `${(latestBeer.volumeMl / 1000).toLocaleString(intlLocale)} l` : '',
+    typeof latestBeer?.priceCzk === 'number'
+      ? formatPrice(latestBeer.priceCzk, preferences.priceCurrency) : '',
+  ].filter(Boolean).join(' · ');
   return props;
 }

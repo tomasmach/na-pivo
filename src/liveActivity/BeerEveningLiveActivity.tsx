@@ -1,4 +1,12 @@
-import { Button, HStack, Image, Link, Spacer, Text, VStack } from '@expo/ui/swift-ui';
+import {
+  Button,
+  HStack,
+  Image,
+  Link,
+  Spacer,
+  Text,
+  VStack,
+} from "@expo/ui/swift-ui";
 // The isolated widget runtime exposes modifier globals by their exported names.
 // Keep these imports unaliased so the serialized layout can resolve them.
 import {
@@ -24,8 +32,8 @@ import {
   shapes,
   textCase,
   tint,
-} from '@expo/ui/swift-ui/modifiers';
-import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
+} from "@expo/ui/swift-ui/modifiers";
+import { createLiveActivity, type LiveActivityEnvironment } from "expo-widgets";
 
 /**
  * Complete render state for one running beer-counting evening.
@@ -60,6 +68,7 @@ export interface BeerEveningLiveActivityProps {
   openCounterLabel: string;
   /** Exact metadata repeated by the native action; intentionally not rendered. */
   repeatBeerName: string;
+  repeatMetadataLabel?: string;
   repeatBeerPriceCzk?: number;
   repeatBeerVolumeMl?: number;
   repeatBeerServingType?: string;
@@ -73,32 +82,32 @@ const BeerEveningLiveActivity = (
   props: BeerEveningLiveActivityProps,
   environment: LiveActivityEnvironment,
 ) => {
-  'widget';
+  "widget";
 
   // Always-On renders the Lock Screen with reduced luminance and without
   // animations. The palette keeps the warm pub character while avoiding a
   // large bright patch on the dimmed display.
   const isDimmed = environment.isLuminanceReduced === true;
-  const accent = isDimmed ? '#A98E58' : '#FFB84D';
-  const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
-  const secondaryText = isDimmed ? '#817767' : '#C4AE8E';
-  const activityBackground = isDimmed ? '#080604' : '#150D06';
-  const raisedSurface = isDimmed ? '#17120C' : '#2E1C0D';
-  const buttonText = '#241404';
-  const counterDeepLink = 'napivo://beer';
+  const accent = isDimmed ? "#A98E58" : "#FFB84D";
+  const primaryText = isDimmed ? "#CFC5B3" : "#FFF7E8";
+  const secondaryText = isDimmed ? "#817767" : "#C4AE8E";
+  const activityBackground = isDimmed ? "#080604" : "#150D06";
+  const raisedSurface = isDimmed ? "#17120C" : "#2E1C0D";
+  const buttonText = "#241404";
+  const counterDeepLink = "napivo://beer";
   // Poured-beer gold gradient for the hero number; flat on the dimmed display.
   const countStyle:
     | string
     | {
-        type: 'linearGradient';
+        type: "linearGradient";
         colors: string[];
         startPoint: { x: number; y: number };
         endPoint: { x: number; y: number };
       } = isDimmed
     ? accent
     : {
-        type: 'linearGradient',
-        colors: ['#FFD98F', '#FFB84D', '#E8953A'],
+        type: "linearGradient",
+        colors: ["#FFD98F", "#FFB84D", "#E8953A"],
         startPoint: { x: 0.5, y: 0 },
         endPoint: { x: 0.5, y: 1 },
       };
@@ -111,6 +120,8 @@ const BeerEveningLiveActivity = (
   const priceLabel = props.totalPriceLabel;
   const latestBeerLabel = props.latestBeerLabel;
   const latestTimeLabel = props.latestTimeLabel;
+  const repeatActionLabel = [props.addBeerLabel, props.repeatBeerName, props.repeatMetadataLabel]
+    .filter(Boolean).join(' · ');
 
   return {
     banner: (
@@ -119,7 +130,7 @@ const BeerEveningLiveActivity = (
         spacing={11}
         modifiers={[
           padding({ horizontal: 14, top: 14, bottom: 12 }),
-          frame({ maxWidth: 1000, alignment: 'leading' }),
+          frame({ maxWidth: 1000, alignment: "leading" }),
           foregroundStyle(primaryText),
           activityBackgroundTint(activityBackground),
         ]}
@@ -135,7 +146,7 @@ const BeerEveningLiveActivity = (
               modifiers={[
                 resizable(),
                 frame({ width: 42, height: 42 }),
-                clipShape('roundedRectangle', 13),
+                clipShape("roundedRectangle", 13),
               ]}
             />
           ) : (
@@ -149,7 +160,7 @@ const BeerEveningLiveActivity = (
                   raisedSurface,
                   shapes.roundedRectangle({
                     cornerRadius: 13,
-                    roundedCornerStyle: 'continuous',
+                    roundedCornerStyle: "continuous",
                   }),
                 ),
               ]}
@@ -162,7 +173,7 @@ const BeerEveningLiveActivity = (
           >
             <Text
               modifiers={[
-                font({ size: 19, weight: 'bold', design: 'rounded' }),
+                font({ size: 19, weight: "bold", design: "rounded" }),
                 lineLimit(1),
                 minimumScaleFactor(0.72),
                 privacySensitive(),
@@ -173,7 +184,7 @@ const BeerEveningLiveActivity = (
             {priceLabel ? (
               <Text
                 modifiers={[
-                  font({ size: 12, weight: 'medium', design: 'rounded' }),
+                  font({ size: 12, weight: "medium", design: "rounded" }),
                   foregroundStyle(secondaryText),
                   lineLimit(1),
                   privacySensitive(),
@@ -187,15 +198,15 @@ const BeerEveningLiveActivity = (
           <VStack alignment="trailing" spacing={-2}>
             <Text
               modifiers={[
-                font({ size: 40, weight: 'heavy', design: 'rounded' }),
+                font({ size: 40, weight: "heavy", design: "rounded" }),
                 foregroundStyle(countStyle),
                 monospacedDigit(),
-                contentTransition('numericText'),
+                contentTransition("numericText"),
                 // Soft golden glow so the tally reads like backlit taproom
                 // signage; skipped on the dimmed Always-On display.
                 ...(isDimmed
                   ? []
-                  : [shadow({ radius: 10, y: 1, color: '#FFB84D55' })]),
+                  : [shadow({ radius: 10, y: 1, color: "#FFB84D55" })]),
                 accessibilityLabel(`${props.beerCount} ${beerWord}`),
               ]}
             >
@@ -203,9 +214,9 @@ const BeerEveningLiveActivity = (
             </Text>
             <Text
               modifiers={[
-                font({ size: 10, weight: 'bold', design: 'rounded' }),
+                font({ size: 10, weight: "bold", design: "rounded" }),
                 foregroundStyle(secondaryText),
-                textCase('uppercase'),
+                textCase("uppercase"),
                 kerning(1.4),
               ]}
             >
@@ -224,7 +235,7 @@ const BeerEveningLiveActivity = (
               raisedSurface,
               shapes.roundedRectangle({
                 cornerRadius: 18,
-                roundedCornerStyle: 'continuous',
+                roundedCornerStyle: "continuous",
               }),
             ),
           ]}
@@ -236,7 +247,7 @@ const BeerEveningLiveActivity = (
           >
             <Text
               modifiers={[
-                font({ size: 13, weight: 'semibold', design: 'rounded' }),
+                font({ size: 13, weight: "semibold", design: "rounded" }),
                 lineLimit(1),
                 minimumScaleFactor(0.8),
                 privacySensitive(),
@@ -246,7 +257,7 @@ const BeerEveningLiveActivity = (
             </Text>
             <Text
               modifiers={[
-                font({ size: 11, weight: 'medium', design: 'rounded' }),
+                font({ size: 11, weight: "medium", design: "rounded" }),
                 foregroundStyle(secondaryText),
                 lineLimit(1),
                 privacySensitive(),
@@ -262,10 +273,10 @@ const BeerEveningLiveActivity = (
               systemImage="plus"
               target="add-beer"
               modifiers={[
-                font({ size: 15, weight: 'semibold', design: 'rounded' }),
-                buttonStyle('borderedProminent'),
-                buttonBorderShape('capsule'),
-                controlSize('regular'),
+                font({ size: 15, weight: "semibold", design: "rounded" }),
+                buttonStyle("borderedProminent"),
+                buttonBorderShape("capsule"),
+                controlSize("regular"),
                 tint(accent),
                 foregroundStyle(buttonText),
                 accessibilityLabel(props.addBeerA11yLabel),
@@ -276,10 +287,10 @@ const BeerEveningLiveActivity = (
               label={props.openCounterLabel}
               destination={counterDeepLink}
               modifiers={[
-                font({ size: 15, weight: 'semibold', design: 'rounded' }),
-                buttonStyle('borderedProminent'),
-                buttonBorderShape('capsule'),
-                controlSize('regular'),
+                font({ size: 15, weight: "semibold", design: "rounded" }),
+                buttonStyle("borderedProminent"),
+                buttonBorderShape("capsule"),
+                controlSize("regular"),
                 tint(accent),
                 foregroundStyle(buttonText),
                 accessibilityLabel(props.openCounterLabel),
@@ -291,44 +302,94 @@ const BeerEveningLiveActivity = (
     ),
 
     bannerSmall: (
-      <HStack
-        alignment="center"
-        spacing={10}
+      <VStack
+        alignment="leading"
+        spacing={5}
         modifiers={[
-          padding({ horizontal: 12, vertical: 10 }),
+          padding({ horizontal: 10, vertical: 8 }),
           foregroundStyle(primaryText),
           activityBackgroundTint(activityBackground),
         ]}
       >
-        <Image systemName="mug.fill" size={14} color={accent} />
-        <Text
-          modifiers={[
-            font({ size: 14, weight: 'semibold', design: 'rounded' }),
-            lineLimit(1),
-            privacySensitive(),
-          ]}
+        <HStack
+          alignment="center"
+          spacing={7}
+          modifiers={[frame({ maxWidth: 1000 })]}
         >
-          {props.pubName}
-        </Text>
-        <Spacer />
-        <Text
-          modifiers={[
-            font({ size: 18, weight: 'bold', design: 'rounded' }),
-            foregroundStyle(countStyle),
-            monospacedDigit(),
-            contentTransition('numericText'),
-          ]}
-        >
-          {`${props.beerCount} ${beerWord}`}
-        </Text>
-      </HStack>
+          <Image systemName="mug.fill" size={13} color={accent} />
+          <Text
+            modifiers={[
+              font({ size: 13, weight: "semibold", design: "rounded" }),
+              lineLimit(1),
+              minimumScaleFactor(0.72),
+              privacySensitive(),
+            ]}
+          >
+            {props.pubName}
+          </Text>
+          <Spacer />
+          <Text
+            modifiers={[
+              font({ size: 17, weight: "bold", design: "rounded" }),
+              foregroundStyle(countStyle),
+              monospacedDigit(),
+              contentTransition("numericText"),
+            ]}
+          >
+            {`${props.beerCount} ${beerWord}`}
+          </Text>
+        </HStack>
+
+        {props.supportsInteractiveAdd === true ? (
+          <Button
+            label={repeatActionLabel}
+            systemImage="plus"
+            target="add-beer"
+            modifiers={[
+              frame({ maxWidth: 1000 }),
+              font({ size: 12, weight: "semibold", design: "rounded" }),
+              lineLimit(1),
+              minimumScaleFactor(0.68),
+              buttonStyle("borderedProminent"),
+              buttonBorderShape("capsule"),
+              controlSize("small"),
+              tint(accent),
+              foregroundStyle(buttonText),
+              accessibilityLabel(
+                repeatActionLabel,
+              ),
+              privacySensitive(),
+            ]}
+          />
+        ) : (
+          <Link
+            label={`${props.openCounterLabel}: ${props.repeatBeerName}`}
+            destination={counterDeepLink}
+            modifiers={[
+              frame({ maxWidth: 1000 }),
+              font({ size: 12, weight: "semibold", design: "rounded" }),
+              lineLimit(1),
+              minimumScaleFactor(0.68),
+              buttonStyle("borderedProminent"),
+              buttonBorderShape("capsule"),
+              controlSize("small"),
+              tint(accent),
+              foregroundStyle(buttonText),
+              accessibilityLabel(
+                `${props.openCounterLabel}: ${props.repeatBeerName}`,
+              ),
+              privacySensitive(),
+            ]}
+          />
+        )}
+      </VStack>
     ),
 
     compactLeading: <Image systemName="mug.fill" size={15} color={accent} />,
     compactTrailing: (
       <Text
         modifiers={[
-          font({ size: 15, weight: 'bold', design: 'rounded' }),
+          font({ size: 15, weight: "bold", design: "rounded" }),
           foregroundStyle(accent),
           monospacedDigit(),
           contentTransition('numericText'),
@@ -341,7 +402,7 @@ const BeerEveningLiveActivity = (
     minimal: (
       <Text
         modifiers={[
-          font({ size: 13, weight: 'bold', design: 'rounded' }),
+          font({ size: 13, weight: "bold", design: "rounded" }),
           foregroundStyle(accent),
           monospacedDigit(),
           contentTransition('numericText'),
@@ -367,10 +428,10 @@ const BeerEveningLiveActivity = (
       >
         <Text
           modifiers={[
-            font({ size: 26, weight: 'heavy', design: 'rounded' }),
+            font({ size: 26, weight: "heavy", design: "rounded" }),
             foregroundStyle(countStyle),
             monospacedDigit(),
-            contentTransition('numericText'),
+            contentTransition("numericText"),
             accessibilityLabel(`${props.beerCount} ${beerWord}`),
           ]}
         >
@@ -378,9 +439,9 @@ const BeerEveningLiveActivity = (
         </Text>
         <Text
           modifiers={[
-            font({ size: 8, weight: 'bold', design: 'rounded' }),
+            font({ size: 8, weight: "bold", design: "rounded" }),
             foregroundStyle(secondaryText),
-            textCase('uppercase'),
+            textCase("uppercase"),
             kerning(1.2),
           ]}
         >
@@ -392,7 +453,7 @@ const BeerEveningLiveActivity = (
       <Text
         modifiers={[
           padding({ horizontal: 10 }),
-          font({ size: 15, weight: 'bold', design: 'rounded' }),
+          font({ size: 15, weight: "bold", design: "rounded" }),
           foregroundStyle(primaryText),
           lineLimit(1),
           minimumScaleFactor(0.72),
@@ -419,7 +480,7 @@ const BeerEveningLiveActivity = (
         >
           <Text
             modifiers={[
-              font({ size: 12, weight: 'semibold', design: 'rounded' }),
+              font({ size: 12, weight: "semibold", design: "rounded" }),
               lineLimit(1),
               minimumScaleFactor(0.8),
               privacySensitive(),
@@ -429,7 +490,7 @@ const BeerEveningLiveActivity = (
           </Text>
           <Text
             modifiers={[
-              font({ size: 10, weight: 'medium', design: 'rounded' }),
+              font({ size: 10, weight: "medium", design: "rounded" }),
               foregroundStyle(secondaryText),
               lineLimit(1),
               privacySensitive(),
@@ -445,10 +506,10 @@ const BeerEveningLiveActivity = (
             systemImage="plus"
             target="add-beer"
             modifiers={[
-              font({ size: 14, weight: 'semibold', design: 'rounded' }),
-              buttonStyle('borderedProminent'),
-              buttonBorderShape('capsule'),
-              controlSize('small'),
+              font({ size: 14, weight: "semibold", design: "rounded" }),
+              buttonStyle("borderedProminent"),
+              buttonBorderShape("capsule"),
+              controlSize("small"),
               tint(accent),
               foregroundStyle(buttonText),
               accessibilityLabel(props.addBeerA11yLabel),
@@ -459,10 +520,10 @@ const BeerEveningLiveActivity = (
             label={props.openCounterLabel}
             destination={counterDeepLink}
             modifiers={[
-              font({ size: 14, weight: 'semibold', design: 'rounded' }),
-              buttonStyle('borderedProminent'),
-              buttonBorderShape('capsule'),
-              controlSize('small'),
+              font({ size: 14, weight: "semibold", design: "rounded" }),
+              buttonStyle("borderedProminent"),
+              buttonBorderShape("capsule"),
+              controlSize("small"),
               tint(accent),
               foregroundStyle(buttonText),
               accessibilityLabel(props.openCounterLabel),
@@ -485,6 +546,6 @@ const BeerEveningLiveActivity = (
  * gate this behind Platform.OS === 'ios' so platform behavior stays explicit.
  */
 export default createLiveActivity<BeerEveningLiveActivityProps>(
-  'BeerEveningLiveActivity',
+  "BeerEveningLiveActivity",
   BeerEveningLiveActivity,
 );

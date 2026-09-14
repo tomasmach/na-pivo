@@ -22,6 +22,7 @@ import {
   isRetriableNightError,
   publishNight as publishNightToServer,
 } from '@/data/nightsClient';
+import { trackClientEvent } from '@/data/telemetryClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { buildRoast } from '@/feed/roast';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
@@ -159,6 +160,7 @@ export default function FinishNightScreen() {
     await rememberNightRecord({ ...night, endedAt }, accountId);
     archiveCurrent('manual');
     endParty();
+    void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
     finishPartyToRecap(router, '/party-finish');
   };
 

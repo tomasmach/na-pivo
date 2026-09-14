@@ -20,6 +20,8 @@ import {
 } from '@/data/pubAmenitiesView';
 import { pubIdentityKey } from '@/data/pubIdentity';
 import { runPrivateAccountMutation } from '@/data/privateAccountBoundary';
+import { notifyUgcConsentRequired } from '@/data/ugcConsent';
+import { amenityVoteUgcConsentCode } from '@/components/amenities/amenityVoteConsent';
 import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -168,6 +170,16 @@ export function usePubAmenityMapping({
         return;
       }
 
+      // A vote is a public contribution: without accepted policy the server
+      // answers 428. Ask here, at the tap, instead of letting the request fail
+      // silently — the vote is already stored and queued, and the queue flushes
+      // as soon as the sheet is accepted.
+      const consentCode = next != null ? amenityVoteUgcConsentCode() : null;
+      if (consentCode) {
+        notifyUgcConsentRequired(consentCode, { userInitiated: true });
+        return;
+      }
+
       const wire = buildAmenityVoteWire({
         pubKey,
         pubName,
@@ -176,7 +188,7 @@ export function usePubAmenityMapping({
         clientUpdatedAt,
       });
       void runPrivateAccountMutation((scope) =>
-        submitAmenityVotesDetailed([wire], scope.signal),
+        submitAmenityVotesDetailed([wire], scope.signal, { userInitiated: true }),
       ).then((result) => {
         if (result.status !== 'ok' || !result.body) return;
         const voteResult = result.body.results[0];

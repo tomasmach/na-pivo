@@ -13,10 +13,13 @@ import {
   type WireAmenityVote,
 } from '../pubAmenitiesClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
+import { trackClientEvent } from '../telemetryClient';
 import { getBackendEndpoint } from '../backendConfig';
 import {
+  CURRENT_UGC_POLICY_VERSION,
   UGC_POLICY_HEADER,
   clearUgcConsentStateForTests,
+  rememberUgcConsent,
   subscribeUgcConsentRequired,
 } from '../ugcConsent';
 
@@ -429,30 +432,186 @@ describe('UGC policy contract', () => {
   });
 
   it.each(UGC_428_CODES)(
-    'submitAmenityVotes on 428 %s remains retry and emits exactly one consent signal',
+    'submitAmenityVotes on 428 %s blocks on consent and emits exactly one consent signal',
     async (code) => {
       const signals: string[] = [];
       subscribeUgcConsentRequired((event) => signals.push(event.code));
       fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
 
-      await expect(submitAmenityVotes([liveVote])).resolves.toBe('retry');
+      await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
       expect(signals).toEqual([code]);
     },
   );
 
   it.each(UGC_428_CODES)(
-    'submitAmenityVotesDetailed on 428 %s remains retry and emits exactly one consent signal',
+    'submitAmenityVotesDetailed on 428 %s blocks on consent and emits exactly one consent signal',
     async (code) => {
       const signals: string[] = [];
       subscribeUgcConsentRequired((event) => signals.push(event.code));
       fetchReturning(428, { code, detail: 'Potřebujeme aktuální souhlas.' });
 
       const res = await submitAmenityVotesDetailed([liveVote]);
-      expect(res.status).toBe('retry');
+      expect(res.status).toBe('consent-blocked');
       expect(res.body).toBeNull();
       expect(signals).toEqual([code]);
     },
   );
+
+  it('sends no further vote request while the account still owes consent', async () => {
+    const signals: string[] = [];
+    subscribeUgcConsentRequired((event) => signals.push(event.code));
+    const spy = fetchReturning(428, {
+      code: 'ugc_consent_required',
+      detail: 'Nejdřív potvrď pravidla pro sdílený obsah.',
+    });
+
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    await expect(submitAmenityVotesDetailed([liveVote])).resolves.toEqual({
+      status: 'consent-blocked',
+      body: null,
+    });
+
+    // One refusal, one request, one signal — the retry loop is gone.
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(signals).toEqual(['ugc_consent_required']);
+  });
+
+  it('publishes again once the accepted snapshot is remembered', async () => {
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+
+    rememberUgcConsent('a', {
+      policyVersion: CURRENT_UGC_POLICY_VERSION,
+      accepted: true,
+      acceptedVersion: CURRENT_UGC_POLICY_VERSION,
+      acceptedAt: '2026-09-11T20:00:00Z',
+    });
+
+    const spy = fetchReturning(200, { results: [], mapper: null });
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('ok');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a pure retraction flowing while consent is owed', async () => {
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+
+    const spy = fetchReturning(200, { results: [], mapper: null });
+    await expect(submitAmenityVotes(retractionVotes)).resolves.toBe('ok');
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a user-cast vote open the consent sheet through the quiet period', async () => {
+    const events: { code: string; userInitiated: boolean }[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event));
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+
+    await submitAmenityVotesDetailed([liveVote], undefined, { userInitiated: true });
+
+    expect(events).toEqual([{ code: 'ugc_consent_required', userInitiated: true }]);
+  });
+
+  it('marks a queue retry as background so it cannot re-open a dismissed sheet', async () => {
+    const events: { code: string; userInitiated: boolean }[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event));
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+
+    await submitAmenityVotes([liveVote]);
+
+    expect(events).toEqual([{ code: 'ugc_consent_required', userInitiated: false }]);
+  });
+
+  it('tries exactly once again after a restart', async () => {
+    const spy = fetchReturning(428, { code: 'ugc_consent_required', detail: 'Potvrď pravidla.' });
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // A fresh process starts without the remembered refusal.
+    clearUgcConsentStateForTests();
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('stays silent about a 428 that crossed the acceptance in flight', async () => {
+    rememberUgcConsent('a', {
+      policyVersion: CURRENT_UGC_POLICY_VERSION,
+      accepted: true,
+      acceptedVersion: CURRENT_UGC_POLICY_VERSION,
+      acceptedAt: '2026-09-11T20:00:00Z',
+    });
+    const events: string[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event.code));
+    fetchReturning(428, { code: 'ugc_consent_required', detail: 'Nejdřív potvrď pravidla.' });
+
+    // The request left before the user accepted; its answer must not re-open the
+    // sheet the user just dealt with, nor log a failure.
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+
+    expect(events).toEqual([]);
+    const failures = (trackClientEvent as jest.Mock).mock.calls.filter(
+      (call) => (call[0] as { event: string }).event === 'amenity_vote_failed',
+    );
+    expect(failures).toEqual([]);
+  });
+
+  it.each([
+    ['queue', submitAmenityVotes],
+    ['detailed', submitAmenityVotesDetailed],
+  ] as const)('%s ignores an old policy refusal after this device accepts', async (_name, submit) => {
+    rememberUgcConsent('a', {
+      policyVersion: CURRENT_UGC_POLICY_VERSION,
+      accepted: true,
+      acceptedVersion: CURRENT_UGC_POLICY_VERSION,
+      acceptedAt: '2026-09-11T20:00:00Z',
+    });
+    const events: string[] = [];
+    subscribeUgcConsentRequired((event) => events.push(event.code));
+    let release!: (response: unknown) => void;
+    const fetch = installFetch(jest.fn(() => new Promise((resolve) => { release = resolve; })));
+    const pending = submit([liveVote]);
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // The server processed the old header before this device accepted the new
+    // version, but that refusal arrives after the successful acceptance.
+    rememberUgcConsent('a', {
+      policyVersion: '2026-09-12',
+      accepted: true,
+      acceptedVersion: '2026-09-12',
+      acceptedAt: '2026-09-12T20:00:00Z',
+    }, { acceptedOnDevice: true });
+    release({ ok: false, status: 428, json: async () => ({ code: 'ugc_policy_update_required' }) });
+    await pending;
+
+    expect(events).toEqual([]);
+    expect((trackClientEvent as jest.Mock).mock.calls.filter(
+      ([event]) => event.event === 'amenity_vote_failed',
+    )).toEqual([]);
+    fetchReturning(200, { results: [], mapper: null });
+    expect(await submitAmenityVotes([liveVote])).toBe('ok');
+
+    // A later request can discover a genuinely newer policy. It still holds
+    // publishing even though this process remembers a successful acceptance.
+    fetchReturning(428, { code: 'ugc_policy_update_required' });
+    await submit([liveVote]);
+    expect(events).toEqual(['ugc_policy_update_required']);
+  });
+
+  it('does not publish when the profile snapshot already says consent is missing', async () => {
+    rememberUgcConsent('a', {
+      policyVersion: CURRENT_UGC_POLICY_VERSION,
+      accepted: false,
+      acceptedVersion: '',
+      acceptedAt: null,
+    });
+    const spy = fetchReturning(200, { results: [], mapper: null });
+
+    await expect(submitAmenityVotes([liveVote])).resolves.toBe('consent-blocked');
+    expect(spy).not.toHaveBeenCalled();
+  });
 
   it.each([400, 422])('submitAmenityVotes keeps %s permanent-error without a consent signal', async (status) => {
     const signals: string[] = [];

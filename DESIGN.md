@@ -127,17 +127,21 @@ mluví sama se sebou. Když se pivo vezme zpátky, zmizí i z vlákna.
 
 ## Hry
 
-Devět her v katalogu. Hra je **obsah plus skořápka**, ne vlastní obrazovka —
-desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
+Nabídka má tři hry: Pub kvíz, Kostky a Kategorie. Pod nimi jsou oddělené sekce
+**Pomůcky ke stolu** (Flaška, Kdo platí rundu) a **Na celý večer** (Pravidlo večera).
+Palec je další volba pod Pravidlem večera; sdílený balíček pravidel se nemění.
+Nikdy jsem… a King's Cup se nově nenabízejí; existující večery si ponechávají původní hru i její výsledek.
 
-| hra | jak se hraje | skóre |
+Hra je **obsah plus skořápka**, ne vlastní obrazovka.
+
+| hra nebo pomůcka | jak se hraje | skóre |
 |---|---|---|
 | Pub kvíz | každý na svém telefonu | body |
 | Kostky | 3D, fyzika, telefon koluje | body → kdo platí |
-| Kdo platí rundu | nativní zpomalující buben se jmény | doušky |
-| Flaška | 3D láhev | doušky |
-| Nikdy jsem…, Kategorie, Palec, Pravidlo večera | balíček karet | doušky |
-| King's Cup | tažení karty | doušky |
+| Kategorie | kategorie pro slovní hru u stolu | bez bodů v appce |
+| Kdo platí rundu | nativní zpomalující buben se jmény | plátce rundy |
+| Flaška | SVG láhev na dřevěném stole | vybraný hráč |
+| Pravidlo večera | výběr pravidla včetně Palce | bez bodů |
 
 ### Platforma a hra
 
@@ -404,11 +408,18 @@ Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se t
 | `MockType.label` | 12 / 600 | — | Kapsle, caption |
 | `MockType.buttonLabel` | 16 / 700 | — | Label tlačítka |
 
-Displejové stupně nad škálou: hero číslice `34/42` (`StatGrid`), streak `40/50`, handle `24/800`,
-recap titulek `32/800`. Rodina je u číslic `Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
+Displejové stupně nad škálou: **počítadlo `76/94`** (`letterSpacing: -1`), hero číslice `34/42`
+(`StatGrid`), streak `40/50`, handle `24/800`, recap titulek `32/800`. Rodina je u číslic
+`Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
+
+**Počítadlo `76/94` je jediné číslo na obrazovce, vycentrované, s popiskem pod sebou.** Používá se
+tam, kde je počet piv celá odpověď a kolem něj není co číst — idle Večer před prvním pivem
+(`PulsePanel hero`). Jakmile na obrazovce stojí čísla vedle sebe (běžící večer, recap, profil), platí
+`34/42` a mřížka; dvě velikosti velkého čísla vedle sebe jsou dva hrdinové. Povinné je `tabular-nums`,
+`allowFontScaling={false}` a `lineHeight` 1,24× (§3.2).
 
 **Negativní tracking roste s velikostí:** −0.2 u titulků sekcí a zvýrazněných názvů, přes
-−0.4/−0.5 u titulků obrazovek, po −0.7 u největších displejových stupňů. Běžný body text jede bez
+−0.4/−0.5 u titulků obrazovek a −0.7 u displejových stupňů, po −1 u počítadla. Běžný body text jede bez
 trackingu. Jediný **pozitivní** tracking mají verzálkové mikro-labely (+0.2 label tab baru a `PR`;
 caption typu „ODEHRÁNO“ až +1.2).
 
@@ -1759,6 +1770,30 @@ Vinětace je **jediný** gradient, který na stole smí být, a existuje proto, 
 plocha četla jako nasvícený stůl, ne jako karta. Žádné glow, žádná druhá plná
 jantarová plocha uvnitř stolu — vybraná odpověď v kvízu je jantarový **tint
 s okrajem**, ne plná výplň (§2.2).
+
+### 21.3b Linorytové rekvizity
+
+Schválený směr B: pěnový papír, stoutový inkoust a druhá jantarová tisková barva.
+Každá z devíti her má vlastní SVG kresbu v `GameArtwork`; stejný motiv patří na
+cover, do lobby i rozehrané hry, kde se tiskne přímo na rekvizitu přes `GamePrints`.
+Kresba má pevnou siluetu, mírně nepravidelné hrany
+a několik řezaných tahů. Papírové karty mají nepravidelný obrys a dvě inkoustové
+linky. Text zůstává nativní. Runda losuje na papírové účtence, fyzické kostky
+zůstávají Three.js se slonovinovými plochami a inkoustovými puntíky.
+
+Flaška leží na statické kresbě dubového stolu: čtyři prkna, střídmá řezaná léta,
+otisky pivních kroužků a papírové tácky v barvách hráčů. Dřevo používá tiskové
+odstíny `#4E3320`, `#452B1A`, `#3F2718`, `#4B301D`; kresba je společná i pro
+režim omezeného pohybu. Otáčí se pouze SVG flaška na samostatné vrstvě prohlížeče,
+bez WebGL světel a stínového kotouče. Fyzikální dráha a výběr hráče zůstávají stejné.
+Tácky kreslí nativní `BottleSeats`: iniciála a jméno u každého místa, vybraný hráč
+má jantarový okraj i jmenovku. Jména nejdou do WebView. Do osmi hráčů jsou všechna
+jména na stole (do šesti při šířce stolu pod 320 nebo standardní výšce pod 380 bodů);
+větší parta má nativní posuvný seznam pod stolem a na stole jméno
+vybraného hráče. Její stůl zabírá 46 % výšky, aby zůstalo místo na seznam i akci.
+
+Akce ve hře je pilulka podle šířky textu (`StagePill`, horizontální padding 44),
+nikoli pruh přes celou obrazovku. Lobby si může výslovně ponechat širokou akci.
 
 ### 21.4 Fyzické hry žijí ve WebView
 

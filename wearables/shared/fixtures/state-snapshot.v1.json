@@ -1,0 +1,83 @@
+{
+  "protocolVersion": 1,
+  "messageId": "2866f494-79be-44ff-8a50-af527c86d9e0",
+  "accountEpoch": "83d78467-da0d-4bed-9d75-d99a5e50c63b",
+  "actorId": "phone-686d9a1b",
+  "actorKind": "phone",
+  "actorSequence": 12,
+  "baseRevision": 8,
+  "sentAt": "2026-07-30T19:01:00+02:00",
+  "kind": "state_snapshot",
+  "payload": {
+    "revision": 8,
+    "target": {
+      "selection": "manual",
+      "pub": {
+        "pubKey": "u2fkbn4f",
+        "name": "U Zlatého tygra",
+        "latitude": 50.08706,
+        "longitude": 14.41786,
+        "city": "Praha"
+      }
+    },
+    "activeEvening": {
+      "eveningId": "9277be1d-cd42-4dd0-af57-1414e1c96eb6",
+      "pub": {
+        "pubKey": "u2fkbn4f",
+        "name": "U Zlatého tygra",
+        "latitude": 50.08706,
+        "longitude": 14.41786,
+        "city": "Praha"
+      },
+      "drinkingDayKey": "2026-07-30",
+      "startedAt": "2026-07-30T19:00:00+02:00",
+      "status": "active",
+      "drinks": [
+        {
+          "id": "269c719f-8be2-4cf9-a8cc-d17e2ab17ccd",
+          "name": "Pilsner Urquell 12°",
+          "drinkType": "beer",
+          "volumeMl": 500,
+          "priceCzk": 68,
+          "servingType": "draft",
+          "recordedAt": "2026-07-30T19:00:00+02:00"
+        }
+      ],
+      "removedDrinkIds": []
+    },
+    "otherEvenings": [],
+    "nearbyPubs": [
+      {
+        "pubKey": "u2fkbn4f",
+        "name": "U Zlatého tygra",
+        "latitude": 50.08706,
+        "longitude": 14.41786,
+        "city": "Praha"
+      }
+    ],
+    "recentDrinks": [
+      {
+        "choiceId": "recent:pilsner-urquell-12:500:68",
+        "name": "Pilsner Urquell 12°",
+        "drinkType": "beer",
+        "volumeMl": 500,
+        "priceCzk": 68,
+        "servingType": "draft"
+      }
+    ],
+    "frequentDrinks": [],
+    "menuDrinks": [
+      {
+        "choiceId": "menu:u2fkbn4f:kozel-11:500",
+        "name": "Kozel 11°",
+        "drinkType": "beer",
+        "volumeMl": 500,
+        "priceCzk": null,
+        "servingType": "draft"
+      }
+    ],
+    "pendingCommandCount": 0,
+    "isStale": false,
+    "lastPhoneContactAt": "2026-07-30T19:01:00+02:00"
+  }
+}

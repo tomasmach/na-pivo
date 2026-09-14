@@ -64,6 +64,8 @@ export interface DrinkInput {
   beer: CommunityBeer & { servingType?: ServingType };
   /** ISO-8601 timestamp; defaults to now server-side when omitted. */
   drankAt?: string;
+  /** Stable evening UUID. Additive; older backends safely ignore its absence. */
+  eveningClientId?: string;
   /**
    * The shared evening this was drunk during, when there is one.
    *
@@ -85,6 +87,7 @@ interface WireDrinkBeer {
 /** The byte-stable payload persisted in the queue and POSTed on every retry. */
 export interface DrinkEntry {
   client_id: string;
+  evening_client_id?: string;
   place_context?: PlaceContext;
   name?: string;
   lat?: number;
@@ -102,6 +105,7 @@ export interface DrinkEntry {
 /** One private drink in the authoritative account snapshot returned by GET. */
 export interface WireDrink {
   client_id: string;
+  evening_client_id?: string | null;
   cache_key: string | null;
   name: string;
   lat: number | null;
@@ -262,6 +266,7 @@ export function buildDrinkEntry(input: DrinkInput, clientId: string): DrinkEntry
   }
 
   const entry: DrinkEntry = { client_id: clientId, beer };
+  if (input.eveningClientId) entry.evening_client_id = input.eveningClientId;
   if (atPub) {
     entry.name = input.name ?? '';
     entry.lat = input.lat;

@@ -1,6 +1,7 @@
 import { t } from '@/i18n';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearWearableSnapshot } from 'na-pivo-wearable-bridge';
 
 import type { AccountSession } from './account';
 import { suppressPrivatePersistenceDuringMemoryReset, runAuthorizedPrivateStoreRehydration } from './privateAccountStorage';
@@ -58,6 +59,15 @@ import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useFocusedPubStore } from '@/stores/focusedPubStore';
+import { useWearableTargetStore } from '@/stores/wearableTargetStore';
+import {
+  beginMobileWearableAccountBoundary,
+  MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
+  MOBILE_WEARABLE_TARGET_STORAGE_KEY,
+  waitForMobileWearableSyncIdle,
+} from '@/wearables/mobileSyncBoundary';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { clearNightRecordCache, NIGHT_RECORD_STORAGE_KEY } from '@/party/nightRecordCache';
@@ -128,6 +138,9 @@ export const PRIVATE_STORAGE_KEYS = [
   CONTEST_RESULTS_STORAGE_KEY,
   'na-pivo-beer-photos',
   'na-pivo-vycep',
+  MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
+  MOBILE_WEARABLE_TARGET_STORAGE_KEY,
   // Recent pub, beer, and people searches belong to the outgoing account too.
   'na-pivo-search-recent-v1',
   'na-pivo-pending-invite-code',
@@ -234,6 +247,14 @@ async function persistedPrivateSettingsAreClear(): Promise<boolean> {
 }
 
 /** Final synchronous pass: no stale hydration/action can outlive strict clear. */
+function resetWearableMemory(): void {
+  useWearableTargetStore.setState({
+    manualTarget: null, nearestTarget: null, nearbyPubs: [],
+    lastNearbyRefreshAt: null, menuPubKey: null, menuDrinks: [],
+  });
+  useFocusedPubStore.setState({ pub: null });
+}
+
 export function resetPrivateAccountMemory(): void {
   suppressPrivatePersistenceDuringMemoryReset(() => {
     cancelDrinksHistorySeed();
@@ -250,7 +271,8 @@ export function resetPrivateAccountMemory(): void {
       startedAt: null,
       games: [],
     });
-    useTallyStore.setState({ current: null, history: [] });
+    resetWearableMemory();
+    useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] });
     usePubRatingsStore.setState({ ratings: {} });
     resetPubRatingsPullGate();
     usePubAmenitiesStore.setState({ votes: {} });
@@ -291,6 +313,7 @@ const PRIVATE_STORE_REHYDRATION_REGISTRY: readonly {
   };
 }[] = [
   { storageKey: 'na-pivo-tally', store: useTallyStore },
+  { storageKey: MOBILE_WEARABLE_TARGET_STORAGE_KEY, store: useWearableTargetStore },
   { storageKey: 'na-pivo-pub-ratings', store: usePubRatingsStore },
   { storageKey: 'na-pivo-pub-amenities', store: usePubAmenitiesStore },
   { storageKey: 'na-pivo-community', store: useCommunityStore },
@@ -364,6 +387,8 @@ export async function clearLocalPrivateAccountData(options?: {
   /** Captured owner whose credential remains installed until this succeeds. */
   outgoingSession?: AccountSession | null;
 }): Promise<PrivateAccountDataClearResult> {
+  beginMobileWearableAccountBoundary();
+  const wearableSyncIdle = waitForMobileWearableSyncIdle();
   const tasks: Promise<ClearTaskResult>[] = [];
   const start = (operation: string, action: () => unknown) => {
     // These synchronous resets invalidate memory; the strict pass below owns
@@ -376,6 +401,8 @@ export async function clearLocalPrivateAccountData(options?: {
   // isolated so one broken adapter cannot stop the remaining private stores
   // from invalidating. The caller keeps A's credential installed until the
   // discriminated result confirms the durable pass below.
+  start('wearable_snapshot', () => clearWearableSnapshot());
+  start('wearable_target', () => resetWearableMemory());
   start('cancel_drinks_history_seed', () => cancelDrinksHistorySeed());
   start('beer_photos_store', () =>
     clearBeerPhotosAccountData(
@@ -395,7 +422,7 @@ export async function clearLocalPrivateAccountData(options?: {
   start('party_evening_state', () => clearPartyEveningState());
   start('party_games_socket', () => usePartyGamesStore.getState().disconnect());
   start('live_party_state', () => useLivePartyStore.getState().end());
-  start('tally_state', () => useTallyStore.setState({ current: null, history: [] }));
+  start('tally_state', () => useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] }));
   start('pub_ratings_state', () =>
     runWithoutPubRatingsSync(() => {
       usePubRatingsStore.setState({ ratings: {} });
@@ -448,6 +475,13 @@ export async function clearLocalPrivateAccountData(options?: {
   }
   start('settings_private_fields', () => clearPersistedPrivateSettings());
 
+  // Commands captured before the boundary must settle before the final pass.
+  await wearableSyncIdle;
+  await Promise.all(tasks);
+  start('wearable_snapshot_final', () => clearWearableSnapshot());
+  start('wearable_drinks_final', () => clearDrinksQueue());
+  start('wearable_deletes_final', () => clearDeleteDrinksQueue());
+  start('wearable_visits_final', () => clearVisitsQueue());
   const helperResults = await Promise.all(tasks);
   const failedOperations = helperResults
     .filter((result) => !result.ok)

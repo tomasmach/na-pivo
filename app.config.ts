@@ -98,6 +98,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     'expo-router',
     'expo-font',
     'expo-asset',
+    ['@bacons/apple-targets', { root: './wearables/apple-watch' }],
     [
       'react-native-maps',
       {
@@ -175,6 +176,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         faceIDPermission: false,
       },
     ],
+    './plugins/with-wearable-backup-rules',
     // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
     // entitlement; requires enabling the capability on the App ID in the
     // Apple Developer portal and a dev-client rebuild.
@@ -229,6 +231,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     );
   }
 
+  plugins.push('./plugins/with-watch-device-family');
+
   const expoConfig: ExpoConfig = {
     ...config,
     name: 'Na pivo',
@@ -259,10 +263,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
+      appleTeamId: 'T5W2WM23A6',
       icon: './assets/images/icon.png',
       supportsTablet: false,
       usesAppleSignIn: true,
       associatedDomains: ['applinks:na-pivo.cz'],
+      entitlements: {
+        'com.apple.security.application-groups': ['group.com.tomasmach.na-pivo'],
+      },
       // Apple privacy manifest. Collected-data mapping mirrors what the app
       // actually sends (see src/privacy/PrivacyScreen.tsx copy and the
       // telemetry whitelist in src/data/telemetryClient.ts). No tracking:

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearWearableSnapshot } from 'na-pivo-wearable-bridge';
 
 import { clearLeaderboardsCache } from '../leaderboardsClient';
 import { clearPhotoContestCache } from '../photoContestClient';
@@ -19,8 +20,12 @@ import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
+import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useWearableTargetStore } from '@/stores/wearableTargetStore';
+import { beginMobileWearableSyncOperation } from '@/wearables/mobileSyncBoundary';
+
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartyEveningStore } from '@/stores/partyEveningStore';
 import { usePartyGamesStore } from '@/stores/partyGamesStore';
@@ -33,6 +38,10 @@ import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 jest.mock('@react-native-async-storage/async-storage', () =>
   jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+
+jest.mock('na-pivo-wearable-bridge', () => ({
+  clearWearableSnapshot: jest.fn(async () => undefined),
+}));
 
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
@@ -103,6 +112,9 @@ const PRIVATE_KEYS = [
   'na-pivo-pub-amenities-queue',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-wearable-phone-shadow-v1',
+  'na-pivo-wearable-phone-shadows-v2',
+  'na-pivo-wearable-target-v1',
   'na-pivo-visits-map-snapshot',
   'na-pivo-friends-queue',
   'na-pivo-friends-dashboard',
@@ -125,6 +137,9 @@ const PRIVATE_KEYS = [
   'na-pivo-pub-reminder-geofences',
 ];
 
+const mockClearWearableSnapshot =
+  clearWearableSnapshot as jest.MockedFunction<typeof clearWearableSnapshot>;
+
 function session(overrides: Partial<TallySession> = {}): TallySession {
   return {
     clientId: 'visit-1',
@@ -145,6 +160,7 @@ function session(overrides: Partial<TallySession> = {}): TallySession {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockClearWearableSnapshot.mockResolvedValue(undefined);
   await AsyncStorage.clear();
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
@@ -155,6 +171,8 @@ beforeEach(async () => {
     reportedPubIds: [],
     reportedCacheKeys: [],
   });
+  useWearableTargetStore.getState().reset();
+  useFocusedPubStore.setState({ pub: null });
   useSettingsStore.setState({
     homePoint: null,
     navigationProvider: 'google',
@@ -220,6 +238,22 @@ it('clears local private stores and private sync queue storage', async () => {
     reportedPubIds: ['mapy:test'],
     reportedCacheKeys: ['u2fkbn1x'],
   });
+  useWearableTargetStore.setState({
+    manualTarget: {
+      pubKey: 'u2fkbn1x',
+      name: 'U Testu',
+      latitude: 50.0812,
+      longitude: 14.4182,
+    },
+  });
+  useFocusedPubStore.setState({
+    pub: {
+      cacheKey: 'u2fkbn1x',
+      name: 'U Testu',
+      lat: 50.0812,
+      lng: 14.4182,
+    },
+  });
   useLivePartyStore.getState().start('U Tajného stolu', 'Ležák', 'u2fkbjgx');
   usePartyEveningStore.setState({
     confirmedIdentity: {
@@ -282,8 +316,41 @@ it('clears local private stores and private sync queue storage', async () => {
     }),
   );
 
-  await expect(clearLocalPrivateAccountData()).resolves.toEqual({ ok: true });
+  const finishInFlightWearableCommand = beginMobileWearableSyncOperation();
+  let clearSettled = false;
+  const clearPromise = clearLocalPrivateAccountData().then(() => {
+    clearSettled = true;
+  });
+  const wearableQueueKeys = [
+    'na-pivo-drinks-queue',
+    'na-pivo-delete-drinks-queue',
+    'na-pivo-visits-queue',
+  ];
+  let firstClearValues: (string | null)[] = [];
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    firstClearValues = await Promise.all(
+      wearableQueueKeys.map((key) => AsyncStorage.getItem(key)),
+    );
+    if (firstClearValues.every((value) => value === null || value === '[]')) break;
+    await Promise.resolve();
+  }
+  expect(firstClearValues.every((value) => value === null || value === '[]')).toBe(true);
+  expect(clearSettled).toBe(false);
 
+  // Model a pre-boundary command that acquired a queue lock before cleanup and
+  // completed its durable write after the first clear.
+  await Promise.all([
+    AsyncStorage.setItem('na-pivo-drinks-queue', JSON.stringify([{ late: true }])),
+    AsyncStorage.setItem(
+      'na-pivo-delete-drinks-queue',
+      JSON.stringify(['late-drink']),
+    ),
+    AsyncStorage.setItem('na-pivo-visits-queue', JSON.stringify([{ late: true }])),
+  ]);
+  finishInFlightWearableCommand();
+  await clearPromise;
+
+  expect(mockClearWearableSnapshot).toHaveBeenCalledTimes(2);
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
   expect(useCommunityStore.getState().overrides).toEqual({});
@@ -292,6 +359,8 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(usePubStore.getState().revealedPub).toBeNull();
   expect(usePubStore.getState().reportedPubIds).toEqual([]);
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
+  expect(useWearableTargetStore.getState().manualTarget).toBeNull();
+  expect(useFocusedPubStore.getState().pub).toBeNull();
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
   expect(useLivePartyStore.getState().live).toBe(false);
@@ -601,7 +670,7 @@ it('migration writes current raw versions for tally and settings behind blocked 
     const settingsRaw = JSON.parse(
       (await AsyncStorage.getItem('na-pivo-settings')) as string,
     ) as { version?: number };
-    expect(tallyRaw.version).toBe(1);
+    expect(tallyRaw.version).toBe(2);
     expect(settingsRaw.version).toBe(2);
   } finally {
     setPrivateAccountDeletionRecoveryBlocked(false);

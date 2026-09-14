@@ -54,6 +54,7 @@ describe('buildBeerEveningLiveActivityProps', () => {
       openCounterLabel: t.liveActivity.openCounter,
       repeatBeerName: 'Plzeň 12°',
       repeatBeerPriceCzk: 65,
+      repeatMetadataLabel: 'pivo · 65 Kč',
     });
   });
 

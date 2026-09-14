@@ -87,7 +87,7 @@ export type VisitSyncResult = VisitEnqueueResult | 'skipped';
 
 export function syncVisit(
   session: TallySession | null,
-  updatedAt?: string,
+  updatedAt = new Date().toISOString(),
   partyCode?: string | null,
   options?: { deliver?: boolean },
 ): Promise<VisitSyncResult> {
@@ -103,7 +103,7 @@ export function syncVisit(
 /** Enqueue a delete for a removed evening. The result exposes storage failure and never throws. */
 export function deleteVisitByClientId(clientId: string): Promise<VisitSyncResult> {
   if (!clientId) return Promise.resolve('skipped');
-  return enqueueVisitOp({ op: 'delete', clientId }).catch(() => 'storage-error');
+  return enqueueVisitOp({ op: 'delete', clientId, updatedAt: new Date().toISOString() }).catch(() => 'storage-error');
 }
 
 /**

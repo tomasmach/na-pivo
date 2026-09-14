@@ -16,6 +16,14 @@ expo-env.d.ts.bak
 /android/
 # Gradle build output of local Expo native modules (e.g. beer-live-activity).
 modules/*/android/build/
+/wearables/wear-os/.gradle/
+/wearables/wear-os/.kotlin/
+/wearables/wear-os/.idea/
+/wearables/wear-os/local.properties
+/wearables/wear-os/**/build/
+/wearables/shared/mobile-bridge/android/.gradle/
+/wearables/shared/mobile-bridge/android/.kotlin/
+/wearables/shared/mobile-bridge/android/build/
 *.xcworkspace
 *.xcodeproj
 *.jks

@@ -26,6 +26,11 @@
  *   - 'ok' (2xx)              → reached backend → drop from queue.
  *   - 'permanent-error' (4xx) → will never succeed → drop from queue.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
+ *   - 'consent-blocked' (428) → keep, like 'retry', but the client stops sending:
+ *     missing UGC consent is a user decision, not a transport hiccup, so
+ *     retrying on each launch/foreground only burned requests and logged
+ *     amenity_vote_failed forever. The consent sheet flushes the queue the
+ *     moment the user accepts. Retractions keep flowing meanwhile.
  *
  * We do NOT flush per enqueue: enqueue debounces a single flush (~250ms microtask)
  * after the subscriber settles, so mapping one pub doesn't fire 16 serial 8s-timeout
@@ -120,12 +125,21 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   // content changed under us is kept regardless of the stale result.
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
+  let consentBlocked = false;
   for (const item of queue) {
     if (signal.aborted) break;
+    // Once the server has refused one public vote for missing consent, every
+    // other public vote in this pass gets the same answer — one refused request
+    // per flush, not one per vote. A RETRACTION still goes out: the server lets
+    // a null-only batch through without consent, and leaving it queued would
+    // keep a vote the user just deleted public.
+    if (consentBlocked && item.payload.value !== null) continue;
     const key = dedupKey(item);
     attempted.set(key, signature(item));
     const result = await deliver(item, signal);
-    if (result !== 'retry') settled.add(key);
+    // 'consent-blocked' keeps the vote exactly like 'retry'.
+    if (result === 'consent-blocked') consentBlocked = true;
+    else if (result !== 'retry') settled.add(key);
   }
 
   await runLocked(async () => {

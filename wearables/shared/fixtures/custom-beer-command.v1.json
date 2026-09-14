@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "messageId": "39f155c1-a734-47b5-bdd3-c86427738ef0",
+  "accountEpoch": "83d78467-da0d-4bed-9d75-d99a5e50c63b",
+  "actorId": "wearos-0e0f79e2",
+  "actorKind": "wearos",
+  "actorSequence": 10,
+  "baseRevision": 18,
+  "sentAt": "2026-07-30T21:35:00+02:00",
+  "kind": "command",
+  "payload": {
+    "command": {
+      "type": "add_drink",
+      "eveningId": "9277be1d-cd42-4dd0-af57-1414e1c96eb6",
+      "drink": {
+        "id": "6041778d-3a81-44ec-a0ad-e428ce795330",
+        "name": "Speciál ze spilky",
+        "drinkType": "beer",
+        "volumeMl": 450,
+        "priceCzk": 72,
+        "servingType": "draft",
+        "recordedAt": "2026-07-30T21:35:00+02:00"
+      }
+    }
+  }
+}

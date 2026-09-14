@@ -100,6 +100,7 @@ from pubs.models import (
     FriendPubActivityRecipient,
     Friendship,
     NightRound,
+    OfflineMutationTombstone,
     OneTimeToken,
     PartyEvening,
     PartyEveningCode,
@@ -163,6 +164,28 @@ class ExternalFeedbackCleanupError(Exception):
 
 class AccountPurgeConflictError(Exception):
     """A shared tree changed while the purge acquired its global lock scope."""
+
+
+# PostgreSQL states that mean "another writer got here first, retry":
+# 55P03 lock_not_available (what NOWAIT raises) and 40P01 deadlock_detected.
+_ROW_LOCK_CONFLICT_SQLSTATES = frozenset({"55P03", "40P01"})
+
+
+def is_row_lock_conflict(exc: BaseException) -> bool:
+    """True only for a losing race for a row lock, not for any database error.
+
+    ``select_for_update(nowait=True)`` is wrapped in ``except DatabaseError``
+    below so a genuine conflict becomes a clean 409 instead of a deadlock. That
+    net is wider than the intent: a pool timeout arrives as
+    ``psycopg_pool.PoolTimeout``, which is an ``OperationalError`` and therefore
+    a ``DatabaseError`` too. Reporting an overloaded pool as "someone else
+    changed your account, log in again" is exactly the kind of confident lie
+    that once left somebody locked out, so anything that is not a lock conflict
+    has to keep its own failure mode.
+    """
+
+    # Django re-raises backend errors with the driver exception as __cause__.
+    return getattr(exc.__cause__, "sqlstate", None) in _ROW_LOCK_CONFLICT_SQLSTATES
 
 
 _LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
@@ -2222,6 +2245,8 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
                     .order_by("pk")
                 }
         except DatabaseError as exc:
+            if not is_row_lock_conflict(exc):
+                raise
             raise AccountError(
                 gettext("Účet se mezitím změnil. Zkus přihlášení znovu."),
                 code="auth",
@@ -2296,9 +2321,53 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubRating, source=source, target=target, unique_fields=("cache_key",)
     )
+    # Visits are mutable. Preserve the newer revision before applying deletion
+    # markers, otherwise an old target row can discard a resumed source visit.
+    for visit in PubVisit.objects.filter(account=source):
+        previous = PubVisit.objects.filter(account=target, client_id=visit.client_id).first()
+        if previous is None:
+            continue
+        if visit.client_updated_at > previous.client_updated_at:
+            if visit.closed_at is None and previous.closed_at is not None:
+                visit.closed_at = previous.closed_at
+                visit.save(update_fields=["closed_at"])
+            previous.delete()
+        elif previous.closed_at is None and visit.closed_at is not None:
+            previous.closed_at = visit.closed_at
+            previous.save(update_fields=["closed_at"])
     _delete_or_move_account_rows(
         PubVisit, source=source, target=target, unique_fields=("client_id",)
     )
+    # A merged account must retain deletions as well as additions. Conflicting
+    # visit markers keep the newest revision; drink UUIDs are immutable.
+    for marker in OfflineMutationTombstone.objects.filter(account=source):
+        existing, _ = OfflineMutationTombstone.objects.get_or_create(
+            account=target,
+            resource=marker.resource,
+            client_id=marker.client_id,
+            defaults={"client_updated_at": marker.client_updated_at},
+        )
+        if marker.client_updated_at is not None and (
+            existing.client_updated_at is None
+            or marker.client_updated_at > existing.client_updated_at
+        ):
+            existing.client_updated_at = marker.client_updated_at
+            existing.save(update_fields=["client_updated_at"])
+    OfflineMutationTombstone.objects.filter(account=source).delete()
+    markers = OfflineMutationTombstone.objects.filter(account=target)
+    DrinkLog.objects.filter(
+        account=target,
+        client_id__in=markers.filter(resource=OfflineMutationTombstone.Resource.DRINK).values("client_id"),
+    ).delete()
+    for marker in markers.filter(
+        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+        client_updated_at__isnull=False,
+    ):
+        PubVisit.objects.filter(
+            account=target,
+            client_id=marker.client_id,
+            client_updated_at__lte=marker.client_updated_at,
+        ).delete()
     _merge_published_nights(source, target)
     _replace_published_night_reference(
         "participant_ids",
@@ -3586,6 +3655,8 @@ def _lock_account_purge_scope(account_id: int) -> Account | None:
                     .order_by("pk")
                 }
         except DatabaseError as exc:
+            if not is_row_lock_conflict(exc):
+                raise
             raise AccountPurgeConflictError from exc
         if set(newly_locked) != missing_ids:
             raise AccountPurgeConflictError

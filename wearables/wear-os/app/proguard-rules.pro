@@ -1,0 +1,3 @@
+-keep class com.google.android.gms.wearable.** { *; }
+-keep class androidx.wear.watchface.complications.** { *; }
+-dontwarn org.json.**

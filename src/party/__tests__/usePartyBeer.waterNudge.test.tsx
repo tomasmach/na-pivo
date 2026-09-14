@@ -51,8 +51,10 @@ jest.mock('@/stores/toastStore', () => ({
 const TestRenderer = jest.requireActual('react-test-renderer');
 const { act } = TestRenderer;
 
-function mountAdd(): (name: string, options?: Record<string, unknown>) => Promise<void> {
-  let add!: (name: string, options?: Record<string, unknown>) => void;
+type AddOptions = Parameters<ReturnType<typeof usePartyBeer>['add']>[1];
+
+function mountAdd(): (name: string, options?: Omit<AddOptions, 'source'>) => Promise<void> {
+  let add!: ReturnType<typeof usePartyBeer>['add'];
   function Probe() {
     add = usePartyBeer().add;
     return null;
@@ -66,7 +68,7 @@ function mountAdd(): (name: string, options?: Record<string, unknown>) => Promis
     mockSession.drinks.push({
       drinkType: (options?.drinkType as string | undefined) ?? 'beer',
     });
-    await add(name, options);
+    await add(name, { source: 'hub', ...options });
   };
 }
 

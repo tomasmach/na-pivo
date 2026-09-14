@@ -182,6 +182,7 @@ from pubs.models import (
     FriendPubActivityRecipient,
     Friendship,
     NightRound,
+    OfflineMutationTombstone,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
@@ -298,6 +299,7 @@ from .serializers import (
     PubReportRequestSerializer,
     PubReportSerializer,
     PubsNearQuerySerializer,
+    PubVisitDeleteRequestSerializer,
     PubVisitRequestSerializer,
     PushDeviceDeleteSerializer,
     PushDeviceRequestSerializer,
@@ -422,12 +424,52 @@ def _idempotent_delete(queryset, *, scope: str, key_label: str, key_value) -> Re
         deleted_count, _ = queryset.delete()
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "%s: unexpected error deleting %s %r: %s",
+            "%s: unexpected error deleting offline %s (%s)",
             scope,
             key_label,
-            key_value,
-            exc,
-            exc_info=True,
+            type(exc).__name__,
+        )
+        return _internal_error()
+    return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+
+
+def _idempotent_delete_with_tombstone(
+    queryset,
+    *,
+    account: Account,
+    resource: str,
+    scope: str,
+    key_label: str,
+    key_value,
+) -> Response:
+    """Atomically delete a private offline fact and retain its remove-wins UUID.
+
+    Locking the account row matches DrinksView's POST serialization and gives
+    PubVisit POST the same race-free boundary: either POST wins before DELETE,
+    or DELETE's tombstone makes the later POST a successful no-op.
+    """
+    try:
+        with transaction.atomic():
+            locked_account = Account.objects.select_for_update().filter(
+                pk=account.pk, status=Account.Status.ACTIVE
+            ).first()
+            if locked_account is None:
+                return Response(
+                    {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            deleted_count, _ = queryset.delete()
+            OfflineMutationTombstone.objects.get_or_create(
+                account=locked_account,
+                resource=resource,
+                client_id=key_value,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "%s: unexpected error deleting offline %s (%s)",
+            scope,
+            key_label,
+            type(exc).__name__,
         )
         return _internal_error()
     return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
@@ -2478,6 +2520,9 @@ class DrinksView(APIView):
             items = [
                 {
                     "client_id": str(drink.client_id),
+                    "evening_client_id": (
+                        str(drink.evening_client_id) if drink.evening_client_id else None
+                    ),
                     "cache_key": drink.cache_key,
                     "name": drink.name,
                     "lat": drink.lat,
@@ -2542,6 +2587,32 @@ class DrinksView(APIView):
                         {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
+                tombstoned = OfflineMutationTombstone.objects.filter(
+                    account=account,
+                    resource=OfflineMutationTombstone.Resource.DRINK,
+                    client_id=data["client_id"],
+                ).exists()
+                if tombstoned:
+                    # Additive `removed` lets new clients explain the no-op.
+                    # Released clients already treat accepted+duplicate 200 as
+                    # success and dequeue the stale payload.
+                    DrinkLog.objects.filter(
+                        account=account,
+                        client_id=data["client_id"],
+                    ).delete()
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": True,
+                            "removed": True,
+                            "cache_key": cache_key,
+                            "place_context": data["place_context"],
+                            "serving_type": beer["serving_type"],
+                            "menu_updated": False,
+                            "pivar": _pivar_envelope(account, 0),
+                        },
+                        status=status.HTTP_200_OK,
+                    )
                 drink = DrinkLog.objects.filter(
                     account=account,
                     client_id=data["client_id"],
@@ -2571,6 +2642,7 @@ class DrinksView(APIView):
                 row_kwargs = dict(
                     account=account,
                     client_id=data["client_id"],
+                    evening_client_id=data.get("evening_client_id"),
                     cache_key=cache_key,
                     name=data.get("name") or "",
                     lat=data.get("lat") if is_pub else None,
@@ -2660,10 +2732,12 @@ class DrinksView(APIView):
                 }
 
                 menu_updated = False
-                # Quick-add party actions intentionally know the pub and beer,
-                # but not always its current price. Preserve that private drink
-                # without inventing a price or mutating the community menu.
-                if may_publish and is_pub and is_beer and beer.get("price_czk") is not None:
+                # Custom volumes and unpriced quick-adds stay private.
+                if (
+                    may_publish and is_pub and is_beer
+                    and beer.get("price_czk") is not None
+                    and beer.get("volume_ml") in ALLOWED_BEER_VOLUMES_ML
+                ):
                     menu_updated = self._merge_into_community(
                         cache_key,
                         {
@@ -2805,10 +2879,8 @@ class DrinksView(APIView):
                     )
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "drinks: unexpected error updating drink %r: %s",
-                client_id,
-                exc,
-                exc_info=True,
+                "drinks: unexpected error updating drink (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
@@ -2822,8 +2894,10 @@ class DrinksView(APIView):
         # menu (PubCommunityData) is deliberately left untouched — the price was
         # real community data and stays. Pivař XP is a monotonic lifetime score
         # and is deliberately not rolled back here; hard daily caps bound abuse.
-        return _idempotent_delete(
+        return _idempotent_delete_with_tombstone(
             DrinkLog.objects.filter(account=request.user, client_id=client_id),
+            account=request.user,
+            resource=OfflineMutationTombstone.Resource.DRINK,
             scope="drinks",
             key_label="drink",
             key_value=client_id,
@@ -3611,6 +3685,26 @@ class PubVisitView(APIView):
                         {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
                         status=status.HTTP_409_CONFLICT,
                     )
+                tombstone = OfflineMutationTombstone.objects.filter(
+                    account=account,
+                    resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+                    client_id=data["client_id"],
+                ).first()
+                if (
+                    tombstone is not None
+                    and tombstone.client_updated_at is not None
+                    and data["updated_at"] <= tombstone.client_updated_at
+                ):
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": True,
+                            "cache_key": cache_key,
+                            "applied": False,
+                            "removed": True,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
                 existing = (
                     PubVisit.objects.select_for_update()
                     .filter(account=account, client_id=data["client_id"])
@@ -3654,17 +3748,19 @@ class PubVisitView(APIView):
                         "external_id": data.get("external_id") or "",
                         "started_at": data["started_at"],
                         "ended_at": data.get("ended_at"),
-                        "closed_at": data.get("closed_at"),
+                        # Omitted by released clients; explicit null resumes
+                        # a timeout-archived session in current clients.
+                        "closed_at": data.get(
+                            "closed_at", existing.closed_at if existing is not None else None
+                        ),
                         "client_updated_at": data["updated_at"],
                         "party_evening_id": party_evening_id,
                     },
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "pub-visits: unexpected error saving visit %r: %s",
-                data.get("client_id"),
-                exc,
-                exc_info=True,
+                "pub-visits: unexpected error saving visit (%s)",
+                type(exc).__name__,
             )
             return _internal_error()
 
@@ -3679,14 +3775,42 @@ class PubVisitView(APIView):
         )
 
     def delete(self, request: Request, client_id) -> Response:
-        # Idempotent delete scoped to the account (a foreign / missing / already
-        # deleted client_id matches nothing → deleted: false, never a 404).
-        return _idempotent_delete(
-            PubVisit.objects.filter(account=request.user, client_id=client_id),
-            scope="pub-visits",
-            key_label="visit",
-            key_value=client_id,
-        )
+        serializer = PubVisitDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        revision = serializer.validated_data.get("updated_at")
+        try:
+            with transaction.atomic():
+                account = Account.objects.select_for_update().filter(
+                    pk=request.user.pk, status=Account.Status.ACTIVE
+                ).first()
+                if account is None:
+                    return Response(
+                        {"detail": gettext("Účet se mezitím změnil."), "code": "auth"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                visits = PubVisit.objects.filter(account=account, client_id=client_id)
+                existing = visits.first()
+                # The counter keeps a visit UUID after removing its last drink.
+                # A deletion wins against older writes, not future additions.
+                if revision is None and existing is not None:
+                    revision = existing.client_updated_at
+                if revision is not None:
+                    marker, _ = OfflineMutationTombstone.objects.get_or_create(
+                        account=account,
+                        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+                        client_id=client_id,
+                    )
+                    if marker.client_updated_at is None or revision > marker.client_updated_at:
+                        marker.client_updated_at = revision
+                        marker.save(update_fields=["client_updated_at"])
+                    visits = visits.filter(client_updated_at__lte=marker.client_updated_at)
+                # Legacy DELETE of a missing UUID carries no revision. Retain its
+                # successful no-op instead of permanently banning that visit.
+                deleted_count, _ = visits.delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-visits: unexpected error deleting visit (%s)", type(exc).__name__)
+            return _internal_error()
+        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
 
 
 class MyStatsView(APIView):
@@ -9987,9 +10111,16 @@ class PubLocationSuggestView(_PubLocationLookupBaseView):
                 )
         except GooglePlacesUnavailableError as exc:
             logger.warning(
-                "pubs-suggest: Google Places unavailable: %s",
+                "pubs-suggest: Google Places unavailable: %s: %s",
                 type(exc).__name__,
+                exc,
             )
+            return Response({"items": local_items}, status=status.HTTP_200_OK)
+        except Exception:
+            # The Google leg is a fallback on top of the local directory. An
+            # unexpected failure there (budget row, DNS, library error) must
+            # degrade to local results, never 500 the whole autocomplete.
+            logger.exception("pubs-suggest: Google Places fallback failed")
             return Response({"items": local_items}, status=status.HTTP_200_OK)
 
         seen_names = {
@@ -10060,9 +10191,16 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
                 )
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
-                "pubs-geocode: Google lookup unavailable: %s",
+                "pubs-geocode: Google lookup unavailable: %s: %s",
                 type(exc).__name__,
+                exc,
             )
+            return Response(
+                {"detail": "Location lookup is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception("pubs-geocode: Google lookup failed")
             return Response(
                 {"detail": "Location lookup is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -10123,9 +10261,16 @@ class PubLocationReverseGeocodeView(APIView):
                 candidate = source.reverse_geocode(lat=data["lat"], lng=data["lng"])
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
-                "pubs-reverse-geocode: Google lookup unavailable: %s",
+                "pubs-reverse-geocode: Google lookup unavailable: %s: %s",
                 type(exc).__name__,
+                exc,
             )
+            return Response(
+                {"detail": "Location lookup is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception("pubs-reverse-geocode: Google lookup failed")
             return Response(
                 {"detail": "Location lookup is temporarily unavailable."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -10658,6 +10803,15 @@ def _export_account_data(account: Account) -> dict:
             if credential is not None
             else None
         ),
+        "offline_mutation_tombstones": [
+            {
+                "resource": row.resource,
+                "client_id": str(row.client_id),
+                "deleted_at": _iso(row.deleted_at),
+                "client_updated_at": _iso(row.client_updated_at),
+            }
+            for row in account.offline_mutation_tombstones.all()
+        ],
         "beer_photo_deletion_tombstones": [
             {
                 "client_id": str(row.client_id),

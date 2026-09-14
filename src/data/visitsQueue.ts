@@ -36,13 +36,15 @@ const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 /** One pending sync operation, keyed (and deduped) by client_id. */
 export type VisitQueueItem =
-  { op: 'upsert'; clientId: string; entry: VisitEntry } | { op: 'delete'; clientId: string };
+  { op: 'upsert'; clientId: string; entry: VisitEntry } | { op: 'delete'; clientId: string; updatedAt?: string };
 export type VisitEnqueueResult = 'queued' | 'delivered' | 'storage-error';
 
 function isQueueItem(value: unknown): value is VisitQueueItem {
   const i = value as VisitQueueItem;
   if (!i || typeof i.clientId !== 'string' || !UUID_PATTERN.test(i.clientId)) return false;
-  if (i.op === 'delete') return true;
+  if (i.op === 'delete') return i.updatedAt === undefined || (
+    typeof i.updatedAt === 'string' && Number.isFinite(Date.parse(i.updatedAt))
+  );
   if (i.op === 'upsert') {
     const e = (i as { entry?: VisitEntry }).entry;
     return (
@@ -90,7 +92,9 @@ const runMutation = createQueueLock();
 const volatilePending = new Map<string, VisitQueueItem>();
 
 async function deliver(item: VisitQueueItem): Promise<SubmitVisitResult> {
-  return item.op === 'upsert' ? submitVisit(item.entry) : deleteVisit(item.clientId);
+  return item.op === 'upsert' ? submitVisit(item.entry) : item.updatedAt
+    ? deleteVisit(item.clientId, undefined, item.updatedAt)
+    : deleteVisit(item.clientId);
 }
 
 /** Stable content signature for an op, used to tell whether the queued op for a
@@ -146,6 +150,11 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * for the same client_id (last write wins). The result keeps a storage failure
  * distinct from a durable retry and a settled delivery. Never throws.
  */
+/** Persist before acknowledging an external durable command. */
+export function ensureVisitOpQueued(item: VisitQueueItem): Promise<VisitEnqueueResult> {
+  return enqueueVisitOp(item, { deliver: false });
+}
+
 export async function enqueueVisitOp(
   item: VisitQueueItem,
   options?: { deliver?: boolean },

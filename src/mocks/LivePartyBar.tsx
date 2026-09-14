@@ -115,7 +115,7 @@ export function LivePartyBar() {
       </Pressable>
 
       <Pressable
-        onPress={() => beer.add(houseBeer)}
+        onPress={() => void beer.add(houseBeer, { source: 'mini_bar' })}
         style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
         accessibilityRole="button"
         accessibilityLabel={t.liveParty.a11yAddBeer}

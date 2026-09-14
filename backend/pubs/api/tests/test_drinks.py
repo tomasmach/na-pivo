@@ -26,6 +26,7 @@ from pubs.models import (
     Account,
     BeerBrand,
     DrinkLog,
+    OfflineMutationTombstone,
     PubBeerBrand,
     PubBeerProduct,
     PubCommunityData,
@@ -202,6 +203,7 @@ def test_get_returns_only_the_accounts_authoritative_drink_snapshot(client):
         "drinks": [
             {
                 "client_id": _CLIENT_ID,
+                "evening_client_id": None,
                 "cache_key": _KEY,
                 "name": _NAME,
                 "lat": _LAT,
@@ -235,7 +237,7 @@ def test_log_validation_errors(client):
 
     bad_volume = client.post(
         "/v1/drinks",
-        data=_payload(beer={"name": "Pilsner", "price_czk": 50, "volume_ml": 250}),
+        data=_payload(beer={"name": "Pilsner", "price_czk": 50, "volume_ml": 5}),
         format="json",
         **_auth(token),
     )
@@ -475,7 +477,7 @@ def test_log_wine_is_private_and_skips_beer_catalog(client):
 
 
 @pytest.mark.django_db
-def test_log_rejects_unknown_type_and_invalid_type_specific_volumes(client):
+def test_log_rejects_unknown_type_and_invalid_shot_volume(client):
     token = _register(client)
     unknown = client.post(
         "/v1/drinks",
@@ -483,7 +485,7 @@ def test_log_rejects_unknown_type_and_invalid_type_specific_volumes(client):
         format="json",
         **_auth(token),
     )
-    beer_shot_volume = client.post(
+    custom_small_beer = client.post(
         "/v1/drinks",
         data=_payload(client_id="fdb4ab26-7393-4c33-a0bd-2a897d7c5c31", beer={"name": "Pivo", "price_czk": 50, "volume_ml": 40}),
         format="json",
@@ -497,9 +499,11 @@ def test_log_rejects_unknown_type_and_invalid_type_specific_volumes(client):
     )
 
     assert unknown.status_code == status.HTTP_400_BAD_REQUEST
-    assert beer_shot_volume.status_code == status.HTTP_400_BAD_REQUEST
+    assert custom_small_beer.status_code == status.HTTP_201_CREATED
     assert huge_shot.status_code == status.HTTP_400_BAD_REQUEST
-    assert DrinkLog.objects.count() == 0
+    assert DrinkLog.objects.count() == 1
+    assert DrinkLog.objects.get().volume_ml == 40
+    assert PubCommunityData.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -1017,6 +1021,10 @@ def test_delete_removes_logged_drink(client):
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": True}
     assert DrinkLog.objects.filter(client_id=_CLIENT_ID).count() == 0
+    assert OfflineMutationTombstone.objects.filter(
+        resource=OfflineMutationTombstone.Resource.DRINK,
+        client_id=_CLIENT_ID,
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -1025,6 +1033,43 @@ def test_delete_unknown_client_id_is_idempotent_success(client):
     resp = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": False}
+    assert OfflineMutationTombstone.objects.filter(
+        resource=OfflineMutationTombstone.Resource.DRINK,
+        client_id=_CLIENT_ID,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_stale_post_after_delete_is_successful_remove_wins_noop(client):
+    token = _register(client)
+    created = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+    menu_before = PubCommunityData.objects.get(cache_key=_KEY).beers
+
+    deleted = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert deleted.json() == {"deleted": True}
+    stale = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    assert stale.status_code == status.HTTP_200_OK
+    assert stale.json()["accepted"] is True
+    assert stale.json()["duplicate"] is True
+    assert stale.json()["removed"] is True
+    assert stale.json()["menu_updated"] is False
+    assert DrinkLog.objects.filter(client_id=_CLIENT_ID).count() == 0
+    assert PubCommunityData.objects.get(cache_key=_KEY).beers == menu_before
+
+
+@pytest.mark.django_db
+def test_delete_before_first_post_is_remove_wins(client):
+    token = _register(client)
+    deleted = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert deleted.json() == {"deleted": False}
+
+    delayed = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert delayed.status_code == status.HTTP_200_OK
+    assert delayed.json()["removed"] is True
+    assert DrinkLog.objects.count() == 0
+    assert PubCommunityData.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -1596,3 +1641,46 @@ def test_patch_pub_drink_still_updates_public_indexes(scenario, client):
         PubBeerProduct.objects.get(cache_key=_KEY, product_key="velkopopovicky-kozel-11")
     )
     assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active is False
+
+
+@pytest.mark.django_db
+def test_custom_beer_volume_stays_private_and_skips_community_menu(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/drinks",
+        data=_payload(beer={"name": "Speciál ze spilky", "price_czk": 72, "volume_ml": 450}),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["menu_updated"] is False
+    drink = DrinkLog.objects.get()
+    assert drink.volume_ml == 450
+    assert drink.beer_name == "Speciál ze spilky"
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubPriceIndex.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_optional_evening_client_id_round_trips(client):
+    token = _register(client)
+    evening_id = "9277be1d-cd42-4dd0-af57-1414e1c96eb6"
+    created = client.post(
+        "/v1/drinks",
+        data=_payload(evening_client_id=evening_id),
+        format="json",
+        **_auth(token),
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+    assert str(DrinkLog.objects.get().evening_client_id) == evening_id
+
+    response = client.get("/v1/drinks", **_auth(token))
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["drinks"][0]["evening_client_id"] == evening_id
+
+
+# ---------------------------------------------------------------------------
+# Happy path + community-menu merge
+# ---------------------------------------------------------------------------

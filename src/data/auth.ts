@@ -1954,7 +1954,7 @@ export async function acceptUgcConsent(version: string): Promise<UgcConsentAccep
 
   const snapshot = parseUgcConsentSnapshot(res.data.ugc_consent);
   if (!snapshot) return NETWORK_ERROR;
-  rememberUgcConsent(session.accountId, snapshot);
+  rememberUgcConsent(session.accountId, snapshot, { acceptedOnDevice: true });
   return { ok: true, ugcConsent: snapshot };
 }
 

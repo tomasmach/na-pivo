@@ -348,7 +348,7 @@ beforeEach(() => {
   const modalHolder = useLaunchModalMutex.getState().holder;
   if (modalHolder) useLaunchModalMutex.getState().release(modalHolder);
   fetchPubHours.mockImplementation(() => new Promise(() => undefined) as never);
-  useTallyStore.setState({ current: null, history: [] });
+  useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] });
   useCommunityStore.setState({ overrides: {} });
   usePartyEveningStore.setState({
     evening: null,

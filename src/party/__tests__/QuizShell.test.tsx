@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { AccessibilityInfo, Platform, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 
 import { QUIZ_QUESTIONS } from '@/party/quiz/questions';
@@ -83,6 +83,14 @@ const answer = (entrantId: string, option: number): QuizAnswer => ({
 });
 
 describe('QuizShell', () => {
+  it('does not bounce fitting content but keeps overflow reachable', () => {
+    renderShell([]);
+    const scroll = screen.UNSAFE_getByType(ScrollView);
+    expect(scroll.props.bounces).toBe(false);
+    expect(scroll.props.overScrollMode).toBe('never');
+    expect(scroll.props.scrollEnabled).not.toBe(false);
+  });
+
   it('gives the four tiles the rest of the stage, in two equal rows', () => {
     renderShell([]);
 

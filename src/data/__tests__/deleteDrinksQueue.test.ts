@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { clearDeleteDrinksQueue, enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import {
+  clearDeleteDrinksQueue,
+  enqueueDelete,
+  ensureDeleteQueued,
+  flushDeleteDrinksQueue,
+} from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
 import type { SubmitDrinkResult } from '../drinksClient';
 
@@ -52,6 +57,13 @@ beforeEach(async () => {
 });
 
 describe('enqueueDelete', () => {
+  it('can persist without starting network delivery', async () => {
+    await ensureDeleteQueued(UUID_A);
+
+    expect(await readQueue()).toEqual([UUID_A]);
+    expect(deleteDrink).not.toHaveBeenCalled();
+  });
+
   it('reports a storage failure and never sends a non-durable deletion', async () => {
     (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
 
@@ -83,6 +95,15 @@ describe('enqueueDelete', () => {
     await enqueueDelete(UUID_A);
     await enqueueDelete(UUID_A);
     expect(await readQueue()).toEqual([UUID_A]);
+  });
+
+  it('does not evict an older tombstone when the legacy queue limit is exceeded', async () => {
+    const existing = Array.from({ length: 200 }, (_, index) => `00000000-0000-4000-8000-${index.toString().padStart(12, '0')}`);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+
+    await ensureDeleteQueued('00000000-0000-4000-8000-000000000200');
+
+    expect(await readQueue()).toEqual([...existing, '00000000-0000-4000-8000-000000000200']);
   });
 });
 

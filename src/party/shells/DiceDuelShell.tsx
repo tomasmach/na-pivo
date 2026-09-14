@@ -39,6 +39,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import Svg, { Circle, Path } from "react-native-svg";
 import { PersonAvatar } from "@/components/shared/PersonAvatar";
 import {
   GAME_HOST_AVAILABLE,
@@ -102,6 +103,21 @@ function callFor(name: string, sum: number): string | null {
 
 /** Bounds an optimistic lock whose canonical roll never arrives. */
 const LOCK_RECOVERY_MS = 1200;
+
+function StaticDie({ value }: { value: number }) {
+  const dots = [
+    ...(value % 2 === 1 ? [[50, 50]] : []),
+    ...(value >= 2 ? [[27, 27], [73, 73]] : []),
+    ...(value >= 4 ? [[73, 27], [27, 73]] : []),
+    ...(value === 6 ? [[27, 50], [73, 50]] : []),
+  ];
+  return <Svg width={96} height={96} viewBox="0 0 100 100" accessible={false}>
+    <Path d="M18 12h64q12 0 12 13v57q0 13-13 14H23Q9 95 7 84l-3-9Z" fill={Colors.foamMuted} stroke={Colors.stout} strokeWidth={2} />
+    <Path d="M17 5h61q12 0 12 12v59q0 12-12 12H17Q5 87 5 75V18Q5 6 17 5Z" fill={Colors.foam} stroke={Colors.stout} strokeWidth={2.5} />
+    <Path d="M13 28V19q0-6 7-6h17m18 0h20q7 0 7 7m-5 73H26" fill="none" stroke={Colors.stout} strokeWidth={1.2} opacity={0.25} />
+    {dots.map(([cx, cy]) => <Circle key={`${cx}-${cy}`} cx={cx * 0.84 + 5} cy={cy * 0.8 + 6} r={6.5} fill={Colors.stout} />)}
+  </Svg>;
+}
 
 export function DiceDuelShell({
   players,
@@ -423,13 +439,12 @@ export function DiceDuelShell({
                 setRolling(false);
               }}
             />
-          ) : last ? (
-            <View style={styles.fallbackWrap}>
-              <Text style={styles.fallbackDice} allowFontScaling={false}>
-                {last.dice[0]} + {last.dice[1]}
-              </Text>
+          ) : (
+            <View style={styles.fallbackWrap} accessible accessibilityLabel={last ? `${last.dice[0]} + ${last.dice[1]}` : undefined}>
+              <StaticDie value={last?.dice[0] ?? 1} />
+              <StaticDie value={last?.dice[1] ?? 1} />
             </View>
-          ) : null}
+          )}
         </View>
 
         {/* The call, over the table. An RN layer rather than text inside the
@@ -584,16 +599,11 @@ const styles = StyleSheet.create({
   /** The canvas owns the whole playfield; the stage owns its frame. */
   canvas: STAGE_FILL,
   fallbackWrap: {
+    flexDirection: "row",
+    gap: Spacing.lg,
     ...STAGE_FILL,
     alignItems: "center",
     justifyContent: "center",
-  },
-  fallbackDice: {
-    fontFamily: Fonts.numeral,
-    fontSize: 56,
-    lineHeight: 69,
-    includeFontPadding: false,
-    color: Colors.foam,
   },
   cheer: {
     position: "absolute",
@@ -634,6 +644,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   ladderChip: {
+    width: "48%",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -645,7 +656,7 @@ const styles = StyleSheet.create({
   },
   ladderChipSafe: { backgroundColor: withAlpha(Colors.amber, 0.18) },
   ladderName: {
-    maxWidth: 120,
+    flex: 1,
     fontSize: 14,
     fontWeight: "600",
     color: withAlpha(Colors.foam, 0.75),

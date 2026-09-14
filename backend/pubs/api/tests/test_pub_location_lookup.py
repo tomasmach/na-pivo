@@ -331,3 +331,47 @@ def test_geocode_google_failure_returns_503(client, error):
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json() == {"detail": "Location lookup is temporarily unavailable."}
     source.geocode_address.assert_called_once_with(address=_QUERY, city="")
+
+
+@pytest.mark.django_db
+def test_suggest_keeps_local_results_when_the_google_leg_raises_unexpectedly(client):
+    """A budget-row or library failure must not 500 the whole autocomplete."""
+
+    pub = _directory_pub()
+    factory, _ = _google_places_source(error=RuntimeError("budget row is locked"))
+
+    with patch("pubs.api.views.GooglePlacesAutocompleteSource", factory):
+        response = client.post(
+            "/v1/pubs/suggest",
+            data={"query": "Hospoda U Testu"},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["items"][0]["id"] == f"local:{pub.pk}"
+
+
+@pytest.mark.django_db
+def test_geocode_unexpected_google_failure_returns_503_not_500(client):
+    factory, _ = _google_source(error=RuntimeError("budget row is locked"))
+
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.get("/v1/pubs/geocode", data={"query": _QUERY})
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json() == {"detail": "Location lookup is temporarily unavailable."}
+
+
+@pytest.mark.django_db
+def test_reverse_geocode_unexpected_google_failure_returns_503_not_500(client):
+    factory, _ = _google_source(error=RuntimeError("budget row is locked"))
+
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.post(
+            "/v1/pubs/reverse-geocode",
+            data={"lat": 50.081, "lng": 14.421},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json() == {"detail": "Location lookup is temporarily unavailable."}

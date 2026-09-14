@@ -32,6 +32,7 @@ import {
   TargetIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { StatusStrip } from '@/components/shared/StatusStrip';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
@@ -125,6 +126,10 @@ export default function AddPubScreen() {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestedQuery, setSuggestedQuery] = useState('');
   const [resolvingSuggestionId, setResolvingSuggestionId] = useState<string | null>(null);
+  // The place lookup goes through an external geocoder that can be down or
+  // capped. A failure has to stay on screen with a way out — a toast behind the
+  // keyboard left people staring at a form that refused to save.
+  const [failedSuggestion, setFailedSuggestion] = useState<PubLocationSuggestion | null>(null);
   const nameChanged = name.trim() !== initialName;
   const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
@@ -137,6 +142,30 @@ export default function AddPubScreen() {
     resolvingSuggestionId === null &&
     !submitted;
   const currentLocationSelected = locationCorrectionSelected;
+  // A blocked save has to say what is still missing. A dimmed button that does
+  // nothing when tapped reads as a broken screen, not as an unfinished form.
+  const submitHint = useMemo(() => {
+    if (canSubmit || submitted || locating || resolvingSuggestionId !== null) return '';
+    if (name.trim().length === 0) return t.addPub.missingName;
+    const missingAddress = city.trim().length === 0 || address.trim().length === 0;
+    if (isEditing) {
+      if (!nameChanged && !locationCorrectionSelected) return t.addPub.missingEdit;
+      return locationCorrectionSelected && missingAddress ? t.addPub.missingAddress : '';
+    }
+    if (!locationCorrectionSelected) return t.addPub.missingLocation;
+    return missingAddress ? t.addPub.missingAddress : '';
+  }, [
+    address,
+    canSubmit,
+    city,
+    isEditing,
+    locating,
+    locationCorrectionSelected,
+    name,
+    nameChanged,
+    resolvingSuggestionId,
+    submitted,
+  ]);
 
   const selectedLat = selectedLocation?.lat;
   const selectedLng = selectedLocation?.lng;
@@ -222,11 +251,13 @@ export default function AddPubScreen() {
     setSuggestions([]);
     setSuggestedQuery('');
     setLocationError('');
+    setFailedSuggestion(null);
   }, []);
 
   const handleSuggestionPress = useCallback(async (suggestion: PubLocationSuggestion) => {
     setResolvingSuggestionId(suggestion.id);
     setLocationError('');
+    setFailedSuggestion(null);
     try {
       const result =
         suggestion.lat !== undefined && suggestion.lng !== undefined
@@ -243,17 +274,22 @@ export default function AddPubScreen() {
               near: selectedLocation ?? initialCoords,
             });
       if (!result) {
-        showToast(t.addPub.placeLookupUnavailable);
+        // Keep the name the user already typed — only the coordinates are
+        // missing, and the location card above can still supply them.
+        setFailedSuggestion(suggestion);
         return;
       }
       applyResolvedSuggestion(suggestion, result);
     } finally {
       setResolvingSuggestionId(null);
     }
-  }, [applyResolvedSuggestion, initialCoords, selectedLocation, showToast]);
+  }, [applyResolvedSuggestion, initialCoords, selectedLocation]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     trackUiInteraction('add_pub_location', 'select');
+    // Confirming a location answers the failed lookup: the stale strip would
+    // otherwise keep a live retry that overwrites the fields typed since then.
+    setFailedSuggestion(null);
     if (currentLocationSelected) {
       setSelectedLocation(null);
       if (isEditing) {
@@ -530,6 +566,7 @@ export default function AddPubScreen() {
               setSuggestedQuery('');
               setSuggestions([]);
               setSuggesting(false);
+              setFailedSuggestion(null);
               if (selectedLocation?.source === 'suggestion') {
                 setSelectedLocation(
                   fromMapPin && initialCoords
@@ -601,6 +638,17 @@ export default function AddPubScreen() {
                 </Text>
               ) : null}
             </View>
+          )}
+          {failedSuggestion && (
+            <StatusStrip
+              message={t.addPub.placeLookupUnavailable}
+              tone="error"
+              action={{
+                label: t.addPub.retry,
+                onPress: () => void handleSuggestionPress(failedSuggestion),
+                disabled: resolvingSuggestionId !== null,
+              }}
+            />
           )}
           {selectedLocation && (
             <View style={styles.suggestions}>
@@ -677,14 +725,25 @@ export default function AddPubScreen() {
           </Text>
         )}
 
-        <View style={styles.submitButton}>
-          <GlowButton
-            label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
-            onPress={handleSubmit}
-            glow="none"
-            accessibilityLabel={isEditing ? t.addPub.editSave : t.a11y.addPubSaveButton}
-          />
-          {!canSubmit && <View style={styles.submitDisabledOverlay} />}
+        {/* The hint keeps its line whether or not it has text, so the button
+            does not jump out from under a finger the moment the form is done. */}
+        <View style={styles.submitBlock}>
+          <Text style={styles.submitHint} maxFontSizeMultiplier={FontScaleCap.body}>
+            {submitHint}
+          </Text>
+          <View>
+            <GlowButton
+              label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
+              onPress={handleSubmit}
+              glow="none"
+              disabled={!canSubmit}
+              accessibilityLabel={isEditing ? t.addPub.editSave : t.a11y.addPubSaveButton}
+            />
+            {/* GlowButton's own disabled opacity still reads as a live amber CTA
+                on this screen, so the blocked state keeps the darkening veil.
+                It never takes the tap — the button owns that now. */}
+            {!canSubmit && <View pointerEvents="none" style={styles.submitDisabledVeil} />}
+          </View>
         </View>
       </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
@@ -937,11 +996,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: Colors.amberLight,
   },
-  submitButton: {
-    position: 'relative',
+  submitBlock: {
     marginTop: Spacing.sm,
+    gap: Spacing.sm,
   },
-  submitDisabledOverlay: {
+  submitDisabledVeil: {
     position: 'absolute',
     top: 0,
     right: 0,
@@ -949,5 +1008,13 @@ const styles = StyleSheet.create({
     left: 0,
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.stout, 0.42),
+  },
+  submitHint: {
+    minHeight: 18,
+    textAlign: 'center',
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
   },
 });

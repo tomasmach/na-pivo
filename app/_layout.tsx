@@ -118,6 +118,7 @@ import {
   initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
+import { initializeMobileWearableSync } from '@/wearables/mobileSync';
 import { installBackendLocaleHeader } from '@/data/localeHeader';
 
 // Every backend request carries Accept-Language from the first render on.
@@ -535,6 +536,7 @@ export default function RootLayout() {
       // sync existed. Seed only after account initialization has settled so
       // the private history cannot race a session rotation.
       void seedDrinksFromHistory();
+      void initializeMobileWearableSync();
       // Refresh first hydrates the tiny account-scoped table identity, then
       // asks the server. Do that before reconciling a lock-screen +1 so a cold
       // offline launch cannot silently turn a table beer into a private one.
