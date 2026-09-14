@@ -16,8 +16,9 @@ describe("BeerEveningLiveActivity watchOS Smart Stack layout", () => {
     expect(bannerSmall).toContain("{`${props.beerCount} ${beerWord}`}");
     expect(bannerSmall).toContain("label={repeatActionLabel}");
     expect(bannerSmall.match(/target="add-beer"/g)).toHaveLength(1);
-    expect(bannerSmall).toMatch(
-      /accessibilityLabel\(\s*`Zopakovat \$\{props\.repeatBeerName\}, \$\{repeatMetadata\}`/,
+    expect(bannerSmall).toMatch(/accessibilityLabel\(\s*repeatActionLabel/);
+    expect(source).toContain(
+      "[props.addBeerLabel, props.repeatBeerName, props.repeatMetadataLabel]",
     );
   });
 });
