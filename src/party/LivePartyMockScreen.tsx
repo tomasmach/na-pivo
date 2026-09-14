@@ -97,7 +97,7 @@ import type { Pub } from '@/data/pubs';
 import { generateJoinCode } from '@/data/partyClient';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { lastKnownDevicePosition } from '@/compass/useDevicePosition';
-import { drinkingDayKey, sessionCount, useTallyStore, type TallyDrink } from '@/stores/tallyStore';
+import { drinkingDayKey, sessionCount, useTallyStore, type TallyDrink, type TallySession } from '@/stores/tallyStore';
 import {
   clockAt,
   DEFAULT_HOUSE_BEER,
@@ -726,24 +726,27 @@ export default function LivePartyMockScreen() {
       };
     }, [myDrinks, partyPlaceKey, tallyCurrent, tallyHistory]);
   /**
-   * What "+1" repeats: the last drink this phone logged HERE, tonight.
+   * What "+1" repeats: the last drink this phone logged, wherever that was.
    *
-   * Read straight from the counter's open session, not from the shared night
-   * record — the record needs the server and arrives seconds later, and in that
-   * window the button forgot the beer you had just ordered. The session is
-   * per pub and per drinking day, so after a move to another pub it is empty
-   * and the button asks instead of repeating a beer from the last place.
+   * Read straight from the counter, not from the shared night record — the
+   * record needs the server and arrives seconds later, and in that window the
+   * button forgot the beer you had just ordered. The open session at this pub
+   * wins; when it is empty (a move, somebody else's table, three idle hours
+   * that archived the session) the newest drink in the diary stands in, so the
+   * button keeps saying "Plzeň" instead of asking again.
    */
   const { latestDrink, sessionBeersHere } = React.useMemo(() => {
-    if (!tallyCurrent || tallyCurrent.pubKey !== partyPlaceKey) {
-      return { latestDrink: null, sessionBeersHere: 0 };
-    }
+    const newest = (drinks: readonly TallyDrink[]) =>
+      [...drinks].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null;
+    const here = tallyCurrent?.pubKey === partyPlaceKey ? tallyCurrent : null;
+    const anywhere = [tallyCurrent, ...tallyHistory]
+      .filter((session): session is TallySession => session !== null)
+      .flatMap((session) => session.drinks);
     return {
-      latestDrink:
-        [...tallyCurrent.drinks].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] ?? null,
-      sessionBeersHere: sessionCount(tallyCurrent),
+      latestDrink: (here ? newest(here.drinks) : null) ?? newest(anywhere),
+      sessionBeersHere: here ? sessionCount(here) : 0,
     };
-  }, [partyPlaceKey, tallyCurrent]);
+  }, [partyPlaceKey, tallyCurrent, tallyHistory]);
   // What you already drank here, then the pub's taps — merged so one beer is
   // one row however the three sources spell it (§13 of the QA pass: "Pilsner
   // Urquell · 0,5 l · 60 Kč ×2" sat right above "Pilsner Urquell 12° · 0,5 l").
@@ -899,18 +902,14 @@ export default function LivePartyMockScreen() {
   };
   const repeatDrink = (drink: TallyDrink, source: DrinkAddedSource) => {
     trackUiInteraction('counter_repeat_drink');
-    if (drinkPlaceById.get(drink.id) !== partyPlaceKey) {
-      openDrinkForm('add', drinkTypeOf(drink), {
-        ...drink,
-        id: '',
-        priceCzk: undefined,
-      }, source);
-      return;
-    }
+    // One tap, always. The price belongs to the pub it was paid in, so a beer
+    // repeated somewhere else is logged without one — the form used to open
+    // here instead, which is the second tap the button exists to remove.
+    const samePlace = drinkPlaceById.get(drink.id) === partyPlaceKey;
     logDrink({
       name: drink.beerName,
       drinkType: drinkTypeOf(drink),
-      priceCzk: drink.priceCzk,
+      priceCzk: samePlace ? drink.priceCzk : undefined,
       volumeMl: drink.volumeMl,
       servingType: drink.servingType,
     }, undefined, source);
@@ -1653,7 +1652,7 @@ export default function LivePartyMockScreen() {
               }
             >
               <PlusIcon size={17} color={Colors.stout} />
-              <DrinkGlyph type={latestDrink ? drinkTypeOf(latestDrink) : 'beer'} color={Colors.stout} />
+              <DrinkGlyph type={active && latestDrink ? drinkTypeOf(latestDrink) : firstDrink.drinkType} color={Colors.stout} />
               <View style={styles.primaryText}>
                 {/* Shrink, never truncate (§3.1): at the largest Dynamic Type
                     "Pilsner Urquell 12° · 0,5 l" came out as "· 0,…", which is
@@ -2278,7 +2277,14 @@ const styles = StyleSheet.create({
   logIconCount: { fontFamily: Fonts.numeral, fontSize: 14, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
 
-  undoSlot: { height: 44, justifyContent: 'center', paddingHorizontal: MockLayout.screenPad },
+  // The strip sits on the button otherwise: the controls pull themselves up by
+  // their own top padding, so this slot's bottom IS the button's top edge.
+  undoSlot: {
+    height: 44 + Spacing.md,
+    paddingBottom: Spacing.md,
+    justifyContent: 'center',
+    paddingHorizontal: MockLayout.screenPad,
+  },
   undoStrip: {
     minHeight: 44,
     flexDirection: 'row',
