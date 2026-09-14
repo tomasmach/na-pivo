@@ -2277,7 +2277,14 @@ const styles = StyleSheet.create({
   logIconCount: { fontFamily: Fonts.numeral, fontSize: 14, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
 
-  undoSlot: { height: 44, justifyContent: 'center', paddingHorizontal: MockLayout.screenPad },
+  // The strip sits on the button otherwise: the controls pull themselves up by
+  // their own top padding, so this slot's bottom IS the button's top edge.
+  undoSlot: {
+    height: 44 + Spacing.md,
+    paddingBottom: Spacing.md,
+    justifyContent: 'center',
+    paddingHorizontal: MockLayout.screenPad,
+  },
   undoStrip: {
     minHeight: 44,
     flexDirection: 'row',
