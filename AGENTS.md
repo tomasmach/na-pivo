@@ -118,6 +118,7 @@ Netriviální nový návrh začíná statickými variantami A/B/C vedle sebe; pr
 ## Git a dopad změn
 
 - Hotovou koherentní změnu commitni a pushni bez ptaní. „Chceš to commitnout?“ je zakázaná věta. Napiš, kde práce leží (větev, worktree, PR), a nenechávej uncommitnuté soubory.
+- V `tomasmach/na-pivo` vlastní PR autora `tomasmach` nepotřebují lidské schválení. Pokud Mach zadá merge a jedinou překážkou je povinné GitHub review, použij bez dalšího dotazu `gh pr merge --admin --match-head-commit <ověřený SHA>`. Jde o trvalou výjimku tohoto repa z obecného zákazu admin merge ve skillu `finish-pr-batch`. Předtím dokonči přiměřené agentní review a ověření, zkontroluj aktuálnost vůči cílové větvi, všechny povinné CI kontroly na daném commitu a absenci konfliktů či nevyřešených blokujících nálezů. Pro PR ostatních autorů dál vyžaduj schválení code ownera `tomasmach`; ochrany větví ani povinné kontroly kvůli výjimce nevypínej.
 - Commity: jednořádkový conventional commit bez scope, anglicky (`fix: preserve queued drinks offline`).
 - Fix, který má vidět uživatel, patří na `dev`. Po dokončení ověř `git merge-base --is-ancestor <commit> origin/dev` — fix na odhlašování takhle ležel týdny v zapomenuté větvi.
 - `dev` je default pro všechnu práci. `main` je přesně to, co je ve storech — hýbe se jen releasem (merge `dev` → `main`) nebo hotfixem, nikdy přímým commitem. Backend se nasazuje z `api-*` tagů, nikdy z `main`; serverový runbook je v `backend/README.md`.
