@@ -1652,7 +1652,7 @@ export default function LivePartyMockScreen() {
               }
             >
               <PlusIcon size={17} color={Colors.stout} />
-              <DrinkGlyph type={latestDrink ? drinkTypeOf(latestDrink) : 'beer'} color={Colors.stout} />
+              <DrinkGlyph type={active && latestDrink ? drinkTypeOf(latestDrink) : firstDrink.drinkType} color={Colors.stout} />
               <View style={styles.primaryText}>
                 {/* Shrink, never truncate (§3.1): at the largest Dynamic Type
                     "Pilsner Urquell 12° · 0,5 l" came out as "· 0,…", which is
