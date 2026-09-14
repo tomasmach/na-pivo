@@ -46,6 +46,7 @@ from pubs.models import (
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
+    OfflineMutationTombstone,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
@@ -1967,6 +1968,28 @@ def test_account_export_includes_safe_sessions_and_targeting_metadata(client):
     assert "CIZÍ aktivita" not in serialized
 
 
+@pytest.mark.django_db
+def test_account_export_includes_only_own_offline_deletions(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    other = Account.objects.create(device_id=str(uuid.uuid4()))
+    revision = timezone.now()
+    marker = OfflineMutationTombstone.objects.create(
+        account=account, resource="pub_visit", client_id=uuid.uuid4(),
+        client_updated_at=revision,
+    )
+    OfflineMutationTombstone.objects.create(
+        account=other, resource="drink", client_id=uuid.uuid4(),
+    )
+    response = client.get("/v1/account/export", **_auth(token))
+    assert response.status_code == 200
+    assert response.json()["offline_mutation_tombstones"] == [{
+        "resource": "pub_visit", "client_id": str(marker.client_id),
+        "deleted_at": marker.deleted_at.isoformat(),
+        "client_updated_at": revision.isoformat(),
+    }]
+
+
 def test_account_export_maps_every_account_reverse_accessor_explicitly():
     """Every reverse accessor on Account must be either explicitly exported or
     explicitly excluded with a concrete reason, so a newly added relation can
@@ -1982,6 +2005,7 @@ def test_account_export_maps_every_account_reverse_accessor_explicitly():
         "auth_tokens": "auth_sessions[*].device_label",
         "email_credential": "email_credential.created_at",
         "beer_photo_deletion_tombstones": "beer_photo_deletion_tombstones[*].client_id",
+        "offline_mutation_tombstones": "offline_mutation_tombstones[*].client_id",
         "targeted_friend_pub_activities": "social.targeted_friend_activities[*].activity_id",
         "push_devices": "push_devices[*].platform",
         "usage_stats": "usage.mapper_xp",

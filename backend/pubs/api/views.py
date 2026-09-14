@@ -10803,6 +10803,15 @@ def _export_account_data(account: Account) -> dict:
             if credential is not None
             else None
         ),
+        "offline_mutation_tombstones": [
+            {
+                "resource": row.resource,
+                "client_id": str(row.client_id),
+                "deleted_at": _iso(row.deleted_at),
+                "client_updated_at": _iso(row.client_updated_at),
+            }
+            for row in account.offline_mutation_tombstones.all()
+        ],
         "beer_photo_deletion_tombstones": [
             {
                 "client_id": str(row.client_id),
