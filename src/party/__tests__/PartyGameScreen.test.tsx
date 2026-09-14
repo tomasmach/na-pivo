@@ -676,7 +676,7 @@ describe("PartyGameScreen result wiring", () => {
 
     fireEvent.press(screen.getByLabelText("Máš 0 piv. Přidat další."));
     expect(mockAddBeer).toHaveBeenCalledTimes(1);
-    expect(mockAddBeer).toHaveBeenCalledWith("Ležák");
+    expect(mockAddBeer).toHaveBeenCalledWith("Ležák", { source: "game" });
 
     mockNight = {
       ...mockNight,

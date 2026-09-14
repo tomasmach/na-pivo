@@ -16,7 +16,7 @@ import {
   isDrinkQueued,
 } from '@/data/drinksQueue';
 import { decodeGeohash8 } from '@/data/geohash';
-import { trackClientEvent } from '@/data/telemetryClient';
+import { trackDrinkAdded } from '@/data/counterTelemetry';
 import { syncVisit } from '@/data/visitsSync';
 import { isContextPubKey, isServingType, normalizeDrinkType } from '@/drinks/drinkTypes';
 import {
@@ -513,10 +513,7 @@ async function reconcilePendingLiveBeerAddsInternal(
           servingType: sourceBeer.servingType,
           at: sourceBeer.at,
         });
-        void trackClientEvent({
-          event: 'drink_added',
-          context: { had_active_session: true, source: 'live_activity' },
-        });
+        trackDrinkAdded('live_activity', { hadActiveSession: true });
       }
 
       const persisted = await isDrinkPersisted(event.id);
