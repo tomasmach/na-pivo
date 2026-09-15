@@ -65,6 +65,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      - name: Compile translations
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gettext
+          uv run python manage.py compilemessages --ignore=.venv
+
       - name: Lint
         run: uv run ruff check .
 
