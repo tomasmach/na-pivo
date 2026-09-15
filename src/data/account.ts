@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { getBackendEndpoint } from './backendConfig';
+import { clearAccountMerge, hasPendingAccountMerge, prepareAccountMerge, readAccountMerge } from './accountMerge';
 import { setTelemetrySession, trackApiFailure } from './telemetryClient';
 
 export interface AccountSession {
@@ -379,6 +380,7 @@ export async function clearCachedAnonymousAccount(
   if (!session || session.authenticated) return false;
 
   const evicted = await serializeSessionCache(async () => {
+    if (await hasPendingAccountMerge()) return false;
     const cachedRead = await readCachedAccountUnlocked();
     const cached = cachedRead.available ? cachedRead.account : null;
     if (!cached || cached.authenticated || cached.token !== session.token) {
@@ -414,6 +416,17 @@ export async function clearCachedAnonymousAccount(
   return evicted;
 }
 
+/** Persist the claim proof under the same lock that handles anonymous 401s. */
+export function prepareAnonymousAccountMerge(session: AccountSession) {
+  return serializeSessionCache(async () => {
+    const { account } = await readCachedAccountUnlocked();
+    if (!account || account.authenticated || account.token !== session.token) {
+      throw new Error('Anonymous session changed before account merge.');
+    }
+    return prepareAccountMerge(account.accountId, generateUuidV4());
+  });
+}
+
 /**
  * Ensure an anonymous account exists for this device.
  *
@@ -434,6 +447,16 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
   // (it may have been minted on another device / after a deviceId change), and
   // never re-register or fork it. Sign-out is explicit (revertToAnonymous).
   if (cached && cached.authenticated) {
+    const merge = await readAccountMerge();
+    if (!merge.ok) return null;
+    if (merge.intent) {
+      if (merge.intent.toAccountId !== cached.accountId) return null;
+      try {
+        await clearAccountMerge({ targetAccountId: cached.accountId });
+      } catch {
+        return null;
+      }
+    }
     resetBootstrapBackoff();
     return {
       deviceId: cached.deviceId,
@@ -462,6 +485,7 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
   // A failed Keychain read is not proof that the account is absent. Wait for a
   // later retry instead of registering and overwriting a possibly signed-in user.
   if (!cachedRead.available) return null;
+  if (await hasPendingAccountMerge()) return null;
 
   if (Date.now() < bootstrapRetryAfter) {
     trackApiFailure('account_bootstrap', {

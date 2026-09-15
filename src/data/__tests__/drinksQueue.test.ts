@@ -92,17 +92,25 @@ describe('enqueueDrink', () => {
     expect(queue.map((e) => e.client_id).sort()).toEqual(['a', 'b']);
   });
 
-  it('caps the stored queue at 200 items', async () => {
-    (submitDrink as jest.Mock).mockResolvedValue('retry');
-    for (let i = 0; i < 205; i++) {
-      await enqueueDrink(entry({ client_id: `id-${i}` }));
-    }
-    const queue = await readQueue();
-    expect(queue).toHaveLength(200);
-    // Oldest dropped, newest kept.
-    expect(queue[queue.length - 1].client_id).toBe('id-204');
-    expect(queue.some((e) => e.client_id === 'id-0')).toBe(false);
-  });
+  it.each(['count', 'lock-screen'] as const)(
+    'preserves an oversized upgrade backlog when adding a %s drink',
+    async (source) => {
+      const existing = Array.from({ length: 250 }, (_, index) =>
+        entry({ client_id: `pending-${index}` }),
+      );
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+      const added = entry({ client_id: 'new-count' });
+
+      if (source === 'count') await enqueueDrink(added, { deliver: false });
+      else await ensureDrinkQueued(added);
+
+      expect(await readQueue()).toEqual([...existing, added]);
+      expect(submitDrink).not.toHaveBeenCalled();
+      await flushDrinksQueue();
+      expect(submitDrink).toHaveBeenCalledTimes(251);
+      expect(await readQueue()).toEqual([]);
+    },
+  );
 });
 
 describe('ensureDrinkQueued', () => {
@@ -319,10 +327,10 @@ describe('ensureHistoricalDrinkBatchQueued', () => {
     await enqueueDrink(entry({ client_id: 'new-count' }), { deliver: false });
 
     const ids = (await readQueue()).map((queued) => queued.client_id);
-    expect(ids).toHaveLength(200);
+    expect(ids).toHaveLength(201);
     expect(ids).toContain('history-protected');
     expect(ids).toContain('new-count');
-    expect(ids).not.toContain('existing-0');
+    expect(ids).toContain('existing-0');
     releaseHistoricalDrinkBatch(result.acceptedClientIds);
   });
 

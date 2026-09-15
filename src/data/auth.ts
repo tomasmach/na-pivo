@@ -21,10 +21,12 @@ import {
   ensureAccount,
   getCachedAuthenticationState,
   getSessionToken,
+  prepareAnonymousAccountMerge,
   revertToAnonymous,
   setSession,
   type AccountSession,
 } from './account';
+import { bindAccountMerge, clearAccountMerge, hasPendingAccountMerge, readAccountMerge } from './accountMerge';
 import {
   parseAchievementsBlock,
   type AccountAchievements,
@@ -463,12 +465,19 @@ async function authFetch(
   if (!endpoint) return { networkError: true };
 
   let token: string | null = null;
-  if (opts.bearer === 'ensure') {
+  let merge: Awaited<ReturnType<typeof prepareAnonymousAccountMerge>> | null = null;
+  if (opts.bearer === 'ensure' || opts.bearer === 'claim') {
     const session = await ensureAccount();
-    token = session?.token ?? null;
-  } else if (opts.bearer === 'claim') {
-    const session = await ensureAccount();
-    token = session && !session.authenticated ? session.token : null;
+    token = session && (opts.bearer === 'ensure' || !session.authenticated) ? session.token : null;
+    try {
+      if (session && !session.authenticated) {
+        merge = await prepareAnonymousAccountMerge(session);
+      } else if (await hasPendingAccountMerge()) {
+        return { networkError: true };
+      }
+    } catch {
+      return { networkError: true };
+    }
   } else if (opts.bearer === 'current') {
     token = await getSessionToken();
   }
@@ -482,7 +491,9 @@ async function authFetch(
     const resp = await fetch(endpoint, {
       method: opts.method ?? 'POST',
       headers,
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: merge
+        ? JSON.stringify({ ...(opts.body as object), merge_operation_id: merge.intent.operationId })
+        : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
     });
     let data: Record<string, unknown> = {};
@@ -492,6 +503,9 @@ async function authFetch(
       data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
     } catch {
       data = {};
+    }
+    if (merge?.cancelSafe && resp.status >= 400 && resp.status < 500) {
+      await clearAccountMerge({ operationId: merge.intent.operationId });
     }
     return { status: resp.status, ok: resp.ok, data };
   } catch (err) {
@@ -535,6 +549,13 @@ async function applyAuthSuccess(
   }
 
   const outgoing = await ensureAccount();
+  const merge = await readAccountMerge();
+  if (!merge.ok || (merge.intent && (
+    options?.clearLocalPrivateData ||
+    !outgoing || outgoing.authenticated || outgoing.accountId !== merge.intent.fromAccountId
+  ))) {
+    return { ok: false, code: 'session_storage', detail: t.account.errorSessionStorage };
+  }
   if (!outgoing && (await getCachedAuthenticationState()) !== false) {
     // An unavailable Keychain is not proof that the previous account is absent.
     return {
@@ -552,12 +573,14 @@ async function applyAuthSuccess(
     await clearLocalPrivateAccountData();
   }
   try {
+    await bindAccountMerge(profile.id);
     await setSession({
       deviceId: profile.deviceId || undefined,
       accountId: profile.id,
       token: data.token,
       authenticated: true,
     });
+    await clearAccountMerge({ targetAccountId: profile.id });
   } catch (err) {
     trackApiFailure('auth_session_persist', { reason: 'secure_store', error: err });
     return {
@@ -780,6 +803,7 @@ export function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
 }
 
 async function logoutOnce(options?: { all?: boolean }): Promise<AuthActionResult> {
+  if (await hasPendingAccountMerge()) return { ok: false, code: 'session_storage', detail: t.account.errorSessionStorage };
   await disablePushDeviceForCurrentSession();
   const res = await authFetch('/v1/auth/logout', {
     bearer: 'current',
@@ -797,6 +821,7 @@ export function deleteAccount(): Promise<AuthActionResult> {
 }
 
 async function deleteAccountOnce(): Promise<AuthActionResult> {
+  if (await hasPendingAccountMerge()) return { ok: false, code: 'session_storage', detail: t.account.errorSessionStorage };
   const res = await authFetch('/v1/account/me', { method: 'DELETE', bearer: 'current' });
   if ('networkError' in res) return NETWORK_ERROR;
   if (!res.ok && res.status !== 204) {
@@ -821,6 +846,7 @@ export function resetPassword(params: { token: string; password: string }): Prom
 }
 
 async function resetPasswordOnce(params: { token: string; password: string }): Promise<AuthResult> {
+  if (await hasPendingAccountMerge()) return { ok: false, code: 'session_storage', detail: t.account.errorSessionStorage };
   const res = await authFetch('/v1/auth/reset-password', {
     bearer: 'none',
     body: { token: params.token, password: params.password },

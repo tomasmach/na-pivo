@@ -22,6 +22,10 @@ import { getAppleCredential, getGoogleIdToken, SocialAuthError } from '@/data/so
 import { trackApiFailure } from '@/data/telemetryClient';
 import * as efs from 'expo-file-system';
 
+jest.mock('@react-native-async-storage/async-storage', () =>
+  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
 jest.mock('@/data/backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
 }));
@@ -35,6 +39,7 @@ jest.mock('@/data/account', () => ({
   })),
   getCachedAuthenticationState: jest.fn(async () => false),
   getSessionToken: jest.fn(async () => 'cur-tok'),
+  prepareAnonymousAccountMerge: jest.fn(async () => null),
   setSession: jest.fn(async () => undefined),
   revertToAnonymous: jest.fn(async () => null),
 }));

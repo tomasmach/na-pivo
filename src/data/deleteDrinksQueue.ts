@@ -23,9 +23,6 @@ import { deleteDrink } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
-/** Hard cap — matches drinksQueue; an unbounded backlog means the backend has
- *  been unreachable for a very long time, so dropping the oldest beats growth. */
-const MAX_QUEUE_LENGTH = 200;
 
 function isClientId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -78,7 +75,7 @@ export async function enqueueDelete(clientId: string): Promise<void> {
     const queue = await loadQueue();
     if (!queue.includes(clientId)) {
       queue.push(clientId);
-      await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
+      await saveQueue(queue);
     }
   });
   await flushDeleteDrinksQueue();

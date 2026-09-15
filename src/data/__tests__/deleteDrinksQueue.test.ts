@@ -59,6 +59,20 @@ describe('enqueueDelete', () => {
     expect(await readQueue()).toEqual(['a']);
   });
 
+  it('preserves and later delivers every deletion in an oversized upgrade backlog', async () => {
+    const pending = Array.from({ length: 250 }, (_, index) => `pending-${index}`);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(pending));
+    (deleteDrink as jest.Mock).mockResolvedValue('retry');
+
+    await enqueueDelete('new-delete');
+
+    expect(await readQueue()).toEqual([...pending, 'new-delete']);
+    (deleteDrink as jest.Mock).mockClear().mockResolvedValue('ok');
+    await flushDeleteDrinksQueue();
+    expect(deleteDrink).toHaveBeenCalledTimes(251);
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('drops a permanently-rejected deletion from the queue', async () => {
     (deleteDrink as jest.Mock).mockResolvedValue('permanent-error');
     await enqueueDelete('a');

@@ -11,7 +11,6 @@ import { createCoalescingFlush, createQueueLock, createQueueStorage } from './cr
 import type { QueueSyncResult } from './apiFetch';
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
-const MAX_QUEUE_LENGTH = 300;
 
 export type NightQueueItem =
   | { op: 'publish'; payload: NightPublishPayload }
@@ -125,7 +124,7 @@ export async function enqueueNightOp(item: NightQueueItem): Promise<void> {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(deduped);
   });
   await flushNightsQueue();
 }

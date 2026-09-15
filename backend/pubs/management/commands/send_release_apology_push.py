@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy
 
@@ -47,9 +48,10 @@ class Command(BaseCommand):
         account_ids = sorted(
             set(
                 PushDevice.objects.filter(
+                    Q(app_version__startswith=version_prefix)
+                    | Q(app_version__startswith=f"v{version_prefix}"),
                     enabled=True,
                     permission_status=PushDevice.PermissionStatus.GRANTED,
-                    app_version__startswith=version_prefix,
                 ).values_list("account_id", flat=True)
             )
         )
@@ -68,5 +70,11 @@ class Command(BaseCommand):
         if not send:
             self.stdout.write("dry run, nothing sent; add --send to deliver")
             return
-        _send_friend_push(account_ids, LocalizedText(TITLE), LocalizedText(BODY), {"kind": PUSH_KIND})
+        _send_friend_push(
+            account_ids,
+            LocalizedText(TITLE),
+            LocalizedText(BODY),
+            {"kind": PUSH_KIND},
+            app_version_prefix=version_prefix,
+        )
         self.stdout.write(f"sent to {len(account_ids) - quiet} accounts")

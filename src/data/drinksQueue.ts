@@ -23,30 +23,12 @@ import { createQueueStorage, createQueueLock, createCoalescingFlush } from './cr
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
-/** Hard cap — a queue this long means the backend has been unreachable for a
- *  very long time; dropping the oldest drinks beats unbounded growth. */
+/** Historical backfill budget. Normal user counts are never evicted. */
 const MAX_QUEUE_LENGTH = 200;
 export type QueuedDrinkUpdateResult = 'queued' | 'in-flight' | 'missing';
 const deliveringIds = new Set<string>();
 const protectedHistoricalIds = new Set<string>();
 let accountBoundaryGeneration = 0;
-
-function capQueue(queue: DrinkEntry[]): DrinkEntry[] {
-  if (queue.length <= MAX_QUEUE_LENGTH) return queue;
-  if (protectedHistoricalIds.size === 0) return queue.slice(-MAX_QUEUE_LENGTH);
-
-  const protectedEntries = queue.filter((entry) =>
-    protectedHistoricalIds.has(entry.client_id),
-  );
-  const unprotectedEntries = queue.filter(
-    (entry) => !protectedHistoricalIds.has(entry.client_id),
-  );
-  const unprotectedCapacity = Math.max(0, MAX_QUEUE_LENGTH - protectedEntries.length);
-  return [
-    ...protectedEntries.slice(-MAX_QUEUE_LENGTH),
-    ...(unprotectedCapacity > 0 ? unprotectedEntries.slice(-unprotectedCapacity) : []),
-  ];
-}
 
 function isDrinkEntry(entry: unknown): entry is DrinkEntry {
   const e = entry as DrinkEntry;
@@ -140,7 +122,7 @@ export async function enqueueDrink(entry: DrinkEntry, options?: { deliver?: bool
   await runMutation(async () => {
     const queue = await loadQueue();
     queue.push(entry);
-    await saveQueue(capQueue(queue));
+    await saveQueue(queue);
   });
 
   if (!deliver) return false;
@@ -160,7 +142,7 @@ export function ensureDrinkQueued(entry: DrinkEntry): Promise<void> {
     const queue = await loadQueue();
     if (queue.some((queued) => queued.client_id === entry.client_id)) return;
     queue.push(entry);
-    await saveQueue(capQueue(queue));
+    await saveQueue(queue);
   });
 }
 
@@ -179,9 +161,9 @@ export function getDrinksQueueBoundaryGeneration(): number {
 }
 
 /**
- * Durably add as much of a historical seed batch as fits without applying the
- * normal queue's "drop oldest" cap policy. A backfill must never evict a newer
- * offline drink just to make room, nor claim IDs whose storage write failed.
+ * Durably add as much of a historical seed batch as fits its backfill budget.
+ * A backfill must never evict a newer offline drink just to make room, nor claim
+ * IDs whose storage write failed.
  *
  * The account generation is checked inside the same mutation lock as the write:
  * a seed snapshot captured before logout cannot enqueue after clearDrinksQueue.

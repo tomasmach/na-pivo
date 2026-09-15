@@ -24,7 +24,7 @@ import {
   parsePublishedNight,
   type NightPublishPayload,
 } from '../nightsClient';
-import { clearNightsQueue, enqueueNightOp, type NightQueueItem } from '../nightsQueue';
+import { clearNightsQueue, enqueueNightOp, flushNightsQueue, type NightQueueItem } from '../nightsQueue';
 
 const STORAGE_KEY = 'na-pivo-nights-queue';
 
@@ -157,6 +157,24 @@ describe('night wire and parser', () => {
 });
 
 describe('nights queue collapse', () => {
+  it('preserves and later delivers every night in an oversized upgrade backlog', async () => {
+    const pending: NightQueueItem[] = Array.from({ length: 350 }, (_, index) => ({
+      op: 'publish',
+      payload: { ...payload, clientId: `pending-${index}` },
+    }));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(pending));
+    mockPublishNight.mockResolvedValue(retry());
+    const added: NightQueueItem = { op: 'publish', payload };
+
+    await enqueueNightOp(added);
+
+    expect(await readQueue()).toEqual([...pending, added]);
+    mockPublishNight.mockClear().mockResolvedValue({ ok: true, night: {} });
+    await flushNightsQueue();
+    expect(mockPublishNight).toHaveBeenCalledTimes(351);
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('keeps only the newest publish for one client id', async () => {
     mockPublishNight.mockResolvedValue(retry());
     await enqueueNightOp({ op: 'publish', payload });
