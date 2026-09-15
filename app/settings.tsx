@@ -9,13 +9,11 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
   type AccessibilityActionEvent,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -40,23 +38,12 @@ import {
   ShieldIcon,
   StarIcon,
   ChevronLeftIcon,
-  ChevronRightIcon,
 } from '@/components/shared/IconGlyph';
-import {
-  PubReminderBackgroundLocationDisclosure,
-  pubReminderNeedsBackgroundDisclosure,
-} from '@/components/shared/PubReminderOnboardingModal';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
-import { enqueueAccountPreferences } from '@/data/accountPreferencesQueue';
-import {
-  DEFAULT_FRIEND_SOCIAL_SETTINGS,
-  fetchFriendSettings,
-  type FriendSocialSettings,
-} from '@/data/friendsClient';
+import { updateAccountPreferences } from '@/data/account';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import FriendSettingsSheet from '@/friends/FriendSettingsSheet';
-import { applyLanguagePreference, intlLocale, languagePreference, t, type LanguagePreference } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import {
   disableBeerCountReminderNotifications,
   enableBeerCountReminderNotifications,
@@ -67,15 +54,18 @@ import {
   disablePubReminderNotifications,
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
-import { useAccountStore } from '@/stores/accountStore';
-import { useToastStore } from '@/stores/toastStore';
+import {
+  selectIsSignedIn,
+  selectNickname,
+  useAccountStore,
+} from '@/stores/accountStore';
 import {
   BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
   useSettingsStore,
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { getAppVersionLabel } from '@/utils/appVersion';
@@ -97,15 +87,16 @@ function formatCzKm(km: number): string {
 
 function distanceReadout(km: number | null): { value: string; unit: string } {
   if (km === null) {
-    return { value: '∞', unit: t.settings.distance.unlimitedUnit };
+    return { value: '∞', unit: cs.settings.distance.unlimitedUnit };
   }
   if (km === 0.5) {
-    return { value: '500', unit: t.compass.distanceUnitMeters };
+    return { value: '500', unit: cs.compass.distanceUnitMeters };
   }
-  // Hand the real number over: the unit helper already knows that a whole 1 is
-  // "KILOMETR" while 1,5 and 2,5 are "KILOMETRU". Forcing 1 for every decimal
-  // is what put "2,5 KILOMETR" on screen.
-  return { value: formatCzKm(km), unit: t.compass.distanceUnitKm(km) };
+  const singularForm = km === 1 || km === 1.5 || km === 2.5;
+  return {
+    value: formatCzKm(km),
+    unit: cs.compass.distanceUnitKm(singularForm ? 1 : km),
+  };
 }
 
 function numeralFontSize(value: string): number {
@@ -234,7 +225,7 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
           style={styles.sliderTouchArea}
           onLayout={handleLayout}
           accessibilityRole="adjustable"
-          accessibilityLabel={t.settings.distance.accessibilityLabel}
+          accessibilityLabel={cs.settings.distance.accessibilityLabel}
           accessibilityValue={{
             min: 0,
             max: SLIDER_STEPS,
@@ -242,8 +233,8 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
             text: valueLabel,
           }}
           accessibilityActions={[
-            { name: 'increment', label: t.settings.distance.increase },
-            { name: 'decrement', label: t.settings.distance.decrease },
+            { name: 'increment', label: cs.settings.distance.increase },
+            { name: 'decrement', label: cs.settings.distance.decrease },
           ]}
           onAccessibilityAction={handleAccessibilityAction}
           onTouchEnd={(event) => snapFromX(event.nativeEvent.locationX)}
@@ -256,10 +247,10 @@ function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderPro
       </GestureDetector>
       <View style={styles.rangeLabels}>
         <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.settings.distance.rangeMin}
+          {cs.settings.distance.rangeMin}
         </Text>
         <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.settings.distance.rangeMax}
+          {cs.settings.distance.rangeMax}
         </Text>
       </View>
     </View>
@@ -325,38 +316,25 @@ function BeerCountReminderRow({
   onToggle: () => void;
   onIntervalChange: (minutes: BeerCountReminderIntervalMinutes) => void;
 }) {
-  const { fontScale } = useWindowDimensions();
-  const useLargeTypeLayout = fontScale > 1.5;
-
   return (
     <View style={[styles.beerCountReminder, styles.rowDivider]}>
       <PreferenceRow
-        title={t.settings.beerCountReminder.title}
-        subtitle={t.settings.beerCountReminder.subtitle}
+        title={cs.settings.beerCountReminder.title}
+        subtitle={cs.settings.beerCountReminder.subtitle}
         value={enabled}
         onToggle={onToggle}
-        toggleLabel={`${t.settings.beerCountReminder.title}: ${enabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+        toggleLabel={`${cs.settings.beerCountReminder.title}: ${enabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
         edgeToEdge={false}
       />
       {enabled ? (
-        <View
-          style={[
-            styles.reminderIntervalRow,
-            useLargeTypeLayout && styles.reminderIntervalRowLargeType,
-          ]}
-        >
+        <View style={styles.reminderIntervalRow}>
           <Text
             style={styles.reminderIntervalLabel}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {t.settings.beerCountReminder.intervalLabel}
+            {cs.settings.beerCountReminder.intervalLabel}
           </Text>
-          <View
-            style={[
-              styles.reminderIntervalOptions,
-              useLargeTypeLayout && styles.reminderIntervalOptionsLargeType,
-            ]}
-          >
+          <View style={styles.reminderIntervalOptions}>
             {BEER_COUNT_REMINDER_INTERVAL_OPTIONS.map((minutes) => {
               const selected = intervalMinutes === minutes;
               return (
@@ -365,13 +343,12 @@ function BeerCountReminderRow({
                   onPress={() => onIntervalChange(minutes)}
                   style={[
                     styles.reminderIntervalOption,
-                    useLargeTypeLayout && styles.reminderIntervalOptionLargeType,
                     selected && styles.reminderIntervalOptionSelected,
                   ]}
                   hitSlop={{ top: 8, bottom: 8 }}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={t.settings.beerCountReminder.intervalOption(minutes)}
+                  accessibilityLabel={cs.settings.beerCountReminder.intervalOption(minutes)}
                 >
                   <Text
                     style={[
@@ -379,11 +356,9 @@ function BeerCountReminderRow({
                       selected && styles.reminderIntervalOptionTextSelected,
                     ]}
                     numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {t.settings.beerCountReminder.intervalShort(minutes)}
+                    {cs.settings.beerCountReminder.intervalShort(minutes)}
                   </Text>
                 </Pressable>
               );
@@ -391,73 +366,6 @@ function BeerCountReminderRow({
           </View>
         </View>
       ) : null}
-    </View>
-  );
-}
-
-const LANGUAGE_OPTIONS: readonly LanguagePreference[] = ['system', 'cs', 'en'];
-
-function LanguageRow() {
-  const { fontScale } = useWindowDimensions();
-  const useLargeTypeLayout = fontScale > 1.5;
-  const [pending, setPending] = useState<LanguagePreference | null>(null);
-  const current = pending ?? languagePreference;
-
-  const choose = (next: LanguagePreference) => {
-    if (next === languagePreference || pending) return;
-    setPending(next);
-    void applyLanguagePreference(next);
-  };
-
-  return (
-    <View style={styles.notificationsCard}>
-      <View
-        style={[
-          styles.languageRow,
-          useLargeTypeLayout && styles.reminderIntervalRowLargeType,
-        ]}
-      >
-        <Text style={styles.reminderIntervalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.settings.language.label}
-        </Text>
-        <View
-          style={[
-            styles.reminderIntervalOptions,
-            useLargeTypeLayout && styles.reminderIntervalOptionsLargeType,
-          ]}
-        >
-          {LANGUAGE_OPTIONS.map((option) => {
-            const selected = current === option;
-            const name = t.settings.language[option];
-            return (
-              <Pressable
-                key={option}
-                onPress={() => choose(option)}
-                style={[
-                  styles.reminderIntervalOption,
-                  useLargeTypeLayout && styles.reminderIntervalOptionLargeType,
-                  selected && styles.reminderIntervalOptionSelected,
-                ]}
-                hitSlop={{ top: 8, bottom: 8 }}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                accessibilityLabel={t.settings.language.option(name)}
-              >
-                <Text
-                  style={[
-                    styles.reminderIntervalOptionText,
-                    selected && styles.reminderIntervalOptionTextSelected,
-                  ]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
     </View>
   );
 }
@@ -510,78 +418,13 @@ export default function SettingsScreen() {
     (state) => state.setBeerCountReminderIntervalMinutes,
   );
 
-  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
-  const hasAccount = accountId !== null;
-  const showToast = useToastStore((state) => state.show);
+  const isSignedIn = useAccountStore(selectIsSignedIn);
+  const nickname = useAccountStore(selectNickname);
+  const profile = useAccountStore((state) => state.profile);
 
   const [moreOpen, setMoreOpen] = useState(false);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
-  const [pubReminderDisclosureOpen, setPubReminderDisclosureOpen] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
-  const [privacyOpenFor, setPrivacyOpenFor] = useState<string | null>(null);
-  const [privacyLoadingFor, setPrivacyLoadingFor] = useState<string | null>(null);
-  const [friendSettingsResource, setFriendSettingsResource] = useState<{
-    accountId: string;
-    settings: FriendSocialSettings;
-  } | null>(null);
-  const privacyControllerRef = React.useRef<AbortController | null>(null);
-
-  const privacySettings =
-    friendSettingsResource?.accountId === accountId
-      ? friendSettingsResource.settings
-      : DEFAULT_FRIEND_SOCIAL_SETTINGS;
-  const privacyReady = friendSettingsResource?.accountId === accountId;
-  const privacyBusy = accountId !== null && privacyLoadingFor === accountId;
-
-  // Rendering is account-keyed below, so A's switches disappear in the same
-  // render that selects B. Cleanup then cancels A's in-flight GET.
-  useEffect(
-    () => () => {
-      privacyControllerRef.current?.abort();
-      privacyControllerRef.current = null;
-    },
-    [accountId],
-  );
-
-  const openPrivacySettings = useCallback(async () => {
-    if (!accountId || privacyBusy) return;
-    trackUiInteraction('settings_privacy_open');
-    if (privacyReady) {
-      setPrivacyOpenFor(accountId);
-      return;
-    }
-
-    const requestedAccountId = accountId;
-    const controller = new AbortController();
-    privacyControllerRef.current?.abort();
-    privacyControllerRef.current = controller;
-    setPrivacyLoadingFor(requestedAccountId);
-    const settings = await fetchFriendSettings(controller.signal);
-    const viewerStillMatches =
-      useAccountStore.getState().session?.accountId === requestedAccountId;
-    if (!controller.signal.aborted && viewerStillMatches) {
-      if (settings) {
-        setFriendSettingsResource({ accountId: requestedAccountId, settings });
-        setPrivacyOpenFor(requestedAccountId);
-      } else {
-        showToast(t.friends.settingsError);
-      }
-    }
-    if (privacyControllerRef.current === controller) {
-      privacyControllerRef.current = null;
-      setPrivacyLoadingFor((current) =>
-        current === requestedAccountId ? null : current,
-      );
-    }
-  }, [accountId, privacyBusy, privacyReady, showToast]);
-
-  const savePrivacySettings = useCallback(
-    (settings: FriendSocialSettings) => {
-      if (!accountId) return;
-      setFriendSettingsResource({ accountId, settings });
-    },
-    [accountId],
-  );
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const readout = distanceReadout(maxDistanceKm);
@@ -593,24 +436,24 @@ export default function SettingsScreen() {
       const next = SLIDER_POSITIONS[index] ?? null;
       trackUiInteraction('settings_distance_change', 'select');
       setMaxDistanceKm(next);
-      void enqueueAccountPreferences({ maxDistanceKm: next }, accountId);
+      void updateAccountPreferences({ maxDistanceKm: next });
     },
-    [accountId, setMaxDistanceKm],
+    [setMaxDistanceKm],
   );
 
   const toggleHaptic = useCallback(() => {
     const next = !hapticEnabled;
     trackUiInteraction('settings_haptics', next ? 'toggle_on' : 'toggle_off');
     setHapticEnabled(next);
-    void enqueueAccountPreferences({ hapticEnabled: next }, accountId);
-  }, [accountId, hapticEnabled, setHapticEnabled]);
+    void updateAccountPreferences({ hapticEnabled: next });
+  }, [hapticEnabled, setHapticEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
     trackUiInteraction('settings_sound', next ? 'toggle_on' : 'toggle_off');
     setSoundEnabled(next);
-    void enqueueAccountPreferences({ soundEnabled: next }, accountId);
-  }, [accountId, setSoundEnabled, soundEnabled]);
+    void updateAccountPreferences({ soundEnabled: next });
+  }, [setSoundEnabled, soundEnabled]);
 
   const toggleWaterNudge = useCallback(() => {
     const next = !waterNudgeEnabled;
@@ -622,8 +465,8 @@ export default function SettingsScreen() {
     const next = !hideClosedPubs;
     trackUiInteraction('settings_hide_closed', next ? 'toggle_on' : 'toggle_off');
     setHideClosedPubs(next);
-    void enqueueAccountPreferences({ hideClosedPubs: next }, accountId);
-  }, [accountId, hideClosedPubs, setHideClosedPubs]);
+    void updateAccountPreferences({ hideClosedPubs: next });
+  }, [hideClosedPubs, setHideClosedPubs]);
 
   const togglePreferRated = useCallback(() => {
     const next = !preferRatedPubs;
@@ -635,15 +478,15 @@ export default function SettingsScreen() {
     const next = !hidePubNames;
     trackUiInteraction('settings_hide_names', next ? 'toggle_on' : 'toggle_off');
     setHidePubNames(next);
-    void enqueueAccountPreferences({ hidePubNames: next }, accountId);
-  }, [accountId, hidePubNames, setHidePubNames]);
+    void updateAccountPreferences({ hidePubNames: next });
+  }, [hidePubNames, setHidePubNames]);
 
   const toggleMarketingEmails = useCallback(() => {
     const next = !marketingEmailsEnabled;
     trackUiInteraction('settings_marketing_emails', next ? 'toggle_on' : 'toggle_off');
     setMarketingEmailsEnabled(next);
-    void enqueueAccountPreferences({ marketingEmailsEnabled: next }, accountId);
-  }, [accountId, marketingEmailsEnabled, setMarketingEmailsEnabled]);
+    void updateAccountPreferences({ marketingEmailsEnabled: next });
+  }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
 
   const togglePubReminders = useCallback(async () => {
     if (pubReminderBusy) return;
@@ -659,12 +502,6 @@ export default function SettingsScreen() {
         return;
       }
 
-      // Store policy: the toggle can never prompt for background location
-      // directly — the prominent disclosure always comes first.
-      if (await pubReminderNeedsBackgroundDisclosure()) {
-        setPubReminderDisclosureOpen(true);
-        return;
-      }
       const result = await enablePubReminderNotifications();
       if (result.ok) {
         setPubReminderEnabled(true);
@@ -677,23 +514,6 @@ export default function SettingsScreen() {
       setPubReminderBusy(false);
     }
   }, [pubReminderBusy, pubReminderEnabled, setPubReminderEnabled]);
-
-  const allowPubReminderDisclosure = useCallback(async () => {
-    setPubReminderDisclosureOpen(false);
-    if (pubReminderBusy) return;
-    setPubReminderBusy(true);
-    try {
-      const result = await enablePubReminderNotifications();
-      if (result.ok) {
-        setPubReminderEnabled(true);
-        return;
-      }
-      setPubReminderEnabled(false);
-      showPubReminderEnableFailure(result.reason);
-    } finally {
-      setPubReminderBusy(false);
-    }
-  }, [pubReminderBusy, setPubReminderEnabled]);
 
   const toggleBeerCountReminder = useCallback(async () => {
     if (beerCountReminderBusy) return;
@@ -735,14 +555,14 @@ export default function SettingsScreen() {
     () => [
       {
         key: 'home',
-        label: t.settings.more.homePoint,
-        value: homePoint ? t.settings.more.configured : t.settings.more.notConfigured,
+        label: cs.settings.more.homePoint,
+        value: homePoint ? cs.settings.more.configured : cs.settings.more.notConfigured,
         icon: HouseIcon,
         onPress: () => openFromMore('/home-point' as Href),
       },
       {
         key: 'google',
-        label: t.settings.more.navigateGoogle,
+        label: cs.settings.more.navigateGoogle,
         icon: MapPinIcon,
         selected: navigationProvider === 'google',
         accessibilityRole: 'radio',
@@ -754,7 +574,7 @@ export default function SettingsScreen() {
       },
       {
         key: 'mapy',
-        label: t.settings.more.navigateMapy,
+        label: cs.settings.more.navigateMapy,
         icon: MapIcon,
         selected: navigationProvider === 'mapy',
         accessibilityRole: 'radio',
@@ -766,32 +586,32 @@ export default function SettingsScreen() {
       },
       {
         key: 'add-pub',
-        label: t.settings.addPub,
+        label: cs.settings.addPub,
         icon: PlusIcon,
         onPress: () => openFromMore('/add-pub' as Href),
       },
       {
         key: 'my-pubs',
-        label: t.settings.more.myAddedPubs,
+        label: cs.settings.more.myAddedPubs,
         icon: StarIcon,
         onPress: () => openFromMore('/my-added-pubs' as Href),
       },
       {
         key: 'feedback',
-        label: t.settings.feedback,
+        label: cs.settings.feedback,
         icon: MessageSquareIcon,
         onPress: () => openFromMore('/report' as Href),
       },
       {
         key: 'about',
-        label: t.settings.about.title,
+        label: cs.settings.about.title,
         value: appVersionLabel || null,
         icon: InfoIcon,
         onPress: () => openFromMore('/about' as Href),
       },
       {
         key: 'privacy',
-        label: t.settings.privacy,
+        label: cs.settings.privacy,
         icon: ShieldIcon,
         onPress: () => openFromMore('/privacy' as Href),
       },
@@ -805,9 +625,13 @@ export default function SettingsScreen() {
     ],
   );
 
-  const accountSubLabel = hasAccount
-    ? t.settings.accountCard.manageDataSubtitle
-    : t.settings.accountCard.ctaSignedOutSubtitle;
+  const displayName = profile?.displayName?.trim() || '';
+  const email = profile?.email?.trim() || '';
+  const accountSubLabel = isSignedIn
+    ? nickname
+      ? `@${nickname}${profile?.emailVerified ? ` · ${cs.settings.accountCard.verifiedInline}` : ''}`
+      : email || displayName || cs.profile.manageAccount
+    : cs.settings.accountCard.ctaSignedOutSubtitle;
 
   return (
     <View
@@ -821,18 +645,16 @@ export default function SettingsScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text
           style={styles.headerTitle}
           numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {t.settings.title}
+          {cs.settings.title}
         </Text>
         <Pressable
           onPress={() => {
@@ -842,7 +664,7 @@ export default function SettingsScreen() {
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={t.settings.more.accessibilityLabel}
+          accessibilityLabel={cs.settings.more.accessibilityLabel}
         >
           <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
@@ -853,90 +675,7 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Privacy first, because this app publishes evenings, pubs and a
-            drinking history, and until now there was no door to any of that
-            from the place people look for it. The switches themselves already
-            exist on the Parta screen — this is a door, not a second copy. */}
-        <SectionLabel>{t.settings.privacySection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <Pressable
-            onPress={() => void openPrivacySettings()}
-            disabled={!accountId || privacyBusy}
-            style={({ pressed }) => [styles.privacyRow, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={t.settings.privacyDoor.title}
-            accessibilityState={{ disabled: !accountId || privacyBusy, busy: privacyBusy }}
-          >
-            <View style={styles.privacyText}>
-              <Text style={styles.privacyTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.settings.privacyDoor.title}
-              </Text>
-              <Text style={styles.privacySub} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.settings.privacyDoor.subtitle}
-              </Text>
-            </View>
-            {privacyBusy ? (
-              <ActivityIndicator color={Colors.amber} />
-            ) : (
-              <ChevronRightIcon size={18} color={Colors.mutedText} />
-            )}
-          </Pressable>
-        </View>
-
-        <SectionLabel spaced>{t.settings.notificationsSection}</SectionLabel>
-        <View style={styles.notificationsCard}>
-          <PreferenceRow
-            title={t.settings.pubReminders.title}
-            subtitle={t.settings.pubReminders.subtitle}
-            value={pubReminderEnabled}
-            onToggle={() => void togglePubReminders()}
-            toggleLabel={`${t.settings.pubReminders.title}: ${pubReminderEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-          />
-          <BeerCountReminderRow
-            enabled={beerCountReminderEnabled}
-            intervalMinutes={beerCountReminderIntervalMinutes}
-            onToggle={() => void toggleBeerCountReminder()}
-            onIntervalChange={changeBeerCountReminderInterval}
-          />
-          <PreferenceRow
-            title={t.settings.haptics.title}
-            subtitle={t.settings.haptics.subtitle}
-            value={hapticEnabled}
-            onToggle={toggleHaptic}
-            toggleLabel={`${t.settings.haptics.title}: ${hapticEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.sound.title}
-            subtitle={t.settings.sound.subtitle}
-            value={soundEnabled}
-            onToggle={toggleSound}
-            toggleLabel={`${t.settings.sound.title}: ${soundEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.waterNudge.title}
-            subtitle={t.settings.waterNudge.subtitle}
-            value={waterNudgeEnabled}
-            onToggle={toggleWaterNudge}
-            toggleLabel={`${t.settings.waterNudge.title}: ${waterNudgeEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-          <PreferenceRow
-            title={t.settings.marketingEmails.title}
-            subtitle={t.settings.marketingEmails.subtitle}
-            value={marketingEmailsEnabled}
-            onToggle={toggleMarketingEmails}
-            toggleLabel={`${t.settings.marketingEmails.title}: ${marketingEmailsEnabled ? t.a11y.toggleOn : t.a11y.toggleOff}`}
-            divider
-          />
-        </View>
-
-        {/* Search settings last. They are the compass MVP's screen, and two of
-            these three toggles are the same filters the Hospody screen already
-            has on it — kept here only because deleting a stored preference
-            silently changes what shipped users see. */}
-        <SectionLabel spaced>{t.settings.compassSection}</SectionLabel>
+        <SectionLabel>{cs.settings.compassSection}</SectionLabel>
         <View style={styles.distanceCard}>
           <Text
             style={[
@@ -960,92 +699,120 @@ export default function SettingsScreen() {
 
           <DistanceSlider
             positionIndex={sliderIndex}
-            valueLabel={`${readout.value} ${readout.unit.toLocaleLowerCase(intlLocale)}`}
+            valueLabel={`${readout.value} ${readout.unit.toLocaleLowerCase('cs-CZ')}`}
             onSnap={handleSliderSnap}
           />
 
           <View style={styles.distancePreferences}>
             <PreferenceRow
-              title={t.settings.hideClosed.title}
-              subtitle={t.settings.hideClosed.subtitle}
+              title={cs.settings.hideClosed.title}
+              subtitle={cs.settings.hideClosed.subtitle}
               value={hideClosedPubs}
               onToggle={toggleHideClosed}
-              toggleLabel={`${t.settings.hideClosed.title}: ${hideClosedPubs ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+              toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             />
             <PreferenceRow
-              title={t.settings.preferRated.title}
-              subtitle={t.settings.preferRated.subtitle}
+              title={cs.settings.preferRated.title}
+              subtitle={cs.settings.preferRated.subtitle}
               value={preferRatedPubs}
               onToggle={togglePreferRated}
-              toggleLabel={`${t.settings.preferRated.title}: ${preferRatedPubs ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+              toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
               divider
             />
             <PreferenceRow
-              title={t.settings.hidePubNames.title}
-              subtitle={t.settings.hidePubNames.subtitle}
+              title={cs.settings.hidePubNames.title}
+              subtitle={cs.settings.hidePubNames.subtitle}
               value={hidePubNames}
               onToggle={toggleHidePubNames}
-              toggleLabel={`${t.settings.hidePubNames.title}: ${hidePubNames ? t.a11y.toggleOn : t.a11y.toggleOff}`}
+              toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
               divider
             />
           </View>
         </View>
 
-        <SectionLabel spaced>{t.settings.language.section}</SectionLabel>
-        <LanguageRow />
+        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <PreferenceRow
+            title={cs.settings.pubReminders.title}
+            subtitle={cs.settings.pubReminders.subtitle}
+            value={pubReminderEnabled}
+            onToggle={() => void togglePubReminders()}
+            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <BeerCountReminderRow
+            enabled={beerCountReminderEnabled}
+            intervalMinutes={beerCountReminderIntervalMinutes}
+            onToggle={() => void toggleBeerCountReminder()}
+            onIntervalChange={changeBeerCountReminderInterval}
+          />
+          <PreferenceRow
+            title={cs.settings.haptics.title}
+            subtitle={cs.settings.haptics.subtitle}
+            value={hapticEnabled}
+            onToggle={toggleHaptic}
+            toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.sound.title}
+            subtitle={cs.settings.sound.subtitle}
+            value={soundEnabled}
+            onToggle={toggleSound}
+            toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.waterNudge.title}
+            subtitle={cs.settings.waterNudge.subtitle}
+            value={waterNudgeEnabled}
+            onToggle={toggleWaterNudge}
+            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+          <PreferenceRow
+            title={cs.settings.marketingEmails.title}
+            subtitle={cs.settings.marketingEmails.subtitle}
+            value={marketingEmailsEnabled}
+            onToggle={toggleMarketingEmails}
+            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            divider
+          />
+        </View>
 
         <View style={styles.footer}>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.settings.locationPrivacy}
+            {cs.settings.locationPrivacy}
           </Text>
           <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.settings.currency.footer(priceCurrency)}
+            {cs.settings.currency.footer(priceCurrency)}
           </Text>
           <Text style={styles.footerTagline} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.settings.footer}
+            {cs.settings.footer}
           </Text>
         </View>
       </ScrollView>
 
       <CounterCta
         label={
-          hasAccount
-            ? t.settings.accountCard.ctaManageData
-            : t.settings.accountCard.signedOutTitle
+          isSignedIn
+            ? cs.settings.accountCard.ctaSignedIn
+            : cs.settings.accountCard.signedOutTitle
         }
         subLabel={accountSubLabel}
         onPress={() => {
           trackUiInteraction('settings_account_open');
-          router.push((hasAccount ? '/account' : '/auth') as Href);
+          router.push((isSignedIn ? '/account' : '/auth') as Href);
         }}
         accessibilityLabel={
-          hasAccount ? t.a11y.accountManageData : t.a11y.profileSignUp
+          isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp
         }
       />
 
       <MoreSheet
         visible={moreOpen}
-        title={t.settings.more.title}
+        title={cs.settings.more.title}
         rows={moreRows}
         onClose={() => setMoreOpen(false)}
-      />
-
-      <FriendSettingsSheet
-        key={accountId ?? 'no-account'}
-        visible={
-          accountId !== null &&
-          privacyReady &&
-          privacyOpenFor === accountId
-        }
-        onClose={() => setPrivacyOpenFor(null)}
-        settings={privacySettings}
-        onSaved={savePrivacySettings}
-      />
-
-      <PubReminderBackgroundLocationDisclosure
-        visible={pubReminderDisclosureOpen}
-        onAllow={() => void allowPubReminderDisclosure()}
-        onDeny={() => setPubReminderDisclosureOpen(false)}
       />
     </View>
   );
@@ -1077,7 +844,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1094,7 +861,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 12 },
   sectionLabel: {
     marginBottom: 8,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1112,7 +879,7 @@ const styles = StyleSheet.create({
   },
   distanceNumber: {
     alignSelf: 'stretch',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1120,7 +887,7 @@ const styles = StyleSheet.create({
   },
   distanceUnit: {
     marginTop: -8,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.mutedText,
@@ -1167,7 +934,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   rangeLabel: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1206,14 +973,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   preferenceTitle: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   preferenceSubtitle: {
     marginTop: 2,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1240,13 +1007,6 @@ const styles = StyleSheet.create({
   },
   toggleThumbOn: { backgroundColor: Colors.foam },
   toggleThumbOff: { backgroundColor: Colors.mutedText },
-  languageRow: {
-    minHeight: 58,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
   reminderIntervalRow: {
     minHeight: 44,
     paddingLeft: 24,
@@ -1256,9 +1016,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  reminderIntervalRowLargeType: { alignItems: 'flex-start' },
   reminderIntervalLabel: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1266,15 +1025,8 @@ const styles = StyleSheet.create({
   reminderIntervalOptions: {
     flex: 1,
     flexDirection: 'row',
-    // Wrapping, not shrinking: the chips have a fixed minWidth, so a shrunk
-    // row pushed the last one under the card edge instead of clipping it.
-    flexWrap: 'wrap',
     justifyContent: 'flex-end',
-    columnGap: 4,
-    rowGap: 4,
-  },
-  reminderIntervalOptionsLargeType: {
-    justifyContent: 'flex-start',
+    gap: 4,
   },
   reminderIntervalOption: {
     minWidth: 45,
@@ -1287,16 +1039,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reminderIntervalOptionLargeType: {
-    width: '48%',
-    minWidth: 0,
-  },
   reminderIntervalOptionSelected: {
     backgroundColor: withAlpha(Colors.foam, 0.1),
     borderColor: withAlpha(Colors.foam, 0.18),
   },
   reminderIntervalOptionText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1308,25 +1056,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   footerPromise: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
     textAlign: 'center',
     includeFontPadding: false,
   },
-  privacyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minHeight: 68,
-    paddingHorizontal: 16,
-  },
-  privacyText: { flex: 1 },
-  privacyTitle: { fontSize: 16, fontWeight: '600', color: Colors.foam },
-  privacySub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
   footerTagline: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,

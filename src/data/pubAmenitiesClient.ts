@@ -16,13 +16,11 @@
  * geohash-8 cache_key from them.
  *
  * Wire format is snake_case; the store speaks camelCase and the sync layer maps
- * between the two. submitAmenityVotes returns the ratings-queue keep/drop result
- * plus one amenity-specific state:
+ * between the two. submitAmenityVotes returns the SAME three-state result the
+ * ratings queue uses to decide keep/drop:
  *   - 'ok'              → 2xx: reached the backend, drop from queue.
  *   - 'permanent-error' → 400/422: this byte-stable payload will never succeed.
  *   - 'retry'           → network/timeout/5xx/429/401/dormant: keep + retry.
- *   - 'consent-blocked' → 428 (or a known-missing consent): keep, but stop
- *                         resending until the user accepts the policy.
  *
  * The read sides (fetchMyAmenityVotes / fetchPubAmenities / getAmenityKinds)
  * return the parsed value or null on ANY failure (never throw).
@@ -31,14 +29,6 @@
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
-import {
-  holdUgcPublishing,
-  isUgcConsentPending,
-  notifyUgcConsentRequired,
-  ugcConsentRequiredCode,
-  ugcAcceptanceRevision,
-  ugcPolicyHeaders,
-} from './ugcConsent';
 import { trackClientEvent } from './telemetryClient';
 
 /** Taxonomy item from GET /v1/pub-amenities/kinds (canonical wire names). */
@@ -191,26 +181,10 @@ export interface WireAmenityVotesResponse {
   mapper: WireMapperSnapshot | null;
 }
 
-/**
- * Outcome of one submit attempt — drives queue keep/drop decisions.
- *
- * 'consent-blocked' is NOT a failure of this payload: the account has not
- * accepted the current UGC policy, so the server answers 428 for every public
- * vote. The vote is kept exactly like 'retry', but resending it before the user
- * accepts is pointless — see the queue's flush rule.
- */
-export type SubmitAmenityResult = 'ok' | 'permanent-error' | 'retry' | 'consent-blocked';
+/** Outcome of one submit attempt — drives queue keep/drop decisions. */
+export type SubmitAmenityResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-/** Parse the non-ok response body once; null when unparseable. Never throws. */
-async function parseNonOkPayload(resp: Response): Promise<unknown> {
-  try {
-    return (await resp.json()) as unknown;
-  } catch {
-    return null;
-  }
-}
 
 type AmenityOperation = 'submit_votes' | 'fetch_votes' | 'fetch_aggregates' | 'fetch_kinds';
 
@@ -272,14 +246,6 @@ export async function submitAmenityVotes(
     return 'retry';
   }
 
-  const isPublicContribution = votes.some((v) => v.value !== null);
-  // Known-missing consent: the request can only come back 428, so it is not
-  // sent at all. No request, no telemetry — the consent sheet owns the next step.
-  if (isPublicContribution && isUgcConsentPending(session.accountId)) {
-    return 'consent-blocked';
-  }
-
-  const acceptanceRevision = ugcAcceptanceRevision(session.accountId);
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
@@ -287,7 +253,6 @@ export async function submitAmenityVotes(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
-        ...(isPublicContribution ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: JSON.stringify({ votes }),
       signal: abort.signal,
@@ -296,23 +261,6 @@ export async function submitAmenityVotes(
     if (resp.ok) {
       trackAmenitySynced('submit_votes');
       return 'ok';
-    }
-    if (isPublicContribution) {
-      const consentCode = ugcConsentRequiredCode(resp.status, await parseNonOkPayload(resp));
-      if (consentCode) {
-        // A refusal that crossed the acceptance in flight says nothing about
-        // now: it must not re-open the sheet or log a failure.
-        if (holdUgcPublishing(session.accountId, consentCode, acceptanceRevision)) {
-          notifyUgcConsentRequired(consentCode);
-          trackAmenitySyncFailed('submit_votes', {
-            status: resp.status,
-            reason: 'http_error',
-            result: 'consent-blocked',
-            retryable: true,
-          });
-        }
-        return 'consent-blocked';
-      }
     }
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'amenity_votes_submit',
@@ -391,9 +339,6 @@ function parseVotesResponse(data: unknown): WireAmenityVotesResponse | null {
 export async function submitAmenityVotesDetailed(
   votes: WireAmenityVote[],
   signal?: AbortSignal,
-  /** Set by a vote the user just cast, so a 428 can open the consent sheet even
-   *  inside its "not now" quiet period. */
-  options?: { userInitiated?: boolean },
 ): Promise<SubmitAmenityDetailed> {
   if (signal?.aborted) return { status: 'retry', body: null };
 
@@ -417,12 +362,6 @@ export async function submitAmenityVotesDetailed(
     return { status: 'retry', body: null };
   }
 
-  const isPublicContribution = votes.some((v) => v.value !== null);
-  if (isPublicContribution && isUgcConsentPending(session.accountId)) {
-    return { status: 'consent-blocked', body: null };
-  }
-
-  const acceptanceRevision = ugcAcceptanceRevision(session.accountId);
   const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
@@ -430,7 +369,6 @@ export async function submitAmenityVotesDetailed(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
-        ...(isPublicContribution ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: JSON.stringify({ votes }),
       signal: abort.signal,
@@ -445,23 +383,6 @@ export async function submitAmenityVotesDetailed(
         body = null; // a 2xx with an unparseable body is still 'ok' for the queue.
       }
       return { status: 'ok', body };
-    }
-    if (isPublicContribution) {
-      const consentCode = ugcConsentRequiredCode(resp.status, await parseNonOkPayload(resp));
-      if (consentCode) {
-        if (holdUgcPublishing(session.accountId, consentCode, acceptanceRevision)) {
-          notifyUgcConsentRequired(consentCode, {
-            userInitiated: options?.userInitiated === true,
-          });
-          trackAmenitySyncFailed('submit_votes', {
-            status: resp.status,
-            reason: 'http_error',
-            result: 'consent-blocked',
-            retryable: true,
-          });
-        }
-        return { status: 'consent-blocked', body: null };
-      }
     }
     const result = await classifyQueueHttpFailure(resp.status, session, {
       source: 'amenity_votes_submit',

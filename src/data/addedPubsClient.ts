@@ -11,7 +11,6 @@ import { ensureAccount, clearCachedAnonymousAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
-import { ugcPolicyHeaders, notifyUgcConsentRequiredFromResponse } from './ugcConsent';
 
 export interface AddedPubInput {
   name: string;
@@ -53,17 +52,6 @@ interface WireResponse {
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-async function parseResponsePayload(resp: Response): Promise<Record<string, unknown>> {
-  try {
-    const parsed: unknown = await resp.json();
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
 
 export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry';
 
@@ -110,14 +98,10 @@ export async function submitAddedPub(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
-        ...ugcPolicyHeaders(session.accountId),
       },
       body: JSON.stringify(entry),
       signal: abort.signal,
     });
-
-    const data = await parseResponsePayload(resp);
-    notifyUgcConsentRequiredFromResponse(resp.status, data);
 
     if (resp.status === 401) {
       await clearCachedAnonymousAccount(session, {
@@ -138,18 +122,18 @@ export async function submitAddedPub(
       return result;
     }
 
-    const wire = data as unknown as WireResponse;
-    if (!wire?.client_id || !wire.cache_key || !wire.name || typeof wire.lat !== 'number' || typeof wire.lng !== 'number') {
+    const data = (await resp.json()) as WireResponse;
+    if (!data?.client_id || !data.cache_key || !data.name || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
       return 'retry';
     }
     return {
-      clientId: wire.client_id,
-      cacheKey: wire.cache_key,
-      name: wire.name,
-      lat: wire.lat,
-      lng: wire.lng,
-      city: wire.city || undefined,
-      address: wire.address || undefined,
+      clientId: data.client_id,
+      cacheKey: data.cache_key,
+      name: data.name,
+      lat: data.lat,
+      lng: data.lng,
+      city: data.city || undefined,
+      address: data.address || undefined,
     };
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
@@ -185,13 +169,10 @@ async function authenticatedAddedPubRequest(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
-        ...ugcPolicyHeaders(session.accountId),
         ...init.headers,
       },
       signal: abort.signal,
     });
-    const data = await parseResponsePayload(resp);
-    notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await clearCachedAnonymousAccount(session, {
         source: 'added_pub_edit',
@@ -211,18 +192,18 @@ async function authenticatedAddedPubRequest(
       });
       return result;
     }
-    const wire = data as unknown as WireResponse;
-    if (!wire.client_id || !wire.cache_key || !wire.name || typeof wire.lat !== 'number' || typeof wire.lng !== 'number') {
+    const data = (await resp.json()) as WireResponse;
+    if (!data.client_id || !data.cache_key || !data.name || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
       return 'retry';
     }
     return {
-      clientId: wire.client_id,
-      cacheKey: wire.cache_key,
-      name: wire.name,
-      lat: wire.lat,
-      lng: wire.lng,
-      city: wire.city || undefined,
-      address: wire.address || undefined,
+      clientId: data.client_id,
+      cacheKey: data.cache_key,
+      name: data.name,
+      lat: data.lat,
+      lng: data.lng,
+      city: data.city || undefined,
+      address: data.address || undefined,
     };
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';

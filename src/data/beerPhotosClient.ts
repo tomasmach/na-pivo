@@ -14,8 +14,6 @@
  * re-sent upload never duplicates the photo server-side.
  */
 
-import { t } from '@/i18n';
-
 import { File, UploadType } from 'expo-file-system';
 
 import { ensureAccount, type AccountSession } from './account';
@@ -23,7 +21,6 @@ import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint, getBackendUrl } from './backendConfig';
 import type { FriendActionError, FriendActionResult } from './friendsClient';
 import { trackApiFailure } from './telemetryClient';
-import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 /** Upload budget — wider than the shared API timeout (uploads are slower). */
@@ -53,8 +50,6 @@ export interface BeerPhotoUploadFields {
   pubCacheKey?: string;
   pubName?: string;
   pubCity?: string;
-  /** Shared table this photo belongs to; never inferred from location. */
-  partyCode?: string;
   visibility: BeerPhotoVisibility;
   /** ISO-8601 timestamp of when the photo was taken. */
   takenAt: string;
@@ -144,17 +139,13 @@ export async function uploadBeerPhoto(
       uploadType: UploadType.MULTIPART,
       fieldName: 'image',
       mimeType: 'image/jpeg',
-      headers: {
-        Authorization: `Bearer ${session.token}`,
-        ...(fields.visibility === 'friends' ? ugcPolicyHeaders(session.accountId) : {}),
-      },
+      headers: { Authorization: `Bearer ${session.token}` },
       parameters: {
         client_id: fields.clientId,
         caption: fields.caption,
         pub_cache_key: fields.pubCacheKey ?? '',
         pub_name: fields.pubName ?? '',
         pub_city: fields.pubCity ?? '',
-        party_code: fields.partyCode ?? '',
         visibility: fields.visibility,
         taken_at: fields.takenAt,
       },
@@ -170,9 +161,6 @@ export async function uploadBeerPhoto(
 
     if (resp.status >= 200 && resp.status < 300) {
       return { status: 'ok', photo: beerPhotoFromWire((data.photo ?? {}) as RawBeerPhoto) };
-    }
-    if (fields.visibility === 'friends') {
-      notifyUgcConsentRequiredFromResponse(resp.status, data);
     }
     const classified = await classifyQueueHttpFailure(resp.status, session, {
       source: 'beer_photos_upload',
@@ -209,7 +197,7 @@ type RequestResult = RequestOk | { ok: false; result: FriendActionError };
 
 function extractError(data: Record<string, unknown>, status: number): FriendActionError {
   const detail =
-    typeof data.detail === 'string' ? data.detail : t.clientErrors.save;
+    typeof data.detail === 'string' ? data.detail : 'Nepodařilo se to uložit. Zkus to znovu.';
   const code = typeof data.code === 'string' ? data.code : `http_${status}`;
   return { ok: false, code, detail };
 }
@@ -220,21 +208,16 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: {
-    method?: string;
-    body?: unknown;
-    signal?: AbortSignal;
-    session?: AccountSession;
-  } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
+    return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
   }
 
-  const session = options.session ?? (await ensureAccount(options.signal));
+  const session = await ensureAccount(options.signal);
   if (!session || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
+    return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
 
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
@@ -257,7 +240,7 @@ async function requestJson(
     }
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
-      return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
+      return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
     return { ok: true, data };
@@ -266,18 +249,15 @@ async function requestJson(
     if (!options.signal?.aborted && !isAbort) {
       trackApiFailure('beer_photos_request', { endpoint: path, reason: 'exception', error: err });
     }
-    return { ok: false, result: { ok: false, code: 'network', detail: t.clientErrors.network } };
+    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
   } finally {
     abort.cleanup();
   }
 }
 
 /** GET /v1/beer-photos — my diary, newest first. null on any failure. */
-export async function fetchMyBeerPhotos(
-  signal?: AbortSignal,
-  session?: AccountSession,
-): Promise<BeerPhoto[] | null> {
-  const res = await requestJson('/v1/beer-photos', { signal, session });
+export async function fetchMyBeerPhotos(signal?: AbortSignal): Promise<BeerPhoto[] | null> {
+  const res = await requestJson('/v1/beer-photos', { signal });
   if (!res.ok) return null;
   return Array.isArray(res.data.photos)
     ? (res.data.photos as RawBeerPhoto[]).map(beerPhotoFromWire)
@@ -290,27 +270,6 @@ export async function deleteBeerPhoto(photoId: string): Promise<FriendActionResu
     method: 'DELETE',
   });
   return res.ok ? { ok: true } : res.result;
-}
-
-/**
- * Idempotent durable cancellation by upload client id. The backend records a
- * tombstone even when the multipart POST has not committed yet, so a native
- * upload that ignores AbortSignal cannot resurrect the deleted photo. False is
- * intentionally retryable (including a 404 from an older backend deployment).
- */
-export async function deleteBeerPhotoByClientId(
-  clientId: string,
-  signal?: AbortSignal,
-  session?: AccountSession,
-): Promise<boolean> {
-  const res = await requestJson(
-    `/v1/beer-photos/by-client/${encodeURIComponent(clientId)}`,
-    { method: 'DELETE', signal, session },
-  );
-  // The database row/tombstone and durable cleanup outbox are already committed
-  // when media deletion returns this 503. Treat it as a privacy acknowledgement;
-  // the backend worker owns the remaining file cleanup.
-  return res.ok || res.result.code === 'photo_cleanup_pending';
 }
 
 /** Compact author block riding on parta-feed photos. */

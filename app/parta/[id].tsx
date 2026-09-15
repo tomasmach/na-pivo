@@ -3,7 +3,7 @@
  *
  * A back-navigable "place" (matches /profile/edit, /settings) backed by
  * `GET /v1/friends/<id>`. It surfaces the shared history that makes the party
- * feel real — amber stat tiles (GoingRoster numeral idiom), "Naposledy
+ * feel real — three amber stat tiles (GoingRoster numeral idiom), "Naposledy
  * spolu", and the recent shared štace — plus the dead-end killers: a prominent
  * "Ukaž na kompasu" when the friend is live now (geohash-8 handoff, never raw
  * GPS), and an overflow menu that hosts the safety actions (block / report /
@@ -18,24 +18,22 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import {
-  CheckIcon,
   ChevronLeftIcon,
   CompassIcon,
   BeerIcon,
   MenuIcon,
+  FlameIcon,
   MapPinIcon,
   XIcon,
   UserPlusIcon,
-  ChevronRightIcon,
 } from '@/components/shared/IconGlyph';
 import { fetchFriendBeerPhotos, type BeerPhoto } from '@/data/beerPhotosClient';
 import {
   blockFriend,
   fetchFriendProfile,
-  followAccount,
   removeFriend,
   respondFriendRequest,
-  unfollowAccount,
+  sendFriendRequest,
   type FriendProfile,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
@@ -46,12 +44,11 @@ import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { Avatar } from '@/profile/Avatar';
-import { intlLocale, t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
-import { useModalPresentation } from '@/stores/launchModalMutex';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
@@ -62,28 +59,30 @@ const FRIEND_PHOTO_STRIP_LIMIT = 12;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return t.map.friendFallback;
+  if (!profile) return 'Kamarád';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || t.map.friendFallback;
+  return profile.displayName || 'Kamarád';
 }
 
 /** "29. 6." short shared-visit stamp for the recent-together rows. */
 function shortDate(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
+  return new Date(ms).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
 }
 
 interface StatTileProps {
   value: number;
   label: string;
+  flame?: boolean;
 }
 
 /** One amber-numeral stat tile — the GoingRoster count idiom, not a card. */
-function StatTile({ value, label }: StatTileProps) {
+function StatTile({ value, label, flame }: StatTileProps) {
   return (
     <View style={styles.statTile}>
       <View style={styles.statNumeralRow}>
+        {flame ? <FlameIcon size={18} color={Colors.amber} /> : null}
         <Text style={styles.statNumeral} allowFontScaling={false} maxFontSizeMultiplier={FontScaleCap.display}>
           {value}
         </Text>
@@ -101,7 +100,6 @@ export default function FriendProfileScreen() {
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const reportProfileContent = useAccountStore((s) => s.reportProfileContent);
-  const viewerAccountId = useAccountStore((s) => s.session?.accountId ?? null);
 
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const accountId = useMemo(() => {
@@ -112,80 +110,48 @@ export default function FriendProfileScreen() {
 
   // Lazy init from the presence of an id so the effect never needs a synchronous
   // "loading" setState (would trip the cascading-render lint rule).
-  const [loadedState, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
+  const [state, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
   // Friends-visible diary photos; null (not allowed / failed) hides the section.
   const [friendPhotos, setFriendPhotos] = useState<BeerPhoto[] | null>(null);
   const [viewerPhoto, setViewerPhoto] = useState<BeerPhoto | null>(null);
-  const [loadedForViewer, setLoadedForViewer] = useState<string | null>(null);
-  const loadControllerRef = useRef<AbortController | null>(null);
-  const loadGenerationRef = useRef(0);
-  const ownerMatches =
-    viewerAccountId !== null && loadedForViewer === viewerAccountId;
-  const viewerPresentation = useModalPresentation(ownerMatches && viewerPhoto !== null);
-  const state: LoadState = ownerMatches
-    ? loadedState
-    : viewerAccountId && accountId
-      ? 'loading'
-      : 'error';
 
   const mountedRef = useRef(true);
   useEffect(
     () => () => {
       mountedRef.current = false;
-      loadGenerationRef.current += 1;
-      loadControllerRef.current?.abort();
     },
     [],
   );
 
   const load = useCallback(async () => {
-    if (!accountId || !viewerAccountId) return;
-    const requestedViewer = viewerAccountId;
-    const generation = ++loadGenerationRef.current;
-    loadControllerRef.current?.abort();
-    const controller = new AbortController();
-    loadControllerRef.current = controller;
+    if (!accountId) return; // state already 'error' from lazy init
     // The photo gallery is additive — its failure (404 for non-friends /
     // private diary) must never take down the profile, so both fetches run in
     // parallel and only the profile drives the load state.
     const [result, photos] = await Promise.all([
-      fetchFriendProfile(accountId, controller.signal),
-      fetchFriendBeerPhotos(accountId, controller.signal),
+      fetchFriendProfile(accountId),
+      fetchFriendBeerPhotos(accountId),
     ]);
-    if (
-      !mountedRef.current ||
-      controller.signal.aborted ||
-      generation !== loadGenerationRef.current ||
-      useAccountStore.getState().session?.accountId !== requestedViewer
-    ) return;
+    if (!mountedRef.current) return;
     setDetail(result);
     setFriendPhotos(photos);
     setState(result ? 'loaded' : 'error');
-    setViewerPhoto(null);
-    setLoadedForViewer(requestedViewer);
-  }, [accountId, viewerAccountId]);
+  }, [accountId]);
 
   useEffect(() => {
     void load();
-    return () => {
-      loadGenerationRef.current += 1;
-      loadControllerRef.current?.abort();
-    };
   }, [load]);
 
   // Retry is a user event, so setting "loading" here is safe.
   const retry = useCallback(() => {
     setState('loading');
-    setDetail(null);
-    setFriendPhotos(null);
-    setViewerPhoto(null);
     void load();
   }, [load]);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
-    else router.replace('/friends/parta/people' as Href);
+    else router.replace('/friends' as Href);
   }, [router]);
 
   const name = nameOf(detail?.profile);
@@ -203,7 +169,7 @@ export default function FriendProfileScreen() {
     void reportProfileContent({ targetAccountId: accountId, reason: 'other', comment: name }).then(
       (res) => {
         if (!mountedRef.current) return;
-        showToast(res.ok ? t.friends.reportDone : res.detail || t.profile.edit.errorGeneric);
+        showToast(res.ok ? cs.friends.reportDone : res.detail || cs.profile.edit.errorGeneric);
       },
     );
   }, [accountId, name, reportProfileContent, showToast]);
@@ -212,7 +178,7 @@ export default function FriendProfileScreen() {
     void blockFriend(accountId).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(t.friends.blocked);
+        showToast(cs.friends.blocked);
         goBack();
       } else {
         showToast(res.detail);
@@ -224,7 +190,7 @@ export default function FriendProfileScreen() {
     void removeFriend(accountId).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(t.friends.friendRemoved);
+        showToast(cs.friends.friendRemoved);
         goBack();
       } else {
         showToast(res.detail);
@@ -234,33 +200,33 @@ export default function FriendProfileScreen() {
 
   const confirmReport = useCallback(() => {
     showAppDialog({
-      title: t.profile.report.confirmTitle,
-      message: t.profile.report.confirmBody(name),
+      title: cs.profile.report.confirmTitle,
+      message: cs.profile.report.confirmBody(name),
       buttons: [
-        { text: t.common.cancel, style: 'cancel' },
-        { text: t.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
       ],
     });
   }, [doReport, name]);
 
   const confirmBlock = useCallback(() => {
     showAppDialog({
-      title: t.friends.blockTitle(name),
-      message: t.friends.blockBody,
+      title: cs.friends.blockTitle(name),
+      message: cs.friends.blockBody,
       buttons: [
-        { text: t.common.cancel, style: 'cancel' },
-        { text: t.friends.blockConfirm, style: 'destructive', onPress: doBlock },
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.friends.blockConfirm, style: 'destructive', onPress: doBlock },
       ],
     });
   }, [doBlock, name]);
 
   const confirmRemove = useCallback(() => {
     showAppDialog({
-      title: t.friends.removeTitle,
-      message: t.friends.removeBody(name),
+      title: cs.friends.removeTitle,
+      message: cs.friends.removeBody(name),
       buttons: [
-        { text: t.common.cancel, style: 'cancel' },
-        { text: t.friends.removeConfirm, style: 'destructive', onPress: doRemove },
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.friends.removeConfirm, style: 'destructive', onPress: doRemove },
       ],
     });
   }, [doRemove, name]);
@@ -269,38 +235,35 @@ export default function FriendProfileScreen() {
 
   const openOverflow = useCallback(() => {
     showAppDialog({
-      title: t.friends.rowActionsTitle,
+      title: cs.friends.rowActionsTitle,
       buttons: [
-        { text: t.friends.reportAction, onPress: confirmReport },
-        { text: t.friends.blockAction, style: 'destructive', onPress: confirmBlock },
+        { text: cs.friends.reportAction, onPress: confirmReport },
+        { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
         // "Vyhodit z party" only makes sense for an actual friend.
         ...(isFriend
-          ? [{ text: t.friends.profileRemove, style: 'destructive' as const, onPress: confirmRemove }]
+          ? [{ text: cs.friends.profileRemove, style: 'destructive' as const, onPress: confirmRemove }]
           : []),
-        { text: t.common.cancel, style: 'cancel' },
+        { text: cs.common.cancel, style: 'cancel' },
       ],
     });
   }, [confirmBlock, confirmRemove, confirmReport, isFriend]);
 
-  // — CTA on a public (non-friend) profile — reached from Žebříčky.
-  // A stranger can be followed, not recruited: being in someone's party comes
-  // from sitting at their table, so there is no request to send from here.
+  // — Party CTA on a public (non-friend) profile — reached from Žebříčky.
   const [requestBusy, setRequestBusy] = useState(false);
-  const toggleFollow = useCallback(() => {
-    if (requestBusy || !detail) return;
-    const next = !detail.isFollowing;
+  const sendRequest = useCallback(() => {
+    if (requestBusy) return;
     setRequestBusy(true);
-    void (next ? followAccount(accountId) : unfollowAccount(accountId)).then((res) => {
+    void sendFriendRequest({ accountId }).then((res) => {
       if (!mountedRef.current) return;
       setRequestBusy(false);
       if (res.ok) {
-        showToast(next ? t.friends.followed : t.friends.unfollowed);
-        setDetail((prev) => (prev ? { ...prev, isFollowing: next } : prev));
+        showToast(cs.friends.requestSentToast);
+        setDetail((prev) => (prev ? { ...prev, friendshipStatus: 'outgoing_pending' } : prev));
       } else {
         showToast(res.detail);
       }
     });
-  }, [accountId, detail, requestBusy, showToast]);
+  }, [accountId, requestBusy, showToast]);
 
   const acceptRequest = useCallback(() => {
     const requestId = detail?.incomingRequestId;
@@ -310,7 +273,7 @@ export default function FriendProfileScreen() {
       if (!mountedRef.current) return;
       setRequestBusy(false);
       if (res.ok) {
-        showToast(t.friends.requestAcceptedToast);
+        showToast(cs.friends.requestAcceptedToast);
         void load();
       } else {
         showToast(res.detail);
@@ -332,7 +295,7 @@ export default function FriendProfileScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={t.friends.claimBack}
+          accessibilityLabel={cs.friends.claimBack}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
@@ -345,7 +308,7 @@ export default function FriendProfileScreen() {
             onPress={openOverflow}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={t.friends.profileActionsA11y}
+            accessibilityLabel={cs.friends.profileActionsA11y}
             style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
           >
             <MenuIcon size={22} color={Colors.foamMuted} />
@@ -358,11 +321,11 @@ export default function FriendProfileScreen() {
       {state === 'error' ? (
         <View style={styles.centerBlock}>
           <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.friends.profileError}
+            {cs.friends.profileError}
           </Text>
           <View style={styles.errorCta}>
             <GlowButton
-              label={t.friends.retry}
+              label={cs.friends.retry}
               onPress={retry}
               variant="secondary"
               glow="none"
@@ -404,7 +367,7 @@ export default function FriendProfileScreen() {
           {compassTarget ? (
             <View style={styles.compassWrap}>
               <GlowButton
-                label={t.friends.showOnCompass}
+                label={cs.friends.showOnCompass}
                 onPress={handleShowOnCompass}
                 variant="primary"
                 glow="soft"
@@ -413,91 +376,62 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
-          {/* Follow — the one thing a stranger's profile offers. An incoming
-              request can still land here from a version in the store, and this
-              is the only place left to answer it. */}
+          {/* Party CTA — a public stranger found via Žebříčky can be recruited. */}
           {detail && !isFriend ? (
-            <View style={styles.compassWrap}>
-              <GlowButton
-                label={
-                  detail.friendshipStatus === 'incoming_pending'
-                    ? t.friends.acceptRequest
-                    : detail.isFollowing
-                      ? t.friends.unfollow
-                      : t.friends.follow
-                }
-                onPress={
-                  detail.friendshipStatus === 'incoming_pending' ? acceptRequest : toggleFollow
-                }
-                variant={detail.isFollowing ? 'secondary' : 'primary'}
-                glow="none"
-                loading={requestBusy}
-                icon={
-                  // A plus next to "Nesledovat" says the opposite of what the
-                  // button does; once I follow them, the icon is the state.
-                  detail.isFollowing ? (
-                    <CheckIcon size={20} color={Colors.foam} />
-                  ) : (
-                    <UserPlusIcon size={20} color={Colors.stout} />
-                  )
-                }
-              />
-            </View>
+            detail.friendshipStatus === 'outgoing_pending' ? (
+              <Text style={styles.pendingStrip} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.friends.requestPendingStrip}
+              </Text>
+            ) : (
+              <View style={styles.compassWrap}>
+                <GlowButton
+                  label={
+                    detail.friendshipStatus === 'incoming_pending'
+                      ? cs.friends.acceptRequest
+                      : cs.friends.addToParty
+                  }
+                  onPress={
+                    detail.friendshipStatus === 'incoming_pending' ? acceptRequest : sendRequest
+                  }
+                  variant="primary"
+                  glow="soft"
+                  loading={requestBusy}
+                  icon={<UserPlusIcon size={20} color={Colors.stout} />}
+                />
+              </View>
+            )
           ) : null}
 
           {/* Stat tiles — shared history for a friend, public diary numbers for
               a stranger (never location, never individual beers). */}
           {isFriend ? (
             <View style={styles.statsRow}>
-              <StatTile value={stats?.nightsTogether ?? 0} label={t.friends.statNightsTogether} />
-              <StatTile value={stats?.rituals.length ?? 0} label={t.friends.statRitualsTogether} />
+              <StatTile value={stats?.sharedPubCount ?? 0} label={cs.friends.statSharedBeers} />
+              <StatTile value={stats?.nightsTogether ?? 0} label={cs.friends.statNightsTogether} />
+              <StatTile
+                value={stats?.streakWeeks ?? 0}
+                label={cs.friends.statStreakTogether}
+                flame={(stats?.streakWeeks ?? 0) > 0}
+              />
             </View>
           ) : publicStats ? (
             <View style={styles.statsRow}>
               <StatTile
                 value={publicStats.totalBeers}
-                label={t.friends.publicStatBeers(publicStats.totalBeers)}
+                label={cs.friends.publicStatBeers(publicStats.totalBeers)}
               />
               <StatTile
                 value={publicStats.distinctPubs}
-                label={t.friends.publicStatPubs(publicStats.distinctPubs)}
+                label={cs.friends.publicStatPubs(publicStats.distinctPubs)}
               />
-              <StatTile value={publicStats.mapperLevel} label={t.friends.publicStatMapper} />
-            </View>
-          ) : null}
-
-          {/* Souboj — the friends-only door to the head-to-head. A quiet row, not
-              a second amber button: this screen already spends its one amber
-              plane on the compass / follow action (§2.2, §6.3). */}
-          {isFriend && accountId ? (
-            <View style={styles.recentSection}>
-              <HairlineRow first>
-                <Pressable
-                  onPress={() =>
-                    router.push(
-                      `/friends/parta/souboj?accountId=${encodeURIComponent(accountId)}` as Href,
-                    )
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={t.friends.soubojOpen}
-                  style={({ pressed }) => [styles.soubojRow, pressed && { opacity: 0.65 }]}
-                >
-                  <Text
-                    style={[styles.soubojText, styles.soubojTitle]}
-                    maxFontSizeMultiplier={FontScaleCap.heading}
-                  >
-                    {t.friends.soubojOpen}
-                  </Text>
-                  <ChevronRightIcon size={20} color={Colors.mutedText} />
-                </Pressable>
-              </HairlineRow>
+              <StatTile value={publicStats.mapperLevel} label={cs.friends.publicStatMapper} />
             </View>
           ) : null}
 
           {/* Vitrína — unlocked badges only; a locked grid is nobody's business. */}
           {showcase.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={t.friends.showcaseHeader} />
+              <SectionHeader label={cs.friends.showcaseHeader} />
               <View style={styles.showcaseWrap}>
                 {showcase.map(({ key, title, Icon }) => (
                   <View key={key} style={styles.showcaseChip}>
@@ -518,13 +452,13 @@ export default function FriendProfileScreen() {
           {/* Naposledy spolu + recent štace — shared history is friends-only. */}
           {isFriend ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={t.friends.profileRecentHeader} />
+              <SectionHeader label={cs.friends.profileRecentHeader} />
               {stats?.lastPubName ? (
                 <HairlineRow first>
                   <View style={styles.recentRow}>
                     <MapPinIcon size={16} color={Colors.amber} />
                     <Text style={styles.recentLead} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {t.friends.lastTogether(stats.lastPubName)}
+                      {cs.friends.lastTogether(stats.lastPubName)}
                     </Text>
                   </View>
                 </HairlineRow>
@@ -536,7 +470,7 @@ export default function FriendProfileScreen() {
                     <View style={styles.recentRow}>
                       <MapPinIcon size={16} color={Colors.mutedText} />
                       <Text style={styles.recentPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {row.pubName || '-'}
+                        {row.pubName || '—'}
                       </Text>
                       {shortDate(row.at) ? (
                         <Text style={styles.recentDate} allowFontScaling={false}>
@@ -548,7 +482,7 @@ export default function FriendProfileScreen() {
                 ))
               ) : !stats?.lastPubName ? (
                 <Text style={styles.emptyHistory} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.friends.profileNoHistory}
+                  {cs.friends.profileNoHistory}
                 </Text>
               ) : null}
             </View>
@@ -559,7 +493,7 @@ export default function FriendProfileScreen() {
               and a plain map would mount every image at once. */}
           {friendPhotos && friendPhotos.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={t.photoDiary.friendHeader(name)} />
+              <SectionHeader label={cs.photoDiary.friendHeader(name)} />
               <FlatList
                 horizontal
                 data={friendPhotos.slice(0, FRIEND_PHOTO_STRIP_LIMIT)}
@@ -571,7 +505,7 @@ export default function FriendProfileScreen() {
                     onPress={() => setViewerPhoto(photo)}
                     style={styles.photoThumb}
                     accessibilityRole="button"
-                    accessibilityLabel={t.a11y.friendPhotoTile(name)}
+                    accessibilityLabel={cs.a11y.friendPhotoTile(name)}
                   >
                     <Image
                       source={{ uri: photo.imageUrl }}
@@ -587,7 +521,7 @@ export default function FriendProfileScreen() {
 
           {latestBeers.length > 0 ? (
             <View style={styles.recentSection}>
-              <SectionHeader label={t.beerCheckins.lastBeersHeader} />
+              <SectionHeader label={cs.beerCheckins.lastBeersHeader} />
               {latestBeers.map((beer, i) => (
                 <HairlineRow
                   key={beer.id}
@@ -622,19 +556,18 @@ export default function FriendProfileScreen() {
       {/* Fullscreen photo viewer — read-only (no actions apply to a friend's
           photo), so a plain modal beats reusing the own-photo detail route. */}
       <Modal
-        visible={viewerPresentation.visible}
+        visible={viewerPhoto != null}
         transparent
         animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setViewerPhoto(null)}
-        onDismiss={viewerPresentation.onDismiss}
       >
         <View style={styles.viewerBackdrop}>
           <Pressable
             onPress={() => setViewerPhoto(null)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.photoViewerClose}
+            accessibilityLabel={cs.a11y.photoViewerClose}
             style={({ pressed }) => [
               styles.viewerClose,
               { top: insets.top + Spacing.sm },
@@ -643,7 +576,7 @@ export default function FriendProfileScreen() {
           >
             <XIcon size={22} color={Colors.foam} />
           </Pressable>
-          {ownerMatches && viewerPhoto ? (
+          {viewerPhoto ? (
             <>
               <Image
                 source={{ uri: viewerPhoto.imageUrl }}
@@ -695,7 +628,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
   },
@@ -721,7 +654,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,
@@ -739,12 +672,12 @@ const styles = StyleSheet.create({
   },
   heroName: {
     marginTop: Spacing.sm,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
   heroDisplay: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -756,21 +689,11 @@ const styles = StyleSheet.create({
   pendingStrip: {
     marginTop: Spacing.xl,
     textAlign: 'center',
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontStyle: 'italic',
     fontSize: 13,
     color: Colors.mutedText,
   },
-
-  // — Souboj door —
-  soubojRow: {
-    minHeight: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  soubojText: { flex: 1, minWidth: 0 },
-  soubojTitle: { fontWeight: '700', fontSize: 17, color: Colors.foam },
 
   // — Badge showcase —
   showcaseWrap: {
@@ -791,7 +714,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.35),
   },
   showcaseChipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.foam,
   },
@@ -814,13 +737,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   statNumeral: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 30,
     color: Colors.amber,
     includeFontPadding: false,
   },
   statLabel: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     lineHeight: 16,
     color: Colors.mutedText,
@@ -839,13 +762,13 @@ const styles = StyleSheet.create({
   },
   recentLead: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foam,
   },
   recentPub: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -855,19 +778,19 @@ const styles = StyleSheet.create({
   },
   latestBeerMeta: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   recentDate: {
     flexShrink: 0,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   emptyHistory: {
     marginTop: Spacing.sm,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontStyle: 'italic',
     fontSize: 14,
     lineHeight: 20,
@@ -917,7 +840,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   viewerCaption: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -929,7 +852,7 @@ const styles = StyleSheet.create({
   },
   viewerPub: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
   },

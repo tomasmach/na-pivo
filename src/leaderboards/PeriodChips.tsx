@@ -6,40 +6,38 @@
  *
  * The Mapér board has a single all-time window, so the screen swaps this row
  * for a one-line note instead of offering a choice that does nothing.
- *
- * Generic over its key type so the Souboj's window row is this control rather
- * than a second one that looks almost the same.
  */
 
 import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import type { LeaderboardPeriod } from '@/data/leaderboardsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 
-export interface PeriodChipsProps<T extends string> {
-  options: readonly { key: T; label: string }[];
-  value: T;
-  onChange: (period: T) => void;
+export interface PeriodChipsProps {
+  options: readonly { key: LeaderboardPeriod; label: string }[];
+  value: LeaderboardPeriod;
+  onChange: (period: LeaderboardPeriod) => void;
   /** Screen-reader label for a single chip; defaults to its visible label. */
   describeOption?: (label: string, selected: boolean) => string;
   accessibilityLabel?: string;
 }
 
-function PeriodChipsBase<T extends string>({
+function PeriodChipsBase({
   options,
   value,
   onChange,
   describeOption,
   accessibilityLabel,
-}: PeriodChipsProps<T>) {
+}: PeriodChipsProps) {
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
 
   const handlePress = useCallback(
-    (period: T) => {
+    (period: LeaderboardPeriod) => {
       if (period !== value && hapticEnabled) fireLightImpactHaptic();
       onChange(period);
     },
@@ -93,7 +91,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   chipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
@@ -115,6 +113,4 @@ const styles = StyleSheet.create({
   },
 });
 
-// `memo` erases the generic, so the cast puts it back: the component is used
-// with two different key unions (the global boards and the Souboj window).
-export default memo(PeriodChipsBase) as typeof PeriodChipsBase;
+export default memo(PeriodChipsBase);

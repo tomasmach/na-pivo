@@ -12,10 +12,6 @@ export const UI_INTERACTION_TARGETS = [
   'tab_beer',
   'tab_friends',
   'tab_profile',
-  // 3.0 navigation (§17.1). The four above keep their names so the existing
-  // event history stays comparable across the rename — the bar's labels moved,
-  // the routes behind them did not.
-  'tab_community',
   'compass_mode_nearest',
   'compass_mode_surprise',
   'compass_map_open',
@@ -58,11 +54,9 @@ export const UI_INTERACTION_TARGETS = [
   'counter_resume',
   'counter_share_friends',
   'diary_evening_open',
-  'diary_beer_open',
   'diary_historical_open',
   'diary_retry',
   'profile_edit_open',
-  'profile_diary_open',
   'profile_more_open',
   'profile_badges_open',
   'profile_code_open',
@@ -72,7 +66,6 @@ export const UI_INTERACTION_TARGETS = [
   'profile_leaderboards_open',
   'profile_friends_manage_open',
   'settings_more_open',
-  'settings_privacy_open',
   'settings_distance_change',
   'settings_hide_closed',
   'settings_prefer_rated',
@@ -124,7 +117,6 @@ export const UI_INTERACTION_TARGETS = [
   'community_report',
   'friend_invite_share',
   'friend_request_send',
-  'friend_follow',
   'parta_activity_share',
   'parta_reaction_add',
   'photo_contest_enter',
@@ -132,14 +124,6 @@ export const UI_INTERACTION_TARGETS = [
   'night_publish',
   'night_unpublish',
   'night_react',
-  // The idle hub's doors (§14.4). The pub row keeps `counter_place_open` and
-  // the drink picker keeps `counter_add_drink_open` so the 2.x counter history
-  // and the 3.0 evening are still one series; only the genuinely new doors get
-  // new names.
-  'night_invite_open',
-  'night_games_open',
-  'night_join_code_open',
-  'night_last_open',
 ] as const;
 
 export type UiInteractionTarget = (typeof UI_INTERACTION_TARGETS)[number];

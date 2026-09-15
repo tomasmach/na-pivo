@@ -23,9 +23,9 @@ import {
   HouseIcon,
   type IconProps,
 } from '@/components/shared/IconGlyph';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 import HairlineRow from './HairlineRow';
@@ -44,8 +44,8 @@ export function PartaPlans() {
   const rows: PlanRow[] = [
     {
       key: 'home-party',
-      title: t.friends.planHomePartyTitle,
-      body: t.friends.planHomePartyBody,
+      title: cs.friends.planHomePartyTitle,
+      body: cs.friends.planHomePartyBody,
       Icon: HouseIcon,
       onPress: () => router.push('/community-events' as Href),
     },
@@ -54,7 +54,7 @@ export function PartaPlans() {
   return (
     <View>
       <Text style={styles.header} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.friends.planHeader}
+        {cs.friends.planHeader}
       </Text>
       <View style={styles.card}>
         {rows.map((row, index) => (
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   header: {
     marginTop: 24,
     marginBottom: 8,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -126,14 +126,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   body: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

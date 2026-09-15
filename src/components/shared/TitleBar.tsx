@@ -2,10 +2,10 @@ import React, { memo, type ReactNode } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { BeerIcon } from './IconGlyph';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 
 interface TitleBarProps {
   align?: 'center' | 'left';
@@ -56,7 +56,7 @@ export const TitleBar = memo(function TitleBar({
       >
         <BeerIcon size={20} color={Colors.amber} />
         <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.compass.headerTitle}
+          {cs.compass.headerTitle}
         </Text>
       </Pressable>
 
@@ -77,7 +77,7 @@ export const TitleBar = memo(function TitleBar({
           onLongPress={onSettingsLongPress}
           style={[styles.gearTouchable, isLeftAligned && styles.gearTouchableLeft]}
           hitSlop={12}
-          accessibilityLabel={t.a11y.settingsButton}
+          accessibilityLabel={cs.a11y.settingsButton}
           accessibilityRole="button"
         >
           <GearIcon size={20} color={Colors.foamMuted} />
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   titleText: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     letterSpacing: 0.2,

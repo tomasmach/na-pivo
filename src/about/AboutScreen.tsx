@@ -28,11 +28,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-
+import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
-import { BeerIcon, ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
+import { cs } from '@/i18n/cs';
+import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   fetchAllReleaseNotes,
@@ -76,16 +75,16 @@ export default function AboutScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{t.settings.about.title}</Text>
+        <Text style={styles.headerTitle}>{cs.settings.about.title}</Text>
 
         {/* Invisible spacer keeps the title centered */}
         <View style={styles.headerSpacer} />
@@ -102,11 +101,10 @@ export default function AboutScreen() {
         {/* ── Brand hero ── */}
         <View style={styles.hero}>
           <View style={styles.medallion}>
-            {/* Drawn glyph, not an emoji (§19). */}
-            <BeerIcon size={44} color={Colors.amber} />
+            <Text style={styles.medallionEmoji}>🍺</Text>
           </View>
-          <Text style={styles.appName}>{t.appName}</Text>
-          <Text style={styles.tagline}>{t.about.tagline}</Text>
+          <Text style={styles.appName}>{cs.appName}</Text>
+          <Text style={styles.tagline}>{cs.about.tagline}</Text>
           {versionLabel ? (
             <View style={styles.versionPill}>
               <Text style={styles.versionText}>{versionLabel}</Text>
@@ -119,21 +117,21 @@ export default function AboutScreen() {
             onPress={() => void openPlayStoreListing()}
             style={({ pressed }) => [styles.playStoreButton, pressed && styles.pressed]}
             accessibilityRole="link"
-            accessibilityLabel={t.about.playStoreA11y}
+            accessibilityLabel="Otevřít Na pivo v Google Play"
           >
-            <Text style={styles.playStoreButtonText}>{t.about.playStore}</Text>
+            <Text style={styles.playStoreButtonText}>Na pivo v Google Play</Text>
             <ExternalLinkIcon size={17} color={Colors.amber} />
           </Pressable>
         ) : null}
 
         {/* ── Changelog ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{t.about.whatsNewHeader}</Text>
+          <Text style={styles.sectionHeader}>{cs.about.whatsNewHeader}</Text>
           <ChangelogBody state={state} />
         </View>
 
         {/* ── Footer ── */}
-        <Text style={styles.footer}>{t.about.footer}</Text>
+        <Text style={styles.footer}>{cs.about.footer}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -145,7 +143,7 @@ function ChangelogBody({ state }: { state: ChangelogState }) {
     return (
       <View style={styles.statusRow}>
         <ActivityIndicator color={Colors.amber} />
-        <Text style={styles.statusText}>{t.about.loading}</Text>
+        <Text style={styles.statusText}>{cs.about.loading}</Text>
       </View>
     );
   }
@@ -164,7 +162,7 @@ function ChangelogBody({ state }: { state: ChangelogState }) {
   return (
     <View style={styles.emptyCard}>
       <Text style={styles.emptyText}>
-        {state.kind === 'notes' ? t.about.empty : t.about.error}
+        {state.kind === 'notes' ? cs.about.empty : cs.about.error}
       </Text>
     </View>
   );
@@ -179,7 +177,7 @@ function NoteBlock({ note }: { note: ReleaseNote }) {
           {note.title}
         </Text>
         <Text style={styles.noteVersion}>
-          {t.whatsNew.versionLabel(note.version)}
+          {cs.whatsNew.versionLabel(note.version)}
         </Text>
       </View>
 
@@ -227,7 +225,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
@@ -264,7 +262,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   playStoreButtonText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },
@@ -280,14 +278,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.xs,
   },
+  medallionEmoji: {
+    fontSize: 44,
+    lineHeight: 52,
+  },
   appName: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 34,
     lineHeight: 40,
     color: Colors.foam,
   },
   tagline: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -304,7 +306,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   versionText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     letterSpacing: 0.3,
     color: Colors.amberLight,
@@ -315,7 +317,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   sectionHeader: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -329,7 +331,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   statusText: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -351,12 +353,12 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     flex: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 18,
     color: Colors.foam,
   },
   noteVersion: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     letterSpacing: 0.4,
     fontVariant: ['tabular-nums'],
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
   },
   itemText: {
     flex: 1,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -405,7 +407,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   emptyText: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -414,7 +416,7 @@ const styles = StyleSheet.create({
 
   // ── Footer ──
   footer: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,

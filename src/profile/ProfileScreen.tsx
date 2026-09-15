@@ -28,7 +28,8 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import CodeSheet from '@/friends/CodeSheet';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
-import { t , beerCountLabel, intlLocale } from '@/i18n';
+import { cs } from '@/i18n/cs';
+import { beerCountLabel } from '@/i18n/plural';
 import { Avatar } from '@/profile/Avatar';
 import {
   dailyBeerAverage,
@@ -53,7 +54,7 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
 
@@ -165,7 +166,7 @@ export default function ProfileScreen() {
     [profile?.mapper, profile?.pivar],
   );
   const level = isSignedIn && xpProgress ? xpProgress.level : null;
-  const levelTitle = isSignedIn && xpProgress ? xpProgress.title : t.profile.levelRingCaption;
+  const levelTitle = isSignedIn && xpProgress ? xpProgress.title : cs.profile.levelRingCaption;
   // Null = full ring: a maxed rung has nothing left to fill, and a rung with a
   // zero-XP span cannot be divided.
   const levelProgress =
@@ -173,11 +174,11 @@ export default function ProfileScreen() {
       ? xpProgress.xpIntoLevel / xpProgress.xpForNextLevel
       : null;
   const levelHint = !isSignedIn
-    ? t.profile.levelNoAccount
+    ? cs.profile.levelNoAccount
     : xpProgress
       ? xpProgress.xpForNextLevel == null
-        ? t.profile.levelMaxed
-        : t.profile.levelToNext(
+        ? cs.profile.levelMaxed
+        : cs.profile.levelToNext(
             Math.max(0, xpProgress.xpForNextLevel - xpProgress.xpIntoLevel),
           )
       : null;
@@ -186,14 +187,14 @@ export default function ProfileScreen() {
   const identityNick = isSignedIn
     ? nickname?.trim()
       ? `@${nickname.trim()}`
-      : t.profile.noDisplayName
-    : t.profile.noAccountNick;
+      : cs.profile.noDisplayName
+    : cs.profile.noAccountNick;
   const visibility = isPublic
-    ? t.profile.visibilityPublic
-    : t.profile.visibilityPrivate;
+    ? cs.profile.visibilityPublic
+    : cs.profile.visibilityPrivate;
   const identityCaption = isSignedIn
     ? [displayName, visibility].filter(Boolean).join(' · ')
-    : t.profile.noAccountCaption;
+    : cs.profile.noAccountCaption;
 
   const lastEvening = useMemo(
     () => sessions.find((session) => session.drinks.length > 0) ?? null,
@@ -214,23 +215,8 @@ export default function ProfileScreen() {
         pubCacheKey: failedPhoto.pubCacheKey || undefined,
         pubName: failedPhoto.pubName || undefined,
         pubCity: failedPhoto.pubCity || undefined,
-        partyCode: failedPhoto.partyCode,
-        partyDrinkingDay: failedPhoto.partyDrinkingDay,
         visibility: failedPhoto.visibility,
         takenAt: failedPhoto.takenAt,
-      }).then((queued) => {
-        // A failed durable write must not look like a successful one-tap retry.
-        // Keep the failed tile and open its detail, where the error remains
-        // visible and the user can retry again.
-        const photoStillBelongsToCurrentStore = useBeerPhotosStore
-          .getState()
-          .photos.some((photo) => photo.clientId === failedPhoto.clientId);
-        if (!queued.persisted && photoStillBelongsToCurrentStore) {
-          router.push({
-            pathname: '/photo/[key]',
-            params: { key: failedPhoto.clientId },
-          } as Href);
-        }
       });
       return;
     }
@@ -245,16 +231,16 @@ export default function ProfileScreen() {
     if (failedPhoto) {
       return {
         kind: 'counted',
-        text: t.profile.nudgePhotoFailed,
-        undoLabel: t.profile.nudgePhotoRetry,
+        text: cs.profile.nudgePhotoFailed,
+        undoLabel: cs.profile.nudgePhotoRetry,
         onUndo: openFailedPhoto,
       };
     }
     if (isSignedIn && !nickname?.trim()) {
       return {
         kind: 'counted',
-        text: t.profile.nudgeNickname,
-        undoLabel: t.profile.nudgeNicknameFix,
+        text: cs.profile.nudgeNickname,
+        undoLabel: cs.profile.nudgeNicknameFix,
         onUndo: () => router.push('/profile/edit' as Href),
       };
     }
@@ -263,11 +249,11 @@ export default function ProfileScreen() {
       if (dismissedNudge === key) return null;
       return {
         kind: 'checkin',
-        text: t.profile.nudgeLastNight(
+        text: cs.profile.nudgeLastNight(
           lastEvening.pubName,
           beerCountLabel(sessionCount(lastEvening)),
         ),
-        ctaLabel: t.profile.nudgeLastNightOpen,
+        ctaLabel: cs.profile.nudgeLastNightOpen,
         onPress: () =>
           router.push({
             pathname: '/evening',
@@ -280,8 +266,8 @@ export default function ProfileScreen() {
       if (dismissedNudge === 'empty') return null;
       return {
         kind: 'checkin',
-        text: t.profile.nudgeEmpty,
-        ctaLabel: t.profile.nudgeEmptyCta,
+        text: cs.profile.nudgeEmpty,
+        ctaLabel: cs.profile.nudgeEmptyCta,
         onPress: () => router.navigate('/beer' as Href),
         onDismiss: () => setDismissedNudge('empty'),
       };
@@ -302,7 +288,7 @@ export default function ProfileScreen() {
     () => [
       {
         key: 'settings',
-        label: t.profile.moreSettings,
+        label: cs.profile.moreSettings,
         icon: SettingsIcon,
         onPress: () => {
           trackUiInteraction('profile_settings_open');
@@ -312,7 +298,7 @@ export default function ProfileScreen() {
       },
       {
         key: 'leaderboards',
-        label: t.profile.moreLeaderboards,
+        label: cs.profile.moreLeaderboards,
         icon: TrophyIcon,
         onPress: () => {
           trackUiInteraction('profile_leaderboards_open');
@@ -325,11 +311,11 @@ export default function ProfileScreen() {
       },
       {
         key: 'parta',
-        label: t.profile.moreParta,
+        label: cs.profile.moreParta,
         value:
           partaCount > 0
-            ? t.profile.morePartaCount(partaCount.toLocaleString(intlLocale))
-            : t.profile.morePartaEmpty,
+            ? cs.profile.morePartaCount(partaCount.toLocaleString('cs-CZ'))
+            : cs.profile.morePartaEmpty,
         icon: UsersIcon,
         onPress: () => {
           trackUiInteraction('profile_friends_manage_open');
@@ -339,7 +325,7 @@ export default function ProfileScreen() {
       },
       {
         key: 'follow',
-        label: t.profile.moreFollow,
+        label: cs.profile.moreFollow,
         icon: ExternalLinkIcon,
         onPress: () => {
           setMoreVisible(false);
@@ -350,7 +336,7 @@ export default function ProfileScreen() {
     [partaCount, router],
   );
 
-  const beersLabel = beers.toLocaleString(intlLocale);
+  const beersLabel = beers.toLocaleString('cs-CZ');
   const identityContent = (
     <>
       <Avatar
@@ -398,7 +384,7 @@ export default function ProfileScreen() {
             }}
             style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.profileIdentity}
+            accessibilityLabel={cs.a11y.profileIdentity}
           >
             {identityContent}
           </Pressable>
@@ -414,7 +400,7 @@ export default function ProfileScreen() {
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.profileMore}
+          accessibilityLabel={cs.a11y.profileMore}
         >
           <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
@@ -424,8 +410,8 @@ export default function ProfileScreen() {
         beersLabel={beersLabel}
         caption={
           beers > 0
-            ? t.profile.lifetimeCaption
-            : t.profile.lifetimeCaptionEmpty
+            ? cs.profile.lifetimeCaption
+            : cs.profile.lifetimeCaptionEmpty
         }
         level={level}
         levelTitle={levelTitle}
@@ -434,34 +420,34 @@ export default function ProfileScreen() {
         stats={[
           {
             key: 'pubs',
-            value: lifetime.pubs.toLocaleString(intlLocale),
-            label: t.profile.cardStatPubs,
+            value: lifetime.pubs.toLocaleString('cs-CZ'),
+            label: cs.profile.cardStatPubs,
           },
           {
             key: 'evenings',
-            value: lifetime.evenings.toLocaleString(intlLocale),
-            label: t.profile.cardStatEvenings,
+            value: lifetime.evenings.toLocaleString('cs-CZ'),
+            label: cs.profile.cardStatEvenings,
           },
           {
             key: 'spent',
             value: formatPrice(lifetime.spentCzk, priceCurrency),
-            label: t.profile.cardStatSpent,
+            label: cs.profile.cardStatSpent,
           },
           {
             key: 'daily-average',
             value: averageBeersPerDay,
-            label: t.profile.cardStatDailyAverage,
+            label: cs.profile.cardStatDailyAverage,
           },
         ]}
-        linkLabel={t.profile.badgesLink}
+        linkLabel={cs.profile.badgesLink}
         onPressLink={() => {
           trackUiInteraction('profile_badges_open');
           router.push('/profile/badges' as Href);
         }}
-        accessibilityLabel={t.a11y.profileCard(
+        accessibilityLabel={cs.a11y.profileCard(
           beersLabel,
           level !== null && xpProgress
-            ? t.profile.levelLine(level, xpProgress.title)
+            ? cs.profile.levelLine(level, xpProgress.title)
             : levelHint ?? '',
         )}
       />
@@ -469,8 +455,8 @@ export default function ProfileScreen() {
       <NudgeSlot nudge={nudge} />
 
       <CounterCta
-        label={isSignedIn ? t.profile.ctaCode : t.profile.ctaSignUp}
-        subLabel={isSignedIn ? t.profile.ctaCodeSub : t.profile.ctaSignUpSub}
+        label={isSignedIn ? cs.profile.ctaCode : cs.profile.ctaSignUp}
+        subLabel={isSignedIn ? cs.profile.ctaCodeSub : cs.profile.ctaSignUpSub}
         onPress={() => {
           if (isSignedIn) {
             trackUiInteraction('profile_code_open');
@@ -481,12 +467,12 @@ export default function ProfileScreen() {
           }
         }}
         accessibilityLabel={
-          isSignedIn ? t.profile.ctaCode : t.a11y.profileSignUp
+          isSignedIn ? cs.profile.ctaCode : cs.a11y.profileSignUp
         }
       />
 
       <CounterSecondary
-        label={t.profile.secondaryPhotos}
+        label={cs.profile.secondaryPhotos}
         onPress={() => {
           trackUiInteraction('profile_photos_open');
           router.push('/profile/photos' as Href);
@@ -495,7 +481,7 @@ export default function ProfileScreen() {
 
       <MoreSheet
         visible={moreVisible}
-        title={t.profile.moreTitle}
+        title={cs.profile.moreTitle}
         rows={moreRows}
         onClose={() => setMoreVisible(false)}
       />
@@ -534,14 +520,14 @@ const styles = StyleSheet.create({
   },
   identityNick: {
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
   },
   identityCaption: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

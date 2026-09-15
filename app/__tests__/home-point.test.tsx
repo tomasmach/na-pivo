@@ -10,7 +10,7 @@ import HomePointScreen from '../home-point';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock')
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 const mockBack = jest.fn();
@@ -21,7 +21,6 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('@/components/shared/IconGlyph', () => ({
   ChevronLeftIcon: () => null,
-  HouseIcon: () => null,
   MapPinIcon: () => null,
   TargetIcon: () => null,
   Trash2Icon: () => null,
@@ -57,7 +56,7 @@ jest.mock('expo-location', () => ({
   getCurrentPositionAsync: jest.fn(),
 }));
 
-const TestRenderer = jest.requireActual('react-test-renderer');
+const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
 describe('HomePointScreen', () => {
@@ -169,7 +168,7 @@ describe('HomePointScreen', () => {
     expect(
       renderer.root.findByProps({
         children:
-          'Adresu jednou pošlu geokódovací službě, ať ji najdu na mapě. V telefonu zůstane jen ten potvrzený bod, žádná historie polohy ani trasy.',
+          'Zadaná adresa se jednorázově odešle geokódovací službě. Aplikace lokálně uloží jen finální potvrzený bod. Žádnou historii polohy ani trasy neukládá.',
       }),
     ).toBeTruthy();
   });
@@ -190,7 +189,7 @@ describe('HomePointScreen', () => {
     expect(
       renderer.root.findAll(
         (node: { props: { children?: unknown } }) =>
-          typeof node.props.children === 'string' && node.props.children.includes('ťuknutím do mapy'),
+          typeof node.props.children === 'string' && node.props.children.includes('vybrat ručně'),
       ),
     ).not.toHaveLength(0);
     expect(useSettingsStore.getState().homePoint).toBeNull();

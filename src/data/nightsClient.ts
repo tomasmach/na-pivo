@@ -1,9 +1,6 @@
-import { t } from '@/i18n';
-
-import { ensureAccount, generateUuidV4, type AccountSession } from './account';
+import { ensureAccount, type AccountSession } from './account';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
-import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 import { trackApiFailure } from './telemetryClient';
 
 const REQUEST_TIMEOUT_MS = 9000;
@@ -12,33 +9,16 @@ const FEED_PAGE_SIZE = 20;
 export type NightVisibility = 'friends' | 'public';
 export type NightsFeedScope = 'friends' | 'global';
 
-export interface NightAuthor {
-  id: string;
-  nickname: string | null;
-  displayName: string;
-  avatarUrl: string | null;
-  isPublic: boolean;
-}
-
-export interface PublishedNightHeroPhoto {
-  id: string;
-  imageUrl: string;
-  caption: string;
-}
-
-export interface PublishedNightHeroGame {
-  id: string;
-  catalogKey: string;
-  name: string;
-  scoring: 'points' | 'drinks';
-}
-
 export interface PublishedNight {
   id: string;
-  /** Client-only row rebuilt from the automatic Parta history. */
-  historical?: boolean;
   clientId?: string;
-  author: NightAuthor;
+  author: {
+    id: string;
+    nickname: string | null;
+    displayName: string;
+    avatarUrl: string | null;
+    isPublic: boolean;
+  };
   drinkingDay: string;
   startedAt: string;
   endedAt: string;
@@ -49,18 +29,11 @@ export interface PublishedNight {
   pubNames: string[];
   city: string;
   durationMinutes: number | null;
-  title: string;
-  roastLine: string;
-  roastBasis: string;
-  participants: NightAuthor[];
-  heroPhotos: PublishedNightHeroPhoto[];
-  heroGames: PublishedNightHeroGame[];
   visibility: NightVisibility;
   createdAt: string;
   rounds: number;
   myRound: boolean;
   isMine: boolean;
-  commentCount: number;
 }
 
 export interface NightPublishPayload {
@@ -75,13 +48,6 @@ export interface NightPublishPayload {
   pubNames: string[];
   city?: string;
   durationMinutes?: number;
-  title?: string;
-  roastLine?: string;
-  roastBasis?: string;
-  partyCode?: string;
-  participantIds?: string[];
-  photoIds?: string[];
-  gameIds?: string[];
   visibility: NightVisibility;
   updatedAt: string;
 }
@@ -100,19 +66,6 @@ export type NightsFeedResult =
 export type NightReactionResult =
   | { ok: true; rounds: number; myRound: boolean }
   | NightActionError;
-
-export interface NightComment {
-  id: string;
-  author: NightAuthor;
-  body: string;
-  createdAt: string;
-  isMine: boolean;
-  canDelete: boolean;
-}
-
-export type NightDetailResult = { ok: true; night: PublishedNight } | NightActionError;
-export type NightCommentsResult = { ok: true; comments: NightComment[] } | NightActionError;
-export type NightCommentResult = { ok: true; comment: NightComment } | NightActionError;
 
 interface RawNightAuthor {
   id?: string | null;
@@ -136,27 +89,11 @@ interface RawPublishedNight {
   pub_names?: unknown;
   city?: string | null;
   duration_minutes?: number | string | null;
-  title?: string | null;
-  roast_line?: string | null;
-  roast_basis?: string | null;
-  participants?: unknown;
-  hero_photos?: unknown;
-  hero_games?: unknown;
   visibility?: string | null;
   created_at?: string | null;
   rounds?: number | string | null;
   my_round?: boolean | null;
   is_mine?: boolean | null;
-  comment_count?: number | string | null;
-}
-
-interface RawNightComment {
-  id?: string | null;
-  author?: RawNightAuthor | null;
-  body?: string | null;
-  created_at?: string | null;
-  is_mine?: boolean | null;
-  can_delete?: boolean | null;
 }
 
 interface RequestOk {
@@ -183,30 +120,23 @@ function parseVisibility(value: unknown): NightVisibility {
   return value === 'public' ? 'public' : 'friends';
 }
 
-function parseAuthor(raw: RawNightAuthor | undefined | null): NightAuthor {
-  const nickname = typeof raw?.nickname === 'string' ? raw.nickname : null;
-  return {
-    id: typeof raw?.id === 'string' ? raw.id : '',
-    nickname,
-    displayName:
-      typeof raw?.display_name === 'string' ? raw.display_name : nickname ?? t.common.friendFallback,
-    avatarUrl: typeof raw?.avatar_url === 'string' ? raw.avatar_url : null,
-    isPublic: raw?.is_public !== false,
-  };
-}
-
-function rawAuthor(value: unknown): RawNightAuthor | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as RawNightAuthor)
-    : null;
-}
-
 export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
+  const author = raw.author ?? undefined;
+  const nickname = typeof author?.nickname === 'string' ? author.nickname : null;
   const clientId = typeof raw.client_id === 'string' ? raw.client_id : undefined;
   return {
     id: typeof raw.id === 'string' ? raw.id : '',
     ...(clientId ? { clientId } : {}),
-    author: parseAuthor(raw.author),
+    author: {
+      id: typeof author?.id === 'string' ? author.id : '',
+      nickname,
+      displayName:
+        typeof author?.display_name === 'string'
+          ? author.display_name
+          : nickname ?? 'Kamarád',
+      avatarUrl: typeof author?.avatar_url === 'string' ? author.avatar_url : null,
+      isPublic: author?.is_public !== false,
+    },
     drinkingDay: typeof raw.drinking_day === 'string' ? raw.drinking_day : '',
     startedAt: typeof raw.started_at === 'string' ? raw.started_at : '',
     endedAt: typeof raw.ended_at === 'string' ? raw.ended_at : '',
@@ -219,47 +149,11 @@ export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
       : [],
     city: typeof raw.city === 'string' ? raw.city : '',
     durationMinutes: parseNumber(raw.duration_minutes),
-    title: typeof raw.title === 'string' ? raw.title : '',
-    roastLine: typeof raw.roast_line === 'string' ? raw.roast_line : '',
-    roastBasis: typeof raw.roast_basis === 'string' ? raw.roast_basis : '',
-    participants: Array.isArray(raw.participants)
-      ? raw.participants.map(rawAuthor).filter((value): value is RawNightAuthor => value !== null).map(parseAuthor)
-      : [],
-    heroPhotos: Array.isArray(raw.hero_photos)
-      ? raw.hero_photos.flatMap((value) => {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-          const row = value as Record<string, unknown>;
-          return typeof row.id === 'string' && typeof row.image_url === 'string'
-            ? [{
-                id: row.id,
-                imageUrl: row.image_url,
-                caption: typeof row.caption === 'string' ? row.caption : '',
-              }]
-            : [];
-        })
-      : [],
-    heroGames: Array.isArray(raw.hero_games)
-      ? raw.hero_games.flatMap((value) => {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-          const row = value as Record<string, unknown>;
-          return typeof row.id === 'string' &&
-            typeof row.catalog_key === 'string' &&
-            typeof row.name === 'string'
-            ? [{
-                id: row.id,
-                catalogKey: row.catalog_key,
-                name: row.name,
-                scoring: row.scoring === 'drinks' ? 'drinks' as const : 'points' as const,
-              }]
-            : [];
-        })
-      : [],
     visibility: parseVisibility(raw.visibility),
     createdAt: typeof raw.created_at === 'string' ? raw.created_at : '',
     rounds: parseCount(raw.rounds),
     myRound: raw.my_round === true,
     isMine: raw.is_mine === true,
-    commentCount: parseCount(raw.comment_count),
   };
 }
 
@@ -278,53 +172,23 @@ export function nightPublishWire(payload: NightPublishPayload): Record<string, u
     ...(payload.durationMinutes !== undefined
       ? { duration_minutes: payload.durationMinutes }
       : {}),
-    ...(payload.title !== undefined ? { title: payload.title } : {}),
-    ...(payload.roastLine !== undefined ? { roast_line: payload.roastLine } : {}),
-    ...(payload.roastBasis !== undefined ? { roast_basis: payload.roastBasis } : {}),
-    ...(payload.partyCode !== undefined ? { party_code: payload.partyCode } : {}),
-    ...(payload.participantIds !== undefined
-      ? { participant_ids: payload.participantIds }
-      : {}),
-    ...(payload.photoIds !== undefined ? { photo_ids: payload.photoIds } : {}),
-    ...(payload.gameIds !== undefined ? { game_ids: payload.gameIds } : {}),
     visibility: payload.visibility,
     updated_at: payload.updatedAt,
   };
 }
 
-/**
- * The first sentence the server actually said.
- *
- * DRF answers a rejected publish with `{"non_field_errors": ["…"]}` rather than
- * `detail`, so reading only `detail` turned "A published night must contain at
- * least one drink" into "Nepodařilo se to uložit. Zkus to znovu." and the user
- * retried forever.
- */
-function firstSerializerError(obj: Record<string, unknown>): string | null {
-  const fields = ['non_field_errors', ...Object.keys(obj)];
-  for (const field of fields) {
-    if (field === 'code' || field === 'detail') continue;
-    const value = obj[field];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (Array.isArray(value)) {
-      const first = value.find((item) => typeof item === 'string' && item.trim());
-      if (typeof first === 'string') return first.trim();
-    }
-  }
-  return null;
-}
-
 function extractError(data: unknown, status: number): NightActionError {
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
+  if (data && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
-    const code = typeof obj.code === 'string' ? obj.code : `http_${status}`;
-    if (typeof obj.detail === 'string' && obj.detail.trim()) {
-      return { ok: false, code, detail: obj.detail };
+    if (typeof obj.detail === 'string') {
+      return {
+        ok: false,
+        code: typeof obj.code === 'string' ? obj.code : `http_${status}`,
+        detail: obj.detail,
+      };
     }
-    const serializerError = firstSerializerError(obj);
-    if (serializerError) return { ok: false, code, detail: serializerError };
   }
-  return { ok: false, code: `http_${status}`, detail: t.clientErrors.save };
+  return { ok: false, code: `http_${status}`, detail: 'Nepodařilo se to uložit. Zkus to znovu.' };
 }
 
 async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
@@ -333,21 +197,16 @@ async function handleUnauthorized(session: AccountSession, endpoint: string): Pr
 
 async function requestJson(
   path: string,
-  options: {
-    method?: string;
-    body?: unknown;
-    signal?: AbortSignal;
-    gatedUgc?: boolean;
-  } = {},
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
+    return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
   }
 
   const session = await ensureAccount(options.signal);
   if (!session || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
+    return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
 
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
@@ -357,7 +216,6 @@ async function requestJson(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
-        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
       },
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: abort.signal,
@@ -369,10 +227,9 @@ async function requestJson(
     } catch {
       data = {};
     }
-    if (options.gatedUgc) notifyUgcConsentRequiredFromResponse(resp.status, data);
     if (resp.status === 401) {
       await handleUnauthorized(session, endpoint);
-      return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
+      return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
     return { ok: true, data };
@@ -381,7 +238,7 @@ async function requestJson(
     if (!options.signal?.aborted && !isAbort) {
       trackApiFailure('nights_request', { endpoint: path, reason: 'exception', error: err });
     }
-    return { ok: false, result: { ok: false, code: 'network', detail: t.clientErrors.network } };
+    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
   } finally {
     abort.cleanup();
   }
@@ -393,25 +250,10 @@ function rawObject(value: unknown): RawPublishedNight {
     : {};
 }
 
-function parseNightComment(value: unknown): NightComment | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const raw = value as RawNightComment;
-  if (typeof raw.id !== 'string' || typeof raw.body !== 'string') return null;
-  return {
-    id: raw.id,
-    author: parseAuthor(raw.author),
-    body: raw.body,
-    createdAt: typeof raw.created_at === 'string' ? raw.created_at : '',
-    isMine: raw.is_mine === true,
-    canDelete: raw.can_delete === true,
-  };
-}
-
 export async function publishNight(payload: NightPublishPayload): Promise<NightPublishResult> {
   const res = await requestJson('/v1/nights', {
     method: 'POST',
     body: nightPublishWire(payload),
-    gatedUgc: true,
   });
   return res.ok
     ? { ok: true, night: parsePublishedNight(rawObject(res.data.night)) }
@@ -431,119 +273,6 @@ export async function fetchNightsFeed(
 ): Promise<NightsFeedResult> {
   const query = `scope=${scope}&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
   const res = await requestJson(`/v1/nights/feed?${query}`);
-  if (!res.ok) return res.result;
-  return {
-    ok: true,
-    nights: Array.isArray(res.data.nights)
-      ? res.data.nights.map((night) => parsePublishedNight(rawObject(night)))
-      : [],
-    nextCursor: typeof res.data.next_cursor === 'string' ? res.data.next_cursor : null,
-  };
-}
-
-/** Friends-visible published nights that explicitly named one pub. */
-export async function fetchPubNightsFeed(
-  pubName: string,
-  cursor?: string,
-  signal?: AbortSignal,
-): Promise<NightsFeedResult> {
-  const query =
-    `scope=friends&pub=${encodeURIComponent(pubName)}` +
-    `&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
-  const res = await requestJson(`/v1/nights/feed?${query}`, { signal });
-  if (!res.ok) return res.result;
-  return {
-    ok: true,
-    nights: Array.isArray(res.data.nights)
-      ? res.data.nights.map((night) => parsePublishedNight(rawObject(night)))
-      : [],
-    nextCursor: typeof res.data.next_cursor === 'string' ? res.data.next_cursor : null,
-  };
-}
-
-export async function fetchNightDetail(
-  nightId: string,
-  signal?: AbortSignal,
-): Promise<NightDetailResult> {
-  const res = await requestJson(
-    `/v1/nights/${encodeURIComponent(nightId)}/detail`,
-    { signal },
-  );
-  return res.ok
-    ? { ok: true, night: parsePublishedNight(rawObject(res.data.night)) }
-    : res.result;
-}
-
-export async function fetchNightComments(
-  nightId: string,
-  signal?: AbortSignal,
-): Promise<NightCommentsResult> {
-  const res = await requestJson(
-    `/v1/nights/${encodeURIComponent(nightId)}/comments`,
-    { signal },
-  );
-  return res.ok
-    ? {
-        ok: true,
-        comments: Array.isArray(res.data.comments)
-          ? res.data.comments.flatMap((value) => {
-              const comment = parseNightComment(value);
-              return comment ? [comment] : [];
-            })
-          : [],
-      }
-    : res.result;
-}
-
-export async function createNightComment(
-  nightId: string,
-  body: string,
-  clientId = generateUuidV4(),
-): Promise<NightCommentResult> {
-  const res = await requestJson(
-    `/v1/nights/${encodeURIComponent(nightId)}/comments`,
-    { method: 'POST', body: { client_id: clientId, body }, gatedUgc: true },
-  );
-  if (!res.ok) return res.result;
-  const comment = parseNightComment(res.data.comment);
-  return comment
-    ? { ok: true, comment }
-    : { ok: false, code: 'invalid_response', detail: t.clientErrors.commentIncomplete };
-}
-
-export async function deleteNightComment(
-  nightId: string,
-  commentId: string,
-): Promise<NightActionResult> {
-  const res = await requestJson(
-    `/v1/nights/${encodeURIComponent(nightId)}/comments/${encodeURIComponent(commentId)}`,
-    { method: 'DELETE' },
-  );
-  return res.ok ? { ok: true } : res.result;
-}
-
-export async function fetchMyNights(cursor?: string): Promise<NightsFeedResult> {
-  const query = `scope=global&mine=true&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
-  const res = await requestJson(`/v1/nights/feed?${query}`);
-  if (!res.ok) return res.result;
-  return {
-    ok: true,
-    nights: Array.isArray(res.data.nights)
-      ? res.data.nights.map((night) => parsePublishedNight(rawObject(night)))
-      : [],
-    nextCursor: typeof res.data.next_cursor === 'string' ? res.data.next_cursor : null,
-  };
-}
-
-export async function fetchProfileNights(
-  accountId: string,
-  cursor?: string,
-  signal?: AbortSignal,
-): Promise<NightsFeedResult> {
-  // The dedicated server parameter always applies public-post visibility,
-  // independent of friendship or any future default-scope changes.
-  const query = `public_author=${encodeURIComponent(accountId)}&cursor=${encodeURIComponent(cursor ?? '')}&limit=${FEED_PAGE_SIZE}`;
-  const res = await requestJson(`/v1/nights/feed?${query}`, { signal });
   if (!res.ok) return res.result;
   return {
     ok: true,
@@ -581,11 +310,10 @@ export function isRetriableNightError(result: NightActionError): boolean {
   if (code === 'offline' || code === 'account' || code === 'network' || code === 'auth') {
     return true;
   }
-  if (code === 'ugc_consent_required' || code === 'ugc_policy_update_required') return true;
   const httpMatch = /^http_(\d{3})$/.exec(code);
   if (!httpMatch) return false;
   const status = Number(httpMatch[1]);
-  if (status === 401 || status === 428 || status === 429) return true;
+  if (status === 401 || status === 429) return true;
   if (status >= 400 && status < 500) return false;
   return true;
 }

@@ -5,14 +5,17 @@ import {
   type BeerFormResult,
 } from '@/counter/BeerFormModal';
 import type { CommunityBeer } from '@/data/communityClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 
 interface MenuBeerSheetProps {
   visible: boolean;
   beer: CommunityBeer | null;
   formKey: string | number;
+  canAddSmallVariant: boolean;
   onClose: () => void;
   onSubmit: (result: BeerFormResult) => void;
+  onRemove?: () => void;
+  onAddSmallVariant?: () => void;
 }
 
 /**
@@ -24,8 +27,11 @@ export function MenuBeerSheet({
   visible,
   beer,
   formKey,
+  canAddSmallVariant,
   onClose,
   onSubmit,
+  onRemove,
+  onAddSmallVariant,
 }: MenuBeerSheetProps) {
   return (
     <BeerFormModal
@@ -34,11 +40,14 @@ export function MenuBeerSheet({
       beer={beer}
       formKey={formKey}
       titleOverride={
-        beer ? t.contribute.editBeerSheetTitle : t.contribute.addBeerSheetTitle
+        beer ? cs.contribute.editBeerSheetTitle : cs.contribute.addBeerSheetTitle
       }
-      submitLabelOverride={t.contribute.done}
+      submitLabelOverride={cs.contribute.done}
+      canAddSmallVariant={canAddSmallVariant}
       onCancel={onClose}
       onSubmit={onSubmit}
+      onRemove={onRemove}
+      onAddSmallVariant={onAddSmallVariant}
     />
   );
 }

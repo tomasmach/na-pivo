@@ -7,21 +7,25 @@
  * the chosen source up.
  */
 
-import React, { memo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { memo, useEffect } from 'react';
+import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { CameraIcon, ImagesIcon } from '@/components/shared/IconGlyph';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
+import { BeerIcon, CameraIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { t } from '@/i18n';
+import { useReduceMotion } from '@/utils/useReduceMotion';
+import { cs } from '@/i18n/cs';
 import type { BeerPhotoSource } from '@/data/beerPhotoPicker';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
 
 interface BeerPhotoSourceSheetProps {
   visible: boolean;
@@ -32,10 +36,11 @@ interface BeerPhotoSourceSheetProps {
 interface OptionRowProps {
   icon: React.ReactNode;
   label: string;
+  helper: string;
   onPress: () => void;
 }
 
-function OptionRow({ icon, label, onPress }: OptionRowProps) {
+function OptionRow({ icon, label, helper, onPress }: OptionRowProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -44,15 +49,39 @@ function OptionRow({ icon, label, onPress }: OptionRowProps) {
       accessibilityLabel={label}
     >
       <View style={styles.optionIcon}>{icon}</View>
-      <Text style={styles.optionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-        {label}
-      </Text>
+      <View style={styles.optionText}>
+        <Text style={styles.optionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {label}
+        </Text>
+        <Text style={styles.optionHelper} maxFontSizeMultiplier={FontScaleCap.body}>
+          {helper}
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
 function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceSheetProps) {
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
+
+  // Spring the card up over the scrim (Reanimated shared value — not React state).
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    if (visible) {
+      progress.value = 0;
+      progress.value = reduceMotion
+        ? withTiming(1, { duration: 0 })
+        : withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 });
+    } else {
+      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
+    }
+  }, [visible, reduceMotion, progress]);
+
+  const cardAnim = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 48 }],
+  }));
 
   const pick = (source: BeerPhotoSource) => {
     fireLightImpactHaptic();
@@ -60,55 +89,93 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
   };
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
+        {/* Stop backdrop dismissal when tapping inside the card */}
+        <Pressable onPress={() => undefined}>
+          <Animated.View
+            style={[
+              styles.card,
+              softDrop(),
+              { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+              cardAnim,
+            ]}
+          >
             <View style={styles.handle} />
 
             <View style={styles.titleRow}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.photoDiary.sheetTitle}
-              </Text>
-              <CloseButton onPress={onClose} label={t.a11y.photoViewerClose} />
+              <View style={styles.titleTextWrap}>
+                <View style={styles.titleLine}>
+                  <BeerIcon size={18} color={Colors.amber} />
+                  <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {cs.photoDiary.sheetTitle}
+                  </Text>
+                </View>
+                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.photoDiary.sheetSubtitle}
+                </Text>
+              </View>
+              <Pressable
+                onPress={onClose}
+                hitSlop={12}
+                style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.photoViewerClose}
+              >
+                <XIcon size={18} color={Colors.foamMuted} />
+              </Pressable>
             </View>
 
             <View style={styles.options}>
               <OptionRow
                 icon={<CameraIcon size={22} color={Colors.amber} />}
-                label={t.photoDiary.takePhoto}
+                label={cs.photoDiary.takePhoto}
+                helper={cs.photoDiary.cameraHelper}
                 onPress={() => pick('camera')}
               />
               <OptionRow
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
-                label={t.photoDiary.pickFromLibrary}
+                label={cs.photoDiary.pickFromLibrary}
+                helper={cs.photoDiary.libraryHelper}
                 onPress={() => pick('library')}
               />
             </View>
-          </View>
-      </View>
-    </BottomSheetModal>
+          </Animated.View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
 export const BeerPhotoSourceSheet = memo(BeerPhotoSourceSheetImpl);
 
 const styles = StyleSheet.create({
-  cardWrap: { width: '100%', maxHeight: '92%' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
   card: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
-    ...softDrop(),
+    paddingHorizontal: Spacing.lg,
   },
   handle: {
     alignSelf: 'center',
-    width: 44,
+    width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
     marginBottom: Spacing.md,
   },
   titleRow: {
@@ -117,10 +184,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
+  titleTextWrap: {
+    flex: 1,
+  },
+  titleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     flexShrink: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
+  },
+  subtitle: {
+    marginTop: 4,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+  },
+  closeBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -Spacing.xs,
+    marginTop: -Spacing.xs,
   },
   options: {
     marginTop: Spacing.lg,
@@ -153,10 +244,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.28),
   },
-  optionLabel: {
+  optionText: {
     flex: 1,
-    fontWeight: '600',
+    minWidth: 0,
+  },
+  optionLabel: {
+    fontFamily: Fonts.ui.semibold,
     fontSize: 16,
     color: Colors.foam,
+  },
+  optionHelper: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    color: Colors.mutedText,
   },
 });

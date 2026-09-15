@@ -35,11 +35,10 @@ import {
   syncOwnAddedPubs,
   type AddedPubSubmission,
 } from '@/data/addedPubsQueue';
-import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
+import { cs } from '@/i18n/cs';
 import { usePubStore } from '@/stores/pubStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const SHEET_DISMISS_MS = 260;
@@ -175,7 +174,7 @@ export default function MyAddedPubsScreen() {
     if (selectedSubmission === null) return [];
     const editRow: MoreRow = {
       key: 'edit',
-      label: t.addPub.edit,
+      label: cs.addPub.edit,
       icon: PencilIcon,
       onPress: () => runAfterSheetClose(() => handleEdit(selectedSubmission)),
     };
@@ -184,7 +183,7 @@ export default function MyAddedPubsScreen() {
       editRow,
       {
         key: 'retry',
-        label: retryingId === null ? t.addPub.retry : t.addPub.retrying,
+        label: retryingId === null ? cs.addPub.retry : cs.addPub.retrying,
         icon: RefreshCwIcon,
         disabled: retryingId !== null,
         onPress: () => {
@@ -198,30 +197,30 @@ export default function MyAddedPubsScreen() {
 
   const nudge = useMemo<Nudge | null>(() => {
     if (retryingId !== null) {
-      return { kind: 'dopito', label: t.addPub.retryingAll, onPress: () => undefined };
+      return { kind: 'dopito', label: cs.addPub.retryingAll, onPress: () => undefined };
     }
     if (failedSubmissions.length > 0) {
       return {
         kind: 'counted',
-        text: t.addPub.failedCount(failedSubmissions.length),
-        undoLabel: t.addPub.retry,
+        text: cs.addPub.failedCount(failedSubmissions.length),
+        undoLabel: cs.addPub.retry,
         onUndo: () => void handleRetryAll(),
-        actionAccessibilityLabel: t.addPub.retryAll,
+        actionAccessibilityLabel: cs.addPub.retryAll,
       };
     }
     if (loadFailed) {
       return {
         kind: 'counted',
-        text: t.addPub.loadFailed,
-        undoLabel: t.addPub.retry,
+        text: cs.addPub.loadFailed,
+        undoLabel: cs.addPub.retry,
         onUndo: () => void refresh(),
-        actionAccessibilityLabel: t.addPub.retryLoad,
+        actionAccessibilityLabel: cs.addPub.retryLoad,
       };
     }
     if (pendingCount > 0) {
       return {
         kind: 'dopito',
-        label: t.addPub.pendingCount(pendingCount),
+        label: cs.addPub.pendingCount(pendingCount),
         onPress: () => void refresh(),
       };
     }
@@ -230,10 +229,10 @@ export default function MyAddedPubsScreen() {
 
   const heroFact =
     pendingCount > 0
-      ? t.addPub.pendingCount(pendingCount)
+      ? cs.addPub.pendingCount(pendingCount)
       : failedSubmissions.length > 0
-        ? t.addPub.needsFixCount(failedSubmissions.length)
-        : t.addPub.allSynced;
+        ? cs.addPub.needsFixCount(failedSubmissions.length)
+        : cs.addPub.allSynced;
 
   return (
     <View
@@ -247,10 +246,10 @@ export default function MyAddedPubsScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
@@ -259,7 +258,7 @@ export default function MyAddedPubsScreen() {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {t.addPub.myPubsTitle}
+          {cs.addPub.myPubsTitle}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -280,10 +279,10 @@ export default function MyAddedPubsScreen() {
           <View style={styles.empty}>
             <PinMat count={0} width={96} />
             <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.addPub.emptyTitle}
+              {cs.addPub.emptyTitle}
             </Text>
             <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.addPub.emptyBody}
+              {cs.addPub.emptyBody}
             </Text>
           </View>
         ) : (
@@ -291,25 +290,25 @@ export default function MyAddedPubsScreen() {
             <AddedPubsCard
               syncedCount={syncedCount}
               totalCount={submissions.length}
-              caption={syncedCount === 0 ? t.addPub.noneSyncedCaption : t.addPub.syncedCaption}
+              caption={syncedCount === 0 ? cs.addPub.noneSyncedCaption : cs.addPub.syncedCaption}
               headline={
-                latestSubmission === null ? null : t.addPub.latestPub(latestSubmission.name)
+                latestSubmission === null ? null : cs.addPub.latestPub(latestSubmission.name)
               }
               factStrong={heroFact}
-              factMuted={t.addPub.totalCount(submissions.length)}
+              factMuted={cs.addPub.totalCount(submissions.length)}
             />
 
             <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.addPub.listLabel}
+              {cs.addPub.listLabel}
             </Text>
             <View style={styles.rowsCard}>
               {sortedSubmissions.map((submission, index) => {
                 const status =
                   submission.syncState === 'pending'
-                    ? t.addPub.statusPending
+                    ? cs.addPub.statusPending
                     : submission.syncState === 'failed'
-                      ? t.addPub.statusFailed
-                      : t.addPub.statusSynced;
+                      ? cs.addPub.statusFailed
+                      : cs.addPub.statusSynced;
                 return (
                   <Pressable
                     key={submission.client_id}
@@ -320,7 +319,7 @@ export default function MyAddedPubsScreen() {
                       pressed && styles.rowPressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={t.addPub.openPubActions(submission.name)}
+                    accessibilityLabel={cs.addPub.openPubActions(submission.name)}
                   >
                     <View style={styles.rowCopy}>
                       <Text
@@ -359,10 +358,10 @@ export default function MyAddedPubsScreen() {
 
       <NudgeSlot nudge={nudge} />
       <CounterCta
-        label={submissions.length === 0 ? t.addPub.addFirstCta : t.addPub.addCta}
-        subLabel={t.addPub.addCtaHint}
+        label={submissions.length === 0 ? cs.addPub.addFirstCta : cs.addPub.addCta}
+        subLabel={cs.addPub.addCtaHint}
         onPress={() => router.push('/add-pub')}
-        accessibilityLabel={submissions.length === 0 ? t.addPub.addFirstCta : t.addPub.addCta}
+        accessibilityLabel={submissions.length === 0 ? cs.addPub.addFirstCta : cs.addPub.addCta}
       />
 
       <MoreSheet
@@ -401,7 +400,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
@@ -425,14 +424,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
     includeFontPadding: false,
   },
   emptyBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.mutedText,
@@ -442,7 +441,7 @@ const styles = StyleSheet.create({
   listLabel: {
     marginTop: 24,
     marginBottom: 8,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -477,20 +476,20 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flexShrink: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
     includeFontPadding: false,
   },
   meta: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
   status: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

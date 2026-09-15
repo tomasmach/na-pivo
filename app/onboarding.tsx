@@ -4,13 +4,7 @@
  * app/_layout.tsx redirects here when onboardingStore decides 'show').
  *
  * Three slides in a horizontally paged FlatList: welcome + compass → beer
- * diary + parta → account nudge.
- *
- * Each slide is an illustration, one line, and THREE concrete things the app
- * does — drawn with the app's own glyphs and medallions, so the first screen a
- * person sees already looks like the product rather than a generic welcome
- * pager. It used to be a paragraph per slide: well written, and skipped. Three
- * short lines get read standing up with a thumb on "další"; a block does not. No permission prompts here on purpose:
+ * diary + parta → account nudge. No permission prompts here on purpose:
  * the compass has its own location priming screen, and asking twice in a row
  * is worse than asking once in context. The account slide nudges toward
  * sign-in but never forces it (the product is local-first and an anonymous
@@ -23,35 +17,25 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
+  Image,
   Pressable,
   Platform,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type ListRenderItemInfo,
   type ViewToken,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  BeerIcon,
-  CameraIcon,
-  ChartColumnIcon,
-  CompassIcon,
-  DicesIcon,
-  RefreshCwIcon,
-  ShieldIcon,
-  TrophyIcon,
-  UsersIcon,
-} from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { CounterCta } from '@/counter/CounterCta';
-import { OnboardingPreview } from '@/onboarding/OnboardingPreview';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { trackUiInteraction } from '@/data/uxTelemetry';
@@ -60,84 +44,63 @@ interface Slide {
   key: string;
   title: string;
   body: string;
-  /** What the app actually does. Three, always — a fourth stops being scanned. */
-  bullets: readonly string[];
-  icons: readonly React.ComponentType<{ size?: number; color: string }>[];
-  /**
-   * Which piece of the real app opens this slide.
-   *
-   * Not an illustration. Generated art is a promise about a product you cannot
-   * see yet; the compass cell, the night's numbers and the board are the product
-   * — and they are the very screens waiting behind "Přeskočit".
-   */
-  preview: 'compass' | 'diary' | 'account';
+  /** Full-bleed illustration on the stout background (generated brand art —
+   *  the PNG background matches Colors.stout exactly, so it blends edge-free). */
+  image: number;
 }
 
 const SLIDES: Slide[] = [
   {
     key: 'compass',
-    title: t.onboarding.slide1Title,
-    body: t.onboarding.slide1Body,
-    bullets: t.onboarding.slide1Bullets,
-    icons: [CompassIcon, BeerIcon, ChartColumnIcon],
-    preview: 'compass',
+    title: cs.onboarding.slide1Title,
+    body: cs.onboarding.slide1Body,
+    image: require('../assets/images/onboarding/slide-compass.png'),
   },
   {
     key: 'diary',
-    title: t.onboarding.slide2Title,
-    body: t.onboarding.slide2Body,
-    bullets: t.onboarding.slide2Bullets,
-    icons: [UsersIcon, DicesIcon, CameraIcon],
-    preview: 'diary',
+    title: cs.onboarding.slide2Title,
+    body: cs.onboarding.slide2Body,
+    image: require('../assets/images/onboarding/slide-diary.png'),
   },
   {
     key: 'account',
-    title: t.onboarding.slide3Title,
-    body: t.onboarding.slide3Body,
-    bullets: t.onboarding.slide3Bullets,
-    icons: [RefreshCwIcon, TrophyIcon, ShieldIcon],
-    preview: 'account',
+    title: cs.onboarding.slide3Title,
+    body: cs.onboarding.slide3Body,
+    image: require('../assets/images/onboarding/slide-account.png'),
   },
 ];
 
 const LAST_INDEX = SLIDES.length - 1;
 
 function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
+  const [artHeight, setArtHeight] = useState(0);
+  const illustrationSide =
+    artHeight > 0
+      ? Math.max(160, Math.min(320, Math.min(width * 0.78, artHeight - 24)))
+      : 240;
+
+  const handleArtLayout = useCallback((event: LayoutChangeEvent) => {
+    setArtHeight(event.nativeEvent.layout.height);
+  }, []);
+
   return (
     <View style={[styles.slide, { width }]}>
-      <View style={styles.previewArea}>
-        <OnboardingPreview slide={item.preview} />
+      <View style={styles.illustrationArea} onLayout={handleArtLayout}>
+        <Image
+          source={item.image}
+          style={{ width: illustrationSide, height: illustrationSide }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
       </View>
       <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
         {item.title}
       </Text>
       <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
         {item.key === 'account' && Platform.OS === 'android'
-          ? t.onboarding.slide3BodyAndroid
+          ? cs.onboarding.slide3BodyAndroid
           : item.body}
       </Text>
-
-      <View style={styles.bullets}>
-        {(item.key === 'account' && Platform.OS === 'android'
-          ? t.onboarding.slide3BulletsAndroid
-          : item.bullets
-        ).map((line, index) => {
-          const Icon = item.icons[index] ?? BeerIcon;
-          return (
-            <View key={line} style={styles.bullet}>
-              {/* The same 12 % amber medallion the app uses for an icon in a
-                  row (§2.2), so this reads as the product and not as a
-                  marketing page bolted on the front. */}
-              <View style={styles.bulletIcon}>
-                <Icon size={17} color={Colors.amber} />
-              </View>
-              <Text style={styles.bulletText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {line}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
     </View>
   );
 }
@@ -225,7 +188,7 @@ export default function OnboardingScreen() {
         <View
           style={styles.dots}
           accessibilityRole="text"
-          accessibilityLabel={t.a11y.onboardingStep(index + 1, SLIDES.length)}
+          accessibilityLabel={cs.a11y.onboardingStep(index + 1, SLIDES.length)}
         >
           {SLIDES.map((slide, i) => (
             <View
@@ -253,9 +216,9 @@ export default function OnboardingScreen() {
 
       <View style={styles.ctaWrap}>
         <CounterCta
-          label={isLast ? t.onboarding.slide3Cta : t.onboarding.next}
+          label={isLast ? cs.onboarding.slide3Cta : cs.onboarding.next}
           onPress={isLast ? handleOpenAuth : handleNext}
-          accessibilityLabel={isLast ? t.onboarding.slide3Cta : t.onboarding.next}
+          accessibilityLabel={isLast ? cs.onboarding.slide3Cta : cs.onboarding.next}
         />
       </View>
 
@@ -267,11 +230,11 @@ export default function OnboardingScreen() {
           }}
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={isLast ? t.onboarding.slide3Later : t.onboarding.skip}
+          accessibilityLabel={isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}
           hitSlop={8}
         >
           <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isLast ? t.onboarding.slide3Later : t.onboarding.skip}
+            {isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}
           </Text>
         </Pressable>
       </View>
@@ -304,13 +267,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.sm,
   },
-  previewArea: {
+  illustrationArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     lineHeight: 36,
     color: Colors.foam,
@@ -318,32 +281,13 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   body: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
     textAlign: 'center',
     marginTop: Spacing.sm,
     includeFontPadding: false,
-  },
-  // Left-aligned on purpose, under a centred title: a list you scan needs its
-  // words to start in the same place, and centred bullets are decoration.
-  bullets: { alignSelf: 'stretch', marginTop: Spacing.xl, gap: Spacing.md },
-  bullet: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  bulletIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
-  bulletText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 21,
-    color: Colors.foam,
   },
 
   // ── Dots ──
@@ -377,7 +321,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.mutedText,
     includeFontPadding: false,

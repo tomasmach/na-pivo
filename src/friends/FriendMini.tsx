@@ -10,15 +10,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Avatar } from '@/profile/Avatar';
 import type { FriendProfile } from '@/data/friendsClient';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { t } from '@/i18n';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 export function friendDisplayName(profile: FriendProfile | null | undefined): string {
-  if (!profile) return t.friends.fallbackName;
+  if (!profile) return 'Kámoš';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || t.friends.fallbackName;
+  return profile.displayName || 'Kámoš';
 }
 
 export function FriendMini({ profile }: { profile: FriendProfile }) {
@@ -51,7 +50,7 @@ const styles = StyleSheet.create({
   },
   friendMiniText: {
     flexShrink: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     color: Colors.foam,
     fontSize: 15,
   },

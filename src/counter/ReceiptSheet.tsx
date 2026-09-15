@@ -7,19 +7,16 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { t } from '@/i18n';
-import { MinusIcon } from '@/components/shared/IconGlyph';
+import { cs } from '@/i18n/cs';
+import { MinusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
 
 export interface ReceiptItem {
   key: string; // identity key
@@ -31,7 +28,7 @@ export interface ReceiptItem {
 
 export interface ReceiptSheetProps {
   visible: boolean;
-  /** Pre-composed t.counter.receiptStarted('19:40'). */
+  /** Pre-composed cs.counter.receiptStarted('19:40'). */
   startedAtLabel: string | null;
   beerItems: ReceiptItem[];
   otherItems: ReceiptItem[];
@@ -43,7 +40,7 @@ export interface ReceiptSheetProps {
 }
 
 function ReceiptRow({ item, onRemove }: { item: ReceiptItem; onRemove: (item: ReceiptItem) => void }) {
-  const countLine = `${t.counter.perBeerCount(item.count)}${item.meta ? ' · ' + item.meta : ''}`;
+  const countLine = `${cs.counter.perBeerCount(item.count)}${item.meta ? ' · ' + item.meta : ''}`;
 
   return (
     <View style={styles.row}>
@@ -64,7 +61,7 @@ function ReceiptRow({ item, onRemove }: { item: ReceiptItem; onRemove: (item: Re
         onPress={() => onRemove(item)}
         style={({ pressed }) => [styles.minusButton, pressed && styles.pressedDim]}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.counterRemoveIdentity(item.name)}
+        accessibilityLabel={cs.a11y.counterRemoveIdentity(item.name)}
       >
         <MinusIcon size={18} color={Colors.foam} />
       </Pressable>
@@ -87,21 +84,46 @@ export function ReceiptSheet({
   const hasItems = beerItems.length > 0 || otherItems.length > 0;
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       {/* The backdrop is a dismiss target, not an announced control: the real
           close button carries the label so VoiceOver hears "Zavřít" once. */}
+      <View style={styles.backdrop}>
         {/* The backdrop is a dismiss target behind the card, not its parent —
             wrapping the card would stop it from sitting flush on the bottom
             edge and would swallow the sheet's own gestures. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
         <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-          <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
+          {/* The card swallows presses so a row tap never falls through to the backdrop. */}
+          <Pressable
+            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+            onPress={() => undefined}
+          >
             <View style={styles.grabber} />
 
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {t.counter.receiptTitle}
+                {cs.counter.receiptTitle}
               </Text>
-              <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [styles.closeButton, pressed && styles.pressedDim]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.counterCloseModal}
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
             </View>
 
             {startedAtLabel != null && (
@@ -134,7 +156,7 @@ export function ReceiptSheet({
             {totalLabel != null && hasItems && (
               <View style={styles.totalRow}>
                 <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {t.counter.receiptTotal}
+                  {cs.counter.receiptTotal}
                 </Text>
                 <Text style={styles.totalText} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {totalLabel}
@@ -144,38 +166,53 @@ export function ReceiptSheet({
 
             <View style={styles.footer}>
               <GlowButton
-                label={t.counter.receiptClose}
+                label={cs.counter.receiptClose}
                 variant="secondary"
                 glow="none"
                 onPress={onDone}
-                accessibilityLabel={t.a11y.counterDone}
+                accessibilityLabel={cs.a11y.counterDone}
               />
             </View>
-          </View>
+          </Pressable>
         </View>
-    </BottomSheetModal>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
+  // The height bounds live HERE, not on the card: a percentage resolves
+  // against the parent's height, and the card's parent (this) is auto-height,
+  // so bounds written on the card are silently dropped — the card then grows
+  // past the screen and the ScrollView inside never scrolls. `backdrop` is
+  // flex: 1, so percentages resolve properly one level up. See §7.5.
   cardWrap: {
     width: '100%',
+    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
+    // Fills whatever cardWrap was clamped to — that is what bounds the scroll.
+    flex: 1,
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.lg,
     ...softDrop(),
   },
   grabber: {
-    width: 44,
+    width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -186,11 +223,22 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
   },
+  closeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   startedAt: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 2,
@@ -198,8 +246,7 @@ const styles = StyleSheet.create({
   // Bounded so a long evening scrolls inside the sheet instead of pushing the
   // pinned footer off the bottom of the card.
   list: {
-    flexGrow: 0,
-    flexShrink: 1,
+    flex: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -218,19 +265,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowName: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },
   rowMeta: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
     marginTop: 2,
   },
   rowTotal: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -259,7 +306,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   totalText: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 17,
     color: Colors.foam,
     includeFontPadding: false,

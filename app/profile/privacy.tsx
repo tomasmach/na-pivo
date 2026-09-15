@@ -18,10 +18,10 @@ import {
   LockKeyholeIcon,
   ShieldIcon,
 } from '@/components/shared/IconGlyph';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useAccountStore, selectIsPublic } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 interface PrivacyChoiceProps {
@@ -95,7 +95,7 @@ export default function ProfilePrivacyScreen() {
         finish();
         return;
       }
-      setError(result.detail || t.profile.privacy.error);
+      setError(result.detail || cs.profile.privacy.error);
     } finally {
       setBusy(false);
     }
@@ -122,27 +122,27 @@ export default function ProfilePrivacyScreen() {
         </View>
 
         <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.profile.privacy.eyebrow}
+          {cs.profile.privacy.eyebrow}
         </Text>
         <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.profile.privacy.title}
+          {cs.profile.privacy.title}
         </Text>
         <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.profile.privacy.body}
+          {cs.profile.privacy.body}
         </Text>
 
         <View style={styles.choices} accessibilityRole="radiogroup">
           <PrivacyChoice
             selected={isPublic}
-            title={t.profile.privacy.publicTitle}
-            body={t.profile.privacy.publicBody}
+            title={cs.profile.privacy.publicTitle}
+            body={cs.profile.privacy.publicBody}
             icon={<EyeIcon size={22} color={isPublic ? Colors.amber : Colors.mutedText} />}
             onPress={() => select(true)}
           />
           <PrivacyChoice
             selected={!isPublic}
-            title={t.profile.privacy.privateTitle}
-            body={t.profile.privacy.privateBody}
+            title={cs.profile.privacy.privateTitle}
+            body={cs.profile.privacy.privateBody}
             icon={
               <LockKeyholeIcon
                 size={22}
@@ -156,14 +156,14 @@ export default function ProfilePrivacyScreen() {
         <View style={styles.promise}>
           <ShieldIcon size={18} color={Colors.amber} />
           <Text style={styles.promiseText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.profile.privacy.promise}
+            {cs.profile.privacy.promise}
           </Text>
         </View>
 
         {!!error && (
           <View style={styles.errorBox} accessibilityRole="alert">
             <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.profile.privacy.error}
+              {cs.profile.privacy.error}
             </Text>
           </View>
         )}
@@ -172,11 +172,11 @@ export default function ProfilePrivacyScreen() {
       <View style={styles.footer}>
         <View>
           <GlowButton
-            label={busy ? t.profile.privacy.saving : t.profile.privacy.confirm}
+            label={busy ? cs.profile.privacy.saving : cs.profile.privacy.confirm}
             onPress={handleConfirm}
             glow={busy ? 'none' : 'strong'}
             disabled={busy}
-            accessibilityLabel={t.profile.privacy.confirm}
+            accessibilityLabel={cs.profile.privacy.confirm}
           />
           {busy ? (
             <View style={styles.buttonSpinner} pointerEvents="none">
@@ -189,10 +189,10 @@ export default function ProfilePrivacyScreen() {
           disabled={busy}
           style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={error ? t.profile.privacy.skipAfterError : t.profile.privacy.skip}
+          accessibilityLabel={error ? cs.profile.privacy.skipAfterError : cs.profile.privacy.skip}
         >
           <Text style={styles.skipText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {error ? t.profile.privacy.skipAfterError : t.profile.privacy.skip}
+            {error ? cs.profile.privacy.skipAfterError : cs.profile.privacy.skip}
           </Text>
         </Pressable>
       </View>
@@ -234,14 +234,14 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.14),
   },
   eyebrow: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     letterSpacing: 1.8,
     color: Colors.amber,
     marginBottom: Spacing.sm,
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 34,
     lineHeight: 39,
     letterSpacing: -0.5,
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     maxWidth: 330,
   },
   body: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 16,
     lineHeight: 24,
     color: Colors.foamMuted,
@@ -290,12 +290,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   choiceTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 18,
     color: Colors.foam,
   },
   choiceBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13.5,
     lineHeight: 19,
     color: Colors.foamMuted,
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   },
   promiseText: {
     flex: 1,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13.5,
     lineHeight: 20,
     color: Colors.amberLight,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   skipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.mutedText,
   },

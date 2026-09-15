@@ -13,8 +13,6 @@
 import { useSyncExternalStore } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
-import { intlLocale, t } from '@/i18n';
-
 const TICK_MS = 60_000;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
@@ -99,7 +97,7 @@ function parseMs(iso: string): number | null {
 
 /**
  * "před 20 min" — how long ago `iso` was, relative to `now`.
- * Returns "" for an unparseable timestamp. Falls back to a short local date
+ * Returns "" for an unparseable timestamp. Falls back to a short cs-CZ date
  * for anything older than a week.
  */
 export function formatRelative(iso: string, now: number = Date.now()): string {
@@ -107,12 +105,12 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
   if (ms === null) return '';
 
   const diff = now - ms;
-  if (diff < MINUTE_MS) return t.relativeTime.now;
-  if (diff < HOUR_MS) return t.relativeTime.minutesAgo(Math.floor(diff / MINUTE_MS));
-  if (diff < DAY_MS) return t.relativeTime.hoursAgo(Math.floor(diff / HOUR_MS));
-  if (diff < 7 * DAY_MS) return t.relativeTime.daysAgo(Math.floor(diff / DAY_MS));
+  if (diff < MINUTE_MS) return 'teď';
+  if (diff < HOUR_MS) return `před ${Math.floor(diff / MINUTE_MS)} min`;
+  if (diff < DAY_MS) return `před ${Math.floor(diff / HOUR_MS)} h`;
+  if (diff < 7 * DAY_MS) return `před ${Math.floor(diff / DAY_MS)} d`;
 
-  return new Date(ms).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
+  return new Date(ms).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
 }
 
 /**
@@ -126,15 +124,13 @@ export function formatExpiry(iso: string, now: number = Date.now()): string {
 
   const remaining = ms - now;
   if (remaining <= 0) return '';
-  if (remaining < MINUTE_MS) return t.relativeTime.soon;
+  if (remaining < MINUTE_MS) return 'ještě chvíli';
 
   const hours = Math.floor(remaining / HOUR_MS);
   const minutes = Math.floor((remaining % HOUR_MS) / MINUTE_MS);
 
   if (hours > 0) {
-    return minutes > 0
-      ? t.relativeTime.hoursMinutesLeft(hours, minutes)
-      : t.relativeTime.hoursLeft(hours);
+    return minutes > 0 ? `ještě ${hours} h ${minutes} min` : `ještě ${hours} h`;
   }
-  return t.relativeTime.minutesLeft(minutes);
+  return `ještě ${minutes} min`;
 }

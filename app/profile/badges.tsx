@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import {
   ChevronLeftIcon,
@@ -16,8 +16,7 @@ import {
 import { AchievementGrid } from '@/profile/AchievementGrid';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper } from '@/data/auth';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
-import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
+import { cs } from '@/i18n/cs';
 
 function MapperStat({
   icon,
@@ -59,7 +58,7 @@ function MapperSection({
   return (
     <View style={styles.mapperSection}>
       <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.mapPub.mapperHeader}
+        {cs.mapPub.mapperHeader}
       </Text>
       {mapper ? (
         <>
@@ -67,27 +66,27 @@ function MapperSection({
             <MapperStat
               icon={<MapPinnedIcon size={18} color={Colors.amber} />}
               value={String(mapper.distinctMappedPubs)}
-              caption={t.mapPub.mapperStatMappedPubs}
+              caption={cs.mapPub.mapperStatMappedPubs}
             />
             <MapperStat
               icon={<CompassIcon size={18} color={Colors.amber} />}
               value={String(mapper.amenityVotesCount)}
-              caption={t.mapPub.mapperStatAnswers}
+              caption={cs.mapPub.mapperStatAnswers}
             />
             <MapperStat
               icon={<SproutIcon size={18} color={Colors.amber} />}
               value={String(mapper.firstMapperCount)}
-              caption={t.mapPub.mapperStatFirstMaps}
+              caption={cs.mapPub.mapperStatFirstMaps}
             />
             <MapperStat
               icon={<StarIcon size={18} color={Colors.amber} />}
               value={String(mapper.completedPubsCount)}
-              caption={t.mapPub.mapperStatCompleted}
+              caption={cs.mapPub.mapperStatCompleted}
             />
           </View>
           {!signedIn ? (
             <Text style={styles.mapperHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.mapPub.mapperSignedOut}
+              {cs.mapPub.mapperSignedOut}
             </Text>
           ) : null}
         </>
@@ -97,7 +96,7 @@ function MapperSection({
             <SproutIcon size={22} color={Colors.amber} />
           </View>
           <Text style={styles.mapperEmptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {signedIn ? t.mapPub.mapperEmpty : t.mapPub.mapperSignedOut}
+            {signedIn ? cs.mapPub.mapperEmpty : cs.mapPub.mapperSignedOut}
           </Text>
         </View>
       )}
@@ -115,19 +114,19 @@ export default function BadgesScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.back}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <View style={styles.headerText}>
           <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.profile.achievementsHeader}
+            {cs.profile.achievementsHeader}
           </Text>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.profile.badgeCollectionTitle}
+            {cs.profile.badgeCollectionTitle}
           </Text>
         </View>
       </View>
@@ -140,7 +139,7 @@ export default function BadgesScreen() {
       >
         <MapperSection mapper={profile?.mapper} signedIn={signedIn} />
         <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.profile.badgeCollectionIntro}
+          {cs.profile.badgeCollectionIntro}
         </Text>
         <AchievementGrid
           mapper={profile?.mapper}
@@ -171,13 +170,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerText: { gap: 2 },
-  eyebrow: { fontWeight: '700', fontSize: 10, letterSpacing: 1.3, color: Colors.amber },
-  title: { fontWeight: '800', fontSize: 24, color: Colors.foam },
+  eyebrow: { fontFamily: Fonts.ui.bold, fontSize: 10, letterSpacing: 1.3, color: Colors.amber },
+  title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
   content: { paddingHorizontal: Spacing.lg, gap: Spacing.md },
   mapperSection: { gap: Spacing.sm },
   sectionHeader: {
     marginLeft: 4,
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -208,20 +207,20 @@ const styles = StyleSheet.create({
   },
   mapperValue: {
     marginTop: 6,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   mapperCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 10,
     letterSpacing: 1,
     color: Colors.mutedText,
   },
   mapperHint: {
     marginLeft: 4,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -248,13 +247,13 @@ const styles = StyleSheet.create({
   },
   mapperEmptyText: {
     flex: 1,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
   },
   intro: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,

@@ -9,9 +9,9 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
-import { t, formatVolume } from '@/i18n';
+import { cs, formatVolume } from '@/i18n/cs';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 import type { BreakdownLine } from '@/myBeers/eveningModel';
 
@@ -37,10 +37,10 @@ export function EveningBreakdown({
         >
           <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {line.volumeMl ? `${line.name} · ${formatVolume(line.volumeMl)}` : line.name}
-            {line.drinkType !== 'beer' ? ` · ${t.counter.drinkTypeLabel(line.drinkType)}` : ''}
+            {line.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(line.drinkType)}` : ''}
           </Text>
           <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.myBeers.breakdownLine(line.count, formatPrice(line.totalCzk, priceCurrency))}
+            {cs.myBeers.breakdownLine(line.count, formatPrice(line.totalCzk, priceCurrency))}
           </Text>
         </View>
       ))}
@@ -48,7 +48,7 @@ export function EveningBreakdown({
       {showTotal && (
         <View style={[styles.row, styles.totalRow]}>
           <Text style={styles.totalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.myBeers.totalLabel}
+            {cs.myBeers.totalLabel}
           </Text>
           <Text style={styles.totalValue} maxFontSizeMultiplier={FontScaleCap.heading}>
             {formatPrice(totalCzk, priceCurrency)}
@@ -73,12 +73,12 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },
   meta: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
   },
@@ -89,13 +89,13 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm + 2,
   },
   totalLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 13,
     letterSpacing: 0.5,
     color: Colors.mutedText,
   },
   totalValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
   },

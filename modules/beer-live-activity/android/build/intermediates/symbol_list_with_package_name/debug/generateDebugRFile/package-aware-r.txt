@@ -1,0 +1,3 @@
+com.napivo.beerliveactivity
+drawable beer_live_activity_add
+drawable beer_live_activity_notification

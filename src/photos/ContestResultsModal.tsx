@@ -12,12 +12,11 @@
  * fetch from any surface.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withDelay,
   withSpring,
@@ -25,27 +24,28 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useRouter, type Href } from 'expo-router';
 
+import { BeerBubbles } from '@/components/celebration/BeerBubbles';
+import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchPhotoContestTeaser } from '@/data/photoContestClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
-import { useLaunchModalMutex, useModalPresentation } from '@/stores/launchModalMutex';
+import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap, Fonts } from '@/theme/fonts';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
+import { amberGlow, softDrop } from '@/theme/shadows';
 import { fireSuccessHaptic } from '@/utils/haptics';
 
 const MEDALLION = 64;
 const CARD_MAX_WIDTH = 420;
 
 function rankCopy(rank: number): { title: string; body: string } {
-  if (rank === 1) return { title: t.photoContest.resultsTitleFirst, body: t.photoContest.resultsBodyFirst };
-  if (rank === 2) return { title: t.photoContest.resultsTitleSecond, body: t.photoContest.resultsBodySecond };
-  return { title: t.photoContest.resultsTitleThird, body: t.photoContest.resultsBodyThird };
+  if (rank === 1) return { title: cs.photoContest.resultsTitleFirst, body: cs.photoContest.resultsBodyFirst };
+  if (rank === 2) return { title: cs.photoContest.resultsTitleSecond, body: cs.photoContest.resultsBodySecond };
+  return { title: cs.photoContest.resultsTitleThird, body: cs.photoContest.resultsBodyThird };
 }
 
 export function ContestResultsModal() {
@@ -56,7 +56,6 @@ export function ContestResultsModal() {
   const releaseNote = useReleaseStore((s) => s.pendingNote);
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
-  const reduceMotion = useReducedMotion();
 
   // Launch gate: one cached snapshot fetch once the what's-new popup is out
   // of the way. Any surface's later fetch also feeds the store, so a failure
@@ -73,47 +72,32 @@ export function ContestResultsModal() {
     };
   }, [gateOpen, ingestSnapshot]);
 
-  const [closingContestId, setClosingContestId] = useState<string | null>(null);
-  const closing = pending !== null && closingContestId === pending.contestId;
-  const pendingAction = useRef<(() => void) | null>(null);
-  const holder = useLaunchModalMutex((state) => state.holder);
-  const presentation = useModalPresentation(
-    gateOpen && pending !== null && !closing,
-    'contest-results',
-  );
-  const visible = presentation.visible;
-
-  const requestDismiss = useCallback((afterDismiss?: () => void) => {
-    if (closing) return;
-    pendingAction.current = afterDismiss ?? null;
-    setClosingContestId(pending?.contestId ?? null);
-  }, [closing, pending?.contestId]);
-
-  // Keep the result mounted until the native Modal has really dismissed and
-  // the shared 260 ms boundary has elapsed. Clearing the store earlier returns
-  // null from this component and tears the native presentation down mid-flight.
+  // Launch-modal mutex: only one launch popup may present at a time (two
+  // sibling RN Modals wedge iOS). Claim while we want to show; a lost race
+  // resolves itself when the holder releases and `holder` flips back to null.
+  const holder = useLaunchModalMutex((s) => s.holder);
+  const wantVisible = gateOpen && pending !== null;
   useEffect(() => {
-    if (!closing || holder === 'contest-results') return;
-    dismissResult();
-    const action = pendingAction.current;
-    pendingAction.current = null;
-    action?.();
-  }, [closing, dismissResult, holder]);
+    const mutex = useLaunchModalMutex.getState();
+    if (wantVisible) mutex.claim('contest-results');
+    else mutex.release('contest-results');
+  }, [wantVisible, holder]);
+  useEffect(() => () => useLaunchModalMutex.getState().release('contest-results'), []);
+  const visible = wantVisible && holder === 'contest-results';
 
   const progress = useSharedValue(0);
   useEffect(() => {
     if (visible) {
       progress.value = 0;
-      progress.value = reduceMotion
-        ? 1
-        : withDelay(80, withSpring(1, { damping: 14, stiffness: 140, mass: 0.9 }));
+      progress.value = withDelay(
+        80,
+        withSpring(1, { damping: 14, stiffness: 140, mass: 0.9 }),
+      );
       fireSuccessHaptic();
     } else {
-      progress.value = reduceMotion
-        ? 0
-        : withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) });
+      progress.value = withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) });
     }
-  }, [reduceMotion, visible, progress]);
+  }, [visible, progress]);
 
   const cardAnim = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -127,16 +111,19 @@ export function ContestResultsModal() {
 
   const { title, body } = rankCopy(pending.rank);
   const stats: { value: string; label: string }[] = [
-    { value: String(pending.votes), label: t.photoContest.resultsStatVotes },
+    { value: String(pending.votes), label: cs.photoContest.resultsStatVotes },
   ];
   if (pending.xpAwarded > 0) {
-    stats.push({ value: `+${pending.xpAwarded}`, label: t.photoContest.resultsStatXp });
+    stats.push({ value: `+${pending.xpAwarded}`, label: cs.photoContest.resultsStatXp });
   }
   if (pending.rank === 1 && pending.winsCount > 0) {
-    stats.push({ value: String(pending.winsCount), label: t.photoContest.resultsStatWins });
+    stats.push({ value: String(pending.winsCount), label: cs.photoContest.resultsStatWins });
   }
 
-  const openContest = () => requestDismiss(() => router.push('/photo-contest' as Href));
+  const openContest = () => {
+    dismissResult();
+    router.push('/photo-contest' as Href);
+  };
 
   const cardWidth = Math.min(screenWidth - Spacing.lg * 2, CARD_MAX_WIDTH);
 
@@ -144,13 +131,12 @@ export function ContestResultsModal() {
     <Modal
       visible={visible}
       transparent
-      animationType="none"
+      animationType="fade"
       statusBarTranslucent
-      onRequestClose={() => requestDismiss()}
-      onDismiss={presentation.onDismiss}
+      onRequestClose={dismissResult}
     >
       <View style={styles.backdrop}>
-        <Animated.View style={[styles.card, softDrop(), cardAnim, { width: cardWidth }]}>
+        <Animated.View style={[styles.card, softDrop(), amberGlow(26), cardAnim, { width: cardWidth }]}>
           {pending.imageUrl ? (
             <Image
               source={{ uri: pending.imageUrl }}
@@ -162,12 +148,18 @@ export function ContestResultsModal() {
 
           {/* Trophy medallion breaking the photo's bottom edge. */}
           <View style={[styles.medallionRow, !pending.imageUrl && styles.medallionRowNoPhoto]}>
+            <View style={styles.medallionGlow} pointerEvents="none">
+              <SoftGlow size={MEDALLION * 2.4} color={Colors.amber} opacity={0.4} />
+            </View>
             <View style={styles.medallion}>
               <TrophyIcon size={30} color={Colors.amberLight} />
             </View>
           </View>
 
           <View style={styles.content}>
+            <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.photoContest.resultsEyebrow}
+            </Text>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               {title}
             </Text>
@@ -191,21 +183,22 @@ export function ContestResultsModal() {
               ))}
             </View>
 
-            <GlowButton
-              label={t.photoContest.resultsCta}
-              onPress={openContest}
-              glow="none"
-              height={MockLayout.buttonHeight}
-            />
+            <GlowButton label={cs.photoContest.resultsCta} onPress={openContest} glow="soft" height={54} />
             <Pressable
-              onPress={() => requestDismiss()}
+              onPress={dismissResult}
               accessibilityRole="button"
               style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}
             >
               <Text style={styles.closeText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.photoContest.resultsClose}
+                {cs.photoContest.resultsClose}
               </Text>
             </Pressable>
+          </View>
+
+          {/* Rising bubbles over the whole card; the component collapses to
+              static under reduce-motion on its own. */}
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <BeerBubbles width={cardWidth} height={420} bubbleCount={10} />
           </View>
         </Animated.View>
       </View>
@@ -224,8 +217,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.cardLarge,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.1),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.45),
     overflow: 'hidden',
   },
   photo: {
@@ -240,6 +233,10 @@ const styles = StyleSheet.create({
   },
   medallionRowNoPhoto: {
     marginTop: Spacing.xl,
+  },
+  medallionGlow: {
+    position: 'absolute',
+    top: MEDALLION / 2 - MEDALLION * 1.2,
   },
   medallion: {
     width: MEDALLION,
@@ -257,14 +254,23 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
     alignItems: 'center',
   },
+  eyebrow: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: Colors.amber,
+  },
   title: {
-    ...MockType.titleXL,
+    marginTop: Spacing.xs,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 28,
+    lineHeight: 33,
     color: Colors.foam,
     textAlign: 'center',
   },
   body: {
     marginTop: Spacing.xs,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foamMuted,
@@ -287,24 +293,22 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.border, 0.9),
   },
   statValue: {
-    fontFamily: Fonts.numeral,
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
-    lineHeight: 30,
-    letterSpacing: -0.4,
-    includeFontPadding: false,
+    lineHeight: 28,
     fontVariant: ['tabular-nums'],
-    color: Colors.foam,
+    color: Colors.amberLight,
   },
   statLabel: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   closeButton: {
     alignSelf: 'center',
     marginTop: Spacing.sm,
-    minHeight: 44,
+    minHeight: 40,
     justifyContent: 'center',
     paddingHorizontal: Spacing.lg,
   },
@@ -312,7 +316,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   closeText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },

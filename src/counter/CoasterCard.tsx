@@ -34,9 +34,9 @@ import Animated, {
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 
 /** Nothing on any screen is bigger than this. */
 const COUNT_MAX = 132;
@@ -193,7 +193,7 @@ export function CoasterCard({
           </Text>
         </Animated.View>
         <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {(count > 0 ? nounLabel : t.counter.coasterEmpty).toUpperCase()}
+          {(count > 0 ? nounLabel : cs.counter.coasterEmpty).toUpperCase()}
         </Text>
       </View>
 
@@ -217,11 +217,11 @@ export function CoasterCard({
             onPress={onOpenReceipt}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.counterReceiptChip}
+            accessibilityLabel={cs.a11y.counterReceiptChip}
             style={({ pressed }) => [styles.receiptLink, pressed && styles.pressed]}
           >
             <Text style={styles.receiptLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.counter.receiptChip}
+              {cs.counter.receiptChip}
             </Text>
             <ChevronRightIcon size={15} color={Colors.amber} />
           </Pressable>
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   count: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     includeFontPadding: false,
     textAlign: 'center',
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   noun: {
     marginTop: -18,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -285,14 +285,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   fact: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   factMuted: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
   receiptLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

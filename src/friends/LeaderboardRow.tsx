@@ -14,10 +14,10 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import { Avatar } from '@/profile/Avatar';
 import { CrownIcon } from '@/components/shared/IconGlyph';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import type { LeaderboardEntry } from '@/data/friendsClient';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface LeaderboardRowProps {
@@ -41,10 +41,10 @@ const AVATAR_SIZE = 34;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function resolveName(entry: LeaderboardEntry): string {
-  if (entry.isMe) return t.friends.leaderboardMe;
+  if (entry.isMe) return cs.friends.leaderboardMe;
   const { nickname, displayName } = entry.account;
   if (nickname) return `@${nickname}`;
-  return displayName || t.friends.fallbackName;
+  return displayName || 'Kámoš';
 }
 
 export const LeaderboardRow = memo(function LeaderboardRow({
@@ -190,13 +190,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankMedal: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 16,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   rankPlain: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 15,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -207,13 +207,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   name: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   sharedLine: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   metric: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
   // Quiet unit label under the big number.
   metricCaption: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.mutedText,
   },

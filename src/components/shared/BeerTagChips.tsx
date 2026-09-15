@@ -10,9 +10,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BEER_TAGS, type BeerTag } from '@/data/beerCheckinsClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface BeerTagChipsProps {
@@ -32,7 +32,7 @@ export function BeerTagChips({ tags, counts, max = 3 }: BeerTagChipsProps) {
     <View style={styles.row}>
       {shown.map((tag) => {
         const count = counts?.[tag];
-        const label = count ? `${t.beerCheckins.tags[tag]} ×${count}` : t.beerCheckins.tags[tag];
+        const label = count ? `${cs.beerCheckins.tags[tag]} ×${count}` : cs.beerCheckins.tags[tag];
         return (
           <View key={tag} style={styles.chip}>
             <Text style={styles.text} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   text: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.foamMuted,
   },

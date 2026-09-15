@@ -96,7 +96,7 @@ internal object BeerLiveActivityNotification {
   @Synchronized
   fun end(context: Context): Map<String, Any?> {
     NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
-    val cleared = preferences(context).edit()
+    preferences(context).edit()
       .remove(ACTIVE_SESSION_KEY)
       .remove(DISMISSED_SESSION_KEY)
       .remove(BEER_COUNT_KEY)
@@ -107,12 +107,7 @@ internal object BeerLiveActivityNotification {
       .remove(REPEAT_BEER_PRICE_CZK_KEY)
       .remove(REPEAT_BEER_VOLUME_ML_KEY)
       .remove(REPEAT_BEER_SERVING_TYPE_KEY)
-      // Account-boundary callers must never leave an action from the previous
-      // session for the next account to reconcile. This synchronized commit is
-      // atomic with addBeer() and ackPendingAdds().
-      .remove(PENDING_ADDS_KEY)
-      .commit()
-    check(cleared) { "Could not clear beer live activity state" }
+      .apply()
     return getStatus(context)
   }
 
@@ -191,14 +186,6 @@ internal object BeerLiveActivityNotification {
     check(acknowledgedOnDisk) { "Could not acknowledge pending beer additions" }
   }
 
-  @Synchronized
-  fun clearPendingAdds(context: Context) {
-    val cleared = preferences(context).edit()
-      .remove(PENDING_ADDS_KEY)
-      .commit()
-    check(cleared) { "Could not clear pending beer additions" }
-  }
-
   fun getStatus(context: Context): Map<String, Any?> {
     val manager = NotificationManagerCompat.from(context)
     val activeNotification = activeNotification(context)
@@ -232,10 +219,10 @@ internal object BeerLiveActivityNotification {
     context: Context,
     state: NotificationState
   ): Notification {
-    val detail = notificationDetail(context, state)
+    val detail = notificationDetail(state)
     // A golden glass that fills as the evening goes on: a solid amber run over a
     // faint amber remainder, so every added beer visibly extends the fill. No
-    // tracker icon: a small white mug badge reads as a stray square at this size.
+    // tracker icon — a small white mug badge reads as a stray square at this size.
     val filled = progressFill(state.beerCount)
     val progressStyle = NotificationCompat.ProgressStyle()
       .setProgress(filled)
@@ -254,26 +241,26 @@ internal object BeerLiveActivityNotification {
       .setLargeIcon(buildLargeIcon(context))
       .setContentTitle(
         state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
-          ?: beerCountLabel(context, state.beerCount)
+          ?: beerCountLabel(state.beerCount)
       )
       .setContentText(detail)
       .setSubText(
         state.totalPrice.trim().takeIf { it.isNotEmpty() }
-          ?.let { context.getString(R.string.beer_live_activity_total_prefix, it.take(34)) }
-          ?: context.getString(R.string.beer_live_activity_night_running)
+          ?.let { "Celkem ${it.take(34)}" }
+          ?: "Večer běží"
       )
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setShowWhen(false)
-      .setShortCriticalText(shortCountLabel(context, state.beerCount))
+      .setShortCriticalText(shortCountLabel(state.beerCount))
       .setStyle(progressStyle)
       .setContentIntent(contentIntent(context))
       .setDeleteIntent(deleteIntent(context, state.sessionId))
       .addAction(
         NotificationCompat.Action.Builder(
           R.drawable.beer_live_activity_add,
-          context.getString(R.string.beer_live_activity_add_beer_action),
+          "Přidat další",
           addBeerIntent(context, state.sessionId)
         ).build()
       )
@@ -325,14 +312,12 @@ internal object BeerLiveActivityNotification {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
     val manager = context.getSystemService(NotificationManager::class.java)
-    // Re-creating the channel with the same id refreshes the name and
-    // description the system has cached, so a locale switch takes effect.
     val channel = NotificationChannel(
       CHANNEL_ID,
-      context.getString(R.string.beer_live_activity_channel_name),
+      "Večer na pivu",
       NotificationManager.IMPORTANCE_DEFAULT
     ).apply {
-      description = context.getString(R.string.beer_live_activity_channel_description)
+      description = "Živý počet piv během večera"
       enableVibration(false)
       setSound(null, null)
       setShowBadge(false)
@@ -352,8 +337,8 @@ internal object BeerLiveActivityNotification {
     }
   }
 
-  private fun notificationDetail(context: Context, state: NotificationState): String {
-    val countLabel = beerCountLabel(context, state.beerCount)
+  private fun notificationDetail(state: NotificationState): String {
+    val countLabel = beerCountLabel(state.beerCount)
     val latestBeer = state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
     return listOfNotNull(countLabel, latestBeer).joinToString(" · ")
   }
@@ -481,11 +466,14 @@ internal object BeerLiveActivityNotification {
     return json.toString()
   }
 
-  private fun beerCountLabel(context: Context, count: Int): String =
-    context.resources.getQuantityString(R.plurals.beer_live_activity_beer_count, count, count)
+  private fun beerCountLabel(count: Int): String = when (count) {
+    1 -> "1 pivo"
+    in 2..4 -> "$count piva"
+    else -> "$count piv"
+  }
 
-  private fun shortCountLabel(context: Context, count: Int): String {
-    val label = beerCountLabel(context, count)
+  private fun shortCountLabel(count: Int): String {
+    val label = beerCountLabel(count)
     return if (label.length <= 7) label else max(count, 0).toString()
   }
 

@@ -1,10 +1,7 @@
-import { t } from '@/i18n';
-
 import { chainAbortSignal } from './apiFetch';
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
-import { notifyUgcConsentRequiredFromResponse, ugcPolicyHeaders } from './ugcConsent';
 
 const REQUEST_TIMEOUT_MS = 9000;
 
@@ -27,31 +24,6 @@ export interface CommunityJoinRequest {
   requestedAt: string;
 }
 
-export interface CommunityEventTeamMember {
-  account: CommunityEventProfile;
-  joinedAt: string;
-}
-
-export interface CommunityEventTeam {
-  id: string;
-  name: string;
-  capacity: number;
-  memberCount: number;
-  availableSpots: number;
-  isMine: boolean;
-  members: CommunityEventTeamMember[];
-  createdAt: string;
-}
-
-export interface CommunityEventTeamRoster {
-  maxTeamSize: number;
-  participantCount: number;
-  assignedCount: number;
-  unassignedCount: number;
-  myTeamId: string | null;
-  teams: CommunityEventTeam[];
-}
-
 export interface CommunityEvent {
   id: string;
   host: CommunityEventProfile;
@@ -70,7 +42,6 @@ export interface CommunityEvent {
   membershipStatus: CommunityMembershipStatus | null;
   exactAddress: string | null;
   joinRequests: CommunityJoinRequest[];
-  teamRoster: CommunityEventTeamRoster | null;
 }
 
 export interface CommunityEventsDashboard {
@@ -83,26 +54,10 @@ export type CommunityActionResult =
   | { ok: true; event?: CommunityEvent }
   | { ok: false; code: string; detail: string };
 
-export type CommunityTeamRosterResult =
-  | { ok: true; roster: CommunityEventTeamRoster }
-  | Exclude<CommunityActionResult, { ok: true }>;
-
-export type CommunityTeamMutationResult =
-  | {
-      ok: true;
-      roster: CommunityEventTeamRoster;
-      team?: CommunityEventTeam;
-      created?: boolean;
-      joined?: boolean;
-      left?: boolean;
-    }
-  | Exclude<CommunityActionResult, { ok: true }>;
-
 interface RequestOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
-  gatedUgc?: boolean;
 }
 
 function profile(raw: Record<string, unknown> | undefined): CommunityEventProfile {
@@ -111,70 +66,6 @@ function profile(raw: Record<string, unknown> | undefined): CommunityEventProfil
     nickname: typeof raw?.nickname === 'string' ? raw.nickname : null,
     displayName: typeof raw?.display_name === 'string' ? raw.display_name : '',
     avatarUrl: typeof raw?.avatar_url === 'string' ? raw.avatar_url : null,
-  };
-}
-
-function nonNegativeInteger(value: unknown): number | null {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
-}
-
-function parseTeam(value: unknown): CommunityEventTeam | null {
-  if (!value || typeof value !== 'object') return null;
-  const raw = value as Record<string, unknown>;
-  const capacity = nonNegativeInteger(raw.capacity);
-  const memberCount = nonNegativeInteger(raw.member_count);
-  const availableSpots = nonNegativeInteger(raw.available_spots);
-  if (
-    typeof raw.id !== 'string' ||
-    typeof raw.name !== 'string' ||
-    capacity === null ||
-    memberCount === null ||
-    availableSpots === null ||
-    !Array.isArray(raw.members)
-  ) return null;
-  const members = raw.members.flatMap((value) => {
-    if (!value || typeof value !== 'object') return [];
-    const member = value as Record<string, unknown>;
-    const account = profile(member.account as Record<string, unknown> | undefined);
-    if (!account.id) return [];
-    return [{ account, joinedAt: typeof member.joined_at === 'string' ? member.joined_at : '' }];
-  });
-  return {
-    id: raw.id,
-    name: raw.name,
-    capacity,
-    memberCount,
-    availableSpots,
-    isMine: raw.is_mine === true,
-    members,
-    createdAt: typeof raw.created_at === 'string' ? raw.created_at : '',
-  };
-}
-
-function parseTeamRoster(value: unknown): CommunityEventTeamRoster | null {
-  if (!value || typeof value !== 'object') return null;
-  const raw = value as Record<string, unknown>;
-  const maxTeamSize = nonNegativeInteger(raw.max_team_size);
-  const participantCount = nonNegativeInteger(raw.participant_count);
-  const assignedCount = nonNegativeInteger(raw.assigned_count);
-  const unassignedCount = nonNegativeInteger(raw.unassigned_count);
-  if (
-    maxTeamSize === null ||
-    participantCount === null ||
-    assignedCount === null ||
-    unassignedCount === null ||
-    (raw.my_team_id !== null && typeof raw.my_team_id !== 'string') ||
-    !Array.isArray(raw.teams)
-  ) return null;
-  const teams = raw.teams.map(parseTeam);
-  if (teams.some((team) => team === null)) return null;
-  return {
-    maxTeamSize,
-    participantCount,
-    assignedCount,
-    unassignedCount,
-    myTeamId: typeof raw.my_team_id === 'string' ? raw.my_team_id : null,
-    teams: teams as CommunityEventTeam[],
   };
 }
 
@@ -228,61 +119,37 @@ function parseEvent(value: unknown): CommunityEvent | null {
               request.status === 'approved' ? 'approved' : 'pending',
             requestedAt: typeof request.requested_at === 'string' ? request.requested_at : '',
           };
-      })
+        })
       : [],
-    teamRoster: parseTeamRoster(raw.team_roster),
   };
 }
 
 async function request(path: string, options: RequestOptions = {}) {
   const endpoint = getBackendEndpoint(path);
-  if (!endpoint) return { ok: false as const, code: 'offline', detail: t.clientErrors.offline };
-  let session: Awaited<ReturnType<typeof ensureAccount>>;
-  try {
-    session = await ensureAccount(options.signal);
-  } catch (error) {
-    trackApiFailure('community_events_request', { endpoint: path, reason: 'exception', error });
-    return { ok: false as const, code: 'network', detail: t.clientErrors.network };
-  }
+  if (!endpoint) return { ok: false as const, code: 'offline', detail: 'Server teď není dostupný.' };
+  const session = await ensureAccount(options.signal);
   if (!session?.authenticated) {
-    return { ok: false as const, code: 'auth', detail: t.clientErrors.eventsSignIn };
+    return { ok: false as const, code: 'auth', detail: 'Pro domácí setkání se nejdřív přihlas.' };
   }
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(endpoint, {
       method: options.method ?? 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.token}`,
-        ...(options.gatedUgc ? ugcPolicyHeaders(session.accountId) : {}),
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: abort.signal,
     });
-    let data: Record<string, unknown> = {};
-    if (response.ok) {
-      const text = await response.text();
-      data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    } else {
-      try {
-        const text = await response.text();
-        data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-      } catch {
-        data = {};
-      }
-    }
-    if (!response.ok && options.gatedUgc) {
-      notifyUgcConsentRequiredFromResponse(response.status, data);
-    }
+    const text = await response.text();
+    const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
     if (response.ok) return { ok: true as const, data };
     return {
       ok: false as const,
       code: typeof data.code === 'string' ? data.code : `http_${response.status}`,
-      detail: typeof data.detail === 'string' ? data.detail : t.clientErrors.actionFailed,
+      detail: typeof data.detail === 'string' ? data.detail : 'Tohle se teď nepovedlo.',
     };
   } catch (error) {
     trackApiFailure('community_events_request', { endpoint: path, reason: 'exception', error });
-    return { ok: false as const, code: 'network', detail: t.clientErrors.network };
+    return { ok: false as const, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' };
   } finally {
     abort.cleanup();
   }
@@ -305,18 +172,6 @@ export async function fetchCommunityEvents(
       ? (result.data[key] as unknown[]).map(parseEvent).filter((event): event is CommunityEvent => event != null)
       : [];
   return { ok: true, dashboard: { nearby: list('nearby'), hosted: list('hosted'), joined: list('joined') } };
-}
-
-export async function fetchCommunityEvent(
-  eventId: string,
-  signal?: AbortSignal,
-): Promise<{ ok: true; event: CommunityEvent } | Exclude<CommunityActionResult, { ok: true }>> {
-  const result = await request(`/v1/community-events/${encodeURIComponent(eventId)}`, { signal });
-  if (!result.ok) return result;
-  const event = parseEvent(result.data);
-  return event
-    ? { ok: true, event }
-    : { ok: false, code: 'invalid_response', detail: t.clientErrors.invalidResponse };
 }
 
 export async function createCommunityEvent(input: {
@@ -348,18 +203,16 @@ export async function createCommunityEvent(input: {
       capacity: input.capacity,
       adults_confirmed: true,
     },
-    gatedUgc: true,
   });
   if (!result.ok) return result;
   const event = parseEvent(result.data);
-  return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: t.clientErrors.invalidResponse };
+  return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
 }
 
 export async function requestCommunityEventJoin(eventId: string, message = ''): Promise<CommunityActionResult> {
   const result = await request(`/v1/community-events/${eventId}/join`, {
     method: 'POST',
     body: { message, adults_confirmed: true },
-    gatedUgc: message.trim().length > 0,
   });
   return result.ok ? { ok: true } : result;
 }
@@ -378,69 +231,6 @@ export async function decideCommunityJoinRequest(
     method: 'POST',
   });
   return result.ok ? { ok: true } : result;
-}
-
-export async function fetchCommunityEventTeams(
-  eventId: string,
-  signal?: AbortSignal,
-): Promise<CommunityTeamRosterResult> {
-  const result = await request(`/v1/community-events/${encodeURIComponent(eventId)}/teams`, { signal });
-  if (!result.ok) return result;
-  const roster = parseTeamRoster(result.data);
-  return roster
-    ? { ok: true, roster }
-    : { ok: false, code: 'invalid_response', detail: t.clientErrors.invalidResponse };
-}
-
-export async function createCommunityEventTeam(
-  eventId: string,
-  input: { clientId: string; name: string },
-): Promise<CommunityTeamMutationResult> {
-  const result = await request(`/v1/community-events/${encodeURIComponent(eventId)}/teams`, {
-    method: 'POST',
-    body: { client_id: input.clientId, name: input.name },
-    gatedUgc: true,
-  });
-  if (!result.ok) return result;
-  const roster = parseTeamRoster(result.data.team_roster);
-  const team = parseTeam(result.data.team);
-  if (!roster || !team) {
-    return { ok: false, code: 'invalid_response', detail: t.clientErrors.invalidResponse };
-  }
-  return { ok: true, roster, team, created: result.data.created === true };
-}
-
-export async function joinCommunityEventTeam(
-  eventId: string,
-  teamId: string,
-): Promise<CommunityTeamMutationResult> {
-  const result = await request(
-    `/v1/community-events/${encodeURIComponent(eventId)}/teams/${encodeURIComponent(teamId)}/join`,
-    { method: 'POST' },
-  );
-  if (!result.ok) return result;
-  const roster = parseTeamRoster(result.data.team_roster);
-  const team = parseTeam(result.data.team);
-  if (!roster || !team) {
-    return { ok: false, code: 'invalid_response', detail: t.clientErrors.invalidResponse };
-  }
-  return { ok: true, roster, team, joined: result.data.joined === true };
-}
-
-export async function leaveCommunityEventTeam(
-  eventId: string,
-  teamId: string,
-): Promise<CommunityTeamMutationResult> {
-  const result = await request(
-    `/v1/community-events/${encodeURIComponent(eventId)}/teams/${encodeURIComponent(teamId)}/join`,
-    { method: 'DELETE' },
-  );
-  if (!result.ok) return result;
-  const roster = parseTeamRoster(result.data.team_roster);
-  if (!roster) {
-    return { ok: false, code: 'invalid_response', detail: t.clientErrors.invalidResponse };
-  }
-  return { ok: true, roster, left: result.data.left === true };
 }
 
 export async function cancelCommunityEvent(eventId: string): Promise<CommunityActionResult> {

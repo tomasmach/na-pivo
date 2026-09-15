@@ -18,10 +18,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors } from '@/theme/colors';
-
+import { Fonts } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
-import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
+import { cs } from '@/i18n/cs';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -63,31 +62,31 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// Continuous scaling instead of hard-coded buckets: `scale` is 1 on every normal
+// Continuous scaling instead of hard-coded buckets: `t` is 1 on every normal
 // phone (full design, matching the original screens) and shrinks smoothly only
 // when the viewport is genuinely short — e.g. an iPhone-compatibility window on
 // iPad. The ScrollView below guarantees the back button stays reachable even if
 // the content can't fully fit.
 function getCelebrationLayout(width: number, height: number, topInset: number, bottomInset: number): CelebrationLayout {
   const usableHeight = height - topInset - bottomInset;
-  const scale = clamp(usableHeight / 740, 0.66, 1);
+  const t = clamp(usableHeight / 740, 0.66, 1);
 
   return {
-    buttonHeight: Math.round(clamp(64 * scale, 48, 64)),
-    cardPaddingHorizontal: Math.round(22 * scale),
-    cardPaddingVertical: Math.round(18 * scale),
+    buttonHeight: Math.round(clamp(64 * t, 48, 64)),
+    cardPaddingHorizontal: Math.round(22 * t),
+    cardPaddingVertical: Math.round(18 * t),
     contentWidth: Math.min(width - 48, 342),
-    foamBottom: Math.round(108 * scale),
-    foamHeight: Math.round(236 * scale),
-    headlineFontSize: Math.round(84 * scale),
-    headlineLineHeight: Math.round(110 * scale),
-    iconSize: Math.round(96 * scale),
-    justifyContent: scale < 0.85 ? 'flex-start' : 'center',
-    paddingBottom: bottomInset + Math.round(24 * scale),
-    paddingTop: topInset + Math.round(170 * scale),
-    pubNameFontSize: Math.round(30 * scale),
-    subtitleMarginBottom: Math.round(24 * scale),
-    subtitlePaddingTop: Math.round(14 * scale),
+    foamBottom: Math.round(108 * t),
+    foamHeight: Math.round(236 * t),
+    headlineFontSize: Math.round(84 * t),
+    headlineLineHeight: Math.round(110 * t),
+    iconSize: Math.round(96 * t),
+    justifyContent: t < 0.85 ? 'flex-start' : 'center',
+    paddingBottom: bottomInset + Math.round(24 * t),
+    paddingTop: topInset + Math.round(170 * t),
+    pubNameFontSize: Math.round(30 * t),
+    subtitleMarginBottom: Math.round(24 * t),
+    subtitlePaddingTop: Math.round(14 * t),
   };
 }
 
@@ -133,13 +132,13 @@ export default function CelebrationScreen() {
     opacity: contentOpacity.value,
   }));
 
-  const pubName = revealedPub?.name ?? t.celebration.pubFallback;
+  const pubName = revealedPub?.name ?? 'Hospoda';
   const layout = getCelebrationLayout(screenWidth, screenHeight, insets.top, insets.bottom);
 
   // Drop anchors: emerge from the bottom tip of each foam tongue.
-  const dropAnchors = buildFoamTongues(screenWidth, layout.foamBottom).map((tongue) => ({
-    x: tongue.centerX,
-    y: tongue.bottomY - 4,
+  const dropAnchors = buildFoamTongues(screenWidth, layout.foamBottom).map((t) => ({
+    x: t.centerX,
+    y: t.bottomY - 4,
   }));
 
   return (
@@ -205,7 +204,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {t.celebration.headlineLine1}
+            {cs.celebration.headlineLine1}
           </Text>
           <Text
             style={[
@@ -216,7 +215,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {t.celebration.headlineLine2}
+            {cs.celebration.headlineLine2}
           </Text>
         </Animated.View>
 
@@ -231,7 +230,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {t.celebration.subtitle}
+            {cs.celebration.subtitle}
           </Text>
         </Animated.View>
 
@@ -247,7 +246,7 @@ export default function CelebrationScreen() {
             },
           ]}
         >
-          <Text style={styles.pubCardEyebrow}>{t.celebration.eyebrow}</Text>
+          <Text style={styles.pubCardEyebrow}>{cs.celebration.eyebrow}</Text>
           <Text
             style={[
               styles.pubCardName,
@@ -267,10 +266,10 @@ export default function CelebrationScreen() {
               style={styles.mapsRow}
               onPress={() => openPubInMaps(revealedPub)}
               accessibilityRole="link"
-              accessibilityLabel={t.celebration.openInMaps}
+              accessibilityLabel={cs.celebration.openInMaps}
             >
               <MapPinIcon size={14} color={Colors.neon} />
-              <Text style={styles.mapsLabel}>{t.celebration.openInMaps}</Text>
+              <Text style={styles.mapsLabel}>{cs.celebration.openInMaps}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -278,8 +277,8 @@ export default function CelebrationScreen() {
         {/* Back to compass button */}
         <Animated.View style={[styles.buttonWrap, { width: layout.contentWidth }, contentAnimStyle]}>
           <GlowButton
-            label={t.celebration.backToCompass}
-            onPress={() => leaveRoute(router)}
+            label={cs.celebration.backToCompass}
+            onPress={() => router.back()}
             variant="primary"
             glow="strong"
             height={layout.buttonHeight}
@@ -338,13 +337,13 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   headlineLine1: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     letterSpacing: -2,
     color: Colors.foam,
     textAlign: 'center',
   },
   headlineLine2: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     letterSpacing: -2,
     color: Colors.amber,
     textAlign: 'center',
@@ -354,7 +353,7 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 18,
     color: Colors.foamMuted,
     textAlign: 'center',
@@ -368,14 +367,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   pubCardEyebrow: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.8,
     color: Colors.mutedText,
     marginBottom: 4,
   },
   pubCardName: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     letterSpacing: -1,
     color: Colors.amber,
   },
@@ -386,7 +385,7 @@ const styles = StyleSheet.create({
     paddingTop: 6,
   },
   mapsLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.neon,
   },

@@ -17,11 +17,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { leaveRoute } from '@/navigation/leaveRoute';
 
 import { HistoricalBeersSheet } from '@/components/contribute/HistoricalBeersSheet';
 import { SplitTimeInput } from '@/components/contribute/SplitTimeInput';
-import { showAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { MenuBeerSheet } from '@/components/contribute/MenuBeerSheet';
 import {
@@ -67,20 +65,18 @@ import {
   type HoursInterval,
   type WeeklyHours,
 } from '@/data/communityHours';
-import { showMenuScanPermissionBlocked } from '@/contribute/menuScanPermission';
-import { menuPhotoPickFeedback, menuScanFailureCopy } from '@/contribute/menuScanFeedback';
 import { enqueuePubCommunity } from '@/data/communityQueue';
 import { geohash8 } from '@/data/geohash';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
-import { t, formatVolume } from '@/i18n';
+import { cs, formatVolume } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
 import {
   formatPrice,
   formatPriceInputFromCzk,
@@ -209,9 +205,9 @@ function beerMeta(
   const price =
     priceCzk !== null ? formatPrice(priceCzk, priceCurrency) : null;
   if (volume && price) return `${volume} · ${price}`;
-  if (volume) return `${volume} · ${t.contribute.priceMissing}`;
-  if (price) return `${t.contribute.volumeMissing} · ${price}`;
-  return t.contribute.volumeMissing;
+  if (volume) return `${volume} · ${cs.contribute.priceMissing}`;
+  if (price) return `${cs.contribute.volumeMissing} · ${price}`;
+  return cs.contribute.volumeMissing;
 }
 
 // ─── Inline day row (opening hours) ──────────────────────────────────────────
@@ -239,7 +235,7 @@ function HoursDayRow({
   onRemoveInterval,
   onChangeTime,
 }: HoursDayRowProps) {
-  const dayName = t.contribute.days[day];
+  const dayName = cs.contribute.days[day];
   const isClosed = intervals.length === 0;
   const canAdd = intervals.length < MAX_INTERVALS;
 
@@ -266,10 +262,10 @@ function HoursDayRow({
           style={({ pressed }) => [styles.closedLabelWrap, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityState={{ selected: true }}
-          accessibilityLabel={t.a11y.contributeDayClosedToggle(dayName)}
+          accessibilityLabel={cs.a11y.contributeDayClosedToggle(dayName)}
         >
           <Text style={styles.closedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.contribute.closedToggle}
+            {cs.contribute.closedToggle}
           </Text>
         </Pressable>
       ) : (
@@ -283,22 +279,22 @@ function HoursDayRow({
               <SplitTimeInput
                 value={interval[0]}
                 onChange={(value) => onChangeTime(index, 0, value)}
-                accessibilityLabel={`${dayName} ${t.contribute.from}`}
+                accessibilityLabel={`${dayName} ${cs.contribute.from}`}
               />
               <Text style={styles.timeDash} maxFontSizeMultiplier={FontScaleCap.body}>
-                -
+                –
               </Text>
               <SplitTimeInput
                 value={interval[1]}
                 onChange={(value) => onChangeTime(index, 1, value)}
-                accessibilityLabel={`${dayName} ${t.contribute.to}`}
+                accessibilityLabel={`${dayName} ${cs.contribute.to}`}
               />
               <Pressable
                 onPress={() => onRemoveInterval(index)}
                 hitSlop={6}
                 style={({ pressed }) => [styles.timeIcon, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={t.a11y.contributeRemoveInterval(dayName)}
+                accessibilityLabel={cs.a11y.contributeRemoveInterval(dayName)}
               >
                 <Trash2Icon size={15} color={Colors.mutedText} />
               </Pressable>
@@ -308,7 +304,7 @@ function HoursDayRow({
                   hitSlop={6}
                   style={({ pressed }) => [styles.timeIcon, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={t.a11y.contributeAddInterval(dayName)}
+                  accessibilityLabel={cs.a11y.contributeAddInterval(dayName)}
                 >
                   <PlusIcon size={16} color={Colors.amber} />
                 </Pressable>
@@ -579,81 +575,58 @@ export default function ContributeScreen() {
     [closeBeerEditor, editingBeerId, priceCurrency],
   );
 
-  const removeBeer = useCallback((id: string) => {
-    setBeersTouched(true);
-    setBeers((previous) => {
-      const next = previous.filter((beer) => beer.id !== id);
-      beersRef.current = next;
-      return next;
-    });
-  }, []);
-
-  const canAddSmallVariant = useCallback(
-    (beer: BeerRow) => {
-      if (beers.length >= MAX_BEERS) return false;
-      const name = beer.name.trim();
-      if (!name || beer.volumeMl === VOLUME_SMALL) return false;
-      return !beers.some(
-        (candidate) =>
-          candidate.id !== beer.id &&
-          normalizeBeerName(candidate.name) === normalizeBeerName(name) &&
-          candidate.volumeMl === VOLUME_SMALL,
-      );
-    },
-    [beers],
-  );
-
-  const addSmallBeerVariant = useCallback(
-    (beer: BeerRow) => {
-      if (!canAddSmallVariant(beer)) return;
-      const row: BeerRow = {
-        id: nextBeerRowId(),
-        name: beer.name.trim(),
-        priceText: '',
-        volumeMl: VOLUME_SMALL,
-      };
+  const removeBeer = useCallback(
+    (id: string) => {
       setBeersTouched(true);
       setBeers((previous) => {
-        const sourceIndex = previous.findIndex(
-          (candidate) => candidate.id === beer.id,
-        );
-        if (sourceIndex < 0 || previous.length >= MAX_BEERS) return previous;
-        const alreadyHasSmallVariant = previous.some(
-          (candidate) =>
-            candidate.id !== beer.id &&
-            normalizeBeerName(candidate.name) === normalizeBeerName(beer.name) &&
-            candidate.volumeMl === VOLUME_SMALL,
-        );
-        if (alreadyHasSmallVariant) return previous;
-        const insertAt = sourceIndex + 1;
-        const next = [
-          ...previous.slice(0, insertAt),
-          row,
-          ...previous.slice(insertAt),
-        ];
+        const next = previous.filter((beer) => beer.id !== id);
         beersRef.current = next;
         return next;
       });
+      closeBeerEditor();
     },
-    [canAddSmallVariant],
+    [closeBeerEditor],
   );
 
-  const confirmRemoveBeer = useCallback(
-    (beer: BeerRow) => {
-      showAppDialog({
-        title: t.contribute.removeBeer,
-        buttons: [
-          { text: t.common.cancel, style: 'cancel' },
-          {
-            text: t.contribute.removeBeer,
-            style: 'destructive',
-            onPress: () => removeBeer(beer.id),
-          },
-        ],
-      });
-    },
-    [removeBeer],
-  );
+  const canAddSmallVariant = useMemo(() => {
+    if (!editingBeer || beers.length >= MAX_BEERS) return false;
+    const name = editingBeer.name.trim();
+    if (!name || editingBeer.volumeMl === VOLUME_SMALL) return false;
+    return !beers.some(
+      (beer) =>
+        beer.id !== editingBeer.id &&
+        normalizeBeerName(beer.name) === normalizeBeerName(name) &&
+        beer.volumeMl === VOLUME_SMALL,
+    );
+  }, [beers, editingBeer]);
+
+  const addSmallBeerVariant = useCallback(() => {
+    if (!editingBeer || !canAddSmallVariant) return;
+    const row: BeerRow = {
+      id: nextBeerRowId(),
+      name: editingBeer.name.trim(),
+      priceText: '',
+      volumeMl: VOLUME_SMALL,
+    };
+    setBeersTouched(true);
+    setBeers((previous) => {
+      const sourceIndex = previous.findIndex(
+        (beer) => beer.id === editingBeer.id,
+      );
+      if (sourceIndex < 0 || previous.length >= MAX_BEERS) {
+        return previous;
+      }
+      const insertAt = sourceIndex + 1;
+      const next = [
+        ...previous.slice(0, insertAt),
+        row,
+        ...previous.slice(insertAt),
+      ];
+      beersRef.current = next;
+      return next;
+    });
+    closeBeerEditor();
+  }, [canAddSmallVariant, closeBeerEditor, editingBeer]);
 
   const availableHistoricalBeers = useMemo(
     () =>
@@ -704,61 +677,76 @@ export default function ContributeScreen() {
           '@/data/menuPhotoPicker'
         );
         const picked = await pickAndPrepareMenuPhoto(source);
-        const pickFeedback = menuPhotoPickFeedback(picked.status, source);
-        if (pickFeedback.action === 'cancel') return;
-        if (pickFeedback.action === 'settings') {
-          showMenuScanPermissionBlocked(source);
-          return;
-        }
-        if (pickFeedback.action === 'toast') {
-          toast(pickFeedback.message, {
-            icon:
-              picked.status === 'denied'
-                ? <CameraIcon size={18} color={Colors.amber} />
-                : <InfoIcon size={18} color={Colors.foamMuted} />,
+        if (picked.status === 'cancelled') return;
+        if (
+          picked.status === 'denied' ||
+          picked.status === 'denied-permanent'
+        ) {
+          toast(cs.contribute.scanMenu.permissionDenied, {
+            icon: <CameraIcon size={18} color={Colors.amber} />,
           });
           return;
         }
-        if (picked.status !== 'picked') return;
-
-        const result = await scanMenuPhoto(picked.uri);
-        if (result.status === 'ok') {
-          const { rows, count } = mergeScannedIntoRows(
-            beersRef.current,
-            result.beers,
-            priceCurrency,
-          );
-          if (count > 0) {
-            beersRef.current = rows;
-            setBeers(rows);
-            setBeersTouched(true);
-            fireSuccessHaptic();
-            toast(t.contribute.scanMenu.successToast(count), {
-              icon: <SparklesIcon size={18} color={Colors.amber} />,
-            });
-          } else {
-            toast(t.contribute.scanMenu.nothingNewToast, {
-              icon: <CheckIcon size={18} color={Colors.amber} />,
-            });
-          }
+        if (picked.status === 'error') {
+          toast(cs.contribute.scanMenu.errorToast, {
+            icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+          });
           return;
         }
-        const FailureIcon =
-          result.status === 'empty'
-            ? SearchIcon
-            : result.status === 'daily-cap' || result.status === 'rate-limited'
-              ? ClockIcon
-              : result.status === 'bad-image'
-                ? CameraIcon
-                : InfoIcon;
-        toast(menuScanFailureCopy(result.status), {
-          icon: (
-            <FailureIcon
-              size={18}
-              color={result.status === 'bad-image' ? Colors.amber : Colors.foamMuted}
-            />
-          ),
-        });
+
+        const result = await scanMenuPhoto(picked.uri);
+        switch (result.status) {
+          case 'ok': {
+            const { rows, count } = mergeScannedIntoRows(
+              beersRef.current,
+              result.beers,
+              priceCurrency,
+            );
+            if (count > 0) {
+              beersRef.current = rows;
+              setBeers(rows);
+              setBeersTouched(true);
+              fireSuccessHaptic();
+              toast(cs.contribute.scanMenu.successToast(count), {
+                icon: <SparklesIcon size={18} color={Colors.amber} />,
+              });
+            } else {
+              toast(cs.contribute.scanMenu.nothingNewToast, {
+                icon: <CheckIcon size={18} color={Colors.amber} />,
+              });
+            }
+            break;
+          }
+          case 'empty':
+            toast(cs.contribute.scanMenu.emptyToast, {
+              icon: <SearchIcon size={18} color={Colors.foamMuted} />,
+            });
+            break;
+          case 'unavailable':
+            toast(cs.contribute.scanMenu.unavailableToast, {
+              icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+            });
+            break;
+          case 'daily-cap':
+            toast(cs.contribute.scanMenu.dailyCapToast, {
+              icon: <ClockIcon size={18} color={Colors.foamMuted} />,
+            });
+            break;
+          case 'rate-limited':
+            toast(cs.contribute.scanMenu.rateLimitedToast, {
+              icon: <ClockIcon size={18} color={Colors.foamMuted} />,
+            });
+            break;
+          case 'bad-image':
+            toast(cs.contribute.scanMenu.badImageToast, {
+              icon: <CameraIcon size={18} color={Colors.amber} />,
+            });
+            break;
+          default:
+            toast(cs.contribute.scanMenu.errorToast, {
+              icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+            });
+        }
       } finally {
         scanInFlightRef.current = false;
         setScanning(false);
@@ -890,7 +878,7 @@ export default function ContributeScreen() {
       if (response.xpAwarded > 0) {
         useToastStore
           .getState()
-          .show(t.contribute.xpToast(response.xpAwarded), {
+          .show(cs.contribute.xpToast(response.xpAwarded), {
             icon: <CompassIcon size={18} color={Colors.amber} />,
           });
       }
@@ -899,8 +887,8 @@ export default function ContributeScreen() {
     if (useSettingsStore.getState().hapticEnabled) {
       fireSuccessHaptic();
     }
-    useToastStore.getState().show(t.contribute.savedToast);
-    leaveRoute(router);
+    useToastStore.getState().show(cs.contribute.savedToast);
+    router.back();
   }, [
     beersTouched,
     beerMenuRotates,
@@ -930,11 +918,11 @@ export default function ContributeScreen() {
   const openStateTime = nextChangeTime(openState.nextChange);
   const hoursFooter = openState.isOpenNow
     ? openStateTime
-      ? t.contribute.hoursOpenNow(openStateTime)
-      : t.contribute.hoursOpenNoChange
+      ? cs.contribute.hoursOpenNow(openStateTime)
+      : cs.contribute.hoursOpenNoChange
     : openStateTime
-      ? t.contribute.hoursClosedNow(openStateTime)
-      : t.contribute.hoursClosedNoChange;
+      ? cs.contribute.hoursClosedNow(openStateTime)
+      : cs.contribute.hoursClosedNoChange;
 
   // "Stejně celý týden" copies the first day that has hours onto every day.
   const firstOpenDay = useMemo<DayKey | null>(
@@ -946,11 +934,11 @@ export default function ContributeScreen() {
     if (hoursTouched && invalidDay) {
       return {
         kind: 'counted',
-        text: t.contribute.invalidDayNudge(
-          t.contribute.daysAt[invalidDay],
+        text: cs.contribute.invalidDayNudge(
+          cs.contribute.daysAt[invalidDay],
         ),
-        undoLabel: t.contribute.fix,
-        actionAccessibilityLabel: t.contribute.fixHoursA11y,
+        undoLabel: cs.contribute.fix,
+        actionAccessibilityLabel: cs.contribute.fixHoursA11y,
         onUndo: () => {
           setSection('hours');
         },
@@ -959,14 +947,14 @@ export default function ContributeScreen() {
     if (scanning) {
       return {
         kind: 'dopito',
-        label: t.contribute.scanningNudge,
+        label: cs.contribute.scanningNudge,
         onPress: () => undefined,
       };
     }
     if (section === 'beers' && beers.length >= MAX_BEERS) {
       return {
         kind: 'dopito',
-        label: t.contribute.maxBeersNudge,
+        label: cs.contribute.maxBeersNudge,
         onPress: () => undefined,
       };
     }
@@ -988,14 +976,14 @@ export default function ContributeScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Pressable
-            onPress={() => leaveRoute(router)}
+            onPress={() => router.back()}
             style={({ pressed }) => [
               styles.backButton,
               pressed && styles.pressed,
             ]}
             hitSlop={2}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.backButton}
+            accessibilityLabel={cs.a11y.backButton}
           >
             <ChevronLeftIcon size={22} color={Colors.foam} />
           </Pressable>
@@ -1004,7 +992,7 @@ export default function ContributeScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {t.contribute.title}
+            {cs.contribute.title}
           </Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -1014,8 +1002,8 @@ export default function ContributeScreen() {
             const selected = section === value;
             const label =
               value === 'hours'
-                ? t.contribute.hoursTab
-                : t.contribute.beersTab;
+                ? cs.contribute.hoursTab
+                : cs.contribute.beersTab;
             return (
               <Pressable
                 key={value}
@@ -1052,7 +1040,7 @@ export default function ContributeScreen() {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {pub.name || t.contribute.unknownPub}
+          {pub.name || cs.contribute.unknownPub}
         </Text>
 
         <KeyboardAwareScrollView
@@ -1085,15 +1073,15 @@ export default function ContributeScreen() {
                       color={beerMenuRotates ? Colors.amber : Colors.foamMuted}
                     />
                     <Text style={styles.menuTypeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {t.contribute.beerMenuTypeLabel}
+                      {cs.contribute.beerMenuTypeLabel}
                     </Text>
                   </View>
                   <View style={styles.menuTypeSegment}>
                     {([false, true] as const).map((rotates) => {
                       const selected = beerMenuRotates === rotates;
                       const label = rotates
-                        ? t.contribute.beerMenuRotating
-                        : t.contribute.beerMenuFixed;
+                        ? cs.contribute.beerMenuRotating
+                        : cs.contribute.beerMenuFixed;
                       return (
                         <Pressable
                           key={String(rotates)}
@@ -1105,7 +1093,7 @@ export default function ContributeScreen() {
                           ]}
                           accessibilityRole="button"
                           accessibilityState={{ selected }}
-                          accessibilityLabel={t.a11y.contributeBeerMenuType(label)}
+                          accessibilityLabel={cs.a11y.contributeBeerMenuType(label)}
                         >
                           <Text
                             style={[
@@ -1123,8 +1111,8 @@ export default function ContributeScreen() {
                   </View>
                   <Text style={styles.menuTypeHint} maxFontSizeMultiplier={FontScaleCap.body}>
                     {beerMenuRotates
-                      ? t.contribute.beerMenuRotatingHint
-                      : t.contribute.beerMenuFixedHint}
+                      ? cs.contribute.beerMenuRotatingHint
+                      : cs.contribute.beerMenuFixedHint}
                   </Text>
                 </View>
 
@@ -1133,69 +1121,45 @@ export default function ContributeScreen() {
                     style={styles.emptyText}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {t.contribute.beersEmpty}
+                    {cs.contribute.beersEmpty}
                   </Text>
                 ) : (
                   beers.map((beer, index) => (
-                    <View
+                    <Pressable
                       key={beer.id}
-                      style={[styles.beerRow, index > 0 && styles.rowDivider]}
+                      onPress={() => openBeer(beer.id)}
+                      style={({ pressed }) => [
+                        styles.beerRow,
+                        index > 0 && styles.rowDivider,
+                        pressed && styles.pressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.contribute.editBeerA11y(
+                        beer.name,
+                        beerMeta(beer, priceCurrency),
+                      )}
                     >
-                      <Pressable
-                        onPress={() => openBeer(beer.id)}
-                        style={({ pressed }) => [styles.beerEdit, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.contribute.editBeerA11y(
-                          beer.name,
-                          beerMeta(beer, priceCurrency),
-                        )}
-                      >
-                        <View style={styles.beerCopy}>
-                          <Text
-                            style={styles.beerName}
-                            numberOfLines={1}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          >
-                            {beer.name}
-                          </Text>
-                          <Text
-                            style={styles.beerMeta}
-                            numberOfLines={1}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          >
-                            {beerMeta(beer, priceCurrency)}
-                          </Text>
-                        </View>
-                        <ChevronRightIcon size={15} color={Colors.mutedText} />
-                      </Pressable>
-                      {canAddSmallVariant(beer) ? (
-                        <Pressable
-                          onPress={() => addSmallBeerVariant(beer)}
-                          style={({ pressed }) => [
-                            styles.beerSmallAction,
-                            pressed && styles.pressed,
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel={t.contribute.addSmallBeer}
+                      <View style={styles.beerCopy}>
+                        <Text
+                          style={styles.beerName}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          <PlusIcon size={15} color={Colors.amber} />
-                          <Text
-                            style={styles.beerSmallActionLabel}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          >
-                            {formatVolume(VOLUME_SMALL)}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      <Pressable
-                        onPress={() => confirmRemoveBeer(beer)}
-                        style={({ pressed }) => [styles.beerRowAction, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.a11y.contributeRemoveBeer}
-                      >
-                        <Trash2Icon size={17} color={Colors.mutedText} />
-                      </Pressable>
-                    </View>
+                          {beer.name}
+                        </Text>
+                        <Text
+                          style={styles.beerMeta}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {beerMeta(beer, priceCurrency)}
+                        </Text>
+                      </View>
+                      <ChevronRightIcon
+                        size={15}
+                        color={Colors.mutedText}
+                      />
+                    </Pressable>
                   ))
                 )}
 
@@ -1208,14 +1172,14 @@ export default function ContributeScreen() {
                       pressed && styles.pressed,
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={t.a11y.contributeAddBeer}
+                    accessibilityLabel={cs.a11y.contributeAddBeer}
                   >
                     <PlusIcon size={16} color={Colors.amber} />
                     <Text
                       style={styles.addBeerLabel}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {t.contribute.addBeer}
+                      {cs.contribute.addBeer}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -1244,7 +1208,7 @@ export default function ContributeScreen() {
                   hitSlop={8}
                   style={({ pressed }) => [styles.copyWeek, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={t.a11y.contributeCopyToAll}
+                  accessibilityLabel={cs.a11y.contributeCopyToAll}
                 >
                   <CopyIcon size={14} color={Colors.mutedText} />
                   <Text
@@ -1252,7 +1216,7 @@ export default function ContributeScreen() {
                     numberOfLines={1}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {t.contribute.copyWeek}
+                    {cs.contribute.copyWeek}
                   </Text>
                 </Pressable>
               ) : null}
@@ -1265,7 +1229,7 @@ export default function ContributeScreen() {
                 pressed && styles.pressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={t.contribute.historicalBeersDoor(
+              accessibilityLabel={cs.contribute.historicalBeersDoor(
                 availableHistoricalBeers.length,
               )}
             >
@@ -1274,7 +1238,7 @@ export default function ContributeScreen() {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {t.contribute.historicalBeersDoor(
+                {cs.contribute.historicalBeersDoor(
                   availableHistoricalBeers.length,
                 )}
               </Text>
@@ -1286,7 +1250,7 @@ export default function ContributeScreen() {
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {t.contribute.beersLifecycleHintShort}
+              {cs.contribute.beersLifecycleHintShort}
             </Text>
           )}
         </View>
@@ -1299,7 +1263,7 @@ export default function ContributeScreen() {
         }
         accessibilityLabel={
           scanningNudgeVisible
-            ? t.contribute.scanningNudge
+            ? cs.contribute.scanningNudge
             : undefined
         }
       >
@@ -1307,18 +1271,18 @@ export default function ContributeScreen() {
       </View>
 
       <CounterCta
-        label={t.contribute.save}
-        subLabel={t.contribute.publicSubmitHint}
+        label={cs.contribute.save}
+        subLabel={cs.contribute.publicSubmitHint}
         onPress={handleSubmit}
         disabled={!canSubmit}
-        accessibilityLabel={t.a11y.contributeSaveButton}
+        accessibilityLabel={cs.a11y.contributeSaveButton}
       />
 
       {section === 'beers' ? (
         <CounterSecondary
-          label={t.contribute.scanMenuSecondary}
+          label={cs.contribute.scanMenuSecondary}
           onPress={handleScanMenu}
-          accessibilityLabel={t.contribute.scanMenuSecondary}
+          accessibilityLabel={cs.contribute.scanMenuSecondary}
         />
       ) : null}
 
@@ -1326,8 +1290,17 @@ export default function ContributeScreen() {
         visible={beerEditorOpen}
         beer={editingBeerSeed}
         formKey={beerFormNonce}
+        canAddSmallVariant={canAddSmallVariant}
         onClose={closeBeerEditor}
         onSubmit={submitBeerEditor}
+        onRemove={
+          editingBeerId
+            ? () => removeBeer(editingBeerId)
+            : undefined
+        }
+        onAddSmallVariant={
+          canAddSmallVariant ? addSmallBeerVariant : undefined
+        }
       />
 
       <HistoricalBeersSheet
@@ -1375,7 +1348,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1403,7 +1376,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1424,7 +1397,7 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1452,7 +1425,7 @@ const styles = StyleSheet.create({
   dayName: {
     flex: 1,
     minWidth: 0,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1463,7 +1436,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   closedLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1482,7 +1455,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   timeDash: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1500,7 +1473,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     marginBottom: 8,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1520,7 +1493,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   menuTypeLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 14,
     color: Colors.foam,
   },
@@ -1547,7 +1520,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   menuTypeOptionText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1556,7 +1529,7 @@ const styles = StyleSheet.create({
   },
   menuTypeHint: {
     marginTop: 9,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -1565,34 +1538,8 @@ const styles = StyleSheet.create({
     minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.sm,
-  },
-  beerEdit: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: HitArea.min,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
-  },
-  beerRowAction: {
-    width: HitArea.min,
-    height: HitArea.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  beerSmallAction: {
-    minHeight: HitArea.min,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-  },
-  beerSmallActionLabel: {
-    fontWeight: '600',
-    fontSize: 12,
-    color: Colors.amber,
+    paddingVertical: Spacing.sm,
   },
   beerCopy: {
     flex: 1,
@@ -1600,14 +1547,14 @@ const styles = StyleSheet.create({
   },
   beerName: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   beerMeta: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1620,7 +1567,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addBeerLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1641,7 +1588,7 @@ const styles = StyleSheet.create({
   },
   footerFact: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1653,7 +1600,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   copyWeekLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12.5,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1667,14 +1614,14 @@ const styles = StyleSheet.create({
   },
   historyDoorLabel: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
   },
   footerHint: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

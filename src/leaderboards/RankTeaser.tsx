@@ -17,9 +17,9 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { ChevronRightIcon, EyeOffIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchLeaderboard, type Leaderboard } from '@/data/leaderboardsClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** The chase target: the visible cut the subtitle races the user toward. */
@@ -51,15 +51,15 @@ export function RankTeaser() {
 
   let subtitle: string;
   if (rank == null) {
-    subtitle = t.leaderboards.teaserFallbackSubtitle;
+    subtitle = cs.leaderboards.teaserFallbackSubtitle;
   } else if (ghost) {
-    subtitle = t.leaderboards.teaserGhostSubtitle;
+    subtitle = cs.leaderboards.teaserGhostSubtitle;
   } else if (rank <= TOP_CUT) {
-    subtitle = t.leaderboards.teaserTopSubtitle;
+    subtitle = cs.leaderboards.teaserTopSubtitle;
   } else {
     const cutEntry = board?.entries[TOP_CUT - 1];
     const gap = cutEntry && me ? cutEntry.score - me.score + 1 : 0;
-    subtitle = gap > 0 ? t.leaderboards.teaserChase(gap) : t.leaderboards.teaserResetNote;
+    subtitle = gap > 0 ? cs.leaderboards.teaserChase(gap) : cs.leaderboards.teaserResetNote;
   }
 
   const open = useCallback(() => {
@@ -70,7 +70,7 @@ export function RankTeaser() {
     <Pressable
       onPress={open}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.leaderboardsOpen}
+      accessibilityLabel={cs.a11y.leaderboardsOpen}
       style={({ pressed }) => [styles.strip, pressed && styles.pressed]}
     >
       <View style={styles.iconWell}>
@@ -83,12 +83,12 @@ export function RankTeaser() {
       <View style={styles.textCol}>
         <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {rank == null ? (
-            t.leaderboards.teaserFallbackTitle
+            cs.leaderboards.teaserFallbackTitle
           ) : (
             <>
-              {t.leaderboards.teaserTitleBefore}
-              <Text style={styles.titleRank}>{t.leaderboards.teaserTitleRank(rank)}</Text>
-              {t.leaderboards.teaserTitleAfter}
+              {cs.leaderboards.teaserTitleBefore}
+              <Text style={styles.titleRank}>{cs.leaderboards.teaserTitleRank(rank)}</Text>
+              {cs.leaderboards.teaserTitleAfter}
             </>
           )}
         </Text>
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12.5,
     color: Colors.foamMuted,
   },

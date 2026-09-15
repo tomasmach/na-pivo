@@ -23,16 +23,29 @@ import { createQueueStorage, createQueueLock, createCoalescingFlush } from './cr
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
-/** Historical backfill budget. Normal user counts are never evicted. */
+/** Hard cap — a queue this long means the backend has been unreachable for a
+ *  very long time; dropping the oldest drinks beats unbounded growth. */
 const MAX_QUEUE_LENGTH = 200;
-export type QueuedDrinkUpdateResult = 'queued' | 'in-flight' | 'missing' | 'storage-error';
-export type DrinkEnqueueResult = 'queued' | 'delivered' | 'storage-error';
+export type QueuedDrinkUpdateResult = 'queued' | 'in-flight' | 'missing';
 const deliveringIds = new Set<string>();
 const protectedHistoricalIds = new Set<string>();
 let accountBoundaryGeneration = 0;
 
 function capQueue(queue: DrinkEntry[]): DrinkEntry[] {
-  return queue;
+  if (queue.length <= MAX_QUEUE_LENGTH) return queue;
+  if (protectedHistoricalIds.size === 0) return queue.slice(-MAX_QUEUE_LENGTH);
+
+  const protectedEntries = queue.filter((entry) =>
+    protectedHistoricalIds.has(entry.client_id),
+  );
+  const unprotectedEntries = queue.filter(
+    (entry) => !protectedHistoricalIds.has(entry.client_id),
+  );
+  const unprotectedCapacity = Math.max(0, MAX_QUEUE_LENGTH - protectedEntries.length);
+  return [
+    ...protectedEntries.slice(-MAX_QUEUE_LENGTH),
+    ...(unprotectedCapacity > 0 ? unprotectedEntries.slice(-unprotectedCapacity) : []),
+  ];
 }
 
 function isDrinkEntry(entry: unknown): entry is DrinkEntry {
@@ -40,50 +53,28 @@ function isDrinkEntry(entry: unknown): entry is DrinkEntry {
   if (
     !e ||
     typeof e.client_id !== 'string' ||
-    !e.client_id ||
-    (e.place_context !== undefined &&
-      e.place_context !== 'pub' &&
-      !isOutsidePlaceContext(e.place_context)) ||
     (e.drink_type !== undefined && !isDrinkType(e.drink_type)) ||
     !e.beer ||
     typeof e.beer.name !== 'string' ||
-    !e.beer.name.trim() ||
-    (e.beer.serving_type !== undefined && !isServingType(e.beer.serving_type)) ||
-    (e.beer.price_czk !== undefined &&
-      (typeof e.beer.price_czk !== 'number' || !Number.isFinite(e.beer.price_czk))) ||
-    (e.beer.volume_ml !== undefined &&
-      (typeof e.beer.volume_ml !== 'number' ||
-        !Number.isFinite(e.beer.volume_ml) ||
-        e.beer.volume_ml <= 0)) ||
-    (e.drank_at !== undefined &&
-      (typeof e.drank_at !== 'string' || !Number.isFinite(Date.parse(e.drank_at)))) ||
-    (e.party_code !== undefined && typeof e.party_code !== 'string')
+    (e.beer.serving_type !== undefined && !isServingType(e.beer.serving_type))
   ) {
     return false;
   }
-  // Outside drinks (place_context ≠ pub) carry no pub identity. Price is
-  // optional everywhere: quick counts and scanned menu rows may not know it.
+  // Outside drinks (place_context ≠ pub) carry no pub identity and may have no
+  // price; a pub drink (or a legacy entry without place_context) must have both.
   if (isOutsidePlaceContext(e.place_context)) {
     return (
       e.name === undefined &&
       e.lat === undefined &&
       e.lng === undefined &&
-      e.city === undefined &&
-      e.external_id === undefined
+      (e.beer.price_czk === undefined || typeof e.beer.price_czk === 'number')
     );
   }
   return (
     typeof e.name === 'string' &&
     typeof e.lat === 'number' &&
-    Number.isFinite(e.lat) &&
-    e.lat >= -90 &&
-    e.lat <= 90 &&
     typeof e.lng === 'number' &&
-    Number.isFinite(e.lng) &&
-    e.lng >= -180 &&
-    e.lng <= 180 &&
-    (e.city === undefined || typeof e.city === 'string') &&
-    (e.external_id === undefined || e.external_id === null || typeof e.external_id === 'string')
+    typeof e.beer.price_czk === 'number'
   );
 }
 
@@ -133,39 +124,29 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
 /**
  * Persists the drink and (by default) immediately tries to sync the whole
- * queue. Returns `delivered` when this drink reached the backend (or was
- * permanently rejected), `queued` when it stays pending, and `storage-error`
- * when AsyncStorage could not make the retry payload durable. Never throws.
+ * queue. Resolves true when this drink reached the backend (or was permanently
+ * rejected) on the first attempt — i.e. it left the queue; false means it stays
+ * queued for a later flush. Never throws.
  *
  * Pass `{ deliver: false }` to persist the drink WITHOUT sending it yet. The
  * payload is durably queued (crash-safe) but stays retractable via
  * removeQueuedDrink until a later flush delivers it — this is what gives the
- * counter a real undo window. Returns `queued` in that case.
+ * counter a real undo window. Resolves false in that case (still queued).
  *
- * Distinct IDs remain distinct events. Retrying the same user action replaces
- * its existing ID in place so a storage retry cannot duplicate that action.
+ * No dedup: every drink is a distinct event keyed by its own client_id.
  */
-export async function enqueueDrink(
-  entry: DrinkEntry,
-  options?: { deliver?: boolean },
-): Promise<DrinkEnqueueResult> {
+export async function enqueueDrink(entry: DrinkEntry, options?: { deliver?: boolean }): Promise<boolean> {
   const deliver = options?.deliver ?? true;
-  const persisted = await runMutation(async () => {
+  await runMutation(async () => {
     const queue = await loadQueue();
-    const existingIndex = queue.findIndex((queued) => queued.client_id === entry.client_id);
-    if (existingIndex >= 0) queue[existingIndex] = entry;
-    else queue.push(entry);
-    const capped = capQueue(queue);
-    if (!capped.some((queued) => queued.client_id === entry.client_id)) return false;
-    return saveQueue(capped);
+    queue.push(entry);
+    await saveQueue(capQueue(queue));
   });
 
-  if (!persisted) return 'storage-error';
-
-  if (!deliver) return 'queued';
+  if (!deliver) return false;
 
   await flushDrinksQueue();
-  return (await isDrinkQueued(entry.client_id)) ? 'queued' : 'delivered';
+  return !(await isDrinkQueued(entry.client_id));
 }
 
 /**
@@ -174,12 +155,12 @@ export async function enqueueDrink(
  * same interaction must not create duplicate queue rows. The caller flushes
  * only after its matching local tally write is durable.
  */
-export function ensureDrinkQueued(entry: DrinkEntry): Promise<'queued' | 'storage-error'> {
+export function ensureDrinkQueued(entry: DrinkEntry): Promise<void> {
   return runMutation(async () => {
     const queue = await loadQueue();
-    if (queue.some((queued) => queued.client_id === entry.client_id)) return 'queued';
+    if (queue.some((queued) => queued.client_id === entry.client_id)) return;
     queue.push(entry);
-    return (await saveQueue(capQueue(queue))) ? 'queued' : 'storage-error';
+    await saveQueue(capQueue(queue));
   });
 }
 
@@ -211,20 +192,12 @@ export function ensureHistoricalDrinkBatchQueued(
 ): Promise<HistoricalDrinkBatchResult> {
   return runMutation(async () => {
     if (expectedBoundaryGeneration !== accountBoundaryGeneration) {
-      return {
-        acceptedClientIds: [],
-        boundaryMatches: false,
-        persisted: false,
-      };
+      return { acceptedClientIds: [], boundaryMatches: false, persisted: false };
     }
 
     const queue = await loadQueue();
     if (expectedBoundaryGeneration !== accountBoundaryGeneration) {
-      return {
-        acceptedClientIds: [],
-        boundaryMatches: false,
-        persisted: false,
-      };
+      return { acceptedClientIds: [], boundaryMatches: false, persisted: false };
     }
     const existingIds = new Set(queue.map((entry) => entry.client_id));
     const acceptedClientIds: string[] = [];
@@ -250,17 +223,16 @@ export function ensureHistoricalDrinkBatchQueued(
       return { acceptedClientIds, boundaryMatches: true, persisted: true };
     }
     const persisted = await saveQueue([...queue, ...additions]);
-    const boundaryMatches = expectedBoundaryGeneration === accountBoundaryGeneration;
+    const boundaryMatches =
+      expectedBoundaryGeneration === accountBoundaryGeneration;
     if (!boundaryMatches) {
-      return {
-        acceptedClientIds: [],
-        boundaryMatches: false,
-        persisted: false,
-      };
+      return { acceptedClientIds: [], boundaryMatches: false, persisted: false };
     }
     const durableClientIds = persisted
       ? acceptedClientIds
-      : acceptedClientIds.filter((clientId) => queue.some((entry) => entry.client_id === clientId));
+      : acceptedClientIds.filter((clientId) =>
+          queue.some((entry) => entry.client_id === clientId),
+        );
     durableClientIds.forEach((clientId) => protectedHistoricalIds.add(clientId));
     return {
       acceptedClientIds: durableClientIds,
@@ -310,7 +282,7 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
     const queue = await loadQueue();
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length !== queue.length) {
-      if (!(await saveQueue(filtered))) return false;
+      await saveQueue(filtered);
       return !deliveringIds.has(clientId);
     }
     return false;
@@ -325,41 +297,15 @@ export function updateQueuedDrinkBeerName(
   clientId: string,
   beerName: string,
 ): Promise<QueuedDrinkUpdateResult> {
-  return updateQueuedDrink(clientId, { beer_name: beerName });
-}
-
-export function updateQueuedDrink(
-  clientId: string,
-  update: {
-    beer_name?: string;
-    drink_type?: DrinkEntry['drink_type'];
-    price_czk?: number | null;
-    volume_ml?: number | null;
-    serving_type?: DrinkEntry['beer']['serving_type'];
-  },
-): Promise<QueuedDrinkUpdateResult> {
   return runMutation(async () => {
     const queue = await loadQueue();
     let changed = false;
     const next = queue.map((entry) => {
       if (entry.client_id !== clientId) return entry;
       changed = true;
-      const beer = {
-        ...entry.beer,
-        ...(update.beer_name !== undefined ? { name: update.beer_name } : {}),
-        ...(typeof update.price_czk === 'number' ? { price_czk: update.price_czk } : {}),
-        ...(typeof update.volume_ml === 'number' ? { volume_ml: update.volume_ml } : {}),
-        ...(update.serving_type !== undefined ? { serving_type: update.serving_type } : {}),
-      };
-      if (update.price_czk === null) delete beer.price_czk;
-      if (update.volume_ml === null) delete beer.volume_ml;
-      return {
-        ...entry,
-        ...(update.drink_type !== undefined ? { drink_type: update.drink_type } : {}),
-        beer,
-      };
+      return { ...entry, beer: { ...entry.beer, name: beerName } };
     });
-    if (changed && !(await saveQueue(next))) return 'storage-error';
+    if (changed) await saveQueue(next);
     if (!changed) return 'missing';
     return deliveringIds.has(clientId) ? 'in-flight' : 'queued';
   });
@@ -377,12 +323,9 @@ export function clearDrinksQueue(): Promise<void> {
   // so without this it could keep POSTing the previous account's drinks under the
   // session that replaces this one.
   abortInFlight();
-  return runMutation(
-    async () => {
-      await saveQueue([]);
-    },
-    { allowDuringPrivateTransition: true },
-  );
+  return runMutation(async () => {
+    await saveQueue([]);
+  });
 }
 
 /**
@@ -393,30 +336,4 @@ export function clearDrinksQueue(): Promise<void> {
  */
 export function flushDrinksQueue(): Promise<void> {
   return _flush();
-}
-
-/** Release drinks staged against a locally reserved table code. */
-export async function resolveQueuedDrinkPartyAssociation(
-  pendingCode: string,
-  confirmedCode: string | null,
-): Promise<void> {
-  const pending = pendingCode.trim().toUpperCase();
-  const confirmed = confirmedCode?.trim().toUpperCase() || null;
-  if (!pending) return;
-
-  const persisted = await runMutation(async () => {
-    const queue = await loadQueue();
-    let changed = false;
-    const rewritten = queue.map((entry) => {
-      if (entry.party_code?.trim().toUpperCase() !== pending) return entry;
-      changed = true;
-      const next = { ...entry };
-      if (confirmed) next.party_code = confirmed;
-      else delete next.party_code;
-      return next;
-    });
-    return changed ? saveQueue(rewritten) : true;
-  });
-  if (!persisted) return;
-  await flushDrinksQueue();
 }

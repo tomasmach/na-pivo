@@ -8,28 +8,28 @@ import {
   InstagramIcon,
   LinkedinIcon,
 } from '@/components/shared/BrandIcon';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const creatorLinks = [
   {
     key: 'instagram',
-    label: t.profile.creator.instagram,
-    url: t.profile.creator.instagramUrl,
+    label: cs.profile.creator.instagram,
+    url: cs.profile.creator.instagramUrl,
     Icon: InstagramIcon,
   },
   {
     key: 'linkedin',
-    label: t.profile.creator.linkedin,
-    url: t.profile.creator.linkedinUrl,
+    label: cs.profile.creator.linkedin,
+    url: cs.profile.creator.linkedinUrl,
     Icon: LinkedinIcon,
   },
   {
     key: 'discord',
-    label: t.profile.creator.discord,
-    url: t.profile.creator.discordUrl,
+    label: cs.profile.creator.discord,
+    url: cs.profile.creator.discordUrl,
     Icon: DiscordIcon,
   },
 ];
@@ -47,13 +47,13 @@ export default function AboutRoute() {
         ]}
       >
         <Text style={styles.followEyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.profile.creator.header}
+          {cs.profile.creator.header}
         </Text>
         <Text style={styles.followTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.profile.creator.title}
+          {cs.profile.creator.title}
         </Text>
         <Text style={styles.followBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.profile.creator.subtitle}
+          {cs.profile.creator.subtitle}
         </Text>
         <View style={styles.links}>
           {creatorLinks.map(({ key, label, url, Icon }) => (
@@ -94,21 +94,21 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   followEyebrow: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 10,
     letterSpacing: 1.3,
     color: Colors.amber,
     includeFontPadding: false,
   },
   followTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
   },
   followBody: {
     marginBottom: 4,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   },
   linkLabel: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.foam,
     includeFontPadding: false,

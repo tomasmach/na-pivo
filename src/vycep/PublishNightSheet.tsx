@@ -9,28 +9,28 @@
  * online (the toast says which of the two happened).
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
-import { HandPlatterIcon, MapPinIcon } from '@/components/shared/IconGlyph';
-import { isRetriableNightError, publishNight, type NightVisibility } from '@/data/nightsClient';
+import { HandPlatterIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
+import {
+  isRetriableNightError,
+  publishNight,
+  type NightVisibility,
+} from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { t , beerCountLabel } from '@/i18n';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { cs } from '@/i18n/cs';
+import { beerCountLabel } from '@/i18n/plural';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import SegmentedControl from '@/friends/SegmentedControl';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
 import { TallyMarks } from '@/vycep/TallyMarks';
 import type { NightSummary } from '@/vycep/nightModel';
 
@@ -42,11 +42,14 @@ interface PublishNightSheetProps {
 }
 
 const VISIBILITIES: readonly [NightVisibility, NightVisibility] = ['friends', 'public'];
-const SHEET_DISMISS_MS = 260;
 
-function PublishNightSheetBase({ visible, night, onClose, onPublished }: PublishNightSheetProps) {
+function PublishNightSheetBase({
+  visible,
+  night,
+  onClose,
+  onPublished,
+}: PublishNightSheetProps) {
   const showToast = useToastStore((s) => s.show);
-  const insets = useSafeAreaInsets();
   const profile = useAccountStore((s) => s.profile);
   const publishedRecord = useVycepStore((s) => s.published[night.clientKey]);
   const markPublished = useVycepStore((s) => s.markPublished);
@@ -55,7 +58,6 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
     publishedRecord?.visibility === 'public' ? 1 : 0,
   );
   const [busy, setBusy] = useState(false);
-  const dialogTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibility = VISIBILITIES[visibilityIndex];
 
   // Re-sync the preselected audience each time the sheet opens (the modal
@@ -68,25 +70,14 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
   }
 
   const now = useMemo(() => new Date(), []);
-  useEffect(
-    () => () => {
-      if (dialogTimer.current) clearTimeout(dialogTimer.current);
-    },
-    [],
-  );
 
   const handlePublish = useCallback(() => {
     if (busy) return;
     if (visibility === 'public' && !profile?.nickname) {
-      onClose();
-      if (dialogTimer.current) clearTimeout(dialogTimer.current);
-      dialogTimer.current = setTimeout(() => {
-        dialogTimer.current = null;
-        showAppDialog({
-          title: t.vycep.nicknameNeededTitle,
-          message: t.vycep.nicknameNeededBody,
-        });
-      }, SHEET_DISMISS_MS);
+      showAppDialog({
+        title: cs.vycep.nicknameNeededTitle,
+        message: cs.vycep.nicknameNeededBody,
+      });
       return;
     }
 
@@ -103,17 +94,19 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
       shotCount: night.shotCount,
       pubNames: night.pubNames,
       ...(night.city ? { city: night.city } : {}),
-      ...(night.durationMinutes !== undefined ? { durationMinutes: night.durationMinutes } : {}),
+      ...(night.durationMinutes !== undefined
+        ? { durationMinutes: night.durationMinutes }
+        : {}),
       visibility,
       updatedAt: new Date().toISOString(),
     };
 
-    void publishNight(payload).then(async (res) => {
+    void publishNight(payload).then((res) => {
+      setBusy(false);
       if (res.ok) {
-        setBusy(false);
         trackUiInteraction('night_publish', 'success');
         markPublished(night.clientKey, visibility);
-        showToast(t.vycep.publishedToast, {
+        showToast(cs.vycep.publishedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onPublished?.();
@@ -121,134 +114,137 @@ function PublishNightSheetBase({ visible, night, onClose, onPublished }: Publish
         return;
       }
       if (isRetriableNightError(res)) {
-        // Only promise a later publish after the payload is durably on disk.
-        const queued = await enqueueNightOp({ op: 'publish', payload }).catch(() => false);
-        setBusy(false);
-        if (!queued) {
-          trackUiInteraction('night_publish', 'failure');
-          showToast(t.vycep.publishErrorToast);
-          return;
-        }
         trackUiInteraction('night_publish', 'success');
+        // Offline / transient: hand the publish to the durable queue and keep
+        // the optimistic published state (it WILL land).
+        void enqueueNightOp({ op: 'publish', payload });
         markPublished(night.clientKey, visibility);
-        showToast(t.vycep.publishQueuedToast, {
+        showToast(cs.vycep.publishQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onPublished?.();
         onClose();
         return;
       }
-      setBusy(false);
       trackUiInteraction('night_publish', 'failure');
       showToast(res.detail);
     });
-  }, [busy, markPublished, night, onClose, onPublished, profile?.nickname, showToast, visibility]);
+  }, [
+    busy,
+    markPublished,
+    night,
+    onClose,
+    onPublished,
+    profile?.nickname,
+    showToast,
+    visibility,
+  ]);
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.lg }]}>
-          <View style={styles.grabber} />
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.backdrop}>
+        <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.vycep.publishTitle}
+              {cs.vycep.publishTitle}
             </Text>
-            <CloseButton onPress={onClose} label={t.common.cancel} />
-          </View>
-
-          <ScrollView
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Preview of exactly what the feed will show. */}
-            <View style={styles.preview}>
-              <Text style={styles.previewDate} maxFontSizeMultiplier={FontScaleCap.body}>
-                {formatEveningDate(night.startedAt, now)}
-              </Text>
-              {night.beerCount > 0 ? (
-                <>
-                  <TallyMarks count={night.beerCount} color={Colors.amber} markHeight={22} />
-                  <Text style={styles.previewCount} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {beerCountLabel(night.beerCount)}
-                  </Text>
-                </>
-              ) : null}
-              {night.pubNames.length > 0 ? (
-                <View style={styles.previewPubs}>
-                  <MapPinIcon size={13} color={Colors.mutedText} />
-                  <Text
-                    style={styles.previewPubsText}
-                    numberOfLines={2}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {night.pubNames.join('  →  ')}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.vycep.publishBody}
-            </Text>
-
-            <Text style={styles.visibilityLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.vycep.visibilityLabel}
-            </Text>
-            <SegmentedControl
-              options={[t.vycep.scopeParta, t.vycep.scopeWorld]}
-              value={visibilityIndex}
-              onChange={setVisibilityIndex}
-              accessibilityLabel={t.vycep.visibilityLabel}
-            />
-            <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {visibility === 'public'
-                ? t.vycep.visibilityWorldHint
-                : t.vycep.visibilityFriendsHint}
-            </Text>
-          </ScrollView>
-
-          <View style={styles.actions}>
             <Pressable
-              onPress={handlePublish}
-              disabled={busy}
+              onPress={onClose}
+              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.publishNightButton}
-              style={({ pressed }) => [
-                styles.publishButton,
-                (pressed || busy) && styles.publishButtonPressed,
-              ]}
+              accessibilityLabel={cs.common.cancel}
             >
-              <HandPlatterIcon size={18} color={Colors.stout} />
-              <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {publishedRecord ? t.vycep.updateCta : t.vycep.publishCta}
-              </Text>
+              <XIcon size={18} color={Colors.mutedText} />
             </Pressable>
           </View>
+
+          {/* Preview of exactly what the feed will show. */}
+          <View style={styles.preview}>
+            <Text style={styles.previewDate} maxFontSizeMultiplier={FontScaleCap.body}>
+              {formatEveningDate(night.startedAt, now)}
+            </Text>
+            {night.beerCount > 0 ? (
+              <>
+                <TallyMarks count={night.beerCount} color={Colors.amber} markHeight={22} />
+                <Text style={styles.previewCount} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {beerCountLabel(night.beerCount)}
+                </Text>
+              </>
+            ) : null}
+            {night.pubNames.length > 0 ? (
+              <View style={styles.previewPubs}>
+                <MapPinIcon size={13} color={Colors.mutedText} />
+                <Text
+                  style={styles.previewPubsText}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {night.pubNames.join('  →  ')}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.vycep.publishBody}
+          </Text>
+
+          <Text style={styles.visibilityLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.vycep.visibilityLabel}
+          </Text>
+          <SegmentedControl
+            options={[cs.vycep.scopeParta, cs.vycep.scopeWorld]}
+            value={visibilityIndex}
+            onChange={setVisibilityIndex}
+            accessibilityLabel={cs.vycep.visibilityLabel}
+          />
+          <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
+            {visibility === 'public'
+              ? cs.vycep.visibilityWorldHint
+              : cs.vycep.visibilityFriendsHint}
+          </Text>
+
+          <Pressable
+            onPress={handlePublish}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.publishNightButton}
+            style={({ pressed }) => [
+              styles.publishButton,
+              (pressed || busy) && styles.publishButtonPressed,
+            ]}
+          >
+            <HandPlatterIcon size={18} color={Colors.stout} />
+            <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishCta}
+            </Text>
+          </Pressable>
         </View>
       </View>
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  cardWrap: { width: '100%', maxHeight: '92%' },
-  sheet: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
-    ...softDrop(),
+  backdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.lg,
+    backgroundColor: 'rgba(12, 8, 5, 0.72)',
   },
-  grabber: {
-    width: 44,
-    height: 4,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
-    alignSelf: 'center',
-    marginBottom: Spacing.md,
+  sheet: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+    gap: Spacing.md,
   },
   header: {
     flexDirection: 'row',
@@ -257,11 +253,20 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
   },
-  list: { flexGrow: 0, flexShrink: 1, marginTop: Spacing.sm },
-  listContent: { gap: Spacing.md, paddingBottom: Spacing.sm },
+  close: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.6,
+  },
   preview: {
     borderRadius: Radius.card,
     borderWidth: 1,
@@ -271,12 +276,12 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   previewDate: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   previewCount: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 20,
     color: Colors.foam,
   },
@@ -287,28 +292,31 @@ const styles = StyleSheet.create({
   },
   previewPubsText: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
   },
   body: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.foamMuted,
   },
   visibilityLabel: {
-    ...MockType.bodySemibold,
-    color: Colors.foam,
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    color: Colors.amber,
   },
   visibilityHint: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
   },
   publishButton: {
-    height: 56,
+    marginTop: Spacing.xs,
+    minHeight: 50,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -317,18 +325,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   publishButtonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.97 }],
+    opacity: 0.8,
   },
   publishText: {
-    ...MockType.buttonLabel,
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
     color: Colors.stout,
-  },
-  actions: {
-    paddingTop: Spacing.md,
-    marginTop: Spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
 });
 

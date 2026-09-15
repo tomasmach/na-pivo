@@ -26,11 +26,11 @@ import { HandPlatterIcon } from '@/components/shared/IconGlyph';
 import { clearNightReaction, isRetriableNightError, reactToNight } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -121,51 +121,40 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
     pendingRef.current = true;
     const seq = ++seqRef.current;
     const call = turningOn ? reactToNight(nightId) : clearNightReaction(nightId);
-    void call.then(async (res) => {
+    void call.then((res) => {
       if (seq !== seqRef.current) return;
+      pendingRef.current = false;
       if (res.ok) {
-        pendingRef.current = false;
         trackUiInteraction('night_react', 'success');
-        showToast(turningOn ? t.vycep.roundSentToast : t.vycep.roundUndoneToast, {
+        showToast(turningOn ? cs.vycep.roundSentToast : cs.vycep.roundUndoneToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onChanged?.();
         return;
       }
       if (isRetriableNightError(res)) {
-        const queued = await enqueueNightOp(
-          turningOn ? { op: 'round', nightId } : { op: 'round-clear', nightId },
-        ).catch(() => false);
-        if (seq !== seqRef.current) return;
-        pendingRef.current = false;
-        if (!queued) {
-          trackUiInteraction('night_react', 'failure');
-          setActive(prevActive);
-          setDisplayCount(prevCount);
-          showToast(t.vycep.roundErrorToast, {
-            icon: <HandPlatterIcon size={20} color={Colors.amber} />,
-          });
-          return;
-        }
         trackUiInteraction('night_react', 'success');
-        showToast(t.vycep.roundQueuedToast, {
+        // Offline / transient: keep the flip, queue the op (it WILL land).
+        void enqueueNightOp(
+          turningOn ? { op: 'round', nightId } : { op: 'round-clear', nightId },
+        );
+        showToast(cs.vycep.roundQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         return;
       }
-      pendingRef.current = false;
       trackUiInteraction('night_react', 'failure');
       // Hard reject: revert.
       setActive(prevActive);
       setDisplayCount(prevCount);
-      showToast(t.vycep.roundErrorToast, {
+      showToast(cs.vycep.roundErrorToast, {
         icon: <HandPlatterIcon size={20} color={Colors.amber} />,
       });
     });
   }, [active, busy, displayCount, nightId, showToast, onChanged]);
 
   const glyphColor = active ? Colors.amber : Colors.mutedText;
-  const label = displayCount > 0 ? t.vycep.roundCount(displayCount) : t.vycep.round;
+  const label = displayCount > 0 ? cs.vycep.roundCount(displayCount) : cs.vycep.round;
 
   return (
     <Pressable
@@ -173,7 +162,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={t.a11y.roundButton(ownerName ?? t.vycep.round)}
+      accessibilityLabel={cs.a11y.roundButton(ownerName ?? cs.vycep.round)}
       style={({ pressed }) => [styles.pill, active && styles.pillActive, pressed && styles.pressed]}
     >
       <HandPlatterIcon size={17} color={glyphColor} />
@@ -212,7 +201,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   count: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

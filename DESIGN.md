@@ -1,5 +1,11 @@
 # Na pivo — DESIGN
 
+> **Stav od 2.1.0:** tenhle dokument popisuje vizuální jazyk verze 2.0 („3.0 mock“), kterou
+> jsme stáhli; vydaná appka je zpátky na obrazovkách 1.5.1 a tokeny se čtou z `src/theme/`
+> té verze. Kde se čísla tady liší od kódu, platí kód, dokud dokument nepřepíšeme.
+> Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
+> funkce, ne zadání.
+
 Jeden dokument pro celý design Na pivo: **co produkt je** (Část I), **podle
 jakých pravidel se kreslí a staví** (Část II) a **co je rozpracované nebo
 nerozhodnuté** (Část III). Vznikl v srpnu 2026 sloučením `design-system.md`,

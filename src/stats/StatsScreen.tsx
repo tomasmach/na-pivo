@@ -18,9 +18,10 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t , beerCountLabel, beerNoun, intlLocale } from '@/i18n';
+import { cs } from '@/i18n/cs';
+import { beerCountLabel, beerNoun } from '@/i18n/plural';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { formatPrice } from '@/utils/currency';
 import {
@@ -54,11 +55,11 @@ import { useMyStats } from '@/stats/useMyStats';
 import type { PriceCurrency } from '@/utils/currency';
 
 const TONE_LINE: Record<LastPerformance['tone'], string> = {
-  start: t.stats.toneStart,
-  warmup: t.stats.toneWarmup,
-  solid: t.stats.toneSolid,
-  big: t.stats.toneBig,
-  huge: t.stats.toneHuge,
+  start: cs.stats.toneStart,
+  warmup: cs.stats.toneWarmup,
+  solid: cs.stats.toneSolid,
+  big: cs.stats.toneBig,
+  huge: cs.stats.toneHuge,
 };
 
 // ─── Section header ─────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ function PerformanceHero({
       <View style={styles.heroEyebrowRow}>
         <SparklesIcon size={13} color={Colors.amber} />
         <Text style={styles.heroEyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-          {perf.relation === 'today' ? t.stats.heroToday : t.stats.heroYesterday}
+          {perf.relation === 'today' ? cs.stats.heroToday : cs.stats.heroYesterday}
         </Text>
       </View>
 
@@ -118,20 +119,20 @@ function PerformanceHero({
           <View style={styles.heroMicroRow}>
             <MicroStat
               icon={<ClockIcon size={16} color={Colors.amber} />}
-              value={t.stats.span(perf.durationMs)}
-              caption={t.stats.heroDuration}
+              value={cs.stats.span(perf.durationMs)}
+              caption={cs.stats.heroDuration}
             />
             <View style={styles.heroMicroSep} />
             <MicroStat
               icon={<BeerIcon size={16} color={Colors.amber} />}
-              value={t.stats.pace(perf.avgGapMs as number)}
-              caption={t.stats.heroAvg}
+              value={cs.stats.pace(perf.avgGapMs as number)}
+              caption={cs.stats.heroAvg}
             />
             <View style={styles.heroMicroSep} />
             <MicroStat
               icon={<FlameIcon size={16} color={Colors.amber} />}
-              value={t.stats.pace(perf.fastestGapMs as number)}
-              caption={t.stats.heroFastest}
+              value={cs.stats.pace(perf.fastestGapMs as number)}
+              caption={cs.stats.heroFastest}
             />
           </View>
         </>
@@ -192,33 +193,33 @@ function RecordRow({
 function RecordsCard({ records }: { records: PersonalRecords }) {
   const mostBeers =
     records.mostBeersInEvening > 0
-      ? t.stats.recordMostBeersValue(
+      ? cs.stats.recordMostBeersValue(
           beerCountLabel(records.mostBeersInEvening),
           records.mostBeersPubName,
         )
-      : t.stats.recordEmpty;
+      : cs.stats.recordEmpty;
   const fastest =
-    records.fastestBeerMs != null ? t.stats.pace(records.fastestBeerMs) : t.stats.recordEmpty;
+    records.fastestBeerMs != null ? cs.stats.pace(records.fastestBeerMs) : cs.stats.recordEmpty;
   const longest =
-    records.longestEveningMs != null ? t.stats.span(records.longestEveningMs) : t.stats.recordEmpty;
+    records.longestEveningMs != null ? cs.stats.span(records.longestEveningMs) : cs.stats.recordEmpty;
 
   return (
     <View style={styles.card}>
       <RecordRow
         icon={<TrophyIcon size={17} color={Colors.amber} />}
-        label={t.stats.recordMostBeers}
+        label={cs.stats.recordMostBeers}
         value={mostBeers}
       />
       <View style={styles.rowBorder} />
       <RecordRow
         icon={<FlameIcon size={17} color={Colors.amber} />}
-        label={t.stats.recordFastest}
+        label={cs.stats.recordFastest}
         value={fastest}
       />
       <View style={styles.rowBorder} />
       <RecordRow
         icon={<ClockIcon size={17} color={Colors.amber} />}
-        label={t.stats.recordLongest}
+        label={cs.stats.recordLongest}
         value={longest}
       />
     </View>
@@ -250,7 +251,7 @@ function TotalsCard({
             {lifetime.totalBeers}
           </Text>
           <Text style={styles.heroStatCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.stats.totalBeers}
+            {cs.stats.totalBeers}
           </Text>
         </View>
       </View>
@@ -259,17 +260,17 @@ function TotalsCard({
         <StatTile
           icon={<HistoryIcon size={18} color={Colors.amber} />}
           value={String(lifetime.totalEvenings)}
-          caption={t.stats.totalEvenings}
+          caption={cs.stats.totalEvenings}
         />
         <StatTile
           icon={<MapPinnedIcon size={18} color={Colors.amber} />}
           value={String(lifetime.distinctPubs)}
-          caption={t.stats.totalPubs}
+          caption={cs.stats.totalPubs}
         />
         <StatTile
           icon={<CoinsIcon size={18} color={Colors.amber} />}
           value={formatPrice(lifetime.totalSpentCzk, priceCurrency)}
-          caption={t.stats.totalSpent}
+          caption={cs.stats.totalSpent}
         />
       </View>
     </View>
@@ -305,24 +306,21 @@ function StatTile({
 
 // ─── Months and years ──────────────────────────────────────────────────────
 
-/** Month names come from Intl, so the chart speaks whatever language the app does. */
-function monthDate(year: number, month: number): Date {
-  return new Date(year, month - 1, 1, 12);
-}
-
-function monthShort(year: number, month: number): string {
-  return new Intl.DateTimeFormat(intlLocale, { month: 'short' })
-    .format(monthDate(year, month))
-    .replace('.', '');
-}
-
-function monthAndYear(year: number, month: number): string {
-  const text = new Intl.DateTimeFormat(intlLocale, { month: 'long', year: 'numeric' }).format(
-    monthDate(year, month),
-  );
-  // Czech writes month names in lower case; the card heading wants a capital.
-  return text.charAt(0).toLocaleUpperCase(intlLocale) + text.slice(1);
-}
+const MONTH_SHORT = ['led', 'úno', 'bře', 'dub', 'kvě', 'čer', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro'];
+const MONTH_LONG = [
+  'Leden',
+  'Únor',
+  'Březen',
+  'Duben',
+  'Květen',
+  'Červen',
+  'Červenec',
+  'Srpen',
+  'Září',
+  'Říjen',
+  'Listopad',
+  'Prosinec',
+];
 
 function monthParts(period: string): { year: number; month: number } | null {
   const match = /^(\d{4})-(\d{2})$/.exec(period);
@@ -365,10 +363,10 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
       <View style={styles.periodCurrentRow}>
         <View style={styles.flex}>
           <Text style={styles.periodTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {currentParts ? monthAndYear(currentParts.year, currentParts.month) : current.period}
+            {currentParts ? `${MONTH_LONG[currentParts.month - 1]} ${currentParts.year}` : current.period}
           </Text>
           <Text style={styles.periodMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.stats.periodEvenings(current.evenings)}
+            {cs.stats.periodEvenings(current.evenings)}
           </Text>
         </View>
         <View style={styles.periodCurrentValueWrap}>
@@ -376,19 +374,19 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
             {current.beers}
           </Text>
           <Text style={styles.periodCurrentUnit} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.stats.periodBeers}
+            {cs.stats.periodBeers}
           </Text>
         </View>
       </View>
       <Text style={styles.periodAverage} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.stats.periodAverage(current.averageBeersPerEvening)}
+        {cs.stats.periodAverage(current.averageBeersPerEvening)}
       </Text>
 
       <View style={styles.chartDivider} />
       <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.stats.monthsHeader}
+        {cs.stats.monthsHeader}
       </Text>
-      <View style={styles.monthChart} accessibilityLabel={t.stats.monthsA11y}>
+      <View style={styles.monthChart} accessibilityLabel={cs.stats.monthsA11y}>
         {chartMonths.map((period) => {
           const parts = monthParts(period.period);
           const height = period.beers === 0 ? 3 : Math.max(8, Math.round((period.beers / maxBeers) * 68));
@@ -397,7 +395,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
               key={period.period}
               style={styles.monthColumn}
               accessible
-              accessibilityLabel={t.stats.monthA11y(period.period, period.beers)}
+              accessibilityLabel={cs.stats.monthA11y(period.period, period.beers)}
             >
               <Text style={styles.monthValue} maxFontSizeMultiplier={FontScaleCap.body}>
                 {period.beers > 0 ? period.beers : ''}
@@ -406,7 +404,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
                 <View style={[styles.monthBar, period.beers === 0 && styles.monthBarEmpty, { height }]} />
               </View>
               <Text style={styles.monthLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {parts ? monthShort(parts.year, parts.month) : ''}
+                {parts ? MONTH_SHORT[parts.month - 1] : ''}
               </Text>
             </View>
           );
@@ -417,7 +415,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
         <>
           <View style={styles.chartDivider} />
           <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.stats.yearsHeader}
+            {cs.stats.yearsHeader}
           </Text>
           {visibleYears.map((year, index) => (
             <View key={year.period} style={[styles.yearRow, index > 0 && styles.yearRowBorder]}>
@@ -425,7 +423,7 @@ function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: P
                 {year.period}
               </Text>
               <Text style={styles.yearMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.stats.yearSummary(year.beers, year.averageBeersPerEvening)}
+                {cs.stats.yearSummary(year.beers, year.averageBeersPerEvening)}
               </Text>
             </View>
           ))}
@@ -561,7 +559,7 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
       {!embedded && (
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.beer.segmentStats}
+            {cs.beer.segmentStats}
           </Text>
         </View>
       )}
@@ -572,10 +570,10 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
             <TrophyIcon size={52} color={Colors.amber} />
           </View>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.stats.emptyTitle}
+            {cs.stats.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.stats.emptyBody}
+            {cs.stats.emptyBody}
           </Text>
         </View>
       ) : (
@@ -586,21 +584,21 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
         >
           {last && <PerformanceHero perf={last} priceCurrency={priceCurrency} />}
 
-          <SectionLabel>{t.stats.recordsHeader}</SectionLabel>
+          <SectionLabel>{cs.stats.recordsHeader}</SectionLabel>
           <RecordsCard records={records} />
 
-          <SectionLabel>{t.stats.totalsHeader}</SectionLabel>
+          <SectionLabel>{cs.stats.totalsHeader}</SectionLabel>
           <TotalsCard lifetime={lifetime} priceCurrency={priceCurrency} />
 
-          <SectionLabel>{t.stats.periodsHeader}</SectionLabel>
+          <SectionLabel>{cs.stats.periodsHeader}</SectionLabel>
           <PeriodOverview months={periodMonths} years={periodYears} now={now} />
 
           {topPubs.length > 0 && (
             <>
               <View style={styles.pubsHeaderRow}>
-                <SectionLabel>{t.stats.pubsHeader}</SectionLabel>
+                <SectionLabel>{cs.stats.pubsHeader}</SectionLabel>
                 <Text style={styles.pubsSubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.stats.pubsSubtitle}
+                  {cs.stats.pubsSubtitle}
                 </Text>
               </View>
               <TopPubsCard pubs={topPubs} />
@@ -620,7 +618,7 @@ const styles = StyleSheet.create({
 
   // — Header (non-embedded only) —
   header: { paddingBottom: 12, paddingHorizontal: Spacing.lg },
-  headerTitle: { fontWeight: '800', fontSize: 28, color: Colors.foam },
+  headerTitle: { fontFamily: Fonts.display.extrabold, fontSize: 28, color: Colors.foam },
 
   // — ScrollView —
   scroll: { flex: 1 },
@@ -628,7 +626,7 @@ const styles = StyleSheet.create({
 
   // — Section label —
   sectionLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -658,14 +656,14 @@ const styles = StyleSheet.create({
   },
   heroEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroEyebrow: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
   },
   heroCountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 },
   heroCount: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 64,
     lineHeight: 82,
     paddingTop: 6,
@@ -674,18 +672,18 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   heroCountNoun: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 22,
     color: Colors.amberLight,
   },
   heroPub: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.foam,
     marginTop: 2,
   },
   heroTone: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
     marginTop: 4,
@@ -695,20 +693,20 @@ const styles = StyleSheet.create({
   heroMicroSep: { width: 1, alignSelf: 'stretch', backgroundColor: Colors.border, marginHorizontal: 4 },
   microStat: { flex: 1, alignItems: 'center', gap: 4, paddingHorizontal: 2 },
   microValue: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   microCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     color: Colors.mutedText,
     textAlign: 'center',
   },
   heroSpent: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: Spacing.md,
@@ -735,14 +733,14 @@ const styles = StyleSheet.create({
   recordLabel: {
     width: 112,
     flexShrink: 0,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
   recordValue: {
     flex: 1,
     minWidth: 0,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.amber,
     textAlign: 'right',
@@ -772,7 +770,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroStatValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 44,
     lineHeight: 56,
     color: Colors.foam,
@@ -780,7 +778,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   heroStatCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.2,
     color: Colors.mutedText,
@@ -807,14 +805,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     marginTop: 6,
     fontVariant: ['tabular-nums'],
   },
   statCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 10,
     letterSpacing: 0.8,
     color: Colors.mutedText,
@@ -830,25 +828,25 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   periodCurrentRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  periodTitle: { fontWeight: '700', fontSize: 18, color: Colors.foam },
-  periodMeta: { fontWeight: '400', fontSize: 12, color: Colors.mutedText, marginTop: 3 },
+  periodTitle: { fontFamily: Fonts.display.bold, fontSize: 18, color: Colors.foam },
+  periodMeta: { fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText, marginTop: 3 },
   periodCurrentValueWrap: { alignItems: 'flex-end' },
   periodCurrentValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 32,
     lineHeight: 38,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
   },
-  periodCurrentUnit: { fontWeight: '700', fontSize: 10, color: Colors.mutedText },
-  periodAverage: { fontWeight: '600', fontSize: 13, color: Colors.foamMuted, marginTop: 8 },
+  periodCurrentUnit: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.mutedText },
+  periodAverage: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted, marginTop: 8 },
   chartDivider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.md },
-  chartTitle: { fontWeight: '700', fontSize: 11, color: Colors.mutedText, marginBottom: 10 },
+  chartTitle: { fontFamily: Fonts.ui.bold, fontSize: 11, color: Colors.mutedText, marginBottom: 10 },
   monthChart: { height: 112, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   monthColumn: { flex: 1, alignItems: 'center', height: 112 },
   monthValue: {
     height: 18,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 9,
     color: Colors.foamMuted,
     fontVariant: ['tabular-nums'],
@@ -856,18 +854,18 @@ const styles = StyleSheet.create({
   monthBarTrack: { flex: 1, width: '70%', justifyContent: 'flex-end' },
   monthBar: { width: '100%', backgroundColor: Colors.amber, borderRadius: 3 },
   monthBarEmpty: { backgroundColor: Colors.border },
-  monthLabel: { fontWeight: '600', fontSize: 9, color: Colors.mutedText, marginTop: 5 },
+  monthLabel: { fontFamily: Fonts.ui.semibold, fontSize: 9, color: Colors.mutedText, marginTop: 5 },
   yearRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   yearRowBorder: { borderTopWidth: 1, borderTopColor: Colors.border },
   yearLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   yearMeta: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.foamMuted,
     textAlign: 'right',
@@ -876,7 +874,7 @@ const styles = StyleSheet.create({
   // — Top pubs —
   pubsHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   pubsSubtitle: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
     marginRight: 4,
@@ -898,19 +896,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pubRankText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 12,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
   },
   pubName: {
     flex: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   pubBeers: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 13,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
@@ -937,13 +935,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
   },
   emptyBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',

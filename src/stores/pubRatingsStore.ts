@@ -26,8 +26,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@/data/privateAccountStorage';
-import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /** The personal verdict on a pub. */
 export type PubVerdict = 'like' | 'dislike';
@@ -99,45 +98,30 @@ const LEGACY_PRESET_TAGS = ['Sem se vrátit', 'Nic moc', 'Dobrý tankový'];
  * the migration is unit-testable in isolation.
  */
 export function migratePubRatings(persisted: unknown, version: number): PubRatingsState {
-  const base =
-    persisted !== null && typeof persisted === 'object' && !Array.isArray(persisted)
-      ? persisted as Partial<PubRatingsState>
-      : {};
-  const legacy =
-    base.ratings !== null && typeof base.ratings === 'object' && !Array.isArray(base.ratings)
-      ? base.ratings as Record<string, unknown>
-      : {};
+  const base = (persisted ?? {}) as Partial<PubRatingsState>;
+  if (version >= 1) return base as PubRatingsState;
+
+  const legacy = (base.ratings ?? {}) as Record<string, Partial<PubRating>>;
   const ratings: Record<string, PubRating> = {};
   for (const [pubKey, raw] of Object.entries(legacy)) {
-    if (!pubKey || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
-    const row = raw as Partial<PubRating>;
+    if (!raw || typeof raw !== 'object') continue;
     const next: PubRating = {
-      updatedAt:
-        typeof row.updatedAt === 'string' && Number.isFinite(Date.parse(row.updatedAt))
-          ? row.updatedAt
-          : new Date(0).toISOString(),
+      updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date(0).toISOString(),
     };
-    if (row.verdict === 'like' || row.verdict === 'dislike') next.verdict = row.verdict;
-    if (version < 1) {
-      const legacyNote = cleanText(typeof row.note === 'string' ? row.note : undefined);
-      if (legacyNote) {
-        if (LEGACY_PRESET_TAGS.includes(legacyNote)) next.tag = legacyNote;
-        else next.note = legacyNote;
-      }
-    } else {
-      const tag = cleanText(typeof row.tag === 'string' ? row.tag : undefined);
-      const note = cleanText(typeof row.note === 'string' ? row.note : undefined);
-      if (tag) next.tag = tag;
-      if (note) next.note = note;
+    if (raw.verdict === 'like' || raw.verdict === 'dislike') next.verdict = raw.verdict;
+    const legacyNote = cleanText(typeof raw.note === 'string' ? raw.note : undefined);
+    if (legacyNote) {
+      if (LEGACY_PRESET_TAGS.includes(legacyNote)) next.tag = legacyNote;
+      else next.note = legacyNote;
     }
     if (hasSignal(next)) ratings[pubKey] = next;
   }
-  return { ratings } as PubRatingsState;
+  return { ...(base as PubRatingsState), ratings };
 }
 
 export const usePubRatingsStore = create<PubRatingsState>()(
   persist(
-    guardPrivateAccountStateCreator((set) => ({
+    (set) => ({
       ratings: {},
 
       setRating: (pubKey, input) =>
@@ -193,17 +177,13 @@ export const usePubRatingsStore = create<PubRatingsState>()(
           }
           return changed ? { ratings: next } : state;
         }),
-    })),
+    }),
     {
       name: 'na-pivo-pub-ratings',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ ratings: state.ratings }),
       migrate: migratePubRatings,
-      merge: (persisted, current) => ({
-        ...current,
-        ...migratePubRatings(persisted, 1),
-      }),
     },
   ),
 );

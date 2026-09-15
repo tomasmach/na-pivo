@@ -1,5 +1,3 @@
-import { intlLocale } from '@/i18n';
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Return the earliest valid ISO timestamp, ignoring absent or malformed data. */
@@ -38,8 +36,8 @@ export function dailyBeerAverage(
 }
 
 export function formatDailyBeerAverage(value: number | null): string {
-  if (value == null) return '-';
+  if (value == null) return '—';
   return value
-    .toLocaleString(intlLocale, { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+    .toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
     .replace(/ /g, ' ');
 }

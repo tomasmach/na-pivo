@@ -32,12 +32,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
+import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon, Trash2Icon, PencilIcon } from '@/components/shared/IconGlyph';
-import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { Avatar } from '@/profile/Avatar';
@@ -88,52 +86,36 @@ export default function ProfileEditScreen() {
       const picked = await pickAndPrepareAvatar();
       if (picked.status === 'cancelled') return;
       if (picked.status === 'denied') {
-        setAvatarError(t.profile.form.permissionBody);
+        setAvatarError(cs.profile.form.permissionBody);
         return;
       }
       if (picked.status === 'denied-permanent') {
-        setAvatarError(t.profile.form.permissionBlockedBody);
+        setAvatarError(cs.profile.form.permissionBlockedBody);
         setPermissionBlocked(true);
         return;
       }
       if (picked.status === 'error') {
-        setAvatarError(t.profile.form.avatarUploadError);
+        setAvatarError(cs.profile.form.avatarUploadError);
         return;
       }
       const result = await uploadAvatar(picked.uri);
-      if (!result.ok) setAvatarError(result.detail || t.profile.form.avatarUploadError);
+      if (!result.ok) setAvatarError(result.detail || cs.profile.form.avatarUploadError);
     } finally {
       setAvatarBusy(false);
     }
   }, [avatarBusy, uploadAvatar]);
 
-  const performRemoveAvatar = useCallback(async () => {
+  const handleRemoveAvatar = useCallback(async () => {
     if (avatarBusy) return;
     setAvatarError('');
     setAvatarBusy(true);
     try {
       const result = await removeAvatar();
-      if (!result.ok) setAvatarError(result.detail || t.profile.edit.errorGeneric);
+      if (!result.ok) setAvatarError(result.detail || cs.profile.edit.errorGeneric);
     } finally {
       setAvatarBusy(false);
     }
   }, [avatarBusy, removeAvatar]);
-
-  const handleRemoveAvatar = useCallback(() => {
-    if (avatarBusy) return;
-    showAppDialog({
-      title: t.profile.edit.removePhotoConfirmTitle,
-      message: t.profile.edit.removePhotoConfirmBody,
-      buttons: [
-        { text: t.profile.edit.removePhotoConfirmCancel, style: 'cancel' },
-        {
-          text: t.profile.edit.removePhotoConfirmAction,
-          style: 'destructive',
-          onPress: () => void performRemoveAvatar(),
-        },
-      ],
-    });
-  }, [avatarBusy, performRemoveAvatar]);
 
   // ── Save ──
   const handleSave = useCallback(async () => {
@@ -147,13 +129,13 @@ export default function ProfileEditScreen() {
 
     // A changed nickname must be submit-ready (valid + available).
     if (nicknameChanged && !nicknameReady) {
-      setNicknameError(t.profile.form.nicknameInvalid);
+      setNicknameError(cs.profile.form.nicknameInvalid);
       return;
     }
 
     // Nothing changed → just close.
     if (!nicknameChanged && !nameChanged && !visibilityChanged) {
-      leaveRoute(router);
+      router.back();
       return;
     }
 
@@ -167,8 +149,8 @@ export default function ProfileEditScreen() {
     try {
       const result = await updateProfile(params);
       if (result.ok) {
-        showToast(t.profile.edit.savedToast);
-        leaveRoute(router);
+        showToast(cs.profile.edit.savedToast);
+        router.back();
         return;
       }
       // Nickname conflicts surface inline; anything else is a generic inline note.
@@ -179,10 +161,10 @@ export default function ProfileEditScreen() {
         isTaken || result.code.startsWith('nickname_') || result.code.startsWith('http_4');
       if (nicknameChanged && isNicknameError) {
         setNicknameError(
-          isTaken ? t.profile.form.nicknameTaken : result.detail || nicknameServerReasonMessage(result.code),
+          isTaken ? cs.profile.form.nicknameTaken : result.detail || nicknameServerReasonMessage(result.code),
         );
       } else {
-        setNicknameError(result.detail || t.profile.edit.errorGeneric);
+        setNicknameError(result.detail || cs.profile.edit.errorGeneric);
       }
     } finally {
       setSaving(false);
@@ -206,15 +188,15 @@ export default function ProfileEditScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.profileClose}
+          accessibilityLabel={cs.a11y.profileClose}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
-        <Text style={styles.headerTitle}>{t.profile.edit.title}</Text>
+        <Text style={styles.headerTitle}>{cs.profile.edit.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -232,7 +214,7 @@ export default function ProfileEditScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* ── Avatar card ── */}
-          <Text style={styles.sectionHeader}>{t.profile.edit.avatarHeader}</Text>
+          <Text style={styles.sectionHeader}>{cs.profile.edit.avatarHeader}</Text>
           <View style={styles.avatarCard}>
             {/* The avatar itself is the primary tap target; the amber badge
                 signals it opens the photo picker. */}
@@ -241,7 +223,7 @@ export default function ProfileEditScreen() {
               disabled={avatarBusy}
               style={({ pressed }) => [styles.avatarTap, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.profilePickPhoto}
+              accessibilityLabel={cs.a11y.profilePickPhoto}
             >
               <Avatar
                 uri={avatarUrl}
@@ -262,21 +244,21 @@ export default function ProfileEditScreen() {
                 onPress={handlePickAvatar}
                 style={({ pressed }) => [styles.avatarBtn, styles.avatarBtnPrimary, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={t.a11y.profilePickPhoto}
+                accessibilityLabel={cs.a11y.profilePickPhoto}
                 disabled={avatarBusy}
               >
-                <Text style={styles.avatarBtnPrimaryText}>{t.profile.edit.changePhoto}</Text>
+                <Text style={styles.avatarBtnPrimaryText}>{cs.profile.edit.changePhoto}</Text>
               </Pressable>
               {!!avatarUrl && (
                 <Pressable
                   onPress={handleRemoveAvatar}
                   style={({ pressed }) => [styles.avatarBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={t.a11y.profileRemovePhoto}
+                  accessibilityLabel={cs.a11y.profileRemovePhoto}
                   disabled={avatarBusy}
                 >
                   <Trash2Icon size={15} color={Colors.mutedText} />
-                  <Text style={styles.avatarBtnText}>{t.profile.edit.removePhoto}</Text>
+                  <Text style={styles.avatarBtnText}>{cs.profile.edit.removePhoto}</Text>
                 </Pressable>
               )}
             </View>
@@ -291,14 +273,14 @@ export default function ProfileEditScreen() {
               onPress={() => void Linking.openSettings()}
               style={({ pressed }) => [styles.avatarBtn, styles.avatarBtnPrimary, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={t.profile.form.openSettings}
+              accessibilityLabel={cs.profile.form.openSettings}
             >
-              <Text style={styles.avatarBtnPrimaryText}>{t.profile.form.openSettings}</Text>
+              <Text style={styles.avatarBtnPrimaryText}>{cs.profile.form.openSettings}</Text>
             </Pressable>
           )}
 
           {/* ── Nickname ── */}
-          <Text style={styles.sectionHeader}>{t.profile.edit.nicknameHeader}</Text>
+          <Text style={styles.sectionHeader}>{cs.profile.edit.nicknameHeader}</Text>
           <NicknameField
             value={nicknameInput}
             onChangeText={(value) => {
@@ -315,38 +297,38 @@ export default function ProfileEditScreen() {
           )}
 
           {/* ── Display name ── */}
-          <Text style={styles.sectionHeader}>{t.profile.edit.displayNameHeader}</Text>
+          <Text style={styles.sectionHeader}>{cs.profile.edit.displayNameHeader}</Text>
           <TextInput
             style={styles.input}
             value={displayName}
             onChangeText={setDisplayName}
-            placeholder={t.profile.edit.displayNamePlaceholder}
+            placeholder={cs.profile.edit.displayNamePlaceholder}
             placeholderTextColor={Colors.mutedText}
             autoCapitalize="words"
             autoCorrect={false}
             maxLength={120}
-            accessibilityLabel={t.a11y.profileDisplayNameInput}
+            accessibilityLabel={cs.a11y.profileDisplayNameInput}
             maxFontSizeMultiplier={FontScaleCap.body}
           />
 
           {/* ── Visibility ── */}
-          <Text style={styles.sectionHeader}>{t.profile.edit.visibilityHeader}</Text>
+          <Text style={styles.sectionHeader}>{cs.profile.edit.visibilityHeader}</Text>
           <View style={styles.consentCard}>
             <VisibilityToggle
               value={isPublic}
               onToggle={setIsPublic}
-              label={t.profile.edit.visibilityToggleLabel}
-              accessibilityLabel={t.a11y.profileVisibilityToggle(
-                isPublic ? t.a11y.toggleOn : t.a11y.toggleOff,
+              label={cs.profile.edit.visibilityToggleLabel}
+              accessibilityLabel={cs.a11y.profileVisibilityToggle(
+                isPublic ? cs.a11y.toggleOn : cs.a11y.toggleOff,
               )}
             />
             <View style={styles.consentDivider} />
             <Text style={styles.consentText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.profile.edit.consent}
+              {cs.profile.edit.consent}
             </Text>
             {!isPublic && (
               <Text style={styles.consentPrivate} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.profile.edit.consentPrivate}
+                {cs.profile.edit.consentPrivate}
               </Text>
             )}
           </View>
@@ -356,10 +338,10 @@ export default function ProfileEditScreen() {
             below the fold of a long form. ── */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
           <GlowButton
-            label={saving ? t.profile.edit.saving : t.profile.edit.save}
+            label={saving ? cs.profile.edit.saving : cs.profile.edit.save}
             onPress={handleSave}
             glow={saving ? 'none' : 'soft'}
-            accessibilityLabel={t.profile.edit.save}
+            accessibilityLabel={cs.profile.edit.save}
           />
         </View>
       </KeyboardAvoidingView>
@@ -394,7 +376,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
   },
@@ -412,7 +394,7 @@ const styles = StyleSheet.create({
 
   // ── Section header ──
   sectionHeader: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -420,14 +402,16 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // ── Avatar ──
-  // No card. A panel around a circle that is already a distinct shape is a
-  // frame around a frame (§14.10), and stacking one on the visibility panel and
-  // the inputs made the screen read as a pile of boxes rather than a form.
+  // ── Avatar card ──
   avatarCard: {
     alignItems: 'center',
-    gap: Spacing.md,
-    paddingVertical: Spacing.md,
+    gap: Spacing.lg,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
   },
   avatarTap: {
     position: 'relative',
@@ -442,8 +426,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
     borderWidth: 3,
-    // Rings against the page now that there is no card behind the avatar.
-    borderColor: Colors.stout,
+    borderColor: Colors.stout2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -470,55 +453,57 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   avatarBtnPrimaryText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.amber,
   },
   avatarBtnText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.mutedText,
   },
 
   // ── Input ──
   input: {
-    minHeight: 54,
-    // Bigger corner: the form is the screen now, so the fields carry the
-    // roundness the removed cards used to.
-    borderRadius: Radius.card,
+    minHeight: 52,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
     marginLeft: 2,
   },
 
-  // ── Visibility ──
+  // ── Visibility card ──
   consentCard: {
     gap: Spacing.md,
-    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
   },
   consentDivider: {
     height: 1,
     backgroundColor: Colors.border,
   },
   consentText: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 21,
     color: Colors.foamMuted,
   },
   consentPrivate: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.amber,

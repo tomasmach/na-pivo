@@ -42,11 +42,11 @@ import Animated, {
 import { BeerBubbles } from '@/components/celebration/BeerBubbles';
 import { FlameIcon } from '@/components/shared/IconGlyph';
 import type { FriendStreak } from '@/data/friendsClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -150,7 +150,7 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
   };
 
   const handlePress = () => {
-    const detail = isLit ? t.friends.streakThisWeek : t.friends.streakDead;
+    const detail = isLit ? cs.friends.streakThisWeek : cs.friends.streakDead;
     showToast(detail, {
       icon: (
         <FlameIcon size={20} color={isLit ? Colors.amber : Colors.mutedText} />
@@ -172,7 +172,7 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
       onPress={handlePress}
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
-      accessibilityLabel={t.friends.streakWeeks(currentWeeks)}
+      accessibilityLabel={cs.friends.streakWeeks(currentWeeks)}
       style={({ pressed }) => (pressed ? styles.pressed : undefined)}
     >
       <View
@@ -202,7 +202,7 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {t.friends.streakEmpty}
+            {cs.friends.streakEmpty}
           </Text>
         ) : (
           <Animated.Text
@@ -239,12 +239,12 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.border, 0.6),
   },
   numeral: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 16,
     color: Colors.amber,
   },
   deadLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 13,
     color: Colors.mutedText,
   },

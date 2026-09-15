@@ -13,11 +13,13 @@
  *      somebody is out; it is how they ask you to come. Those rows keep the
  *      loud card with the RSVP, the rest are quiet one-liners.
  *   2. **Čerstvě cvaknuto** — tonight's photos, unchanged.
- *   3. **Co se pilo** — one chronological row per evening, automatic. Ratings
+ *   3. **Žebříček party** — who out-drank and out-sat whom over the trailing
+ *      30 days, switchable between beers and visits.
+ *   4. **Co se pilo** — one chronological row per evening, automatic. Ratings
  *      are folded into the evening they belong to rather than running as a
  *      second, parallel feed. (Not called "Výčep": that name belongs to the
  *      screen behind the rail door, where a night is hung up on purpose.)
- *   4. **Co spolu podniknout** — the two other evening formats, at the tail.
+ *   5. **Co spolu podniknout** — the two other evening formats, at the tail.
  *
  * Two things left the surface entirely. The friend list is no longer
  * interleaved with the feed — it was the single most confusing thing on the
@@ -42,6 +44,7 @@ import {
 import {
   ActivityIndicator,
   AppState,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -52,12 +55,10 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
   CheckIcon,
@@ -82,26 +83,32 @@ import {
 } from '@/data/beerCheckinsClient';
 import {
   DEFAULT_FRIEND_SOCIAL_SETTINGS,
+  endFriendPubActivity,
   fetchFriendsDashboard,
   fetchFriendsLive,
   markFriendNotificationsRead,
   respondFriendRequest,
   type FriendPubActivity,
-  type FriendProfile,
   type FriendsDashboard,
   type Friendship,
+  type LeaderboardEntry,
 } from '@/data/friendsClient';
-import { endFriendActivityDurably } from '@/data/friendsQueue';
-import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
+import {
+  enqueueFriendOp,
+  isRetriableFriendError,
+} from '@/data/friendsQueue';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
+import {
+  fetchLeaderboard,
+  type Leaderboard,
+} from '@/data/leaderboardsClient';
 import { fetchPartaFeed, type PartaFeedSitting } from '@/data/partaFeedClient';
 import {
   fetchPhotoContestTeaser,
   type PhotoContestSnapshot,
 } from '@/data/photoContestClient';
-import { intlLocale, t } from '@/i18n';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { cs } from '@/i18n/cs';
 import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
 import {
   selectIsSignedIn,
@@ -110,11 +117,11 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
-import { hasLiveFriendSignal, usePartaSignalStore } from '@/stores/partaSignalStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
@@ -130,7 +137,9 @@ import { FriendMini, friendDisplayName } from './FriendMini';
 import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
+import { LeaderboardRow } from './LeaderboardRow';
 import MyActivityCard from './MyActivityCard';
+import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
@@ -145,6 +154,8 @@ const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 /** How many evenings the screen holds before "Načíst starší" earns its place. */
 const FEED_PAGE = 20;
+/** Leaderboard rows shown before the "+N dalších" cut (my row is always pinned). */
+const LEADERBOARD_CAP = 8;
 
 function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
@@ -155,7 +166,7 @@ function timestamp(value: string | null | undefined): number {
 function planTimeLabel(iso: string): string {
   const parsed = timestamp(iso);
   if (parsed === 0) return '';
-  return new Date(parsed).toLocaleTimeString(intlLocale, {
+  return new Date(parsed).toLocaleTimeString('cs-CZ', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -208,7 +219,6 @@ function SheetScaffold({
       contentContainerStyle={styles.sheetListContent}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      keyboardAvoidedExternally
     >
       {children}
     </KeyboardAwareScrollView>
@@ -223,20 +233,45 @@ function SheetScaffold({
   );
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift={keyboardAware}>
-      <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
-        <View style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}>
-          <View style={styles.sheetGrabber} />
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {title}
-            </Text>
-            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
-          </View>
-          {content}
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.sheetBackdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+        <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
+          <Pressable
+            style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}
+            onPress={() => undefined}
+          >
+            <View style={styles.sheetGrabber} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {title}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [styles.sheetClose, pressed && styles.dim]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.counterCloseModal}
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
+            {content}
+          </Pressable>
         </View>
       </View>
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
@@ -247,10 +282,6 @@ function AddFriendSheet({
   onOpenCode,
   onChanged,
   onClose,
-  query,
-  results,
-  onQueryChange,
-  onResultsChange,
 }: {
   visible: boolean;
   hasIdentity: boolean;
@@ -258,15 +289,11 @@ function AddFriendSheet({
   onOpenCode: () => void;
   onChanged: () => void;
   onClose: () => void;
-  query: string;
-  results: FriendProfile[];
-  onQueryChange: (query: string) => void;
-  onResultsChange: (results: FriendProfile[]) => void;
 }) {
   return (
     <SheetScaffold
       visible={visible}
-      title={t.friends.growthHeader}
+      title={cs.friends.growthHeader}
       onClose={onClose}
       keyboardAware
     >
@@ -276,10 +303,6 @@ function AddFriendSheet({
         onOpenCode={onOpenCode}
         onChanged={onChanged}
         showSearch
-        queryValue={query}
-        resultsValue={results}
-        onQueryChange={onQueryChange}
-        onResultsChange={onResultsChange}
       />
     </SheetScaffold>
   );
@@ -332,7 +355,7 @@ function RosterSheet({
     : [];
 
   return (
-    <SheetScaffold visible={visible} title={t.friends.ctaWhoIsComing} onClose={onClose}>
+    <SheetScaffold visible={visible} title={cs.friends.ctaWhoIsComing} onClose={onClose}>
       {dashboard?.myActiveActivity ? (
         <MyActivityCard
           activity={dashboard.myActiveActivity}
@@ -348,7 +371,7 @@ function RosterSheet({
       ))}
       {!dashboard?.myActiveActivity && activities.length === 0 ? (
         <Text style={styles.sheetEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.friends.rosterEmpty}
+          {cs.friends.rosterEmpty}
         </Text>
       ) : null}
     </SheetScaffold>
@@ -368,10 +391,7 @@ export default function FriendsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  // Opened straight from Nastavení: the privacy switches live here, but nobody
-  // looks for "kdo mě vidí" on the Parta screen. `?settings=1` is the door.
-  const settingsParam = useLocalSearchParams<{ settings?: string }>().settings;
-  const [settingsVisible, setSettingsVisible] = useState(settingsParam === '1');
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
@@ -379,9 +399,11 @@ export default function FriendsScreen() {
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
+  const [weeklyBoard, setWeeklyBoard] = useState<Leaderboard | null>(null);
+  // 0 = piva, 1 = návštěvy. Falls back to visits on a backend without beers_30d.
+  const [boardMetric, setBoardMetric] = useState<0 | 1>(0);
+  const [showAllBoard, setShowAllBoard] = useState(false);
   const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
-  const [addFriendQuery, setAddFriendQuery] = useState('');
-  const [addFriendResults, setAddFriendResults] = useState<FriendProfile[]>([]);
   const [respondingRequestActions, setRespondingRequestActions] = useState<
     Record<string, 'accept' | 'decline'>
   >({});
@@ -468,7 +490,10 @@ export default function FriendsScreen() {
             usePartaSignalStore.getState().setSignal({
               pendingRequests: next.incomingRequests.length,
               unread: willMarkRead ? 0 : next.unreadCount,
-              liveNow: hasLiveFriendSignal(next),
+              liveNow:
+                next.presence.length > 0 ||
+                next.activeFriends.length > 0 ||
+                next.myActiveActivity != null,
             });
           } else {
             setLoadError(true);
@@ -546,7 +571,10 @@ export default function FriendsScreen() {
     usePartaSignalStore.getState().setSignal({
       pendingRequests: slice.incomingCount,
       unread: slice.unreadCount,
-      liveNow: hasLiveFriendSignal(slice),
+      liveNow:
+        slice.presence.length > 0 ||
+        slice.activeFriends.length > 0 ||
+        slice.myActiveActivity != null,
     });
   }, []);
 
@@ -587,6 +615,9 @@ export default function FriendsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void fetchLeaderboard('beers', 'week').then((board) => {
+        if (mountedRef.current && board) setWeeklyBoard(board);
+      });
       void fetchPhotoContestTeaser().then((snapshot) => {
         if (!snapshot) return;
         if (mountedRef.current) setContestSnapshot(snapshot);
@@ -664,7 +695,7 @@ export default function FriendsScreen() {
       });
       if (result.ok) {
         showToast(
-          action === 'accept' ? t.friends.requestAccepted : t.friends.requestDeclined,
+          action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined,
           {
             icon:
               action === 'accept' ? (
@@ -687,43 +718,38 @@ export default function FriendsScreen() {
     if (!activity || endingBroadcastRef.current) return;
     trackUiInteraction('friends_end_broadcast');
     showAppDialog({
-      title: t.friends.endActivityConfirmTitle,
-      message: t.friends.endActivityConfirmBody,
+      title: cs.friends.endActivityConfirmTitle,
+      message: cs.friends.endActivityConfirmBody,
       buttons: [
-        { text: t.common.cancel, style: 'cancel' },
+        { text: cs.common.cancel, style: 'cancel' },
         {
-          text: t.friends.endActivityConfirmConfirm,
+          text: cs.friends.endActivityConfirmConfirm,
           style: 'destructive',
           onPress: () => {
             endingBroadcastRef.current = true;
-            void endFriendActivityDurably(activity.id)
-              .then((result) => {
-                if (!mountedRef.current) return;
-                if (result.state === 'delivered' || result.state === 'queued') {
-                  showToast(
-                    result.state === 'delivered' ? t.friends.endedToast : t.friends.endQueued,
-                    { icon: <Undo2Icon size={20} color={Colors.amber} /> },
-                  );
-                  reload();
-                  return;
-                }
-                showToast(
-                  result.state === 'storage-error'
-                    ? t.friends.queueSaveError
-                    : result.error.detail,
-                );
-              })
-              .catch((error) => {
-                if (
-                  mountedRef.current &&
-                  !(error instanceof PrivateAccountMutationFrozenError)
-                ) {
-                  showToast(t.friends.queueSaveError);
-                }
-              })
-              .finally(() => {
-                endingBroadcastRef.current = false;
-              });
+            void endFriendPubActivity(activity.id).then((result) => {
+              endingBroadcastRef.current = false;
+              if (result.ok) {
+                showToast(cs.friends.endedToast, {
+                  icon: <Undo2Icon size={20} color={Colors.amber} />,
+                });
+                reload();
+                return;
+              }
+              if (isRetriableFriendError(result)) {
+                void enqueueFriendOp({
+                  op: 'end',
+                  clientId: activity.id,
+                  activityId: activity.id,
+                });
+                showToast(cs.friends.endQueued, {
+                  icon: <Undo2Icon size={20} color={Colors.amber} />,
+                });
+                reload();
+                return;
+              }
+              showToast(result.detail);
+            });
           },
         },
       ],
@@ -735,7 +761,7 @@ export default function FriendsScreen() {
     void registerFriendPush().then((result) => {
       if (!mountedRef.current) return;
       if (result.ok) {
-        showToast(t.friends.pushEnabledToast);
+        showToast(cs.friends.pushEnabledToast);
       }
     });
   }, [showToast]);
@@ -777,13 +803,13 @@ export default function FriendsScreen() {
     () => [
       {
         key: 'add-friend',
-        label: t.friends.secondaryAddFriend,
+        label: cs.friends.secondaryAddFriend,
         icon: UserPlusIcon,
         onPress: () => runAfterMoreClose(() => setAddFriendVisible(true)),
       },
       {
         key: 'party',
-        label: t.friends.moreWholeParty,
+        label: cs.friends.moreWholeParty,
         icon: UsersIcon,
         onPress: () =>
           runAfterMoreClose(() => {
@@ -793,13 +819,13 @@ export default function FriendsScreen() {
       },
       {
         key: 'settings',
-        label: t.friends.moreSettings,
+        label: cs.friends.moreSettings,
         icon: SettingsIcon,
         onPress: () => runAfterMoreClose(() => setSettingsVisible(true)),
       },
       {
         key: 'code',
-        label: t.friends.moreMyCode,
+        label: cs.friends.moreMyCode,
         icon: QrCodeIcon,
         onPress: () => runAfterMoreClose(() => setCodeVisible(true)),
       },
@@ -809,13 +835,13 @@ export default function FriendsScreen() {
 
   // Žebříčky, FotoPivař and Výčep are three whole features that used to be
   // invisible behind the "…" glyph. They belong on the card, in the same rail
-  // idiom the counter uses (DESIGN.md §5.5).
+  // idiom the counter uses (docs/design-system.md §5.5).
   const railTiles = useMemo<DoorRailTile[]>(
     () => [
       {
         key: 'vycep',
-        label: t.friends.railVycep,
-        a11yLabel: t.a11y.vycepLink,
+        label: cs.friends.railVycep,
+        a11yLabel: cs.a11y.vycepLink,
         Icon: HandPlatterIcon,
         onPress: () => {
           trackUiInteraction('friends_taproom_open');
@@ -824,8 +850,8 @@ export default function FriendsScreen() {
       },
       {
         key: 'leaderboards',
-        label: t.friends.railLeaderboards,
-        a11yLabel: t.a11y.leaderboardsLink,
+        label: cs.friends.railLeaderboards,
+        a11yLabel: cs.a11y.leaderboardsLink,
         Icon: TrophyIcon,
         onPress: () => {
           trackUiInteraction('friends_leaderboards_open');
@@ -834,8 +860,8 @@ export default function FriendsScreen() {
       },
       {
         key: 'photo-contest',
-        label: t.friends.railPhotoContest,
-        a11yLabel: t.a11y.photoContestLink,
+        label: cs.friends.railPhotoContest,
+        a11yLabel: cs.a11y.photoContestLink,
         Icon: ImagesIcon,
         onPress: () => {
           trackUiInteraction('friends_photo_contest_open');
@@ -937,13 +963,13 @@ export default function FriendsScreen() {
     // Sitting together outranks whoever is freshest: the party's own table is
     // the more interesting fact than a friend three districts away.
     if (sharedTable) {
-      return t.friends.headlineTogether(
+      return cs.friends.headlineTogether(
         friendDisplayName(sharedTable.friends[0].account),
         sharedTable.friends.length - 1,
       );
     }
     if (freshestSitting) {
-      return t.friends.headlineSitting(
+      return cs.friends.headlineSitting(
         friendDisplayName(freshestSitting.account),
         sittingCount - 1,
       );
@@ -951,33 +977,77 @@ export default function FriendsScreen() {
     if (freshestPlan) {
       const time = planTimeLabel(freshestPlan.scheduledFor ?? freshestPlan.startedAt);
       return time
-        ? `${t.friends.planAt(time)} · ${freshestPlan.name}`
+        ? `${cs.friends.planAt(time)} · ${freshestPlan.name}`
         : freshestPlan.name;
     }
-    if (d?.myActiveActivity) return t.friends.pulseMineBody;
-    return t.friends.emptyActive;
+    if (d?.myActiveActivity) return cs.friends.pulseMineBody;
+    return cs.friends.emptyActive;
   }, [d?.myActiveActivity, freshestPlan, freshestSitting, sharedTable, sittingCount]);
+
+  // — Žebříček party — beers or visits over the trailing 30 days. The server
+  // sorts by visits; the beer order is this screen's own cut of the same rows.
+  // An older backend omits beers_30d → the toggle hides and visits stand alone.
+  const partyBoard = useMemo(() => d?.leaderboard ?? [], [d?.leaderboard]);
+  const boardHasBeers =
+    partyBoard.length > 0 && partyBoard.every((entry) => entry.beers30d != null);
+  const activeBoardMetric: 0 | 1 = boardHasBeers ? boardMetric : 1;
+  const rankedBoard = useMemo(() => {
+    if (activeBoardMetric === 1) return partyBoard;
+    return [...partyBoard].sort(
+      (a, b) =>
+        (b.beers30d ?? 0) - (a.beers30d ?? 0) ||
+        b.visits30d - a.visits30d ||
+        b.sharedCount - a.sharedCount,
+    );
+  }, [activeBoardMetric, partyBoard]);
+  // Top rows + a tappable "+N dalších" expand, but ALWAYS pin my row while
+  // collapsed (expanding shows everyone, me included).
+  const visibleBoard = showAllBoard ? rankedBoard : rankedBoard.slice(0, LEADERBOARD_CAP);
+  const hiddenBoardCount = rankedBoard.length - visibleBoard.length;
+  const myBoardIndex = rankedBoard.findIndex((entry) => entry.isMe);
+  const myBoardPinned = !showAllBoard && hiddenBoardCount > 0 && myBoardIndex >= LEADERBOARD_CAP;
+  const boardValue = useCallback(
+    (entry: LeaderboardEntry) =>
+      activeBoardMetric === 0 ? (entry.beers30d ?? 0) : entry.visits30d,
+    [activeBoardMetric],
+  );
+  const boardCaption = useCallback(
+    (value: number) =>
+      activeBoardMetric === 0
+        ? cs.friends.leaderboardBeers(value)
+        : cs.friends.leaderboardVisits(value),
+    [activeBoardMetric],
+  );
+
+  const rankLine = useMemo(() => {
+    if (d?.settings.ghostMode) return cs.friends.hiddenRank;
+    const rank = weeklyBoard?.me.rank;
+    if (rank == null) return null;
+    return `${cs.leaderboards.teaserTitleBefore}${cs.leaderboards.teaserTitleRank(rank)}${cs.leaderboards.teaserTitleAfter}`;
+  }, [d?.settings.ghostMode, weeklyBoard?.me.rank]);
 
   const lastResults = contestSnapshot?.lastResults ?? null;
   const contestResultsUnseen =
     lastResults != null && lastResults.contest.id !== lastSeenResultsId;
   const pushAudience = friendCount > 0 || (d?.incomingRequests.length ?? 0) > 0;
+  const streakAtRisk =
+    (d?.streak.currentWeeks ?? 0) > 0 && d?.streak.thisWeekLit === false;
 
   const nudge = useMemo<Nudge | null>(() => {
     const request = d?.incomingRequests[0];
     if (request) {
       return {
         kind: 'rapid',
-        text: t.friends.nudgeRequest(friendDisplayName(request.requester)),
-        confirmLabel: t.friends.nudgeRequestAccept,
+        text: cs.friends.nudgeRequest(friendDisplayName(request.requester)),
+        confirmLabel: cs.friends.nudgeRequestAccept,
         onConfirm: () => void respond(request.id, 'accept'),
       };
     }
     if (loadError) {
       return {
         kind: 'counted',
-        text: t.friends.nudgeOffline,
-        undoLabel: t.friends.nudgeOfflineRetry,
+        text: cs.friends.nudgeOffline,
+        undoLabel: cs.friends.nudgeOfflineRetry,
         onUndo: () => void load('refresh'),
       };
     }
@@ -990,16 +1060,16 @@ export default function FriendsScreen() {
     if (d?.myActiveActivity) {
       return {
         kind: 'counted',
-        text: t.friends.nudgeBroadcasting,
-        undoLabel: t.friends.nudgeBroadcastEnd,
+        text: cs.friends.nudgeBroadcasting,
+        undoLabel: cs.friends.nudgeBroadcastEnd,
         onUndo: handleEndBroadcast,
       };
     }
     if (!friendPushEnabled && !friendPushPrompted && pushAudience) {
       return {
         kind: 'checkin',
-        text: t.friends.nudgePush,
-        ctaLabel: t.friends.nudgePushEnable,
+        text: cs.friends.nudgePush,
+        ctaLabel: cs.friends.nudgePushEnable,
         onPress: handleEnablePush,
         onDismiss: dismissPush,
       };
@@ -1007,12 +1077,16 @@ export default function FriendsScreen() {
     if (contestResultsUnseen && lastResults) {
       return {
         kind: 'checkin',
-        text: t.friends.nudgeContest,
-        ctaLabel: t.friends.nudgeContestOpen,
+        text: cs.friends.nudgeContest,
+        ctaLabel: cs.friends.nudgeContestOpen,
         onPress: () => router.push('/photo-contest' as Href),
         onDismiss: () => markContestResultsSeen(lastResults.contest.id),
       };
     }
+    // A streak at risk is deliberately NOT a nudge: its only action is the
+    // footer's own button, so a chip above it was a second button that said the
+    // same thing and stole 64pt from the stream. It lives in the card's footer
+    // fact instead, next to the streak it is about.
     return null;
   }, [
     contestResultsUnseen,
@@ -1035,36 +1109,36 @@ export default function FriendsScreen() {
   const cta = useMemo(() => {
     if (!isSignedIn) {
       return {
-        label: t.friends.ctaSignIn,
+        label: cs.friends.ctaSignIn,
         onPress: () => router.push('/auth' as Href),
       };
     }
     if (nickname == null) {
       return {
-        label: t.friends.ctaNickname,
+        label: cs.friends.ctaNickname,
         onPress: () => router.push('/profile/edit' as Href),
       };
     }
     if (friendCount === 0) {
       return {
-        label: t.friends.ctaAddFriend,
+        label: cs.friends.ctaAddFriend,
         onPress: () => setAddFriendVisible(true),
       };
     }
     if (d?.myActiveActivity) {
       return {
-        label: t.friends.ctaWhoIsComing,
+        label: cs.friends.ctaWhoIsComing,
         onPress: () => setRosterVisible(true),
       };
     }
     if ((d?.activeFriends.length ?? 0) > 0) {
       return {
-        label: t.friends.ctaPingToo,
+        label: cs.friends.ctaPingToo,
         onPress: () => setComposeVisible(true),
       };
     }
     return {
-      label: t.friends.ctaPing,
+      label: cs.friends.ctaPing,
       onPress: () => setComposeVisible(true),
     };
   }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, nickname, router]);
@@ -1085,7 +1159,7 @@ export default function FriendsScreen() {
             <IconButton
               onPress={() => void respond(request.id, 'decline')}
               disabled={respondingRequestActions[request.id] != null}
-              accessibilityLabel={t.friends.decline}
+              accessibilityLabel={cs.friends.decline}
               style={styles.declineBtn}
             >
               {respondingRequestActions[request.id] === 'decline' ? (
@@ -1097,7 +1171,7 @@ export default function FriendsScreen() {
             <IconButton
               onPress={() => void respond(request.id, 'accept')}
               disabled={respondingRequestActions[request.id] != null}
-              accessibilityLabel={t.friends.accept}
+              accessibilityLabel={cs.friends.accept}
               style={styles.acceptBtn}
             >
               {respondingRequestActions[request.id] === 'accept' ? (
@@ -1122,7 +1196,7 @@ export default function FriendsScreen() {
           onPress={() => router.push('/profile/parta' as Href)}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.partaChip(t.friends.pulseFriendCount(friendCount))}
+          accessibilityLabel={cs.a11y.partaChip(cs.friends.pulseFriendCount(friendCount))}
           style={({ pressed }) => [styles.partyChip, pressed && styles.dim]}
         >
           <UsersIcon size={16} color={Colors.amber} />
@@ -1131,14 +1205,14 @@ export default function FriendsScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {t.friends.pulseFriendCount(friendCount)}
+            {cs.friends.pulseFriendCount(friendCount)}
           </Text>
         </Pressable>
       ) : (
         <View
           style={styles.partyChip}
           accessibilityRole="text"
-          accessibilityLabel={t.friends.soloChip}
+          accessibilityLabel={cs.friends.soloChip}
         >
           <UsersIcon size={16} color={Colors.amber} />
           <Text
@@ -1146,7 +1220,7 @@ export default function FriendsScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {t.friends.soloChip}
+            {cs.friends.soloChip}
           </Text>
         </View>
       )}
@@ -1159,7 +1233,7 @@ export default function FriendsScreen() {
         style={({ pressed }) => [styles.moreButton, pressed && styles.dim]}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.partaMore}
+        accessibilityLabel={cs.a11y.partaMore}
       >
         <MenuIcon size={20} color={Colors.mutedText} />
       </Pressable>
@@ -1205,12 +1279,17 @@ export default function FriendsScreen() {
               count={sittingCount}
               countLabel={
                 sittingCount > 0
-                  ? t.friends.tableCaptionSitting
-                  : t.friends.tableCaptionQuiet
+                  ? cs.friends.tableCaptionSitting
+                  : cs.friends.tableCaptionQuiet
               }
               headline={headline}
-              factStrong={null}
-              factMuted={null}
+              factStrong={
+                (d?.streak.currentWeeks ?? 0) > 0
+                  ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
+                  : cs.friends.noStreak
+              }
+              // The risk outranks the rank: it expires this week, the rank does not.
+              factMuted={streakAtRisk ? cs.friends.streakRiskFact : rankLine}
               // The door is the screen's action, not a second way into the
               // roster — the card itself already opens that when anyone is
               // sitting, and the numeral plus the table say how many.
@@ -1224,7 +1303,7 @@ export default function FriendsScreen() {
               onPress={
                 sittingCount > 0 || maybeCount > 0 ? () => setRosterVisible(true) : null
               }
-              accessibilityLabel={t.a11y.partaCard(String(sittingCount), headline)}
+              accessibilityLabel={cs.a11y.partaCard(String(sittingCount), headline)}
               rail={<DoorRail tiles={railTiles} />}
               topRow={chromeRow}
             />
@@ -1232,7 +1311,7 @@ export default function FriendsScreen() {
 
           {/* 1. Kdo kde sedí — the block the whole rebuild is about. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.friends.presenceHeader}
+            {cs.friends.presenceHeader}
           </Text>
 
           {hasSitting ? (
@@ -1260,7 +1339,7 @@ export default function FriendsScreen() {
             </View>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.presenceEmpty}
+              {cs.friends.presenceEmpty}
             </Text>
           )}
 
@@ -1287,9 +1366,83 @@ export default function FriendsScreen() {
           {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
           <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
 
-          {/* 3. Co se pilo — automatic, chronological, one row per evening. */}
+          {/* 3. Žebříček party — who out-drank and out-sat whom, last 30 days. */}
           <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.friends.sittingsHeader}
+            {cs.friends.leaderboardHeader}
+          </Text>
+
+          {rankedBoard.length > 1 ? (
+            <>
+              {boardHasBeers ? (
+                <View style={styles.boardSwitch}>
+                  <SegmentedControl
+                    options={[cs.friends.leaderboardMetricBeers, cs.friends.leaderboardMetricVisits]}
+                    value={activeBoardMetric}
+                    onChange={setBoardMetric}
+                    accessibilityLabel={cs.a11y.partyLeaderboardMetric}
+                  />
+                </View>
+              ) : null}
+
+              <View style={styles.card}>
+                {visibleBoard.map((entry, index) => (
+                  <LeaderboardRow
+                    key={entry.account.id || `rank-${index}`}
+                    entry={entry}
+                    rank={index + 1}
+                    value={boardValue(entry)}
+                    caption={boardCaption(boardValue(entry))}
+                    divided={index > 0}
+                    onPress={
+                      entry.isMe || !entry.account.id
+                        ? undefined
+                        : () => openFriendProfile(entry.account.id)
+                    }
+                  />
+                ))}
+                {myBoardPinned && myBoardIndex >= 0 ? (
+                  <>
+                    <Text
+                      style={styles.boardDots}
+                      allowFontScaling={false}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                    >
+                      …
+                    </Text>
+                    <LeaderboardRow
+                      key="me-pinned"
+                      entry={rankedBoard[myBoardIndex]}
+                      rank={myBoardIndex + 1}
+                      value={boardValue(rankedBoard[myBoardIndex])}
+                      caption={boardCaption(boardValue(rankedBoard[myBoardIndex]))}
+                    />
+                  </>
+                ) : null}
+              </View>
+
+              {!showAllBoard && hiddenBoardCount > 0 ? (
+                <Pressable
+                  onPress={() => setShowAllBoard(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.friends.leaderboardMore(hiddenBoardCount)}
+                  style={({ pressed }) => [styles.moreFeedButton, pressed && styles.dim]}
+                >
+                  <Text style={styles.moreFeedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.friends.leaderboardMore(hiddenBoardCount)}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : loading && !d ? null : (
+            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.leaderboardEmpty}
+            </Text>
+          )}
+
+          {/* 4. Co se pilo — automatic, chronological, one row per evening. */}
+          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.sittingsHeader}
           </Text>
 
           {feed.length > 0 ? (
@@ -1311,7 +1464,7 @@ export default function FriendsScreen() {
                   onPress={loadMoreSittings}
                   disabled={feedLoadingMore}
                   accessibilityRole="button"
-                  accessibilityLabel={t.friends.sittingsMore}
+                  accessibilityLabel={cs.friends.sittingsMore}
                   style={({ pressed }) => [
                     styles.moreFeedButton,
                     (pressed || feedLoadingMore) && styles.dim,
@@ -1321,18 +1474,18 @@ export default function FriendsScreen() {
                     style={styles.moreFeedLabel}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {feedLoadingMore ? t.friends.sittingsLoading : t.friends.sittingsMore}
+                    {feedLoadingMore ? cs.friends.sittingsLoading : cs.friends.sittingsMore}
                   </Text>
                 </Pressable>
               ) : null}
             </>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.sittingsEmpty}
+              {cs.friends.sittingsEmpty}
             </Text>
           )}
 
-          {/* 4. Co spolu podniknout. */}
+          {/* 5. Co spolu podniknout. */}
           <PartaPlans />
         </ScrollView>
         <ScrollFade height={16} />
@@ -1352,7 +1505,7 @@ export default function FriendsScreen() {
 
       <MoreSheet
         visible={moreVisible}
-        title={t.friends.moreTitle}
+        title={cs.friends.moreTitle}
         rows={moreRows}
         onClose={() => setMoreVisible(false)}
       />
@@ -1381,10 +1534,6 @@ export default function FriendsScreen() {
         onOpenCode={openCodeFromAdd}
         onChanged={reload}
         onClose={() => setAddFriendVisible(false)}
-        query={addFriendQuery}
-        results={addFriendResults}
-        onQueryChange={setAddFriendQuery}
-        onResultsChange={setAddFriendResults}
       />
 
       <RosterSheet
@@ -1419,7 +1568,7 @@ const styles = StyleSheet.create({
   },
   partyChipLabel: {
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1457,7 +1606,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginTop: 24,
     marginBottom: 8,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1470,7 +1619,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   blockEmpty: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -1478,6 +1627,18 @@ const styles = StyleSheet.create({
   },
   photoStreamItem: {
     marginTop: 24,
+  },
+  // The metric switch sits between the section label and the card, closer to
+  // the card it filters (8 under, the label's own 8 above).
+  boardSwitch: {
+    marginBottom: 8,
+  },
+  // The gap row standing in for the ranks hidden between the cut and my row.
+  boardDots: {
+    textAlign: 'center',
+    color: Colors.mutedText,
+    fontSize: 13,
+    includeFontPadding: false,
   },
   card: {
     overflow: 'hidden',
@@ -1498,7 +1659,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.18),
   },
   moreFeedLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1531,6 +1692,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.08),
   },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
   sheetCardWrap: {
     width: '100%',
     // Let the card measure its content until this cap. A percentage minHeight
@@ -1539,18 +1705,20 @@ const styles = StyleSheet.create({
   },
   sheetCard: {
     flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.lg,
     ...softDrop(),
   },
   sheetGrabber: {
-    width: 44,
+    width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -1563,9 +1731,20 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flexShrink: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
+  },
+  sheetClose: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sheetList: {
     // Shrink only after the card reaches its cap, then scroll inside it.
@@ -1579,7 +1758,7 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     paddingVertical: 24,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1592,7 +1771,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rosterPub: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,

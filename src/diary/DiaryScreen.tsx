@@ -1,30 +1,26 @@
 /**
- * "Soukromý pivní deník" — your own history, reached from Profil.
+ * "Deník" — the second half of the Štamgast tab, and the merger of what used to
+ * be two separate segments ("Výkon" and "Historie").
  *
- * Four blocks and nothing else:
+ * They were the same screen wearing two hats: both opened on the last evening,
+ * both listed what came before, both differed only in which button sat at the
+ * bottom. So the tab now has two segments instead of three, and this one is
+ * four blocks and nothing else:
  *
- *   1. the last night as one hero card — big amber numeral and the three facts
- *      the number cannot hold (`NightCard`),
- *   2. every older night, and every manually back-dated beer, as two plain
- *      chronologies on the stout ground, separated by `SectionBreak` (§4.1),
+ *   1. the last night as one card — big amber numeral, a drawn beer mat with
+ *      tally marks, and a footer with the place and the money,
+ *   2. every older night under it as one quiet chronology,
  *   3. one nudge slot, fixed height, at most one message,
  *   4. ONE amber button: "Dopiš večer".
  *
  * Every lifetime number — records, totals, months, years, top pubs — lives one
- * tap deep in the "Kolik jich už bylo?" sheet behind the "…" in the header.
- * Rating a pub and mapping it are gone from this surface on purpose: both
- * already exist in the evening detail (`EveningDetailScreen`), and two paths to
- * one thing was the single worst habit of the old screens.
+ * tap deep in the "Kolik jich už bylo?" sheet behind the "…" button. Rating a
+ * pub and mapping it are gone from this surface on purpose: both already exist
+ * in the evening detail (`EveningDetailScreen`), and two paths to one thing was
+ * the single worst habit of the old screens.
  *
- * The 3.0 pass changed how it reads, not what it holds. The bordered "list card"
- * that wrapped the rows was a frame inside a frame (§14.10) and made a personal
- * chronology look like a settings table; rows now lie on the ground the way the
- * profile's records do, so the diary reads as the next screen of Profil rather
- * than as a visitor from 2.x. Private and not-yet-delivered rows are marked —
- * discreetly, but unmistakably.
- *
- * Local counter data remains the offline base; an account snapshot and
- * backdated check-ins fill in older server history without changing counting.
+ * Read-only over the counter's data (tallyStore) exactly like its predecessors,
+ * so it can never break counting, and it works offline and without an account.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -33,25 +29,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { beerCountLabel, beerNoun, intlLocale, t } from '@/i18n';
+import { cs } from '@/i18n/cs';
+import { beerCountLabel, beerNoun, czechPlural } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
-import {
-  ChevronRightIcon,
-  ClockIcon,
-  LockKeyholeIcon,
-  MenuIcon,
-  TriangleAlertIcon,
-} from '@/components/shared/IconGlyph';
-import { MockLayout } from '@/mocks/mockTheme';
-import { SectionBreak } from '@/mocks/SectionBreak';
-import type { Stat } from '@/mocks/StatGrid';
+import { ChevronRightIcon, MenuIcon } from '@/components/shared/IconGlyph';
 
 import { NightCard } from '@/diary/NightCard';
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { DiaryStatsSheet, type StatRow } from '@/diary/DiaryStatsSheet';
-import { mergeDiaryCheckIns } from '@/diary/diaryCheckIns';
 
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -59,13 +46,10 @@ import { ScrollFade } from '@/components/shared/ScrollFade';
 
 import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/data/beerCheckinsClient';
 import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
-import {
-  deriveReconciledDiarySessions,
-  deriveReconciledDiaryStats,
-} from '@/data/diarySync';
+import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
+import { useAccountStore } from '@/stores/accountStore';
 import {
   useTallyStore,
   allSessionsNewestFirst,
@@ -83,9 +67,12 @@ import { HistoricalBeerEntrySheet } from '@/myBeers/HistoricalBeerEntrySheet';
 import {
   computeLifetime,
   computePeriodStats,
+  computeRecords,
   computeTopPubs,
+  plausibleFastestBeerMs,
   type LifetimeStats,
   type PeriodStat,
+  type PersonalRecords,
   type PubTally,
 } from '@/stats/statsModel';
 import { useMyStats } from '@/stats/useMyStats';
@@ -96,19 +83,9 @@ import type { PriceCurrency } from '@/utils/currency';
 function formatWalkedKm(metres: number): string {
   const km = metres / 1000;
   const text = km
-    .toLocaleString(intlLocale, { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+    .toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
     .replace(/ /g, ' ');
-  return `${text} ${t.profile.kmShort}`;
-}
-
-/**
- * The pinned footnote of the stats sheet. The 50-evening limit is a property of
- * having no account, so telling a signed-in user about it is simply false.
- */
-export function statsFooterCopy(signedIn: boolean): string {
-  return signedIn
-    ? t.diary.statsFooter
-    : `${t.diary.statsFooter} ${t.diary.statsFooterNoAccount}`;
+  return `${text} ${cs.profile.kmShort}`;
 }
 
 /** Beers only — the count that gets the big numeral, exactly as on the counter. */
@@ -116,32 +93,12 @@ function beerCount(session: TallySession): number {
   return session.drinks.filter((d) => normalizeDrinkType(d.drinkType) === 'beer').length;
 }
 
-/**
- * The two facts under the hero numeral: what the night cost and how long it ran.
- */
-function nightFacts(session: TallySession, priceCurrency: PriceCurrency): Stat[] {
-  const spentCzk = sessionTotalCzk(session);
-  const stamps = session.drinks
-    .map((drink) => Date.parse(drink.at))
-    .filter((ms) => Number.isFinite(ms))
-    .sort((a, b) => a - b);
-  const spanMs = stamps.length > 1 ? stamps[stamps.length - 1] - stamps[0] : 0;
-
-  return [
-    {
-      label: t.diary.factSpent,
-      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : t.diary.factEmpty,
-    },
-    {
-      label: t.diary.factSpan,
-      value: spanMs > 0 ? t.stats.span(spanMs) : t.diary.factEmpty,
-    },
-  ];
-}
-
-/** The drink kinds a beerless night can be named after. */
-const OTHER_TYPES = ['wine', 'soft_drink', 'shot'] as const;
-type OtherType = (typeof OTHER_TYPES)[number];
+/** Declensions for the nights that held no beer at all. */
+const OTHER_NOUN: Record<'wine' | 'soft_drink' | 'shot', Parameters<typeof czechPlural>[1]> = {
+  wine: { one: 'víno', few: 'vína', many: 'vín' },
+  soft_drink: { one: 'nealko', few: 'nealka', many: 'nealk' },
+  shot: { one: 'panák', few: 'panáky', many: 'panáků' },
+};
 
 /**
  * The noun under the numeral. Beers win; a night of nothing but shots or wine
@@ -152,7 +109,7 @@ function nightNoun(session: TallySession): { count: number; noun: string } {
   if (beers > 0) return { count: beers, noun: beerNoun(beers).toUpperCase() };
 
   const total = session.drinks.length;
-  if (total === 0) return { count: 0, noun: t.diary.emptyNoun };
+  if (total === 0) return { count: 0, noun: cs.diary.emptyNoun };
 
   // Whatever there was most of that night names the numeral.
   const tally = new Map<string, number>();
@@ -160,52 +117,50 @@ function nightNoun(session: TallySession): { count: number; noun: string } {
     const type = normalizeDrinkType(drink.drinkType);
     tally.set(type, (tally.get(type) ?? 0) + 1);
   }
-  let dominant: OtherType = 'shot';
+  let dominant: 'wine' | 'soft_drink' | 'shot' = 'shot';
   let best = -1;
   for (const [type, count] of tally) {
-    if (count > best && (OTHER_TYPES as readonly string[]).includes(type)) {
+    if (count > best && type in OTHER_NOUN) {
       best = count;
-      dominant = type as OtherType;
+      dominant = type as 'wine' | 'soft_drink' | 'shot';
     }
   }
-  return { count: total, noun: t.diary.otherNoun(dominant, total).toUpperCase() };
+  return { count: total, noun: czechPlural(total, OTHER_NOUN[dominant]).toUpperCase() };
 }
-
-type DiaryNight = { key: string; session: TallySession; kind: 'session'; source: 'local' | 'remote' };
 
 // ─── One older night ──────────────────────────────────────────────────────────
 
-const NightRow = React.memo(function NightRow({
+function NightRow({
   session,
   priceCurrency,
-  nowMinuteMs,
+  now,
   isFirst,
-  onOpen,
+  onPress,
 }: {
   session: TallySession;
   priceCurrency: PriceCurrency;
-  nowMinuteMs: number;
+  now: Date;
   isFirst: boolean;
-  onOpen: (session: TallySession) => void;
+  onPress: () => void;
 }) {
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
   const totalCzk = sessionTotalCzk(session);
-  const meta = t.diary.nightMeta([
-    eveningDateLabel(session.startedAt, new Date(nowMinuteMs)),
+  const meta = cs.diary.nightMeta([
+    eveningDateLabel(session.startedAt, now),
     sessionDrinkSummary(session),
     totalCzk > 0 ? formatPrice(totalCzk, priceCurrency) : '',
   ]);
 
   return (
     <Pressable
-      onPress={() => onOpen(session)}
+      onPress={onPress}
       style={({ pressed }) => [styles.row, !isFirst && styles.rowDivider, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.diaryNight(session.pubName || t.diary.noPub, meta)}
+      accessibilityLabel={cs.a11y.diaryNight(session.pubName, meta)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {session.pubName || t.diary.noPub}
+          {session.pubName}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {meta}
@@ -215,168 +170,12 @@ const NightRow = React.memo(function NightRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-});
-
-/**
- * The discreet end of a row: a lock when the entry is yours alone, a clock while
- * it is still sitting in the offline queue. Glyphs, not chips — a row of labels
- * would shout a state that is true of most of this screen most of the time, and
- * the marker still has to be unambiguous rather than loud.
- */
-function RowTags({ isPrivate, isQueued }: { isPrivate: boolean; isQueued: boolean }) {
-  if (!isPrivate && !isQueued) return null;
-  return (
-    <View style={styles.rowTags}>
-      {isQueued ? (
-        <ClockIcon size={15} color={Colors.mutedText} />
-      ) : null}
-      {isPrivate ? <LockKeyholeIcon size={15} color={Colors.mutedText} /> : null}
-    </View>
-  );
 }
-
-function shortHistoricalDate(startIso: string, endIso?: string | null): string {
-  const startMs = Date.parse(startIso);
-  if (!Number.isFinite(startMs)) return '';
-  const start = new Date(startMs);
-  const date = start.toLocaleDateString(intlLocale, {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
-  });
-  const startTime = start.toLocaleTimeString(intlLocale, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const endMs = endIso ? Date.parse(endIso) : Number.NaN;
-  if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
-  const end = new Date(endMs);
-  const endTime = end.toLocaleTimeString(intlLocale, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  return `${date} ${startTime}-${endTime}${end.toDateString() !== start.toDateString() ? ' +1' : ''}`;
-}
-
-function historicalMeta(checkIn: BeerCheckIn, priceCurrency: PriceCurrency): string {
-  const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
-  return t.diary.nightMeta([
-    quantity > 1 ? `${quantity}×` : '',
-    checkIn.priceCzk != null ? formatPrice(checkIn.priceCzk * quantity, priceCurrency) : '',
-    checkIn.pubName || t.myBeers.historicalNoPub,
-    shortHistoricalDate(checkIn.checkedInAt, checkIn.endedAt),
-  ]);
-}
-
-function optimisticCheckIn(input: BeerCheckInInput): BeerCheckIn {
-  const now = new Date().toISOString();
-  return {
-    id: input.clientId,
-    account: {
-      id: '',
-      nickname: null,
-      displayName: '',
-      avatarUrl: null,
-      isPublic: false,
-    },
-    clientId: input.clientId,
-    beerName: input.beerName,
-    breweryName: input.breweryName ?? '',
-    beerStyle: input.beerStyle ?? '',
-    abv: input.abv ?? null,
-    quantity: input.quantity ?? 1,
-    priceCzk: input.priceCzk ?? null,
-    rating: input.rating ?? null,
-    note: input.note ?? '',
-    tags: input.tags ?? [],
-    pubCacheKey: input.pubCacheKey ?? '',
-    pubName: input.pubName ?? '',
-    pubCity: input.pubCity ?? '',
-    visitClientId: input.visitClientId ?? null,
-    visibility: input.visibility,
-    checkedInAt: input.checkedInAt ?? now,
-    endedAt: input.endedAt ?? null,
-    reactions: { cheers: 0 },
-    myReaction: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
-
-interface DiaryCheckInState {
-  owner: string;
-  pendingCount: number;
-  loadFailed: boolean;
-  remote: BeerCheckIn[];
-  pending: BeerCheckIn[];
-}
-
-function emptyCheckInState(owner: string): DiaryCheckInState {
-  return {
-    owner,
-    pendingCount: 0,
-    loadFailed: false,
-    remote: [],
-    pending: [],
-  };
-}
-
-const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
-  checkIn,
-  priceCurrency,
-  isFirst,
-  isQueued,
-  onOpen,
-}: {
-  checkIn: BeerCheckIn;
-  priceCurrency: PriceCurrency;
-  isFirst: boolean;
-  /** Still in the offline queue: written down here, not yet on the server. */
-  isQueued: boolean;
-  onOpen: (checkIn: BeerCheckIn) => void;
-}) {
-  const meta = historicalMeta(checkIn, priceCurrency);
-  const isPrivate = checkIn.visibility === 'private';
-  // The markers are glyphs on screen, so the words go to the screen reader.
-  const spokenMeta = t.diary.nightMeta([
-    meta,
-    isPrivate ? t.diary.privateTag : '',
-    isQueued ? t.diary.queuedTag : '',
-  ]);
-
-  return (
-    <Pressable
-      onPress={() => onOpen(checkIn)}
-      style={({ pressed }) => [
-        styles.row,
-        !isFirst && styles.rowDivider,
-        pressed && styles.rowPressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={t.a11y.myBeersDiaryEntry(checkIn.beerName, spokenMeta)}
-    >
-      <View style={styles.rowText}>
-        <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {checkIn.beerName}
-        </Text>
-        <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {meta}
-        </Text>
-      </View>
-      <RowTags isPrivate={isPrivate} isQueued={isQueued} />
-      <ChevronRightIcon size={18} color={Colors.mutedText} />
-    </Pressable>
-  );
-});
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export interface DiaryScreenProps {
   embedded?: boolean;
-  /** Room for absolutely positioned bottom chrome, such as the 3.0 tab bar. */
-  bottomInset?: number;
   /** Set by the host (BeerScreen) when the "…" door sits in its header row
    *  instead of ours; leaving it undefined keeps the screen self-contained. */
   statsOpen?: boolean;
@@ -385,7 +184,6 @@ export interface DiaryScreenProps {
 
 export default function DiaryScreen({
   embedded = false,
-  bottomInset = 0,
   statsOpen: statsOpenProp,
   onStatsClose,
 }: DiaryScreenProps = {}) {
@@ -403,14 +201,11 @@ export default function DiaryScreen({
     return () => clearInterval(timer);
   }, []);
   const now = useMemo(() => new Date(nowMs), [nowMs]);
-  const nowMinuteMs = Math.floor(nowMs / 60_000) * 60_000;
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const remote = useMyStats();
-  const signedIn = useAccountStore(selectIsSignedIn);
-  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   // Inherited from the profile's stats grid, which the rebuild removed.
   const ratingsCount = usePubRatingsStore((s) => Object.keys(s.ratings).length);
   const walkedM = useAccountStore((s) => s.profile?.usage?.walkedDistanceM ?? null);
@@ -428,84 +223,26 @@ export default function DiaryScreen({
     if (statsControlled) onStatsClose?.();
     else setOwnStatsOpen(false);
   }, [statsControlled, onStatsClose]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [diaryToken, setDiaryToken] = useState(0);
-  const checkInOwner = accountId ?? 'local';
-  const [checkInState, setCheckInState] = useState<DiaryCheckInState>(() =>
-    emptyCheckInState(checkInOwner),
-  );
-  const activeCheckIns = useMemo(
-    () =>
-      checkInState.owner === checkInOwner
-        ? checkInState
-        : emptyCheckInState(checkInOwner),
-    [checkInOwner, checkInState],
-  );
 
-  // Manual historical entries use the released beer-check-in API and its
-  // offline queue. Keep both sources on this surface: a queued row must appear
-  // immediately and remain visible until the server returns that client id.
+  // The diary fetch only feeds the "waiting to send" nudge and the failure
+  // strip; the trail itself is local, so nothing here blocks the screen.
   useEffect(() => {
     const controller = new AbortController();
     void getPendingBeerCheckIns().then((pending) => {
-      if (controller.signal.aborted) return;
-      setCheckInState((current) => {
-        const base = current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
-        return {
-          ...base,
-          pendingCount: pending.length,
-          pending: pending.map(optimisticCheckIn),
-        };
-      });
+      if (!controller.signal.aborted) setPendingCount(pending.length);
     });
-    // No-account mode owns only local/queued data. A missing account is not a
-    // network failure and must not turn the offline diary into an error state.
-    if (!signedIn) return () => controller.abort();
     void fetchMyBeerCheckIns(controller.signal).then((items: BeerCheckIn[] | null) => {
       if (controller.signal.aborted) return;
-      setCheckInState((current) => {
-        const base = current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
-        return {
-          ...base,
-          loadFailed: items === null,
-          remote: items ?? [],
-        };
-      });
+      setLoadFailed(items === null);
     });
     return () => controller.abort();
-  }, [checkInOwner, diaryToken, signedIn]);
-
-  const visibleCheckIns = useMemo(
-    () => mergeDiaryCheckIns(activeCheckIns.pending, activeCheckIns.remote),
-    [activeCheckIns.pending, activeCheckIns.remote],
-  );
-
-  // A queued row looked exactly like a delivered one, so an offline diary was
-  // indistinguishable from a synced one. The merge keeps a pending row until the
-  // server returns its client id, so this set IS "written here, not sent yet".
-  const queuedIds = useMemo(
-    () => new Set(activeCheckIns.pending.map((item) => item.clientId || item.id)),
-    [activeCheckIns.pending],
-  );
+  }, [diaryToken]);
 
   const sessions = useMemo(() => allSessionsNewestFirst(current, history), [current, history]);
-  const reconciledSessions = useMemo(
-    () => deriveReconciledDiarySessions(diarySnapshot, sessions),
-    [diarySnapshot, sessions],
-  );
-  const nights = useMemo<DiaryNight[]>(
-    () =>
-      reconciledSessions
-        .map(
-          (item): DiaryNight => ({
-            key: item.session.clientId,
-            session: item.session,
-            kind: 'session',
-            source: item.source,
-          }),
-        )
-        .sort((a, b) => Date.parse(b.session.startedAt) - Date.parse(a.session.startedAt)),
-    [reconciledSessions],
-  );
+  const nights = useMemo(() => sessions.filter((s) => s.drinks.length > 0), [sessions]);
   const lastNight = nights[0] ?? null;
   const olderNights = nights.slice(1);
 
@@ -514,6 +251,7 @@ export default function DiaryScreen({
   // least as complete as the local view, so freshly-counted-but-not-yet-synced
   // beers never make the totals appear to shrink.
   const localLifetime = useMemo(() => computeLifetime(sessions), [sessions]);
+  const localRecords = useMemo(() => computeRecords(sessions), [sessions]);
   const localPeriods = useMemo(() => computePeriodStats(sessions), [sessions]);
   const localTopPubs = useMemo(() => computeTopPubs(sessions), [sessions]);
   const reconciled = useMemo(
@@ -546,6 +284,26 @@ export default function DiaryScreen({
     [localLifetime, reconciled, remote, useRemote],
   );
 
+  const records: PersonalRecords = useMemo(
+    () =>
+      useRemote
+        ? {
+            mostBeersInEvening: remote!.records.mostBeersInEvening,
+            mostBeersPubName: remote!.records.mostBeersPubName,
+            mostBeersStartedAt: null,
+            fastestBeerMs:
+              remote!.records.fastestBeerSeconds != null
+                ? plausibleFastestBeerMs(remote!.records.fastestBeerSeconds * 1000)
+                : null,
+            longestEveningMs:
+              remote!.records.longestEveningSeconds != null
+                ? remote!.records.longestEveningSeconds * 1000
+                : null,
+          }
+        : localRecords,
+    [localRecords, remote, useRemote],
+  );
+
   const topPubs: PubTally[] =
     useRemote && remote!.topPubs.length > 0
       ? remote!.topPubs.map((p) => ({
@@ -563,30 +321,65 @@ export default function DiaryScreen({
 
   const thisMonth = periodMonths[periodMonths.length - 1] ?? null;
 
-  // The lifetime block is a grid, not a table of label→value rows: these are
-  // the numbers the screen exists to hand back, and they read as a balance
-  // rather than as an export when they arrive as figures first (§3, StatGrid).
-  const totalsStats: Stat[] = useMemo(() => {
-    const stats: Stat[] = [
-      { label: t.diary.statsEvenings, value: String(lifetime.totalEvenings) },
-      { label: t.diary.statsPubs, value: String(lifetime.distinctPubs) },
-      { label: t.diary.statsSpent, value: formatPrice(lifetime.totalSpentCzk, priceCurrency) },
+  const statRows: StatRow[] = useMemo(() => {
+    const rows: StatRow[] = [
+      { key: 'evenings', label: cs.diary.statsEvenings, value: String(lifetime.totalEvenings) },
+      { key: 'pubs', label: cs.diary.statsPubs, value: String(lifetime.distinctPubs) },
+      {
+        key: 'spent',
+        label: cs.diary.statsSpent,
+        value: formatPrice(lifetime.totalSpentCzk, priceCurrency),
+      },
     ];
+    if (thisMonth) {
+      rows.push({
+        key: 'month',
+        label: cs.diary.statsThisMonth,
+        value: beerCountLabel(thisMonth.beers),
+        meta:
+          thisMonth.averageBeersPerEvening > 0
+            ? cs.diary.statsMonthAvg(thisMonth.averageBeersPerEvening.toLocaleString('cs-CZ'))
+            : null,
+      });
+    }
     // These two used to live in the profile's stats grid. Numbers have exactly
     // one home now, and this is it.
     if (ratingsCount > 0) {
-      stats.push({ label: t.diary.statsRatings, value: String(ratingsCount) });
+      rows.push({ key: 'ratings', label: cs.diary.statsRatings, value: String(ratingsCount) });
     }
     if (walkedM != null) {
-      stats.push({ label: t.diary.statsWalked, value: formatWalkedKm(walkedM) });
+      rows.push({ key: 'walked', label: cs.diary.statsWalked, value: formatWalkedKm(walkedM) });
     }
-    return stats;
-  }, [lifetime, priceCurrency, ratingsCount, walkedM]);
+    return rows;
+  }, [lifetime, priceCurrency, ratingsCount, thisMonth, walkedM]);
 
-  const monthStats: Stat[] | null = useMemo(() => {
-    if (!thisMonth) return null;
-    return [{ label: t.diary.statsMonthBeers, value: String(thisMonth.beers) }];
-  }, [thisMonth]);
+  const recordRows: StatRow[] = useMemo(() => {
+    const fastest = plausibleFastestBeerMs(records.fastestBeerMs);
+    return [
+      {
+        key: 'most',
+        label: cs.diary.statsRecordMost,
+        value:
+          records.mostBeersInEvening > 0
+            ? beerCountLabel(records.mostBeersInEvening)
+            : cs.diary.statsEmptyValue,
+        meta: records.mostBeersPubName,
+      },
+      {
+        key: 'fastest',
+        label: cs.diary.statsRecordFastest,
+        value: fastest !== null ? cs.stats.pace(fastest) : cs.diary.statsEmptyValue,
+      },
+      {
+        key: 'longest',
+        label: cs.diary.statsRecordLongest,
+        value:
+          records.longestEveningMs !== null
+            ? cs.stats.span(records.longestEveningMs)
+            : cs.diary.statsEmptyValue,
+      },
+    ];
+  }, [records]);
 
   // Top five is enough: nobody reads the sixth-favourite pub.
   const pubRows: StatRow[] = useMemo(
@@ -604,97 +397,53 @@ export default function DiaryScreen({
       [...periodYears].reverse().map((year) => ({
         key: year.period,
         label: year.period,
-        value: beerCountLabel(year.beers),
+        value: cs.diary.statsYearValue(
+          beerCountLabel(year.beers),
+          year.averageBeersPerEvening.toLocaleString('cs-CZ'),
+        ),
       })),
     [periodYears],
   );
 
   // ── One nudge, one priority, never two at once.
   const nudge: Nudge | null = useMemo(() => {
-    if (activeCheckIns.loadFailed) {
+    if (loadFailed) {
       return {
         kind: 'counted',
-        // Not the default check: this strip reports a failure, and a tick next
-        // to "nenačetl se" is a small lie about what happened.
-        icon: TriangleAlertIcon,
-        text: t.diary.loadFailed,
-        undoLabel: t.diary.retry,
+        text: cs.diary.loadFailed,
+        undoLabel: cs.diary.retry,
         onUndo: () => {
           trackUiInteraction('diary_retry', 'retry');
-          setCheckInState((current) => {
-            const base =
-              current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
-            return { ...base, loadFailed: false };
-          });
+          setLoadFailed(false);
           setDiaryToken((token) => token + 1);
         },
       };
     }
-    if (activeCheckIns.pendingCount > 0) {
-      return {
-        kind: 'dopito',
-        label: t.diary.queued(activeCheckIns.pendingCount),
-        onPress: () => undefined,
-      };
+    if (pendingCount > 0) {
+      return { kind: 'dopito', label: cs.diary.queued(pendingCount), onPress: () => undefined };
     }
     return null;
-  }, [activeCheckIns.loadFailed, activeCheckIns.pendingCount, checkInOwner]);
+  }, [loadFailed, pendingCount]);
 
   const openEvening = useCallback(
-    (night: DiaryNight) => {
+    (session: TallySession) => {
       trackUiInteraction('diary_evening_open');
-      router.push({
-        pathname: '/evening',
-        params: {
-          startedAt: night.session.startedAt,
-          ...(night.source === 'remote' ? { visitClientId: night.session.clientId } : {}),
-        },
-      });
+      router.push({ pathname: '/evening', params: { startedAt: session.startedAt } });
     },
     [router],
   );
 
-  const openHistoricalCheckIn = useCallback(
-    (checkIn: BeerCheckIn) => {
-      trackUiInteraction('diary_beer_open');
-      router.push({
-        pathname: '/beer-detail',
-        params: {
-          beer: checkIn.beerName,
-          brewery: checkIn.breweryName,
-        },
-      });
-    },
-    [router],
-  );
+  const handleHistoricalSaved = useCallback((_entries: BeerCheckInInput[]) => {
+    setDiaryToken((token) => token + 1);
+  }, []);
 
-  const handleHistoricalSaved = useCallback(
-    (entries: BeerCheckInInput[]) => {
-      setCheckInState((current) => {
-        const base = current.owner === checkInOwner ? current : emptyCheckInState(checkInOwner);
-        return {
-          ...base,
-          pending: mergeDiaryCheckIns(entries.map(optimisticCheckIn), base.pending),
-          pendingCount: base.pendingCount + entries.length,
-        };
-      });
-      setDiaryToken((token) => token + 1);
-    },
-    [checkInOwner],
-  );
-
-  const lastNoun = lastNight ? nightNoun(lastNight.session) : null;
-  const lastFacts = useMemo(
-    () => (lastNight ? nightFacts(lastNight.session, priceCurrency) : []),
-    [lastNight, priceCurrency],
-  );
+  const lastNoun = lastNight ? nightNoun(lastNight) : null;
+  const lastSpentCzk = lastNight ? sessionTotalCzk(lastNight) : 0;
   const isRunning =
     lastNight !== null &&
-    lastNight.kind === 'session' &&
-    lastNight.source === 'local' &&
     current !== null &&
-    lastNight.session.startedAt === current.startedAt &&
-    eveningDayRelation(lastNight.session.startedAt, now) === 'today';
+    lastNight.startedAt === current.startedAt &&
+    eveningDayRelation(lastNight.startedAt, now) === 'today';
 
   const topInset = embedded ? 0 : insets.top;
 
@@ -702,10 +451,7 @@ export default function DiaryScreen({
     <View
       style={[
         styles.root,
-        {
-          paddingTop: topInset,
-          paddingBottom: Math.max(insets.bottom, Spacing.sm) + bottomInset,
-        },
+        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
       ]}
     >
       {/* Embedded in the Štamgast tab the "…" door sits next to the segmented
@@ -718,14 +464,14 @@ export default function DiaryScreen({
             style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.diaryStats}
+            accessibilityLabel={cs.a11y.diaryStats}
           >
             <MenuIcon size={20} color={Colors.mutedText} />
           </Pressable>
         </View>
       )}
 
-      {lastNight || visibleCheckIns.length > 0 ? (
+      {lastNight && lastNoun ? (
         // The trail and the fade that ends it share one box, exactly like Parta:
         // an absolute child that overflows its parent gets clipped on Android.
         <View style={styles.body}>
@@ -734,57 +480,46 @@ export default function DiaryScreen({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {lastNight && lastNoun ? (
-              <NightCard
-                count={lastNoun.count}
-                nounLabel={lastNoun.noun}
-                whenLabel={
-                  isRunning
-                    ? `${eveningDateLabel(lastNight.session.startedAt, now)} · ${t.diary.running}`
-                    : eveningDateLabel(lastNight.session.startedAt, now)
-                }
-                placeLabel={lastNight.session.pubName || t.diary.noPub}
-                facts={lastFacts}
-                onPress={() => openEvening(lastNight)}
-                accessibilityLabel={t.a11y.diaryCard(
-                  beerCountLabel(lastNoun.count),
-                  lastNight.session.pubName || t.diary.noPub,
-                  eveningDateLabel(lastNight.session.startedAt, now),
-                )}
-              />
-            ) : null}
+            <NightCard
+              // With nothing under it the card takes the leftover height, exactly
+              // like the counter's coaster — a short card with 300pt of empty
+              // stout beneath it is the wireframe look, not airy design.
+              style={olderNights.length === 0 ? styles.cardGrow : undefined}
+              count={lastNoun.count}
+              nounLabel={lastNoun.noun}
+              whenLabel={
+                isRunning
+                  ? `${eveningDateLabel(lastNight.startedAt, now)} · ${cs.diary.running}`
+                  : eveningDateLabel(lastNight.startedAt, now)
+              }
+              placeLabel={lastNight.pubName || cs.diary.noPub}
+              spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
+              nights={nights.length}
+              onPress={() => openEvening(lastNight)}
+              accessibilityLabel={cs.a11y.diaryCard(
+                beerCountLabel(lastNoun.count),
+                lastNight.pubName || cs.diary.noPub,
+                eveningDateLabel(lastNight.startedAt, now),
+              )}
+            />
 
             {olderNights.length > 0 ? (
               <>
-                {/* A band, not a hairline: two chronologies under one hero read
-                    as one long list when only margin separates them (§4.1). */}
-                <SectionBreak title={t.diary.olderHeader} inset={MockLayout.screenPad} />
-                {olderNights.map((night, index) => (
-                  <NightRow
-                    key={night.key}
-                    session={night.session}
-                    priceCurrency={priceCurrency}
-                    nowMinuteMs={nowMinuteMs}
-                    isFirst={index === 0}
-                    onOpen={() => openEvening(night)}
-                  />
-                ))}
-              </>
-            ) : null}
-
-            {visibleCheckIns.length > 0 ? (
-              <>
-                <SectionBreak title={t.diary.manualHeader} inset={MockLayout.screenPad} />
-                {visibleCheckIns.map((checkIn, index) => (
-                  <HistoricalCheckInRow
-                    key={checkIn.clientId || checkIn.id}
-                    checkIn={checkIn}
-                    priceCurrency={priceCurrency}
-                    isFirst={index === 0}
-                    isQueued={queuedIds.has(checkIn.clientId || checkIn.id)}
-                    onOpen={openHistoricalCheckIn}
-                  />
-                ))}
+                <Text style={styles.olderHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.diary.olderHeader}
+                </Text>
+                <View style={styles.rowsCard}>
+                  {olderNights.map((session, index) => (
+                    <NightRow
+                      key={session.startedAt}
+                      session={session}
+                      priceCurrency={priceCurrency}
+                      now={now}
+                      isFirst={index === 0}
+                      onPress={() => openEvening(session)}
+                    />
+                  ))}
+                </View>
               </>
             ) : null}
           </ScrollView>
@@ -794,10 +529,10 @@ export default function DiaryScreen({
         <View style={styles.empty}>
           <TallyCoaster marks={0} nights={0} width={96} />
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.diary.emptyTitle}
+            {cs.diary.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.diary.emptyBody}
+            {cs.diary.emptyBody}
           </Text>
         </View>
       )}
@@ -809,25 +544,23 @@ export default function DiaryScreen({
         <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
         <GlowButton
-          label={t.diary.cta}
+          label={cs.diary.cta}
           onPress={() => {
             trackUiInteraction('diary_historical_open');
             setHistoricalOpen(true);
           }}
           glow="soft"
-          accessibilityLabel={t.a11y.myBeersAddHistorical}
+          accessibilityLabel={cs.a11y.myBeersAddHistorical}
         />
       </View>
 
       <DiaryStatsSheet
         visible={statsVisible}
-        totalBeers={lifetime.totalBeers.toLocaleString(intlLocale)}
-        totals={totalsStats}
-        month={monthStats}
-        records={[]}
+        totalBeers={lifetime.totalBeers.toLocaleString('cs-CZ')}
+        rows={statRows}
+        records={recordRows}
         topPubs={pubRows}
         years={yearRows}
-        footer={statsFooterCopy(signedIn)}
         onClose={closeStats}
       />
 
@@ -846,9 +579,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
-    // One width through the whole app, screen or sheet (§20.1). The sections
-    // bleed past it by exactly this much, so it must not be re-added anywhere.
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: 24,
     gap: 12,
   },
   header: {
@@ -874,66 +605,72 @@ const styles = StyleSheet.create({
   // a lone card claim the leftover space instead of collapsing to its minimum.
   // Enough room under the last row that it can scroll clear of the button
   // instead of resting permanently cut in half.
-  // The bottom pad has to clear `ScrollFade` (28pt) with air to spare. At 20 the
-  // last row ended INSIDE the fade, so on a diary short enough not to scroll the
-  // final entry was permanently half-dissolved — it read as a rendering bug.
-  scrollContent: { flexGrow: 1, paddingTop: Spacing.sm, paddingBottom: Spacing.xxl },
+  scrollContent: { flexGrow: 1, paddingBottom: Spacing.lg },
+  cardGrow: { flex: 1 },
 
-  // Rows lie on the ground, not inside a bordered panel: a frame around a list
-  // that already sits inside a screen is a frame on a frame (§14.10), and it
-  // made a personal chronology read as a settings table. 68 is the two-line
-  // minimum from §4.1 — 44 is the minimum for touching, not for reading.
+  // Quiet, lower-case, no amber: a label for the list, not a headline of its own.
+  olderHeader: {
+    marginTop: 24,
+    marginBottom: 8,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  rowsCard: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingVertical: 4,
+    overflow: 'hidden',
+  },
   row: {
-    minHeight: MockLayout.rowHeight,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingHorizontal: 24,
     paddingVertical: 12,
   },
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.08),
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rowPressed: { opacity: 0.6 },
   rowText: { flex: 1, gap: 2, minWidth: 0 },
   rowTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
-    letterSpacing: -0.2,
     color: Colors.foam,
     includeFontPadding: false,
   },
   rowMeta: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  rowTags: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
   // The empty state keeps the same pinned button as the full one, so the action
-  // never moves between states. The clean mat is the one illustration this
-  // screen earns (§20.12) — it is literally what an empty diary looks like.
+  // never moves between states.
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.md,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: 12,
   },
   emptyTitle: {
-    marginTop: Spacing.xs,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
-    letterSpacing: -0.4,
     color: Colors.foam,
     textAlign: 'center',
     includeFontPadding: false,
   },
   emptyBody: {
-    marginTop: -6,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.mutedText,

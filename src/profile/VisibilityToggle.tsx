@@ -13,7 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { EyeIcon, EyeOffIcon } from '@/components/shared/IconGlyph';
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
   iconWell: {
     width: 36,
     height: 36,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: Colors.stout3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 16,
     color: Colors.foam,
   },

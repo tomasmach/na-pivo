@@ -16,10 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
-import { intlLocale, t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { formatPrice } from '@/utils/currency';
 import {
   ChevronRightIcon,
@@ -53,7 +53,7 @@ function lastDrinkText(session: TallySession, now: Date): string | null {
   const atMs = Date.parse(latest.at);
   if (!Number.isFinite(atMs)) return null;
   const minutes = Math.max(0, Math.floor((now.getTime() - atMs) / 60000));
-  return minutes === 0 ? t.myBeers.lastDrinkJustNow : t.myBeers.lastDrinkMinutesAgo(minutes);
+  return minutes === 0 ? cs.myBeers.lastDrinkJustNow : cs.myBeers.lastDrinkMinutesAgo(minutes);
 }
 
 // ─── Current evening card ──────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ function CurrentEveningCard({
     <View style={styles.card}>
       <View style={styles.cardSectionHeader}>
         <BeerIcon size={14} color={Colors.amber} />
-        <Text style={styles.cardSectionHeaderText}>{t.myBeers.currentHeader}</Text>
+        <Text style={styles.cardSectionHeaderText}>{cs.myBeers.currentHeader}</Text>
         <View style={styles.flex} />
         <Text style={styles.dateLabel} maxFontSizeMultiplier={FontScaleCap.body}>
           {eveningDateLabel(session.startedAt, now)}
@@ -86,7 +86,7 @@ function CurrentEveningCard({
         {session.pubName}
       </Text>
       <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency))}
+        {cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency))}
       </Text>
       {lastText && (
         <Text style={styles.lastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -122,31 +122,31 @@ function CurrentEveningCard({
 
 // ─── Past evening row ──────────────────────────────────────────────────────────
 
-const PastEveningRow = React.memo(function PastEveningRow({
+function PastEveningRow({
   session,
   priceCurrency,
-  nowMinuteMs,
-  onOpen,
+  now,
+  onPress,
 }: {
   session: TallySession;
   priceCurrency: PriceCurrency;
-  nowMinuteMs: number;
-  onOpen: (session: TallySession) => void;
+  now: Date;
+  onPress: () => void;
 }) {
   const totalCzk = sessionTotalCzk(session);
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
-  const summary = t.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency));
+  const summary = cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency));
 
   return (
     <Pressable
-      onPress={() => onOpen(session)}
+      onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.myBeersEvening(session.pubName, summary)}
+      accessibilityLabel={cs.a11y.myBeersEvening(session.pubName, summary)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowDate} maxFontSizeMultiplier={FontScaleCap.body}>
-          {eveningDateLabel(session.startedAt, new Date(nowMinuteMs))}
+          {eveningDateLabel(session.startedAt, now)}
         </Text>
         <Text style={styles.rowPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {session.pubName}
@@ -159,12 +159,12 @@ const PastEveningRow = React.memo(function PastEveningRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-});
+}
 
 function shortDateTime(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString(intlLocale, {
+  return new Date(ms).toLocaleDateString('cs-CZ', {
     day: 'numeric',
     month: 'numeric',
     year: 'numeric',
@@ -175,12 +175,12 @@ function shortDiaryTimeRange(startIso: string, endIso?: string | null): string {
   const startMs = Date.parse(startIso);
   if (!Number.isFinite(startMs)) return '';
   const start = new Date(startMs);
-  const date = start.toLocaleDateString(intlLocale, {
+  const date = start.toLocaleDateString('cs-CZ', {
     day: 'numeric',
     month: 'numeric',
     year: 'numeric',
   });
-  const startTime = start.toLocaleTimeString(intlLocale, {
+  const startTime = start.toLocaleTimeString('cs-CZ', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -188,7 +188,7 @@ function shortDiaryTimeRange(startIso: string, endIso?: string | null): string {
   const endMs = endIso ? Date.parse(endIso) : NaN;
   if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
   const end = new Date(endMs);
-  const endTime = end.toLocaleTimeString(intlLocale, {
+  const endTime = end.toLocaleTimeString('cs-CZ', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -207,18 +207,18 @@ function checkInAmountLabel(checkIn: BeerCheckIn, priceCurrency: PriceCurrency):
   return parts.join(' · ');
 }
 
-const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
+function HistoricalCheckInRow({
   checkIn,
   priceCurrency,
-  onOpen,
+  onPress,
 }: {
   checkIn: BeerCheckIn;
   priceCurrency: PriceCurrency;
-  onOpen: (checkIn: BeerCheckIn) => void;
+  onPress: () => void;
 }) {
   const meta = [
     checkInAmountLabel(checkIn, priceCurrency),
-    checkIn.pubName || t.myBeers.historicalNoPub,
+    checkIn.pubName || cs.myBeers.historicalNoPub,
     checkIn.endedAt ? shortDiaryTimeRange(checkIn.checkedInAt, checkIn.endedAt) : shortDateTime(checkIn.checkedInAt),
   ]
     .filter(Boolean)
@@ -226,10 +226,10 @@ const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
 
   return (
     <Pressable
-      onPress={() => onOpen(checkIn)}
+      onPress={onPress}
       style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
+      accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
     >
       <View style={styles.diaryIcon}>
         <BeerIcon size={16} color={Colors.amber} />
@@ -245,7 +245,7 @@ const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-});
+}
 
 function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
   return (
@@ -253,17 +253,17 @@ function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       style={({ pressed }) => [styles.addHistoryButton, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.myBeersAddHistorical}
+      accessibilityLabel={cs.a11y.myBeersAddHistorical}
     >
       <View style={styles.addHistoryIcon}>
         <PlusIcon size={18} color={Colors.stout} />
       </View>
       <View style={styles.addHistoryText}>
         <Text style={styles.addHistoryTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.myBeers.historicalCta}
+          {cs.myBeers.historicalCta}
         </Text>
         <Text style={styles.addHistorySubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.myBeers.historicalCtaBody}
+          {cs.myBeers.historicalCtaBody}
         </Text>
       </View>
     </Pressable>
@@ -322,7 +322,6 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
     return () => clearInterval(timer);
   }, []);
   const now = useMemo(() => new Date(nowMs), [nowMs]);
-  const nowMinuteMs = Math.floor(nowMs / 60_000) * 60_000;
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -370,24 +369,6 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const isEmpty = !currentEvening && pastEvenings.length === 0 && visibleDiaryEntries.length === 0;
 
   const openHistorical = useCallback(() => setHistoricalOpen(true), []);
-  const openEvening = useCallback(
-    (session: TallySession) => {
-      router.push({
-        pathname: '/evening',
-        params: { startedAt: session.startedAt },
-      });
-    },
-    [router],
-  );
-  const openHistoricalCheckIn = useCallback(
-    (checkIn: BeerCheckIn) => {
-      router.push({
-        pathname: '/beer-detail',
-        params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
-      });
-    },
-    [router],
-  );
   const handleHistoricalSaved = useCallback(
     (entries: BeerCheckInInput[]) => {
       const optimistic = entries.map(optimisticCheckIn);
@@ -408,7 +389,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
       {!embedded && (
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.myBeers.title}
+            {cs.myBeers.title}
           </Text>
         </View>
       )}
@@ -419,10 +400,10 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
             <HistoryIcon size={52} color={Colors.amber} />
           </View>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.myBeers.emptyTitle}
+            {cs.myBeers.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.myBeers.emptyBody}
+            {cs.myBeers.emptyBody}
           </Text>
           <HistoricalEntryButton onPress={openHistorical} />
         </View>
@@ -447,7 +428,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           {pastEvenings.length > 0 && (
             <>
               <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.myBeers.pastHeader}
+                {cs.myBeers.pastHeader}
               </Text>
               <View style={[styles.card, styles.listCard]}>
                 {pastEvenings.map((session, i) => (
@@ -458,8 +439,13 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <PastEveningRow
                       session={session}
                       priceCurrency={priceCurrency}
-                      nowMinuteMs={nowMinuteMs}
-                      onOpen={openEvening}
+                      now={now}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/evening',
+                          params: { startedAt: session.startedAt },
+                        })
+                      }
                     />
                   </View>
                 ))}
@@ -470,7 +456,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           {visibleDiaryEntries.length > 0 && (
             <>
               <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.myBeers.diaryHeader}
+                {cs.myBeers.diaryHeader}
               </Text>
               <View style={[styles.card, styles.listCard]}>
                 {visibleDiaryEntries.map((checkIn, i) => (
@@ -481,7 +467,12 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <HistoricalCheckInRow
                       checkIn={checkIn}
                       priceCurrency={priceCurrency}
-                      onOpen={openHistoricalCheckIn}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/beer-detail',
+                          params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+                        })
+                      }
                     />
                   </View>
                 ))}
@@ -514,7 +505,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   headerTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     color: Colors.foam,
   },
@@ -545,29 +536,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardSectionHeaderText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
   },
   dateLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     marginBottom: 4,
   },
   summary: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
   },
   lastDrink: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 4,
@@ -580,7 +571,7 @@ const styles = StyleSheet.create({
 
   // — Past list —
   listHeader: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -607,19 +598,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowDate: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,
     textTransform: 'uppercase',
   },
   rowPub: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
   rowSummary: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
   },
@@ -650,12 +641,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   addHistoryTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
   addHistorySubtitle: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -680,12 +671,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   diaryTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
   diaryMeta: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -703,13 +694,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
   },
   emptyBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',

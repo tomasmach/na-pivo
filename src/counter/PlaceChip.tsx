@@ -10,7 +10,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import {
   ChevronDownIcon,
   HouseIcon,
@@ -18,7 +18,7 @@ import {
   TreePineIcon,
 } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export type PlaceChipKind = 'pub' | 'private' | 'outdoors' | 'other' | 'detecting' | 'unknown';
@@ -61,7 +61,7 @@ export function PlaceChip({
       onPress={onPress}
       hitSlop={{ top: VERTICAL_SLOP, bottom: VERTICAL_SLOP }}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.counterPlaceChip(label)}
+      accessibilityLabel={cs.a11y.counterPlaceChip(label)}
       style={({ pressed }) => [
         styles.chip,
         isUnknown ? styles.chipUnknown : styles.chipDefault,
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   label: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     flexShrink: 1,
     includeFontPadding: false,

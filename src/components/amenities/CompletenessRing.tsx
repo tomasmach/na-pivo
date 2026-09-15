@@ -19,8 +19,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { t } from '@/i18n';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { cs } from '@/i18n/cs';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -58,7 +58,7 @@ export const CompletenessRing = memo(function CompletenessRing({
     <View
       style={styles.wrap}
       accessibilityRole="progressbar"
-      accessibilityLabel={t.mapPub.ringA11y(percent)}
+      accessibilityLabel={cs.mapPub.ringA11y(percent)}
       accessibilityValue={{ now: percent, min: 0, max: 100 }}
     >
       <View>
@@ -96,7 +96,7 @@ export const CompletenessRing = memo(function CompletenessRing({
         </View>
       </View>
       <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body} numberOfLines={1}>
-        {t.mapPub.ringCaption}
+        {cs.mapPub.ringCaption}
       </Text>
     </View>
   );
@@ -114,14 +114,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   percent: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   caption: {
     marginTop: 4,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.mutedText,
   },

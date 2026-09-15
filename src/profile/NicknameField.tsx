@@ -18,11 +18,10 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, ActivityIndicator, StyleSheet, type TextStyle } from 'react-native';
 
-import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { CheckIcon } from '@/components/shared/IconGlyph';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -175,15 +174,15 @@ export const NicknameField = memo(function NicknameField({
           style={styles.input}
           value={value}
           onChangeText={onChangeText}
-          placeholder={t.profile.form.nicknamePlaceholder}
-          placeholderTextColor={MockColors.fieldHint}
+          placeholder={cs.profile.form.nicknamePlaceholder}
+          placeholderTextColor={Colors.mutedText}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"
           spellCheck={false}
           maxLength={NICKNAME_MAX}
           autoFocus={autoFocus}
-          accessibilityLabel={t.a11y.profileNicknameInput}
+          accessibilityLabel={cs.a11y.profileNicknameInput}
           maxFontSizeMultiplier={FontScaleCap.body}
         />
         {hint.kind === 'checking' && <ActivityIndicator size="small" color={Colors.amber} />}
@@ -200,9 +199,9 @@ function NicknameHint({ hint }: { hint: HintState }) {
   let text: string;
   let style: TextStyle = styles.hintNeutral;
   if (hint.kind === 'checking') {
-    text = t.profile.form.nicknameChecking;
+    text = cs.profile.form.nicknameChecking;
   } else if (hint.kind === 'available') {
-    text = t.profile.form.nicknameAvailable;
+    text = cs.profile.form.nicknameAvailable;
     style = styles.hintOk;
   } else {
     text = hint.message;
@@ -225,26 +224,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     minHeight: 52,
-    borderRadius: Radius.card,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
   },
   at: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 18,
     color: Colors.amber,
   },
   input: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
     paddingVertical: 12,
   },
   hint: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     marginLeft: 2,

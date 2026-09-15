@@ -12,13 +12,15 @@
  * `detail` inline. Client-side validation runs before any network call.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   TextInput,
+  ActivityIndicator,
   Linking,
+  Platform,
   StyleSheet,
   type KeyboardTypeOptions,
   type TextInputProps,
@@ -27,9 +29,9 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -76,9 +78,7 @@ function Field({
 }: FieldProps) {
   return (
     <View style={styles.fieldGroup}>
-      <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-        {label}
-      </Text>
+      <Text style={styles.label}>{label}</Text>
       <TextInput
         style={styles.input}
         value={value}
@@ -108,32 +108,14 @@ interface SocialButtonProps {
   onPress: () => void;
   accessibilityLabel: string;
   disabled?: boolean;
-  /**
-   * White, the way Apple's own button looks.
-   *
-   * Sign in with Apple has two sanctioned styles, black and white, and on a
-   * stout-brown screen the black one is a dark button on a dark background —
-   * the one control here that people recognise by SHAPE goes invisible. White
-   * is both compliant and the only thing on the screen that reads as "the
-   * system is doing this, not the app".
-   */
-  light?: boolean;
 }
 
-function SocialButton({
-  label,
-  icon,
-  onPress,
-  accessibilityLabel,
-  disabled,
-  light,
-}: SocialButtonProps) {
+function SocialButton({ label, icon, onPress, accessibilityLabel, disabled }: SocialButtonProps) {
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       style={({ pressed }) => [
         styles.socialButton,
-        light && styles.socialButtonLight,
         pressed && styles.pressed,
         disabled && styles.disabled,
       ]}
@@ -142,10 +124,7 @@ function SocialButton({
       accessibilityState={{ disabled: !!disabled }}
     >
       {icon}
-      <Text
-        style={[styles.socialButtonLabel, light && styles.socialButtonLabelLight]}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
+      <Text style={styles.socialButtonLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
         {label}
       </Text>
     </Pressable>
@@ -167,30 +146,19 @@ export default function AuthScreen() {
   const updateProfile = useAccountStore((s) => s.updateProfile);
   const sessionRecoveryRequired = useAccountStore((s) => s.status === 'reauth-required');
 
-  // Registration is the default: this screen exists to get somebody an
-  // account. Signing in is the rarer errand and lives in a link at the foot.
-  const [mode, setMode] = useState<Mode>('register');
+  const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [nicknameReady, setNicknameReady] = useState(false);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState<null | 'submit' | 'google' | 'apple' | 'reset'>(null);
-  const operationInFlight = useRef(false);
+  const [busy, setBusy] = useState<null | 'submit' | 'google' | 'apple'>(null);
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
 
   const appleSupported = useMemo(() => isAppleSignInSupported(), []);
   const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
-
-  const leave = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)' as Href);
-    }
-  }, [router]);
 
   const switchMode = useCallback((next: Mode) => {
     trackUiInteraction(next === 'login' ? 'auth_login_mode' : 'auth_register_mode', 'select');
@@ -199,33 +167,32 @@ export default function AuthScreen() {
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (operationInFlight.current) return;
+    if (busy) return;
     trackUiInteraction('auth_email_submit', 'submit');
     const trimmedEmail = email.trim();
     if (!isValidEmail(trimmedEmail)) {
       trackUiInteraction('auth_email_submit', 'failure');
-      setError(t.account.errorEmailInvalid);
+      setError(cs.account.errorEmailInvalid);
       return;
     }
     if (password.length < MIN_PASSWORD) {
       trackUiInteraction('auth_email_submit', 'failure');
-      setError(t.account.errorPasswordShort);
+      setError(cs.account.errorPasswordShort);
       return;
     }
     const trimmedNickname = nickname.trim();
     if (mode === 'register') {
       if (!trimmedNickname) {
         trackUiInteraction('auth_email_submit', 'failure');
-        setError(t.account.errorNicknameMissing);
+        setError(cs.account.errorNicknameMissing);
         return;
       }
       if (!nicknameReady) {
         trackUiInteraction('auth_email_submit', 'failure');
-        setError(t.account.errorNicknameNotReady);
+        setError(cs.account.errorNicknameNotReady);
         return;
       }
     }
-    operationInFlight.current = true;
     setError('');
     setBusy('submit');
     try {
@@ -243,29 +210,29 @@ export default function AuthScreen() {
           if (trimmedNickname) {
             const nickResult = await updateProfile({ nickname: trimmedNickname });
             if (!nickResult.ok) {
-              showToast(t.account.nicknameSetFailedToast);
+              showToast(cs.account.nicknameSetFailedToast);
             }
           }
           if (!result.profile.emailVerified) {
-            showToast(t.account.verifyEmailSentToast);
+            showToast(cs.account.verifyEmailSentToast);
           }
           router.replace('/profile/privacy' as Href);
         } else {
-          leave();
+          router.back();
         }
         return;
       }
       if (result.code !== 'cancelled') {
         trackUiInteraction('auth_email_submit', 'failure');
-        setError(result.detail || t.account.errorGeneric);
+        setError(result.detail || cs.account.errorGeneric);
       } else {
         trackUiInteraction('auth_email_submit', 'cancel');
       }
     } finally {
-      operationInFlight.current = false;
       setBusy(null);
     }
   }, [
+    busy,
     email,
     password,
     nickname,
@@ -274,15 +241,13 @@ export default function AuthScreen() {
     login,
     register,
     updateProfile,
-    leave,
     router,
     showToast,
   ]);
 
   const handleSocial = useCallback(
     async (provider: 'google' | 'apple') => {
-      if (operationInFlight.current) return;
-      operationInFlight.current = true;
+      if (busy) return;
       const target = provider === 'google' ? 'auth_google_submit' : 'auth_apple_submit';
       trackUiInteraction(target, 'submit');
       setError('');
@@ -297,64 +262,55 @@ export default function AuthScreen() {
           if (result.profile.created === true || result.profile.nickname == null) {
             router.replace('/profile/privacy' as Href);
           } else {
-            leave();
+            router.back();
           }
           return;
         }
         if (result.code !== 'cancelled') {
           trackUiInteraction(target, 'failure');
-          setError(result.detail || t.account.errorGeneric);
+          setError(result.detail || cs.account.errorGeneric);
         } else {
           trackUiInteraction(target, 'cancel');
         }
       } finally {
-        operationInFlight.current = false;
         setBusy(null);
       }
     },
-    [leave, signInGoogle, signInApple, router],
+    [busy, signInGoogle, signInApple, router],
   );
 
   const handleSendReset = useCallback(async () => {
-    if (operationInFlight.current) return;
     trackUiInteraction('auth_reset_submit', 'submit');
     const trimmed = resetEmail.trim();
     if (!isValidEmail(trimmed)) {
       trackUiInteraction('auth_reset_submit', 'failure');
-      setError(t.account.errorEmailInvalid);
+      setError(cs.account.errorEmailInvalid);
       return;
     }
-    operationInFlight.current = true;
     setError('');
-    setBusy('reset');
-    try {
-      const result = await requestPasswordReset(trimmed);
-      if (!result.ok) {
-        trackUiInteraction('auth_reset_submit', 'failure');
-        setError(result.detail || t.account.errorGeneric);
-        return;
-      }
-      setResetOpen(false);
-      trackUiInteraction('auth_reset_submit', 'success');
-      setResetEmail('');
-      showToast(t.account.resetSentToast);
-      router.push('/auth/reset');
-    } finally {
-      operationInFlight.current = false;
-      setBusy(null);
+    const result = await requestPasswordReset(trimmed);
+    if (!result.ok) {
+      trackUiInteraction('auth_reset_submit', 'failure');
+      setError(result.detail || cs.account.errorGeneric);
+      return;
     }
+    setResetOpen(false);
+    trackUiInteraction('auth_reset_submit', 'success');
+    setResetEmail('');
+    showToast(cs.account.resetSentToast);
+    router.push('/auth/reset');
   }, [resetEmail, requestPasswordReset, showToast, router]);
 
   const submitLabel =
     busy === 'submit'
-      ? t.account.loading
+      ? cs.account.loading
       : mode === 'login'
-        ? t.account.submitLogin
-        : t.account.submitRegister;
+        ? cs.account.submitLogin
+        : cs.account.submitRegister;
   const visibleError =
     error ||
     (sessionRecoveryRequired
-      ? t.account.sessionExpired
+      ? 'Přihlášení vypršelo. Přihlas se znovu, piva uložená v telefonu zůstanou v bezpečí.'
       : '');
 
   return (
@@ -362,17 +318,15 @@ export default function AuthScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <Pressable
-          onPress={leave}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
-        <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.account.authTitle}
-        </Text>
+        <Text style={styles.headerTitle}>{cs.account.authTitle}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -385,12 +339,41 @@ export default function AuthScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.account.intro}
+          </Text>
+
+          {/* ── Mode toggle ── */}
+          <View style={styles.segmented}>
+            {(['login', 'register'] as const).map((value) => {
+              const selected = value === mode;
+              const label = value === 'login' ? cs.account.tabLogin : cs.account.tabRegister;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => switchMode(value)}
+                  style={[styles.segment, selected && styles.segmentSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={
+                    value === 'login' ? cs.a11y.authTabLogin : cs.a11y.authTabRegister
+                  }
+                >
+                  <Text
+                    style={[styles.segmentLabel, selected && styles.segmentLabelSelected]}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
           {/* ── Fields ── */}
           {mode === 'register' && (
             <View style={styles.fieldGroup}>
-              <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.account.nicknameLabel}
-              </Text>
+              <Text style={styles.label}>{cs.account.nicknameLabel}</Text>
               <NicknameField
                 value={nickname}
                 onChangeText={(value) => {
@@ -399,30 +382,35 @@ export default function AuthScreen() {
                 }}
                 onReadyChange={setNicknameReady}
               />
+              {nickname.trim().length === 0 && (
+                <Text style={styles.nicknameHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.account.nicknameHint}
+                </Text>
+              )}
             </View>
           )}
           <Field
-            label={t.account.emailLabel}
+            label={cs.account.emailLabel}
             value={email}
             onChangeText={(value) => {
               setEmail(value);
               if (error) setError('');
             }}
-            placeholder={t.account.emailPlaceholder}
-            accessibilityLabel={t.a11y.authEmailInput}
+            placeholder={cs.account.emailPlaceholder}
+            accessibilityLabel={cs.a11y.authEmailInput}
             keyboardType="email-address"
             autoComplete="email"
             textContentType="emailAddress"
           />
           <Field
-            label={t.account.passwordLabel}
+            label={cs.account.passwordLabel}
             value={password}
             onChangeText={(value) => {
               setPassword(value);
               if (error) setError('');
             }}
-            placeholder={t.account.passwordPlaceholder}
-            accessibilityLabel={t.a11y.authPasswordInput}
+            placeholder={cs.account.passwordPlaceholder}
+            accessibilityLabel={cs.a11y.authPasswordInput}
             secureTextEntry
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             textContentType={mode === 'login' ? 'password' : 'newPassword'}
@@ -440,10 +428,13 @@ export default function AuthScreen() {
               label={submitLabel}
               onPress={handleSubmit}
               glow={busy || sessionRecoveryRequired ? 'none' : 'soft'}
-              loading={busy === 'submit'}
-              disabled={busy !== null && busy !== 'submit'}
               accessibilityLabel={submitLabel}
             />
+            {busy === 'submit' && (
+              <View style={styles.buttonSpinner} pointerEvents="none">
+                <ActivityIndicator color={Colors.stout} />
+              </View>
+            )}
           </View>
 
           {/* ── Forgot password ── */}
@@ -456,14 +447,12 @@ export default function AuthScreen() {
                 setError('');
               }}
               style={({ pressed }) => [styles.forgotLink, pressed && styles.pressed]}
-              disabled={busy !== null}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.authForgotPassword}
-              accessibilityState={{ disabled: busy !== null }}
+              accessibilityLabel={cs.a11y.authForgotPassword}
               hitSlop={8}
             >
               <Text style={styles.forgotText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.account.forgotPassword}
+                {cs.account.forgotPassword}
               </Text>
             </Pressable>
           )}
@@ -471,31 +460,29 @@ export default function AuthScreen() {
           {resetOpen && (
             <View style={styles.resetCard}>
               <Text style={styles.resetPrompt} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.account.resetPrompt}
+                {cs.account.resetPrompt}
               </Text>
               <TextInput
                 style={styles.input}
                 value={resetEmail}
                 onChangeText={setResetEmail}
-                placeholder={t.account.emailPlaceholder}
+                placeholder={cs.account.emailPlaceholder}
                 placeholderTextColor={Colors.mutedText}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
                 autoComplete="email"
                 textContentType="emailAddress"
-                accessibilityLabel={t.a11y.authResetEmailInput}
+                accessibilityLabel={cs.a11y.authResetEmailInput}
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
               <GlowButton
-                label={t.account.resetSend}
+                label={cs.account.resetSend}
                 onPress={handleSendReset}
                 variant="secondary"
                 glow="none"
                 height={52}
-                loading={busy === 'reset'}
-                disabled={busy !== null && busy !== 'reset'}
-                accessibilityLabel={t.account.resetSend}
+                accessibilityLabel={cs.account.resetSend}
               />
             </View>
           )}
@@ -503,75 +490,57 @@ export default function AuthScreen() {
           {/* ── Divider ── */}
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.account.orDivider}
-            </Text>
+            <Text style={styles.dividerText}>{cs.account.orDivider}</Text>
             <View style={styles.dividerLine} />
           </View>
 
           {/* ── Social ── */}
           {appleSupported && (
             <SocialButton
-              light
-              label={t.account.continueWithApple}
-              icon={<AppleIcon size={20} color={Colors.black} />}
+              label={cs.account.continueWithApple}
+              icon={<AppleIcon size={20} color={Colors.foam} />}
               onPress={() => handleSocial('apple')}
-              accessibilityLabel={t.a11y.authSignInApple}
+              accessibilityLabel={cs.a11y.authSignInApple}
               disabled={busy != null}
             />
           )}
           {googleConfigured && (
-            <SocialButton
-              label={t.account.continueWithGoogle}
-              icon={<GoogleIcon size={20} color={Colors.foam} />}
-              onPress={() => handleSocial('google')}
-              accessibilityLabel={t.a11y.authSignInGoogle}
-              disabled={busy != null}
-            />
+            <>
+              <SocialButton
+                label={cs.account.continueWithGoogle}
+                icon={<GoogleIcon size={20} color={Colors.foam} />}
+                onPress={() => handleSocial('google')}
+                accessibilityLabel={cs.a11y.authSignInGoogle}
+                disabled={busy != null}
+              />
+              {Platform.OS === 'android' ? (
+                <Text style={styles.googleHelp}>
+                  Google účet je volitelná cesta k přihlášení a synchronizaci. Případné ověření věku řeší Google Play; Na pivo nevidí datum narození ani doklady.
+                </Text>
+              ) : null}
+            </>
           )}
 
           {/* ── Terms consent (covers e-mail registration and social sign-in) ── */}
           <Text style={styles.legalNote} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.account.termsNotePrefix}
+            {cs.account.termsNotePrefix}
             <Text
               style={styles.legalLink}
               onPress={() => void Linking.openURL(TERMS_URL)}
               accessibilityRole="link"
             >
-              {t.account.termsNoteTermsLink}
+              {cs.account.termsNoteTermsLink}
             </Text>
-            {t.account.termsNoteMiddle}
+            {cs.account.termsNoteMiddle}
             <Text
               style={styles.legalLink}
               onPress={() => void Linking.openURL(PRIVACY_URL)}
               accessibilityRole="link"
             >
-              {t.account.termsNotePrivacyLink}
+              {cs.account.termsNotePrivacyLink}
             </Text>
-            {t.account.termsNoteSuffix}
+            {cs.account.termsNoteSuffix}
           </Text>
-
-          {/* The other errand, as a link. Registering and signing in are not two
-              equal choices to weigh at the top of the screen: almost everybody
-              here is new, and the segmented control made the returning user's
-              rarer job cost the newcomer a decision. */}
-          <Pressable
-            onPress={() => switchMode(mode === 'register' ? 'login' : 'register')}
-            style={({ pressed }) => [styles.switchRow, pressed && styles.pressed]}
-            disabled={busy !== null}
-            accessibilityRole="button"
-            accessibilityLabel={
-              mode === 'register' ? t.a11y.authTabLogin : t.a11y.authTabRegister
-            }
-            accessibilityState={{ disabled: busy !== null }}
-          >
-            <Text style={styles.switchText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {mode === 'register' ? t.account.haveAccount : t.account.noAccount}{' '}
-              <Text style={styles.switchLink}>
-                {mode === 'register' ? t.account.tabLogin : t.account.tabRegister}
-              </Text>
-            </Text>
-          </Pressable>
       </KeyboardAwareScrollView>
     </View>
   );
@@ -587,7 +556,7 @@ const styles = StyleSheet.create({
   },
   legalNote: {
     marginTop: Spacing.xs,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -599,6 +568,14 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  googleHelp: {
+    marginTop: Spacing.xs,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: Colors.mutedText,
+    textAlign: 'center',
   },
 
   // ── Header ──
@@ -621,7 +598,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
@@ -635,6 +612,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
     gap: Spacing.md,
+  },
+  intro: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.foamMuted,
   },
 
   // ── Mode toggle ──
@@ -658,7 +641,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   segmentLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -671,7 +654,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   label: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 12,
     color: Colors.mutedText,
     textTransform: 'uppercase',
@@ -684,12 +667,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
   },
+  nicknameHint: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+    marginLeft: 2,
+  },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
@@ -700,6 +690,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: Spacing.xs,
   },
+  buttonSpinner: {
+    position: 'absolute',
+    top: 0,
+    right: 24,
+    bottom: 0,
+    justifyContent: 'center',
+  },
 
   // ── Forgot password ──
   forgotLink: {
@@ -707,7 +704,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   forgotText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.amber,
   },
@@ -720,7 +717,7 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
   },
   resetPrompt: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -739,7 +736,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
   },
   dividerText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -756,24 +753,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  switchRow: {
-    marginTop: Spacing.lg,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  switchText: { fontWeight: '500', fontSize: 15, color: Colors.foamMuted },
-  switchLink: { fontWeight: '700', color: Colors.amber },
-  socialButtonLight: {
-    backgroundColor: Colors.white,
-    borderColor: Colors.white,
-  },
   socialButtonLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
-  socialButtonLabelLight: { color: Colors.black },
   pressed: {
     opacity: 0.7,
   },

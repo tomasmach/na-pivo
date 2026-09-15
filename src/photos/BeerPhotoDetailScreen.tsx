@@ -31,24 +31,25 @@ import {
   TrophyIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
+import { deleteBeerPhoto } from '@/data/beerPhotosClient';
 import {
   deleteBeerPhotoLocalFile,
   enqueueBeerPhoto,
   removeQueuedBeerPhoto,
 } from '@/data/beerPhotosQueue';
 import { enterPhotoContest } from '@/data/photoContestClient';
-import { intlLocale, t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** "9. července 2026" — the long Czech date for the meta row. */
 function longDate(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString(intlLocale, {
+  return new Date(ms).toLocaleDateString('cs-CZ', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -62,13 +63,13 @@ function longDate(iso: string): string {
 function failureMessage(code?: string): string {
   switch (code) {
     case 'photo_limit_reached':
-      return t.photoDiary.errorLimitReached;
+      return cs.photoDiary.errorLimitReached;
     case 'photo_too_large':
-      return t.photoDiary.errorTooLarge;
+      return cs.photoDiary.errorTooLarge;
     case 'photo_invalid':
-      return t.photoDiary.errorInvalid;
+      return cs.photoDiary.errorInvalid;
     default:
-      return t.photoDiary.failedBadge;
+      return cs.photoDiary.failedBadge;
   }
 }
 
@@ -99,12 +100,8 @@ export default function BeerPhotoDetailScreen() {
   const photo = useBeerPhotosStore((s) =>
     s.photos.find((p) => p.clientId === key || p.id === key),
   );
-  const uri = photo ? photo.imageUrl ?? photo.localUri : undefined;
 
   const [busy, setBusy] = useState(false);
-  const [failedImageUri, setFailedImageUri] = useState<string | null>(null);
-  const [imageReloadKey, setImageReloadKey] = useState(0);
-  const imageLoadFailed = !!uri && failedImageUri === uri;
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -115,17 +112,21 @@ export default function BeerPhotoDetailScreen() {
     if (!photo || busy) return;
     setBusy(true);
     try {
-      // Synced, pending, and failed photos share one durable client-id delete.
-      // This also suppresses a stale GET captured before DELETE and cancels a
-      // multipart upload that may otherwise commit after its native abort.
-      const deletionQueued = await removeQueuedBeerPhoto(photo.clientId);
-      if (!deletionQueued) {
-        showToast(t.photoDiary.deleteError);
-        return;
+      if (photo.syncState === 'synced' && photo.id) {
+        const res = await deleteBeerPhoto(photo.id);
+        if (!res.ok) {
+          showToast(cs.photoDiary.deleteError);
+          return;
+        }
+        removePhoto(photo.id);
+      } else {
+        // Never uploaded (or permanently rejected): cancel the queued op and
+        // clean up the durable local JPEG — nothing lives server-side.
+        await removeQueuedBeerPhoto(photo.clientId);
+        deleteBeerPhotoLocalFile(photo.clientId);
+        removePhoto(photo.clientId);
       }
-      deleteBeerPhotoLocalFile(photo.clientId);
-      removePhoto(photo.clientId);
-      showToast(t.photoDiary.deletedToast);
+      showToast(cs.photoDiary.deletedToast);
       goBack();
     } finally {
       setBusy(false);
@@ -134,39 +135,30 @@ export default function BeerPhotoDetailScreen() {
 
   const confirmDelete = useCallback(() => {
     showAppDialog({
-      title: t.photoDiary.deleteConfirmTitle,
-      message: t.photoDiary.deleteConfirmBody,
+      title: cs.photoDiary.deleteConfirmTitle,
+      message: cs.photoDiary.deleteConfirmBody,
       buttons: [
-        { text: t.photoDiary.deleteCancel, style: 'cancel' },
-        { text: t.photoDiary.deleteConfirm, style: 'destructive', onPress: () => void doDelete() },
+        { text: cs.photoDiary.deleteCancel, style: 'cancel' },
+        { text: cs.photoDiary.deleteConfirm, style: 'destructive', onPress: () => void doDelete() },
       ],
     });
   }, [doDelete]);
 
-  const retryUpload = useCallback(async () => {
+  const retryUpload = useCallback(() => {
     if (!photo?.localUri) return;
-    const queued = await enqueueBeerPhoto({
+    void enqueueBeerPhoto({
       clientId: photo.clientId,
       localUri: photo.localUri,
       caption: photo.caption,
       pubCacheKey: photo.pubCacheKey || undefined,
       pubName: photo.pubName || undefined,
       pubCity: photo.pubCity || undefined,
-      partyCode: photo.partyCode,
-      partyDrinkingDay: photo.partyDrinkingDay,
       visibility: photo.visibility,
       takenAt: photo.takenAt,
     });
-    showToast(
-      queued.persisted ? t.photoDiary.retryQueuedToast : t.photoDiary.errorSave,
-      {
-        icon: queued.persisted ? (
-          <RefreshCwIcon size={18} color={Colors.amber} />
-        ) : (
-          <InfoIcon size={18} color={Colors.foamMuted} />
-        ),
-      },
-    );
+    showToast(cs.photoDiary.retryQueuedToast, {
+      icon: <RefreshCwIcon size={18} color={Colors.amber} />,
+    });
   }, [photo, showToast]);
 
   const enterContest = useCallback(async () => {
@@ -175,7 +167,7 @@ export default function BeerPhotoDetailScreen() {
     try {
       const res = await enterPhotoContest(photo.id);
       if (res.ok) {
-        showToast(t.photoContest.enteredToast, {
+        showToast(cs.photoContest.enteredToast, {
           icon: <TrophyIcon size={18} color={Colors.amber} />,
         });
         // Reconcile inContest on the stored photo, then show the arena.
@@ -184,10 +176,10 @@ export default function BeerPhotoDetailScreen() {
         return;
       }
       if (res.code === 'nickname_required') {
-        showToast(t.photoContest.errorNicknameRequired);
+        showToast(cs.photoContest.errorNicknameRequired);
         return;
       }
-      showToast(res.detail || t.photoContest.errorEnter);
+      showToast(res.detail || cs.photoContest.errorEnter);
     } finally {
       setBusy(false);
     }
@@ -198,14 +190,16 @@ export default function BeerPhotoDetailScreen() {
   // the contest screen's enter strip.
   const confirmEnterContest = useCallback(() => {
     showAppDialog({
-      title: t.photoContest.enterConfirmTitle,
-      message: t.photoContest.enterConfirmBody,
+      title: cs.photoContest.enterConfirmTitle,
+      message: cs.photoContest.enterConfirmBody,
       buttons: [
-        { text: t.common.cancel, style: 'cancel' },
-        { text: t.photoContest.enterCta, onPress: () => void enterContest() },
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.photoContest.enterCta, onPress: () => void enterContest() },
       ],
     });
   }, [enterContest]);
+
+  const uri = photo ? photo.imageUrl ?? photo.localUri : undefined;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
@@ -215,20 +209,20 @@ export default function BeerPhotoDetailScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.photoDiary.detailTitle}
+          {cs.photoDiary.detailTitle}
         </Text>
         {photo ? (
           <Pressable
             onPress={confirmDelete}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.photoDelete}
+            accessibilityLabel={cs.a11y.photoDelete}
             style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
           >
             <Trash2Icon size={20} color={Colors.foamMuted} />
@@ -241,7 +235,7 @@ export default function BeerPhotoDetailScreen() {
       {!photo ? (
         <View style={styles.missingWrap}>
           <Text style={styles.missingText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.photoDiary.detailMissing}
+            {cs.photoDiary.detailMissing}
           </Text>
         </View>
       ) : (
@@ -251,36 +245,12 @@ export default function BeerPhotoDetailScreen() {
         >
           <View style={styles.photoCard}>
             {uri ? (
-              <View style={styles.photo}>
-                <Image
-                  key={`${photo.clientId}:${imageReloadKey}`}
-                  source={{ uri }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                  accessibilityIgnoresInvertColors
-                  onError={() => setFailedImageUri(uri)}
-                />
-                {imageLoadFailed ? (
-                  <View style={styles.photoLoadError} accessibilityLiveRegion="polite">
-                    <Text style={styles.photoLoadErrorText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {t.photoDiary.viewerLoadError}
-                    </Text>
-                    <Pressable
-                      onPress={() => {
-                        setFailedImageUri(null);
-                        setImageReloadKey((value) => value + 1);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={t.a11y.photoViewerRetry}
-                      style={({ pressed }) => [styles.photoLoadRetry, pressed && styles.dim]}
-                    >
-                      <Text style={styles.photoLoadRetryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                        {t.photoDiary.viewerRetry}
-                      </Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
+              <Image
+                source={{ uri }}
+                style={styles.photo}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
             ) : (
               <View style={styles.photo} />
             )}
@@ -291,7 +261,7 @@ export default function BeerPhotoDetailScreen() {
             <View style={styles.syncRow}>
               <RefreshCwIcon size={15} color={Colors.foamMuted} />
               <Text style={styles.syncText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.photoDiary.pendingBadge}
+                {cs.photoDiary.pendingBadge}
               </Text>
             </View>
           ) : null}
@@ -308,11 +278,11 @@ export default function BeerPhotoDetailScreen() {
                   onPress={retryUpload}
                   style={({ pressed }) => [styles.retryPill, pressed && styles.dim]}
                   accessibilityRole="button"
-                  accessibilityLabel={t.a11y.photoRetry}
+                  accessibilityLabel={cs.a11y.photoRetry}
                   hitSlop={6}
                 >
                   <Text style={styles.retryPillText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {t.photoDiary.retryUpload}
+                    {cs.photoDiary.retryUpload}
                   </Text>
                 </Pressable>
               ) : null}
@@ -348,8 +318,8 @@ export default function BeerPhotoDetailScreen() {
               }
               text={
                 photo.visibility === 'friends'
-                  ? t.photoDiary.visibilityFriends
-                  : t.photoDiary.visibilityPrivate
+                  ? cs.photoDiary.visibilityFriends
+                  : cs.photoDiary.visibilityPrivate
               }
             />
           </View>
@@ -360,15 +330,15 @@ export default function BeerPhotoDetailScreen() {
               onPress={() => router.push('/photo-contest' as Href)}
               style={({ pressed }) => [styles.contestNote, pressed && styles.dim]}
               accessibilityRole="button"
-              accessibilityLabel={t.a11y.photoContestLink}
+              accessibilityLabel={cs.a11y.photoContestLink}
             >
               <TrophyIcon size={18} color={Colors.amber} />
               <View style={styles.contestNoteText}>
                 <Text style={styles.contestNoteTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.photoDiary.inContestNote}
+                  {cs.photoDiary.inContestNote}
                 </Text>
                 <Text style={styles.contestNoteLink} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.photoDiary.openContest}
+                  {cs.photoDiary.openContest}
                 </Text>
               </View>
               <ChevronRightIcon size={16} color={Colors.mutedText} />
@@ -376,19 +346,19 @@ export default function BeerPhotoDetailScreen() {
           ) : photo.syncState === 'synced' && photo.id ? (
             <View style={styles.contestCta}>
               <GlowButton
-                label={t.photoDiary.enterContestCta}
+                label={cs.photoDiary.enterContestCta}
                 onPress={confirmEnterContest}
                 glow="soft"
                 height={56}
                 icon={<TrophyIcon size={18} color={Colors.stout} />}
               />
               <Text style={styles.contestHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.photoDiary.enterContestHint}
+                {cs.photoDiary.enterContestHint}
               </Text>
             </View>
           ) : (
             <Text style={styles.contestHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.photoDiary.syncBeforeContest}
+              {cs.photoDiary.syncBeforeContest}
             </Text>
           )}
         </ScrollView>
@@ -418,7 +388,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
   },
@@ -433,7 +403,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   missingText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -454,38 +424,6 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 5,
     backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoLoadError: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.stout3,
-  },
-  photoLoadErrorText: {
-    textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.foamMuted,
-  },
-  photoLoadRetry: {
-    minHeight: HitArea.min,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-  },
-  photoLoadRetryText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.foam,
   },
 
   syncRow: {
@@ -495,7 +433,7 @@ const styles = StyleSheet.create({
   },
   syncText: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -512,13 +450,13 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   retryPillText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
   },
 
   caption: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -539,7 +477,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -559,12 +497,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   contestNoteTitle: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foam,
   },
   contestNoteLink: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
   },
@@ -573,7 +511,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   contestHint: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,

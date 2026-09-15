@@ -40,9 +40,9 @@ import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon, RefreshCwIcon } from '@/components/shared/IconGlyph';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 /**
@@ -223,7 +223,7 @@ export function CompassCard({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {t.compass.revealHint}
+              {cs.compass.revealHint}
             </Text>
           ) : (
             <>
@@ -279,7 +279,7 @@ export function CompassCard({
                         numberOfLines={1}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {beerMenuRotates ? `${t.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
+                        {beerMenuRotates ? `${cs.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
                       </Text>
                     </View>
                   ) : beerMenuRotates ? (
@@ -290,7 +290,7 @@ export function CompassCard({
                         numberOfLines={1}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {t.counter.rotatingMenuBadge}
+                        {cs.counter.rotatingMenuBadge}
                       </Text>
                     </View>
                   ) : null}
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   distance: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     includeFontPadding: false,
     textAlign: 'center',
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   unit: {
     marginTop: -2,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     letterSpacing: 3.2,
     color: Colors.foamMuted,
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   },
   hours: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     includeFontPadding: false,
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   },
   revealHint: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

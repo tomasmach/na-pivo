@@ -10,10 +10,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CrownIcon } from '@/components/shared/IconGlyph';
 import type { BoardEntry } from '@/data/leaderboardsClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface GlobalBoardRowProps {
@@ -30,9 +30,9 @@ const AVATAR_SIZE = 34;
 
 /** `@nickname` (the listing handle) → display name → a friendly fallback. */
 function resolveName(entry: BoardEntry): string {
-  if (entry.isMe) return t.leaderboards.rowMe;
+  if (entry.isMe) return cs.leaderboards.rowMe;
   if (entry.account.nickname) return `@${entry.account.nickname}`;
-  return entry.account.displayName || t.leaderboards.rowFallbackName;
+  return entry.account.displayName || cs.leaderboards.rowFallbackName;
 }
 
 export const GlobalBoardRow = memo(function GlobalBoardRow({
@@ -43,7 +43,7 @@ export const GlobalBoardRow = memo(function GlobalBoardRow({
 }: GlobalBoardRowProps) {
   const { rank, score, isMe, isFriend, account } = entry;
 
-  const a11yLabel = t.a11y.leaderboardRow(rank, resolveName(entry), score, unit);
+  const a11yLabel = cs.a11y.leaderboardRow(rank, resolveName(entry), score, unit);
 
   const rowContent = (
     <>
@@ -76,7 +76,7 @@ export const GlobalBoardRow = memo(function GlobalBoardRow({
         </Text>
         {isFriend && !isMe ? (
           <Text style={styles.friendLine} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.leaderboards.rowFriend}
+            {cs.leaderboards.rowFriend}
           </Text>
         ) : null}
       </View>
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankMedal: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 16,
     lineHeight: 16 * 1.24,
     color: Colors.foamMuted,
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   rankPlain: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 15,
     lineHeight: 15 * 1.24,
     color: Colors.mutedText,
@@ -176,13 +176,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   friendLine: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   score: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     lineHeight: 18 * 1.24,
     color: Colors.foam,

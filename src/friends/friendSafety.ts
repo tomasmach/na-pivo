@@ -12,15 +12,15 @@ import { useCallback } from 'react';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { blockFriend, type FriendProfile } from '@/data/friendsClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return t.friends.fallbackName;
+  if (!profile) return 'Kámoš';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || t.friends.fallbackName;
+  return profile.displayName || 'Kámoš';
 }
 
 /**
@@ -39,12 +39,12 @@ export function useFriendSafety(onChanged?: () => void) {
 
       const confirmReport = () => {
         showAppDialog({
-          title: t.profile.report.confirmTitle,
-          message: t.profile.report.confirmBody(name),
+          title: cs.profile.report.confirmTitle,
+          message: cs.profile.report.confirmBody(name),
           buttons: [
-            { text: t.common.cancel, style: 'cancel' },
+            { text: cs.common.cancel, style: 'cancel' },
             {
-              text: t.profile.report.confirmSubmit,
+              text: cs.profile.report.confirmSubmit,
               style: 'destructive',
               onPress: () => {
                 void reportProfileContent({
@@ -52,7 +52,7 @@ export function useFriendSafety(onChanged?: () => void) {
                   reason: 'other',
                   comment: name,
                 }).then((res) => {
-                  showToast(res.ok ? t.friends.reportDone : res.detail || t.profile.edit.errorGeneric);
+                  showToast(res.ok ? cs.friends.reportDone : res.detail || cs.profile.edit.errorGeneric);
                 });
               },
             },
@@ -62,17 +62,17 @@ export function useFriendSafety(onChanged?: () => void) {
 
       const confirmBlock = () => {
         showAppDialog({
-          title: t.friends.blockTitle(name),
-          message: t.friends.blockBody,
+          title: cs.friends.blockTitle(name),
+          message: cs.friends.blockBody,
           buttons: [
-            { text: t.common.cancel, style: 'cancel' },
+            { text: cs.common.cancel, style: 'cancel' },
             {
-              text: t.friends.blockConfirm,
+              text: cs.friends.blockConfirm,
               style: 'destructive',
               onPress: () => {
                 void blockFriend(profile.id).then((res) => {
                   if (res.ok) {
-                    showToast(t.friends.blocked);
+                    showToast(cs.friends.blocked);
                     onChanged?.();
                   } else {
                     showToast(res.detail);
@@ -85,11 +85,11 @@ export function useFriendSafety(onChanged?: () => void) {
       };
 
       showAppDialog({
-        title: t.friends.rowActionsTitle,
+        title: cs.friends.rowActionsTitle,
         buttons: [
-          { text: t.friends.reportAction, onPress: confirmReport },
-          { text: t.friends.blockAction, style: 'destructive', onPress: confirmBlock },
-          { text: t.common.cancel, style: 'cancel' },
+          { text: cs.friends.reportAction, onPress: confirmReport },
+          { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
+          { text: cs.common.cancel, style: 'cancel' },
         ],
       });
     },

@@ -17,11 +17,11 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import { CameraIcon, ChevronRightIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchPhotoContestTeaser, type PhotoContestSnapshot } from '@/data/photoContestClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 export function ContestTeaser() {
@@ -53,9 +53,9 @@ export function ContestTeaser() {
 
   const contest = snapshot?.contest ?? null;
   const entries = snapshot?.entries ?? [];
-  const myEntry = snapshot?.myEntry ?? (entries.find((e) => e.isMine) ?? null);
+  const myEntry = entries.find((e) => e.isMine) ?? null;
   const voted = snapshot?.myVoteEntryId != null;
-  const foreignCount = Math.max(0, (snapshot?.entryCount ?? entries.length) - (myEntry ? 1 : 0));
+  const foreignCount = entries.length - (myEntry ? 1 : 0);
 
   // Fresh, unseen results outrank every running-round state for a few days:
   // opening the contest (or dismissing the celebration) marks them seen.
@@ -67,20 +67,20 @@ export function ContestTeaser() {
   if (resultsUnseen) {
     subtitle =
       myRank != null && myRank <= 3
-        ? t.photoContest.teaserResultsPodiumSubtitle
-        : t.photoContest.teaserResultsSubtitle;
+        ? cs.photoContest.teaserResultsPodiumSubtitle
+        : cs.photoContest.teaserResultsSubtitle;
   } else {
     let base: string;
     if (!contest) {
-      base = t.photoContest.teaserFallbackSubtitle;
+      base = cs.photoContest.teaserFallbackSubtitle;
     } else if (myEntry) {
-      base = t.photoContest.teaserMyEntrySubtitle(t.photoContest.votesCount(myEntry.votes));
+      base = cs.photoContest.teaserMyEntrySubtitle(cs.photoContest.votesCount(myEntry.votes));
     } else if (voted) {
-      base = t.photoContest.teaserVotedSubtitle;
+      base = cs.photoContest.teaserVotedSubtitle;
     } else if (foreignCount > 0) {
-      base = t.photoContest.teaserVoteSubtitle(foreignCount);
+      base = cs.photoContest.teaserVoteSubtitle(foreignCount);
     } else {
-      base = t.photoContest.teaserEmptySubtitle;
+      base = cs.photoContest.teaserEmptySubtitle;
     }
     const countdown = contest ? contestCountdownLabel(contest.periodEnd) : '';
     subtitle = countdown ? `${base} · ${countdown}` : base;
@@ -94,7 +94,7 @@ export function ContestTeaser() {
     <Pressable
       onPress={open}
       accessibilityRole="button"
-      accessibilityLabel={t.a11y.photoContestLink}
+      accessibilityLabel={cs.a11y.photoContestLink}
       style={({ pressed }) => [styles.strip, pressed && styles.pressed]}
     >
       <View style={styles.iconWell}>
@@ -106,7 +106,7 @@ export function ContestTeaser() {
       </View>
       <View style={styles.textCol}>
         <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {t.photoContest.title}
+          {cs.photoContest.title}
         </Text>
         <Text style={styles.subtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
           {subtitle}
@@ -146,13 +146,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   subtitle: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12.5,
     color: Colors.foamMuted,
   },

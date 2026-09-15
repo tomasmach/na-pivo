@@ -10,13 +10,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { useAccountStore } from '@/stores/accountStore';
 
@@ -33,43 +33,18 @@ export default function VerifyEmailScreen() {
   const verifyEmail = useAccountStore((s) => s.verifyEmail);
 
   const token = firstParam(params.token).trim();
-  const [verification, setVerification] = useState<{
-    token: string;
-    state: Exclude<VerifyState, 'invalid'>;
-  } | null>(token ? { token, state: 'loading' } : null);
-  const state: VerifyState = !token
-    ? 'invalid'
-    : verification?.token === token
-      ? verification.state
-      : 'loading';
-  // Reuse one request per active token. A restarted effect can subscribe to
-  // the same promise, while a different deep link starts a fresh request.
-  const verificationRequestRef = useRef<{
-    token: string;
-    promise: ReturnType<typeof verifyEmail>;
-  } | null>(null);
+  const [state, setState] = useState<VerifyState>(token ? 'loading' : 'invalid');
+  // Guard against React 18 double-invoke / re-renders firing the call twice.
+  const ranRef = useRef(false);
 
   useEffect(() => {
-    if (!token) {
-      verificationRequestRef.current = null;
-      return;
-    }
-    if (verificationRequestRef.current?.token !== token) {
-      verificationRequestRef.current = {
-        token,
-        promise: verifyEmail(token),
-      };
-    }
-    const request = verificationRequestRef.current.promise;
+    if (!token || ranRef.current) return;
+    ranRef.current = true;
     let active = true;
-    void request
-      .then((result) => {
-        if (!active) return;
-        setVerification({ token, state: result.ok ? 'success' : 'error' });
-      })
-      .catch(() => {
-        if (active) setVerification({ token, state: 'error' });
-      });
+    void verifyEmail(token).then((result) => {
+      if (!active) return;
+      setState(result.ok ? 'success' : 'error');
+    });
     return () => {
       active = false;
     };
@@ -79,7 +54,7 @@ export default function VerifyEmailScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)' as Href);
+      router.replace('/(tabs)');
     }
   };
 
@@ -95,26 +70,26 @@ export default function VerifyEmailScreen() {
           <>
             <ActivityIndicator size="large" color={Colors.amber} />
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.account.verifyLoading}
+              {cs.account.verifyLoading}
             </Text>
           </>
         ) : (
           <>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {state === 'success' ? t.account.verifySuccessTitle : t.account.verifyErrorTitle}
+            <Text style={styles.title}>
+              {state === 'success' ? cs.account.verifySuccessTitle : cs.account.verifyErrorTitle}
             </Text>
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
               {state === 'success'
-                ? t.account.verifySuccessBody
+                ? cs.account.verifySuccessBody
                 : state === 'invalid'
-                  ? t.account.verifyInvalidBody
-                  : t.account.verifyErrorBody}
+                  ? cs.account.verifyInvalidBody
+                  : cs.account.verifyErrorBody}
             </Text>
             <View style={styles.button}>
               <GlowButton
-                label={t.account.verifyDoneCta}
+                label={cs.account.verifyDoneCta}
                 onPress={leave}
-                accessibilityLabel={t.account.verifyDoneCta}
+                accessibilityLabel={cs.account.verifyDoneCta}
               />
             </View>
           </>
@@ -137,14 +112,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 34,
     lineHeight: 42,
     color: Colors.foam,
     textAlign: 'center',
   },
   body: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,

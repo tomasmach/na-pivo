@@ -12,9 +12,9 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { BeerIcon, CheckIcon, XIcon, type IconProps } from '@/components/shared/IconGlyph';
 
 export type Nudge =
@@ -37,10 +37,6 @@ export type Nudge =
       undoLabel: string;
       onUndo: () => void;
       actionAccessibilityLabel?: string;
-      /** Same escape hatch as `rapid`: a check beside "nenačetlo se" is a lie
-       *  about what happened. Defaults to the check, which is right for
-       *  "spočítáno · Vrátit". */
-      icon?: React.ComponentType<IconProps>;
     }
   | { kind: 'dopito'; label: string; onPress: () => void }
   | { kind: 'checkin'; text: string; ctaLabel: string; onPress: () => void; onDismiss: () => void }
@@ -63,14 +59,9 @@ const PILL_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 } as const;
 
 function StripText({ text }: { text: string }) {
   return (
-    // The slot is a fixed 52pt row so the button under it never jumps, which
-    // means the sentence cannot have more room at large Dynamic Type sizes —
-    // it has to get smaller instead of ending in "nenač…" (§3.3).
     <Text
       style={styles.stripText}
       numberOfLines={1}
-      adjustsFontSizeToFit
-      minimumFontScale={0.8}
       maxFontSizeMultiplier={FontScaleCap.body}
     >
       {text}
@@ -79,23 +70,20 @@ function StripText({ text }: { text: string }) {
 }
 
 function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> }) {
-  const Icon = nudge.icon ?? CheckIcon;
   return (
     <View style={[styles.strip, styles.stripNeutralBorder]}>
-      <Icon size={ICON_SIZE} color={Colors.amber} />
+      <CheckIcon size={ICON_SIZE} color={Colors.amber} />
       <StripText text={nudge.text} />
       <Pressable
         onPress={nudge.onUndo}
         style={({ pressed }) => [styles.ghostPill, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={nudge.actionAccessibilityLabel ?? t.a11y.counterUndoStrip}
+        accessibilityLabel={nudge.actionAccessibilityLabel ?? cs.a11y.counterUndoStrip}
         hitSlop={PILL_HIT_SLOP}
       >
         <Text
           style={styles.ghostPillLabel}
           numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {nudge.undoLabel}
@@ -115,7 +103,7 @@ function RapidStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'rapid' }> }) {
         onPress={nudge.onConfirm}
         style={({ pressed }) => [styles.filledPill, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.counterRapidConfirm}
+        accessibilityLabel={cs.a11y.counterRapidConfirm}
         hitSlop={PILL_HIT_SLOP}
       >
         <Text
@@ -175,7 +163,7 @@ function CheckinStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'checkin' }> })
         onPress={nudge.onDismiss}
         style={({ pressed }) => [styles.dismissButton, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={t.a11y.counterCheckinDismiss}
+        accessibilityLabel={cs.a11y.counterCheckinDismiss}
       >
         <XIcon size={ICON_SIZE} color={Colors.mutedText} />
       </Pressable>
@@ -244,7 +232,7 @@ const styles = StyleSheet.create({
   },
   stripText: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foam,
     includeFontPadding: false,
@@ -258,7 +246,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.32),
   },
   ghostPillLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,
@@ -271,7 +259,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   filledPillLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     color: Colors.stout,
     includeFontPadding: false,
@@ -286,7 +274,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.border, 0.6),
   },
   dopitoLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     color: Colors.foam,
     includeFontPadding: false,
@@ -297,7 +285,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   textButtonLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,

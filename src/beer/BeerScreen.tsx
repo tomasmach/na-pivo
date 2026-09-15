@@ -20,9 +20,9 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { MenuIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -52,8 +52,8 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
   };
 
   const segments: { key: BeerTab; label: string; a11y: string }[] = [
-    { key: 'count', label: t.beer.segmentCount, a11y: t.a11y.beerSegmentCount },
-    { key: 'diary', label: t.beer.segmentDiary, a11y: t.a11y.diarySegment },
+    { key: 'count', label: cs.beer.segmentCount, a11y: cs.a11y.beerSegmentCount },
+    { key: 'diary', label: cs.beer.segmentDiary, a11y: cs.a11y.diarySegment },
   ];
 
   return (
@@ -130,7 +130,7 @@ export default function BeerScreen() {
               style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={tab === 'diary' ? t.a11y.diaryStats : t.a11y.counterMore}
+              accessibilityLabel={tab === 'diary' ? cs.a11y.diaryStats : cs.a11y.counterMore}
             >
               <MenuIcon size={20} color={Colors.mutedText} />
             </Pressable>
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     letterSpacing: 0.2,
     includeFontPadding: false,

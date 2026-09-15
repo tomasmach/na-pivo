@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,16 +11,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
-import { CloseButton } from '@/components/shared/CloseButton';
-import { CheckIcon, KeyRoundIcon } from '@/components/shared/IconGlyph';
-import { t } from '@/i18n';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CheckIcon, KeyRoundIcon, XIcon } from '@/components/shared/IconGlyph';
+import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import type { AuthProvider } from '@/data/auth';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
 
 interface LoginMethodsSheetProps {
   visible: boolean;
@@ -40,7 +38,6 @@ interface MethodRowProps {
   canUnlink: boolean;
   busy: boolean;
   blocked: boolean;
-  first?: boolean;
   onPress: () => void;
 }
 
@@ -52,23 +49,22 @@ function MethodRow({
   canUnlink,
   busy,
   blocked,
-  first = false,
   onPress,
 }: MethodRowProps) {
   const disabled = blocked || (linked && !canUnlink);
   const actionLabel =
-    provider === 'email' ? t.account.setPasswordCta : t.account.linkCta;
+    provider === 'email' ? cs.account.setPasswordCta : cs.account.linkCta;
   const accessibilityLabel = linked
-    ? t.a11y.accountUnlinkProvider(name)
+    ? cs.a11y.accountUnlinkProvider(name)
     : provider === 'email'
-      ? t.a11y.accountSetPassword
-      : t.a11y.accountLinkProvider(name);
+      ? cs.a11y.accountSetPassword
+      : cs.a11y.accountLinkProvider(name);
 
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.rowPressed]}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
@@ -92,9 +88,9 @@ function MethodRow({
         >
           {linked
             ? canUnlink
-              ? t.account.linkedLabel
-              : t.account.methodOnly
-            : t.account.methodNotLinked}
+              ? cs.account.linkedLabel
+              : cs.account.methodOnly
+            : cs.account.methodNotLinked}
         </Text>
       </View>
 
@@ -138,88 +134,126 @@ export function LoginMethodsSheet({
   const hasApple = providers.includes('apple');
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose}>
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-        <View
-          style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
-        >
-          <View style={styles.grabber} />
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.backdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
 
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.account.ctaMethods}
-            </Text>
-            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
-          </View>
-
-          <ScrollView
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
+        <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+          <Pressable
+            style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+            onPress={() => undefined}
           >
-            <MethodRow
-              provider="email"
-              name={t.account.methodEmail}
-              icon={KeyRoundIcon}
-              linked={hasEmail}
-              canUnlink={canUnlink}
-              busy={busy === 'unlink_email' || busy === 'setPassword'}
-              blocked={busy !== null}
-              first
-              onPress={hasEmail ? () => onUnlink('email') : onSetPassword}
-            />
-            <MethodRow
-              provider="google"
-              name={t.account.methodGoogle}
-              icon={GoogleIcon}
-              linked={hasGoogle}
-              canUnlink={canUnlink}
-              busy={busy === 'link_google' || busy === 'unlink_google'}
-              blocked={busy !== null}
-              onPress={
-                hasGoogle ? () => onUnlink('google') : () => onLink('google')
-              }
-            />
-            {appleSupported ? (
+            <View style={styles.grabber} />
+
+            <View style={styles.header}>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.account.ctaMethods}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.rowPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.counterCloseModal}
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+            >
               <MethodRow
-                provider="apple"
-                name={t.account.methodApple}
-                icon={AppleIcon}
-                linked={hasApple}
+                provider="email"
+                name={cs.account.methodEmail}
+                icon={KeyRoundIcon}
+                linked={hasEmail}
                 canUnlink={canUnlink}
-                busy={busy === 'link_apple' || busy === 'unlink_apple'}
+                busy={busy === 'unlink_email' || busy === 'setPassword'}
+                blocked={busy !== null}
+                onPress={hasEmail ? () => onUnlink('email') : onSetPassword}
+              />
+              <View style={styles.divider} />
+              <MethodRow
+                provider="google"
+                name={cs.account.methodGoogle}
+                icon={GoogleIcon}
+                linked={hasGoogle}
+                canUnlink={canUnlink}
+                busy={busy === 'link_google' || busy === 'unlink_google'}
                 blocked={busy !== null}
                 onPress={
-                  hasApple ? () => onUnlink('apple') : () => onLink('apple')
+                  hasGoogle ? () => onUnlink('google') : () => onLink('google')
                 }
               />
-            ) : null}
-          </ScrollView>
+              {appleSupported ? (
+                <>
+                  <View style={styles.divider} />
+                  <MethodRow
+                    provider="apple"
+                    name={cs.account.methodApple}
+                    icon={AppleIcon}
+                    linked={hasApple}
+                    canUnlink={canUnlink}
+                    busy={busy === 'link_apple' || busy === 'unlink_apple'}
+                    blocked={busy !== null}
+                    onPress={
+                      hasApple ? () => onUnlink('apple') : () => onLink('apple')
+                    }
+                  />
+                </>
+              ) : null}
+            </ScrollView>
+          </Pressable>
         </View>
       </View>
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
   cardWrap: {
     width: '100%',
+    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
+    flex: 1,
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.lg,
     ...softDrop(),
   },
   grabber: {
-    width: 44,
+    width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -231,13 +265,23 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
+  closeButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   list: {
-    flexGrow: 0,
-    flexShrink: 1,
+    flex: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -247,13 +291,12 @@ const styles = StyleSheet.create({
     minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: 12,
     paddingVertical: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  rowFirst: {
-    borderTopWidth: 0,
+  divider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.border, 0.4),
   },
   rowPressed: {
     opacity: 0.6,
@@ -271,13 +314,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowName: {
-    ...MockType.bodySemibold,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   rowMeta: {
     marginTop: 2,
-    ...MockType.bodySmall,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
@@ -293,12 +338,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   actionLabel: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,

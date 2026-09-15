@@ -11,7 +11,7 @@
  *   charset/length → reserved → taken (taken is server-only here).
  */
 
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 
 /** Allowed characters + length, mirroring `^[a-zA-Z0-9_.]{3,20}$`. */
 const NICKNAME_RE = /^[a-zA-Z0-9_.]+$/;
@@ -60,14 +60,14 @@ export function checkNicknameLocal(raw: string): NicknameCheck {
 export function nicknameReasonMessage(reason: NicknameReason): string {
   switch (reason) {
     case 'too_short':
-      return t.profile.form.nicknameTooShort;
+      return cs.profile.form.nicknameTooShort;
     case 'too_long':
-      return t.profile.form.nicknameTooLong;
+      return cs.profile.form.nicknameTooLong;
     case 'reserved':
-      return t.profile.form.nicknameReserved;
+      return cs.profile.form.nicknameReserved;
     case 'invalid':
     default:
-      return t.profile.form.nicknameCharset;
+      return cs.profile.form.nicknameCharset;
   }
 }
 
@@ -81,15 +81,15 @@ export function nicknameServerReasonMessage(reason: string | undefined): string 
   const key = (reason ?? '').replace(/^nickname_/, '');
   switch (key) {
     case 'too_short':
-      return t.profile.form.nicknameTooShort;
+      return cs.profile.form.nicknameTooShort;
     case 'too_long':
-      return t.profile.form.nicknameTooLong;
+      return cs.profile.form.nicknameTooLong;
     case 'reserved':
-      return t.profile.form.nicknameReserved;
+      return cs.profile.form.nicknameReserved;
     case 'taken':
-      return t.profile.form.nicknameTaken;
+      return cs.profile.form.nicknameTaken;
     case 'invalid':
     default:
-      return t.profile.form.nicknameInvalid;
+      return cs.profile.form.nicknameInvalid;
   }
 }

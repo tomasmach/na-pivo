@@ -21,12 +21,10 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-
+import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
+import { cs } from '@/i18n/cs';
 import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
@@ -41,20 +39,20 @@ import {
 import { openSystemSettings } from '@/compass/permissions';
 
 const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
-  { value: 'bug', label: t.report.categoryBug },
-  { value: 'idea', label: t.report.categoryIdea },
-  { value: 'other', label: t.report.categoryOther },
+  { value: 'bug', label: cs.report.categoryBug },
+  { value: 'idea', label: cs.report.categoryIdea },
+  { value: 'other', label: cs.report.categoryOther },
 ];
 
 // Instagram first — most users know the app from there.
 const CONTACT_CHANNELS: { value: FeedbackContactType; label: string }[] = [
-  { value: 'instagram', label: t.report.contactInstagram },
-  { value: 'email', label: t.report.contactEmail },
+  { value: 'instagram', label: cs.report.contactInstagram },
+  { value: 'email', label: cs.report.contactEmail },
 ];
 
 const CONTACT_PLACEHOLDERS: Record<FeedbackContactType, string> = {
-  instagram: t.report.contactInstagramPlaceholder,
-  email: t.report.contactEmailPlaceholder,
+  instagram: cs.report.contactInstagramPlaceholder,
+  email: cs.report.contactEmailPlaceholder,
 };
 
 export default function ReportScreen() {
@@ -102,24 +100,24 @@ export default function ReportScreen() {
         setAttachmentUri(result.uri);
       } else if (result.status === 'denied-permanent') {
         showAppDialog({
-          title: t.report.attachmentPermissionTitle,
-          message: t.report.attachmentPermissionBlocked,
+          title: cs.report.attachmentPermissionTitle,
+          message: cs.report.attachmentPermissionBlocked,
           buttons: [
-            { text: t.common.cancel, style: 'cancel' },
-            { text: t.report.attachmentOpenSettings, onPress: () => void openSystemSettings() },
+            { text: cs.common.cancel, style: 'cancel' },
+            { text: cs.report.attachmentOpenSettings, onPress: () => void openSystemSettings() },
           ],
         });
       } else if (result.status === 'denied') {
         showAppDialog({
-          title: t.report.attachmentPermissionTitle,
-          message: t.report.attachmentPermissionDenied,
-          buttons: [{ text: t.common.ok }],
+          title: cs.report.attachmentPermissionTitle,
+          message: cs.report.attachmentPermissionDenied,
+          buttons: [{ text: cs.common.ok }],
         });
       } else if (result.status === 'error') {
         showAppDialog({
-          title: t.report.attachmentErrorTitle,
-          message: t.report.attachmentErrorBody,
-          buttons: [{ text: t.common.ok }],
+          title: cs.report.attachmentErrorTitle,
+          message: cs.report.attachmentErrorBody,
+          buttons: [{ text: cs.common.ok }],
         });
       }
     } finally {
@@ -129,11 +127,11 @@ export default function ReportScreen() {
 
   const showAttachmentSource = useCallback(() => {
     showAppDialog({
-      title: t.report.attachmentSourceTitle,
+      title: cs.report.attachmentSourceTitle,
       buttons: [
-        { text: t.report.attachmentCamera, onPress: () => void handleAttachmentPick('camera') },
-        { text: t.report.attachmentLibrary, onPress: () => void handleAttachmentPick('library') },
-        { text: t.common.cancel, style: 'cancel' },
+        { text: cs.report.attachmentCamera, onPress: () => void handleAttachmentPick('camera') },
+        { text: cs.report.attachmentLibrary, onPress: () => void handleAttachmentPick('library') },
+        { text: cs.common.cancel, style: 'cancel' },
       ],
     });
   }, [handleAttachmentPick]);
@@ -143,16 +141,16 @@ export default function ReportScreen() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
+          accessibilityLabel={cs.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{t.report.title}</Text>
+        <Text style={styles.headerTitle}>{cs.report.title}</Text>
 
         {/* Invisible spacer keeps title centered */}
         <View style={styles.headerSpacer} />
@@ -165,12 +163,12 @@ export default function ReportScreen() {
             { paddingBottom: Math.max(insets.bottom + 24, 32) },
           ]}
         >
-          <Text style={styles.successTitle}>{t.report.successTitle}</Text>
-          <Text style={styles.successBody}>{t.report.successBody}</Text>
+          <Text style={styles.successTitle}>{cs.report.successTitle}</Text>
+          <Text style={styles.successBody}>{cs.report.successBody}</Text>
           <View style={styles.successButton}>
             <GlowButton
-              label={t.report.successClose}
-              onPress={() => leaveRoute(router)}
+              label={cs.report.successClose}
+              onPress={() => router.back()}
             />
           </View>
         </View>
@@ -189,7 +187,7 @@ export default function ReportScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.intro}>{t.report.intro}</Text>
+          <Text style={styles.intro}>{cs.report.intro}</Text>
 
           {/* ── Category selector ── */}
           <View style={styles.segmented}>
@@ -202,7 +200,7 @@ export default function ReportScreen() {
                   style={[styles.segment, selected && styles.segmentSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={t.a11y.feedbackCategory(item.label)}
+                  accessibilityLabel={cs.a11y.feedbackCategory(item.label)}
                 >
                   <Text
                     style={[
@@ -222,27 +220,27 @@ export default function ReportScreen() {
             style={styles.messageInput}
             value={message}
             onChangeText={setMessage}
-            placeholder={t.report.messagePlaceholder}
-            placeholderTextColor={MockColors.fieldHint}
+            placeholder={cs.report.messagePlaceholder}
+            placeholderTextColor={Colors.mutedText}
             multiline
             textAlignVertical="top"
             maxLength={4000}
-            accessibilityLabel={t.report.messagePlaceholder}
+            accessibilityLabel={cs.report.messagePlaceholder}
           />
 
           {/* ── Optional screenshot/photo ── */}
-          <Text style={styles.attachmentCaption}>{t.report.attachmentCaption}</Text>
+          <Text style={styles.attachmentCaption}>{cs.report.attachmentCaption}</Text>
           {attachmentUri ? (
             <View style={styles.attachmentPreviewRow}>
               <Image source={{ uri: attachmentUri }} style={styles.attachmentPreview} />
               <View style={styles.attachmentPreviewCopy}>
-                <Text style={styles.attachmentReady}>{t.report.attachmentReady}</Text>
-                <Text style={styles.attachmentPrivacy}>{t.report.attachmentPrivacy}</Text>
+                <Text style={styles.attachmentReady}>{cs.report.attachmentReady}</Text>
+                <Text style={styles.attachmentPrivacy}>{cs.report.attachmentPrivacy}</Text>
               </View>
               <Pressable
                 onPress={() => setAttachmentUri(null)}
                 accessibilityRole="button"
-                accessibilityLabel={t.report.attachmentRemove}
+                accessibilityLabel={cs.report.attachmentRemove}
                 style={({ pressed }) => [styles.attachmentRemove, pressed && styles.pressed]}
               >
                 <XIcon size={18} color={Colors.foamMuted} />
@@ -253,7 +251,7 @@ export default function ReportScreen() {
               onPress={showAttachmentSource}
               disabled={pickingAttachment}
               accessibilityRole="button"
-              accessibilityLabel={t.report.attachmentAdd}
+              accessibilityLabel={cs.report.attachmentAdd}
               style={({ pressed }) => [styles.attachmentButton, pressed && styles.pressed]}
             >
               <View style={styles.attachmentIcon}>
@@ -265,15 +263,15 @@ export default function ReportScreen() {
               </View>
               <View style={styles.attachmentButtonCopy}>
                 <Text style={styles.attachmentButtonTitle}>
-                  {pickingAttachment ? t.report.attachmentPreparing : t.report.attachmentAdd}
+                  {pickingAttachment ? cs.report.attachmentPreparing : cs.report.attachmentAdd}
                 </Text>
-                <Text style={styles.attachmentPrivacy}>{t.report.attachmentHelper}</Text>
+                <Text style={styles.attachmentPrivacy}>{cs.report.attachmentHelper}</Text>
               </View>
             </Pressable>
           )}
 
           {/* ── Optional contact ── */}
-          <Text style={styles.contactCaption}>{t.report.contactCaption}</Text>
+          <Text style={styles.contactCaption}>{cs.report.contactCaption}</Text>
           <View style={styles.contactChannels}>
             {CONTACT_CHANNELS.map((channel) => {
               const selected = channel.value === contactType;
@@ -287,7 +285,7 @@ export default function ReportScreen() {
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={t.a11y.feedbackContactChannel(channel.label)}
+                  accessibilityLabel={cs.a11y.feedbackContactChannel(channel.label)}
                 >
                   <Text
                     style={[
@@ -306,28 +304,28 @@ export default function ReportScreen() {
             value={contact}
             onChangeText={setContact}
             placeholder={CONTACT_PLACEHOLDERS[contactType]}
-            placeholderTextColor={MockColors.fieldHint}
+            placeholderTextColor={Colors.mutedText}
             keyboardType={contactType === 'email' ? 'email-address' : 'default'}
             autoCapitalize="none"
             autoCorrect={false}
             maxLength={254}
-            accessibilityLabel={t.a11y.feedbackContactInput}
+            accessibilityLabel={cs.a11y.feedbackContactInput}
           />
 
           {/* ── Submit ── */}
           <View style={styles.submitButton}>
             <GlowButton
-              label={t.report.submit}
+              label={cs.report.submit}
               onPress={() => void handleSubmit()}
               glow={canSubmit ? 'soft' : 'none'}
-              accessibilityLabel={t.a11y.feedbackSubmitButton}
+              accessibilityLabel={cs.a11y.feedbackSubmitButton}
             />
             {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
 
           {appVersionLabel ? (
             <Text style={styles.versionCaption}>
-              {t.report.versionCaption(appVersionLabel)}
+              {cs.report.versionCaption(appVersionLabel)}
             </Text>
           ) : null}
         </KeyboardAwareScrollView>
@@ -369,7 +367,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
@@ -384,7 +382,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
   },
   intro: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.foamMuted,
     lineHeight: 15 * 1.5,
@@ -413,7 +411,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   segmentLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -428,7 +426,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.medium,
     color: Colors.foam,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 15 * 1.4,
     minHeight: 140,
@@ -438,7 +436,7 @@ const styles = StyleSheet.create({
 
   // ── Attachment ──
   attachmentCaption: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
     marginBottom: Spacing.sm,
@@ -465,7 +463,7 @@ const styles = StyleSheet.create({
   },
   attachmentButtonCopy: { flex: 1, gap: 3 },
   attachmentButtonTitle: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foam,
   },
@@ -488,12 +486,12 @@ const styles = StyleSheet.create({
   },
   attachmentPreviewCopy: { flex: 1, gap: 3 },
   attachmentReady: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.amberLight,
   },
   attachmentPrivacy: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     lineHeight: 16,
     color: Colors.mutedText,
@@ -510,7 +508,7 @@ const styles = StyleSheet.create({
 
   // ── Contact ──
   contactCaption: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
     marginBottom: 8,
@@ -533,7 +531,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   contactPillLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -546,7 +544,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.medium,
     color: Colors.foam,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -564,7 +562,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   versionCaption: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 11,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -580,13 +578,13 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   successTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 40,
     color: Colors.foam,
     textAlign: 'center',
   },
   successBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.foamMuted,
     lineHeight: 15 * 1.5,

@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
-import { BeerIcon, LockKeyholeIcon, StarIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, LockKeyholeIcon, StarIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import {
   BEER_TAGS,
@@ -17,27 +24,18 @@ import {
   type BeerMemory,
   type BeerTag,
 } from '@/data/beerCheckinsClient';
+import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
 import {
-  enqueueBeerCheckInOp,
-  getOrCreateBeerCheckInActionTicket,
-  removeBeerCheckInActionTicket,
-  saveBeerCheckInActionTicket,
-} from '@/data/beerCheckinsQueue';
-import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
-import {
-  PrivateAccountMutationFrozenError,
-  isPrivateAccountMutationScopeCurrent,
-  runPrivateAccountMutation,
-} from '@/data/privateAccountBoundary';
+  suggestBeerBrands,
+  type BeerBrandSuggestion,
+} from '@/data/beerSuggestionsClient';
 import type { Pub } from '@/data/pubs';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { intlLocale, t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 /** ~400 ms debounce for the memory lookup while the beer name is being typed. */
@@ -47,10 +45,7 @@ const SUGGEST_DEBOUNCE_MS = 220;
 function shortDate(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString(intlLocale, {
-    day: 'numeric',
-    month: 'numeric',
-  });
+  return new Date(ms).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
 }
 
 interface BeerCheckInSheetProps {
@@ -63,26 +58,14 @@ interface BeerCheckInSheetProps {
   onSubmitted: () => void;
 }
 
-function RatingChip({
-  value,
-  active,
-  onPress,
-}: {
-  value: number;
-  active: boolean;
-  onPress: () => void;
-}) {
+function RatingChip({ value, active, onPress }: { value: number; active: boolean; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.ratingChip,
-        active && styles.ratingChipActive,
-        pressed && styles.dim,
-      ]}
+      style={({ pressed }) => [styles.ratingChip, active && styles.ratingChipActive, pressed && styles.dim]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={t.beerCheckins.ratingA11y(value)}
+      accessibilityLabel={cs.beerCheckins.ratingA11y(value)}
     >
       <StarIcon size={15} color={active ? Colors.stout : Colors.amber} />
       <Text style={[styles.ratingText, active && styles.ratingTextActive]} allowFontScaling={false}>
@@ -93,20 +76,14 @@ function RatingChip({
 }
 
 function TagChip({ tag, active, onPress }: { tag: BeerTag; active: boolean; onPress: () => void }) {
-  const label = t.beerCheckins.tags[tag];
+  const label = cs.beerCheckins.tags[tag];
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.tagChip,
-        active && styles.ratingChipActive,
-        pressed && styles.dim,
-      ]}
+      style={({ pressed }) => [styles.tagChip, active && styles.ratingChipActive, pressed && styles.dim]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={
-        active ? t.beerCheckins.tagRemoveA11y(label) : t.beerCheckins.tagAddA11y(label)
-      }
+      accessibilityLabel={active ? cs.beerCheckins.tagRemoveA11y(label) : cs.beerCheckins.tagAddA11y(label)}
     >
       <Text
         style={[styles.tagChipText, active && styles.ratingTextActive]}
@@ -128,7 +105,10 @@ export function BeerCheckInSheet({
   onSubmitted,
 }: BeerCheckInSheetProps) {
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
+  // Modals host their own window, so KeyboardAvoidingView is unreliable here —
+  // lift the sheet above the keyboard manually (same trick as BeerFormModal).
+  const keyboardHeight = useKeyboardHeight();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const [name, setName] = useState(beerName);
@@ -142,13 +122,6 @@ export function BeerCheckInSheet({
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const pickedSuggestionRef = useRef('');
-  const submittingRef = useRef(false);
-  const generationRef = useRef(0);
-  const [submitting, setSubmitting] = useState(false);
-
-  useLayoutEffect(() => {
-    generationRef.current += 1;
-  }, [visible]);
 
   const cleanName = name.trim();
   const canSubmit = cleanName.length > 0;
@@ -171,15 +144,13 @@ export function BeerCheckInSheet({
   // body) to avoid cascading re-renders.
   useEffect(() => {
     if (visible) return;
-    submittingRef.current = false;
-    const timer = setTimeout(() => {
-      setSubmitting(false);
+    const t = setTimeout(() => {
       setTags([]);
       setMemory(null);
       setMemoryLoading(false);
       setSuggestions([]);
     }, 0);
-    return () => clearTimeout(timer);
+    return () => clearTimeout(t);
   }, [visible]);
 
   // Memory strip: fetch on open (near-immediate), debounce subsequent
@@ -246,153 +217,61 @@ export function BeerCheckInSheet({
     setSuggestions([]);
   }, []);
 
-  const closeSheet = useCallback(() => {
-    generationRef.current += 1;
-    submittingRef.current = false;
-    setSubmitting(false);
-    onClose();
-  }, [onClose]);
-
   const submit = useCallback(() => {
-    if (!canSubmit || submittingRef.current) return;
-    const generation = generationRef.current;
-    submittingRef.current = true;
-    setSubmitting(true);
-    void runPrivateAccountMutation(async (scope) => {
-      const actionKey = JSON.stringify([
-        'counter-checkin',
-        pubKey,
-        visitClientId ?? null,
-        cleanName,
-        brewery.trim(),
-        style.trim(),
+    if (!canSubmit) return;
+    void enqueueBeerCheckInOp({
+      op: 'checkin',
+      payload: {
+        clientId: generateUuidV4(),
+        beerName: cleanName,
+        breweryName: brewery.trim(),
+        beerStyle: style.trim(),
         rating,
-        note.trim(),
+        note: note.trim(),
         tags,
-        visibility,
-      ]);
-      const ticket = await getOrCreateBeerCheckInActionTicket(actionKey, () => ({
-        key: actionKey,
+        pubCacheKey: pubKey,
+        pubName: pub.name,
+        pubCity: pub.city ?? '',
         visitClientId: visitClientId ?? null,
-        clientIds: [generateUuidV4()],
+        visibility,
         checkedInAt: new Date().toISOString(),
-        createdAt: Date.now(),
-      }));
-      if (!ticket) {
-        if (generationRef.current !== generation) return;
-        submittingRef.current = false;
-        setSubmitting(false);
-        showToast(t.beerCheckins.saveError, {
-          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
-        });
-        return;
-      }
-      const result = await enqueueBeerCheckInOp({
-        op: 'checkin',
-        payload: {
-          clientId: ticket.clientIds[0],
-          beerName: cleanName,
-          breweryName: brewery.trim(),
-          beerStyle: style.trim(),
-          rating,
-          note: note.trim(),
-          tags,
-          pubCacheKey: pubKey,
-          pubName: pub.name,
-          pubCity: pub.city ?? '',
-          visitClientId: visitClientId ?? null,
-          visibility,
-          checkedInAt: ticket.checkedInAt,
-        },
-      });
-      if (!isPrivateAccountMutationScopeCurrent(scope)) {
-        throw new PrivateAccountMutationFrozenError();
-      }
-      if (generationRef.current !== generation) return;
-      if (result === 'storage-error') {
-        submittingRef.current = false;
-        setSubmitting(false);
-        showToast(t.beerCheckins.saveError, {
-          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
-        });
-        return;
-      }
-      if (!(await removeBeerCheckInActionTicket(actionKey))) {
-        submittingRef.current = false;
-        setSubmitting(false);
-        showToast(t.beerCheckins.saveError, {
-          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
-        });
-        return;
-      }
-      if (generationRef.current !== generation) {
-        await saveBeerCheckInActionTicket(ticket);
-        return;
-      }
-      submittingRef.current = false;
-      setSubmitting(false);
-      showToast(t.beerCheckins.saved, {
-        icon: <BeerIcon size={20} color={Colors.amber} />,
-      });
+      },
+    }).then(() => {
+      showToast(cs.beerCheckins.saved, { icon: <BeerIcon size={20} color={Colors.amber} /> });
       onSubmitted();
-      closeSheet();
-    })
-      .catch(() => {
-        if (generationRef.current !== generation) return;
-        submittingRef.current = false;
-        setSubmitting(false);
-        showToast(t.beerCheckins.saveError, {
-          icon: <BeerIcon size={20} color={Colors.foamMuted} />,
-        });
-      });
-  }, [
-    brewery,
-    canSubmit,
-    cleanName,
-    closeSheet,
-    note,
-    onSubmitted,
-    pub,
-    pubKey,
-    rating,
-    showToast,
-    style,
-    tags,
-    visibility,
-    visitClientId,
-  ]);
+      onClose();
+    });
+  }, [brewery, canSubmit, cleanName, note, onClose, onSubmitted, pub, pubKey, rating, showToast, style, tags, visibility, visitClientId]);
 
   return (
-    <BottomSheetModal visible={visible} onClose={closeSheet} keyboardLift>
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.lg }]}>
-          <View style={styles.grabber} />
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
+        <View
+          style={[
+            styles.sheet,
+            {
+              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
+              marginBottom: keyboardHeight,
+              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+            },
+          ]}
+        >
           <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text
-                style={styles.title}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.heading}
-              >
-                {t.beerCheckins.sheetTitle}
+            <View>
+              <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.beerCheckins.sheetTitle}
               </Text>
-              <Text
-                style={styles.subtitle}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
+              <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                 {pub.name}
               </Text>
             </View>
-            <CloseButton onPress={closeSheet} label={t.common.cancel} />
+            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
+              <XIcon size={18} color={Colors.foamMuted} />
+            </Pressable>
           </View>
 
-          <KeyboardAwareScrollView
-            style={styles.list}
-            keyboardAvoidedExternally
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+          <KeyboardAwareScrollView showsVerticalScrollIndicator={false}>
             {memoryLoading ? (
               <View style={styles.memoryStrip}>
                 <SkeletonBlock width="55%" height={13} reduceMotion={reduceMotion} />
@@ -401,10 +280,10 @@ export function BeerCheckInSheet({
             ) : memory && memory.myCount > 0 ? (
               <View style={styles.memoryStrip}>
                 <Text style={styles.memoryLead} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.memoryKnownLead}
+                  {cs.beerCheckins.memoryKnownLead}
                 </Text>
                 <Text style={styles.memoryMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.memoryKnown({
+                  {cs.beerCheckins.memoryKnown({
                     count: memory.myCount,
                     lastDate: shortDate(memory.lastCheckedInAt ?? ''),
                     lastPub: memory.lastPubName,
@@ -416,24 +295,21 @@ export function BeerCheckInSheet({
             ) : memory ? (
               <View style={styles.memoryStrip}>
                 <Text style={styles.memoryFirst} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.memoryFirstTime}
+                  {cs.beerCheckins.memoryFirstTime}
                 </Text>
               </View>
             ) : null}
 
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.beerCheckins.beerLabel}
-            </Text>
+            <Text style={styles.label}>{cs.beerCheckins.beerLabel}</Text>
             <TextInput
               value={name}
               onChangeText={(value) => {
                 pickedSuggestionRef.current = '';
                 setName(value);
               }}
-              placeholder={t.beerCheckins.beerPlaceholder}
-              placeholderTextColor={MockColors.fieldHint}
+              placeholder={cs.beerCheckins.beerPlaceholder}
+              placeholderTextColor={Colors.mutedText}
               style={styles.input}
-              maxLength={120}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
             {suggestions.length > 0 ? (
@@ -444,7 +320,7 @@ export function BeerCheckInSheet({
                     onPress={() => selectSuggestion(suggestion)}
                     style={[styles.suggestionRow, index > 0 && styles.suggestionDivider]}
                     accessibilityRole="button"
-                    accessibilityLabel={t.beerCheckins.useSuggestion(suggestion.name)}
+                    accessibilityLabel={cs.beerCheckins.useSuggestion(suggestion.name)}
                   >
                     <Text
                       style={styles.suggestionName}
@@ -467,43 +343,35 @@ export function BeerCheckInSheet({
               </View>
             ) : null}
 
-            <View style={[styles.twoCols, fontScale > 1.15 && styles.twoColsStacked]}>
+            <View style={styles.twoCols}>
               <View style={styles.col}>
-                <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.breweryLabel}
-                </Text>
+                <Text style={styles.label}>{cs.beerCheckins.breweryLabel}</Text>
                 <TextInput
                   value={brewery}
                   onChangeText={(value) => {
                     pickedSuggestionRef.current = '';
                     setBrewery(value);
                   }}
-                  placeholder={t.beerCheckins.optionalPlaceholder}
-                  placeholderTextColor={MockColors.fieldHint}
+                  placeholder={cs.beerCheckins.optionalPlaceholder}
+                  placeholderTextColor={Colors.mutedText}
                   style={styles.input}
-                  maxLength={120}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
               </View>
               <View style={styles.col}>
-                <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.beerCheckins.styleLabel}
-                </Text>
+                <Text style={styles.label}>{cs.beerCheckins.styleLabel}</Text>
                 <TextInput
                   value={style}
                   onChangeText={setStyle}
-                  placeholder={t.beerCheckins.optionalPlaceholder}
-                  placeholderTextColor={MockColors.fieldHint}
+                  placeholder={cs.beerCheckins.optionalPlaceholder}
+                  placeholderTextColor={Colors.mutedText}
                   style={styles.input}
-                  maxLength={80}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
               </View>
             </View>
 
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.beerCheckins.ratingLabel}
-            </Text>
+            <Text style={styles.label}>{cs.beerCheckins.ratingLabel}</Text>
             <View style={styles.ratingRow}>
               {ratingValues.map((value) => (
                 <RatingChip
@@ -515,125 +383,76 @@ export function BeerCheckInSheet({
               ))}
             </View>
 
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.beerCheckins.tagsLabel}
-            </Text>
+            <Text style={styles.label}>{cs.beerCheckins.tagsLabel}</Text>
             <View style={styles.ratingRow}>
               {BEER_TAGS.map((tag) => (
-                <TagChip
-                  key={tag}
-                  tag={tag}
-                  active={tags.includes(tag)}
-                  onPress={() => toggleTag(tag)}
-                />
+                <TagChip key={tag} tag={tag} active={tags.includes(tag)} onPress={() => toggleTag(tag)} />
               ))}
             </View>
 
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.beerCheckins.noteLabel}
-            </Text>
+            <Text style={styles.label}>{cs.beerCheckins.noteLabel}</Text>
             <TextInput
               value={note}
               onChangeText={setNote}
-              placeholder={t.beerCheckins.notePlaceholder}
-              placeholderTextColor={MockColors.fieldHint}
+              placeholder={cs.beerCheckins.notePlaceholder}
+              placeholderTextColor={Colors.mutedText}
               style={[styles.input, styles.noteInput]}
               multiline
               maxLength={1000}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
 
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.beerCheckins.visibilityLabel}
-            </Text>
+            <Text style={styles.label}>{cs.beerCheckins.visibilityLabel}</Text>
             <View style={styles.visibilityRow}>
               <Pressable
                 onPress={() => setVisibility('private')}
-                style={[
-                  styles.visibilityButton,
-                  visibility === 'private' && styles.visibilityButtonActive,
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'private' }}
+                style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
               >
-                <LockKeyholeIcon
-                  size={16}
-                  color={visibility === 'private' ? Colors.stout : Colors.mutedText}
-                />
-                <Text
-                  style={[
-                    styles.visibilityText,
-                    visibility === 'private' && styles.visibilityTextActive,
-                  ]}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {t.beerCheckins.visibilityPrivate}
+                <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
+                <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
+                  {cs.beerCheckins.visibilityPrivate}
                 </Text>
               </Pressable>
               <Pressable
                 onPress={() => setVisibility('friends')}
-                style={[
-                  styles.visibilityButton,
-                  visibility === 'friends' && styles.visibilityButtonActive,
-                ]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: visibility === 'friends' }}
+                style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
               >
-                <UsersIcon
-                  size={16}
-                  color={visibility === 'friends' ? Colors.stout : Colors.mutedText}
-                />
-                <Text
-                  style={[
-                    styles.visibilityText,
-                    visibility === 'friends' && styles.visibilityTextActive,
-                  ]}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {t.beerCheckins.visibilityFriends}
+                <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
+                <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
+                  {cs.beerCheckins.visibilityFriends}
                 </Text>
               </Pressable>
             </View>
-          </KeyboardAwareScrollView>
 
-          <Pressable
-            onPress={submit}
-            disabled={!canSubmit || submitting}
-            style={({ pressed }) => [
-              styles.submit,
-              (pressed || !canSubmit || submitting) && styles.dim,
-            ]}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canSubmit || submitting }}
-          >
-            <Text style={styles.submitText} maxFontSizeMultiplier={FontScaleCap.display}>
-              {t.beerCheckins.submit}
-            </Text>
-          </Pressable>
+            <Pressable
+              onPress={submit}
+              disabled={!canSubmit}
+              style={({ pressed }) => [styles.submit, (pressed || !canSubmit) && styles.dim]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.submitText}>{cs.beerCheckins.submit}</Text>
+            </Pressable>
+          </KeyboardAwareScrollView>
         </View>
       </View>
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  cardWrap: { width: '100%', maxHeight: '92%' },
-  sheet: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
-    ...softDrop(),
+  backdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: withAlpha(Colors.stout, 0.74),
   },
-  grabber: {
-    width: 44,
-    height: 4,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
-    alignSelf: 'center',
-    marginBottom: Spacing.md,
+  sheet: {
+    maxHeight: '88%',
+    backgroundColor: Colors.stout,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
   },
   header: {
     flexDirection: 'row',
@@ -642,24 +461,31 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginBottom: Spacing.md,
   },
-  headerCopy: { flex: 1, minWidth: 0 },
   title: {
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
   },
   subtitle: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
   },
-  list: { flexGrow: 0, flexShrink: 1 },
+  closeBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   label: {
     marginTop: Spacing.md,
     marginBottom: Spacing.xs,
-    ...MockType.bodySmall,
-    fontWeight: '600',
-    color: Colors.foamMuted,
+    fontFamily: Fonts.display.bold,
+    fontSize: 12,
+    color: Colors.mutedText,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   input: {
     minHeight: 50,
@@ -669,7 +495,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     color: Colors.foam,
     paddingHorizontal: Spacing.md,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
   },
   suggestionsBox: {
@@ -680,19 +506,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     overflow: 'hidden',
   },
-  suggestionRow: {
-    minHeight: 48,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-  },
+  suggestionRow: { minHeight: 48, justifyContent: 'center', paddingHorizontal: Spacing.md },
   suggestionDivider: { borderTopWidth: 1, borderTopColor: Colors.border },
-  suggestionName: { fontWeight: '700', fontSize: 14, color: Colors.foam },
-  suggestionBrand: {
-    fontWeight: '400',
-    fontSize: 11,
-    color: Colors.mutedText,
-    marginTop: 2,
-  },
+  suggestionName: { fontFamily: Fonts.display.bold, fontSize: 14, color: Colors.foam },
+  suggestionBrand: { fontFamily: Fonts.ui.regular, fontSize: 11, color: Colors.mutedText, marginTop: 2 },
   noteInput: {
     minHeight: 92,
     paddingTop: Spacing.sm,
@@ -701,10 +518,6 @@ const styles = StyleSheet.create({
   twoCols: {
     flexDirection: 'row',
     gap: Spacing.sm,
-  },
-  twoColsStacked: {
-    flexDirection: 'column',
-    gap: 0,
   },
   col: {
     flex: 1,
@@ -739,7 +552,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   tagChipText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     color: Colors.foam,
   },
@@ -753,22 +566,22 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   memoryLead: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     color: Colors.amber,
   },
   memoryMeta: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.foamMuted,
   },
   memoryFirst: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
   ratingText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     color: Colors.foam,
   },
@@ -796,7 +609,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   visibilityText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -812,7 +625,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   submitText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.stout,
   },

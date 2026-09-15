@@ -16,11 +16,10 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 
-import { MockColors, MockType } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import { t } from '@/i18n';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Radius } from '@/theme/layout';
+import { cs } from '@/i18n/cs';
 import {
   ThumbsUpIcon,
   ThumbsDownIcon,
@@ -90,13 +89,12 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
 
   return (
     <View>
-      {/* Sentence case, foam, 18pt — the section heading shape the rest of 3.0
-          uses (`SectionBreak`). The amber 11pt uppercase kicker with an icon
-          beside it was the decoration §0.5 bans, and it competed with the
-          verdict buttons right under it. */}
-      <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {t.myBeers.ratingTitle}
-      </Text>
+      <View style={styles.sectionHeader}>
+        <ThumbsUpIcon size={14} color={Colors.amber} />
+        <Text style={styles.sectionHeaderText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.myBeers.ratingHeader}
+        </Text>
+      </View>
 
       {/* Thumb verdict */}
       <View style={styles.verdictRow}>
@@ -109,7 +107,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
           ]}
           accessibilityRole="button"
           accessibilityState={{ selected: verdict === 'like' }}
-          accessibilityLabel={t.a11y.ratingLike(pubName)}
+          accessibilityLabel={cs.a11y.ratingLike(pubName)}
           hitSlop={4}
         >
           <ThumbsUpIcon
@@ -120,7 +118,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
             style={[styles.verdictText, verdict === 'like' && styles.verdictTextLikeActive]}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {t.myBeers.verdictLike}
+            {cs.myBeers.verdictLike}
           </Text>
         </Pressable>
 
@@ -133,7 +131,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
           ]}
           accessibilityRole="button"
           accessibilityState={{ selected: verdict === 'dislike' }}
-          accessibilityLabel={t.a11y.ratingDislike(pubName)}
+          accessibilityLabel={cs.a11y.ratingDislike(pubName)}
           hitSlop={4}
         >
           <ThumbsDownIcon
@@ -144,17 +142,17 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
             style={[styles.verdictText, verdict === 'dislike' && styles.verdictTextDislikeActive]}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {t.myBeers.verdictDislike}
+            {cs.myBeers.verdictDislike}
           </Text>
         </Pressable>
       </View>
 
       {/* Memory tags */}
       <Text style={[styles.subLabel, styles.tagLabel]} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.myBeers.tagLabel}
+        {cs.myBeers.tagLabel}
       </Text>
       <View style={styles.tagGrid}>
-        {t.myBeers.notePresets.map((preset) => {
+        {cs.myBeers.notePresets.map((preset) => {
           const active = tag === preset.value;
           return (
             <Pressable
@@ -167,7 +165,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={t.a11y.ratingNote(preset.label)}
+              accessibilityLabel={cs.a11y.ratingNote(preset.label)}
               hitSlop={4}
             >
               <Text
@@ -188,35 +186,41 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
       <View style={styles.noteLabelRow}>
         <MessageSquareIcon size={13} color={Colors.mutedText} />
         <Text style={styles.subLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.myBeers.noteLabel}
+          {cs.myBeers.noteLabel}
         </Text>
       </View>
       <TextInput
         style={styles.noteInput}
         value={noteDraft}
         onChangeText={changeNote}
-        placeholder={t.myBeers.notePlaceholder}
-        placeholderTextColor={MockColors.fieldHint}
+        placeholder={cs.myBeers.notePlaceholder}
+        placeholderTextColor={Colors.mutedText}
         multiline
         maxLength={NOTE_MAX_LENGTH}
         textAlignVertical="top"
-        accessibilityLabel={t.a11y.ratingNoteInput(pubName)}
+        accessibilityLabel={cs.a11y.ratingNoteInput(pubName)}
         maxFontSizeMultiplier={FontScaleCap.body}
       />
 
       <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.myBeers.ratingHint}
+        {cs.myBeers.ratingHint}
       </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: {
-    ...MockType.titleS,
-    color: Colors.foam,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.md,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  sectionHeaderText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    color: Colors.amber,
   },
 
   verdictRow: {
@@ -248,7 +252,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.mutedText,
   },
   verdictText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -261,7 +265,7 @@ const styles = StyleSheet.create({
 
   // Small muted label above the tag row and the note field.
   subLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 11,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
@@ -294,7 +298,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   tagChipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
@@ -319,14 +323,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foam,
   },
 
   hint: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
     marginTop: 14,

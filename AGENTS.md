@@ -1,6 +1,6 @@
 # Na pivo
 
-Na pivo je česká mobilní appka pro lidi, kteří mají rádi hospody, pivo a večery s kamarády. Začala jako kompas na nejbližší hospodu, dnes je to pivní deníček a verze 3.0 z něj dělá společníka celého večera: pět tabů, večer jako jádro, parta a hry u stolu. Zhruba: něco jako Untappd, ale české, hospodské a pro partu u jednoho stolu — míň katalog, víc večer.
+Na pivo je česká mobilní appka pro lidi, kteří mají rádi hospody, pivo a večery s kamarády. Začala jako kompas na nejbližší hospodu, dnes je to pivní deníček: kompas, počítadlo, deník a parta ve čtyřech tabech. Verze 2.0.0 z ní zkusila udělat společníka celého večera (pět tabů, večer jako jádro, hry u stolu) a lidem to přišlo nepřehledné, takže 2.1.0 vrátila appku 1.5.1. Kód 2.0 žije v tagu `v2.0.0`; když se k některé jeho části vracíme, jde o vrstvu nad jednoduchou appkou, ne o přestavbu hlavní obrazovky.
 
 Monorepo: Expo / React Native appka v kořeni, Django backend v `backend/`. Designový zákon je `DESIGN.md`, produktová rozhodnutí `docs/decisions/`, serverový deploy runbook `backend/README.md`. Tenhle soubor je jediný AGENTS.md v repu a říká, jak se tady mění věci.
 

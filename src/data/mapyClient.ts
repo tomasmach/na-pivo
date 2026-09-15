@@ -117,8 +117,6 @@ interface MapyGeocodeItem {
   /** Additive backend-only field: Google Place ID, attached by our backend's
    *  nearby endpoint when known. Never present on raw Mapy.cz responses. */
   googlePlaceId?: string | null;
-  provider?: 'local' | 'google';
-  providerPlaceId?: string | null;
   /** Additive cache-only detail attached by our backend's nearby endpoint. */
   pubDetails?: {
     opening_hours?: string | null;
@@ -147,7 +145,6 @@ export interface PubLocationGeocodeInput {
   city?: string;
   address?: string;
   near?: { lat: number; lng: number } | null;
-  placeId?: string;
 }
 
 export interface PubLocationGeocodeResult {
@@ -176,13 +173,11 @@ export function isSpecificGeocodeResult(result: PubLocationGeocodeResult | null)
 export interface PubLocationSuggestion {
   id: string;
   name: string;
-  lat?: number;
-  lng?: number;
+  lat: number;
+  lng: number;
   city?: string;
   address?: string;
   location?: string;
-  provider?: 'local' | 'google';
-  placeId?: string;
 }
 
 /** Shape of the backend's pubs-near response. items are RAW Mapy suggest items
@@ -194,8 +189,6 @@ interface BackendPubsNearResponse {
     match?: string;
     amenities?: string[];
     beer_brand?: string | null;
-    beer_brands?: string[];
-    beer_match?: string;
     include_other_places?: boolean;
   };
 }
@@ -208,11 +201,6 @@ interface BackendLocationLookupResponse {
  *  connection, short enough that a stalled socket cannot pin the map. */
 const PUBS_NEAR_TIMEOUT_MS = 10_000;
 
-/** Hard cap on an explicit location lookup (suggest / geocode / reverse
- *  geocode). Without it a stalled upstream geocoder leaves the add-pub screen
- *  in "Dohledávám podnik…" forever, with the save button blocked behind it. */
-const LOCATION_LOOKUP_TIMEOUT_MS = 12_000;
-
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
@@ -224,7 +212,6 @@ async function backendSuggest(
   lng: number,
   kmRadius: number,
   beerBrandKey?: string,
-  beerBrandKeys: readonly string[] = [],
   amenityKeys: readonly string[] = [],
   includeOtherPlaces = false,
   signal?: AbortSignal,
@@ -236,11 +223,7 @@ async function backendSuggest(
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));
-  if (beerBrandKeys.length > 0) {
-    url.searchParams.set('beer_brands', beerBrandKeys.join(','));
-  } else if (beerBrandKey) {
-    url.searchParams.set('beer_brand', beerBrandKey);
-  }
+  if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
   if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
   if (includeOtherPlaces) url.searchParams.set('include_other_places', 'true');
 
@@ -259,37 +242,7 @@ async function backendSuggest(
       return null;
     }
     const data = (await resp.json()) as BackendPubsNearResponse;
-    if (beerBrandKeys.length > 0) {
-      const applied = data.applied_filters;
-      const acknowledgedBeerBrands = Array.isArray(applied?.beer_brands)
-        ? [...applied.beer_brands].sort()
-        : [];
-      const requestedBeerBrands = [...beerBrandKeys].sort();
-      const acknowledgedAmenities = Array.isArray(applied?.amenities)
-        ? [...applied.amenities].sort()
-        : [];
-      const requestedAmenities = [...amenityKeys].sort();
-      const acknowledged =
-        applied?.version === 3 &&
-        applied.match === 'all' &&
-        applied.beer_match === 'any' &&
-        acknowledgedBeerBrands.length === requestedBeerBrands.length &&
-        acknowledgedBeerBrands.every((key, index) => key === requestedBeerBrands[index]) &&
-        acknowledgedAmenities.length === requestedAmenities.length &&
-        acknowledgedAmenities.every((key, index) => key === requestedAmenities[index]) &&
-        (applied.include_other_places ?? false) === includeOtherPlaces;
-      if (!acknowledged) {
-        // Multi-select is additive. During a rolling deploy an older server may
-        // ignore `beer_brands` and return an unfiltered 200; never present that
-        // catalogue as if it satisfied the user's ANY-of brand choice.
-        console.warn('[pubs] backend did not acknowledge multi-brand filters');
-        trackApiFailure('pubs_near_backend', {
-          endpoint: '/v1/pubs/near',
-          reason: 'filter_contract_mismatch',
-        });
-        return null;
-      }
-    } else if (amenityKeys.length > 0) {
+    if (amenityKeys.length > 0) {
       const applied = data.applied_filters;
       const acknowledgedAmenities = Array.isArray(applied?.amenities)
         ? [...applied.amenities].sort()
@@ -336,14 +289,10 @@ async function backendLocationLookup(
   query: string,
   near?: { lat: number; lng: number } | null,
   signal?: AbortSignal,
-  placeId?: string,
 ): Promise<MapyGeocodeItem[] | null> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || signal?.aborted) return null;
 
-  const operation =
-    path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend';
-  const abort = chainAbortSignal(signal, LOCATION_LOOKUP_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',
@@ -351,12 +300,11 @@ async function backendLocationLookup(
       body: JSON.stringify({
         query,
         ...(near ? { lat: near.lat, lng: near.lng } : {}),
-        ...(placeId ? { place_id: placeId } : {}),
       }),
-      signal: abort.signal,
+      signal,
     });
     if (!resp.ok) {
-      trackApiFailure(operation, {
+      trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
         endpoint: path,
         status: resp.status,
       });
@@ -365,19 +313,15 @@ async function backendLocationLookup(
     const data = (await resp.json()) as BackendLocationLookupResponse;
     return data.items ?? [];
   } catch (err) {
-    if (signal?.aborted) return null;
-    // The caller did not cancel, so an aborted chained signal is our own hard
-    // timeout. Checking the signal (not the error class) keeps this honest:
-    // an aborted fetch rejects with a different error shape per runtime.
-    const timedOut = abort.signal.aborted;
-    trackApiFailure(operation, {
-      endpoint: path,
-      reason: timedOut ? 'timeout' : 'exception',
-      ...(timedOut ? {} : { error: err }),
-    });
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
+        endpoint: path,
+        reason: 'exception',
+        error: err,
+      });
+    }
     return null;
-  } finally {
-    abort.cleanup();
   }
 }
 
@@ -449,9 +393,8 @@ async function lookupGeocodeItems(
   query: string,
   near?: { lat: number; lng: number } | null,
   signal?: AbortSignal,
-  placeId?: string,
 ): Promise<MapyGeocodeItem[] | null> {
-  return backendLocationLookup('/v1/pubs/geocode', query, near, signal, placeId);
+  return backendLocationLookup('/v1/pubs/geocode', query, near, signal);
 }
 
 export async function geocodePubLocation(
@@ -465,13 +408,13 @@ export async function geocodePubLocation(
 
   const queries = [primaryQuery];
   const addressQuery = buildAddressLocationQuery(input);
-  if (!input.placeId && addressQuery && addressQuery !== primaryQuery) {
+  if (addressQuery && addressQuery !== primaryQuery) {
     queries.push(addressQuery);
   }
 
   let firstValid: MapyGeocodeItem | null = null;
   for (const query of queries) {
-    const items = await lookupGeocodeItems(query, input.near, signal, input.placeId);
+    const items = await lookupGeocodeItems(query, input.near, signal);
     if (items === null) continue;
 
     for (const item of items) {
@@ -485,66 +428,20 @@ export async function geocodePubLocation(
 }
 
 function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {
-  if (!item.name) return null;
-
-  const hasPosition = isValidPosition(item.position);
-  const placeId = item.providerPlaceId?.trim() || undefined;
-  if (!hasPosition && !placeId) return null;
+  if (!item.name || !isValidPosition(item.position)) return null;
 
   const city = pickCity(item);
   const address = pickAddress(item);
-  const key = hasPosition
-    ? `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`
-    : placeId!;
+  const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
   return {
     id: item.id?.trim() || `mapy:${key}:${item.name.trim()}`,
     name: item.name.trim(),
-    ...(hasPosition ? { lat: item.position.lat, lng: item.position.lon } : {}),
+    lat: item.position.lat,
+    lng: item.position.lon,
     city,
     address,
     location: address || city ? [address, city].filter(Boolean).join(', ') : item.location,
-    ...(item.provider ? { provider: item.provider } : {}),
-    ...(placeId ? { placeId } : {}),
   };
-}
-
-export async function reverseGeocodePubLocation(
-  location: { lat: number; lng: number },
-  signal?: AbortSignal,
-): Promise<PubLocationGeocodeResult | null> {
-  const endpoint = getBackendEndpoint('/v1/pubs/reverse-geocode');
-  if (!endpoint || signal?.aborted) return null;
-
-  const abort = chainAbortSignal(signal, LOCATION_LOOKUP_TIMEOUT_MS);
-  try {
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(location),
-      signal: abort.signal,
-    });
-    if (!resp.ok) {
-      trackApiFailure('pub_location_geocode_backend', {
-        endpoint: '/v1/pubs/reverse-geocode',
-        status: resp.status,
-      });
-      return null;
-    }
-    const data = (await resp.json()) as BackendLocationLookupResponse;
-    const item = data.items?.find((candidate) => isValidPosition(candidate.position));
-    return item ? geocodeResultFromItem(item) : null;
-  } catch (err) {
-    if (signal?.aborted) return null;
-    const timedOut = abort.signal.aborted;
-    trackApiFailure('pub_location_geocode_backend', {
-      endpoint: '/v1/pubs/reverse-geocode',
-      reason: timedOut ? 'timeout' : 'exception',
-      ...(timedOut ? {} : { error: err }),
-    });
-    return null;
-  } finally {
-    abort.cleanup();
-  }
 }
 
 export async function suggestPubLocations(
@@ -784,20 +681,15 @@ export async function searchPubsNear(
   signal?: AbortSignal,
   options: {
     beerBrandKey?: string;
-    beerBrandKeys?: readonly string[];
     amenityKeys?: readonly string[];
     includeOtherPlaces?: boolean;
   } = {},
 ): Promise<Pub[]> {
-  const beerBrandKeys = Array.from(
-    new Set((options.beerBrandKeys ?? []).map((key) => key.trim()).filter(Boolean)),
-  ).sort();
   const backendItems = await backendSuggest(
     lat,
     lng,
     kmRadius,
     options.beerBrandKey,
-    beerBrandKeys,
     options.amenityKeys,
     options.includeOtherPlaces,
     signal,

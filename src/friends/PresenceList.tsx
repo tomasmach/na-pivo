@@ -24,10 +24,10 @@ import { useRouter, type Href } from 'expo-router';
 
 import { CompassIcon } from '@/components/shared/IconGlyph';
 import type { FriendPresence, MyPresence } from '@/data/friendsClient';
-import { t } from '@/i18n';
+import { cs } from '@/i18n/cs';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 import HairlineRow from './HairlineRow';
@@ -52,7 +52,7 @@ interface PresenceRowProps {
 /** "4 piva · Pilsner Urquell · před 12 min", skipping whatever we don't know. */
 function metaLine(presence: FriendPresence, now: number): string {
   return [
-    presence.beers > 0 ? t.friends.presenceBeers(presence.beers) : '',
+    presence.beers > 0 ? cs.friends.presenceBeers(presence.beers) : '',
     presence.lastDrinkName,
     formatRelative(presence.lastSeenAt, now),
   ]
@@ -88,7 +88,7 @@ const PresenceRow = memo(function PresenceRow({
   }, [presence.cacheKey, presence.pubName, router]);
 
   const meta = metaLine(presence, now);
-  const name = mine ? t.friends.presenceMe : friendDisplayName(account);
+  const name = mine ? cs.friends.presenceMe : friendDisplayName(account);
 
   return (
     <HairlineRow>
@@ -97,11 +97,7 @@ const PresenceRow = memo(function PresenceRow({
           onPress={openProfile}
           onLongPress={handleLongPress}
           accessibilityRole="button"
-          accessibilityLabel={
-            mine
-              ? t.a11y.presenceRowMine(presence.pubName || t.friends.presenceSomewhere)
-              : t.a11y.presenceRow(name, presence.pubName || t.friends.presenceSomewhere)
-          }
+          accessibilityLabel={cs.a11y.presenceRow(name, presence.pubName || cs.friends.presenceSomewhere)}
           style={({ pressed }) => [styles.identity, pressed && styles.dim]}
         >
           <Avatar
@@ -126,7 +122,7 @@ const PresenceRow = memo(function PresenceRow({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {presence.pubName || t.friends.presenceSomewhere}
+              {presence.pubName || cs.friends.presenceSomewhere}
             </Text>
             {sameTable ? (
               <Text
@@ -134,7 +130,7 @@ const PresenceRow = memo(function PresenceRow({
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {t.friends.presenceSameTable}
+                {cs.friends.presenceSameTable}
               </Text>
             ) : null}
             {meta ? (
@@ -154,7 +150,7 @@ const PresenceRow = memo(function PresenceRow({
             onPress={showOnCompass}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={t.a11y.presenceCompass(presence.pubName || t.friends.presenceSomewhere)}
+            accessibilityLabel={cs.a11y.presenceCompass(presence.pubName || cs.friends.presenceSomewhere)}
             style={({ pressed }) => [styles.compassButton, pressed && styles.dim]}
           >
             <CompassIcon size={18} color={Colors.mutedText} />
@@ -175,12 +171,6 @@ export interface PresenceListProps {
   onOpenProfile: (accountId: string) => void;
   /** Called after a block/report so the screen can reload the graph. */
   onChanged: () => void;
-  /**
-   * Rows straight on the ground instead of inside the card. Kocoviny frames
-   * the list as a card among cards; a sheet of flat hairline rows (the Party
-   * hub) wants the same rows without the frame (§7.3).
-   */
-  flat?: boolean;
 }
 
 export function PresenceList({
@@ -188,7 +178,6 @@ export function PresenceList({
   myPresence,
   stale,
   sharedCacheKey = null,
-  flat = false,
   onOpenProfile,
   onChanged,
 }: PresenceListProps) {
@@ -211,7 +200,7 @@ export function PresenceList({
   if (presence.length === 0 && !myPresence) return null;
 
   return (
-    <View style={flat ? undefined : styles.card}>
+    <View style={styles.card}>
       {myPresence ? (
         <PresenceRow
           presence={myPresence}
@@ -236,7 +225,7 @@ export function PresenceList({
           nobody needs a privacy status while they are at home. */}
       {myPresence && !myPresence.visibleToParta ? (
         <Text style={styles.hiddenNote} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.friends.presenceHiddenNote}
+          {cs.friends.presenceHiddenNote}
         </Text>
       ) : null}
     </View>
@@ -276,7 +265,7 @@ const styles = StyleSheet.create({
   },
   name: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -285,14 +274,14 @@ const styles = StyleSheet.create({
   // avatar has already answered "who".
   pub: {
     marginTop: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
     includeFontPadding: false,
   },
   meta: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -301,7 +290,7 @@ const styles = StyleSheet.create({
   // no pill: a badge per row would put frames inside the card (§14.10).
   sameTable: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,
@@ -318,7 +307,7 @@ const styles = StyleSheet.create({
   },
   hiddenNote: {
     paddingBottom: Spacing.md,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
