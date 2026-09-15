@@ -97,8 +97,8 @@ export function buildHistoricalDrinkEntry(
       isContextPubKey(session.pubKey) ||
       typeof session.pubName !== 'string' ||
       !session.pubName.trim() ||
-      typeof drink.priceCzk !== 'number' ||
-      !Number.isFinite(drink.priceCzk)
+      (drink.priceCzk !== undefined &&
+        (typeof drink.priceCzk !== 'number' || !Number.isFinite(drink.priceCzk)))
     ) {
       return null;
     }

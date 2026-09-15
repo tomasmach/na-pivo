@@ -59,8 +59,7 @@ export interface DrinkInput {
   city?: string;
   /** Beer remains the default for compatibility with older queued payloads. */
   drinkType?: DrinkType;
-  /** The beer. Price is REQUIRED at a pub (the community-sourcing hook) and
-   *  optional outside one. */
+  /** The beer. Price may be absent in records restored from 2.0. */
   beer: CommunityBeer & { servingType?: ServingType };
   /** ISO-8601 timestamp; defaults to now server-side when omitted. */
   drankAt?: string;
@@ -430,14 +429,18 @@ export async function deleteDrink(
   }
 }
 
-/**
- * PATCH one previously-logged drink's private beer name by client_id. This is a
- * narrow typo-fix path: it does not rewrite pub, price, volume, timestamp or the
- * public community menu contribution.
- */
-export async function updateDrinkName(
+export interface DrinkUpdate {
+  beer_name?: string;
+  drink_type?: DrinkType;
+  price_czk?: number | null;
+  volume_ml?: number | null;
+  serving_type?: ServingType;
+}
+
+/** Send private drink edits, including fields queued by the 2.0 editor. */
+export async function updateDrink(
   clientId: string,
-  beerName: string,
+  update: DrinkUpdate,
   signal?: AbortSignal,
 ): Promise<SubmitDrinkResult> {
   if (signal?.aborted) return 'retry';
@@ -471,7 +474,7 @@ export async function updateDrinkName(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify({ beer_name: beerName }),
+      body: JSON.stringify(update),
       signal: abort.signal,
     });
 
@@ -500,4 +503,13 @@ export async function updateDrinkName(
   } finally {
     abort.cleanup();
   }
+}
+
+/** Keep the simple UI's rename contract. */
+export function updateDrinkName(
+  clientId: string,
+  beerName: string,
+  signal?: AbortSignal,
+): Promise<SubmitDrinkResult> {
+  return updateDrink(clientId, { beer_name: beerName }, signal);
 }

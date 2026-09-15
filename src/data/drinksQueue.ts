@@ -61,7 +61,7 @@ function isDrinkEntry(entry: unknown): entry is DrinkEntry {
     return false;
   }
   // Outside drinks (place_context ≠ pub) carry no pub identity and may have no
-  // price; a pub drink (or a legacy entry without place_context) must have both.
+  // price. Pub drinks from 2.0 also allow an unknown price.
   if (isOutsidePlaceContext(e.place_context)) {
     return (
       e.name === undefined &&
@@ -74,7 +74,7 @@ function isDrinkEntry(entry: unknown): entry is DrinkEntry {
     typeof e.name === 'string' &&
     typeof e.lat === 'number' &&
     typeof e.lng === 'number' &&
-    typeof e.beer.price_czk === 'number'
+    (e.beer.price_czk === undefined || typeof e.beer.price_czk === 'number')
   );
 }
 

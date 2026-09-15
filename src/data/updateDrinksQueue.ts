@@ -1,25 +1,38 @@
 /**
- * Persistent retry queue for drink name UPDATES.
+ * Persistent retry queue for private drink edits.
  *
  * A corrected beer name should apply locally immediately and eventually reach
  * the backend. Updates are keyed by client_id and deduped last-write-wins so a
  * user can fix the same typo twice while offline without building a backlog.
  */
 
-import { updateDrinkName } from './drinksClient';
+import { updateDrink, type DrinkUpdate } from './drinksClient';
+import { isDrinkType, isServingType } from '@/drinks/drinkTypes';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-update-drinks-queue';
 const MAX_QUEUE_LENGTH = 200;
 
-export interface DrinkUpdateEntry {
+export interface DrinkUpdateEntry extends DrinkUpdate {
   client_id: string;
-  beer_name: string;
 }
 
 function isDrinkUpdateEntry(entry: unknown): entry is DrinkUpdateEntry {
-  const e = entry as DrinkUpdateEntry;
-  return !!e && typeof e.client_id === 'string' && typeof e.beer_name === 'string' && e.beer_name.length > 0;
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+  const e = entry as Record<string, unknown>;
+  const keys = Object.keys(e).filter((key) => key !== 'client_id');
+  if (
+    typeof e.client_id !== 'string' || keys.length === 0 ||
+    keys.some((key) => !['beer_name', 'drink_type', 'price_czk', 'volume_ml', 'serving_type'].includes(key))
+  ) return false;
+  if ('beer_name' in e && (typeof e.beer_name !== 'string' || !e.beer_name.trim())) return false;
+  if ('drink_type' in e && !isDrinkType(e.drink_type)) return false;
+  if ('serving_type' in e && !isServingType(e.serving_type)) return false;
+  if ('price_czk' in e && e.price_czk !== null &&
+    (typeof e.price_czk !== 'number' || !Number.isFinite(e.price_czk) || e.price_czk < 0)) return false;
+  if ('volume_ml' in e && e.volume_ml !== null &&
+    (typeof e.volume_ml !== 'number' || !Number.isFinite(e.volume_ml) || e.volume_ml <= 0)) return false;
+  return true;
 }
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<DrinkUpdateEntry>(
@@ -50,7 +63,8 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     // right account.)
     if (signal.aborted) break;
     attempted.set(entry.client_id, signature(entry));
-    const result = await updateDrinkName(entry.client_id, entry.beer_name);
+    const { client_id, ...update } = entry;
+    const result = await updateDrink(client_id, update, signal);
     if (result !== 'retry') settled.add(entry.client_id);
   }
 
@@ -69,7 +83,9 @@ export async function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void>
   await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
-    deduped.push(entry);
+    // A rename in the restored UI must preserve unsent price/type edits from 2.0.
+    const previous = queue.find((queued) => queued.client_id === entry.client_id);
+    deduped.push({ ...previous, ...entry });
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
   await flushUpdateDrinksQueue();
