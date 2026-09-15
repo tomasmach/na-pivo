@@ -27,7 +27,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import { enqueueFeedback } from '@/data/feedbackQueue';
@@ -333,7 +333,6 @@ export default function ReportScreen() {
       )}
       {/* This route is a native full-screen modal on iOS. A local host keeps
           the photo-source dialog above that presentation layer. */}
-      <AppDialogHost />
     </View>
   );
 }

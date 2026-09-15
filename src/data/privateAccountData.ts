@@ -47,22 +47,57 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-party-groups',
   'na-pivo-beer-photos',
   'na-pivo-vycep',
+  // Retired 2.0 features can still have private data after an app update.
+  // Keep their cleanup contract even though their UI and queues were removed.
+  'na-pivo-account-preferences-queue',
+  'na-pivo-party-games-queue',
+  'na-pivo-party-games-queue-quarantine-v1',
+  'na-pivo-party-game-starts-queue',
+  'na-pivo-party-game-starts-queue-quarantine-v1',
+  'na-pivo-party-evening-actions-queue',
+  'na-pivo-party-evening-identity-v1',
+  'na-pivo-party-games-account-merge',
+  'na-pivo-private-account-merge-v0',
+  'na-pivo-live-party',
+  'na-pivo-party-night-records-v1',
+  'na-pivo-contest-results',
+  'na-pivo-search-recent-v1',
+  'na-pivo-pending-invite-code',
+  'na-pivo-beer-checkin-action-tickets',
+  'na-pivo-beer-photo-deletion-tombstones',
+  'na-pivo-counter-telemetry',
+  'na-pivo-account-deletion-intent-v2',
+  'na-pivo-account-deletion-intent-quarantine-v1',
+  'na-pivo-account-deletion-intent-quarantine-backup-v1',
+  'na-pivo-account-deletion-intent-quarantine-recovered-v1',
+  'na-pivo-beer-count-reminder-state',
+  'na-pivo-pub-reminder-state',
+  'na-pivo-pub-reminder-geofences',
+  'na-pivo-handled-notification-responses-v1',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
 ];
 
+const PRIVATE_STORAGE_PREFIXES = ['na-pivo-night-feed-v1:'];
 const SETTINGS_STORAGE_KEY = 'na-pivo-settings';
+const PRIVATE_SETTINGS_DEFAULTS = {
+  homePoint: null,
+  marketingEmailsEnabled: false,
+  lastSeenPartyStreak: 0,
+  pendingAccountPreferences: {},
+  pendingAccountPreferencesOwnerId: null,
+};
 
-async function clearPersistedHomePoint(): Promise<void> {
-  useSettingsStore.setState({ homePoint: null });
+async function clearPersistedPrivateSettings(): Promise<void> {
+  useSettingsStore.setState(PRIVATE_SETTINGS_DEFAULTS);
   const raw = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
   if (!raw) return;
 
   try {
     const persisted = JSON.parse(raw) as { state?: { homePoint?: unknown } };
     if (!persisted.state || typeof persisted.state !== 'object') return;
-    persisted.state.homePoint = null;
+    Object.assign(persisted.state, PRIVATE_SETTINGS_DEFAULTS);
     await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(persisted));
   } catch {
     // A malformed settings payload cannot be trusted not to contain the old
@@ -125,6 +160,11 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearPubRatingsQueue(),
     clearPubAmenitiesQueue(),
   ]);
-  await Promise.all(PRIVATE_STORAGE_KEYS.map((key) => AsyncStorage.removeItem(key)));
-  await clearPersistedHomePoint();
+  const keys = await AsyncStorage.getAllKeys();
+  const privateKeys = new Set([
+    ...PRIVATE_STORAGE_KEYS,
+    ...keys.filter((key) => PRIVATE_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))),
+  ]);
+  await Promise.all([...privateKeys].map((key) => AsyncStorage.removeItem(key)));
+  await clearPersistedPrivateSettings();
 }

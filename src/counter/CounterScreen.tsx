@@ -83,7 +83,6 @@ import { formatPrice, pricePlaceholder } from '@/utils/currency';
 import {
   useTallyStore,
   sessionCount,
-  sessionTotalCzk,
   sessionDrinkTypeCounts,
   resumableSession,
   isPastEveningBackdate,
@@ -104,6 +103,7 @@ import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
+import { eveningPriceLabel, sessionBreakdown } from '@/myBeers/eveningModel';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -504,7 +504,6 @@ function Tacek({
 
   const isThisSession = cell !== null && current?.pubKey === cell;
   const count = isThisSession ? sessionCount(current) : 0;
-  const totalCzk = isThisSession ? sessionTotalCzk(current) : 0;
   const sessionDrinks = useMemo(
     () => (isThisSession ? current?.drinks ?? [] : []),
     [isThisSession, current],
@@ -685,8 +684,9 @@ function Tacek({
 
   // Outside a pub the price is optional; a "0 Kč" line would claim knowledge we
   // don't have — unknown stays unknown.
-  const showSpent = !outsideContext || totalCzk > 0;
-  const spentLabel = showSpent && count > 0 ? formatPrice(totalCzk, priceCurrency) : null;
+  const spentLabel = sessionDrinks.some((drink) => typeof drink.priceCzk === 'number')
+    ? eveningPriceLabel(sessionBreakdown(isThisSession ? current : null), priceCurrency)
+    : null;
   const sinceLastBeer = latestBeer ? minutesSinceDrink(latestBeer.at, nowMs) : null;
   // The numeral says how many; the card's footer carries money, any non-beer
   // drinks and how long ago — never a repeat of the count.
@@ -1540,7 +1540,7 @@ function Tacek({
         startedAtLabel={startedAtLabel}
         beerItems={receipt.beerItems}
         otherItems={receipt.otherItems}
-        totalLabel={showSpent && totalCzk > 0 ? formatPrice(totalCzk, priceCurrency) : null}
+        totalLabel={spentLabel}
         onRemove={(item) => removeIdentity(item.key)}
         onDone={() => runAfterSheetClose(handleDone)}
         onClose={() => setReceiptOpen(false)}

@@ -39,7 +39,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
-import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
@@ -1037,7 +1037,6 @@ export default function PhotoContestScreen() {
           void loadBeerPhotos();
         }}
       />
-      <AppDialogHost />
     </View>
   );
 }

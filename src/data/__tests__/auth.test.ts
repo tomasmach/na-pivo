@@ -14,7 +14,7 @@
  */
 
 import * as auth from '@/data/auth';
-import { ensureAccount, getSessionToken, revertToAnonymous, setSession } from '@/data/account';
+import { ensureAccount, getCachedAuthenticationState, getSessionToken, revertToAnonymous, setSession } from '@/data/account';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { clearLocalPrivateAccountData } from '@/data/privateAccountData';
 import { disableCachedPushDeviceWithBearer } from '@/data/pushDeviceClient';
@@ -33,6 +33,7 @@ jest.mock('@/data/account', () => ({
     token: 'anon-tok',
     authenticated: false,
   })),
+  getCachedAuthenticationState: jest.fn(async () => false),
   getSessionToken: jest.fn(async () => 'cur-tok'),
   setSession: jest.fn(async () => undefined),
   revertToAnonymous: jest.fn(async () => null),
@@ -272,7 +273,7 @@ describe('registerEmail', () => {
     });
 
     // 'ensure' bearer claims the current anonymous account first.
-    expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+    expect(mockEnsureAccount).toHaveBeenCalledTimes(2);
 
     const { url, init } = firstCall(spy);
     expect(url).toBe('https://api.test/v1/auth/register');
@@ -374,7 +375,7 @@ describe('loginEmail', () => {
     expect(init.method).toBe('POST');
     // bearer: 'claim' → best-effort anonymous claim for merging local progress.
     expect(authHeader(init)).toBe('Bearer anon-tok');
-    expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+    expect(mockEnsureAccount).toHaveBeenCalledTimes(2);
     expect(mockGetSessionToken).not.toHaveBeenCalled();
     expect(bodyOf(init)).toEqual({ email: 'jan@example.com', password: 'pw' });
 
@@ -387,8 +388,8 @@ describe('loginEmail', () => {
     expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
   });
 
-  it('does not send an authenticated stale session as a login claim bearer', async () => {
-    mockEnsureAccount.mockResolvedValueOnce({
+  it('refuses another account without replacing the stale authenticated session', async () => {
+    mockEnsureAccount.mockResolvedValue({
       deviceId: 'd',
       accountId: 'signed-in',
       token: 'stale-signed-in-token',
@@ -400,14 +401,9 @@ describe('loginEmail', () => {
 
     const result = await auth.loginEmail({ email: 'jan@example.com', password: 'pw' });
 
-    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ ok: false, code: 'account_mismatch' });
     expect(authHeader(firstCall(spy).init)).toBeUndefined();
-    expect(mockSetSession).toHaveBeenCalledWith({
-      deviceId: undefined,
-      accountId: 'acc-2',
-      token: 'login-tok',
-      authenticated: true,
-    });
+    expect(mockSetSession).not.toHaveBeenCalled();
     expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
   });
 
@@ -1084,4 +1080,81 @@ describe('uploadAvatar', () => {
     expect(result.code).toBe('network');
     expect(mockFileUpload).not.toHaveBeenCalled();
   });
+});
+
+
+describe('credential account ownership', () => {
+  const outgoing = {
+    deviceId: 'original-device', accountId: 'original-account',
+    token: 'original-token', authenticated: true,
+  };
+
+  it.each([
+    ['email', () => auth.loginEmail({ email: 'b@example.invalid', password: 'pw' })],
+    ['Google', () => auth.signInWithGoogle()],
+    ['Apple', () => auth.signInWithApple()],
+    ['registration', () => auth.registerEmail({ email: 'b@example.invalid', password: 'pw' })],
+    ['password reset', () => auth.resetPassword({ token: 'reset', password: 'pw' })],
+  ] as const)('keeps A private data and credential when %s authenticates B', async (_provider, login) => {
+    mockEnsureAccount.mockResolvedValue(outgoing);
+    installFetch(fetchResolving(200, { id: 'another-account', token: 'another-token' }));
+
+    await expect(login()).resolves.toMatchObject({ ok: false, code: 'account_mismatch' });
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['email', () => auth.loginEmail({ email: 'a@example.invalid', password: 'pw' })],
+    ['Google', () => auth.signInWithGoogle()],
+    ['Apple', () => auth.signInWithApple()],
+    ['password reset', () => auth.resetPassword({ token: 'reset', password: 'pw' })],
+  ] as const)('preserves the same account offline work during %s renewal', async (_provider, login) => {
+    mockEnsureAccount.mockResolvedValue(outgoing);
+    installFetch(fetchResolving(200, { id: outgoing.accountId, token: 'renewed-token' }));
+
+    await expect(login()).resolves.toMatchObject({ ok: true });
+    expect(mockSetSession).toHaveBeenCalledWith(expect.objectContaining({
+      accountId: outgoing.accountId, token: 'renewed-token',
+    }));
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
+  });
+
+  it('finishes a pending credential request before explicit logout changes the session', async () => {
+    mockEnsureAccount.mockResolvedValue(outgoing);
+    let finishLogin!: (value: unknown) => void;
+    let loginStarted!: () => void;
+    const started = new Promise<void>((resolve) => { loginStarted = resolve; });
+    const spy = installFetch(jest.fn().mockImplementationOnce(() => {
+      loginStarted();
+      return new Promise((resolve) => { finishLogin = resolve; });
+    }).mockImplementation(fetchResolving(200, {})));
+
+    const login = auth.loginEmail({ email: 'b@example.invalid', password: 'pw' });
+    await started;
+    const logout = auth.logout();
+    await Promise.resolve();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
+    finishLogin({ ok: true, status: 200, text: async () => JSON.stringify({
+      id: 'another-account', token: 'another-token',
+    }) });
+    await expect(login).resolves.toMatchObject({ ok: false, code: 'account_mismatch' });
+    await expect(logout).resolves.toEqual({ ok: true });
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockRevertToAnonymous).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+it('does not replace an unreadable existing credential after a successful login response', async () => {
+  mockEnsureAccount.mockResolvedValue(null);
+  jest.mocked(getCachedAuthenticationState).mockResolvedValueOnce(null);
+  installFetch(fetchResolving(200, { id: 'another-account', token: 'another-token' }));
+
+  await expect(auth.loginEmail({ email: 'b@example.invalid', password: 'pw' })).resolves.toMatchObject({
+    ok: false, code: 'session_storage',
+  });
+  expect(mockSetSession).not.toHaveBeenCalled();
+  expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
 });

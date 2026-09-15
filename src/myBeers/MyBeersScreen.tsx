@@ -32,11 +32,10 @@ import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
-  sessionTotalCzk,
   type TallySession,
 } from '@/stores/tallyStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
-import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
+import { eveningPriceLabel, sessionBreakdown, sessionDrinkSummary, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
@@ -67,7 +66,6 @@ function CurrentEveningCard({
   priceCurrency: PriceCurrency;
   now: Date;
 }) {
-  const totalCzk = sessionTotalCzk(session);
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
   const lastText = lastDrinkText(session, now);
 
@@ -86,7 +84,7 @@ function CurrentEveningCard({
         {session.pubName}
       </Text>
       <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency))}
+        {cs.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency))}
       </Text>
       {lastText && (
         <Text style={styles.lastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -97,7 +95,6 @@ function CurrentEveningCard({
       <View style={styles.divider} />
       <EveningBreakdown
         lines={breakdown}
-        totalCzk={totalCzk}
         priceCurrency={priceCurrency}
         showTotal={false}
       />
@@ -133,9 +130,8 @@ function PastEveningRow({
   now: Date;
   onPress: () => void;
 }) {
-  const totalCzk = sessionTotalCzk(session);
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
-  const summary = cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency));
+  const summary = cs.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency));
 
   return (
     <Pressable

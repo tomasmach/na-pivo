@@ -2,13 +2,17 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { Pressable, Text } from 'react-native';
 
+import { AppDialogScreen } from '@/components/shared/AppDialog';
 import { cs } from '@/i18n/cs';
 import ReportScreen from '../ReportScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+let mockFocused = true;
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn() }),
+  useIsFocused: () => mockFocused,
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -55,10 +59,23 @@ jest.mock('@/components/shared/IconGlyph', () => ({
 }));
 
 it('shows the attachment source dialog above the full-screen feedback route', () => {
-  const screen = render(<ReportScreen />);
+  mockFocused = true;
+  const route = () => <AppDialogScreen><ReportScreen /></AppDialogScreen>;
+  const screen = render(route());
 
   fireEvent.press(screen.getByLabelText(cs.report.attachmentAdd));
 
   expect(screen.getByText(cs.report.attachmentCamera)).toBeTruthy();
   expect(screen.getByText(cs.report.attachmentLibrary)).toBeTruthy();
+
+  // A stacked route takes focus; the old dialog must not appear underneath it
+  // or reappear when the user returns to this screen.
+  mockFocused = false;
+  screen.rerender(route());
+  expect(screen.queryByText(cs.report.attachmentCamera)).toBeNull();
+  mockFocused = true;
+  screen.rerender(route());
+  expect(screen.queryByText(cs.report.attachmentCamera)).toBeNull();
+  fireEvent.press(screen.getByLabelText(cs.report.attachmentAdd));
+  expect(screen.getByText(cs.report.attachmentCamera)).toBeTruthy();
 });

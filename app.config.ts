@@ -99,8 +99,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         locationAlwaysAndWhenInUsePermission: BACKGROUND_LOCATION_REASON,
         isIosBackgroundLocationEnabled: true,
         isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: false,
       },
     ],
+    ['expo-camera', { microphonePermission: false, recordAudioAndroid: false }],
+    ['expo-image-picker', { microphonePermission: false }],
     'expo-notifications',
     [
       'expo-audio',
@@ -205,6 +208,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.tomasmach.na_pivo',
+      // Geofencing uses broadcasts; dependency manifests must not add an
+      // unused foreground service permission back during manifest merging.
+      blockedPermissions: [
+        'android.permission.FOREGROUND_SERVICE',
+        'android.permission.FOREGROUND_SERVICE_LOCATION',
+      ],
       intentFilters: [
         {
           action: 'VIEW',

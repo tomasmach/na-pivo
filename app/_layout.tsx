@@ -61,7 +61,7 @@ import { ContestResultsModal } from '@/photos/ContestResultsModal';
 import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
 import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
-import { AppDialogHost } from '@/components/shared/AppDialog';
+import { AppDialogScreen } from '@/components/shared/AppDialog';
 import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
 import {
@@ -421,6 +421,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <Stack
+          screenLayout={({ children }) => <AppDialogScreen>{children}</AppDialogScreen>}
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: Colors.stout },
@@ -643,7 +644,6 @@ export default function RootLayout() {
         <PubReminderOnboardingModal />
         <NicknameNudgeModal />
         <PubReminderEnableFailureModal />
-        <AppDialogHost />
         <AppReviewPromptGate />
         <ProductTelemetryTracker
           enabled={

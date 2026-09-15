@@ -12,19 +12,17 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
-import { formatPrice, type PriceCurrency } from '@/utils/currency';
-import type { BreakdownLine } from '@/myBeers/eveningModel';
+import { type PriceCurrency } from '@/utils/currency';
+import { eveningPriceLabel, type BreakdownLine } from '@/myBeers/eveningModel';
 
 interface EveningBreakdownProps {
   lines: BreakdownLine[];
-  totalCzk: number;
   priceCurrency: PriceCurrency;
   showTotal?: boolean;
 }
 
 export function EveningBreakdown({
   lines,
-  totalCzk,
   priceCurrency,
   showTotal = true,
 }: EveningBreakdownProps) {
@@ -40,7 +38,7 @@ export function EveningBreakdown({
             {line.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(line.drinkType)}` : ''}
           </Text>
           <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.myBeers.breakdownLine(line.count, formatPrice(line.totalCzk, priceCurrency))}
+            {cs.myBeers.breakdownLine(line.count, eveningPriceLabel([line], priceCurrency))}
           </Text>
         </View>
       ))}
@@ -51,7 +49,7 @@ export function EveningBreakdown({
             {cs.myBeers.totalLabel}
           </Text>
           <Text style={styles.totalValue} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {formatPrice(totalCzk, priceCurrency)}
+            {eveningPriceLabel(lines, priceCurrency)}
           </Text>
         </View>
       )}

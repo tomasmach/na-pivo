@@ -15,8 +15,11 @@
 
 import { File, UploadType } from 'expo-file-system';
 
+import { cs } from '@/i18n/cs';
+
 import {
   ensureAccount,
+  getCachedAuthenticationState,
   getSessionToken,
   revertToAnonymous,
   setSession,
@@ -28,12 +31,16 @@ import {
   type RawAchievementsBlock,
 } from './achievements';
 import { getBackendEndpoint } from './backendConfig';
+import { createQueueLock } from './createQueue';
 import { clearLocalPrivateAccountData } from './privateAccountData';
 import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
 
 const REQUEST_TIMEOUT_MS = 12000;
+// A slow credential response must finish before logout/delete can move the
+// session boundary. Only these lifecycle operations publish a new identity.
+const runSessionChange = createQueueLock();
 
 export type AuthProvider = 'email' | 'google' | 'apple';
 
@@ -527,7 +534,21 @@ async function applyAuthSuccess(
     };
   }
 
-  if (options?.clearLocalPrivateData) {
+  const outgoing = await ensureAccount();
+  if (!outgoing && (await getCachedAuthenticationState()) !== false) {
+    // An unavailable Keychain is not proof that the previous account is absent.
+    return {
+      ok: false,
+      code: 'session_storage',
+      detail: cs.account.errorSessionStorage,
+    };
+  }
+  if (outgoing?.authenticated && outgoing.accountId !== profile.id) {
+    // Reauthentication is not an account switch: A's unsent diary must never
+    // become B's next flush. Keep A intact until an explicit logout.
+    return { ok: false, code: 'account_mismatch', detail: cs.account.errorAccountMismatch };
+  }
+  if (options?.clearLocalPrivateData && !outgoing?.authenticated) {
     await clearLocalPrivateAccountData();
   }
   try {
@@ -542,7 +563,7 @@ async function applyAuthSuccess(
     return {
       ok: false,
       code: 'session_storage',
-      detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+      detail: cs.account.errorSessionStorage,
     };
   }
   return { ok: true, profile };
@@ -565,7 +586,11 @@ function resolveActionResult(res: FetchOutcome | { networkError: true }): AuthAc
 // ---------------------------------------------------------------------------
 // Email + password
 // ---------------------------------------------------------------------------
-export async function registerEmail(params: {
+export function registerEmail(params: { email: string; password: string; displayName?: string }): Promise<AuthResult> {
+  return runSessionChange(() => registerEmailOnce(params));
+}
+
+async function registerEmailOnce(params: {
   email: string;
   password: string;
   displayName?: string;
@@ -583,7 +608,11 @@ export async function registerEmail(params: {
   return applyAuthSuccess(res.data);
 }
 
-export async function loginEmail(params: { email: string; password: string }): Promise<AuthResult> {
+export function loginEmail(params: { email: string; password: string }): Promise<AuthResult> {
+  return runSessionChange(() => loginEmailOnce(params));
+}
+
+async function loginEmailOnce(params: { email: string; password: string }): Promise<AuthResult> {
   const res = await authFetch('/v1/auth/login', {
     bearer: 'claim',
     body: { email: params.email, password: params.password },
@@ -647,7 +676,11 @@ function mapSocialError(err: unknown): AuthResult {
   return { ok: false, code: 'failed', detail: 'Přihlášení se nezdařilo.' };
 }
 
-export async function signInWithGoogle(): Promise<AuthResult> {
+export function signInWithGoogle(): Promise<AuthResult> {
+  return runSessionChange(() => signInWithGoogleOnce());
+}
+
+async function signInWithGoogleOnce(): Promise<AuthResult> {
   let idToken: string;
   try {
     idToken = await getGoogleIdToken();
@@ -666,7 +699,11 @@ export async function signInWithGoogle(): Promise<AuthResult> {
   return applyAuthSuccess(res.data);
 }
 
-export async function signInWithApple(): Promise<AuthResult> {
+export function signInWithApple(): Promise<AuthResult> {
+  return runSessionChange(() => signInWithAppleOnce());
+}
+
+async function signInWithAppleOnce(): Promise<AuthResult> {
   let credential;
   try {
     credential = await getAppleCredential();
@@ -738,7 +775,11 @@ export async function setPassword(params: { password: string; email?: string }):
 // ---------------------------------------------------------------------------
 // Session / lifecycle
 // ---------------------------------------------------------------------------
-export async function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
+export function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
+  return runSessionChange(() => logoutOnce(options));
+}
+
+async function logoutOnce(options?: { all?: boolean }): Promise<AuthActionResult> {
   await disablePushDeviceForCurrentSession();
   const res = await authFetch('/v1/auth/logout', {
     bearer: 'current',
@@ -751,7 +792,11 @@ export async function logout(options?: { all?: boolean }): Promise<AuthActionRes
   return { ok: true };
 }
 
-export async function deleteAccount(): Promise<AuthActionResult> {
+export function deleteAccount(): Promise<AuthActionResult> {
+  return runSessionChange(() => deleteAccountOnce());
+}
+
+async function deleteAccountOnce(): Promise<AuthActionResult> {
   const res = await authFetch('/v1/account/me', { method: 'DELETE', bearer: 'current' });
   if ('networkError' in res) return NETWORK_ERROR;
   if (!res.ok && res.status !== 204) {
@@ -771,7 +816,11 @@ export async function requestPasswordReset(email: string): Promise<AuthActionRes
   return resolveActionResult(res);
 }
 
-export async function resetPassword(params: { token: string; password: string }): Promise<AuthResult> {
+export function resetPassword(params: { token: string; password: string }): Promise<AuthResult> {
+  return runSessionChange(() => resetPasswordOnce(params));
+}
+
+async function resetPasswordOnce(params: { token: string; password: string }): Promise<AuthResult> {
   const res = await authFetch('/v1/auth/reset-password', {
     bearer: 'none',
     body: { token: params.token, password: params.password },

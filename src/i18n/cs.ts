@@ -867,6 +867,8 @@ export const cs = {
     forgotPassword: 'Zapomenuté heslo?',
 
     // — Inline validation —
+    errorSessionStorage: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+    errorAccountMismatch: 'V telefonu máš piva z jiného účtu. Přihlas se původním účtem, nebo se nejdřív odhlas.',
     errorEmailInvalid: 'Zadej platný e-mail.',
     errorPasswordShort: 'Heslo musí mít alespoň 8 znaků.',
     errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
@@ -1299,7 +1301,7 @@ export const cs = {
     searchCta: 'Najít',
     addByNickname: 'Pozvat',
     emptyFriends: 'Zatím piješ solo. Najdi přezdívku a pošli první pozvánku.',
-    emptyActive: 'Nikdo z party teď nesvítí v hospodě.',
+    emptyActive: 'Nikdo z kamarádů teď nesvítí v hospodě.',
     activeHeader: 'Teď na pivu',
     requestsHeader: 'Čekají na tebe',
     addHeader: 'Přidat do party',
@@ -1506,7 +1508,7 @@ export const cs = {
     presenceBeers: (n: number) =>
       n === 1 ? '1 pivo' : n >= 2 && n <= 4 ? `${n} piva` : `${n} piv`,
     presenceHiddenNote: 'Jedeš v neviditelném režimu, takže tě parta u stolu nevidí.',
-    presenceEmpty: 'Nikdo z party teď nikde nesedí.',
+    presenceEmpty: 'Nikdo z kamarádů teď nikde nesedí.',
     /**
      * The card headline. Deliberately without the pub: "drží stůl Lokál
      * Dlouhááá" needs a locative ("v Lokálu Dlouhááá") that we cannot decline
@@ -1598,6 +1600,7 @@ export const cs = {
     claimInvalid: 'Tuhle pozvánku neznám.',
     claimLoading: 'Načítám pozvánku…',
     claimSelf: 'To je tvůj vlastní kód.',
+    legacyTableUnavailable: 'Sdílené stoly už v aplikaci nejsou.',
     claimBack: 'Zpět',
 
     // — Compose "Cinkni partě" (§B) —
@@ -2353,7 +2356,7 @@ export const cs = {
     // Explicit "I'm done" — archives the session to history.
     doneDrinking: 'Dopito',
     doneTitle: 'Dopito?',
-    doneBody: 'Zavřu tenhle večer a najdeš ho v Historii.',
+    doneBody: 'Zavřu tenhle večer a najdeš ho v Deníku.',
     doneConfirm: 'Dopito',
     // Offered when a recent evening at this pub auto-completed and can continue.
     resumeEvening: 'Pokračovat ve večeru',
@@ -2600,7 +2603,7 @@ export const cs = {
     deleteDrink: 'Odebrat jeden nápoj',
     editDrinkTitle: 'Opravit název nápoje',
     editDrinkGroupTitle: (count: number) =>
-      count > 1 ? `Přejmenovat všech ${count} nápojů` : 'Opravit název nápoje',
+      count > 1 ? `Přejmenovat ${count} ${czechPlural(count, { one: 'nápoj', few: 'nápoje', many: 'nápojů' })}` : 'Opravit název nápoje',
     editDrinkPlaceholder: 'Název nápoje',
     editDrinkSave: 'Uložit',
     editDrinkCancel: 'Zrušit',
@@ -2609,6 +2612,8 @@ export const cs = {
     deleteDrinkBody: 'Počet na řádku snížím o jeden.',
     deleteDrinkConfirm: 'Odebrat',
     deleteDrinkCancel: 'Zrušit',
+    priceUnknown: 'Cena chybí',
+    pricePartial: (price: string) => `Nejméně ${price}`,
     totalLabel: 'Celkem',
 
     // — Personal pub rating ("Stálo to za návrat?") —

@@ -6,6 +6,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
@@ -32,9 +33,8 @@ export interface AppDialogOptions {
 
 type AppDialogPresenter = (options: AppDialogOptions) => void;
 
-// Full-screen native routes live in their own presentation layer. They may
-// mount a local host so dialogs appear above that layer; the newest mounted
-// host wins, while the root host remains available after the route unmounts.
+// Each focused native screen owns its presenter, so dialogs appear above
+// full-screen routes and cannot leak into a screen underneath.
 const presenters: AppDialogPresenter[] = [];
 let pendingDialog: AppDialogOptions | null = null;
 
@@ -45,6 +45,11 @@ export function showAppDialog(options: AppDialogOptions): void {
     return;
   }
   pendingDialog = options;
+}
+
+export function AppDialogScreen({ children }: { children: React.ReactNode }) {
+  const focused = useIsFocused();
+  return <>{children}{focused ? <AppDialogHost /> : null}</>;
 }
 
 export function AppDialogHost() {

@@ -56,7 +56,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
   findSessionByStart,
-  sessionTotalCzk,
   drinkingDayKey,
   type TallyDrink,
   type TallySession,
@@ -67,6 +66,7 @@ import { PublishNightSheet } from '@/vycep/PublishNightSheet';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
 import {
   sessionBreakdown,
+  eveningPriceLabel,
   sessionDrinkActionGroups,
   sessionDrinkSummary,
   eveningDateLabel,
@@ -335,7 +335,7 @@ export default function EveningDetailScreen() {
             <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
               {cs.myBeers.summary(
                 sessionDrinkSummary(session),
-                formatPrice(sessionTotalCzk(session), priceCurrency),
+                eveningPriceLabel(breakdown, priceCurrency),
               )}
             </Text>
           </View>
@@ -347,7 +347,6 @@ export default function EveningDetailScreen() {
             </View>
             <EveningBreakdown
               lines={breakdown}
-              totalCzk={sessionTotalCzk(session)}
               priceCurrency={priceCurrency}
             />
           </View>

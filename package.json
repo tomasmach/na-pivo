@@ -5,6 +5,11 @@
   "private": true,
   "expo": {
     "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-notifications"
+        ]
+      },
       "ios": {
         "buildFromSource": [
           "expo-location"

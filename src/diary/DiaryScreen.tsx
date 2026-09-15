@@ -53,12 +53,13 @@ import { useAccountStore } from '@/stores/accountStore';
 import {
   useTallyStore,
   allSessionsNewestFirst,
-  sessionTotalCzk,
   type TallySession,
 } from '@/stores/tallyStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import {
   eveningDateLabel,
+  eveningPriceLabel,
+  sessionBreakdown,
   eveningDayRelation,
   sessionDrinkSummary,
 } from '@/myBeers/eveningModel';
@@ -144,11 +145,11 @@ function NightRow({
   onPress: () => void;
 }) {
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
-  const totalCzk = sessionTotalCzk(session);
   const meta = cs.diary.nightMeta([
     eveningDateLabel(session.startedAt, now),
     sessionDrinkSummary(session),
-    totalCzk > 0 ? formatPrice(totalCzk, priceCurrency) : '',
+    session.drinks.some((drink) => typeof drink.priceCzk === 'number')
+      ? eveningPriceLabel(sessionBreakdown(session), priceCurrency) : '',
   ]);
 
   return (
@@ -438,7 +439,8 @@ export default function DiaryScreen({
   }, []);
 
   const lastNoun = lastNight ? nightNoun(lastNight) : null;
-  const lastSpentCzk = lastNight ? sessionTotalCzk(lastNight) : 0;
+  const lastSpentLabel = lastNight?.drinks.some((drink) => typeof drink.priceCzk === 'number')
+    ? eveningPriceLabel(sessionBreakdown(lastNight), priceCurrency) : null;
   const isRunning =
     lastNight !== null &&
     current !== null &&
@@ -493,7 +495,7 @@ export default function DiaryScreen({
                   : eveningDateLabel(lastNight.startedAt, now)
               }
               placeLabel={lastNight.pubName || cs.diary.noPub}
-              spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
+              spentLabel={lastSpentLabel}
               nights={nights.length}
               onPress={() => openEvening(lastNight)}
               accessibilityLabel={cs.a11y.diaryCard(

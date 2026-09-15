@@ -26,27 +26,7 @@ function inviteRequestKey(code: string): string {
   return `invite:${code}`;
 }
 
-/**
- * Extract the invite code from a deep link. Handles both the custom-scheme
- * `?code=` form and the web-landing `/p/<code>` path. Returns null when the URL
- * carries no code.
- */
-export function parseInviteCodeFromUrl(url: string | null | undefined): string | null {
-  if (!url || typeof url !== 'string') return null;
-  // 1. ?code=<code> query param (custom scheme, and web fallback if present).
-  const query = /[?&]code=([^&#\s]+)/.exec(url);
-  if (query?.[1]) {
-    const decoded = decodeURIComponent(query[1]).trim();
-    return decoded.length > 0 ? decoded : null;
-  }
-  // 2. web landing path form https://na-pivo.cz/p/<code>.
-  const path = /\/p\/([A-Za-z0-9_-]+)/.exec(url);
-  if (path?.[1]) {
-    const code = path[1].trim();
-    return code.length > 0 ? code : null;
-  }
-  return null;
-}
+export { parseInviteCodeFromUrl } from './inviteLinkRoutes';
 
 /** Persist an invite code until the account is ready to claim it. Never throws. */
 export async function stashPendingInviteCode(code: string): Promise<void> {

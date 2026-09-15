@@ -158,3 +158,51 @@ it('clears local private stores and private sync queue storage', async () => {
     expect({ key, value: await AsyncStorage.getItem(key) }).toEqual({ key, value: null });
   }
 });
+
+
+it('removes retired 2.0 private data and settings while retaining public caches and device choices', async () => {
+  const retiredKeys = [
+    'na-pivo-account-preferences-queue', 'na-pivo-party-games-queue',
+    'na-pivo-party-games-queue-quarantine-v1', 'na-pivo-party-game-starts-queue',
+    'na-pivo-party-game-starts-queue-quarantine-v1', 'na-pivo-party-evening-actions-queue',
+    'na-pivo-party-evening-identity-v1', 'na-pivo-party-games-account-merge',
+    'na-pivo-private-account-merge-v0', 'na-pivo-live-party',
+    'na-pivo-party-night-records-v1', 'na-pivo-contest-results',
+    'na-pivo-search-recent-v1', 'na-pivo-pending-invite-code',
+    'na-pivo-beer-checkin-action-tickets', 'na-pivo-beer-photo-deletion-tombstones',
+    'na-pivo-counter-telemetry', 'na-pivo-account-deletion-intent-v2',
+    'na-pivo-account-deletion-intent-quarantine-v1',
+    'na-pivo-account-deletion-intent-quarantine-backup-v1',
+    'na-pivo-account-deletion-intent-quarantine-recovered-v1',
+    'na-pivo-beer-count-reminder-state', 'na-pivo-pub-reminder-state',
+    'na-pivo-pub-reminder-geofences', 'na-pivo-handled-notification-responses-v1',
+    'na-pivo-night-feed-v1:old-account:night-1',
+    'na-pivo-night-feed-v1:old-account:night-2',
+  ];
+  // Cleanup must also remove malformed data; it cannot rely on the retired schema.
+  for (const key of retiredKeys) await AsyncStorage.setItem(key, '{malformed private data');
+  await AsyncStorage.setItem('na-pivo-pubs-snapshot', 'public-pubs');
+  useSettingsStore.setState({
+    marketingEmailsEnabled: true, lastSeenPartyStreak: 12, navigationProvider: 'mapy', hapticEnabled: false,
+  });
+  await AsyncStorage.setItem('na-pivo-settings', JSON.stringify({ version: 1, state: {
+    navigationProvider: 'mapy', hapticEnabled: false,
+    homePoint: { lat: 50, lng: 14 }, marketingEmailsEnabled: true, lastSeenPartyStreak: 12,
+    pendingAccountPreferences: { home_point: { lat: 50, lng: 14 } },
+    pendingAccountPreferencesOwnerId: 'old-account',
+  } }));
+
+  await clearLocalPrivateAccountData();
+
+  for (const key of retiredKeys) expect(await AsyncStorage.getItem(key)).toBeNull();
+  expect(await AsyncStorage.getItem('na-pivo-pubs-snapshot')).toBe('public-pubs');
+  expect(useSettingsStore.getState()).toMatchObject({
+    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0,
+  });
+  const settings = JSON.parse((await AsyncStorage.getItem('na-pivo-settings'))!);
+  expect(settings.state).toMatchObject({
+    homePoint: null, marketingEmailsEnabled: false, lastSeenPartyStreak: 0,
+    pendingAccountPreferences: {}, pendingAccountPreferencesOwnerId: null,
+    navigationProvider: 'mapy',
+  });
+});
