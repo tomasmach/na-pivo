@@ -2160,6 +2160,22 @@ export const en: Strings = {
     defaultTitle: "What's new",
     cta: 'Nice!',
     versionLabel: (version: string) => `v${version}`,
+    apology: {
+      skip: 'Skip',
+      slide1Title: 'Sorry about 2.0',
+      slide1Body:
+        'The redesign was cluttered and the important stuff got lost. The feedback was clear and fair. I heard it.',
+      slide1Next: 'What I did about it',
+      slide2Title: 'The old app is back',
+      slide2Body:
+        'Compass, counter, diary and your crew. Exactly as it worked before, with a few fixes on top.',
+      slide2Next: 'One more thing',
+      slide3Title: 'One favor',
+      slide3Body:
+        'I build this app for you, for free, based on what you tell me. If 2.0 earned a bad rating from you, I would appreciate it if you gave it another look today.',
+      slide3Review: 'Edit my rating',
+      slide3Done: 'Off to the pub',
+    },
   },
   about: {
     tagline: 'Your compass to the nearest beer.',

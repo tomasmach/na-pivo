@@ -23,6 +23,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { localReleaseNote } from '@/data/localReleaseNote';
 import {
   fetchReleaseNote,
   getCurrentAppVersion,
@@ -82,6 +83,14 @@ export const useReleaseStore = create<ReleaseState>()(
 
           // Already on (and already shown) this version.
           if (lastSeen === current) return;
+
+          // A note bundled with the build needs no network: it must reach
+          // people who update and open the app offline.
+          const local = localReleaseNote(current);
+          if (local) {
+            set({ pendingNote: local });
+            return;
+          }
 
           // The user updated since last launch — fetch this version's note.
           const result = await fetchReleaseNote(current);

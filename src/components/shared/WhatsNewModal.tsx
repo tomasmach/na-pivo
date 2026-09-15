@@ -31,12 +31,29 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { ReleasePagerModal } from '@/components/shared/ReleasePagerModal';
 import { t } from '@/i18n';
 import { useReleaseStore } from '@/stores/releaseStore';
 
 export function WhatsNewModal() {
   const note = useReleaseStore((s) => s.pendingNote);
   const dismissNote = useReleaseStore((s) => s.dismissNote);
+
+  // A bundled note (2.1.0 apology) takes the full screen instead of the card.
+  if (note?.pager) {
+    return <ReleasePagerModal visible version={note.version} onDismiss={dismissNote} />;
+  }
+
+  return <WhatsNewCard note={note} dismissNote={dismissNote} />;
+}
+
+function WhatsNewCard({
+  note,
+  dismissNote,
+}: {
+  note: ReturnType<typeof useReleaseStore.getState>['pendingNote'];
+  dismissNote: () => void;
+}) {
 
   // Card spring-in: the Modal fades the backdrop, this pops the card on top.
   // `reveal` then sweeps 0→1 and each row reads its own slice of it, so the

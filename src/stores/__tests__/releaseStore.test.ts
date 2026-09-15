@@ -200,3 +200,41 @@ describe('useReleaseStore.checkForUpdate', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('bundled release note', () => {
+  function mockBundledNote() {
+    jest.doMock('../../data/localReleaseNote', () => ({
+      localReleaseNote: (version: string) =>
+        version === CURRENT_VERSION ? { version, title: '', items: [], pager: true } : null,
+    }));
+  }
+
+  it('after an update surfaces the bundled note without touching the network', async () => {
+    await seedLastSeenVersion('2.0.0');
+    mockBundledNote();
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const { useReleaseStore } = require('../releaseStore');
+    await useReleaseStore.getState().checkForUpdate();
+
+    const state = useReleaseStore.getState();
+    expect(state.pendingNote).toEqual({ version: CURRENT_VERSION, title: '', items: [], pager: true });
+    expect(state.lastSeenVersion).toBe('2.0.0');
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    useReleaseStore.getState().dismissNote();
+    expect(useReleaseStore.getState().lastSeenVersion).toBe(CURRENT_VERSION);
+  });
+
+  it('never shows the bundled note on a fresh install', async () => {
+    mockBundledNote();
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    const { useReleaseStore } = require('../releaseStore');
+    await useReleaseStore.getState().checkForUpdate();
+
+    expect(useReleaseStore.getState().pendingNote).toBeNull();
+    expect(useReleaseStore.getState().lastSeenVersion).toBe(CURRENT_VERSION);
+  });
+});

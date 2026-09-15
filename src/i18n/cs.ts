@@ -2750,6 +2750,24 @@ export const cs = {
     cta: 'Paráda!',
     // Version badge shown next to the eyebrow, e.g. "v1.2.0".
     versionLabel: (version: string) => `v${version}`,
+    // Full-screen three-card note shown once to people who updated to 2.1.0
+    // (the release that brought the simple app back). Czech only for now.
+    apology: {
+      skip: 'Přeskočit',
+      slide1Title: 'Promiň za dvojku',
+      slide1Body:
+        'Redesign 2.0 byl přehlcený a to hlavní se v něm ztratilo. Feedback byl jasný a oprávněný. Slyšel jsem ho.',
+      slide1Next: 'Co jsem s tím udělal',
+      slide2Title: 'Stará appka je zpátky',
+      slide2Body:
+        'Kompas, počítadlo, deník a parta. Přesně tak, jak to fungovalo dřív, jen s pár opravami navíc.',
+      slide2Next: 'Ještě jedna věc',
+      slide3Title: 'Jedna prosba',
+      slide3Body:
+        'Appku dělám pro vás, zadarmo a podle toho, co mi píšete. Pokud po dvojce zůstalo v obchodě špatné hodnocení, budu rád, když ho po dnešku přepíšeš.',
+      slide3Review: 'Upravit hodnocení',
+      slide3Done: 'Jdu na pivo',
+    },
   },
 
   about: {
