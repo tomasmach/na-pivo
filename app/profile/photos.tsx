@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { Colors } from '@/theme/colors';
 import { Radius, Spacing } from '@/theme/layout';
@@ -20,7 +20,7 @@ export default function ProfilePhotosScreen() {
           onPress={() => router.back()}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>

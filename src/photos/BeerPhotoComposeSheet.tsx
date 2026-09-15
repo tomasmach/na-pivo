@@ -43,7 +43,7 @@ import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { useNearbyPub } from '@/counter/useNearbyPub';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -138,7 +138,7 @@ export function BeerPhotoComposeSheet({
       void nearby.requestPermission();
       return;
     }
-    showToast(cs.photoDiary.pubNoneNearby, {
+    showToast(t.photoDiary.pubNoneNearby, {
       icon: <MapPinIcon size={18} color={Colors.amber} />,
     });
   }, [nearby, showToast]);
@@ -194,14 +194,14 @@ export function BeerPhotoComposeSheet({
         >
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.photoDiary.composeTitle}
+              {t.photoDiary.composeTitle}
             </Text>
             <Pressable
               onPress={onClose}
               style={styles.closeButton}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.photoViewerClose}
+              accessibilityLabel={t.a11y.photoViewerClose}
             >
               <XIcon size={20} color={Colors.foamMuted} />
             </Pressable>
@@ -222,30 +222,30 @@ export function BeerPhotoComposeSheet({
 
             {/* Caption */}
             <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoDiary.captionLabel}
+              {t.photoDiary.captionLabel}
             </Text>
             <TextInput
               value={caption}
               onChangeText={setCaption}
-              placeholder={cs.photoDiary.captionPlaceholder}
+              placeholder={t.photoDiary.captionPlaceholder}
               placeholderTextColor={Colors.mutedText}
               style={styles.captionInput}
               multiline
               maxLength={CAPTION_MAX}
-              accessibilityLabel={cs.a11y.photoCaptionInput}
+              accessibilityLabel={t.a11y.photoCaptionInput}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
 
             {/* Pub tag */}
             <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoDiary.pubLabel}
+              {t.photoDiary.pubLabel}
             </Text>
             <View style={styles.pubRow}>
               <Pressable
                 onPress={openPubPicker}
                 style={({ pressed }) => [styles.pubRowMain, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.photoPickPub}
+                accessibilityLabel={t.a11y.photoPickPub}
               >
                 <MapPinIcon size={17} color={pub ? Colors.amber : Colors.mutedText} />
                 <Text
@@ -253,7 +253,7 @@ export function BeerPhotoComposeSheet({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {pub ? [pub.name, pub.city].filter(Boolean).join(' · ') : cs.photoDiary.pubNone}
+                  {pub ? [pub.name, pub.city].filter(Boolean).join(' · ') : t.photoDiary.pubNone}
                 </Text>
               </Pressable>
               {pub ? (
@@ -262,7 +262,7 @@ export function BeerPhotoComposeSheet({
                   style={({ pressed }) => [styles.pubClear, pressed && styles.pressed]}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.photoClearPub}
+                  accessibilityLabel={t.a11y.photoClearPub}
                 >
                   <XIcon size={16} color={Colors.mutedText} />
                 </Pressable>
@@ -271,7 +271,7 @@ export function BeerPhotoComposeSheet({
 
             {/* Visibility */}
             <Text style={styles.fieldLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoDiary.visibilityLabel}
+              {t.photoDiary.visibilityLabel}
             </Text>
             <View style={styles.segment}>
               <Pressable
@@ -279,7 +279,7 @@ export function BeerPhotoComposeSheet({
                 style={[styles.segmentOption, visibility === 'private' && styles.segmentActive]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: visibility === 'private' }}
-                accessibilityLabel={cs.a11y.photoVisibility(cs.photoDiary.visibilityPrivate)}
+                accessibilityLabel={t.a11y.photoVisibility(t.photoDiary.visibilityPrivate)}
               >
                 <EyeOffIcon
                   size={15}
@@ -289,7 +289,7 @@ export function BeerPhotoComposeSheet({
                   style={[styles.segmentText, visibility === 'private' && styles.segmentTextActive]}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.photoDiary.visibilityPrivate}
+                  {t.photoDiary.visibilityPrivate}
                 </Text>
               </Pressable>
               <Pressable
@@ -297,7 +297,7 @@ export function BeerPhotoComposeSheet({
                 style={[styles.segmentOption, visibility === 'friends' && styles.segmentActive]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: visibility === 'friends' }}
-                accessibilityLabel={cs.a11y.photoVisibility(cs.photoDiary.visibilityFriends)}
+                accessibilityLabel={t.a11y.photoVisibility(t.photoDiary.visibilityFriends)}
               >
                 <UsersIcon
                   size={15}
@@ -307,7 +307,7 @@ export function BeerPhotoComposeSheet({
                   style={[styles.segmentText, visibility === 'friends' && styles.segmentTextActive]}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.photoDiary.visibilityFriends}
+                  {t.photoDiary.visibilityFriends}
                 </Text>
               </Pressable>
             </View>
@@ -323,17 +323,17 @@ export function BeerPhotoComposeSheet({
               ]}
               accessibilityRole="switch"
               accessibilityState={{ checked: enterContest }}
-              accessibilityLabel={cs.a11y.photoContestToggle}
+              accessibilityLabel={t.a11y.photoContestToggle}
             >
               <View style={[styles.contestIconWell, enterContest && styles.contestIconWellActive]}>
                 <TrophyIcon size={19} color={enterContest ? Colors.stout : Colors.amber} />
               </View>
               <View style={styles.contestToggleCopy}>
                 <Text style={styles.contestToggleTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.photoDiary.addToContest}
+                  {t.photoDiary.addToContest}
                 </Text>
                 <Text style={styles.contestToggleHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.photoDiary.addToContestHint}
+                  {t.photoDiary.addToContestHint}
                 </Text>
               </View>
               <View style={[styles.toggleTrack, enterContest && styles.toggleTrackActive]}>
@@ -343,7 +343,7 @@ export function BeerPhotoComposeSheet({
 
             <View style={styles.saveWrap}>
               <GlowButton
-                label={enterContest ? cs.photoDiary.saveAndEnterContest : cs.photoDiary.save}
+                label={enterContest ? t.photoDiary.saveAndEnterContest : t.photoDiary.save}
                 onPress={() => void handleSave()}
                 glow="soft"
                 height={56}

@@ -9,7 +9,7 @@ import TestRenderer, {
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { openPubInMaps } from '@/utils/maps';
 import CelebrationScreen from '../celebration';
@@ -187,7 +187,7 @@ describe('CelebrationScreen', () => {
 
     const mapButton = renderer?.root.findAll(
       (node: ReactTestInstance) =>
-        node.props.accessibilityLabel === cs.celebration.openInMaps
+        node.props.accessibilityLabel === t.celebration.openInMaps
     )[0];
 
     act(() => {
@@ -206,7 +206,7 @@ describe('CelebrationScreen', () => {
 
     expect(props).toEqual(
       expect.objectContaining({
-        label: cs.celebration.backToCompass,
+        label: t.celebration.backToCompass,
         variant: 'primary',
         glow: 'strong',
       })

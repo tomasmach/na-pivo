@@ -3,6 +3,7 @@ import {
   shouldRequestAndroidNotificationPermission,
   type BeerEveningLiveActivityProps,
 } from '@/liveActivity/liveBeerActivityModel';
+import { intlLocale, t } from '@/i18n';
 import type { TallySession } from '@/stores/tallyStore';
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -30,16 +31,27 @@ describe('buildBeerEveningLiveActivityProps', () => {
       priceCurrency: 'CZK',
     });
 
+    const latestBeerAt = new Date('2026-07-21T18:00:00.000Z').toLocaleTimeString(intlLocale, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
     expect(result).toEqual<BeerEveningLiveActivityProps>({
       sessionId: 'session-1',
       pubName: 'U Zlatého tygra',
       beerCount: 1,
       totalPrice: '65 Kč',
       latestBeerName: 'Plzeň 12°',
-      latestBeerAt: new Date('2026-07-21T18:00:00.000Z').toLocaleTimeString('cs-CZ', {
-        hour: 'numeric',
-        minute: '2-digit',
-      }),
+      latestBeerAt,
+      // The widget runtime has no strings file, so every word it draws is
+      // built here and travels with the payload.
+      beerWordLabel: t.liveActivity.beerWord(1),
+      beerCountA11yLabel: t.liveActivity.beerCountA11y(1),
+      totalPriceLabel: t.liveActivity.total('65 Kč'),
+      latestBeerLabel: 'Plzeň 12°',
+      latestTimeLabel: t.liveActivity.latestAt(latestBeerAt),
+      addBeerLabel: t.liveActivity.addBeer,
+      addBeerA11yLabel: t.liveActivity.addBeerA11y,
+      openCounterLabel: t.liveActivity.openCounter,
       repeatBeerName: 'Plzeň 12°',
       repeatBeerPriceCzk: 65,
     });
@@ -76,8 +88,9 @@ describe('buildBeerEveningLiveActivityProps', () => {
     );
 
     expect(result).toMatchObject({
-      pubName: 'Pivní večer',
+      pubName: t.liveActivity.pubFallback,
       totalPrice: '',
+      totalPriceLabel: '',
       latestBeerName: 'Domácí ležák',
       repeatBeerName: 'Domácí ležák',
     });
@@ -129,7 +142,7 @@ describe('shouldRequestAndroidNotificationPermission', () => {
     expect(
       shouldRequestAndroidNotificationPermission(oneBeer, {
         ...oneBeer,
-        pubName: 'Pivní večer',
+        pubName: t.liveActivity.pubFallback,
       }),
     ).toBe(false);
   });

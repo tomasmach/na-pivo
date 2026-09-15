@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
-import { cs } from '@/i18n/cs';
+import { t as strings } from '@/i18n';
 import type { Pub } from '@/data/pubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,7 +90,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
 
 const PUB: Pub = { name: 'Lokál Dlouhá', city: 'Praha' } as unknown as Pub;
 
-const t = cs.beerCheckins;
+const t = strings.beerCheckins;
 
 function renderSheet(visible = true) {
   return render(

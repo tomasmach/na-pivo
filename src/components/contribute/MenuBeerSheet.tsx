@@ -5,7 +5,7 @@ import {
   type BeerFormResult,
 } from '@/counter/BeerFormModal';
 import type { CommunityBeer } from '@/data/communityClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 interface MenuBeerSheetProps {
   visible: boolean;
@@ -40,9 +40,9 @@ export function MenuBeerSheet({
       beer={beer}
       formKey={formKey}
       titleOverride={
-        beer ? cs.contribute.editBeerSheetTitle : cs.contribute.addBeerSheetTitle
+        beer ? t.contribute.editBeerSheetTitle : t.contribute.addBeerSheetTitle
       }
-      submitLabelOverride={cs.contribute.done}
+      submitLabelOverride={t.contribute.done}
       canAddSmallVariant={canAddSmallVariant}
       onCancel={onClose}
       onSubmit={onSubmit}

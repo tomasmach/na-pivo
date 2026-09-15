@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import { fetchPartaPhotoFeed, type PartaFeedPhoto } from '@/data/beerPhotosClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { selectAvatarUrl, selectNickname, useAccountStore } from '@/stores/accountStore';
@@ -102,7 +102,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
       .map<StripPhoto>((photo) => ({
         key: `mine-${photo.clientId}`,
         uri: photo.imageUrl ?? photo.localUri ?? '',
-        name: cs.partaPhotos.you,
+        name: t.partaPhotos.you,
         avatarUri: myAvatarUrl,
         avatarInitialSource: myNickname,
         caption: photo.caption,
@@ -121,7 +121,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
 
   return (
     <View style={style}>
-      <Text style={styles.sectionHeader}>{cs.partaPhotos.header}</Text>
+      <Text style={styles.sectionHeader}>{t.partaPhotos.header}</Text>
       <FlatList
         horizontal
         data={strip}
@@ -134,7 +134,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
             onPress={() => setViewer(photo)}
             style={styles.tile}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.partaPhotoTile(photo.name)}
+            accessibilityLabel={t.a11y.partaPhotoTile(photo.name)}
           >
             <Image
               source={{ uri: photo.uri }}
@@ -169,7 +169,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
             onPress={() => setViewer(null)}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.photoViewerClose}
+            accessibilityLabel={t.a11y.photoViewerClose}
             style={({ pressed }) => [
               styles.viewerClose,
               { top: insets.top + Spacing.sm },

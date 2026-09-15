@@ -28,7 +28,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   BellRingIcon,
   CameraIcon,
@@ -86,33 +86,33 @@ export function CounterMoreSheet({
       ? [
           {
             key: 'done',
-            label: cs.counter.doneDrinking,
+            label: t.counter.doneDrinking,
             Icon: CheckIcon,
             onPress: onDone,
-            a11yLabel: cs.a11y.counterDone,
+            a11yLabel: t.a11y.counterDone,
           },
         ]
       : []),
     ...(onSticker
-      ? [{ key: 'sticker', label: cs.counter.moreStory, Icon: Share2Icon, onPress: onSticker }]
+      ? [{ key: 'sticker', label: t.counter.moreStory, Icon: Share2Icon, onPress: onSticker }]
       : []),
     ...(onPingFriends
       ? [
           {
             key: 'ping',
-            label: broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort,
+            label: broadcasted ? t.friends.counterAlreadyLive : t.friends.shareHereShort,
             Icon: broadcasted ? CheckIcon : BellRingIcon,
             onPress: onPingFriends,
             disabled: broadcasted,
           },
         ]
       : []),
-    { key: 'backdate', label: cs.counter.backdateLink, Icon: HistoryIcon, onPress: onBackdate },
+    { key: 'backdate', label: t.counter.backdateLink, Icon: HistoryIcon, onPress: onBackdate },
     ...(onScanMenu
       ? [
           {
             key: 'scan',
-            label: scanning ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks,
+            label: scanning ? t.counter.scanDrinksLoading : t.counter.scanDrinks,
             Icon: ClipboardListIcon,
             onPress: onScanMenu,
             disabled: scanning,
@@ -142,13 +142,13 @@ export function CounterMoreSheet({
 
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.moreTitle}
+              {t.counter.moreTitle}
             </Text>
             <Pressable
               onPress={onClose}
               style={styles.closeButton}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.counterCloseModal}
+              accessibilityLabel={t.a11y.counterCloseModal}
             >
               <XIcon size={20} color={Colors.foamMuted} />
             </Pressable>

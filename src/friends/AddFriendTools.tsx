@@ -45,7 +45,7 @@ import {
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -107,7 +107,7 @@ export function AddFriendTools({
     setSearching(false);
     setResults(found ?? []);
     if (found === null) {
-      showToast(cs.friends.offline, {
+      showToast(t.friends.offline, {
         icon: <UsersIcon size={20} color={Colors.amber} />,
       });
     }
@@ -136,7 +136,7 @@ export function AddFriendTools({
           await enqueueFriendOp(queuedRequest);
           if (!mountedRef.current) return;
         }
-        showToast(cs.friends.requestSent, {
+        showToast(t.friends.requestSent, {
           icon: <UserPlusIcon size={20} color={Colors.amber} />,
         });
         setQuery('');
@@ -160,10 +160,10 @@ export function AddFriendTools({
     if (!mountedRef.current) return;
     const link = invite?.webUrl || invite?.url || '';
     if (!link) {
-      showToast(cs.friends.codeOffline, { icon: <LinkIcon size={20} color={Colors.amber} /> });
+      showToast(t.friends.codeOffline, { icon: <LinkIcon size={20} color={Colors.amber} /> });
       return;
     }
-    await Share.share({ message: cs.friends.shareMessage(link) });
+    await Share.share({ message: t.friends.shareMessage(link) });
   }, [showToast]);
 
   if (!hasIdentity) {
@@ -171,14 +171,14 @@ export function AddFriendTools({
       <View style={styles.identityGate}>
         <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
           {needsNickname
-            ? cs.friends.coldStartSetupTitle
-            : cs.friends.coldStartAnonTitle}
+            ? t.friends.coldStartSetupTitle
+            : t.friends.coldStartAnonTitle}
         </Text>
         <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {needsNickname ? cs.friends.coldStartSetupBody : cs.friends.coldStartAnonBody}
+          {needsNickname ? t.friends.coldStartSetupBody : t.friends.coldStartAnonBody}
         </Text>
         <GlowButton
-          label={needsNickname ? cs.friends.coldStartSetupCta : cs.friends.coldStartAnonCta}
+          label={needsNickname ? t.friends.coldStartSetupCta : t.friends.coldStartAnonCta}
           onPress={openIdentity}
           variant="primary"
           glow="soft"
@@ -191,14 +191,14 @@ export function AddFriendTools({
     <>
       <View style={styles.growthActions}>
         <GlowButton
-          label={cs.friends.myCodeCta}
+          label={t.friends.myCodeCta}
           onPress={onOpenCode}
           variant="primary"
           glow="soft"
           icon={<QrCodeIcon size={20} color={Colors.stout} />}
         />
         <GlowButton
-          label={cs.friends.inviteShareCta}
+          label={t.friends.inviteShareCta}
           onPress={() => void shareInvite()}
           variant="secondary"
           glow="none"
@@ -214,7 +214,7 @@ export function AddFriendTools({
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder={cs.friends.searchPlaceholder}
+              placeholder={t.friends.searchPlaceholder}
               placeholderTextColor={Colors.mutedText}
               autoCapitalize="none"
               autoCorrect={false}
@@ -226,7 +226,7 @@ export function AddFriendTools({
             <Pressable
               onPress={() => void doSearch()}
               accessibilityRole="button"
-              accessibilityLabel={cs.friends.searchCta}
+              accessibilityLabel={t.friends.searchCta}
               style={({ pressed }) => [styles.searchButton, pressed && styles.dim]}
             >
               {searching ? (
@@ -236,7 +236,7 @@ export function AddFriendTools({
                   style={styles.searchButtonText}
                   maxFontSizeMultiplier={FontScaleCap.heading}
                 >
-                  {cs.friends.searchCta}
+                  {t.friends.searchCta}
                 </Text>
               )}
             </Pressable>
@@ -253,7 +253,7 @@ export function AddFriendTools({
                       disabled={requestingKey != null}
                       hitSlop={ROUND_HIT_SLOP}
                       accessibilityRole="button"
-                      accessibilityLabel={cs.friends.addByNickname}
+                      accessibilityLabel={t.friends.addByNickname}
                       style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
                     >
                       {requestingKey === profile.id ? (
@@ -271,7 +271,7 @@ export function AddFriendTools({
           {query.trim().length >= 2 && results.length === 0 && !searching ? (
             <>
               <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.noResults}
+                {t.friends.noResults}
               </Text>
               <HairlineRow
                 first
@@ -287,7 +287,7 @@ export function AddFriendTools({
                     style={styles.nicknameInviteText}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.friends.addByNickname}
+                    {t.friends.addByNickname}
                   </Text>
                 </View>
               </HairlineRow>

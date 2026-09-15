@@ -10,7 +10,7 @@ import { FriendMini } from '@/friends/FriendMini';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { cs } from '@/i18n/cs';
+import { t, intlLocale } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
@@ -19,28 +19,12 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 function shortDate(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
+  return new Date(ms).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }
 
 function formatAverage(value: number | null): string {
   return value == null ? '—' : value.toFixed(1);
 }
-
-/** Genitive Czech month names for the "Piješ ho od června" relationship line. */
-const CZ_MONTHS_GENITIVE = [
-  'ledna',
-  'února',
-  'března',
-  'dubna',
-  'května',
-  'června',
-  'července',
-  'srpna',
-  'září',
-  'října',
-  'listopadu',
-  'prosince',
-];
 
 /**
  * Earliest check-in month, or '' when unknown. Prefers the server's
@@ -57,7 +41,7 @@ function sinceMonthLabel(firstCheckedInAt: string | null, isoDates: string[]): s
     }
   }
   if (!Number.isFinite(earliest)) return '';
-  return CZ_MONTHS_GENITIVE[new Date(earliest).getMonth()] ?? '';
+  return t.beerDetail.monthName(new Date(earliest).getMonth());
 }
 
 export default function BeerDetailScreen() {
@@ -98,8 +82,8 @@ export default function BeerDetailScreen() {
   }, [beerName, breweryName]);
 
   useEffect(() => {
-    const t = setTimeout(load, 0);
-    return () => clearTimeout(t);
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   const goBack = useCallback(() => {
@@ -125,7 +109,7 @@ export default function BeerDetailScreen() {
           <ChevronLeftIcon size={26} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.beerCheckins.detailHeader}
+          {t.beerCheckins.detailHeader}
         </Text>
         <View style={styles.headerBtn} />
       </View>
@@ -138,7 +122,7 @@ export default function BeerDetailScreen() {
         </View>
       ) : failed ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText}>{cs.friends.profileError}</Text>
+          <Text style={styles.emptyText}>{t.friends.profileError}</Text>
         </View>
       ) : detail ? (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}>
@@ -154,7 +138,7 @@ export default function BeerDetailScreen() {
             ) : null}
             {sinceMonth ? (
               <Text style={styles.relationship} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.beerCheckins.detailSinceMonth(sinceMonth)}
+                {t.beerCheckins.detailSinceMonth(sinceMonth)}
               </Text>
             ) : null}
           </View>
@@ -176,7 +160,7 @@ export default function BeerDetailScreen() {
 
           {sortTagsByCount(detail.myTags).length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader label={cs.beerCheckins.detailMyTagsLabel.toUpperCase()} />
+              <SectionHeader label={t.beerCheckins.detailMyTagsLabel.toUpperCase()} />
               <BeerTagChips tags={sortTagsByCount(detail.myTags)} counts={detail.myTags} max={8} />
             </View>
           ) : null}
@@ -193,7 +177,7 @@ export default function BeerDetailScreen() {
           ) : null}
 
           <View style={styles.section}>
-            <SectionHeader label="POSLEDNÍ ZÁPISY" />
+            <SectionHeader label={t.beerDetail.recentHeader} />
             {detail.recentCheckins.length > 0 ? (
               detail.recentCheckins.map((checkIn, i) => (
                 <HairlineRow key={checkIn.id} first={i === 0}>
@@ -231,7 +215,7 @@ export default function BeerDetailScreen() {
                     <UsersIcon size={15} color={Colors.mutedText} />
                     <View style={styles.rowText}>
                       <Text style={styles.rowTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {checkIn.pubName || 'Bez hospody'}
+                        {checkIn.pubName || t.beerDetail.noPub}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                         {[checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '', shortDate(checkIn.checkedInAt)]

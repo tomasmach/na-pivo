@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlowButton } from '@/components/shared/GlowButton';
 import { XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -77,7 +77,7 @@ export function PasswordSheet({
 
               <View style={styles.header}>
                 <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.account.setPasswordHeader}
+                  {t.account.setPasswordHeader}
                 </Text>
                 <Pressable
                   onPress={onClose}
@@ -86,7 +86,7 @@ export function PasswordSheet({
                     pressed && styles.pressed,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.counterCloseModal}
+                  accessibilityLabel={t.a11y.counterCloseModal}
                 >
                   <XIcon size={20} color={Colors.foamMuted} />
                 </Pressable>
@@ -98,14 +98,14 @@ export function PasswordSheet({
                     style={styles.input}
                     value={email}
                     onChangeText={onChangeEmail}
-                    placeholder={cs.account.emailPlaceholder}
+                    placeholder={t.account.emailPlaceholder}
                     placeholderTextColor={Colors.mutedText}
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="email-address"
                     autoComplete="email"
                     textContentType="emailAddress"
-                    accessibilityLabel={cs.a11y.authEmailInput}
+                    accessibilityLabel={t.a11y.authEmailInput}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   />
                 ) : null}
@@ -114,14 +114,14 @@ export function PasswordSheet({
                   style={styles.input}
                   value={password}
                   onChangeText={onChangePassword}
-                  placeholder={cs.account.passwordPlaceholder}
+                  placeholder={t.account.passwordPlaceholder}
                   placeholderTextColor={Colors.mutedText}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry
                   autoComplete="new-password"
                   textContentType="newPassword"
-                  accessibilityLabel={cs.a11y.authNewPasswordInput}
+                  accessibilityLabel={t.a11y.authNewPasswordInput}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
 
@@ -134,11 +134,11 @@ export function PasswordSheet({
 
               <View style={styles.footer}>
                 <GlowButton
-                  label={busy ? cs.account.loading : cs.account.setPasswordSave}
+                  label={busy ? t.account.loading : t.account.setPasswordSave}
                   onPress={onSave}
                   glow="none"
                   height={52}
-                  accessibilityLabel={cs.a11y.accountSetPassword}
+                  accessibilityLabel={t.a11y.accountSetPassword}
                 />
               </View>
             </Pressable>

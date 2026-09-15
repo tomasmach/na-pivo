@@ -33,7 +33,7 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 
 /**
@@ -71,26 +71,26 @@ const TAB_META: Record<
 > = {
   index: {
     Icon: CompassIcon,
-    label: cs.tabs.compass,
-    a11yLabel: cs.a11y.tabCompass,
+    label: t.tabs.compass,
+    a11yLabel: t.a11y.tabCompass,
     telemetryTarget: 'tab_compass',
   },
   beer: {
     Icon: BeerIcon,
-    label: cs.tabs.beer,
-    a11yLabel: cs.a11y.tabBeer,
+    label: t.tabs.beer,
+    a11yLabel: t.a11y.tabBeer,
     telemetryTarget: 'tab_beer',
   },
   friends: {
     Icon: UsersIcon,
-    label: cs.tabs.friends,
-    a11yLabel: cs.a11y.tabFriends,
+    label: t.tabs.friends,
+    a11yLabel: t.a11y.tabFriends,
     telemetryTarget: 'tab_friends',
   },
   profile: {
     Icon: UserIcon,
-    label: cs.tabs.profile,
-    a11yLabel: cs.a11y.tabProfile,
+    label: t.tabs.profile,
+    a11yLabel: t.a11y.tabProfile,
     telemetryTarget: 'tab_profile',
   },
 };
@@ -163,7 +163,7 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
   // Fold the badge count into the tab's own a11y label so VoiceOver announces
   // "Parta, N nových" instead of leaving the badge silent.
   const accessibilityLabel =
-    badge && badge.count > 0 ? cs.a11y.tabFriendsBadge(badge.count) : meta.a11yLabel;
+    badge && badge.count > 0 ? t.a11y.tabFriendsBadge(badge.count) : meta.a11yLabel;
 
   return (
     <Pressable

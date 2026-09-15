@@ -30,7 +30,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
@@ -78,13 +78,13 @@ export default function AboutScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{cs.settings.about.title}</Text>
+        <Text style={styles.headerTitle}>{t.settings.about.title}</Text>
 
         {/* Invisible spacer keeps the title centered */}
         <View style={styles.headerSpacer} />
@@ -103,8 +103,8 @@ export default function AboutScreen() {
           <View style={styles.medallion}>
             <Text style={styles.medallionEmoji}>🍺</Text>
           </View>
-          <Text style={styles.appName}>{cs.appName}</Text>
-          <Text style={styles.tagline}>{cs.about.tagline}</Text>
+          <Text style={styles.appName}>{t.appName}</Text>
+          <Text style={styles.tagline}>{t.about.tagline}</Text>
           {versionLabel ? (
             <View style={styles.versionPill}>
               <Text style={styles.versionText}>{versionLabel}</Text>
@@ -117,7 +117,7 @@ export default function AboutScreen() {
             onPress={() => void openPlayStoreListing()}
             style={({ pressed }) => [styles.playStoreButton, pressed && styles.pressed]}
             accessibilityRole="link"
-            accessibilityLabel="Otevřít Na pivo v Google Play"
+            accessibilityLabel={t.about.playStoreA11y}
           >
             <Text style={styles.playStoreButtonText}>Na pivo v Google Play</Text>
             <ExternalLinkIcon size={17} color={Colors.amber} />
@@ -126,12 +126,12 @@ export default function AboutScreen() {
 
         {/* ── Changelog ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{cs.about.whatsNewHeader}</Text>
+          <Text style={styles.sectionHeader}>{t.about.whatsNewHeader}</Text>
           <ChangelogBody state={state} />
         </View>
 
         {/* ── Footer ── */}
-        <Text style={styles.footer}>{cs.about.footer}</Text>
+        <Text style={styles.footer}>{t.about.footer}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -143,7 +143,7 @@ function ChangelogBody({ state }: { state: ChangelogState }) {
     return (
       <View style={styles.statusRow}>
         <ActivityIndicator color={Colors.amber} />
-        <Text style={styles.statusText}>{cs.about.loading}</Text>
+        <Text style={styles.statusText}>{t.about.loading}</Text>
       </View>
     );
   }
@@ -162,7 +162,7 @@ function ChangelogBody({ state }: { state: ChangelogState }) {
   return (
     <View style={styles.emptyCard}>
       <Text style={styles.emptyText}>
-        {state.kind === 'notes' ? cs.about.empty : cs.about.error}
+        {state.kind === 'notes' ? t.about.empty : t.about.error}
       </Text>
     </View>
   );
@@ -177,7 +177,7 @@ function NoteBlock({ note }: { note: ReleaseNote }) {
           {note.title}
         </Text>
         <Text style={styles.noteVersion}>
-          {cs.whatsNew.versionLabel(note.version)}
+          {t.whatsNew.versionLabel(note.version)}
         </Text>
       </View>
 

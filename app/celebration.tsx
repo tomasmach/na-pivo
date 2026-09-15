@@ -20,7 +20,7 @@ import Animated, {
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -132,7 +132,7 @@ export default function CelebrationScreen() {
     opacity: contentOpacity.value,
   }));
 
-  const pubName = revealedPub?.name ?? 'Hospoda';
+  const pubName = revealedPub?.name ?? t.common.pubFallback;
   const layout = getCelebrationLayout(screenWidth, screenHeight, insets.top, insets.bottom);
 
   // Drop anchors: emerge from the bottom tip of each foam tongue.
@@ -204,7 +204,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {cs.celebration.headlineLine1}
+            {t.celebration.headlineLine1}
           </Text>
           <Text
             style={[
@@ -215,7 +215,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {cs.celebration.headlineLine2}
+            {t.celebration.headlineLine2}
           </Text>
         </Animated.View>
 
@@ -230,7 +230,7 @@ export default function CelebrationScreen() {
               },
             ]}
           >
-            {cs.celebration.subtitle}
+            {t.celebration.subtitle}
           </Text>
         </Animated.View>
 
@@ -246,7 +246,7 @@ export default function CelebrationScreen() {
             },
           ]}
         >
-          <Text style={styles.pubCardEyebrow}>{cs.celebration.eyebrow}</Text>
+          <Text style={styles.pubCardEyebrow}>{t.celebration.eyebrow}</Text>
           <Text
             style={[
               styles.pubCardName,
@@ -266,10 +266,10 @@ export default function CelebrationScreen() {
               style={styles.mapsRow}
               onPress={() => openPubInMaps(revealedPub)}
               accessibilityRole="link"
-              accessibilityLabel={cs.celebration.openInMaps}
+              accessibilityLabel={t.celebration.openInMaps}
             >
               <MapPinIcon size={14} color={Colors.neon} />
-              <Text style={styles.mapsLabel}>{cs.celebration.openInMaps}</Text>
+              <Text style={styles.mapsLabel}>{t.celebration.openInMaps}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -277,7 +277,7 @@ export default function CelebrationScreen() {
         {/* Back to compass button */}
         <Animated.View style={[styles.buttonWrap, { width: layout.contentWidth }, contentAnimStyle]}>
           <GlowButton
-            label={cs.celebration.backToCompass}
+            label={t.celebration.backToCompass}
             onPress={() => router.back()}
             variant="primary"
             glow="strong"

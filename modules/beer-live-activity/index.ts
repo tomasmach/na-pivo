@@ -14,6 +14,8 @@ export type BeerLiveActivityPayload = {
   repeatBeerPriceCzk?: number;
   repeatBeerVolumeMl?: number;
   repeatBeerServingType?: string;
+  /** UI language picked in the app; the native notification follows it. */
+  locale?: 'cs' | 'en';
 };
 
 export type BeerLiveActivityPresentation = 'live-update' | 'notification' | 'none';

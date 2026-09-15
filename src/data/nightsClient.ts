@@ -1,4 +1,5 @@
 import { ensureAccount, type AccountSession } from './account';
+import { t } from '@/i18n';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
@@ -133,7 +134,7 @@ export function parsePublishedNight(raw: RawPublishedNight): PublishedNight {
       displayName:
         typeof author?.display_name === 'string'
           ? author.display_name
-          : nickname ?? 'Kamarád',
+          : nickname ?? t.common.friendFallback,
       avatarUrl: typeof author?.avatar_url === 'string' ? author.avatar_url : null,
       isPublic: author?.is_public !== false,
     },
@@ -188,7 +189,7 @@ function extractError(data: unknown, status: number): NightActionError {
       };
     }
   }
-  return { ok: false, code: `http_${status}`, detail: 'Nepodařilo se to uložit. Zkus to znovu.' };
+  return { ok: false, code: `http_${status}`, detail: t.clientErrors.save };
 }
 
 async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
@@ -201,12 +202,12 @@ async function requestJson(
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
+    return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
   }
 
   const session = await ensureAccount(options.signal);
   if (!session || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
+    return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
   }
 
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
@@ -229,7 +230,7 @@ async function requestJson(
     }
     if (resp.status === 401) {
       await handleUnauthorized(session, endpoint);
-      return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
+      return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
     return { ok: true, data };
@@ -238,7 +239,7 @@ async function requestJson(
     if (!options.signal?.aborted && !isAbort) {
       trackApiFailure('nights_request', { endpoint: path, reason: 'exception', error: err });
     }
-    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
+    return { ok: false, result: { ok: false, code: 'network', detail: t.clientErrors.network } };
   } finally {
     abort.cleanup();
   }

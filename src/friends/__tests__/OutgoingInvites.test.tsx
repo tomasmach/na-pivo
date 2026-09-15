@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { Friendship } from '@/data/friendsClient';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +67,7 @@ describe('OutgoingInvites', () => {
       <OutgoingInvites requests={[invite('1', 'pepa'), invite('2', 'jarda')]} onCancel={jest.fn()} />,
     );
     const texts = renderer.root.findAllByType('Text').map((n) => String(n.props.children));
-    expect(texts).toContain(cs.friends.outgoingHeader);
+    expect(texts).toContain(t.friends.outgoingHeader);
     expect(texts).toContain('@pepa');
     expect(texts).toContain('@jarda');
   });

@@ -9,7 +9,7 @@
  * can be unit-tested with a fixed `now`.
  */
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 /** Local-midnight timestamp for calendar-day arithmetic. */
 function startOfDay(date: Date): number {
@@ -25,9 +25,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function contestCountdownLabel(periodEndIso: string, now: Date = new Date()): string {
   const endMs = Date.parse(periodEndIso);
   if (!Number.isFinite(endMs)) return '';
-  if (endMs <= now.getTime()) return cs.photoContest.ended;
+  if (endMs <= now.getTime()) return t.photoContest.ended;
 
   const dayDiff = Math.round((startOfDay(new Date(endMs)) - startOfDay(now)) / DAY_MS);
-  if (dayDiff <= 0) return cs.photoContest.endsToday;
-  return cs.photoContest.endsInDays(dayDiff);
+  if (dayDiff <= 0) return t.photoContest.endsToday;
+  return t.photoContest.endsInDays(dayDiff);
 }

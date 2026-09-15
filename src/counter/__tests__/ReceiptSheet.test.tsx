@@ -14,7 +14,7 @@ import React from 'react';
 import TestRenderer, { act, ReactTestInstance } from 'react-test-renderer';
 
 import { ReceiptSheet, type ReceiptItem, type ReceiptSheetProps } from '@/counter/ReceiptSheet';
-import { cs } from '@/i18n/cs';
+import { t as strings } from '@/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -53,7 +53,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: jest.fn(() => null),
 }));
 
-const t = cs.counter;
+const t = strings.counter;
 
 const PILSNER: ReceiptItem = {
   key: 'beer:pilsner-urquell:500',
@@ -198,7 +198,7 @@ describe('ReceiptSheet — minus', () => {
   it('calls onRemove with the item that owns the pressed minus', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterRemoveIdentity(KOZEL.name)));
+    press(buttonWithLabel(renderer, strings.a11y.counterRemoveIdentity(KOZEL.name)));
 
     expect(props.onRemove).toHaveBeenCalledTimes(1);
     expect(props.onRemove).toHaveBeenCalledWith(KOZEL);
@@ -207,8 +207,8 @@ describe('ReceiptSheet — minus', () => {
   it('gives every line its own minus, including the non-beer ones', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterRemoveIdentity(KOFOLA.name)));
-    press(buttonWithLabel(renderer, cs.a11y.counterRemoveIdentity(PILSNER.name)));
+    press(buttonWithLabel(renderer, strings.a11y.counterRemoveIdentity(KOFOLA.name)));
+    press(buttonWithLabel(renderer, strings.a11y.counterRemoveIdentity(PILSNER.name)));
 
     expect((props.onRemove as jest.Mock).mock.calls.map(([item]) => item)).toEqual([
       KOFOLA,
@@ -266,7 +266,7 @@ describe('ReceiptSheet — controls', () => {
   it('fires onDone from the close-the-evening button, not onClose', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterDone));
+    press(buttonWithLabel(renderer, strings.a11y.counterDone));
 
     expect(props.onDone).toHaveBeenCalledTimes(1);
     expect(props.onClose).not.toHaveBeenCalled();
@@ -275,7 +275,7 @@ describe('ReceiptSheet — controls', () => {
   it('fires onClose from the X button, not onDone', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterCloseModal));
+    press(buttonWithLabel(renderer, strings.a11y.counterCloseModal));
 
     expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(props.onDone).not.toHaveBeenCalled();
@@ -309,7 +309,7 @@ describe('ReceiptSheet — the mirror rule', () => {
       .map((node) => node.props?.accessibilityLabel)
       .filter((label): label is string => typeof label === 'string');
 
-    expect(labels).not.toContain(cs.a11y.counterAddBeer);
+    expect(labels).not.toContain(strings.a11y.counterAddBeer);
     expect(labels).not.toContain(t.pickAddBeer);
   });
 

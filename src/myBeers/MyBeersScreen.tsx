@@ -19,7 +19,7 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t, intlLocale } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
 import {
   ChevronRightIcon,
@@ -52,7 +52,7 @@ function lastDrinkText(session: TallySession, now: Date): string | null {
   const atMs = Date.parse(latest.at);
   if (!Number.isFinite(atMs)) return null;
   const minutes = Math.max(0, Math.floor((now.getTime() - atMs) / 60000));
-  return minutes === 0 ? cs.myBeers.lastDrinkJustNow : cs.myBeers.lastDrinkMinutesAgo(minutes);
+  return minutes === 0 ? t.myBeers.lastDrinkJustNow : t.myBeers.lastDrinkMinutesAgo(minutes);
 }
 
 // ─── Current evening card ──────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ function CurrentEveningCard({
     <View style={styles.card}>
       <View style={styles.cardSectionHeader}>
         <BeerIcon size={14} color={Colors.amber} />
-        <Text style={styles.cardSectionHeaderText}>{cs.myBeers.currentHeader}</Text>
+        <Text style={styles.cardSectionHeaderText}>{t.myBeers.currentHeader}</Text>
         <View style={styles.flex} />
         <Text style={styles.dateLabel} maxFontSizeMultiplier={FontScaleCap.body}>
           {eveningDateLabel(session.startedAt, now)}
@@ -84,7 +84,7 @@ function CurrentEveningCard({
         {session.pubName}
       </Text>
       <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency))}
+        {t.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency))}
       </Text>
       {lastText && (
         <Text style={styles.lastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -131,14 +131,14 @@ function PastEveningRow({
   onPress: () => void;
 }) {
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
-  const summary = cs.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency));
+  const summary = t.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency));
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.myBeersEvening(session.pubName, summary)}
+      accessibilityLabel={t.a11y.myBeersEvening(session.pubName, summary)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowDate} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -160,7 +160,7 @@ function PastEveningRow({
 function shortDateTime(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleDateString('cs-CZ', {
+  return new Date(ms).toLocaleDateString(intlLocale, {
     day: 'numeric',
     month: 'numeric',
     year: 'numeric',
@@ -171,12 +171,12 @@ function shortDiaryTimeRange(startIso: string, endIso?: string | null): string {
   const startMs = Date.parse(startIso);
   if (!Number.isFinite(startMs)) return '';
   const start = new Date(startMs);
-  const date = start.toLocaleDateString('cs-CZ', {
+  const date = start.toLocaleDateString(intlLocale, {
     day: 'numeric',
     month: 'numeric',
     year: 'numeric',
   });
-  const startTime = start.toLocaleTimeString('cs-CZ', {
+  const startTime = start.toLocaleTimeString(intlLocale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -184,7 +184,7 @@ function shortDiaryTimeRange(startIso: string, endIso?: string | null): string {
   const endMs = endIso ? Date.parse(endIso) : NaN;
   if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
   const end = new Date(endMs);
-  const endTime = end.toLocaleTimeString('cs-CZ', {
+  const endTime = end.toLocaleTimeString(intlLocale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -214,7 +214,7 @@ function HistoricalCheckInRow({
 }) {
   const meta = [
     checkInAmountLabel(checkIn, priceCurrency),
-    checkIn.pubName || cs.myBeers.historicalNoPub,
+    checkIn.pubName || t.myBeers.historicalNoPub,
     checkIn.endedAt ? shortDiaryTimeRange(checkIn.checkedInAt, checkIn.endedAt) : shortDateTime(checkIn.checkedInAt),
   ]
     .filter(Boolean)
@@ -225,7 +225,7 @@ function HistoricalCheckInRow({
       onPress={onPress}
       style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
+      accessibilityLabel={t.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
     >
       <View style={styles.diaryIcon}>
         <BeerIcon size={16} color={Colors.amber} />
@@ -249,17 +249,17 @@ function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       style={({ pressed }) => [styles.addHistoryButton, pressed && styles.rowPressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.myBeersAddHistorical}
+      accessibilityLabel={t.a11y.myBeersAddHistorical}
     >
       <View style={styles.addHistoryIcon}>
         <PlusIcon size={18} color={Colors.stout} />
       </View>
       <View style={styles.addHistoryText}>
         <Text style={styles.addHistoryTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.myBeers.historicalCta}
+          {t.myBeers.historicalCta}
         </Text>
         <Text style={styles.addHistorySubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.myBeers.historicalCtaBody}
+          {t.myBeers.historicalCtaBody}
         </Text>
       </View>
     </Pressable>
@@ -385,7 +385,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
       {!embedded && (
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.title}
+            {t.myBeers.title}
           </Text>
         </View>
       )}
@@ -396,10 +396,10 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
             <HistoryIcon size={52} color={Colors.amber} />
           </View>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.emptyTitle}
+            {t.myBeers.emptyTitle}
           </Text>
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.myBeers.emptyBody}
+            {t.myBeers.emptyBody}
           </Text>
           <HistoricalEntryButton onPress={openHistorical} />
         </View>
@@ -424,7 +424,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           {pastEvenings.length > 0 && (
             <>
               <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.pastHeader}
+                {t.myBeers.pastHeader}
               </Text>
               <View style={[styles.card, styles.listCard]}>
                 {pastEvenings.map((session, i) => (
@@ -452,7 +452,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           {visibleDiaryEntries.length > 0 && (
             <>
               <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.myBeers.diaryHeader}
+                {t.myBeers.diaryHeader}
               </Text>
               <View style={[styles.card, styles.listCard]}>
                 {visibleDiaryEntries.map((checkIn, i) => (

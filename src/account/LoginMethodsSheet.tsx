@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { CheckIcon, KeyRoundIcon, XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -53,12 +53,12 @@ function MethodRow({
 }: MethodRowProps) {
   const disabled = blocked || (linked && !canUnlink);
   const actionLabel =
-    provider === 'email' ? cs.account.setPasswordCta : cs.account.linkCta;
+    provider === 'email' ? t.account.setPasswordCta : t.account.linkCta;
   const accessibilityLabel = linked
-    ? cs.a11y.accountUnlinkProvider(name)
+    ? t.a11y.accountUnlinkProvider(name)
     : provider === 'email'
-      ? cs.a11y.accountSetPassword
-      : cs.a11y.accountLinkProvider(name);
+      ? t.a11y.accountSetPassword
+      : t.a11y.accountLinkProvider(name);
 
   return (
     <Pressable
@@ -88,9 +88,9 @@ function MethodRow({
         >
           {linked
             ? canUnlink
-              ? cs.account.linkedLabel
-              : cs.account.methodOnly
-            : cs.account.methodNotLinked}
+              ? t.account.linkedLabel
+              : t.account.methodOnly
+            : t.account.methodNotLinked}
         </Text>
       </View>
 
@@ -159,7 +159,7 @@ export function LoginMethodsSheet({
 
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.account.ctaMethods}
+                {t.account.ctaMethods}
               </Text>
               <Pressable
                 onPress={onClose}
@@ -168,7 +168,7 @@ export function LoginMethodsSheet({
                   pressed && styles.rowPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
+                accessibilityLabel={t.a11y.counterCloseModal}
               >
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>
@@ -181,7 +181,7 @@ export function LoginMethodsSheet({
             >
               <MethodRow
                 provider="email"
-                name={cs.account.methodEmail}
+                name={t.account.methodEmail}
                 icon={KeyRoundIcon}
                 linked={hasEmail}
                 canUnlink={canUnlink}
@@ -192,7 +192,7 @@ export function LoginMethodsSheet({
               <View style={styles.divider} />
               <MethodRow
                 provider="google"
-                name={cs.account.methodGoogle}
+                name={t.account.methodGoogle}
                 icon={GoogleIcon}
                 linked={hasGoogle}
                 canUnlink={canUnlink}
@@ -207,7 +207,7 @@ export function LoginMethodsSheet({
                   <View style={styles.divider} />
                   <MethodRow
                     provider="apple"
-                    name={cs.account.methodApple}
+                    name={t.account.methodApple}
                     icon={AppleIcon}
                     linked={hasApple}
                     canUnlink={canUnlink}

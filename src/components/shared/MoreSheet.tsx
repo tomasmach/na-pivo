@@ -32,7 +32,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -99,13 +99,13 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {title ?? cs.compass.moreTitle}
+                {title ?? t.compass.moreTitle}
               </Text>
               <Pressable
                 onPress={onClose}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.rowPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
+                accessibilityLabel={t.a11y.counterCloseModal}
               >
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>

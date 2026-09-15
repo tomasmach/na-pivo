@@ -19,7 +19,7 @@ import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   ThumbsUpIcon,
   ThumbsDownIcon,
@@ -92,7 +92,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
       <View style={styles.sectionHeader}>
         <ThumbsUpIcon size={14} color={Colors.amber} />
         <Text style={styles.sectionHeaderText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.myBeers.ratingHeader}
+          {t.myBeers.ratingHeader}
         </Text>
       </View>
 
@@ -107,7 +107,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
           ]}
           accessibilityRole="button"
           accessibilityState={{ selected: verdict === 'like' }}
-          accessibilityLabel={cs.a11y.ratingLike(pubName)}
+          accessibilityLabel={t.a11y.ratingLike(pubName)}
           hitSlop={4}
         >
           <ThumbsUpIcon
@@ -118,7 +118,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
             style={[styles.verdictText, verdict === 'like' && styles.verdictTextLikeActive]}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.myBeers.verdictLike}
+            {t.myBeers.verdictLike}
           </Text>
         </Pressable>
 
@@ -131,7 +131,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
           ]}
           accessibilityRole="button"
           accessibilityState={{ selected: verdict === 'dislike' }}
-          accessibilityLabel={cs.a11y.ratingDislike(pubName)}
+          accessibilityLabel={t.a11y.ratingDislike(pubName)}
           hitSlop={4}
         >
           <ThumbsDownIcon
@@ -142,17 +142,17 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
             style={[styles.verdictText, verdict === 'dislike' && styles.verdictTextDislikeActive]}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.myBeers.verdictDislike}
+            {t.myBeers.verdictDislike}
           </Text>
         </Pressable>
       </View>
 
       {/* Memory tags */}
       <Text style={[styles.subLabel, styles.tagLabel]} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.myBeers.tagLabel}
+        {t.myBeers.tagLabel}
       </Text>
       <View style={styles.tagGrid}>
-        {cs.myBeers.notePresets.map((preset) => {
+        {t.myBeers.notePresets.map((preset) => {
           const active = tag === preset.value;
           return (
             <Pressable
@@ -165,7 +165,7 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
               ]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={cs.a11y.ratingNote(preset.label)}
+              accessibilityLabel={t.a11y.ratingNote(preset.label)}
               hitSlop={4}
             >
               <Text
@@ -186,24 +186,24 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
       <View style={styles.noteLabelRow}>
         <MessageSquareIcon size={13} color={Colors.mutedText} />
         <Text style={styles.subLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.myBeers.noteLabel}
+          {t.myBeers.noteLabel}
         </Text>
       </View>
       <TextInput
         style={styles.noteInput}
         value={noteDraft}
         onChangeText={changeNote}
-        placeholder={cs.myBeers.notePlaceholder}
+        placeholder={t.myBeers.notePlaceholder}
         placeholderTextColor={Colors.mutedText}
         multiline
         maxLength={NOTE_MAX_LENGTH}
         textAlignVertical="top"
-        accessibilityLabel={cs.a11y.ratingNoteInput(pubName)}
+        accessibilityLabel={t.a11y.ratingNoteInput(pubName)}
         maxFontSizeMultiplier={FontScaleCap.body}
       />
 
       <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.myBeers.ratingHint}
+        {t.myBeers.ratingHint}
       </Text>
     </View>
   );

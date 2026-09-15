@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import { normalizeEditableHhMm } from '@/data/communityHours';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -68,7 +69,7 @@ export function SplitTimeInput({
         maxLength={2}
         selectTextOnFocus
         maxFontSizeMultiplier={FontScaleCap.body}
-        accessibilityLabel={`${accessibilityLabel} hodiny`}
+        accessibilityLabel={t.a11y.contributeTimeHours(accessibilityLabel)}
       />
       <Text style={styles.colon} maxFontSizeMultiplier={FontScaleCap.body}>
         :
@@ -84,7 +85,7 @@ export function SplitTimeInput({
         maxLength={2}
         selectTextOnFocus
         maxFontSizeMultiplier={FontScaleCap.body}
-        accessibilityLabel={`${accessibilityLabel} minuty`}
+        accessibilityLabel={t.a11y.contributeTimeMinutes(accessibilityLabel)}
       />
     </View>
   );

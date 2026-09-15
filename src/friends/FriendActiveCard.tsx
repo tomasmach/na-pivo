@@ -24,7 +24,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import CheersPill from './CheersPill';
 import { focusPubFromActivity } from './focusPubHandoff';
 import { useFriendSafety } from './friendSafety';
@@ -43,9 +43,9 @@ interface FriendActiveCardProps {
 
 /** FriendMini stays in FriendsScreen; mirror its name resolution locally. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kámoš';
+  if (!profile) return t.friends.fallbackName;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kámoš';
+  return profile.displayName || t.friends.fallbackName;
 }
 
 function FriendActiveCard({ activity, onResponded, stale = false }: FriendActiveCardProps) {
@@ -171,7 +171,7 @@ function FriendActiveCard({ activity, onResponded, stale = false }: FriendActive
         <Pressable
           onPress={showOnCompass}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.showOnCompass}
+          accessibilityLabel={t.friends.showOnCompass}
           hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
           style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
         >
@@ -181,7 +181,7 @@ function FriendActiveCard({ activity, onResponded, stale = false }: FriendActive
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.friends.showOnCompass}
+            {t.friends.showOnCompass}
           </Text>
         </Pressable>
         <CheersPill

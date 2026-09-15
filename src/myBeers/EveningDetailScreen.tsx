@@ -21,7 +21,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs, formatVolume } from '@/i18n/cs';
+import { formatVolume, t } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
 import {
   enqueueDrink,
@@ -150,8 +150,8 @@ export default function EveningDetailScreen() {
     const trimmed = beerName.trim();
     if (!trimmed) {
       showAppDialog({
-        title: cs.myBeers.editDrinkTitle,
-        message: cs.myBeers.editDrinkEmpty,
+        title: t.myBeers.editDrinkTitle,
+        message: t.myBeers.editDrinkEmpty,
       });
       return;
     }
@@ -182,12 +182,12 @@ export default function EveningDetailScreen() {
   const handleDeleteDrink = (drink: TallyDrink) => {
     if (!session) return;
     showAppDialog({
-      title: cs.myBeers.deleteDrinkTitle,
-      message: cs.myBeers.deleteDrinkBody,
+      title: t.myBeers.deleteDrinkTitle,
+      message: t.myBeers.deleteDrinkBody,
       buttons: [
-        { text: cs.myBeers.deleteDrinkCancel, style: 'cancel' },
+        { text: t.myBeers.deleteDrinkCancel, style: 'cancel' },
         {
-          text: cs.myBeers.deleteDrinkConfirm,
+          text: t.myBeers.deleteDrinkConfirm,
           style: 'destructive',
           onPress: () => {
             const removed = removeDrinkFromSession(session.startedAt, drink.id);
@@ -282,7 +282,7 @@ export default function EveningDetailScreen() {
         ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
       },
     });
-    showToast(cs.myBeers.addDrinkToEveningSaved, {
+    showToast(t.myBeers.addDrinkToEveningSaved, {
       icon: <BeerIcon size={20} color={Colors.amber} />,
     });
   };
@@ -295,13 +295,13 @@ export default function EveningDetailScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {session ? eveningDateLabel(session.startedAt, now) : cs.myBeers.title}
+          {session ? eveningDateLabel(session.startedAt, now) : t.myBeers.title}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -309,7 +309,7 @@ export default function EveningDetailScreen() {
       {!session ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.myBeers.emptyTitle}
+            {t.myBeers.emptyTitle}
           </Text>
         </View>
       ) : (
@@ -333,7 +333,7 @@ export default function EveningDetailScreen() {
               </Text>
             </View>
             <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.myBeers.summary(
+              {t.myBeers.summary(
                 sessionDrinkSummary(session),
                 eveningPriceLabel(breakdown, priceCurrency),
               )}
@@ -343,7 +343,7 @@ export default function EveningDetailScreen() {
           {/* Breakdown */}
           <View style={styles.card}>
             <View style={styles.cardSectionHeader}>
-              <Text style={styles.cardSectionHeaderText}>{cs.myBeers.breakdownHeader}</Text>
+              <Text style={styles.cardSectionHeaderText}>{t.myBeers.breakdownHeader}</Text>
             </View>
             <EveningBreakdown
               lines={breakdown}
@@ -353,16 +353,16 @@ export default function EveningDetailScreen() {
 
           <View style={styles.card}>
             <View style={styles.cardSectionHeader}>
-              <Text style={styles.cardSectionHeaderText}>{cs.myBeers.drinkActionsHeader}</Text>
+              <Text style={styles.cardSectionHeaderText}>{t.myBeers.drinkActionsHeader}</Text>
               <View style={styles.headerFlex} />
               <Pressable
                 onPress={openAddDrink}
                 style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
+                accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
               >
                 <PlusIcon size={15} color={Colors.stout} />
-                <Text style={styles.addDrinkButtonText}>{cs.myBeers.addDrinkToEvening}</Text>
+                <Text style={styles.addDrinkButtonText}>{t.myBeers.addDrinkToEvening}</Text>
               </Pressable>
             </View>
             {drinkActionGroups.map((group, index) => (
@@ -370,17 +370,17 @@ export default function EveningDetailScreen() {
                 <View style={styles.drinkInfo}>
                   <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                     {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
-                    {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
+                    {group.drinkType !== 'beer' ? ` · ${t.counter.drinkTypeLabel(group.drinkType)}` : ''}
                     {group.count > 1 ? ` · ${group.count}×` : ''}
                   </Text>
                   <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
                     {[
                       group.servingType
-                        ? cs.counter.servingTypeLabel(group.servingType)
+                        ? t.counter.servingTypeLabel(group.servingType)
                         : null,
                       group.pricedCount === group.count
                         ? group.count > 1
-                          ? cs.myBeers.drinkGroupTotal(
+                          ? t.myBeers.drinkGroupTotal(
                               formatPrice(group.totalCzk, priceCurrency),
                             )
                           : formatPrice(group.totalCzk, priceCurrency)
@@ -396,7 +396,7 @@ export default function EveningDetailScreen() {
                     style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                     hitSlop={6}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.myBeers.editDrink}
+                    accessibilityLabel={t.myBeers.editDrink}
                   >
                     <PencilIcon size={17} color={Colors.amber} />
                   </Pressable>
@@ -405,7 +405,7 @@ export default function EveningDetailScreen() {
                     style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                     hitSlop={6}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.myBeers.deleteDrink}
+                    accessibilityLabel={t.myBeers.deleteDrink}
                   >
                     <MinusIcon size={17} color={Colors.mutedText} />
                   </Pressable>
@@ -419,17 +419,17 @@ export default function EveningDetailScreen() {
           {nightSummary ? (
             <View style={styles.card}>
               <View style={styles.cardSectionHeader}>
-                <Text style={styles.cardSectionHeaderText}>{cs.vycep.sectionHeader}</Text>
+                <Text style={styles.cardSectionHeaderText}>{t.vycep.sectionHeader}</Text>
               </View>
               <Text style={styles.vycepBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.vycep.publishEntryBody}
+                {t.vycep.publishEntryBody}
               </Text>
               {publishedRecord ? (
                 <Text style={styles.vycepState} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.vycep.publishedState(
+                  {t.vycep.publishedState(
                     publishedRecord.visibility === 'public'
-                      ? cs.vycep.visibilityChipWorld
-                      : cs.vycep.visibilityChipFriends,
+                      ? t.vycep.visibilityChipWorld
+                      : t.vycep.visibilityChipFriends,
                   )}
                 </Text>
               ) : null}
@@ -437,23 +437,23 @@ export default function EveningDetailScreen() {
                 <Pressable
                   onPress={() => setPublishSheetVisible(true)}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.publishNightButton}
+                  accessibilityLabel={t.a11y.publishNightButton}
                   style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
                 >
                   <HandPlatterIcon size={16} color={Colors.stout} />
                   <Text style={styles.vycepPrimaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishEntryTitle}
+                    {publishedRecord ? t.vycep.updateCta : t.vycep.publishEntryTitle}
                   </Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setShareModalVisible(true)}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.shareNightButton}
+                  accessibilityLabel={t.a11y.shareNightButton}
                   style={({ pressed }) => [styles.vycepGhost, pressed && styles.iconButtonPressed]}
                 >
                   <Share2Icon size={16} color={Colors.foamMuted} />
                   <Text style={styles.vycepGhostText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.vycep.shareNightCta}
+                    {t.vycep.shareNightCta}
                   </Text>
                 </Pressable>
               </View>
@@ -511,8 +511,8 @@ export default function EveningDetailScreen() {
         )}
         initialServingType={session?.drinks[session.drinks.length - 1]?.servingType}
         formKey={addDrinkFormNonce}
-        titleOverride={cs.myBeers.addDrinkToEveningTitle}
-        submitLabelOverride={cs.myBeers.addDrinkToEveningSubmit}
+        titleOverride={t.myBeers.addDrinkToEveningTitle}
+        submitLabelOverride={t.myBeers.addDrinkToEveningSubmit}
         onCancel={() => setAddingDrink(false)}
         onSubmit={handleAddDrink}
       />
@@ -563,13 +563,13 @@ function EditDrinkNameForm({
     <View style={styles.modalCard}>
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.myBeers.editDrinkGroupTitle(group.count)}
+          {t.myBeers.editDrinkGroupTitle(group.count)}
         </Text>
         <Pressable
           onPress={onCancel}
           style={({ pressed }) => [styles.modalClose, pressed && styles.iconButtonPressed]}
           accessibilityRole="button"
-          accessibilityLabel={cs.myBeers.editDrinkCancel}
+          accessibilityLabel={t.myBeers.editDrinkCancel}
         >
           <XIcon size={18} color={Colors.mutedText} />
         </Pressable>
@@ -577,7 +577,7 @@ function EditDrinkNameForm({
       <TextInput
         value={name}
         onChangeText={setName}
-        placeholder={cs.myBeers.editDrinkPlaceholder}
+        placeholder={t.myBeers.editDrinkPlaceholder}
         placeholderTextColor={Colors.mutedText}
         style={styles.nameInput}
         autoCapitalize="words"
@@ -588,14 +588,14 @@ function EditDrinkNameForm({
       />
       <View style={styles.modalActions}>
         <Pressable onPress={onCancel} style={styles.modalSecondaryButton} accessibilityRole="button">
-          <Text style={styles.modalSecondaryText}>{cs.myBeers.editDrinkCancel}</Text>
+          <Text style={styles.modalSecondaryText}>{t.myBeers.editDrinkCancel}</Text>
         </Pressable>
         <Pressable
           onPress={() => onSave(group, name)}
           style={styles.modalPrimaryButton}
           accessibilityRole="button"
         >
-          <Text style={styles.modalPrimaryText}>{cs.myBeers.editDrinkSave}</Text>
+          <Text style={styles.modalPrimaryText}>{t.myBeers.editDrinkSave}</Text>
         </Pressable>
       </View>
     </View>

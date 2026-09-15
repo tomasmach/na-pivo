@@ -3,18 +3,18 @@ import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { CompassSize } from '@/theme/layout';
+import { t } from '@/i18n';
 
 interface CompassDialProps {
   size?: number;
 }
 
-// Cardinal letters in Czech compass order:
-// S = Sever (North), V = Východ (East), J = Jih (South), Z = Západ (West)
+// Cardinal letters follow the UI language (Czech S/V/J/Z, English N/E/S/W).
 const CARDINALS: Array<{ label: string; angleDeg: number }> = [
-  { label: 'S', angleDeg: 0 },   // top = North
-  { label: 'V', angleDeg: 90 },  // right = East
-  { label: 'J', angleDeg: 180 }, // bottom = South
-  { label: 'Z', angleDeg: 270 }, // left = West
+  { label: t.compass.cardinalNorth, angleDeg: 0 },   // top = North
+  { label: t.compass.cardinalEast, angleDeg: 90 },   // right = East
+  { label: t.compass.cardinalSouth, angleDeg: 180 }, // bottom = South
+  { label: t.compass.cardinalWest, angleDeg: 270 },  // left = West
 ];
 
 // Letters sit inside the inner gold ring (R_INNER2=104), one ring closer

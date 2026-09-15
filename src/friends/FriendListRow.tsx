@@ -10,7 +10,7 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import type { FriendProfile, FriendStats } from '@/data/friendsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -48,7 +48,7 @@ export function FriendListRow({
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {cs.friends.sharedCount(stats?.sharedPubCount ?? 0)}
+          {t.friends.sharedCount(stats?.sharedPubCount ?? 0)}
         </Text>
         {stats?.lastPubName ? (
           <Text
@@ -56,7 +56,7 @@ export function FriendListRow({
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.friends.lastTogether(stats.lastPubName)}
+            {t.friends.lastTogether(stats.lastPubName)}
           </Text>
         ) : null}
         {stats?.rituals.length ? (

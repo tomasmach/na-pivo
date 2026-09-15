@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import AddPubScreen from '../add-pub';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -161,7 +161,7 @@ describe('AddPubScreen', () => {
 
   async function submit() {
     const saveButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubSaveButton,
+      accessibilityLabel: t.a11y.addPubSaveButton,
     });
 
     await act(async () => {
@@ -174,13 +174,13 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     act(() => {
@@ -230,18 +230,18 @@ describe('AddPubScreen', () => {
     // The pin arrives selected — no location tap needed before submitting.
     expect(
       renderer!.root.findAllByProps({
-        accessibilityLabel: cs.a11y.addPubMapPinSelected,
+        accessibilityLabel: t.a11y.addPubMapPinSelected,
       }).length,
     ).toBeGreaterThan(0);
 
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     act(() => {
@@ -270,7 +270,7 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
 
     act(() => {
@@ -279,7 +279,7 @@ describe('AddPubScreen', () => {
 
     const selectedCurrentLocationButton = renderer!.root
       .findAllByProps({
-        accessibilityLabel: cs.a11y.addPubCurrentLocationSelected,
+        accessibilityLabel: t.a11y.addPubCurrentLocationSelected,
       })
       .find((node) => typeof node.props.onPress === 'function');
 
@@ -291,12 +291,12 @@ describe('AddPubScreen', () => {
 
     expect(
       renderer!.root.findAllByProps({
-        accessibilityLabel: cs.a11y.addPubCurrentLocationSelected,
+        accessibilityLabel: t.a11y.addPubCurrentLocationSelected,
       }),
     ).toHaveLength(0);
     expect(
       renderer!.root.findAllByProps({
-        accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+        accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
       }).filter((node) => typeof node.props.onPress === 'function').length,
     ).toBeGreaterThan(0);
   });
@@ -306,16 +306,16 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     await act(async () => {
@@ -352,7 +352,7 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
 
     act(() => {
@@ -387,10 +387,10 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     await act(async () => {
@@ -414,13 +414,13 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
 
     act(() => {
@@ -439,13 +439,13 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
 
     act(() => {
@@ -466,7 +466,7 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
 
     await act(async () => {
@@ -475,6 +475,6 @@ describe('AddPubScreen', () => {
 
     expect(mockOpenSystemSettings).toHaveBeenCalledTimes(1);
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
-    expect(mockShowToast).toHaveBeenCalledWith(cs.addPub.locationPermissionDenied);
+    expect(mockShowToast).toHaveBeenCalledWith(t.addPub.locationPermissionDenied);
   });
 });

@@ -21,8 +21,7 @@ import {
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel } from '@/i18n/plural';
+import { t, beerCountLabel } from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import SegmentedControl from '@/friends/SegmentedControl';
 import { useAccountStore } from '@/stores/accountStore';
@@ -75,8 +74,8 @@ function PublishNightSheetBase({
     if (busy) return;
     if (visibility === 'public' && !profile?.nickname) {
       showAppDialog({
-        title: cs.vycep.nicknameNeededTitle,
-        message: cs.vycep.nicknameNeededBody,
+        title: t.vycep.nicknameNeededTitle,
+        message: t.vycep.nicknameNeededBody,
       });
       return;
     }
@@ -106,7 +105,7 @@ function PublishNightSheetBase({
       if (res.ok) {
         trackUiInteraction('night_publish', 'success');
         markPublished(night.clientKey, visibility);
-        showToast(cs.vycep.publishedToast, {
+        showToast(t.vycep.publishedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onPublished?.();
@@ -119,7 +118,7 @@ function PublishNightSheetBase({
         // the optimistic published state (it WILL land).
         void enqueueNightOp({ op: 'publish', payload });
         markPublished(night.clientKey, visibility);
-        showToast(cs.vycep.publishQueuedToast, {
+        showToast(t.vycep.publishQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
         onPublished?.();
@@ -152,13 +151,13 @@ function PublishNightSheetBase({
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.vycep.publishTitle}
+              {t.vycep.publishTitle}
             </Text>
             <Pressable
               onPress={onClose}
               style={({ pressed }) => [styles.close, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.common.cancel}
+              accessibilityLabel={t.common.cancel}
             >
               <XIcon size={18} color={Colors.mutedText} />
             </Pressable>
@@ -192,29 +191,29 @@ function PublishNightSheetBase({
           </View>
 
           <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.vycep.publishBody}
+            {t.vycep.publishBody}
           </Text>
 
           <Text style={styles.visibilityLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.vycep.visibilityLabel}
+            {t.vycep.visibilityLabel}
           </Text>
           <SegmentedControl
-            options={[cs.vycep.scopeParta, cs.vycep.scopeWorld]}
+            options={[t.vycep.scopeParta, t.vycep.scopeWorld]}
             value={visibilityIndex}
             onChange={setVisibilityIndex}
-            accessibilityLabel={cs.vycep.visibilityLabel}
+            accessibilityLabel={t.vycep.visibilityLabel}
           />
           <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
             {visibility === 'public'
-              ? cs.vycep.visibilityWorldHint
-              : cs.vycep.visibilityFriendsHint}
+              ? t.vycep.visibilityWorldHint
+              : t.vycep.visibilityFriendsHint}
           </Text>
 
           <Pressable
             onPress={handlePublish}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.publishNightButton}
+            accessibilityLabel={t.a11y.publishNightButton}
             style={({ pressed }) => [
               styles.publishButton,
               (pressed || busy) && styles.publishButtonPressed,
@@ -222,7 +221,7 @@ function PublishNightSheetBase({
           >
             <HandPlatterIcon size={18} color={Colors.stout} />
             <Text style={styles.publishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishCta}
+              {publishedRecord ? t.vycep.updateCta : t.vycep.publishCta}
             </Text>
           </Pressable>
         </View>

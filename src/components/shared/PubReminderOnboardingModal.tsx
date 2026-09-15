@@ -24,7 +24,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
@@ -223,36 +223,36 @@ export function PubReminderOnboardingModal() {
                 <View style={styles.heroBand}>
                   <View style={styles.eyebrowPill}>
                     <BellRingIcon size={14} color={Colors.amberLight} />
-                    <Text style={styles.eyebrow}>{cs.pubReminderOnboarding.eyebrow}</Text>
+                    <Text style={styles.eyebrow}>{t.pubReminderOnboarding.eyebrow}</Text>
                   </View>
                   <PourVisual />
                 </View>
 
                 <View style={styles.copy}>
                   <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.pubReminderOnboarding.title}
+                    {t.pubReminderOnboarding.title}
                   </Text>
                   <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.pubReminderOnboarding.body}
+                    {t.pubReminderOnboarding.body}
                   </Text>
                 </View>
 
                 <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
                   <GlowButton
-                    label={cs.pubReminderOnboarding.introCta}
+                    label={t.pubReminderOnboarding.introCta}
                     onPress={() => setStep('permissions')}
                     glow="none"
                     height={58}
-                    accessibilityLabel={cs.pubReminderOnboarding.introCta}
+                    accessibilityLabel={t.pubReminderOnboarding.introCta}
                   />
                   <Pressable
                     onPress={() => void closeAsSeen()}
                     style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.skip}
+                    accessibilityLabel={t.pubReminderOnboarding.skip}
                   >
                     <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.skip}
+                      {t.pubReminderOnboarding.skip}
                     </Text>
                   </Pressable>
                 </View>
@@ -264,17 +264,17 @@ export function PubReminderOnboardingModal() {
                     onPress={() => setStep('intro')}
                     style={({ pressed }) => [styles.backButton, pressed && styles.secondaryPressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.back}
+                    accessibilityLabel={t.pubReminderOnboarding.back}
                     hitSlop={6}
                   >
                     <ChevronLeftIcon size={18} color={Colors.foam} />
                   </Pressable>
                   <View style={styles.detailCopy}>
                     <Text style={styles.detailTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.pubReminderOnboarding.detailsTitle}
+                      {t.pubReminderOnboarding.detailsTitle}
                     </Text>
                     <Text style={styles.detailBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.detailsBody}
+                      {t.pubReminderOnboarding.detailsBody}
                     </Text>
                   </View>
                 </View>
@@ -282,37 +282,37 @@ export function PubReminderOnboardingModal() {
                 <View style={styles.reasons}>
                   <ReasonRow
                     icon={<BellRingIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.notificationTitle}
-                    body={cs.pubReminderOnboarding.notificationBody}
+                    title={t.pubReminderOnboarding.notificationTitle}
+                    body={t.pubReminderOnboarding.notificationBody}
                   />
                   <ReasonRow
                     icon={<MapPinIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.locationTitle}
-                    body={cs.pubReminderOnboarding.locationBody}
+                    title={t.pubReminderOnboarding.locationTitle}
+                    body={t.pubReminderOnboarding.locationBody}
                   />
                   <ReasonRow
                     icon={<ShieldIcon size={20} color={Colors.amberLight} />}
-                    title={cs.pubReminderOnboarding.privacyTitle}
-                    body={cs.pubReminderOnboarding.privacyBody}
+                    title={t.pubReminderOnboarding.privacyTitle}
+                    body={t.pubReminderOnboarding.privacyBody}
                   />
                 </View>
 
                 <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
                   <GlowButton
-                    label={busy ? cs.pubReminderOnboarding.ctaBusy : cs.pubReminderOnboarding.cta}
+                    label={busy ? t.pubReminderOnboarding.ctaBusy : t.pubReminderOnboarding.cta}
                     onPress={() => void handleEnable()}
                     glow="none"
                     height={58}
-                    accessibilityLabel={cs.pubReminderOnboarding.cta}
+                    accessibilityLabel={t.pubReminderOnboarding.cta}
                   />
                   <Pressable
                     onPress={() => void closeAsSeen()}
                     style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.pubReminderOnboarding.skip}
+                    accessibilityLabel={t.pubReminderOnboarding.skip}
                   >
                     <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.pubReminderOnboarding.skip}
+                      {t.pubReminderOnboarding.skip}
                     </Text>
                   </Pressable>
                 </View>

@@ -24,7 +24,7 @@ import { useRouter, type Href } from 'expo-router';
 
 import { CompassIcon } from '@/components/shared/IconGlyph';
 import type { FriendPresence, MyPresence } from '@/data/friendsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -52,7 +52,7 @@ interface PresenceRowProps {
 /** "4 piva · Pilsner Urquell · před 12 min", skipping whatever we don't know. */
 function metaLine(presence: FriendPresence, now: number): string {
   return [
-    presence.beers > 0 ? cs.friends.presenceBeers(presence.beers) : '',
+    presence.beers > 0 ? t.friends.presenceBeers(presence.beers) : '',
     presence.lastDrinkName,
     formatRelative(presence.lastSeenAt, now),
   ]
@@ -88,7 +88,7 @@ const PresenceRow = memo(function PresenceRow({
   }, [presence.cacheKey, presence.pubName, router]);
 
   const meta = metaLine(presence, now);
-  const name = mine ? cs.friends.presenceMe : friendDisplayName(account);
+  const name = mine ? t.friends.presenceMe : friendDisplayName(account);
 
   return (
     <HairlineRow>
@@ -97,7 +97,7 @@ const PresenceRow = memo(function PresenceRow({
           onPress={openProfile}
           onLongPress={handleLongPress}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.presenceRow(name, presence.pubName || cs.friends.presenceSomewhere)}
+          accessibilityLabel={t.a11y.presenceRow(name, presence.pubName || t.friends.presenceSomewhere)}
           style={({ pressed }) => [styles.identity, pressed && styles.dim]}
         >
           <Avatar
@@ -122,7 +122,7 @@ const PresenceRow = memo(function PresenceRow({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {presence.pubName || cs.friends.presenceSomewhere}
+              {presence.pubName || t.friends.presenceSomewhere}
             </Text>
             {sameTable ? (
               <Text
@@ -130,7 +130,7 @@ const PresenceRow = memo(function PresenceRow({
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.friends.presenceSameTable}
+                {t.friends.presenceSameTable}
               </Text>
             ) : null}
             {meta ? (
@@ -150,7 +150,7 @@ const PresenceRow = memo(function PresenceRow({
             onPress={showOnCompass}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.presenceCompass(presence.pubName || cs.friends.presenceSomewhere)}
+            accessibilityLabel={t.a11y.presenceCompass(presence.pubName || t.friends.presenceSomewhere)}
             style={({ pressed }) => [styles.compassButton, pressed && styles.dim]}
           >
             <CompassIcon size={18} color={Colors.mutedText} />
@@ -225,7 +225,7 @@ export function PresenceList({
           nobody needs a privacy status while they are at home. */}
       {myPresence && !myPresence.visibleToParta ? (
         <Text style={styles.hiddenNote} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.friends.presenceHiddenNote}
+          {t.friends.presenceHiddenNote}
         </Text>
       ) : null}
     </View>

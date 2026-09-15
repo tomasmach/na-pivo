@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+import { locale } from '@/i18n';
+
 import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
@@ -41,6 +43,7 @@ export async function registerPushDevice(
         permission_status: permissionStatus,
         enabled: permissionStatus === 'granted',
         app_version: getAppVersionLabel(),
+        locale,
       }),
       signal: abort.signal,
     });

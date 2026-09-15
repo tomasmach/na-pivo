@@ -31,7 +31,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { formatDistanceCs } from '@/compass/distance';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { Pub } from '@/data/pubs';
 import type { NearbyCandidate } from '@/counter/useNearbyPub';
 import {
@@ -98,7 +98,7 @@ export function PubPickerModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={cs.a11y.counterCloseModal}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={t.a11y.counterCloseModal}>
         {/* The card swallows presses so a row tap never falls through to the backdrop. */}
         <AnimatedPressable
           style={[styles.card, cardAnim, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}
@@ -107,7 +107,7 @@ export function PubPickerModal({
           <View style={styles.grabber} />
           <View style={styles.header}>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.pickerTitle}
+              {t.counter.pickerTitle}
             </Text>
             <View style={styles.headerActions}>
               {onSelectOutside ? (
@@ -121,14 +121,14 @@ export function PubPickerModal({
                   hitSlop={4}
                   accessibilityRole="button"
                   accessibilityState={{ selected: genericOutsideSelected }}
-                  accessibilityLabel={cs.counter.outsideLabel('other')}
+                  accessibilityLabel={t.counter.outsideLabel('other')}
                 >
                   <HouseIcon size={16} color={genericOutsideSelected ? Colors.stout : Colors.amber} />
                   <Text
                     style={[styles.outsideButtonText, genericOutsideSelected && styles.outsideButtonTextSelected]}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.counter.outsideLabel('other')}
+                    {t.counter.outsideLabel('other')}
                   </Text>
                 </Pressable>
               ) : null}
@@ -136,7 +136,7 @@ export function PubPickerModal({
                 onPress={onClose}
                 style={styles.closeButton}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterCloseModal}
+                accessibilityLabel={t.a11y.counterCloseModal}
               >
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>
@@ -150,7 +150,7 @@ export function PubPickerModal({
           >
             {candidates.length > 0 ? (
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.pickerNearbyHeader}
+                {t.counter.pickerNearbyHeader}
               </Text>
             ) : null}
             {candidates.map((candidate) => {
@@ -167,7 +167,7 @@ export function PubPickerModal({
                   ]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={cs.a11y.counterPickPub(candidate.pub.name, distance)}
+                  accessibilityLabel={t.a11y.counterPickPub(candidate.pub.name, distance)}
                 >
                   <MapPinIcon size={18} color={isSelected ? Colors.stout : Colors.amber} />
                   <Text
@@ -191,24 +191,24 @@ export function PubPickerModal({
                 onPress={onRetry}
                 style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.counterRetry}
+                accessibilityLabel={t.a11y.counterRetry}
               >
                 <RefreshCwIcon size={18} color={Colors.foamMuted} />
                 <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.counter.retry}
+                  {t.counter.retry}
                 </Text>
               </Pressable>
             ) : null}
 
             {onSelectOutside ? (
               <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.pickerOutsideHeader}
+                {t.counter.pickerOutsideHeader}
               </Text>
             ) : null}
             {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.filter((context) => context !== 'other').map((context) => {
               const isSelected = contextPubKey(context) === selectedKey;
               const Icon = OUTSIDE_ICONS[context];
-              const label = cs.counter.outsideLabel(context);
+              const label = t.counter.outsideLabel(context);
               return (
                 <Pressable
                   key={context}
@@ -239,11 +239,11 @@ export function PubPickerModal({
                 onPress={onAddPub}
                 style={({ pressed }) => [styles.quietRow, pressed && styles.rowPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.counter.noPubAddPub}
+                accessibilityLabel={t.counter.noPubAddPub}
               >
                 <MapPinPlusIcon size={18} color={Colors.foamMuted} />
                 <Text style={styles.quietRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.counter.noPubAddPub}
+                  {t.counter.noPubAddPub}
                 </Text>
               </Pressable>
             ) : null}

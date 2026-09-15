@@ -18,7 +18,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -72,7 +72,7 @@ export function DiaryStatsSheet({
       style={[styles.row, !isFirstOfGroup && styles.rowDivider]}
       accessible
       accessibilityRole="text"
-      accessibilityLabel={cs.diary.nightMeta([row.label, row.value, row.meta ?? ''])}
+      accessibilityLabel={t.diary.nightMeta([row.label, row.value, row.meta ?? ''])}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -131,13 +131,13 @@ export function DiaryStatsSheet({
             <View style={styles.grabber} />
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.diary.statsTitle}
+                {t.diary.statsTitle}
               </Text>
               <Pressable
                 onPress={onClose}
                 style={styles.closeButton}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.diaryStatsClose}
+                accessibilityLabel={t.a11y.diaryStatsClose}
               >
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>
@@ -154,7 +154,7 @@ export function DiaryStatsSheet({
                 style={styles.total}
                 accessible
                 accessibilityRole="text"
-                accessibilityLabel={cs.diary.nightMeta([totalBeers, cs.diary.statsTotalCaption])}
+                accessibilityLabel={t.diary.nightMeta([totalBeers, t.diary.statsTotalCaption])}
               >
                 <Text
                   style={styles.totalCount}
@@ -168,21 +168,21 @@ export function DiaryStatsSheet({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.diary.statsTotalCaption}
+                  {t.diary.statsTotalCaption}
                 </Text>
               </View>
 
               {rows.map((row, index) => renderRow(row, index === 0))}
-              {renderSection(cs.diary.statsRecordsCaption, records)}
-              {renderSection(cs.diary.statsPubsCaption, topPubs)}
-              {renderSection(cs.diary.statsYearsCaption, years)}
+              {renderSection(t.diary.statsRecordsCaption, records)}
+              {renderSection(t.diary.statsPubsCaption, topPubs)}
+              {renderSection(t.diary.statsYearsCaption, years)}
             </ScrollView>
 
             {/* Pinned below the scroll area: the footnote explains what the
                 numbers do and do not count, so it must never scroll off. */}
             <View style={styles.footer}>
               <Text style={styles.footerCopy} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.diary.statsFooter}
+                {t.diary.statsFooter}
               </Text>
             </View>
           </Pressable>

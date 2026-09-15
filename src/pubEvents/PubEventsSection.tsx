@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { intlLocale, t } from '@/i18n';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
@@ -33,8 +34,9 @@ function formatEventValidity(event: PubEvent, now = new Date()): string {
     start.getMonth() === now.getMonth() &&
     start.getDate() === now.getDate();
   const time = (date: Date) => `${twoDigits(date.getHours())}:${twoDigits(date.getMinutes())}`;
-  if (startsToday && sameDay) return `Dnes ${time(start)}-${time(end)}`;
-  const date = (value: Date) => `${value.getDate()}. ${value.getMonth() + 1}.`;
+  if (startsToday && sameDay) return t.pubDetail.eventToday(`${time(start)}-${time(end)}`);
+  const date = (value: Date) =>
+    new Intl.DateTimeFormat(intlLocale, { day: 'numeric', month: 'numeric' }).format(value);
   return sameDay
     ? `${date(start)} ${time(start)}-${time(end)}`
     : `${date(start)} ${time(start)} - ${date(end)} ${time(end)}`;
@@ -138,17 +140,17 @@ export function PubEventsSection({ visible, pubKey, pubName, info }: PubEventsSe
         onPress={handleSuggest}
         style={({ pressed }) => [styles.suggestRow, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={isSignedIn ? 'Navrhnout akci' : 'Přihlásit se a navrhnout akci'}
+        accessibilityLabel={isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut}
       >
         <View style={styles.suggestIcon}>
           <ClockIcon size={19} color={Colors.amber} />
         </View>
         <View style={styles.eventCopy}>
           <Text style={styles.suggestTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isSignedIn ? 'Navrhnout akci' : 'Přihlas se a navrhni akci'}
+            {isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut}
           </Text>
           <Text style={styles.details} maxFontSizeMultiplier={FontScaleCap.body}>
-            Po kontrole ji ukážeme ostatním.
+            {t.pubDetail.eventSuggestHint}
           </Text>
         </View>
         <ChevronRightIcon size={20} color={Colors.mutedText} />

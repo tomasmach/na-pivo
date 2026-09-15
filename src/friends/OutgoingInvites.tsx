@@ -11,7 +11,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import type { Friendship } from '@/data/friendsClient';
 import { XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -33,7 +33,7 @@ export function OutgoingInvites({ requests, onCancel }: OutgoingInvitesProps) {
         numberOfLines={1}
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
-        {cs.friends.outgoingHeader}
+        {t.friends.outgoingHeader}
       </Text>
       <View style={styles.outgoingRow}>
         {requests.map((request) => (
@@ -41,7 +41,7 @@ export function OutgoingInvites({ requests, onCancel }: OutgoingInvitesProps) {
             key={request.id}
             onPress={() => onCancel(request)}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.cancelInviteTitle}
+            accessibilityLabel={t.friends.cancelInviteTitle}
             style={({ pressed }) => [styles.outgoingChip, pressed && styles.dim]}
           >
             <Text

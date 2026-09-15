@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { cs as copy } from '@/i18n/cs';
+import { t as copy } from '@/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

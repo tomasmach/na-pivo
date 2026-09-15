@@ -27,7 +27,7 @@ import {
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t, intlLocale } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -53,16 +53,16 @@ interface PlanCardProps {
 const PILL_HIT_SLOP = { top: 6, bottom: 6, left: 6, right: 6 } as const;
 
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kámoš';
+  if (!profile) return t.friends.fallbackName;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kámoš';
+  return profile.displayName || t.friends.fallbackName;
 }
 
 /** "20:00" from the plan's scheduled ISO time; '' when unparseable. */
 function planTimeLabel(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+  return new Date(ms).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' });
 }
 
 function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps) {
@@ -97,12 +97,12 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
     void endFriendPubActivity(activity.id).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(cs.friends.planCanceled, { icon: <XIcon size={20} color={Colors.amber} /> });
+        showToast(t.friends.planCanceled, { icon: <XIcon size={20} color={Colors.amber} /> });
         onCanceled();
       } else {
         if (isRetriableFriendError(res)) {
           void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
-          showToast(cs.friends.planCancelQueued, {
+          showToast(t.friends.planCancelQueued, {
             icon: <XIcon size={20} color={Colors.amber} />,
           });
           onCanceled();
@@ -116,11 +116,11 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
 
   const handleCancelPress = useCallback(() => {
     showAppDialog({
-      title: cs.friends.planCancelConfirmTitle,
-      message: cs.friends.planCancelConfirmBody,
+      title: t.friends.planCancelConfirmTitle,
+      message: t.friends.planCancelConfirmBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        { text: cs.friends.planCancel, style: 'destructive', onPress: confirmCancel },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.friends.planCancel, style: 'destructive', onPress: confirmCancel },
       ],
     });
   }, [confirmCancel]);
@@ -131,7 +131,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
     <View style={styles.timeChip}>
       <ClockIcon size={13} color={Colors.amber} />
       <Text style={styles.timeChipText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.friends.planAt(time)}
+        {t.friends.planAt(time)}
       </Text>
     </View>
   ) : null;
@@ -141,7 +141,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
       <View style={styles.header}>
         {mine ? (
           <Text style={styles.mineKicker} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.planMineTitle}
+            {t.friends.planMineTitle}
           </Text>
         ) : (
           <Pressable
@@ -216,7 +216,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
           <>
             {activity.reactions.cheers > 0 ? (
               <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.cheersCount(activity.reactions.cheers)}
+                {t.friends.cheersCount(activity.reactions.cheers)}
               </Text>
             ) : (
               <View />
@@ -225,12 +225,12 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
               onPress={handleCancelPress}
               hitSlop={PILL_HIT_SLOP}
               accessibilityRole="button"
-              accessibilityLabel={cs.friends.planCancel}
+              accessibilityLabel={t.friends.planCancel}
               style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
             >
               <XIcon size={15} color={Colors.foamMuted} />
               <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.friends.planCancel}
+                {t.friends.planCancel}
               </Text>
             </Pressable>
           </>
@@ -239,7 +239,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
             <Pressable
               onPress={showOnCompass}
               accessibilityRole="button"
-              accessibilityLabel={cs.friends.showOnCompass}
+              accessibilityLabel={t.friends.showOnCompass}
               hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
               style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
             >
@@ -249,7 +249,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.friends.showOnCompass}
+                {t.friends.showOnCompass}
               </Text>
             </Pressable>
             <CheersPill

@@ -31,7 +31,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useReleaseStore } from '@/stores/releaseStore';
 
 export function WhatsNewModal() {
@@ -86,14 +86,14 @@ export function WhatsNewModal() {
                 style={styles.eyebrow}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.whatsNew.eyebrow}
+                {t.whatsNew.eyebrow}
               </Text>
               {note?.version ? (
                 <Text
                   style={styles.versionText}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.whatsNew.versionLabel(note.version)}
+                  {t.whatsNew.versionLabel(note.version)}
                 </Text>
               ) : null}
             </View>
@@ -101,7 +101,7 @@ export function WhatsNewModal() {
               style={styles.title}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {note?.title ?? cs.whatsNew.defaultTitle}
+              {note?.title ?? t.whatsNew.defaultTitle}
             </Text>
           </View>
 
@@ -138,7 +138,7 @@ export function WhatsNewModal() {
 
           <View style={styles.footer}>
             <GlowButton
-              label={cs.whatsNew.cta}
+              label={t.whatsNew.cta}
               onPress={dismissNote}
               glow="none"
               height={58}

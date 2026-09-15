@@ -31,7 +31,7 @@ import {
   type LeaderboardPeriod,
 } from '@/data/leaderboardsClient';
 import { trackClientEvent } from '@/data/telemetryClient';
-import { cs } from '@/i18n/cs';
+import { t, intlLocale } from '@/i18n';
 import BoardSegmented from '@/leaderboards/BoardSegmented';
 import { HeroFooterSkeleton, HeroSkeleton, RowsSkeleton } from '@/leaderboards/BoardSkeleton';
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
@@ -50,16 +50,16 @@ type LoadState = 'loading' | 'loaded' | 'error';
 // the metric, and a quiet underlined text row for the window. Two controls in
 // the same voice were the thing that blurred together.
 const CATEGORIES: readonly LeaderboardCategory[] = ['beers', 'pubs', 'mapper'];
-const CATEGORY_LABELS = CATEGORIES.map((key) => cs.leaderboards.categoryTab(key));
+const CATEGORY_LABELS = CATEGORIES.map((key) => t.leaderboards.categoryTab(key));
 
 const PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = (
   ['week', 'year', 'all'] as const
-).map((key) => ({ key, label: cs.leaderboards.periodTab(key) }));
+).map((key) => ({ key, label: t.leaderboards.periodTab(key) }));
 
 function unitFor(category: LeaderboardCategory, score: number): string {
-  if (category === 'beers') return cs.leaderboards.unitBeers(score);
-  if (category === 'pubs') return cs.leaderboards.unitPubs(score);
-  return cs.leaderboards.unitXp;
+  if (category === 'beers') return t.leaderboards.unitBeers(score);
+  if (category === 'pubs') return t.leaderboards.unitPubs(score);
+  return t.leaderboards.unitXp;
 }
 
 function rankFontSize(rank: number | null): number {
@@ -178,7 +178,7 @@ export default function LeaderboardsScreen() {
     [period],
   );
 
-  const tableTitle = cs.leaderboards.tableTitle(category, effectivePeriod);
+  const tableTitle = t.leaderboards.tableTitle(category, effectivePeriod);
   const visibleBoard =
     state === 'loaded' && sameBoard(board, category, effectivePeriod) ? board : null;
   const entries = useMemo(() => visibleBoard?.entries ?? [], [visibleBoard]);
@@ -203,14 +203,14 @@ export default function LeaderboardsScreen() {
     if (isGhost) {
       return {
         kind: 'dopito',
-        label: cs.leaderboards.ghostNudge,
+        label: t.leaderboards.ghostNudge,
         onPress: openVisibility,
       };
     }
     if (chaseGap > 0) {
       return {
         kind: 'dopito',
-        label: cs.leaderboards.chase(category, chaseGap),
+        label: t.leaderboards.chase(category, chaseGap),
         onPress: () => undefined,
       };
     }
@@ -219,28 +219,28 @@ export default function LeaderboardsScreen() {
 
   const cta = useMemo(() => {
     if (state === 'error') {
-      return { label: cs.leaderboards.retry, onPress: retry };
+      return { label: t.leaderboards.retry, onPress: retry };
     }
     if (isGhost) {
       return {
-        label: hasNickname ? cs.leaderboards.ghostCta : cs.leaderboards.ghostAnonCta,
+        label: hasNickname ? t.leaderboards.ghostCta : t.leaderboards.ghostAnonCta,
         onPress: openVisibility,
       };
     }
     if (category === 'beers') {
       return {
-        label: cs.leaderboards.ctaBeers,
+        label: t.leaderboards.ctaBeers,
         onPress: () => router.replace('/(tabs)/beer' as Href),
       };
     }
     if (category === 'pubs') {
       return {
-        label: cs.leaderboards.ctaPubs,
+        label: t.leaderboards.ctaPubs,
         onPress: () => router.replace('/(tabs)' as Href),
       };
     }
     return {
-      label: cs.leaderboards.ctaMapper,
+      label: t.leaderboards.ctaMapper,
       onPress: () => router.replace('/(tabs)' as Href),
     };
   }, [category, hasNickname, isGhost, openVisibility, retry, router, state]);
@@ -251,16 +251,16 @@ export default function LeaderboardsScreen() {
   }, []);
 
   const rank = me?.rank ?? null;
-  const rankLabel = rank == null ? '' : rank.toLocaleString('cs-CZ');
+  const rankLabel = rank == null ? '' : rank.toLocaleString(intlLocale);
   const numeralSize = rankFontSize(rank);
   const podiumWidth =
     heroBodyHeight > 0 ? Math.max(64, Math.min(112, (heroBodyHeight - 16) * 0.66)) : 88;
   const scoreLabel =
     me && me.score > 0
-      ? cs.leaderboards.score(category, me.score.toLocaleString('cs-CZ'), me.score)
-      : cs.leaderboards.noScore;
+      ? t.leaderboards.score(category, me.score.toLocaleString(intlLocale), me.score)
+      : t.leaderboards.noScore;
   const totalRanked = visibleBoard?.totalRanked ?? null;
-  const totalLabel = cs.leaderboards.totalInBoard(totalRanked?.toLocaleString('cs-CZ') ?? null);
+  const totalLabel = t.leaderboards.totalInBoard(totalRanked?.toLocaleString(intlLocale) ?? null);
 
   // A rank is what the hero draws: the numeral, the podium and the score fact
   // all mean nothing without one. Without a rank the card carries copy instead
@@ -268,16 +268,16 @@ export default function LeaderboardsScreen() {
   const boardEmpty = state === 'loaded' && entries.length === 0;
   const blankTitle =
     state === 'error'
-      ? cs.leaderboards.errorTitle
+      ? t.leaderboards.errorTitle
       : boardEmpty
-        ? cs.leaderboards.emptyBoardTitle
-        : cs.leaderboards.notRankedTitle;
+        ? t.leaderboards.emptyBoardTitle
+        : t.leaderboards.notRankedTitle;
   const blankBody =
     state === 'error'
-      ? cs.leaderboards.errorBody
+      ? t.leaderboards.errorBody
       : boardEmpty
-        ? cs.leaderboards.emptyBoardBody(category)
-        : cs.leaderboards.notRankedBody(category);
+        ? t.leaderboards.emptyBoardBody(category)
+        : t.leaderboards.notRankedBody(category);
   // With no rows under it the card is the whole screen, so it takes the space
   // the list would have used instead of leaving a brown hole above the button.
   const showList = state === 'loading' || entries.length > 0;
@@ -291,7 +291,7 @@ export default function LeaderboardsScreen() {
     rank != null
       ? [scoreLabel, totalLabel]
       : showList
-        ? [totalRanked ? totalLabel : null, showWeeklyReset ? cs.leaderboards.weeklyReset : null]
+        ? [totalRanked ? totalLabel : null, showWeeklyReset ? t.leaderboards.weeklyReset : null]
         : []
   ).filter(Boolean) as (string | undefined)[];
 
@@ -310,7 +310,7 @@ export default function LeaderboardsScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={cs.leaderboards.back}
+          accessibilityLabel={t.leaderboards.back}
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
@@ -321,7 +321,7 @@ export default function LeaderboardsScreen() {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {cs.leaderboards.screenTitle}
+          {t.leaderboards.screenTitle}
         </Text>
 
         {/* The back chevron's twin, so the title stays optically centred. */}
@@ -337,8 +337,8 @@ export default function LeaderboardsScreen() {
           options={CATEGORY_LABELS}
           value={Math.max(0, CATEGORIES.indexOf(category))}
           onChange={chooseCategory}
-          describeOption={cs.leaderboards.selectCategory}
-          accessibilityLabel={cs.a11y.leaderboardCategory}
+          describeOption={t.leaderboards.selectCategory}
+          accessibilityLabel={t.a11y.leaderboardCategory}
         />
 
         {/* Fixed-height slot, so switching to Mapéři swaps the row for its note
@@ -346,15 +346,15 @@ export default function LeaderboardsScreen() {
         <View style={styles.periodSlot}>
           {category === 'mapper' ? (
             <Text style={styles.periodNote} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.leaderboards.mapperPeriodNote}
+              {t.leaderboards.mapperPeriodNote}
             </Text>
           ) : (
             <PeriodChips
               options={PERIODS}
               value={period}
               onChange={choosePeriod}
-              describeOption={cs.leaderboards.selectPeriod}
-              accessibilityLabel={cs.a11y.leaderboardPeriod}
+              describeOption={t.leaderboards.selectPeriod}
+              accessibilityLabel={t.a11y.leaderboardPeriod}
             />
           )}
         </View>
@@ -372,15 +372,15 @@ export default function LeaderboardsScreen() {
           accessibilityRole="text"
           accessibilityLabel={
             rank != null
-              ? cs.leaderboards.heroA11y(tableTitle, rankLabel, scoreLabel, totalRanked)
-              : cs.leaderboards.blankA11y(tableTitle, blankTitle, blankBody)
+              ? t.leaderboards.heroA11y(tableTitle, rankLabel, scoreLabel, totalRanked)
+              : t.leaderboards.blankA11y(tableTitle, blankTitle, blankBody)
           }
           style={styles.heroCard}
         >
           <CardSheen />
 
           <Text style={styles.eyebrow} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.leaderboards.subtitle(category, effectivePeriod)}
+            {t.leaderboards.subtitle(category, effectivePeriod)}
           </Text>
 
           {state === 'loading' ? (
@@ -402,7 +402,7 @@ export default function LeaderboardsScreen() {
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.leaderboards.rankNoun}
+                  {t.leaderboards.rankNoun}
                 </Text>
               </View>
 
@@ -422,9 +422,9 @@ export default function LeaderboardsScreen() {
               {showList || state === 'error' ? null : (
                 <View style={styles.rules}>
                   <Text style={styles.rulesCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.leaderboards.rulesCaption}
+                    {t.leaderboards.rulesCaption}
                   </Text>
-                  {cs.leaderboards.rules(category, effectivePeriod, hasNickname).map((rule) => (
+                  {t.leaderboards.rules(category, effectivePeriod, hasNickname).map((rule) => (
                     <Text
                       key={rule}
                       style={styles.ruleText}
@@ -465,7 +465,7 @@ export default function LeaderboardsScreen() {
         {showList ? (
           <>
             <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.leaderboards.listLabel}
+              {t.leaderboards.listLabel}
             </Text>
 
             <View style={styles.rowsCard}>

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import type * as ExpoNotifications from 'expo-notifications';
 
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { t } from '@/i18n';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
@@ -91,7 +92,7 @@ async function setAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android' || !Notifications) return;
   try {
     await Notifications.setNotificationChannelAsync(BEER_COUNT_REMINDER_CHANNEL_ID, {
-      name: 'Připomínky počítadla',
+      name: t.notifications.beerCountChannel,
       importance: Notifications.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 180],
       lightColor: '#f6c45c',
@@ -178,8 +179,8 @@ async function scheduleInternal(
   try {
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Nezapomněl sis zapsat pivko?',
-        body: 'Klepni a přidej další čárku do počítadla.',
+        title: t.notifications.beerCountTitle,
+        body: t.notifications.beerCountBody,
         data: {
           kind: BEER_COUNT_REMINDER_KIND,
           sessionId,

@@ -30,7 +30,7 @@ import { CopyIcon, LinkIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { fetchFriendInviteCode, type FriendInvite } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -120,15 +120,15 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
   const handleShare = useCallback(() => {
     if (!link) return;
     trackUiInteraction('friend_invite_share', 'share');
-    void Share.share({ message: cs.friends.shareMessage(link) });
+    void Share.share({ message: t.friends.shareMessage(link) });
   }, [link]);
 
   const handleQuickSend = useCallback(() => {
     if (!link) return;
     trackUiInteraction('friend_invite_share', 'share');
-    void Share.share({ message: cs.friends.shareMessage(link) }).catch(() => {
+    void Share.share({ message: t.friends.shareMessage(link) }).catch(() => {
       if (!mountedRef.current) return;
-      showToast(cs.friends.shareError, { icon: <CopyIcon size={20} color={Colors.amber} /> });
+      showToast(t.friends.shareError, { icon: <CopyIcon size={20} color={Colors.amber} /> });
     });
   }, [link, showToast]);
 
@@ -139,7 +139,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
           style={StyleSheet.absoluteFill}
           onPress={requestClose}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.settingsClose}
+          accessibilityLabel={t.friends.settingsClose}
         />
 
         <Animated.View
@@ -149,7 +149,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
 
           <View style={styles.headerRow}>
             <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.codeSheetTitle}
+              {t.friends.codeSheetTitle}
             </Text>
           </View>
 
@@ -158,7 +158,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
             hitSlop={12}
             style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.settingsClose}
+            accessibilityLabel={t.friends.settingsClose}
           >
             <XIcon size={18} color={Colors.foamMuted} />
           </Pressable>
@@ -179,7 +179,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
               ) : (
                 <View style={styles.noNick}>
                   <Text style={styles.noNickText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.codeNoNick}
+                    {t.friends.codeNoNick}
                   </Text>
                   <Pressable
                     onPress={() => {
@@ -188,10 +188,10 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
                     }}
                     hitSlop={8}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.friends.codeNoNickCta}
+                    accessibilityLabel={t.friends.codeNoNickCta}
                   >
                     <Text style={styles.noNickCta} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.codeNoNickCta}
+                      {t.friends.codeNoNickCta}
                     </Text>
                   </Pressable>
                 </View>
@@ -210,16 +210,16 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
               ) : failed || !link ? (
                 <View style={styles.qrFallback}>
                   <Text style={styles.offlineText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.codeOffline}
+                    {t.friends.codeOffline}
                   </Text>
                   <Pressable
                     onPress={() => void load()}
                     style={({ pressed }) => [styles.retryPill, pressed && styles.pressedDim]}
                     accessibilityRole="button"
-                    accessibilityLabel={cs.friends.retry}
+                    accessibilityLabel={t.friends.retry}
                   >
                     <Text style={styles.retryLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-                      {cs.friends.retry}
+                      {t.friends.retry}
                     </Text>
                   </Pressable>
                 </View>
@@ -231,7 +231,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
             </View>
 
             <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.codeSheetHint}
+              {t.friends.codeSheetHint}
             </Text>
 
             {/* Actions */}
@@ -241,11 +241,11 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
                 disabled={!link}
                 style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.friends.codeShare}
+                accessibilityLabel={t.friends.codeShare}
               >
                 <LinkIcon size={18} color={Colors.amber} />
                 <Text style={styles.actionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.friends.codeShare}
+                  {t.friends.codeShare}
                 </Text>
               </Pressable>
               <Pressable
@@ -253,11 +253,11 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
                 disabled={!link}
                 style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.friends.codeCopy}
+                accessibilityLabel={t.friends.codeCopy}
               >
                 <CopyIcon size={18} color={Colors.amber} />
                 <Text style={styles.actionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.friends.codeCopy}
+                  {t.friends.codeCopy}
                 </Text>
               </Pressable>
             </View>

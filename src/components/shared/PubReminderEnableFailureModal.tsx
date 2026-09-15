@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BellRingIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   usePubReminderEnableFailureStore,
   type PubReminderEnableFailureReason,
@@ -49,7 +49,7 @@ export function PubReminderEnableFailureModal() {
 
   if (!reason) return null;
 
-  const copy = cs.settings.pubReminders.denied[reason];
+  const copy = t.settings.pubReminders.denied[reason];
 
   const openSettings = () => {
     hide();
@@ -72,7 +72,7 @@ export function PubReminderEnableFailureModal() {
             </View>
             <View style={styles.headerText}>
               <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.settings.pubReminders.failureEyebrow}
+                {t.settings.pubReminders.failureEyebrow}
               </Text>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
                 {copy.title}
@@ -87,21 +87,21 @@ export function PubReminderEnableFailureModal() {
           <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
             {canOpenSettings && (
               <GlowButton
-                label={cs.settings.pubReminders.openSettings}
+                label={t.settings.pubReminders.openSettings}
                 onPress={openSettings}
                 glow="none"
                 height={56}
-                accessibilityLabel={cs.settings.pubReminders.openSettings}
+                accessibilityLabel={t.settings.pubReminders.openSettings}
               />
             )}
             <Pressable
               onPress={hide}
               style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.common.ok}
+              accessibilityLabel={t.common.ok}
             >
               <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.common.ok}
+                {t.common.ok}
               </Text>
             </Pressable>
           </View>

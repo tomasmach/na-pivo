@@ -21,7 +21,7 @@ import { View, Text, TextInput, ActivityIndicator, StyleSheet, type TextStyle } 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { CheckIcon } from '@/components/shared/IconGlyph';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -174,7 +174,7 @@ export const NicknameField = memo(function NicknameField({
           style={styles.input}
           value={value}
           onChangeText={onChangeText}
-          placeholder={cs.profile.form.nicknamePlaceholder}
+          placeholder={t.profile.form.nicknamePlaceholder}
           placeholderTextColor={Colors.mutedText}
           autoCapitalize="none"
           autoCorrect={false}
@@ -182,7 +182,7 @@ export const NicknameField = memo(function NicknameField({
           spellCheck={false}
           maxLength={NICKNAME_MAX}
           autoFocus={autoFocus}
-          accessibilityLabel={cs.a11y.profileNicknameInput}
+          accessibilityLabel={t.a11y.profileNicknameInput}
           maxFontSizeMultiplier={FontScaleCap.body}
         />
         {hint.kind === 'checking' && <ActivityIndicator size="small" color={Colors.amber} />}
@@ -199,9 +199,9 @@ function NicknameHint({ hint }: { hint: HintState }) {
   let text: string;
   let style: TextStyle = styles.hintNeutral;
   if (hint.kind === 'checking') {
-    text = cs.profile.form.nicknameChecking;
+    text = t.profile.form.nicknameChecking;
   } else if (hint.kind === 'available') {
-    text = cs.profile.form.nicknameAvailable;
+    text = t.profile.form.nicknameAvailable;
     style = styles.hintOk;
   } else {
     text = hint.message;

@@ -1,3 +1,5 @@
+import { intlLocale, t } from '@/i18n';
+
 export type PriceCurrency = string;
 
 export const DEFAULT_PRICE_CURRENCY: PriceCurrency = 'CZK';
@@ -30,7 +32,7 @@ export function currencyFractionDigits(currency: PriceCurrency): number {
 
 export function currencySuffix(currency: PriceCurrency): string {
   try {
-    const parts = new Intl.NumberFormat('cs-CZ', {
+    const parts = new Intl.NumberFormat(intlLocale, {
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',
@@ -42,11 +44,11 @@ export function currencySuffix(currency: PriceCurrency): string {
 }
 
 export function pricePlaceholder(currency: PriceCurrency): string {
-  return `Cena (${currencySuffix(currency)})`;
+  return t.common.pricePlaceholder(currencySuffix(currency));
 }
 
 function formatDecimal(value: number, maxFractionDigits: number): string {
-  const rounded = value.toLocaleString('cs-CZ', {
+  const rounded = value.toLocaleString(intlLocale, {
     minimumFractionDigits: 0,
     maximumFractionDigits: maxFractionDigits,
   });
@@ -57,7 +59,7 @@ export function formatPrice(czk: number, currency: PriceCurrency): string {
   const rate = getCurrencyRate(currency) ?? 1;
   const amount = czk / rate;
   try {
-    return new Intl.NumberFormat('cs-CZ', {
+    return new Intl.NumberFormat(intlLocale, {
       style: 'currency',
       currency,
       currencyDisplay: 'narrowSymbol',

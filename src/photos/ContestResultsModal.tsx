@@ -29,7 +29,7 @@ import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchPhotoContestTeaser } from '@/data/photoContestClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useReleaseStore } from '@/stores/releaseStore';
@@ -43,9 +43,9 @@ const MEDALLION = 64;
 const CARD_MAX_WIDTH = 420;
 
 function rankCopy(rank: number): { title: string; body: string } {
-  if (rank === 1) return { title: cs.photoContest.resultsTitleFirst, body: cs.photoContest.resultsBodyFirst };
-  if (rank === 2) return { title: cs.photoContest.resultsTitleSecond, body: cs.photoContest.resultsBodySecond };
-  return { title: cs.photoContest.resultsTitleThird, body: cs.photoContest.resultsBodyThird };
+  if (rank === 1) return { title: t.photoContest.resultsTitleFirst, body: t.photoContest.resultsBodyFirst };
+  if (rank === 2) return { title: t.photoContest.resultsTitleSecond, body: t.photoContest.resultsBodySecond };
+  return { title: t.photoContest.resultsTitleThird, body: t.photoContest.resultsBodyThird };
 }
 
 export function ContestResultsModal() {
@@ -111,13 +111,13 @@ export function ContestResultsModal() {
 
   const { title, body } = rankCopy(pending.rank);
   const stats: { value: string; label: string }[] = [
-    { value: String(pending.votes), label: cs.photoContest.resultsStatVotes },
+    { value: String(pending.votes), label: t.photoContest.resultsStatVotes },
   ];
   if (pending.xpAwarded > 0) {
-    stats.push({ value: `+${pending.xpAwarded}`, label: cs.photoContest.resultsStatXp });
+    stats.push({ value: `+${pending.xpAwarded}`, label: t.photoContest.resultsStatXp });
   }
   if (pending.rank === 1 && pending.winsCount > 0) {
-    stats.push({ value: String(pending.winsCount), label: cs.photoContest.resultsStatWins });
+    stats.push({ value: String(pending.winsCount), label: t.photoContest.resultsStatWins });
   }
 
   const openContest = () => {
@@ -158,7 +158,7 @@ export function ContestResultsModal() {
 
           <View style={styles.content}>
             <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoContest.resultsEyebrow}
+              {t.photoContest.resultsEyebrow}
             </Text>
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               {title}
@@ -183,14 +183,14 @@ export function ContestResultsModal() {
               ))}
             </View>
 
-            <GlowButton label={cs.photoContest.resultsCta} onPress={openContest} glow="soft" height={54} />
+            <GlowButton label={t.photoContest.resultsCta} onPress={openContest} glow="soft" height={54} />
             <Pressable
               onPress={dismissResult}
               accessibilityRole="button"
               style={({ pressed }) => [styles.closeButton, pressed && styles.closePressed]}
             >
               <Text style={styles.closeText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.photoContest.resultsClose}
+                {t.photoContest.resultsClose}
               </Text>
             </Pressable>
           </View>

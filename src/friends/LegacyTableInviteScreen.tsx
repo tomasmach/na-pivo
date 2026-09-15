@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -21,10 +21,10 @@ export default function LegacyTableInviteScreen() {
       ]}
     >
       <Text style={styles.message} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {cs.friends.legacyTableUnavailable}
+        {t.friends.legacyTableUnavailable}
       </Text>
       <GlowButton
-        label={cs.friends.claimBack}
+        label={t.friends.claimBack}
         onPress={() => router.replace('/friends')}
         variant="secondary"
         glow="none"

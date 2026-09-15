@@ -45,7 +45,7 @@ import {
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t, intlLocale } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -55,18 +55,18 @@ type Mode = 'nearby' | 'mine' | 'create';
 type Coords = { lat: number; lng: number };
 
 function hostName(event: CommunityEvent): string {
-  return event.host.nickname ? `@${event.host.nickname}` : event.host.displayName || 'Pořadatel';
+  return event.host.nickname ? `@${event.host.nickname}` : event.host.displayName || t.communityEvents.hostFallback;
 }
 
 function formatTime(event: CommunityEvent): string {
   const start = new Date(event.startsAt);
   const end = new Date(event.endsAt);
-  const day = start.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric' });
-  return `${day} · ${start.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`;
+  const day = start.toLocaleDateString(intlLocale, { weekday: 'short', day: 'numeric', month: 'numeric' });
+  return `${day} · ${start.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function distanceLabel(value: DistanceBand | null): string {
-  return value ? cs.communityEvents.distance[value] : '';
+  return value ? t.communityEvents.distance[value] : '';
 }
 
 function Button({
@@ -136,20 +136,20 @@ function EventCard({
     setActing(true);
     const result = await action();
     trackUiInteraction(target, result.ok ? 'success' : 'failure');
-    showToast(result.ok ? success : result.detail || cs.communityEvents.loadError);
+    showToast(result.ok ? success : result.detail || t.communityEvents.loadError);
     if (result.ok) await reload();
     setActing(false);
   }, [reload, showToast]);
 
   const report = () => {
-    Alert.alert(cs.communityEvents.reportTitle, event.title, [
-      { text: 'Nechat být', style: 'cancel' },
+    Alert.alert(t.communityEvents.reportTitle, event.title, [
+      { text: t.communityEvents.reportCancel, style: 'cancel' },
       {
-        text: cs.communityEvents.report,
+        text: t.communityEvents.report,
         style: 'destructive',
         onPress: () => void run(
           () => reportCommunityEvent(event.id),
-          cs.communityEvents.reported,
+          t.communityEvents.reported,
           'community_report',
         ),
       },
@@ -163,7 +163,7 @@ function EventCard({
           <Text style={styles.eventTitle}>{event.title}</Text>
           <Text style={styles.eventMeta}>{formatTime(event)}</Text>
         </View>
-        <Text style={styles.status}>{event.status === 'live' ? 'PRÁVĚ TEĎ' : '18+'}</Text>
+        <Text style={styles.status}>{event.status === 'live' ? t.communityEvents.statusLive : '18+'}</Text>
       </View>
       {event.description ? <Text style={styles.eventDescription}>{event.description}</Text> : null}
       <View style={styles.metaRow}>
@@ -174,56 +174,56 @@ function EventCard({
       </View>
       <View style={styles.metaRow}>
         <UsersIcon size={15} color={Colors.mutedText} />
-        <Text style={styles.metaText}>{cs.communityEvents.spots(event.availableSpots)} · {cs.communityEvents.host(hostName(event))}</Text>
+        <Text style={styles.metaText}>{t.communityEvents.spots(event.availableSpots)} · {t.communityEvents.host(hostName(event))}</Text>
       </View>
       {event.exactAddress ? (
         <View style={styles.addressStrip}>
-          <Text style={styles.addressLabel}>{cs.communityEvents.addressApproved}</Text>
+          <Text style={styles.addressLabel}>{t.communityEvents.addressApproved}</Text>
           <Text style={styles.addressText}>{event.exactAddress}</Text>
         </View>
       ) : (
-        <Text style={styles.hiddenAddress}>{cs.communityEvents.addressHidden}</Text>
+        <Text style={styles.hiddenAddress}>{t.communityEvents.addressHidden}</Text>
       )}
 
       {!event.isHost && event.status !== 'cancelled' ? (
         event.membershipStatus === 'approved' ? (
-          <Button label={cs.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.leave, 'community_leave')} />
+          <Button label={t.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), t.communityEvents.leave, 'community_leave')} />
         ) : event.membershipStatus === 'pending' ? (
-          <Button label={cs.communityEvents.cancelRequest} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.cancelRequest, 'community_cancel_request', 'cancel')} />
+          <Button label={t.communityEvents.cancelRequest} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), t.communityEvents.cancelRequest, 'community_cancel_request', 'cancel')} />
         ) : (
           <>
             <TextInput
               value={joinMessage}
               onChangeText={setJoinMessage}
-              placeholder={cs.communityEvents.requestPlaceholder}
+              placeholder={t.communityEvents.requestPlaceholder}
               placeholderTextColor={Colors.mutedText}
               style={styles.input}
               maxLength={240}
             />
-            <Button label={cs.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), cs.communityEvents.joinSent, 'community_join_request')} />
+            <Button label={t.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), t.communityEvents.joinSent, 'community_join_request')} />
           </>
         )
       ) : null}
 
       {event.isHost && event.joinRequests.length > 0 ? (
         <View style={styles.requests}>
-          <Text style={styles.sectionLabel}>{cs.communityEvents.requests}</Text>
+          <Text style={styles.sectionLabel}>{t.communityEvents.requests}</Text>
           {event.joinRequests.map((request) => (
             <View key={request.id} style={styles.requestRow}>
               <View style={styles.requestCopy}>
-                <Text style={styles.requestName}>{request.account.nickname ? `@${request.account.nickname}` : request.account.displayName || 'Návštěvník'}</Text>
+                <Text style={styles.requestName}>{request.account.nickname ? `@${request.account.nickname}` : request.account.displayName || t.communityEvents.guestFallback}</Text>
                 {request.message ? <Text style={styles.requestMessage}>{request.message}</Text> : null}
               </View>
               {request.status === 'pending' ? (
                 <View style={styles.requestActions}>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), cs.communityEvents.reject, 'community_request_decline', 'decline')} style={styles.iconButton}>
+                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), t.communityEvents.reject, 'community_request_decline', 'decline')} style={styles.iconButton}>
                     <XIcon size={18} color={Colors.mutedText} />
                   </Pressable>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), cs.communityEvents.approve, 'community_request_accept', 'accept')} style={[styles.iconButton, styles.approveButton]}>
+                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), t.communityEvents.approve, 'community_request_accept', 'accept')} style={[styles.iconButton, styles.approveButton]}>
                     <CheckIcon size={18} color={Colors.stout} />
                   </Pressable>
                 </View>
-              ) : <Text style={styles.approvedLabel}>{cs.communityEvents.approved}</Text>}
+              ) : <Text style={styles.approvedLabel}>{t.communityEvents.approved}</Text>}
             </View>
           ))}
         </View>
@@ -231,13 +231,13 @@ function EventCard({
 
       <View style={styles.textActions}>
         {event.isHost && event.status !== 'cancelled' ? (
-          <Pressable onPress={() => void run(() => cancelCommunityEvent(event.id), cs.communityEvents.cancelled, 'community_cancel_event', 'cancel')}>
-            <Text style={styles.dangerAction}>{cs.communityEvents.cancelEvent}</Text>
+          <Pressable onPress={() => void run(() => cancelCommunityEvent(event.id), t.communityEvents.cancelled, 'community_cancel_event', 'cancel')}>
+            <Text style={styles.dangerAction}>{t.communityEvents.cancelEvent}</Text>
           </Pressable>
         ) : !event.isHost ? (
           <Pressable onPress={report} style={styles.reportAction}>
             <FlagIcon size={14} color={Colors.mutedText} />
-            <Text style={styles.reportText}>{cs.communityEvents.report}</Text>
+            <Text style={styles.reportText}>{t.communityEvents.report}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -274,7 +274,7 @@ export default function CommunityEventsScreen() {
     const result = await fetchCommunityEvents(coords ?? undefined);
     if (requestId !== loadRequestRef.current) return;
     if (result.ok) setDashboard(result.dashboard);
-    else showToast(result.code === 'auth' ? cs.communityEvents.authError : result.detail);
+    else showToast(result.code === 'auth' ? t.communityEvents.authError : result.detail);
     setLoading(false);
   }, [showToast]);
 
@@ -288,7 +288,7 @@ export default function CommunityEventsScreen() {
     setBusy(true);
     const permission = await ensureLocationPermission();
     if (permission !== 'granted') {
-      showToast(cs.addPub.locationPermissionDenied);
+      showToast(t.addPub.locationPermissionDenied);
       if (permission === 'denied') await openSystemSettings();
       setBusy(false);
       return;
@@ -302,7 +302,7 @@ export default function CommunityEventsScreen() {
         await load(coords);
       }
     } catch {
-      showToast(cs.addPub.locationUnavailable);
+      showToast(t.addPub.locationUnavailable);
     }
     setBusy(false);
   }, [load, showToast]);
@@ -311,7 +311,7 @@ export default function CommunityEventsScreen() {
     trackUiInteraction('community_publish', 'submit');
     if (!eventLocation || !title.trim() || !city.trim() || !address.trim() || !adultsConfirmed || busy) {
       trackUiInteraction('community_publish', 'failure');
-      showToast(cs.communityEvents.privacyError);
+      showToast(t.communityEvents.privacyError);
       return;
     }
     setBusy(true);
@@ -335,7 +335,7 @@ export default function CommunityEventsScreen() {
     if (result.ok) {
       trackUiInteraction('community_publish', 'success');
       setDraftClientId(generateUuidV4());
-      showToast(cs.communityEvents.created);
+      showToast(t.communityEvents.created);
       setMode('mine');
       await load(location);
     } else {
@@ -353,16 +353,16 @@ export default function CommunityEventsScreen() {
       <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
         <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + Spacing.xl }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={cs.a11y.backButton} style={styles.backButton}>
+            <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t.a11y.backButton} style={styles.backButton}>
               <ChevronLeftIcon size={24} color={Colors.foam} />
             </Pressable>
             <View style={styles.headerCopy}>
-              <Text style={styles.kicker}>{cs.communityEvents.kicker}</Text>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.communityEvents.title}</Text>
+              <Text style={styles.kicker}>{t.communityEvents.kicker}</Text>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>{t.communityEvents.title}</Text>
             </View>
           </View>
-          <Text style={styles.intro}>{cs.communityEvents.intro}</Text>
-          <View style={styles.safetyStrip}><Text style={styles.safetyText}>{cs.communityEvents.safety}</Text></View>
+          <Text style={styles.intro}>{t.communityEvents.intro}</Text>
+          <View style={styles.safetyStrip}><Text style={styles.safetyText}>{t.communityEvents.safety}</Text></View>
 
           <View style={styles.tabs}>
             {(['nearby', 'mine', 'create'] as Mode[]).map((item) => (
@@ -381,48 +381,48 @@ export default function CommunityEventsScreen() {
                 }}
                 style={[styles.tab, mode === item && styles.tabActive]}
               >
-                <Text style={[styles.tabText, mode === item && styles.tabTextActive]}>{item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}</Text>
+                <Text style={[styles.tabText, mode === item && styles.tabTextActive]}>{item === 'nearby' ? t.communityEvents.nearby : item === 'mine' ? t.communityEvents.mine : t.communityEvents.create}</Text>
               </Pressable>
             ))}
           </View>
 
           {mode === 'create' ? (
             <View style={styles.form}>
-              <Text style={styles.inputLabel}>{cs.communityEvents.formTitle}</Text>
-              <TextInput value={title} onChangeText={setTitle} placeholder={cs.communityEvents.formTitlePlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.description}</Text>
-              <TextInput value={description} onChangeText={setDescription} placeholder={cs.communityEvents.descriptionPlaceholder} placeholderTextColor={Colors.mutedText} style={[styles.input, styles.multiline]} multiline maxLength={800} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.city}</Text>
-              <TextInput value={city} onChangeText={setCity} placeholder={cs.communityEvents.cityPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.area}</Text>
-              <TextInput value={area} onChangeText={setArea} placeholder={cs.communityEvents.areaPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
-              <Text style={styles.inputLabel}>{cs.communityEvents.exactAddress}</Text>
-              <TextInput value={address} onChangeText={setAddress} placeholder={cs.communityEvents.exactAddressPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={300} />
-              <Text style={styles.hint}>{cs.communityEvents.exactAddressHint}</Text>
-              <Button label={eventLocation ? cs.communityEvents.locationReady : cs.communityEvents.useLocation} secondary onPress={() => void locate(true)} disabled={busy} icon={<MapPinIcon size={18} color={Colors.amber} />} />
+              <Text style={styles.inputLabel}>{t.communityEvents.formTitle}</Text>
+              <TextInput value={title} onChangeText={setTitle} placeholder={t.communityEvents.formTitlePlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
+              <Text style={styles.inputLabel}>{t.communityEvents.description}</Text>
+              <TextInput value={description} onChangeText={setDescription} placeholder={t.communityEvents.descriptionPlaceholder} placeholderTextColor={Colors.mutedText} style={[styles.input, styles.multiline]} multiline maxLength={800} />
+              <Text style={styles.inputLabel}>{t.communityEvents.city}</Text>
+              <TextInput value={city} onChangeText={setCity} placeholder={t.communityEvents.cityPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
+              <Text style={styles.inputLabel}>{t.communityEvents.area}</Text>
+              <TextInput value={area} onChangeText={setArea} placeholder={t.communityEvents.areaPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={120} />
+              <Text style={styles.inputLabel}>{t.communityEvents.exactAddress}</Text>
+              <TextInput value={address} onChangeText={setAddress} placeholder={t.communityEvents.exactAddressPlaceholder} placeholderTextColor={Colors.mutedText} style={styles.input} maxLength={300} />
+              <Text style={styles.hint}>{t.communityEvents.exactAddressHint}</Text>
+              <Button label={eventLocation ? t.communityEvents.locationReady : t.communityEvents.useLocation} secondary onPress={() => void locate(true)} disabled={busy} icon={<MapPinIcon size={18} color={Colors.amber} />} />
 
               <View style={styles.formGroup}>
-                <Text style={styles.sectionLabel}>{cs.communityEvents.start}</Text>
+                <Text style={styles.sectionLabel}>{t.communityEvents.start}</Text>
                 <View style={styles.choiceRow}>
-                  {[0, 1].map((value) => <Pressable key={value} onPress={() => setDayOffset(value)} style={[styles.choice, dayOffset === value && styles.choiceActive]}><Text style={[styles.choiceText, dayOffset === value && styles.choiceTextActive]}>{value === 0 ? cs.communityEvents.today : cs.communityEvents.tomorrow}</Text></Pressable>)}
+                  {[0, 1].map((value) => <Pressable key={value} onPress={() => setDayOffset(value)} style={[styles.choice, dayOffset === value && styles.choiceActive]}><Text style={[styles.choiceText, dayOffset === value && styles.choiceTextActive]}>{value === 0 ? t.communityEvents.today : t.communityEvents.tomorrow}</Text></Pressable>)}
                 </View>
                 <Stepper value={hour} onChange={setHour} min={0} max={23} />
               </View>
               <View style={styles.formGroup}>
-                <Text style={styles.sectionLabel}>{cs.communityEvents.duration}</Text>
-                <View style={styles.choiceRow}>{[2, 4, 6].map((value) => <Pressable key={value} onPress={() => setDuration(value)} style={[styles.choice, duration === value && styles.choiceActive]}><Text style={[styles.choiceText, duration === value && styles.choiceTextActive]}>{cs.communityEvents.durationHours(value)}</Text></Pressable>)}</View>
+                <Text style={styles.sectionLabel}>{t.communityEvents.duration}</Text>
+                <View style={styles.choiceRow}>{[2, 4, 6].map((value) => <Pressable key={value} onPress={() => setDuration(value)} style={[styles.choice, duration === value && styles.choiceActive]}><Text style={[styles.choiceText, duration === value && styles.choiceTextActive]}>{t.communityEvents.durationHours(value)}</Text></Pressable>)}</View>
               </View>
-              <View style={styles.formGroup}><Text style={styles.sectionLabel}>{cs.communityEvents.capacity}</Text><Stepper value={capacity} onChange={setCapacity} min={2} max={20} /></View>
+              <View style={styles.formGroup}><Text style={styles.sectionLabel}>{t.communityEvents.capacity}</Text><Stepper value={capacity} onChange={setCapacity} min={2} max={20} /></View>
               <Pressable onPress={() => setAdultsConfirmed((value) => !value)} style={styles.confirmRow}>
                 <View style={[styles.checkbox, adultsConfirmed && styles.checkboxActive]}>{adultsConfirmed ? <CheckIcon size={16} color={Colors.stout} /> : null}</View>
-                <Text style={styles.confirmText}>{cs.communityEvents.adultsConfirm}</Text>
+                <Text style={styles.confirmText}>{t.communityEvents.adultsConfirm}</Text>
               </Pressable>
-              <Button label={cs.communityEvents.publish} onPress={() => void create()} disabled={busy} icon={<HouseIcon size={18} color={Colors.stout} />} />
+              <Button label={t.communityEvents.publish} onPress={() => void create()} disabled={busy} icon={<HouseIcon size={18} color={Colors.stout} />} />
             </View>
           ) : loading ? <ActivityIndicator color={Colors.amber} style={styles.loader} /> : (
             <View style={styles.list}>
-              {mode === 'nearby' && !location ? <Button label={busy ? cs.communityEvents.locating : cs.communityEvents.locate} onPress={() => void locate(false)} disabled={busy} secondary icon={<MapPinIcon size={18} color={Colors.amber} />} /> : null}
-              {events.length === 0 ? <Text style={styles.empty}>{mode === 'nearby' ? cs.communityEvents.noNearby : cs.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
+              {mode === 'nearby' && !location ? <Button label={busy ? t.communityEvents.locating : t.communityEvents.locate} onPress={() => void locate(false)} disabled={busy} secondary icon={<MapPinIcon size={18} color={Colors.amber} />} /> : null}
+              {events.length === 0 ? <Text style={styles.empty}>{mode === 'nearby' ? t.communityEvents.noNearby : t.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
             </View>
           )}
         </KeyboardAwareScrollView>

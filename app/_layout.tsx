@@ -48,6 +48,7 @@ import {
 } from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
+import { installBackendLocaleHeader } from '@/data/localeHeader';
 import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -164,6 +165,9 @@ function restoreAndFlushAddedPubsQueue(): void {
       }
     });
 }
+
+// Every backend request carries Accept-Language from the first render on.
+installBackendLocaleHeader();
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden

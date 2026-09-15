@@ -18,7 +18,7 @@ import { ChevronLeftIcon, MapPinIcon, TargetIcon, Trash2Icon } from '@/component
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
@@ -104,7 +104,7 @@ export default function HomePointScreen() {
   const handleFindOnMap = useCallback(async () => {
     const query = addressQuery.trim();
     if (!query || searching) {
-      if (!query) setSearchError('Napiš adresu nebo město, které mám najít.');
+      if (!query) setSearchError(t.homePoint.emptyQueryError);
       return;
     }
 
@@ -119,7 +119,7 @@ export default function HomePointScreen() {
       const result = await geocodeHomeAddress(query, controller.signal);
       if (controller.signal.aborted) return;
       if (!result) {
-        setSearchError('Tohle místo se nepodařilo najít. Zkus doplnit ulici, číslo nebo město.');
+        setSearchError(t.homePoint.notFoundError);
         return;
       }
 
@@ -133,7 +133,7 @@ export default function HomePointScreen() {
       }, 350);
     } catch {
       if (!controller.signal.aborted) {
-        setSearchError('Místo se teď nepodařilo dohledat. Zkus to prosím znovu.');
+        setSearchError(t.homePoint.searchFailedError);
       }
     } finally {
       if (searchAbortRef.current === controller) {
@@ -162,7 +162,7 @@ export default function HomePointScreen() {
       setRegion(regionFor(point));
       setPermissionDenied(false);
     } catch {
-      setSearchError(cs.addPub.locationUnavailable);
+      setSearchError(t.addPub.locationUnavailable);
     } finally {
       setLocating(false);
     }
@@ -182,7 +182,7 @@ export default function HomePointScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel="Zpět">
+        <Pressable onPress={() => router.back()} style={styles.headerButton} accessibilityRole="button" accessibilityLabel={t.a11y.back}>
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle}>Domovský bod</Text>
@@ -204,24 +204,24 @@ export default function HomePointScreen() {
             value={addressQuery}
             onChangeText={handleAddressChange}
             onSubmitEditing={() => void handleFindOnMap()}
-            placeholder="Třeba Vinohradská 12, Praha"
+            placeholder={t.homePoint.addressPlaceholder}
             placeholderTextColor={Colors.mutedText}
             returnKeyType="search"
             autoCapitalize="sentences"
             autoCorrect={false}
             maxLength={150}
             style={styles.input}
-            accessibilityLabel="Adresa nebo město domovského bodu"
+            accessibilityLabel={t.homePoint.addressA11y}
           />
           <Pressable
             onPress={() => void handleFindOnMap()}
             disabled={searching}
             style={({ pressed }) => [styles.primaryButton, searching && styles.disabled, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel="Najít adresu na mapě"
+            accessibilityLabel={t.homePoint.findOnMapA11y}
           >
             {searching ? <ActivityIndicator color={Colors.stout} /> : <MapPinIcon size={18} color={Colors.stout} />}
-            <Text style={styles.primaryButtonText}>{searching ? 'Hledám místo…' : 'Najít na mapě'}</Text>
+            <Text style={styles.primaryButtonText}>{searching ? t.homePoint.searching : t.homePoint.findOnMap}</Text>
           </Pressable>
 
           <View style={styles.alternativeRow}>
@@ -250,7 +250,7 @@ export default function HomePointScreen() {
             onPress={handleMapPress}
             showsUserLocation={false}
             showsMyLocationButton={false}
-            accessibilityLabel="Mapa pro výběr domovského bodu"
+            accessibilityLabel={t.homePoint.mapA11y}
           >
             {draftPoint ? <Marker coordinate={{ latitude: draftPoint.lat, longitude: draftPoint.lng }} /> : null}
           </MapView>
@@ -285,7 +285,7 @@ export default function HomePointScreen() {
 
       <View style={[styles.saveBar, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
         <Pressable onPress={save} disabled={!draftPoint || !dirty} style={({ pressed }) => [styles.primaryButton, (!draftPoint || !dirty) && styles.disabled, pressed && styles.pressed]} accessibilityRole="button">
-          <Text style={styles.primaryButtonText}>{savedPoint ? 'Uložit změnu' : 'Uložit domov'}</Text>
+          <Text style={styles.primaryButtonText}>{savedPoint ? t.homePoint.saveChange : t.homePoint.save}</Text>
         </Pressable>
       </View>
     </SafeAreaView>

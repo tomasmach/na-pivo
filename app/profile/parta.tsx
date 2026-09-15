@@ -39,7 +39,7 @@ import {
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   selectNeedsNickname,
   selectNickname,
@@ -146,17 +146,17 @@ export default function ManagePartaScreen() {
   const confirmCancelInvite = useCallback(
     (request: FriendsDashboard['outgoingRequests'][number]) => {
       showAppDialog({
-        title: cs.friends.cancelInviteTitle,
+        title: t.friends.cancelInviteTitle,
         buttons: [
-          { text: cs.common.cancel, style: 'cancel' },
+          { text: t.common.cancel, style: 'cancel' },
           {
-            text: cs.friends.cancelInviteConfirm,
+            text: t.friends.cancelInviteConfirm,
             style: 'destructive',
             onPress: () => {
               void cancelFriendRequest(request.recipient.id).then((result) => {
                 if (!mountedRef.current) return;
                 if (result.ok) {
-                  showToast(cs.friends.inviteCanceled);
+                  showToast(t.friends.inviteCanceled);
                   reload();
                 } else {
                   showToast(result.detail);
@@ -189,7 +189,7 @@ export default function ManagePartaScreen() {
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.manageBack}
+          accessibilityLabel={t.a11y.manageBack}
           style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
@@ -199,7 +199,7 @@ export default function ManagePartaScreen() {
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
-          {cs.friends.manageTitle}
+          {t.friends.manageTitle}
         </Text>
         <View style={styles.headerBtn} />
       </View>
@@ -234,7 +234,7 @@ export default function ManagePartaScreen() {
 
           {/* SEŽEŇ PARTU — add-friend tools (identity gate when no nickname) */}
           <View style={styles.section}>
-            <SectionHeader label={cs.friends.growthHeader} />
+            <SectionHeader label={t.friends.growthHeader} />
             <AddFriendTools
               hasIdentity={hasIdentity}
               needsNickname={needsNickname}
@@ -247,7 +247,7 @@ export default function ManagePartaScreen() {
           {/* KÁMOŠI — the full friends list (empty → one calm line; the growth
               tools above already own the add action, so no duplicate CTA here) */}
           <View style={styles.section}>
-            <SectionHeader label={cs.friends.friendsHeader} />
+            <SectionHeader label={t.friends.friendsHeader} />
             {friends.length > 0 ? (
               <View>
                 {friends.map((friend, i) => (
@@ -265,7 +265,7 @@ export default function ManagePartaScreen() {
               <View style={styles.emptyFriends}>
                 <UserPlusIcon size={28} color={Colors.mutedText} />
                 <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.friends.emptyFriends}
+                  {t.friends.emptyFriends}
                 </Text>
               </View>
             )}
@@ -284,12 +284,12 @@ export default function ManagePartaScreen() {
               <Pressable
                 onPress={() => router.push('/friends' as Href)}
                 accessibilityRole="button"
-                accessibilityLabel={cs.friends.manageIncomingLink(incomingCount)}
+                accessibilityLabel={t.friends.manageIncomingLink(incomingCount)}
                 style={({ pressed }) => [styles.crossLink, pressed && styles.dim]}
               >
                 <UserPlusIcon size={18} color={Colors.amber} />
                 <Text style={styles.crossLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.friends.manageIncomingLink(incomingCount)}
+                  {t.friends.manageIncomingLink(incomingCount)}
                 </Text>
                 <ChevronRightIcon size={16} color={Colors.mutedText} />
               </Pressable>

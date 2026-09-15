@@ -40,6 +40,7 @@ internal object BeerLiveActivityNotification {
   private const val REPEAT_BEER_VOLUME_ML_KEY = "repeatBeerVolumeMl"
   private const val REPEAT_BEER_SERVING_TYPE_KEY = "repeatBeerServingType"
   private const val PENDING_ADDS_KEY = "pendingAdds"
+  private const val LOCALE_KEY = "locale"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
   // Warm taproom palette mirrored from the iOS Live Activity: a glowing amber
   // tally on a dark, toasted-malt surface.
@@ -70,7 +71,7 @@ internal object BeerLiveActivityNotification {
       return getStatus(context)
     }
 
-    createChannel(context)
+    createChannel(context, payload.locale)
     val storedCount = preferences.getInt(BEER_COUNT_KEY, 0)
     val hasUnacknowledgedAdds = getPendingAdds(context).any { it["sessionId"] == payload.sessionId }
     val preserveNativeCount =
@@ -86,7 +87,8 @@ internal object BeerLiveActivityNotification {
       repeatBeerName = payload.repeatBeerName,
       repeatBeerPriceCzk = payload.repeatBeerPriceCzk,
       repeatBeerVolumeMl = payload.repeatBeerVolumeMl,
-      repeatBeerServingType = payload.repeatBeerServingType
+      repeatBeerServingType = payload.repeatBeerServingType,
+      locale = payload.locale
     )
     persistState(context, state)
     notificationManager.notify(NOTIFICATION_ID, buildNotification(context, state))
@@ -219,7 +221,8 @@ internal object BeerLiveActivityNotification {
     context: Context,
     state: NotificationState
   ): Notification {
-    val detail = notificationDetail(state)
+    val strings = Strings.forLocale(state.locale)
+    val detail = notificationDetail(strings, state)
     // A golden glass that fills as the evening goes on: a solid amber run over a
     // faint amber remainder, so every added beer visibly extends the fill. No
     // tracker icon — a small white mug badge reads as a stray square at this size.
@@ -241,26 +244,26 @@ internal object BeerLiveActivityNotification {
       .setLargeIcon(buildLargeIcon(context))
       .setContentTitle(
         state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
-          ?: beerCountLabel(state.beerCount)
+          ?: strings.beerCount(state.beerCount)
       )
       .setContentText(detail)
       .setSubText(
         state.totalPrice.trim().takeIf { it.isNotEmpty() }
-          ?.let { "Celkem ${it.take(34)}" }
-          ?: "Večer běží"
+          ?.let { strings.total(it.take(34)) }
+          ?: strings.nightRunning
       )
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
       .setShowWhen(false)
-      .setShortCriticalText(shortCountLabel(state.beerCount))
+      .setShortCriticalText(shortCountLabel(strings, state.beerCount))
       .setStyle(progressStyle)
       .setContentIntent(contentIntent(context))
       .setDeleteIntent(deleteIntent(context, state.sessionId))
       .addAction(
         NotificationCompat.Action.Builder(
           R.drawable.beer_live_activity_add,
-          "Přidat další",
+          strings.addBeer,
           addBeerIntent(context, state.sessionId)
         ).build()
       )
@@ -308,16 +311,19 @@ internal object BeerLiveActivityNotification {
     )
   }
 
-  private fun createChannel(context: Context) {
+  private fun createChannel(context: Context, locale: String) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
+    val strings = Strings.forLocale(locale)
     val manager = context.getSystemService(NotificationManager::class.java)
+    // Re-creating the channel with the same id refreshes the name and
+    // description the system has cached, so a language switch takes effect.
     val channel = NotificationChannel(
       CHANNEL_ID,
-      "Večer na pivu",
+      strings.channelName,
       NotificationManager.IMPORTANCE_DEFAULT
     ).apply {
-      description = "Živý počet piv během večera"
+      description = strings.channelDescription
       enableVibration(false)
       setSound(null, null)
       setShowBadge(false)
@@ -337,8 +343,8 @@ internal object BeerLiveActivityNotification {
     }
   }
 
-  private fun notificationDetail(state: NotificationState): String {
-    val countLabel = beerCountLabel(state.beerCount)
+  private fun notificationDetail(strings: Strings, state: NotificationState): String {
+    val countLabel = strings.beerCount(state.beerCount)
     val latestBeer = state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
     return listOfNotNull(countLabel, latestBeer).joinToString(" · ")
   }
@@ -382,6 +388,7 @@ internal object BeerLiveActivityNotification {
       .putString(TOTAL_PRICE_KEY, state.totalPrice)
       .putString(LATEST_BEER_NAME_KEY, state.latestBeerName)
       .putString(REPEAT_BEER_NAME_KEY, state.repeatBeerName)
+      .putString(LOCALE_KEY, state.locale)
     state.repeatBeerPriceCzk?.let {
       editor.putLong(REPEAT_BEER_PRICE_CZK_KEY, java.lang.Double.doubleToRawLongBits(it))
     } ?: editor.remove(REPEAT_BEER_PRICE_CZK_KEY)
@@ -407,6 +414,7 @@ internal object BeerLiveActivityNotification {
       totalPrice = preferences.getString(TOTAL_PRICE_KEY, "").orEmpty(),
       latestBeerName = preferences.getString(LATEST_BEER_NAME_KEY, "").orEmpty(),
       repeatBeerName = preferences.getString(REPEAT_BEER_NAME_KEY, "").orEmpty(),
+      locale = preferences.getString(LOCALE_KEY, "cs").orEmpty(),
       repeatBeerPriceCzk =
         if (preferences.contains(REPEAT_BEER_PRICE_CZK_KEY)) {
           java.lang.Double.longBitsToDouble(preferences.getLong(REPEAT_BEER_PRICE_CZK_KEY, 0L))
@@ -466,14 +474,45 @@ internal object BeerLiveActivityNotification {
     return json.toString()
   }
 
-  private fun beerCountLabel(count: Int): String = when (count) {
-    1 -> "1 pivo"
-    in 2..4 -> "$count piva"
-    else -> "$count piv"
+  /** Every word the notification draws, keyed by the app's UI language. */
+  private class Strings(
+    val channelName: String,
+    val channelDescription: String,
+    val nightRunning: String,
+    val addBeer: String,
+    val total: (String) -> String,
+    val beerCount: (Int) -> String
+  ) {
+    companion object {
+      private val CS = Strings(
+        channelName = "Večer na pivu",
+        channelDescription = "Živý počet piv během večera",
+        nightRunning = "Večer běží",
+        addBeer = "Přidat další",
+        total = { "Celkem $it" },
+        beerCount = { count ->
+          when (count) {
+            1 -> "1 pivo"
+            in 2..4 -> "$count piva"
+            else -> "$count piv"
+          }
+        }
+      )
+      private val EN = Strings(
+        channelName = "Beer night",
+        channelDescription = "Live beer count during the night",
+        nightRunning = "Night in progress",
+        addBeer = "One more",
+        total = { "Total $it" },
+        beerCount = { count -> if (count == 1) "1 beer" else "$count beers" }
+      )
+
+      fun forLocale(locale: String): Strings = if (locale == "en") EN else CS
+    }
   }
 
-  private fun shortCountLabel(count: Int): String {
-    val label = beerCountLabel(count)
+  private fun shortCountLabel(strings: Strings, count: Int): String {
+    val label = strings.beerCount(count)
     return if (label.length <= 7) label else max(count, 0).toString()
   }
 
@@ -494,7 +533,8 @@ internal object BeerLiveActivityNotification {
     val repeatBeerName: String,
     val repeatBeerPriceCzk: Double?,
     val repeatBeerVolumeMl: Int?,
-    val repeatBeerServingType: String?
+    val repeatBeerServingType: String?,
+    val locale: String
   )
 
   private data class PendingAdd(

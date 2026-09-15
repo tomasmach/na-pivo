@@ -28,7 +28,7 @@ import { CameraIcon, ImagesIcon, SparklesIcon, XIcon } from '@/components/shared
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 
 /** Single source of truth — the sheet emits exactly what the picker accepts. */
@@ -122,12 +122,12 @@ function ScanMenuSheetImpl({ visible, onClose, onPick }: ScanMenuSheetProps) {
                 <View style={styles.titleLine}>
                   <SparklesIcon size={18} color={Colors.amber} />
                   <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.contribute.scanMenu.sheetTitle}
+                    {t.contribute.scanMenu.sheetTitle}
                   </Text>
                   <BetaBadge tone="amber" />
                 </View>
                 <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.contribute.scanMenu.sheetSubtitle}
+                  {t.contribute.scanMenu.sheetSubtitle}
                 </Text>
               </View>
               <Pressable
@@ -135,7 +135,7 @@ function ScanMenuSheetImpl({ visible, onClose, onPick }: ScanMenuSheetProps) {
                 hitSlop={12}
                 style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.contribute.scanMenu.cancel}
+                accessibilityLabel={t.contribute.scanMenu.cancel}
               >
                 <XIcon size={18} color={Colors.foamMuted} />
               </Pressable>
@@ -144,17 +144,17 @@ function ScanMenuSheetImpl({ visible, onClose, onPick }: ScanMenuSheetProps) {
             <View style={styles.options}>
               <OptionRow
                 icon={<CameraIcon size={22} color={Colors.amber} />}
-                label={cs.contribute.scanMenu.camera}
-                helper={cs.contribute.scanMenu.cameraHelper}
+                label={t.contribute.scanMenu.camera}
+                helper={t.contribute.scanMenu.cameraHelper}
                 onPress={() => pick('camera')}
-                accessibilityLabel={cs.contribute.scanMenu.camera}
+                accessibilityLabel={t.contribute.scanMenu.camera}
               />
               <OptionRow
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
-                label={cs.contribute.scanMenu.library}
-                helper={cs.contribute.scanMenu.libraryHelper}
+                label={t.contribute.scanMenu.library}
+                helper={t.contribute.scanMenu.libraryHelper}
                 onPress={() => pick('library')}
-                accessibilityLabel={cs.contribute.scanMenu.library}
+                accessibilityLabel={t.contribute.scanMenu.library}
               />
             </View>
           </Animated.View>

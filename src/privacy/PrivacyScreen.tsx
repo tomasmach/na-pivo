@@ -17,14 +17,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 export default function PrivacyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   function handleEmail() {
-    void Linking.openURL(`mailto:${cs.privacy.contactEmail}`);
+    void Linking.openURL(`mailto:${t.privacy.contactEmail}`);
   }
 
   return (
@@ -35,12 +35,12 @@ export default function PrivacyScreen() {
           onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={8}
         >
           <Text style={styles.backChevron}>‹</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>{cs.privacy.title}</Text>
+        <Text style={styles.headerTitle}>{t.privacy.title}</Text>
         {/* Spacer to keep title centered */}
         <View style={styles.backButton} />
       </View>
@@ -52,7 +52,7 @@ export default function PrivacyScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {cs.privacy.body.map((paragraph, index) => (
+        {t.privacy.body.map((paragraph, index) => (
           <Text key={index} style={styles.paragraph}>
             {paragraph}
           </Text>
@@ -60,9 +60,9 @@ export default function PrivacyScreen() {
 
         {/* Contact */}
         <View style={styles.contactRow}>
-          <Text style={styles.contactLabel}>{cs.privacy.contactLabel}: </Text>
+          <Text style={styles.contactLabel}>{t.privacy.contactLabel}: </Text>
           <Pressable onPress={handleEmail} accessibilityRole="link">
-            <Text style={styles.contactEmail}>{cs.privacy.contactEmail}</Text>
+            <Text style={styles.contactEmail}>{t.privacy.contactEmail}</Text>
           </Pressable>
         </View>
       </ScrollView>

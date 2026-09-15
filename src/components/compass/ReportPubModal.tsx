@@ -9,7 +9,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import type { PubReportReason } from '@/data/pubReportsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -49,7 +49,7 @@ export function ReportPubModal({
           style={styles.scrim}
           onPress={onClose}
           accessibilityRole="button"
-          accessibilityLabel={cs.common.cancel}
+          accessibilityLabel={t.common.cancel}
         />
         <View style={styles.panel}>
           <View style={styles.header}>
@@ -58,39 +58,39 @@ export function ReportPubModal({
             </View>
             <View style={styles.titleWrap}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.compass.reportTitle}
+                {t.compass.reportTitle}
               </Text>
               <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.compass.reportBody(pubName)}
+                {t.compass.reportBody(pubName)}
               </Text>
             </View>
           </View>
 
           <View style={styles.actions}>
             <ActionButton
-              label={cs.compass.reportAddMissing}
+              label={t.compass.reportAddMissing}
               icon={<MapPinPlusIcon size={18} color={Colors.foam} />}
               onPress={() => runAfterClose(onAddPub)}
             />
             <ActionButton
-              label={cs.compass.reportRename}
+              label={t.compass.reportRename}
               icon={<PencilIcon size={18} color={Colors.foam} />}
               onPress={() => runAfterClose(onRename)}
             />
             <ActionButton
-              label={cs.compass.reportNotPub}
+              label={t.compass.reportNotPub}
               icon={<Trash2Icon size={18} color={Colors.amberLight} />}
               onPress={() => runAfterClose(() => onReportReason('not_pub'))}
               tone="danger"
             />
             <ActionButton
-              label={cs.compass.reportClosed}
+              label={t.compass.reportClosed}
               icon={<Trash2Icon size={18} color={Colors.amberLight} />}
               onPress={() => runAfterClose(() => onReportReason('closed'))}
               tone="danger"
             />
             <ActionButton
-              label={cs.common.cancel}
+              label={t.common.cancel}
               icon={<XIcon size={18} color={Colors.mutedText} />}
               onPress={onClose}
               tone="ghost"

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRouter } from 'expo-router';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
@@ -169,7 +169,7 @@ function latestProps(mock: jest.Mock) {
 
 function openMoreSheet(renderer: any) {
   const moreButton = renderer.root.findByProps({
-    accessibilityLabel: cs.a11y.compassMore,
+    accessibilityLabel: t.a11y.compassMore,
   });
 
   act(() => {
@@ -246,7 +246,7 @@ describe('CompassScreen', () => {
     });
 
     expect(CompassCardMock).not.toHaveBeenCalled();
-    expect(renderer!.root.findAllByProps({ accessibilityLabel: cs.empty.retry }).length).toBeGreaterThan(0);
+    expect(renderer!.root.findAllByProps({ accessibilityLabel: t.empty.retry }).length).toBeGreaterThan(0);
   });
 
   it('reveals a hidden pub when the compass card footer is pressed', () => {
@@ -302,16 +302,16 @@ describe('CompassScreen', () => {
 
     // Visible switch, both halves present.
     expect(
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchCompassSelected }),
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchCompassSelected }),
     ).toBeTruthy();
     expect(
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchToMap }),
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.mapSwitchToMap }),
     ).toBeTruthy();
 
     // And exactly one door to it: the overflow sheet no longer carries the map.
     const sheet = openMoreSheet(renderer);
     expect(
-      sheet.rows.some((row: { label: string }) => row.label === cs.compass.moreMap),
+      sheet.rows.some((row: { label: string }) => row.label === t.compass.moreMap),
     ).toBe(false);
   });
 
@@ -325,7 +325,7 @@ describe('CompassScreen', () => {
     });
 
     const toMap = renderer.root.findByProps({
-      accessibilityLabel: cs.a11y.mapSwitchToMap,
+      accessibilityLabel: t.a11y.mapSwitchToMap,
     });
     act(() => {
       toMap.props.onPress();
@@ -347,7 +347,7 @@ describe('CompassScreen', () => {
     });
     expect(
       openMoreSheet(renderer).rows.some(
-        (row: { label: string }) => row.label === cs.compass.moreHome,
+        (row: { label: string }) => row.label === t.compass.moreHome,
       ),
     ).toBe(false);
 
@@ -359,7 +359,7 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    pressMoreRow(renderer, cs.compass.moreHome);
+    pressMoreRow(renderer, t.compass.moreHome);
     expect(openHomeInMaps).toHaveBeenCalledWith({ lat: 50.08, lng: 14.42 });
   });
 
@@ -372,7 +372,7 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    const mapButton = renderer!.root.findByProps({ accessibilityLabel: cs.map.openWithoutLocation });
+    const mapButton = renderer!.root.findByProps({ accessibilityLabel: t.map.openWithoutLocation });
     act(() => mapButton.props.onPress());
 
     expect(BeerMapScreenMock).toHaveBeenCalledWith(
@@ -392,7 +392,7 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    pressMoreRow(renderer, cs.compass.moreModeSurprise);
+    pressMoreRow(renderer, t.compass.moreModeSurprise);
 
     expect(setMode).toHaveBeenCalledWith('surprise');
     expect(updateAccountPreferences).toHaveBeenCalledWith({ mode: 'surprise' });
@@ -412,7 +412,7 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    pressMoreRow(renderer, cs.compass.moreReport);
+    pressMoreRow(renderer, t.compass.moreReport);
     const reportModal = latestProps(ReportPubModalMock);
     expect(reportModal.visible).toBe(true);
 
@@ -507,7 +507,7 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    pressMoreRow(renderer, cs.compass.moreReport);
+    pressMoreRow(renderer, t.compass.moreReport);
     const reportModal = latestProps(ReportPubModalMock);
     expect(reportModal.visible).toBe(true);
     act(() => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { fetchMyStats } from '@/data/statsClient';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import StatsScreenDefault from '../StatsScreen';
@@ -93,7 +93,7 @@ describe('StatsScreen', () => {
       renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
     });
     const texts = flatTexts(renderer!);
-    expect(texts).toContain(cs.stats.emptyTitle);
+    expect(texts).toContain(t.stats.emptyTitle);
   });
 
   it('renders the hero, records, totals and top pubs from local sessions', () => {
@@ -120,19 +120,19 @@ describe('StatsScreen', () => {
     const texts = flatTexts(renderer!);
 
     // Not empty.
-    expect(texts).not.toContain(cs.stats.emptyTitle);
+    expect(texts).not.toContain(t.stats.emptyTitle);
     // Section headers present.
-    expect(texts).toContain(cs.stats.recordsHeader);
-    expect(texts).toContain(cs.stats.totalsHeader);
-    expect(texts).toContain(cs.stats.periodsHeader);
-    expect(texts).toContain(cs.stats.monthsHeader);
-    expect(texts).toContain(cs.stats.pubsHeader);
+    expect(texts).toContain(t.stats.recordsHeader);
+    expect(texts).toContain(t.stats.totalsHeader);
+    expect(texts).toContain(t.stats.periodsHeader);
+    expect(texts).toContain(t.stats.monthsHeader);
+    expect(texts).toContain(t.stats.pubsHeader);
     // Hero count numeral (3 beers tonight) + pub name.
     expect(texts).toContain('3');
     expect(texts).toContain('U Zlatého tygra');
     // Both pubs appear in the top-pubs list.
     expect(texts).toContain('Pivnice U Tří růží');
-    expect(texts).toContain(cs.stats.totalPubs);
+    expect(texts).toContain(t.stats.totalPubs);
   });
 
   it('hides an implausibly fast remote beer record', async () => {
@@ -165,6 +165,6 @@ describe('StatsScreen', () => {
     const texts = flatTexts(renderer!);
 
     expect(texts).not.toContain('1 s');
-    expect(texts).toContain(cs.stats.recordEmpty);
+    expect(texts).toContain(t.stats.recordEmpty);
   });
 });

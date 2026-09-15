@@ -42,7 +42,7 @@ import Animated, {
 import { BeerBubbles } from '@/components/celebration/BeerBubbles';
 import { FlameIcon } from '@/components/shared/IconGlyph';
 import type { FriendStreak } from '@/data/friendsClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -150,7 +150,7 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
   };
 
   const handlePress = () => {
-    const detail = isLit ? cs.friends.streakThisWeek : cs.friends.streakDead;
+    const detail = isLit ? t.friends.streakThisWeek : t.friends.streakDead;
     showToast(detail, {
       icon: (
         <FlameIcon size={20} color={isLit ? Colors.amber : Colors.mutedText} />
@@ -172,7 +172,7 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
       onPress={handlePress}
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
-      accessibilityLabel={cs.friends.streakWeeks(currentWeeks)}
+      accessibilityLabel={t.friends.streakWeeks(currentWeeks)}
       style={({ pressed }) => (pressed ? styles.pressed : undefined)}
     >
       <View
@@ -202,7 +202,7 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {cs.friends.streakEmpty}
+            {t.friends.streakEmpty}
           </Text>
         ) : (
           <Animated.Text

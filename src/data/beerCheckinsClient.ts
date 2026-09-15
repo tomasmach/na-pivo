@@ -1,4 +1,5 @@
 import { ensureAccount, type AccountSession } from './account';
+import { t } from '@/i18n';
 import { chainAbortSignal, classifyQueueHttpFailure, type QueueSyncResult } from './apiFetch';
 import { getBackendEndpoint } from './backendConfig';
 import type { FriendActionError, FriendActionResult, FriendProfile } from './friendsClient';
@@ -196,7 +197,7 @@ function parseProfile(raw?: RawProfile): FriendProfile {
   return {
     id: raw?.id ?? '',
     nickname: typeof raw?.nickname === 'string' ? raw.nickname : null,
-    displayName: raw?.display_name ?? raw?.nickname ?? 'Kamarád',
+    displayName: raw?.display_name ?? raw?.nickname ?? t.common.friendFallback,
     avatarUrl: raw?.avatar_url ?? null,
     isPublic: raw?.is_public !== false,
   };
@@ -235,7 +236,7 @@ export function parseBeerCheckIn(raw: RawCheckIn): BeerCheckIn {
 }
 
 function extractError(data: Record<string, unknown>, status: number): FriendActionError {
-  const detail = typeof data.detail === 'string' ? data.detail : 'Nepodařilo se to uložit. Zkus to znovu.';
+  const detail = typeof data.detail === 'string' ? data.detail : t.clientErrors.save;
   const code = typeof data.code === 'string' ? data.code : `http_${status}`;
   return { ok: false, code, detail };
 }
@@ -250,12 +251,12 @@ async function requestJson(
 ): Promise<RequestResult> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
+    return { ok: false, result: { ok: false, code: 'offline', detail: t.clientErrors.offline } };
   }
 
   const session = await ensureAccount(options.signal);
   if (!session || options.signal?.aborted) {
-    return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
+    return { ok: false, result: { ok: false, code: 'account', detail: t.clientErrors.account } };
   }
 
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
@@ -278,7 +279,7 @@ async function requestJson(
     }
     if (resp.status === 401) {
       await handleUnauthorized(session, path);
-      return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
+      return { ok: false, result: { ok: false, code: 'auth', detail: t.clientErrors.auth } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };
     return { ok: true, data };
@@ -287,7 +288,7 @@ async function requestJson(
     if (!options.signal?.aborted && !isAbort) {
       trackApiFailure('beer_checkins_request', { endpoint: path, reason: 'exception', error: err });
     }
-    return { ok: false, result: { ok: false, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' } };
+    return { ok: false, result: { ok: false, code: 'network', detail: t.clientErrors.network } };
   } finally {
     abort.cleanup();
   }

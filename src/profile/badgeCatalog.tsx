@@ -28,7 +28,7 @@ import {
   UsersIcon,
 } from '@/components/shared/IconGlyph';
 import type { AccountAchievements } from '@/data/auth';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 export interface BadgeDef {
   key: keyof AccountAchievements;
@@ -43,29 +43,29 @@ export interface BadgeDef {
  * then the Mapér arc. Rows of three on the profile grid.
  */
 export const BADGE_CATALOG: readonly BadgeDef[] = [
-  { key: 'firstBeer', title: cs.profile.badgeFirstBeerTitle, hint: cs.profile.badgeFirstBeerLocked, Icon: BeerIcon },
-  { key: 'firstTen', title: cs.profile.badgeFirstTenTitle, hint: cs.profile.badgeFirstTenLocked, Icon: BeerIcon },
-  { key: 'century', title: cs.profile.badgeCenturyTitle, hint: cs.profile.badgeCenturyLocked, Icon: TrophyIcon },
-  { key: 'regular', title: cs.profile.badgeRegularTitle, hint: cs.profile.badgeRegularLocked, Icon: MapPinIcon },
-  { key: 'stamgast', title: cs.profile.badgeStamgastTitle, hint: cs.profile.badgeStamgastLocked, Icon: HeartIcon },
-  { key: 'pilgrim', title: cs.profile.badgePilgrimTitle, hint: cs.profile.badgePilgrimLocked, Icon: FlagIcon },
-  { key: 'reviewer', title: cs.profile.badgeReviewerTitle, hint: cs.profile.badgeReviewerLocked, Icon: ThumbsUpIcon },
-  { key: 'taster', title: cs.profile.badgeTasterTitle, hint: cs.profile.badgeTasterLocked, Icon: SparklesIcon },
-  { key: 'nightOwl', title: cs.profile.badgeNightOwlTitle, hint: cs.profile.badgeNightOwlLocked, Icon: MoonIcon },
-  { key: 'partyAnimal', title: cs.profile.badgePartyAnimalTitle, hint: cs.profile.badgePartyAnimalLocked, Icon: UsersIcon },
+  { key: 'firstBeer', title: t.profile.badgeFirstBeerTitle, hint: t.profile.badgeFirstBeerLocked, Icon: BeerIcon },
+  { key: 'firstTen', title: t.profile.badgeFirstTenTitle, hint: t.profile.badgeFirstTenLocked, Icon: BeerIcon },
+  { key: 'century', title: t.profile.badgeCenturyTitle, hint: t.profile.badgeCenturyLocked, Icon: TrophyIcon },
+  { key: 'regular', title: t.profile.badgeRegularTitle, hint: t.profile.badgeRegularLocked, Icon: MapPinIcon },
+  { key: 'stamgast', title: t.profile.badgeStamgastTitle, hint: t.profile.badgeStamgastLocked, Icon: HeartIcon },
+  { key: 'pilgrim', title: t.profile.badgePilgrimTitle, hint: t.profile.badgePilgrimLocked, Icon: FlagIcon },
+  { key: 'reviewer', title: t.profile.badgeReviewerTitle, hint: t.profile.badgeReviewerLocked, Icon: ThumbsUpIcon },
+  { key: 'taster', title: t.profile.badgeTasterTitle, hint: t.profile.badgeTasterLocked, Icon: SparklesIcon },
+  { key: 'nightOwl', title: t.profile.badgeNightOwlTitle, hint: t.profile.badgeNightOwlLocked, Icon: MoonIcon },
+  { key: 'partyAnimal', title: t.profile.badgePartyAnimalTitle, hint: t.profile.badgePartyAnimalLocked, Icon: UsersIcon },
   // — Pivař badges (outside-pub drinking wave) —
-  { key: 'chatar', title: cs.profile.badgeChatarTitle, hint: cs.profile.badgeChatarLocked, Icon: HouseIcon },
-  { key: 'podSirakem', title: cs.profile.badgePodSirakemTitle, hint: cs.profile.badgePodSirakemLocked, Icon: TreePineIcon },
-  { key: 'lahvacovyFilozof', title: cs.profile.badgeLahvacTitle, hint: cs.profile.badgeLahvacLocked, Icon: MilkIcon },
-  { key: 'plechovkac', title: cs.profile.badgePlechTitle, hint: cs.profile.badgePlechLocked, Icon: CupSodaIcon },
+  { key: 'chatar', title: t.profile.badgeChatarTitle, hint: t.profile.badgeChatarLocked, Icon: HouseIcon },
+  { key: 'podSirakem', title: t.profile.badgePodSirakemTitle, hint: t.profile.badgePodSirakemLocked, Icon: TreePineIcon },
+  { key: 'lahvacovyFilozof', title: t.profile.badgeLahvacTitle, hint: t.profile.badgeLahvacLocked, Icon: MilkIcon },
+  { key: 'plechovkac', title: t.profile.badgePlechTitle, hint: t.profile.badgePlechLocked, Icon: CupSodaIcon },
   // — Mapér badges (spec §5.3) —
-  { key: 'firstMap', title: cs.mapPub.badgeFirstMapTitle, hint: cs.mapPub.badgeFirstMapLocked, Icon: SproutIcon },
-  { key: 'explorer', title: cs.mapPub.badgeExplorerTitle, hint: cs.mapPub.badgeExplorerLocked, Icon: MapPinnedIcon },
-  { key: 'cartographer', title: cs.mapPub.badgeCartographerTitle, hint: cs.mapPub.badgeCartographerLocked, Icon: MapPinnedIcon },
-  { key: 'completionist', title: cs.mapPub.badgeCompletionistTitle, hint: cs.mapPub.badgeCompletionistLocked, Icon: BadgeCheckIcon },
-  { key: 'factMachine', title: cs.mapPub.badgeFactMachineTitle, hint: cs.mapPub.badgeFactMachineLocked, Icon: ClipboardListIcon },
+  { key: 'firstMap', title: t.mapPub.badgeFirstMapTitle, hint: t.mapPub.badgeFirstMapLocked, Icon: SproutIcon },
+  { key: 'explorer', title: t.mapPub.badgeExplorerTitle, hint: t.mapPub.badgeExplorerLocked, Icon: MapPinnedIcon },
+  { key: 'cartographer', title: t.mapPub.badgeCartographerTitle, hint: t.mapPub.badgeCartographerLocked, Icon: MapPinnedIcon },
+  { key: 'completionist', title: t.mapPub.badgeCompletionistTitle, hint: t.mapPub.badgeCompletionistLocked, Icon: BadgeCheckIcon },
+  { key: 'factMachine', title: t.mapPub.badgeFactMachineTitle, hint: t.mapPub.badgeFactMachineLocked, Icon: ClipboardListIcon },
   // FotoPivař (photo-contest win, server-only) closes the catalog.
-  { key: 'fotoPivar', title: cs.profile.badgeFotoPivarTitle, hint: cs.profile.badgeFotoPivarLocked, Icon: CameraIcon },
+  { key: 'fotoPivar', title: t.profile.badgeFotoPivarTitle, hint: t.profile.badgeFotoPivarLocked, Icon: CameraIcon },
 ];
 
 /** The unlocked slice, in catalog order — the public showcase. */

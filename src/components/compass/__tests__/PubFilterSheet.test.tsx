@@ -1,5 +1,5 @@
 import React from 'react';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { PubFilterSheet } from '../PubFilterSheet';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,10 +87,10 @@ describe('PubFilterSheet', () => {
     const { renderer, onApply } = renderSheet();
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.toggleOtherTapPlaces }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.toggleOtherTapPlaces }).props.onPress();
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith(
@@ -103,19 +103,19 @@ describe('PubFilterSheet', () => {
 
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.togglePubAmenityFilter('Platba kartou'),
+        accessibilityLabel: t.a11y.togglePubAmenityFilter('Platba kartou'),
       }).props.onPress();
     });
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.togglePubAmenityFilter('Stolní fotbal'),
+        accessibilityLabel: t.a11y.togglePubAmenityFilter('Stolní fotbal'),
       }).props.onPress();
     });
 
     expect(onApply).not.toHaveBeenCalled();
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith({
@@ -133,16 +133,16 @@ describe('PubFilterSheet', () => {
 
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.selectBeerBrand('Pilsner Urquell'),
+        accessibilityLabel: t.a11y.selectBeerBrand('Pilsner Urquell'),
       }).props.onPress();
     });
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.togglePubAmenityFilter('Šipky'),
+        accessibilityLabel: t.a11y.togglePubAmenityFilter('Šipky'),
       }).props.onPress();
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith({
@@ -159,32 +159,32 @@ describe('PubFilterSheet', () => {
 
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.selectBeerBrand('Pilsner Urquell'),
+        accessibilityLabel: t.a11y.selectBeerBrand('Pilsner Urquell'),
       }).props.onPress();
     });
 
     const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
-    expect(text).toContain(cs.compass.beerFilterRotatingHint);
+    expect(text).toContain(t.compass.beerFilterRotatingHint);
   });
 
   it('renders only amenities marked as map-filterable', () => {
     const { renderer } = renderSheet();
 
     expect(renderer.root.findAllByProps({
-      accessibilityLabel: cs.a11y.togglePubAmenityFilter('Jukebox'),
+      accessibilityLabel: t.a11y.togglePubAmenityFilter('Jukebox'),
     })).toHaveLength(0);
     expect(renderer.root.findAllByProps({
-      accessibilityLabel: cs.a11y.togglePubAmenityFilter('Živá hudba'),
+      accessibilityLabel: t.a11y.togglePubAmenityFilter('Živá hudba'),
     })).toHaveLength(0);
   });
 
   it('applies a price range through two independent slider thumbs', () => {
     const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [35, 42, 48, 55, 69]);
     const minSlider = renderer.root.findByProps({
-      accessibilityLabel: cs.a11y.priceFilterMinSlider,
+      accessibilityLabel: t.a11y.priceFilterMinSlider,
     });
     const maxSlider = renderer.root.findByProps({
-      accessibilityLabel: cs.a11y.priceFilterMaxSlider,
+      accessibilityLabel: t.a11y.priceFilterMaxSlider,
     });
 
     act(() => {
@@ -194,7 +194,7 @@ describe('PubFilterSheet', () => {
       maxSlider.props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith({

@@ -1,3 +1,5 @@
+import { intlLocale } from '@/i18n';
+
 export interface HistoricalDateTimeResult {
   iso: string;
   endedIso?: string | null;
@@ -25,7 +27,7 @@ function parseTime(value: string): { hours: number; minutes: number } | null {
 }
 
 export function formatHistoricalDate(date: Date): string {
-  return date.toLocaleDateString('cs-CZ', {
+  return date.toLocaleDateString(intlLocale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -33,7 +35,7 @@ export function formatHistoricalDate(date: Date): string {
 }
 
 export function formatHistoricalTime(date: Date): string {
-  return date.toLocaleTimeString('cs-CZ', {
+  return date.toLocaleTimeString(intlLocale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

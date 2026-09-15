@@ -15,7 +15,7 @@
 
 import { File, UploadType } from 'expo-file-system';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 import {
   ensureAccount,
@@ -438,7 +438,7 @@ function extractError(data: unknown, status: number): { code: string; detail: st
       }
     }
   }
-  return { code: `http_${status}`, detail: 'Něco se pokazilo. Zkus to prosím znovu.' };
+  return { code: `http_${status}`, detail: t.auth.genericRetry };
 }
 
 interface FetchOutcome {
@@ -508,7 +508,7 @@ async function authFetch(
 const NETWORK_ERROR = {
   ok: false as const,
   code: 'network',
-  detail: 'Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu.',
+  detail: t.auth.network,
 };
 
 async function disablePushDeviceForCurrentSession(): Promise<void> {
@@ -530,7 +530,7 @@ async function applyAuthSuccess(
     return {
       ok: false,
       code: 'protocol',
-      detail: 'Server neposlal platné přihlášení. Zkus to prosím znovu.',
+      detail: t.auth.invalidSession,
     };
   }
 
@@ -540,13 +540,13 @@ async function applyAuthSuccess(
     return {
       ok: false,
       code: 'session_storage',
-      detail: cs.account.errorSessionStorage,
+      detail: t.account.errorSessionStorage,
     };
   }
   if (outgoing?.authenticated && outgoing.accountId !== profile.id) {
     // Reauthentication is not an account switch: A's unsent diary must never
     // become B's next flush. Keep A intact until an explicit logout.
-    return { ok: false, code: 'account_mismatch', detail: cs.account.errorAccountMismatch };
+    return { ok: false, code: 'account_mismatch', detail: t.account.errorAccountMismatch };
   }
   if (options?.clearLocalPrivateData && !outgoing?.authenticated) {
     await clearLocalPrivateAccountData();
@@ -563,7 +563,7 @@ async function applyAuthSuccess(
     return {
       ok: false,
       code: 'session_storage',
-      detail: cs.account.errorSessionStorage,
+      detail: t.account.errorSessionStorage,
     };
   }
   return { ok: true, profile };
@@ -644,36 +644,36 @@ function mapSocialError(err: unknown): AuthResult {
   if (err instanceof SocialAuthError) {
     if (err.code === 'cancelled') return CANCELLED;
     if (err.code === 'unsupported') {
-      return { ok: false, code: 'unsupported', detail: 'Tato možnost není na tomto zařízení dostupná.' };
+      return { ok: false, code: 'unsupported', detail: t.auth.unsupported };
     }
     if (err.code === 'misconfigured') {
       return {
         ok: false,
         code: 'misconfigured',
-        detail: 'Google přihlášení teď není správně nastavené. Zkus zatím přihlášení e-mailem.',
+        detail: t.auth.socialMisconfigured,
       };
     }
     if (err.code === 'play_services') {
       return {
         ok: false,
         code: err.code,
-        detail: 'Google Play služby nejsou dostupné nebo potřebují aktualizaci. Aktualizuj je v Google Play, nebo se přihlas e-mailem.',
+        detail: t.auth.socialPlayServices,
       };
     }
     if (err.code === 'account_picker') {
       return {
         ok: false,
         code: err.code,
-        detail: 'Výběr Google účtu se nepodařilo otevřít. Zkontroluj účet v telefonu, zkus to znovu, nebo se přihlas e-mailem.',
+        detail: t.auth.socialAccountPicker,
       };
     }
     return {
       ok: false,
       code: err.code,
-      detail: 'Přihlášení přes poskytovatele se nezdařilo. Zkus to prosím znovu.',
+      detail: t.auth.socialFailed,
     };
   }
-  return { ok: false, code: 'failed', detail: 'Přihlášení se nezdařilo.' };
+  return { ok: false, code: 'failed', detail: t.auth.signInFailed };
 }
 
 export function signInWithGoogle(): Promise<AuthResult> {

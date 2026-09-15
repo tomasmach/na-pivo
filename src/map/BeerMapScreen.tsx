@@ -64,7 +64,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { t, intlLocale } from '@/i18n';
 import {
   buildMapPubPoints,
   clusterCoordinates,
@@ -120,11 +120,11 @@ export interface BeerMapScreenProps {
 
 function friendName(live: LivePubSummary): string {
   const first = live.activities[0]?.account;
-  return first?.displayName?.trim() || first?.nickname?.trim() || cs.map.friendFallback;
+  return first?.displayName?.trim() || first?.nickname?.trim() || t.map.friendFallback;
 }
 
 function formatRating(value: number): string {
-  return value.toLocaleString('cs-CZ', {
+  return value.toLocaleString(intlLocale, {
     minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
     maximumFractionDigits: 1,
   });
@@ -145,26 +145,26 @@ function openingMeta(
   status: Pub['hoursStatus'] | 'loading' | undefined,
 ): { text: string; tone: MetaTone } {
   if ((status === 'loading' || status === 'pending') && pub.isOpenNow == null) {
-    return { text: cs.compass.detailsLoading, tone: 'neutral' };
+    return { text: t.compass.detailsLoading, tone: 'neutral' };
   }
 
   const time = localTimeFromIso(pub.nextChange);
   if (pub.isOpenNow === true) {
     return {
-      text: time ? cs.compass.openUntil(time) : cs.compass.openNow,
+      text: time ? t.compass.openUntil(time) : t.compass.openNow,
       tone: 'open',
     };
   }
   if (pub.isOpenNow === false) {
     return {
-      text: time ? cs.compass.closedUntil(time) : cs.compass.closedNow,
+      text: time ? t.compass.closedUntil(time) : t.compass.closedNow,
       tone: 'closed',
     };
   }
   // 'unknown' still earns the dot: the line is about opening hours either way,
   // and the compass card draws it the same. 'neutral' is for lines that are not
   // hours at all (the viewport summary, a city, a friend).
-  return { text: cs.compass.hoursUnknown, tone: 'unknown' };
+  return { text: t.compass.hoursUnknown, tone: 'unknown' };
 }
 
 function metaToneColor(tone: MetaTone): string {
@@ -334,9 +334,9 @@ function LayerSwitch({
   onSelect: (next: Layer) => void;
 }) {
   const segments: { key: Layer; label: string; badge?: number }[] = [
-    { key: 'all', label: cs.map.layerAll },
-    { key: 'visited', label: cs.map.layerVisited },
-    { key: 'friends', label: cs.map.layerFriends, badge: liveCount },
+    { key: 'all', label: t.map.layerAll },
+    { key: 'visited', label: t.map.layerVisited },
+    { key: 'friends', label: t.map.layerFriends, badge: liveCount },
   ];
 
   return (
@@ -470,7 +470,7 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
             style={styles.liveInitial}
             maxFontSizeMultiplier={FontScaleCap.heading}
           >
-            {friendName(live).charAt(0).toLocaleUpperCase('cs-CZ')}
+            {friendName(live).charAt(0).toLocaleUpperCase(intlLocale)}
           </Text>
         )}
       </View>
@@ -656,7 +656,7 @@ export default function BeerMapScreen({
       : null;
   const selectedRatingCount =
     typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
-      ? selectedDetailPub.ratingCount.toLocaleString('cs-CZ')
+      ? selectedDetailPub.ratingCount.toLocaleString(intlLocale)
       : null;
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -815,7 +815,7 @@ export default function BeerMapScreen({
       rememberedSelection = next;
       setSelection(next);
       void AccessibilityInfo.announceForAccessibility(
-        cs.a11y.mapLive(friendName(live), live.name),
+        t.a11y.mapLive(friendName(live), live.name),
       );
       mapRef.current?.animateCamera(
         {
@@ -913,14 +913,14 @@ export default function BeerMapScreen({
   const visitedInView = visiblePoints.filter((point) => point.visit).length;
   const viewportHeadline =
     layer === 'friends'
-      ? cs.map.liveShort(visibleLivePubs.length)
-      : cs.map.viewportPubs(visiblePoints.length);
+      ? t.map.liveShort(visibleLivePubs.length)
+      : t.map.viewportPubs(visiblePoints.length);
   const viewportDetail =
     layer === 'friends' || visiblePoints.length === 0
       ? null
       : visitedInView === 0
-        ? cs.map.viewportKnownNone
-        : cs.map.viewportKnown(visitedInView);
+        ? t.map.viewportKnownNone
+        : t.map.viewportKnown(visitedInView);
 
   const cardState = useMemo(() => {
     if (selectedPub) {
@@ -940,7 +940,7 @@ export default function BeerMapScreen({
           ? { value: selectedRating, count: selectedRatingCount }
           : null,
         fact:
-          [selectedPub.pub.city, selectedPub.visit ? cs.map.visited : null]
+          [selectedPub.pub.city, selectedPub.visit ? t.map.visited : null]
             .filter(Boolean)
             .join(' · ') || null,
       };
@@ -953,8 +953,8 @@ export default function BeerMapScreen({
         metaTone: 'neutral' as const,
         fact:
           selectedLive.activities.length === 1
-            ? cs.map.friendIsHere(friendName(selectedLive))
-            : cs.map.friendsAreHere(
+            ? t.map.friendIsHere(friendName(selectedLive))
+            : t.map.friendsAreHere(
                 friendName(selectedLive),
                 selectedLive.activities.length - 1,
               ),
@@ -966,7 +966,7 @@ export default function BeerMapScreen({
         title: selectedCity.name,
         meta: null,
         metaTone: 'neutral' as const,
-        fact: cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
+        fact: t.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
       };
     }
     // Nothing selected: what the viewport holds is the whole message. The layer
@@ -994,37 +994,37 @@ export default function BeerMapScreen({
     if (stale) {
       return {
         kind: 'counted',
-        text: cs.map.offline,
-        undoLabel: cs.map.retry,
+        text: t.map.offline,
+        undoLabel: t.map.retry,
         onUndo: refresh,
       };
     }
     if (activeFilterCount > 0) {
       return {
         kind: 'rapid',
-        text: cs.compass.nudgeFilters(activeFilterCount),
-        confirmLabel: cs.compass.nudgeFiltersClear,
+        text: t.compass.nudgeFilters(activeFilterCount),
+        confirmLabel: t.compass.nudgeFiltersClear,
         onConfirm: () => onApplyFilters(EMPTY_PUB_SEARCH_FILTERS),
       };
     }
     if (loadingPubs) {
       return {
         kind: 'dopito',
-        label: cs.map.loading,
+        label: t.map.loading,
         onPress: () => undefined,
       };
     }
     if (region.latitudeDelta > 1.5 && layer !== 'friends') {
       return {
         kind: 'dopito',
-        label: cs.map.zoomForPubs,
+        label: t.map.zoomForPubs,
         onPress: () => undefined,
       };
     }
     // Without the big "Najdi mě · potřebuju tvoji polohu" button, the permission
     // ask needs a home. The strip offers it and the glyph fires it.
     if (permissionState !== 'granted') {
-      return { kind: 'dopito', label: cs.map.permissionHint, onPress: locate };
+      return { kind: 'dopito', label: t.map.permissionHint, onPress: locate };
     }
     return null;
   }, [
@@ -1042,9 +1042,9 @@ export default function BeerMapScreen({
   const primaryAction = useMemo(() => {
     if (cardState.kind === 'pub' && selectedPub) {
       return {
-        label: cs.map.aimCompass,
+        label: t.map.aimCompass,
         subLabel: null as string | null,
-        accessibilityLabel: cs.map.aimCompass,
+        accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
             lat: selectedPub.pub.lat,
@@ -1056,9 +1056,9 @@ export default function BeerMapScreen({
     }
     if (cardState.kind === 'live' && selectedLive) {
       return {
-        label: cs.map.aimCompass,
+        label: t.map.aimCompass,
         subLabel: null as string | null,
-        accessibilityLabel: cs.map.aimCompass,
+        accessibilityLabel: t.map.aimCompass,
         onPress: () =>
           aimCompass({
             lat: selectedLive.lat,
@@ -1070,9 +1070,9 @@ export default function BeerMapScreen({
     }
     if (cardState.kind === 'city' && selectedCity) {
       return {
-        label: cs.map.showMyPubs,
+        label: t.map.showMyPubs,
         subLabel: null as string | null,
-        accessibilityLabel: cs.map.showMyPubs,
+        accessibilityLabel: t.map.showMyPubs,
         onPress: () => focusCity(selectedCity),
       };
     }
@@ -1082,9 +1082,9 @@ export default function BeerMapScreen({
     // `cardState.kind`, because branching on this object itself makes the React
     // Compiler rules treat its ref-capturing closures as a ref read in render.
     return {
-      label: cs.map.findMe,
+      label: t.map.findMe,
       subLabel: null as string | null,
-      accessibilityLabel: cs.a11y.mapLocate,
+      accessibilityLabel: t.a11y.mapLocate,
       onPress: locate,
     };
   }, [aimCompass, cardState.kind, focusCity, locate, selectedCity, selectedLive, selectedPub]);
@@ -1102,27 +1102,27 @@ export default function BeerMapScreen({
     const rows: MoreRow[] = [
       {
         key: 'filters',
-        label: cs.compass.moreFilters,
+        label: t.compass.moreFilters,
         value:
           activeFilterCount > 0
-            ? cs.compass.moreFiltersActive(activeFilterCount)
+            ? t.compass.moreFiltersActive(activeFilterCount)
             : null,
         icon: ListFilterIcon,
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
       },
       {
         key: 'refresh',
-        label: cs.map.refresh,
+        label: t.map.refresh,
         icon: RefreshCwIcon,
         onPress: () => {
           setMoreOpen(false);
           refresh();
         },
-        accessibilityLabel: cs.a11y.mapRefresh,
+        accessibilityLabel: t.a11y.mapRefresh,
       },
       {
         key: 'add-pub',
-        label: cs.compass.moreAddPub,
+        label: t.compass.moreAddPub,
         icon: MapPinPlusIcon,
         onPress: () => runAfterMoreClose(startPinPlacement),
       },
@@ -1132,10 +1132,10 @@ export default function BeerMapScreen({
           ...rows,
           {
             key: 'report',
-            label: cs.compass.moreReport,
+            label: t.compass.moreReport,
             icon: FlagIcon,
             onPress: () => runAfterMoreClose(openSelectedPubReport),
-            accessibilityLabel: cs.a11y.mapReportClosed(selectedPub.pub.name),
+            accessibilityLabel: t.a11y.mapReportClosed(selectedPub.pub.name),
           },
         ]
       : rows;
@@ -1167,7 +1167,7 @@ export default function BeerMapScreen({
         toolbarEnabled={false}
         loadingBackgroundColor={mapColorScheme === 'dark' ? Colors.stout : Colors.foam}
         loadingIndicatorColor={Colors.amber}
-        accessibilityLabel={cs.a11y.beerMap}
+        accessibilityLabel={t.a11y.beerMap}
       >
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
@@ -1180,10 +1180,10 @@ export default function BeerMapScreen({
                   rememberedSelection = next;
                   setSelection(next);
                   void AccessibilityInfo.announceForAccessibility(
-                    cs.a11y.mapCity(city.name, city.visitCount),
+                    t.a11y.mapCity(city.name, city.visitCount),
                   );
                 }}
-                accessibilityLabel={cs.a11y.mapCity(city.name, city.visitCount)}
+                accessibilityLabel={t.a11y.mapCity(city.name, city.visitCount)}
               >
                 <View style={styles.cityMarker}>
                   <MapPinnedIcon size={17} color={Colors.stout} />
@@ -1216,7 +1216,7 @@ export default function BeerMapScreen({
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
                 tracksViewChanges={selected}
-                accessibilityLabel={cs.a11y.mapPub(
+                accessibilityLabel={t.a11y.mapPub(
                   point.pub.name,
                   point.visit?.visitCount ?? 0,
                 )}
@@ -1232,7 +1232,7 @@ export default function BeerMapScreen({
               coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
               onPress={() => openCluster(cluster.lat, cluster.lng)}
               tracksViewChanges={false}
-              accessibilityLabel={cs.a11y.mapCluster(cluster.items.length)}
+              accessibilityLabel={t.a11y.mapCluster(cluster.items.length)}
             >
               <ClusterMarker
                 count={cluster.items.length}
@@ -1249,7 +1249,7 @@ export default function BeerMapScreen({
             coordinate={{ latitude: live.lat, longitude: live.lng }}
             onPress={() => selectLive(live)}
             zIndex={10}
-            accessibilityLabel={cs.a11y.mapLive(friendName(live), live.name)}
+            accessibilityLabel={t.a11y.mapLive(friendName(live), live.name)}
           >
             <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
           </Marker>
@@ -1279,14 +1279,14 @@ export default function BeerMapScreen({
               style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.mapPinCancel}
+              accessibilityLabel={t.a11y.mapPinCancel}
             >
               <XIcon size={19} color={Colors.foamMuted} />
             </Pressable>
             <View style={styles.pinHintWrap} pointerEvents="none">
               <View style={styles.pinHintPill}>
                 <Text style={styles.pinHintText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.map.pinHint}
+                  {t.map.pinHint}
                 </Text>
               </View>
             </View>
@@ -1308,7 +1308,7 @@ export default function BeerMapScreen({
             style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.mapLocate}
+            accessibilityLabel={t.a11y.mapLocate}
           >
             <LocateFixedIcon size={19} color={Colors.amber} />
           </Pressable>
@@ -1323,7 +1323,7 @@ export default function BeerMapScreen({
             ]}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.compassMore}
+            accessibilityLabel={t.a11y.compassMore}
           >
             <MenuIcon size={20} color={Colors.foamMuted} />
           </Pressable>
@@ -1345,12 +1345,12 @@ export default function BeerMapScreen({
       >
         {placingPin ? (
           <GlowButton
-            label={cs.map.pinConfirm}
+            label={t.map.pinConfirm}
             onPress={() => void confirmPinPlacement()}
             variant="primary"
             glow="soft"
             height={62}
-            accessibilityLabel={cs.map.pinConfirm}
+            accessibilityLabel={t.map.pinConfirm}
           />
         ) : (
         <>
@@ -1365,7 +1365,7 @@ export default function BeerMapScreen({
               ? {
                   onPress: () =>
                     void openPubInMaps(selectedDetailPub ?? selectedPub.pub),
-                  accessibilityLabel: cs.a11y.pubPillRevealed(
+                  accessibilityLabel: t.a11y.pubPillRevealed(
                     selectedPub.pub.name,
                   ),
                 }
@@ -1374,21 +1374,21 @@ export default function BeerMapScreen({
           door={
             cardState.kind === 'pub'
               ? {
-                  label: cs.compass.mapPubLink,
+                  label: t.compass.mapPubLink,
                   onPress: () => {
                     trackUiInteraction('map_pub_detail_open');
                     setDetailOpen(true);
                   },
-                  accessibilityLabel: cs.compass.mapPubLink,
+                  accessibilityLabel: t.compass.mapPubLink,
                 }
               : cardState.kind === 'idle'
                 ? {
-                    label: cs.map.listLink,
+                    label: t.map.listLink,
                     onPress: () => {
                       trackUiInteraction('map_list_open');
                       setListOpen(true);
                     },
-                    accessibilityLabel: cs.a11y.mapList,
+                    accessibilityLabel: t.a11y.mapList,
                   }
                 : undefined
           }
@@ -1448,7 +1448,7 @@ export default function BeerMapScreen({
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.heading}
                 >
-                  {layer === 'friends' ? cs.map.layerFriends : cs.map.listTitle}
+                  {layer === 'friends' ? t.map.layerFriends : t.map.listTitle}
                 </Text>
                 <Pressable
                   onPress={() => setListOpen(false)}
@@ -1456,7 +1456,7 @@ export default function BeerMapScreen({
                     styles.closeButton,
                     pressed && styles.pressedSoft,
                   ]}
-                  accessibilityLabel={cs.map.closeList}
+                  accessibilityLabel={t.map.closeList}
                   accessibilityRole="button"
                 >
                   <XIcon size={20} color={Colors.foamMuted} />
@@ -1491,7 +1491,7 @@ export default function BeerMapScreen({
                         index > 0 && styles.listRowDivider,
                         pressed && styles.pressedSoft,
                       ]}
-                      accessibilityLabel={cs.a11y.mapLive(
+                      accessibilityLabel={t.a11y.mapLive(
                         friendName(item),
                         item.name,
                       )}
@@ -1510,7 +1510,7 @@ export default function BeerMapScreen({
                           numberOfLines={1}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {cs.map.friendIsHere(friendName(item))}
+                          {t.map.friendIsHere(friendName(item))}
                         </Text>
                       </View>
                       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -1521,7 +1521,7 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.map.emptyList}
+                      {t.map.emptyList}
                     </Text>
                   }
                 />
@@ -1554,7 +1554,7 @@ export default function BeerMapScreen({
                         index > 0 && styles.listRowDivider,
                         pressed && styles.pressedSoft,
                       ]}
-                      accessibilityLabel={cs.a11y.mapPub(
+                      accessibilityLabel={t.a11y.mapPub(
                         item.pub.name,
                         item.visit?.visitCount ?? 0,
                       )}
@@ -1574,7 +1574,7 @@ export default function BeerMapScreen({
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
                           {item.pub.city ||
-                            (item.visit ? cs.map.visited : cs.map.notVisited)}
+                            (item.visit ? t.map.visited : t.map.notVisited)}
                         </Text>
                       </View>
                       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -1585,7 +1585,7 @@ export default function BeerMapScreen({
                       style={styles.emptyList}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.map.emptyList}
+                      {t.map.emptyList}
                     </Text>
                   }
                 />

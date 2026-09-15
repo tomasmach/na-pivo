@@ -1,5 +1,5 @@
 import React from 'react';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { OpenStatusChip } from '../OpenStatusChip';
 import type { HoursStatus } from '../OpenStatusChip';
@@ -60,7 +60,7 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={true} status="ok" />);
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.openNow);
+    expect(text).toBe(t.compass.openNow);
     expect(text).toBe('Otevřeno');
     expect(color).toBe(Colors.open);
   });
@@ -69,7 +69,7 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={false} status="ok" />);
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.closedNow);
+    expect(text).toBe(t.compass.closedNow);
     expect(text).toBe('Zavřeno');
     expect(color).toBe(Colors.closed);
   });
@@ -81,7 +81,7 @@ describe('OpenStatusChip', () => {
     );
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.openUntil('23:00'));
+    expect(text).toBe(t.compass.openUntil('23:00'));
     expect(text).toBe('Otevřeno do 23:00');
     expect(color).toBe(Colors.open);
   });
@@ -92,7 +92,7 @@ describe('OpenStatusChip', () => {
     );
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.closedUntil('17:00'));
+    expect(text).toBe(t.compass.closedUntil('17:00'));
     expect(text).toBe('Zavřeno · otevře v 17:00');
     // Closed must stay muted — never an alarming red.
     expect(color).toBe(Colors.closed);
@@ -102,7 +102,7 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={true} status="ok" nextChange={null} />);
 
     const { text } = readLabel(renderer);
-    expect(text).toBe(cs.compass.openNow);
+    expect(text).toBe(t.compass.openNow);
     expect(text).toBe('Otevřeno');
   });
 
@@ -110,7 +110,7 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={false} status="ok" nextChange={null} />);
 
     const { text } = readLabel(renderer);
-    expect(text).toBe(cs.compass.closedNow);
+    expect(text).toBe(t.compass.closedNow);
     expect(text).toBe('Zavřeno');
   });
 
@@ -119,7 +119,7 @@ describe('OpenStatusChip', () => {
     for (const bad of ['not-a-timestamp', '2026-06-08Tzz:zz:00', '', '2026-06-08T9:5']) {
       const renderer = render(<OpenStatusChip isOpenNow={true} status="ok" nextChange={bad} />);
       const { text } = readLabel(renderer);
-      expect(text).toBe(cs.compass.openNow);
+      expect(text).toBe(t.compass.openNow);
     }
   });
 
@@ -130,14 +130,14 @@ describe('OpenStatusChip', () => {
     );
 
     const { text } = readLabel(renderer);
-    expect(text).toBe(cs.compass.openUntil('22:30'));
+    expect(text).toBe(t.compass.openUntil('22:30'));
   });
 
   it('renders the unknown label in the muted color when openness is null', () => {
     const renderer = render(<OpenStatusChip isOpenNow={null} status="unknown" />);
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.hoursUnknown);
+    expect(text).toBe(t.compass.hoursUnknown);
     expect(text).toBe('Otevírací doba neznámá');
     expect(color).toBe(Colors.mutedText);
   });
@@ -146,14 +146,14 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={null} />);
 
     const { text } = readLabel(renderer);
-    expect(text).toBe(cs.compass.hoursUnknown);
+    expect(text).toBe(t.compass.hoursUnknown);
   });
 
   it('renders a loading label while loading with no resolved openness yet', () => {
     const renderer = render(<OpenStatusChip isOpenNow={null} status="loading" />);
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.detailsLoading);
+    expect(text).toBe(t.compass.detailsLoading);
     expect(color).toBe(Colors.mutedText);
   });
 
@@ -161,7 +161,7 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={null} status="pending" />);
 
     const { text, color } = readLabel(renderer);
-    expect(text).toBe(cs.compass.detailsLoading);
+    expect(text).toBe(t.compass.detailsLoading);
     expect(color).toBe(Colors.mutedText);
   });
 
@@ -170,14 +170,14 @@ describe('OpenStatusChip', () => {
     const renderer = render(<OpenStatusChip isOpenNow={true} status="loading" />);
 
     const { text } = readLabel(renderer);
-    expect(text).toBe(cs.compass.openNow);
+    expect(text).toBe(t.compass.openNow);
   });
 
   it('exposes the label as an accessibility label for each state', () => {
     const cases: Array<{ isOpenNow: boolean | null; status: HoursStatus; label: string }> = [
-      { isOpenNow: true, status: 'ok', label: cs.compass.openNow },
-      { isOpenNow: false, status: 'ok', label: cs.compass.closedNow },
-      { isOpenNow: null, status: 'unknown', label: cs.compass.hoursUnknown },
+      { isOpenNow: true, status: 'ok', label: t.compass.openNow },
+      { isOpenNow: false, status: 'ok', label: t.compass.closedNow },
+      { isOpenNow: null, status: 'unknown', label: t.compass.hoursUnknown },
     ];
 
     for (const { isOpenNow, status, label } of cases) {

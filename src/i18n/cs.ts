@@ -22,6 +22,10 @@ export const cs = {
   common: {
     cancel: 'Zrušit',
     ok: 'OK',
+    friendFallback: 'Kamarád',
+    drinkerFallback: 'Pivař',
+    pubFallback: 'Hospoda',
+    pricePlaceholder: (unit: string) => `Cena (${unit})`,
   },
 
   map: {
@@ -370,6 +374,10 @@ export const cs = {
     nudgeFocused: 'Mířím za partou',
     nudgeNoMagnetometer: 'Tvůj telefon nemá kompas, šipka se točit nebude.',
     nudgeCalibrate: 'Otoč telefonem do osmičky, ať se kompas srovná.',
+    cardinalNorth: 'S',
+    cardinalEast: 'V',
+    cardinalSouth: 'J',
+    cardinalWest: 'Z',
   },
 
   permissions: {
@@ -434,6 +442,12 @@ export const cs = {
     title: 'Nastavení',
     compassSection: 'Co ti kompas najde',
     notificationsSection: 'Kdy se ozvu',
+    languageSection: 'Jazyk · Language',
+    language: {
+      cs: 'Čeština',
+      en: 'English',
+      option: (name: string) => `Přepnout jazyk na ${name}`,
+    },
     locationPrivacy: 'Domov i trasu nechávám v telefonu. Historii polohy neukládám.',
     // Section group labels — one clear meaning per group.
     sections: {
@@ -963,6 +977,7 @@ export const cs = {
     verifyErrorBody: 'Odkaz už neplatí nebo je neplatný. Zkus si nechat poslat nový.',
     verifyInvalidBody: 'Chybí ověřovací kód. Otevři odkaz z e-mailu znovu.',
     verifyDoneCta: 'Zpět do aplikace',
+    sessionExpired: 'Přihlášení vypršelo. Přihlas se znovu, piva uložená v telefonu zůstanou v bezpečí.',
   },
 
   tabs: {
@@ -1107,6 +1122,11 @@ export const cs = {
     retry: 'Zkusit znovu',
     open: 'Pivo u někoho',
     openHint: 'Objev malé domácí posezení poblíž. Adresa až po schválení.',
+    hostFallback: 'Pořadatel',
+    guestFallback: 'Návštěvník',
+    reportCancel: 'Nechat být',
+    statusLive: 'PRÁVĚ TEĎ',
+    reportComment: 'Nahlášeno z přehledu komunitních setkání.',
   },
 
   photoDiary: {
@@ -1740,6 +1760,7 @@ export const cs = {
         : n >= 2 && n <= 4
           ? `${n} kámoši čekají na tebe v Partě`
           : `${n} kámošů čeká na tebe v Partě`,
+    fallbackName: 'Kámoš',
   },
 
   // Global leaderboards — /leaderboards (Žebříčky). Countrywide boards over
@@ -2730,6 +2751,7 @@ export const cs = {
     // knows it's worth trying again later.
     error: 'Novinky se teď nepodařilo načíst. Mrkni na to za chvíli.',
     footer: 'Bez reklam · Bez placení',
+    playStoreA11y: 'Otevřít Na pivo v Google Play',
   },
 
   privacy: {
@@ -3034,7 +3056,266 @@ export const cs = {
     friendPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
     partaPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
     photoViewerClose: 'Zavřít fotku',
+    back: 'Zpět',
+    contributeTimeHours: (label: string) => `${label} hodiny`,
+    contributeTimeMinutes: (label: string) => `${label} minuty`,
+  },
+  xp: {
+    account: {
+      rookie: 'Zelenáč',
+      taster: 'Ochutnávač',
+      journeyman: 'Pivní tovaryš',
+      barkeep: 'Výčepní',
+      brewmaster: 'Sládek',
+      beerMaster: 'Pivní mistr',
+      beerLegend: 'Pivní legenda',
+    },
+    mapper: {
+      newcomer: 'Nováček',
+      noticer: 'Všímálek',
+      regular: 'Štamgast',
+      connoisseur: 'Znalec',
+      pubSage: 'Hospodský mudrc',
+      cartographer: 'Pivní kartograf',
+      localLegend: 'Legenda lokálu',
+    },
+  },
+
+  amenities: {
+    outdoorTap: {
+      label: 'Venkovní výčep',
+      short: 'Výčep',
+    },
+    tankBeer: {
+      label: 'Tankové pivo',
+      short: 'Tank',
+    },
+  },
+
+  clientErrors: {
+    offline: 'Server teď není dostupný.',
+    account: 'Účet teď není připravený.',
+    auth: 'Přihlášení vypršelo.',
+    network: 'Síť se netváří. Zkus to za chvíli.',
+    save: 'Nepodařilo se to uložit. Zkus to znovu.',
+    accountChanged: 'Účet se mezitím změnil.',
+    accountChangedDelete: 'Účet se mezitím změnil. Smazání potvrď znovu.',
+    invalidResponse: 'Data ze serveru nedávala smysl. Zkus to znovu.',
+    actionFailed: 'Tohle se teď nepovedlo.',
+    eventsSignIn: 'Pro domácí setkání se nejdřív přihlas.',
+    commentIncomplete: 'Komentář se nevrátil celý.',
+    eveningMissing: 'Takový večer tu není.',
+    eveningSaveFailed: 'Večer se mi nepovedlo uložit k dokončení.',
+    gameSaveFailed: 'Rozehranou hru se nepodařilo uložit.',
+    gameShareRejected: 'Server sdílení hry odmítl.',
+    gameShareSaveFailed: 'Hru se nepodařilo uložit pro sdílení.',
+    gameShareFailed: 'Hru se nepodařilo sdílet se stolem.',
+    tableCreateFailed: 'Stůl se nepodařilo založit. Zkus to znovu.',
+    tableJoinFailed: 'Přisednout ke stolu se nepovedlo. Zkus to znovu.',
+    inviteAccountChanging: 'Účet se právě mění. Pozvánku zkus za chvilku znovu.',
+    genericRetry: 'Něco se pokazilo. Zkus to prosím znovu.',
+    incompleteResponse: 'Server poslal neúplná data.',
+  },
+
+  partaFeed: {
+    drinkFallback: 'nápoj',
+    placePrivate: 'U někoho doma',
+    placeOutdoors: 'Venku',
+    othersSuffix: (n: number) => `+ ${n} dalších`,
+  },
+
+  relativeTime: {
+    now: 'teď',
+    minutesAgo: (minutes: number) => `před ${minutes} min`,
+    hoursAgo: (hours: number) => `před ${hours} h`,
+    daysAgo: (days: number) => `před ${days} d`,
+    soon: 'ještě chvíli',
+    hoursMinutesLeft: (hours: number, minutes: number) => `ještě ${hours} h ${minutes} min`,
+    hoursLeft: (hours: number) => `ještě ${hours} h`,
+    minutesLeft: (minutes: number) => `ještě ${minutes} min`,
+    today: 'dneska',
+    todayShort: 'dnes',
+    yesterday: 'včera',
+    dayBeforeYesterday: 'předevčírem',
+    daysAgoLong: (days: number) => `před ${days} dny`,
+  },
+
+  liveActivity: {
+    pubFallback: 'Pivní večer',
+    beerFallback: 'Pivo',
+    beerWord: (count: number) =>
+      czechPlural(count, { one: 'pivo', few: 'piva', many: 'piv' }),
+    beerCountA11y: (count: number) => `Počet piv ${count}`,
+    total: (amount: string) => `Celkem ${amount}`,
+    latestBeerFallback: 'Poslední pivo',
+    latestAt: (time: string) => `zapsáno v ${time}`,
+    firstBeerPouring: 'První pivo se teprve točí',
+    addBeer: 'Přidat další',
+    addBeerA11y: 'Přidat stejné pivo',
+    openCounter: 'Otevřít počítadlo',
+  },
+
+  notifications: {
+    pubReminderChannel: 'Připomínky v hospodě',
+    pubReminderTitle: (pubName: string) => `Sedíš v ${pubName}?`,
+    pubReminderBody: 'Naťukni počítadlo a sečti dnešní rundy.',
+    beerCountChannel: 'Připomínky počítadla',
+    beerCountTitle: 'Nezapomněl sis zapsat pivko?',
+    beerCountBody: 'Klepni a přidej další čárku do počítadla.',
+  },
+
+  pubDetail: {
+    tabs: ['Info', 'Aktivita'] as const,
+    closeA11y: 'Zavřít detail hospody',
+    moreA11y: 'Další možnosti hospody',
+    navigate: 'Navigovat',
+    startHere: 'Začít tu večer',
+    chooseHere: 'Vybrat tuhle hospodu',
+    beerFallback: 'Pivo',
+    openingTitle: 'Otevíračka',
+    openingClosed: 'Zavřeno',
+    openingAdd: 'Doplnit otevíračku',
+    openingEditA11y: 'Upravit otevíračku',
+    tapsTitle: 'Na čepu',
+    tapsAdd: 'Doplnit piva a ceny',
+    tapsEditA11y: 'Upravit piva a ceny',
+    beerFrom: 'Pivo od',
+    eventsTitle: 'Aktuální akce',
+    eventVerified: 'Ověřeno',
+    eventSuggest: 'Navrhnout akci',
+    eventSuggestSignedOut: 'Přihlas se a navrhni akci',
+    visitsTitle: 'Co se tu dělo',
+    visits: 'Návštěv',
+    lastVisit: 'Naposled',
+    amenitiesTitle: 'Vybavení',
+    moreTitle: 'Co ještě?',
+    renameAction: 'Opravit název',
+    editOwnedAction: 'Upravit vlastní hospodu',
+    reportAction: 'Nahlásit hospodu',
+    reportTitle: 'Co je špatně?',
+    reportClosed: 'Hospoda zavřela',
+    reportNotPub: 'Není to hospoda',
+    reportConfirmTitle: (name: string) => `Nahlásit „${name}“?`,
+    reportConfirmBody: 'Nahlášení může hospodu skrýt i ostatním.',
+    reportConfirmCancel: 'Zpátky',
+    reportConfirmAction: 'Nahlásit',
+    reportSaved: 'Nahlášeno. Mrknu na to.',
+    reportQueued: 'Nahlášení je uložené. Pošlu ho, až bude signál.',
+    saveFailed: 'Teď to nešlo uložit. Zkus to za chvíli.',
+    renameTitle: 'Opravit název',
+    renameLabel: 'Název hospody',
+    renameSave: 'Uložit název',
+    activityLoadError: 'Aktivitu jsem teď nenačetl.',
+    activityEmpty: 'Zatím sem nikdo nic nezapsal. Buď první.',
+    activityRetry: 'Zkusit znovu',
+    activityLoadMore: 'Načíst další',
+    activityLoadMoreRetry: 'Zkusit další znovu',
+    activityLoadMoreA11y: 'Načíst další aktivitu hospody',
+    stateLoading: 'Načítám hospodu…',
+    stateFailed: 'Hospodu jsem nenačetl.',
+    eventToday: (range: string) => `Dnes ${range}`,
+    eventSuggestHint: 'Po kontrole ji ukážeme ostatním.',
+    // The crown stays "Kč" in both languages: these are Czech pub prices.
+    priceValue: (czk: number) => `${czk} Kč`,
+  },
+
+  beerDetail: {
+    // Genitive month names for the "Piješ ho od června" relationship line.
+    monthName: (index: number) =>
+      [
+        'ledna',
+        'února',
+        'března',
+        'dubna',
+        'května',
+        'června',
+        'července',
+        'srpna',
+        'září',
+        'října',
+        'listopadu',
+        'prosince',
+      ][index] ?? '',
+    statMine: 'moje',
+    statMyAverage: 'můj průměr',
+    statParty: 'parta',
+    partyDrinkersHeader: 'KDO Z PARTY PIL',
+    recentHeader: 'POSLEDNÍ ZÁPISY',
+    recentEmpty: 'Zatím žádný zápis.',
+    myHistoryHeader: 'MOJE HISTORIE',
+    myHistoryEmpty: 'Tohle pivo sis ještě nezapsal.',
+    noPub: 'Bez hospody',
+  },
+
+  homePoint: {
+    title: 'Domovský bod',
+    lead: 'Kde je tvoje domácí základna?',
+    addressLabel: 'Adresa nebo město',
+    addressPlaceholder: 'Třeba Vinohradská 12, Praha',
+    addressA11y: 'Adresa nebo město domovského bodu',
+    findOnMapA11y: 'Najít adresu na mapě',
+    findOnMap: 'Najít na mapě',
+    searching: 'Hledám místo…',
+    or: 'nebo',
+    useCurrentLocation: 'Použít moji polohu',
+    privacy:
+      'Adresu jednou pošlu geokódovací službě, ať ji najdu na mapě. V telefonu zůstane jen ten potvrzený bod, žádná historie polohy ani trasy.',
+    mapA11y: 'Mapa pro výběr domovského bodu',
+    mapHint: 'Najdi místo, pak ho ťuknutím dolaď',
+    refineHint: 'Sedí bod přesně? Když ne, ťukni na správné místo v mapě.',
+    permissionDenied:
+      'Poloha je vypnutá. Domov si označ ťuknutím do mapy, nebo si polohu povol v nastavení telefonu.',
+    clear: 'Smazat domovský bod',
+    saveChange: 'Uložit změnu',
+    save: 'Uložit domov',
+    emptyQueryError: 'Napiš adresu nebo město, které mám najít.',
+    notFoundError: 'Tohle místo se nepodařilo najít. Zkus doplnit ulici, číslo nebo město.',
+    searchFailedError: 'Místo se teď nepodařilo dohledat. Zkus to prosím znovu.',
+  },
+
+  suggestPubEvent: {
+    title: 'Navrhnout akci',
+    intro: 'Napiš, co se v hospodě děje.',
+    nameLabel: 'Název akce',
+    namePlaceholder: 'Třeba hospodský kvíz',
+    startLabel: 'Začátek',
+    endLabel: 'Konec',
+    detailsLabel: 'Podrobnosti (nepovinné)',
+    detailsPlaceholder: 'Vstupné, rezervace nebo co čekat',
+    moderation:
+      'Návrh nejdřív zkontroluju. Až projde, ukáže se v detailu hospody. Neověřené a skončené akce ostatní neuvidí.',
+    submitA11y: 'Poslat návrh ke kontrole',
+    submit: 'Poslat ke kontrole',
+    submitting: 'Posílám…',
+    submitted: 'Návrh je u výčepu na kontrole.',
+    invalidError: 'Mrkni na název a časy. Konec musí být po začátku.',
+    authError: 'Přihlášení vypršelo. Přihlas se a zkus to znovu.',
+    rejectedError: 'Tenhle návrh server nevzal. Zkontroluj časy a délku akce.',
+    offlineError: 'Teď se k serveru nedostaneme. Návrh zůstal ve formuláři, zkus to za chvíli.',
+  },
+  auth: {
+    genericRetry: 'Něco se pokazilo. Zkus to prosím znovu.',
+    network: 'Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu.',
+    invalidSession: 'Server neposlal platné přihlášení. Zkus to prosím znovu.',
+    unsupported: 'Tato možnost není na tomto zařízení dostupná.',
+    socialMisconfigured: 'Google přihlášení teď není správně nastavené. Zkus zatím přihlášení e-mailem.',
+    socialPlayServices: 'Google Play služby nejsou dostupné nebo potřebují aktualizaci. Aktualizuj je v Google Play, nebo se přihlas e-mailem.',
+    socialAccountPicker: 'Výběr Google účtu se nepodařilo otevřít. Zkontroluj účet v telefonu, zkus to znovu, nebo se přihlas e-mailem.',
+    socialFailed: 'Přihlášení přes poskytovatele se nezdařilo. Zkus to prosím znovu.',
+    signInFailed: 'Přihlášení se nezdařilo.',
   },
 } as const;
 
-export type Strings = typeof cs;
+/**
+ * Structural shape every locale must satisfy: string literals widen to
+ * `string`, functions keep their parameter lists, keys stay identical.
+ */
+type Widen<T> = T extends string
+  ? string
+  : T extends (...args: infer A) => infer R
+    ? (...args: A) => Widen<R>
+    : T extends object
+      ? { readonly [K in keyof T]: Widen<T[K]> }
+      : T;
+
+export type Strings = Widen<typeof cs>;

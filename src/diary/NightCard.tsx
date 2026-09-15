@@ -22,7 +22,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { TallyCoaster } from '@/diary/TallyCoaster';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 
@@ -112,7 +112,7 @@ export function NightCard({
             {count}
           </Text>
           <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {count > 0 ? nounLabel : cs.diary.emptyNoun}
+            {count > 0 ? nounLabel : t.diary.emptyNoun}
           </Text>
         </View>
         <TallyCoaster marks={count} nights={nights} width={coasterWidth} />
@@ -132,11 +132,11 @@ export function NightCard({
             onPress={onPress}
             hitSlop={10}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.diaryBreakdown}
+            accessibilityLabel={t.a11y.diaryBreakdown}
             style={({ pressed }) => [styles.breakdownLink, pressed && styles.pressed]}
           >
             <Text style={styles.breakdownLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.diary.breakdownLink}
+              {t.diary.breakdownLink}
             </Text>
             <ChevronRightIcon size={15} color={Colors.amber} />
           </Pressable>

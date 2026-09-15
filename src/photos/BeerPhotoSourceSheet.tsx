@@ -24,7 +24,7 @@ import { softDrop } from '@/theme/shadows';
 import { BeerIcon, CameraIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { BeerPhotoSource } from '@/data/beerPhotoPicker';
 
 interface BeerPhotoSourceSheetProps {
@@ -114,11 +114,11 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
                 <View style={styles.titleLine}>
                   <BeerIcon size={18} color={Colors.amber} />
                   <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.photoDiary.sheetTitle}
+                    {t.photoDiary.sheetTitle}
                   </Text>
                 </View>
                 <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.photoDiary.sheetSubtitle}
+                  {t.photoDiary.sheetSubtitle}
                 </Text>
               </View>
               <Pressable
@@ -126,7 +126,7 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
                 hitSlop={12}
                 style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.6 }]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.a11y.photoViewerClose}
+                accessibilityLabel={t.a11y.photoViewerClose}
               >
                 <XIcon size={18} color={Colors.foamMuted} />
               </Pressable>
@@ -135,14 +135,14 @@ function BeerPhotoSourceSheetImpl({ visible, onClose, onPick }: BeerPhotoSourceS
             <View style={styles.options}>
               <OptionRow
                 icon={<CameraIcon size={22} color={Colors.amber} />}
-                label={cs.photoDiary.takePhoto}
-                helper={cs.photoDiary.cameraHelper}
+                label={t.photoDiary.takePhoto}
+                helper={t.photoDiary.cameraHelper}
                 onPress={() => pick('camera')}
               />
               <OptionRow
                 icon={<ImagesIcon size={22} color={Colors.amber} />}
-                label={cs.photoDiary.pickFromLibrary}
-                helper={cs.photoDiary.libraryHelper}
+                label={t.photoDiary.pickFromLibrary}
+                helper={t.photoDiary.libraryHelper}
                 onPress={() => pick('library')}
               />
             </View>

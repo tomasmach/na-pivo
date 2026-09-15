@@ -42,7 +42,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { endFriendPubActivity, type FriendPubActivity } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -123,7 +123,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
     void endFriendPubActivity(activity.id).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
-        showToast(cs.friends.endedToast, {
+        showToast(t.friends.endedToast, {
           icon: <Undo2Icon size={20} color={Colors.amber} />,
         });
         onEnded();
@@ -133,7 +133,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
         // Offline / transient: queue the end so it lands on the next flush and
         // keep the card hidden (honest — it WILL end).
         void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
-        showToast(cs.friends.endQueued, {
+        showToast(t.friends.endQueued, {
           icon: <Undo2Icon size={20} color={Colors.amber} />,
         });
         onEnded();
@@ -147,12 +147,12 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
 
   const handleEndPress = useCallback(() => {
     showAppDialog({
-      title: cs.friends.endActivityConfirmTitle,
-      message: cs.friends.endActivityConfirmBody,
+      title: t.friends.endActivityConfirmTitle,
+      message: t.friends.endActivityConfirmBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.friends.endActivityConfirmConfirm,
+          text: t.friends.endActivityConfirmConfirm,
           style: 'destructive',
           onPress: confirmEnd,
         },
@@ -188,7 +188,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {cs.friends.myActiveTitle}
+              {t.friends.myActiveTitle}
             </Text>
           </View>
 
@@ -255,7 +255,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.friends.cheersCount(activity.reactions.cheers)}
+            {t.friends.cheersCount(activity.reactions.cheers)}
           </Text>
         ) : null}
 
@@ -264,7 +264,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
             onPress={handleEndPress}
             hitSlop={PILL_HIT_SLOP}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.endActivityA11y}
+            accessibilityLabel={t.friends.endActivityA11y}
             style={({ pressed }) => [styles.endPill, pressed && styles.endPillPressed]}
           >
             <XIcon size={16} color={Colors.foamMuted} />
@@ -273,7 +273,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {cs.friends.endActivity}
+              {t.friends.endActivity}
             </Text>
           </Pressable>
         </View>

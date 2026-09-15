@@ -20,7 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlowButton } from '@/components/shared/GlowButton';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { NicknameField } from '@/profile/NicknameField';
 import {
   getSeenNicknameNudgeVersion,
@@ -127,10 +127,10 @@ export function NicknameNudgeModal() {
       if (result.ok) {
         void markNicknameNudgeSeen(version);
         setEligible(false);
-        showToast(cs.nicknameNudge.savedToast);
+        showToast(t.nicknameNudge.savedToast);
         return;
       }
-      setError(result.detail || cs.account.errorGeneric);
+      setError(result.detail || t.account.errorGeneric);
     } finally {
       setBusy(false);
     }
@@ -151,14 +151,14 @@ export function NicknameNudgeModal() {
               <Text style={styles.at} maxFontSizeMultiplier={FontScaleCap.body}>
                 @
               </Text>
-              <Text style={styles.eyebrow}>{cs.nicknameNudge.eyebrow}</Text>
+              <Text style={styles.eyebrow}>{t.nicknameNudge.eyebrow}</Text>
             </View>
 
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.nicknameNudge.title}
+              {t.nicknameNudge.title}
             </Text>
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.nicknameNudge.body}
+              {t.nicknameNudge.body}
             </Text>
 
             <NicknameField
@@ -178,21 +178,21 @@ export function NicknameNudgeModal() {
 
             <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]}>
               <GlowButton
-                label={busy ? cs.nicknameNudge.ctaBusy : cs.nicknameNudge.cta}
+                label={busy ? t.nicknameNudge.ctaBusy : t.nicknameNudge.cta}
                 onPress={() => void handleSave()}
                 glow="none"
                 height={56}
                 disabled={!ready || busy}
-                accessibilityLabel={cs.nicknameNudge.cta}
+                accessibilityLabel={t.nicknameNudge.cta}
               />
               <Pressable
                 onPress={dismiss}
                 style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.nicknameNudge.skip}
+                accessibilityLabel={t.nicknameNudge.skip}
               >
                 <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.nicknameNudge.skip}
+                  {t.nicknameNudge.skip}
                 </Text>
               </Pressable>
             </View>

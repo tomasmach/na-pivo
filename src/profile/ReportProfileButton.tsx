@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { FlagIcon } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -35,7 +35,7 @@ export const ReportProfileButton = memo(function ReportProfileButton({
         reason,
         comment: targetLabel ?? '',
       });
-      showToast(result.ok ? cs.profile.report.sentToast : result.detail || cs.profile.edit.errorGeneric);
+      showToast(result.ok ? t.profile.report.sentToast : result.detail || t.profile.edit.errorGeneric);
     } finally {
       setBusy(false);
     }
@@ -43,11 +43,11 @@ export const ReportProfileButton = memo(function ReportProfileButton({
 
   const handlePress = useCallback(() => {
     showAppDialog({
-      title: cs.profile.report.confirmTitle,
-      message: cs.profile.report.confirmBody(targetLabel ?? cs.profile.report.profileFallback),
+      title: t.profile.report.confirmTitle,
+      message: t.profile.report.confirmBody(targetLabel ?? t.profile.report.profileFallback),
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
-        { text: cs.profile.report.confirmSubmit, style: 'destructive', onPress: submit },
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.profile.report.confirmSubmit, style: 'destructive', onPress: submit },
       ],
       cancelable: true,
     });
@@ -59,12 +59,12 @@ export const ReportProfileButton = memo(function ReportProfileButton({
       disabled={busy}
       style={({ pressed }) => [styles.button, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={cs.a11y.accountReportProfile}
+      accessibilityLabel={t.a11y.accountReportProfile}
       hitSlop={6}
     >
       <FlagIcon size={15} color={Colors.amber} />
       <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.profile.report.button}
+        {t.profile.report.button}
       </Text>
     </Pressable>
   );

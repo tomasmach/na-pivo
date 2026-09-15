@@ -19,8 +19,14 @@ import {
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+import {
+  t,
+  intlLocale,
+  beerCountLabel,
+  shotCountLabel,
+  softDrinkCountLabel,
+  wineCountLabel,
+} from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { Avatar } from '@/profile/Avatar';
 import { useToastStore } from '@/stores/toastStore';
@@ -42,7 +48,7 @@ interface NightCardProps {
 function authorLabel(night: PublishedNight): string {
   if (night.author.nickname) return `@${night.author.nickname}`;
   if (night.author.displayName) return night.author.displayName;
-  return cs.vycep.anonymousAuthor;
+  return t.vycep.anonymousAuthor;
 }
 
 function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
@@ -55,7 +61,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
       [
         night.pubNames.length > 0 ? night.pubNames.slice(0, 5).join(' → ') : null,
         night.durationMinutes != null && night.durationMinutes > 0
-          ? cs.vycep.nightDuration(
+          ? t.vycep.nightDuration(
               Math.floor(night.durationMinutes / 60),
               night.durationMinutes % 60,
             )
@@ -80,12 +86,12 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
 
   const handleUnpublish = useCallback(() => {
     showAppDialog({
-      title: cs.vycep.unpublishCta,
-      message: cs.vycep.publishBody,
+      title: t.vycep.unpublishCta,
+      message: t.vycep.publishBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.vycep.unpublishCta,
+          text: t.vycep.unpublishCta,
           style: 'destructive',
           onPress: () => {
             const clientId = night.clientId;
@@ -99,13 +105,13 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
                   void enqueueNightOp({ op: 'unpublish', clientId });
                 } else {
                   trackUiInteraction('night_unpublish', 'failure');
-                  showToast(cs.vycep.roundErrorToast);
+                  showToast(t.vycep.roundErrorToast);
                   return;
                 }
               }
               trackUiInteraction('night_unpublish', 'success');
               markUnpublished(clientId);
-              showToast(cs.vycep.unpublishedToast);
+              showToast(t.vycep.unpublishedToast);
               onRemoved?.(clientId);
             });
           },
@@ -116,12 +122,12 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
 
   const handleReport = useCallback(() => {
     showAppDialog({
-      title: cs.vycep.reportTitle,
-      message: cs.vycep.reportBody,
+      title: t.vycep.reportTitle,
+      message: t.vycep.reportBody,
       buttons: [
-        { text: cs.common.cancel, style: 'cancel' },
+        { text: t.common.cancel, style: 'cancel' },
         {
-          text: cs.vycep.reportConfirm,
+          text: t.vycep.reportConfirm,
           style: 'destructive',
           onPress: () => {
             void reportProfileContent({
@@ -129,7 +135,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
               reason: 'spam',
               nightId: night.id,
             }).then((res) => {
-              showToast(res.ok ? cs.vycep.reportSentToast : cs.vycep.reportErrorToast);
+              showToast(res.ok ? t.vycep.reportSentToast : t.vycep.reportErrorToast);
             });
           },
         },
@@ -148,9 +154,9 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     night.isMine
       ? (
           night.visibility === 'public'
-            ? cs.vycep.visibilityChipWorld
-            : cs.vycep.visibilityChipFriends
-        ).toLocaleLowerCase('cs-CZ')
+            ? t.vycep.visibilityChipWorld
+            : t.vycep.visibilityChipFriends
+        ).toLocaleLowerCase(intlLocale)
       : null,
   ]
     .filter((part): part is string => part !== null)
@@ -160,7 +166,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     <View
       style={styles.card}
       accessibilityRole="text"
-      accessibilityLabel={cs.a11y.nightCard(owner)}
+      accessibilityLabel={t.a11y.nightCard(owner)}
     >
       <View style={styles.header}>
         <Avatar
@@ -181,7 +187,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
           onPress={openMenu}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.nightMenu}
+          accessibilityLabel={t.a11y.nightMenu}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
         >
           <MenuIcon size={18} color={Colors.mutedText} />
@@ -205,7 +211,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
         {night.isMine ? (
           night.rounds > 0 ? (
             <Text style={styles.mineRoundsText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.vycep.roundCount(night.rounds)}
+              {t.vycep.roundCount(night.rounds)}
             </Text>
           ) : (
             <View />

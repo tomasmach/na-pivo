@@ -178,6 +178,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     assetBundlePatterns: ['**/*'],
+    // Native localizations for the system permission dialogs. iOS picks them
+    // by device language; the app's own copy follows the switch in Settings
+    // (src/i18n/locale.ts). Slovak devices keep the Czech strings.
+    locales: {
+      cs: './locales/cs.json',
+      sk: './locales/cs.json',
+      en: './locales/en.json',
+    },
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
       icon: './assets/images/icon.png',

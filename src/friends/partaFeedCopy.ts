@@ -18,6 +18,7 @@
  */
 
 import type { PartaFeedDrink, PartaFeedSitting } from '@/data/partaFeedClient';
+import { intlLocale, locale, t } from '@/i18n';
 
 /** Czech counts split at 1 / 2–4 / 5+ (and 0 takes the 5+ form). */
 export interface CzechPlural {
@@ -33,20 +34,28 @@ export function pluralize(count: number, forms: CzechPlural): string {
   return forms.many;
 }
 
-const BEER_PLAIN: CzechPlural = { one: 'pivo', few: 'piva', many: 'piv' };
+/** Pick the noun forms for the UI language; English reuses the Czech split (one / other). */
+function noun(cs: CzechPlural, en: { one: string; other: string }): CzechPlural {
+  return locale === 'en' ? { one: en.one, few: en.other, many: en.other } : cs;
+}
+
+const BEER_PLAIN = noun({ one: 'pivo', few: 'piva', many: 'piv' }, { one: 'beer', other: 'beers' });
 
 /**
  * Beer nouns by how it was served. Draft is deliberately absent: it is the
  * default in a Czech pub, so naming it would be noise on almost every row.
  */
 const BEER_BY_SERVING: Record<string, CzechPlural> = {
-  bottle: { one: 'lahváč', few: 'lahváče', many: 'lahváčů' },
-  can: { one: 'plechovka', few: 'plechovky', many: 'plechovek' },
-  plastic_bottle: { one: 'petka', few: 'petky', many: 'petek' },
+  bottle: noun({ one: 'lahváč', few: 'lahváče', many: 'lahváčů' }, { one: 'bottle', other: 'bottles' }),
+  can: noun({ one: 'plechovka', few: 'plechovky', many: 'plechovek' }, { one: 'can', other: 'cans' }),
+  plastic_bottle: noun({ one: 'petka', few: 'petky', many: 'petek' }, { one: 'plastic bottle', other: 'plastic bottles' }),
 };
 
-const SHOT: CzechPlural = { one: 'panák', few: 'panáky', many: 'panáků' };
-const WINE: CzechPlural = { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' };
+const SHOT = noun({ one: 'panák', few: 'panáky', many: 'panáků' }, { one: 'shot', other: 'shots' });
+const WINE = noun(
+  { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' },
+  { one: 'glass of wine', other: 'glasses of wine' },
+);
 
 /**
  * The counted noun for one drink line, or null when the drink has no natural
@@ -68,7 +77,7 @@ export function describeDrink(drink: PartaFeedDrink): string {
   const name = drink.name.trim();
   if (!noun) {
     const counted = drink.count > 1 ? `${drink.count}× ` : '';
-    return name ? `${counted}${name}` : `${counted}nápoj`.trim();
+    return name ? `${counted}${name}` : `${counted}${t.partaFeed.drinkFallback}`.trim();
   }
   const head = `${drink.count} ${pluralize(drink.count, noun)}`;
   return name ? `${head} ${name}` : head;
@@ -90,7 +99,7 @@ export function sittingHeadline(sitting: PartaFeedSitting): string {
   // `total` counts drinks the server truncated out of `items`, so trust it over
   // the visible sum whenever it is larger.
   const remainder = Math.max(others, sitting.total - first.count);
-  return remainder > 0 ? `${describeDrink(first)} + ${remainder} dalších` : describeDrink(first);
+  return remainder > 0 ? `${describeDrink(first)} ${t.partaFeed.othersSuffix(remainder)}` : describeDrink(first);
 }
 
 /** The quiet second line: everything that was not the headline. */
@@ -100,16 +109,16 @@ export function sittingDetail(sitting: PartaFeedSitting): string {
 }
 
 const PLACE_LABELS: Record<string, string> = {
-  private: 'U někoho doma',
-  outdoors: 'Venku',
-  other: 'Mimo hospodu',
+  private: t.partaFeed.placePrivate,
+  outdoors: t.partaFeed.placeOutdoors,
+  other: t.vycep.outsidePub,
 };
 
 /** Where it happened: the pub's name, or an honest label when it was not one. */
 export function sittingPlace(sitting: PartaFeedSitting): string {
   const name = sitting.pubName.trim();
   if (name) return name;
-  return PLACE_LABELS[sitting.placeContext] ?? 'Mimo hospodu';
+  return PLACE_LABELS[sitting.placeContext] ?? t.vycep.outsidePub;
 }
 
 const DAY_MS = 86_400_000;
@@ -133,9 +142,9 @@ export function dayLabel(iso: string, now: number = Date.now()): string {
   const at = Date.parse(iso);
   if (!Number.isFinite(at)) return '';
   const days = Math.round((drinkingDayStart(now) - drinkingDayStart(at)) / DAY_MS);
-  if (days <= 0) return 'dneska';
-  if (days === 1) return 'včera';
-  if (days === 2) return 'předevčírem';
-  if (days <= 6) return `před ${days} dny`;
-  return new Date(at).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
+  if (days <= 0) return t.relativeTime.today;
+  if (days === 1) return t.relativeTime.yesterday;
+  if (days === 2) return t.relativeTime.dayBeforeYesterday;
+  if (days <= 6) return t.relativeTime.daysAgoLong(days);
+  return new Date(at).toLocaleDateString(intlLocale, { day: 'numeric', month: 'numeric' });
 }

@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+
+import { locale } from '@/i18n';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { buildDrinkEntry } from '@/data/drinksClient';
@@ -138,10 +140,12 @@ async function syncAndroid(
     return;
   }
 
-  const status = await startOrUpdateAndroidActivity(props);
+  // The notification is drawn natively, so it needs to know the app language.
+  const payload = { ...props, locale };
+  const status = await startOrUpdateAndroidActivity(payload);
   if (!status.notificationsEnabled && allowPermissionPrompt) {
     const permission = await ensureNotificationPermissionForBeerFeatures();
-    if (permission.ok) await startOrUpdateAndroidActivity(props);
+    if (permission.ok) await startOrUpdateAndroidActivity(payload);
   }
 }
 

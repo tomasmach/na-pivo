@@ -33,7 +33,7 @@ import Svg, {
 } from 'react-native-svg';
 
 import { CopyIcon, Share2Icon, XIcon } from '@/components/shared/IconGlyph';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -108,9 +108,9 @@ function ShareNightModalBase({
       try {
         const base64 = await capture('base64');
         await Clipboard.setImageAsync(base64);
-        showToast(cs.vycep.storyCopied);
+        showToast(t.vycep.storyCopied);
       } catch {
-        showToast(cs.vycep.storyShareError);
+        showToast(t.vycep.storyShareError);
       } finally {
         setBusy(false);
       }
@@ -128,13 +128,13 @@ function ShareNightModalBase({
           await Sharing.shareAsync(fileUri, {
             mimeType: 'image/png',
             UTI: 'public.png',
-            dialogTitle: cs.vycep.storyModalTitle,
+            dialogTitle: t.vycep.storyModalTitle,
           });
         } else {
           await Share.share({ url: fileUri, message: '' });
         }
       } catch {
-        showToast(cs.vycep.storyShareError);
+        showToast(t.vycep.storyShareError);
       } finally {
         setBusy(false);
       }
@@ -152,20 +152,20 @@ function ShareNightModalBase({
       <View style={styles.backdrop}>
         <View style={styles.topRow}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.vycep.storyModalTitle}
+            {t.vycep.storyModalTitle}
           </Text>
           <Pressable
             onPress={onClose}
             style={({ pressed }) => [styles.close, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={cs.common.cancel}
+            accessibilityLabel={t.common.cancel}
             hitSlop={6}
           >
             <XIcon size={20} color={Colors.foam} />
           </Pressable>
         </View>
         <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.vycep.storyStickerHint}
+          {t.vycep.storyStickerHint}
         </Text>
 
         <View style={styles.previewArea}>
@@ -219,7 +219,7 @@ function ShareNightModalBase({
             onPress={handleCopy}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={cs.vycep.storyCopyCta}
+            accessibilityLabel={t.vycep.storyCopyCta}
             style={({ pressed }) => [
               styles.primaryButton,
               (pressed || busy) && styles.buttonPressed,
@@ -227,14 +227,14 @@ function ShareNightModalBase({
           >
             <CopyIcon size={18} color={Colors.stout} />
             <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.vycep.storyCopyCta}
+              {t.vycep.storyCopyCta}
             </Text>
           </Pressable>
           <Pressable
             onPress={handleShare}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel={cs.a11y.shareNightButton}
+            accessibilityLabel={t.a11y.shareNightButton}
             style={({ pressed }) => [
               styles.secondaryButton,
               (pressed || busy) && styles.buttonPressed,
@@ -242,7 +242,7 @@ function ShareNightModalBase({
           >
             <Share2Icon size={17} color={Colors.foam} />
             <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.vycep.storyShareCta}
+              {t.vycep.storyShareCta}
             </Text>
           </Pressable>
         </View>

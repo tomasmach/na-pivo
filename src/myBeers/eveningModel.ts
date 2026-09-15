@@ -15,8 +15,7 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
-import { cs } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+import { t, beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** A grouped line in an evening's breakdown: one row per beer + volume. */
@@ -122,9 +121,9 @@ export function eveningPriceLabel(
 ): string {
   const count = lines.reduce((sum, line) => sum + line.count, 0);
   const pricedCount = lines.reduce((sum, line) => sum + line.pricedCount, 0);
-  if (pricedCount === 0) return cs.myBeers.priceUnknown;
+  if (pricedCount === 0) return t.myBeers.priceUnknown;
   const price = formatPrice(lines.reduce((sum, line) => sum + line.totalCzk, 0), priceCurrency);
-  return pricedCount < count ? cs.myBeers.pricePartial(price) : price;
+  return pricedCount < count ? t.myBeers.pricePartial(price) : price;
 }
 
 /** Compact mixed-evening label with beer kept first and zero categories hidden. */
@@ -177,7 +176,7 @@ export function formatEveningDate(startedAt: string, now: Date): string {
 /** Human date label for an evening: "Dnes" / "Včera" / "12. 6.". */
 export function eveningDateLabel(startedAt: string, now: Date): string {
   const rel = eveningDayRelation(startedAt, now);
-  if (rel === 'today') return cs.myBeers.today;
-  if (rel === 'yesterday') return cs.myBeers.yesterday;
+  if (rel === 'today') return t.myBeers.today;
+  if (rel === 'yesterday') return t.myBeers.yesterday;
   return formatEveningDate(startedAt, now);
 }

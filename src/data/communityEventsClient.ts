@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 import { chainAbortSignal } from './apiFetch';
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
@@ -126,10 +128,10 @@ function parseEvent(value: unknown): CommunityEvent | null {
 
 async function request(path: string, options: RequestOptions = {}) {
   const endpoint = getBackendEndpoint(path);
-  if (!endpoint) return { ok: false as const, code: 'offline', detail: 'Server teď není dostupný.' };
+  if (!endpoint) return { ok: false as const, code: 'offline', detail: t.clientErrors.offline };
   const session = await ensureAccount(options.signal);
   if (!session?.authenticated) {
-    return { ok: false as const, code: 'auth', detail: 'Pro domácí setkání se nejdřív přihlas.' };
+    return { ok: false as const, code: 'auth', detail: t.clientErrors.eventsSignIn };
   }
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
   try {
@@ -145,11 +147,11 @@ async function request(path: string, options: RequestOptions = {}) {
     return {
       ok: false as const,
       code: typeof data.code === 'string' ? data.code : `http_${response.status}`,
-      detail: typeof data.detail === 'string' ? data.detail : 'Tohle se teď nepovedlo.',
+      detail: typeof data.detail === 'string' ? data.detail : t.clientErrors.actionFailed,
     };
   } catch (error) {
     trackApiFailure('community_events_request', { endpoint: path, reason: 'exception', error });
-    return { ok: false as const, code: 'network', detail: 'Síť se netváří. Zkus to za chvíli.' };
+    return { ok: false as const, code: 'network', detail: t.clientErrors.network };
   } finally {
     abort.cleanup();
   }
@@ -206,7 +208,7 @@ export async function createCommunityEvent(input: {
   });
   if (!result.ok) return result;
   const event = parseEvent(result.data);
-  return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: 'Server poslal neúplná data.' };
+  return event ? { ok: true, event } : { ok: false, code: 'invalid_response', detail: t.clientErrors.incompleteResponse };
 }
 
 export async function requestCommunityEventJoin(eventId: string, message = ''): Promise<CommunityActionResult> {
@@ -241,7 +243,7 @@ export async function cancelCommunityEvent(eventId: string): Promise<CommunityAc
 export async function reportCommunityEvent(eventId: string): Promise<CommunityActionResult> {
   const result = await request(`/v1/community-events/${eventId}/report`, {
     method: 'POST',
-    body: { reason: 'other', comment: 'Nahlášeno z přehledu komunitních setkání.' },
+    body: { reason: 'other', comment: t.communityEvents.reportComment },
   });
   return result.ok ? { ok: true } : result;
 }

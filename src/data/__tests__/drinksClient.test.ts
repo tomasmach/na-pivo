@@ -8,7 +8,7 @@ import {
 } from '../drinksClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 import { useToastStore } from '@/stores/toastStore';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
 // node test env; mock it so the module loads. We also stub ensureAccount so the
@@ -248,7 +248,7 @@ describe('submitDrink', () => {
     })) as unknown as typeof fetch;
 
     await expect(submitDrink(entry)).resolves.toBe('permanent-error');
-    expect(useToastStore.getState().message).toBe(cs.counter.drinkLimitedToast);
+    expect(useToastStore.getState().message).toBe(t.counter.drinkLimitedToast);
 
     // A second rejection inside the toast gap stays quiet — a flush of several
     // over-limit drinks must not nag repeatedly.

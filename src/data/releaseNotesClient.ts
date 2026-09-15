@@ -15,6 +15,8 @@
 
 import Constants from 'expo-constants';
 
+import { locale, t } from '@/i18n';
+
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 
@@ -63,20 +65,34 @@ function normalizeItems(raw: unknown): ReleaseNoteItem[] {
   return out;
 }
 
+/**
+ * Pick the copy for the language the app runs in. The backend sends the Czech
+ * note in `title` / `items` and, when it has one, the English note alongside it
+ * in `title_en` / `items_en`. Both English fields are optional, so an English
+ * UI simply gets nothing for a note that was never translated (returns null and
+ * the note is dropped) instead of falling back to Czech.
+ */
+function localizedNote(raw: unknown): { title: string; items: ReleaseNoteItem[] } | null {
+  const obj = raw as Record<string, unknown> | null | undefined;
+  const english = locale === 'en';
+  const items = normalizeItems(english ? obj?.items_en : obj?.items);
+  if (items.length === 0) return null;
+  const rawTitle = english ? obj?.title_en : obj?.title;
+  return {
+    title: typeof rawTitle === 'string' && rawTitle ? rawTitle : t.whatsNew.defaultTitle,
+    items,
+  };
+}
+
 /** Coerce one raw `{version,title,items}` object into a ReleaseNote, or null if
  *  it has no usable version. Notes with no items are dropped — there is nothing
  *  worth showing for them. */
 function normalizeNote(raw: unknown): ReleaseNote | null {
   const version = (raw as { version?: unknown })?.version;
   if (typeof version !== 'string' || !version) return null;
-  const items = normalizeItems((raw as { items?: unknown })?.items);
-  if (items.length === 0) return null;
-  const title = (raw as { title?: unknown })?.title;
-  return {
-    version,
-    title: typeof title === 'string' && title ? title : 'Co je nového',
-    items,
-  };
+  const localized = localizedNote(raw);
+  if (!localized) return null;
+  return { version, ...localized };
 }
 
 /**
@@ -117,21 +133,18 @@ export async function fetchReleaseNote(
     }
 
     const data = (await resp.json()) as Partial<ReleaseNote>;
-    const items = normalizeItems(data?.items);
+    const localized = localizedNote(data);
 
     // A note with no usable highlights is nothing worth interrupting the user
-    // for — treat it as 'none' so we advance past this version.
-    if (typeof data?.version !== 'string' || !data.version || items.length === 0) {
+    // for — treat it as 'none' so we advance past this version. In English that
+    // also covers a note the backend has only in Czech.
+    if (typeof data?.version !== 'string' || !data.version || !localized) {
       return { kind: 'none' };
     }
 
     return {
       kind: 'note',
-      note: {
-        version: data.version,
-        title: typeof data.title === 'string' && data.title ? data.title : 'Co je nového',
-        items,
-      },
+      note: { version: data.version, ...localized },
     };
   } catch {
     // network / timeout / abort / malformed JSON — never throw.

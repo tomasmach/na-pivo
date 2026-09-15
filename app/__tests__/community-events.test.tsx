@@ -1,7 +1,7 @@
 import React from 'react';
 import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import CommunityEventsScreen from '../community-events';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -139,7 +139,7 @@ describe('CommunityEventsScreen', () => {
       });
     await renderScreen();
 
-    const locateButton = renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.locate });
+    const locateButton = renderer!.root.findByProps({ accessibilityLabel: t.communityEvents.locate });
     await act(async () => {
       await locateButton.props.onPress();
     });
@@ -164,7 +164,7 @@ describe('CommunityEventsScreen', () => {
 
     const inputs = renderer!.root.findAll(
       (node) =>
-        node.props.placeholder === cs.communityEvents.requestPlaceholder &&
+        node.props.placeholder === t.communityEvents.requestPlaceholder &&
         typeof node.props.onChangeText === 'function' &&
         typeof node.type === 'string',
     );
@@ -173,7 +173,7 @@ describe('CommunityEventsScreen', () => {
 
     const updatedInputs = renderer!.root.findAll(
       (node) =>
-        node.props.placeholder === cs.communityEvents.requestPlaceholder &&
+        node.props.placeholder === t.communityEvents.requestPlaceholder &&
         typeof node.props.onChangeText === 'function' &&
         typeof node.type === 'string',
     );
@@ -187,26 +187,26 @@ describe('CommunityEventsScreen', () => {
       .mockResolvedValueOnce({ ok: true, event: event('created', 'Pivo na zahradě') })
       .mockResolvedValueOnce({ ok: false, code: 'network', detail: 'Zkus to znovu.' });
     await renderScreen();
-    const createTabLabel = renderer!.root.findByProps({ children: cs.communityEvents.create });
+    const createTabLabel = renderer!.root.findByProps({ children: t.communityEvents.create });
     act(() => createTabLabel.parent!.props.onPress());
 
-    const titleInput = renderer!.root.findByProps({ placeholder: cs.communityEvents.formTitlePlaceholder });
-    const cityInput = renderer!.root.findByProps({ placeholder: cs.communityEvents.cityPlaceholder });
-    const addressInput = renderer!.root.findByProps({ placeholder: cs.communityEvents.exactAddressPlaceholder });
+    const titleInput = renderer!.root.findByProps({ placeholder: t.communityEvents.formTitlePlaceholder });
+    const cityInput = renderer!.root.findByProps({ placeholder: t.communityEvents.cityPlaceholder });
+    const addressInput = renderer!.root.findByProps({ placeholder: t.communityEvents.exactAddressPlaceholder });
     act(() => {
       titleInput.props.onChangeText('Pivo na zahradě');
       cityInput.props.onChangeText('Praha');
       addressInput.props.onChangeText('Vinohradská 12');
     });
 
-    const locationButton = renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.useLocation });
+    const locationButton = renderer!.root.findByProps({ accessibilityLabel: t.communityEvents.useLocation });
     await act(async () => {
       await locationButton.props.onPress();
     });
-    const adultLabel = renderer!.root.findByProps({ children: cs.communityEvents.adultsConfirm });
+    const adultLabel = renderer!.root.findByProps({ children: t.communityEvents.adultsConfirm });
     act(() => adultLabel.parent!.props.onPress());
 
-    const publish = renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.publish });
+    const publish = renderer!.root.findByProps({ accessibilityLabel: t.communityEvents.publish });
     await act(async () => {
       await publish.props.onPress();
     });
@@ -218,9 +218,9 @@ describe('CommunityEventsScreen', () => {
     expect(mockCreateCommunityEvent.mock.calls[0][0].clientId).toBe('community-draft-id');
     expect(mockCreateCommunityEvent.mock.calls[1][0].clientId).toBe('community-draft-id');
 
-    const nextCreateTabLabel = renderer!.root.findByProps({ children: cs.communityEvents.create });
+    const nextCreateTabLabel = renderer!.root.findByProps({ children: t.communityEvents.create });
     act(() => nextCreateTabLabel.parent!.props.onPress());
-    const nextPublish = renderer!.root.findByProps({ accessibilityLabel: cs.communityEvents.publish });
+    const nextPublish = renderer!.root.findByProps({ accessibilityLabel: t.communityEvents.publish });
     await act(async () => {
       await nextPublish.props.onPress();
     });

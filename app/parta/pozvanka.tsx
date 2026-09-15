@@ -21,7 +21,7 @@ import { ChevronLeftIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { claimInviteCode } from '@/data/friendInviteLink';
 import { resolveInviteCode, type FriendProfile } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors } from '@/theme/colors';
@@ -32,9 +32,9 @@ type ClaimState = 'loading' | 'valid' | 'expired' | 'invalid' | 'self';
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return t.map.friendFallback;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || t.map.friendFallback;
 }
 
 export default function InviteClaimScreen() {
@@ -91,25 +91,25 @@ export default function InviteClaimScreen() {
     void claimInviteCode(code).then((result) => {
       if (!mountedRef.current) return;
       if (result.ok) {
-        showToast(cs.friends.claimDone, { icon: <UsersIcon size={20} color={Colors.amber} /> });
+        showToast(t.friends.claimDone, { icon: <UsersIcon size={20} color={Colors.amber} /> });
         goToParta();
         return;
       }
       setClaiming(false);
       // Surface the backend's reason; fall back to a generic invalid message.
       const message =
-        result.code === 'invite_expired' ? cs.friends.claimExpired : result.detail || cs.friends.claimInvalid;
+        result.code === 'invite_expired' ? t.friends.claimExpired : result.detail || t.friends.claimInvalid;
       showToast(message);
     });
   }, [claiming, code, goToParta, showToast]);
 
   const errorMessage =
     state === 'expired'
-      ? cs.friends.claimExpired
+      ? t.friends.claimExpired
       : state === 'invalid'
-        ? cs.friends.claimInvalid
+        ? t.friends.claimInvalid
         : state === 'self'
-          ? cs.friends.claimSelf
+          ? t.friends.claimSelf
           : null;
 
   return (
@@ -119,7 +119,7 @@ export default function InviteClaimScreen() {
           onPress={goToParta}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.claimBack}
+          accessibilityLabel={t.friends.claimBack}
           style={({ pressed }) => [styles.backBtn, pressed && styles.dim]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
@@ -129,7 +129,7 @@ export default function InviteClaimScreen() {
       <View style={styles.body}>
         {state === 'loading' ? (
           <Text style={styles.loadingText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.claimLoading}
+            {t.friends.claimLoading}
           </Text>
         ) : errorMessage ? (
           <View style={styles.centerBlock}>
@@ -139,7 +139,7 @@ export default function InviteClaimScreen() {
             </Text>
             <View style={styles.ctaWrap}>
               <GlowButton
-                label={cs.friends.claimBack}
+                label={t.friends.claimBack}
                 onPress={goToParta}
                 variant="secondary"
                 glow="none"
@@ -156,14 +156,14 @@ export default function InviteClaimScreen() {
               size={88}
             />
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.friends.claimTitle(nameOf(inviter))}
+              {t.friends.claimTitle(nameOf(inviter))}
             </Text>
             <Text style={styles.claimBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.claimBody}
+              {t.friends.claimBody}
             </Text>
             <View style={styles.ctaWrap}>
               <GlowButton
-                label={cs.friends.claimCta}
+                label={t.friends.claimCta}
                 onPress={handleClaim}
                 variant="primary"
                 glow="soft"

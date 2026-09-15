@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 
 import { ensureLocationPermission } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import HomePointScreen from '../home-point';
 
@@ -208,7 +208,7 @@ describe('HomePointScreen', () => {
     });
 
     expect(
-      renderer.root.findByProps({ children: cs.addPub.locationUnavailable }),
+      renderer.root.findByProps({ children: t.addPub.locationUnavailable }),
     ).toBeTruthy();
     expect(useSettingsStore.getState().homePoint).toBeNull();
   });

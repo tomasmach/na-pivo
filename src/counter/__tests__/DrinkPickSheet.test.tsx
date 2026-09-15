@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { DrinkPickSheet, type DrinkPickRow } from '../DrinkPickSheet';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -139,17 +139,17 @@ describe('DrinkPickSheet', () => {
   it('shows both section captions only when both groups are non-empty', () => {
     const both = render().renderer;
     expect(texts(both)).toEqual(
-      expect.arrayContaining([cs.counter.outsideMenuHeader, cs.counter.menuHeader]),
+      expect.arrayContaining([t.counter.outsideMenuHeader, t.counter.menuHeader]),
     );
 
     const tonightOnly = render({ menuRows: [] }).renderer;
-    expect(texts(tonightOnly)).not.toContain(cs.counter.outsideMenuHeader);
-    expect(texts(tonightOnly)).not.toContain(cs.counter.menuHeader);
+    expect(texts(tonightOnly)).not.toContain(t.counter.outsideMenuHeader);
+    expect(texts(tonightOnly)).not.toContain(t.counter.menuHeader);
     expect(texts(tonightOnly)).toContain('Pilsner Urquell');
 
     const menuOnly = render({ tonightRows: [] }).renderer;
-    expect(texts(menuOnly)).not.toContain(cs.counter.outsideMenuHeader);
-    expect(texts(menuOnly)).not.toContain(cs.counter.menuHeader);
+    expect(texts(menuOnly)).not.toContain(t.counter.outsideMenuHeader);
+    expect(texts(menuOnly)).not.toContain(t.counter.menuHeader);
     expect(texts(menuOnly)).toContain('Radegast 12');
   });
 
@@ -157,13 +157,13 @@ describe('DrinkPickSheet', () => {
     const { renderer, onCountRow, onEditRow } = render();
 
     act(() => {
-      pressable(renderer, cs.a11y.counterCountBeer('Radegast 12', '0,5 l · 49 Kč')).props.onPress();
+      pressable(renderer, t.a11y.counterCountBeer('Radegast 12', '0,5 l · 49 Kč')).props.onPress();
     });
     expect(onCountRow).toHaveBeenCalledTimes(1);
     expect(onCountRow).toHaveBeenCalledWith(MENU[0]);
 
     act(() => {
-      pressable(renderer, cs.a11y.counterCountBeerNoPrice('Kozel 11')).props.onPress();
+      pressable(renderer, t.a11y.counterCountBeerNoPrice('Kozel 11')).props.onPress();
     });
     expect(onCountRow).toHaveBeenLastCalledWith(TONIGHT[1]);
     expect(onEditRow).not.toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe('DrinkPickSheet', () => {
     const { renderer, onEditRow, onCountRow } = render();
 
     act(() => {
-      pressable(renderer, cs.a11y.counterCountBeer('Pilsner Urquell', '0,5 l · 62 Kč')).props.onLongPress();
+      pressable(renderer, t.a11y.counterCountBeer('Pilsner Urquell', '0,5 l · 62 Kč')).props.onLongPress();
     });
 
     expect(onEditRow).toHaveBeenCalledTimes(1);
@@ -184,7 +184,7 @@ describe('DrinkPickSheet', () => {
   it('has no long-press handler outside a pub', () => {
     const { renderer, onEditRow } = render({ isPub: false, menuRows: [] });
 
-    const node = pressable(renderer, cs.a11y.counterCountBeer('Pilsner Urquell', '0,5 l · 62 Kč'));
+    const node = pressable(renderer, t.a11y.counterCountBeer('Pilsner Urquell', '0,5 l · 62 Kč'));
     expect(node.props.onLongPress).toBeUndefined();
     expect(onEditRow).not.toHaveBeenCalled();
   });
@@ -193,9 +193,9 @@ describe('DrinkPickSheet', () => {
     const { renderer } = render();
     const rendered = texts(renderer);
 
-    expect(rendered).toContain(cs.counter.perBeerCount(2));
-    expect(rendered).toContain(cs.counter.perBeerCount(1));
-    expect(rendered).not.toContain(cs.counter.perBeerCount(0));
+    expect(rendered).toContain(t.counter.perBeerCount(2));
+    expect(rendered).toContain(t.counter.perBeerCount(1));
+    expect(rendered).not.toContain(t.counter.perBeerCount(0));
     // Exactly the two tonight rows carry a badge; the menu row (count 0) does not.
     expect(rendered.filter((text) => /^\d+×$/.test(text))).toHaveLength(2);
   });
@@ -203,15 +203,15 @@ describe('DrinkPickSheet', () => {
   it('wires the two bottom action rows', () => {
     const { renderer, onAddBeer, onAddOther } = render();
 
-    expect(texts(renderer)).toContain(cs.counter.pickAddBeer);
+    expect(texts(renderer)).toContain(t.counter.pickAddBeer);
     act(() => {
-      pressable(renderer, cs.a11y.counterAddBeer).props.onPress();
+      pressable(renderer, t.a11y.counterAddBeer).props.onPress();
     });
     expect(onAddBeer).toHaveBeenCalledTimes(1);
     expect(onAddOther).not.toHaveBeenCalled();
 
     act(() => {
-      pressable(renderer, cs.counter.pickNonBeer).props.onPress();
+      pressable(renderer, t.counter.pickNonBeer).props.onPress();
     });
     expect(onAddOther).toHaveBeenCalledTimes(1);
     expect(onAddBeer).toHaveBeenCalledTimes(1);
@@ -221,13 +221,13 @@ describe('DrinkPickSheet', () => {
     const { renderer, onAddBeer } = render({ tonightRows: [], menuRows: [] });
     const rendered = texts(renderer);
 
-    expect(rendered).toContain(cs.counter.pickEmptyPub);
-    expect(rendered).not.toContain(cs.counter.pickEmptyOutside);
-    expect(rendered).toContain(cs.counter.pickFirstBeer);
-    expect(rendered).not.toContain(cs.counter.pickAddBeer);
+    expect(rendered).toContain(t.counter.pickEmptyPub);
+    expect(rendered).not.toContain(t.counter.pickEmptyOutside);
+    expect(rendered).toContain(t.counter.pickFirstBeer);
+    expect(rendered).not.toContain(t.counter.pickAddBeer);
 
     act(() => {
-      pressable(renderer, cs.a11y.counterAddBeer).props.onPress();
+      pressable(renderer, t.a11y.counterAddBeer).props.onPress();
     });
     expect(onAddBeer).toHaveBeenCalledTimes(1);
   });
@@ -236,30 +236,30 @@ describe('DrinkPickSheet', () => {
     const { renderer } = render({ isPub: false, tonightRows: [], menuRows: [] });
     const rendered = texts(renderer);
 
-    expect(rendered).toContain(cs.counter.pickEmptyOutside);
-    expect(rendered).not.toContain(cs.counter.pickEmptyPub);
-    expect(rendered).toContain(cs.counter.pickFirstBeer);
+    expect(rendered).toContain(t.counter.pickEmptyOutside);
+    expect(rendered).not.toContain(t.counter.pickEmptyPub);
+    expect(rendered).toContain(t.counter.pickFirstBeer);
   });
 
   it('marks a rotating pub menu as the latest confirmed snapshot', () => {
     const { renderer } = render({ beerMenuRotates: true });
     const rendered = texts(renderer);
 
-    expect(rendered).toContain(cs.counter.rotatingMenuHint);
+    expect(rendered).toContain(t.counter.rotatingMenuHint);
 
     const empty = render({
       beerMenuRotates: true,
       tonightRows: [],
       menuRows: [],
     }).renderer;
-    expect(texts(empty)).toContain(cs.counter.rotatingMenuBadge);
+    expect(texts(empty)).toContain(t.counter.rotatingMenuBadge);
   });
 
   it('closes on the close button', () => {
     const { renderer, onClose } = render();
 
     act(() => {
-      pressable(renderer, cs.a11y.counterCloseModal, 'button').props.onPress();
+      pressable(renderer, t.a11y.counterCloseModal, 'button').props.onPress();
     });
 
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -271,11 +271,11 @@ describe('DrinkPickSheet', () => {
     const allRows = [...TONIGHT, ...MENU];
 
     for (const item of allRows) {
-      expect(rendered).not.toContain(cs.a11y.counterRemoveBeer(item.name));
-      expect(rendered).not.toContain(cs.a11y.counterRemoveIdentity(item.name));
+      expect(rendered).not.toContain(t.a11y.counterRemoveBeer(item.name));
+      expect(rendered).not.toContain(t.a11y.counterRemoveIdentity(item.name));
     }
     // Both remove labels share this stem — nothing in the sheet may use it.
-    const removeStem = cs.a11y.counterRemoveBeer('').trim();
+    const removeStem = t.a11y.counterRemoveBeer('').trim();
     expect(rendered.filter((label) => label.includes(removeStem))).toHaveLength(0);
   });
 });

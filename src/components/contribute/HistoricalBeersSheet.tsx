@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { CommunityBeer } from '@/data/communityClient';
 import { normalizeBeerName } from '@/data/communityHours';
-import { cs, formatVolume } from '@/i18n/cs';
+import { formatVolume, t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -56,17 +56,17 @@ export function HistoricalBeersSheet({
             <View style={styles.header}>
               <View style={styles.headerCopy}>
                 <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.contribute.historicalBeersHeader}
+                  {t.contribute.historicalBeersHeader}
                 </Text>
                 <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.contribute.historicalBeersHint}
+                  {t.contribute.historicalBeersHint}
                 </Text>
               </View>
               <Pressable
                 onPress={onClose}
                 style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
                 accessibilityRole="button"
-                accessibilityLabel={cs.contribute.closeSheet}
+                accessibilityLabel={t.contribute.closeSheet}
               >
                 <XIcon size={20} color={Colors.foamMuted} />
               </Pressable>
@@ -98,7 +98,7 @@ export function HistoricalBeersSheet({
                     ]}
                     accessibilityRole="button"
                     accessibilityState={{ disabled: !canRestore }}
-                    accessibilityLabel={cs.a11y.contributeRestoreHistoricalBeer(beer.name)}
+                    accessibilityLabel={t.a11y.contributeRestoreHistoricalBeer(beer.name)}
                   >
                     <View style={styles.rowCopy}>
                       <Text

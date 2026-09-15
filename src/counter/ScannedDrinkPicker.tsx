@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { ScannedDrink } from '@/data/menuScanClient';
-import { cs, formatVolume } from '@/i18n/cs';
+import { formatVolume, t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -35,17 +35,17 @@ export function ScannedDrinkPicker({ visible, drinks, priceCurrency, onClose, on
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.counter.scanDrinksTitle}
+                {t.counter.scanDrinksTitle}
               </Text>
               <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.scanDrinksHint}
+                {t.counter.scanDrinksHint}
               </Text>
             </View>
             <Pressable
               onPress={onClose}
               style={styles.close}
               accessibilityRole="button"
-              accessibilityLabel={cs.counter.cancel}
+              accessibilityLabel={t.counter.cancel}
             >
               <XIcon size={18} color={Colors.mutedText} />
             </Pressable>
@@ -53,7 +53,7 @@ export function ScannedDrinkPicker({ visible, drinks, priceCurrency, onClose, on
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
             {drinks.map((drink, index) => {
               const meta = [
-                cs.counter.drinkTypeLabel(drink.drinkType),
+                t.counter.drinkTypeLabel(drink.drinkType),
                 typeof drink.priceCzk === 'number' ? formatPrice(drink.priceCzk, priceCurrency) : null,
                 typeof drink.volumeMl === 'number' ? formatVolume(drink.volumeMl) : null,
               ].filter(Boolean).join(' · ');

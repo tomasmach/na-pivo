@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -107,7 +107,7 @@ export default function AddPubScreen() {
     fromMapPin && initialCoords
       ? {
           ...initialCoords,
-          displayLocation: cs.addPub.mapPinSelectedBody,
+          displayLocation: t.addPub.mapPinSelectedBody,
           source: 'pin',
         }
       : null,
@@ -145,8 +145,8 @@ export default function AddPubScreen() {
       if (!coords) {
         const permission = await ensureLocationPermission();
         if (permission !== 'granted') {
-          setLocationError(cs.addPub.locationPermissionDenied);
-          showToast(cs.addPub.locationPermissionDenied);
+          setLocationError(t.addPub.locationPermissionDenied);
+          showToast(t.addPub.locationPermissionDenied);
           if (permission === 'denied') await openSystemSettings();
           return;
         }
@@ -163,13 +163,13 @@ export default function AddPubScreen() {
       setSelectedLocation({
         ...coords,
         displayLocation: fromMapPin
-          ? cs.addPub.mapPinSelectedBody
-          : cs.addPub.currentLocationSelectedBody,
+          ? t.addPub.mapPinSelectedBody
+          : t.addPub.currentLocationSelectedBody,
         source: fromMapPin ? 'pin' : 'current',
       });
     } catch {
-      setLocationError(cs.addPub.locationUnavailable);
-      showToast(cs.addPub.locationUnavailable);
+      setLocationError(t.addPub.locationUnavailable);
+      showToast(t.addPub.locationUnavailable);
     } finally {
       setLocating(false);
     }
@@ -190,8 +190,8 @@ export default function AddPubScreen() {
 
     if (!isEditing && !location) {
       setSubmitted(false);
-      setLocationError(cs.addPub.locationError);
-      showToast(cs.addPub.locationError);
+      setLocationError(t.addPub.locationError);
+      showToast(t.addPub.locationError);
       return;
     }
 
@@ -240,15 +240,15 @@ export default function AddPubScreen() {
       showToast(
         state === 'synced'
           ? isEditing
-            ? cs.addPub.editSavedToast
-            : cs.addPub.savedToast
+            ? t.addPub.editSavedToast
+            : t.addPub.savedToast
           : state === 'failed'
-            ? cs.addPub.failedToast
-            : cs.addPub.queuedToast,
+            ? t.addPub.failedToast
+            : t.addPub.queuedToast,
       );
     });
     void fireSuccessHaptic();
-    showToast(isEditing ? cs.addPub.editQueuedToast : cs.addPub.queuedToast);
+    showToast(isEditing ? t.addPub.editQueuedToast : t.addPub.queuedToast);
     router.back();
   }, [
     address,
@@ -276,13 +276,13 @@ export default function AddPubScreen() {
           }}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
+          accessibilityLabel={t.a11y.backButton}
           hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{isEditing ? cs.addPub.editTitle : cs.addPub.title}</Text>
+        <Text style={styles.headerTitle}>{isEditing ? t.addPub.editTitle : t.addPub.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -305,18 +305,18 @@ export default function AddPubScreen() {
             <MapPinIcon size={18} color={Colors.amber} />
           </View>
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing ? cs.addPub.editIntro : cs.addPub.intro}
+            {isEditing ? t.addPub.editIntro : t.addPub.intro}
           </Text>
         </View>
 
         <View style={styles.locationCard}>
-          <Text style={styles.locationHeader}>{isEditing ? cs.addPub.editLocationHeader : cs.addPub.locationHeader}</Text>
+          <Text style={styles.locationHeader}>{isEditing ? t.addPub.editLocationHeader : t.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
             {isEditing
-              ? cs.addPub.editLocationBody
+              ? t.addPub.editLocationBody
               : fromMapPin
-                ? cs.addPub.mapPinLocationBody
-                : cs.addPub.locationBody}
+                ? t.addPub.mapPinLocationBody
+                : t.addPub.locationBody}
           </Text>
           <Pressable
               onPress={() => void handleUseCurrentLocation()}
@@ -329,9 +329,9 @@ export default function AddPubScreen() {
               accessibilityLabel={
                 currentLocationSelected
                   ? fromMapPin
-                    ? cs.a11y.addPubMapPinSelected
-                    : cs.a11y.addPubCurrentLocationSelected
-                  : cs.a11y.addPubUseCurrentLocationButton
+                    ? t.a11y.addPubMapPinSelected
+                    : t.a11y.addPubCurrentLocationSelected
+                  : t.a11y.addPubUseCurrentLocationButton
               }
               accessibilityState={{ selected: currentLocationSelected }}
             >
@@ -359,12 +359,12 @@ export default function AddPubScreen() {
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
                   {locating
-                    ? cs.addPub.locating
+                    ? t.addPub.locating
                     : isEditing
-                      ? cs.addPub.editUseCurrentLocation
+                      ? t.addPub.editUseCurrentLocation
                       : fromMapPin
-                        ? cs.addPub.useMapPin
-                        : cs.addPub.useCurrentLocation}
+                        ? t.addPub.useMapPin
+                        : t.addPub.useCurrentLocation}
                 </Text>
                 <Text
                   style={styles.currentLocationBody}
@@ -372,10 +372,10 @@ export default function AddPubScreen() {
                   numberOfLines={3}
                 >
                   {isEditing
-                    ? cs.addPub.editUseCurrentLocationHint
+                    ? t.addPub.editUseCurrentLocationHint
                     : fromMapPin
-                      ? cs.addPub.useMapPinHint
-                      : cs.addPub.useCurrentLocationHint}
+                      ? t.addPub.useMapPinHint
+                      : t.addPub.useCurrentLocationHint}
                 </Text>
               </View>
               <View
@@ -394,7 +394,7 @@ export default function AddPubScreen() {
         </View>
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{cs.addPub.nameLabel}</Text>
+          <Text style={styles.label}>{t.addPub.nameLabel}</Text>
           <TextInput
             style={styles.input}
             value={name}
@@ -402,10 +402,10 @@ export default function AddPubScreen() {
               setName(value);
               setLocationError('');
             }}
-            placeholder={cs.addPub.namePlaceholder}
+            placeholder={t.addPub.namePlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={200}
-            accessibilityLabel={cs.a11y.addPubNameInput}
+            accessibilityLabel={t.a11y.addPubNameInput}
           />
           {selectedLocation && (
             <View style={styles.suggestions}>
@@ -413,16 +413,16 @@ export default function AddPubScreen() {
                 style={[styles.selectedSuggestion, styles.selectedCurrentLocation]}
                 accessibilityLabel={
                   selectedLocation.source === 'pin'
-                    ? cs.a11y.addPubMapPinSelected
-                    : cs.a11y.addPubCurrentLocationSelected
+                    ? t.a11y.addPubMapPinSelected
+                    : t.a11y.addPubCurrentLocationSelected
                 }
               >
                 <MapPinIcon size={16} color={Colors.amber} />
                 <View style={styles.suggestionText}>
                   <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
                     {selectedLocation.source === 'pin'
-                      ? cs.addPub.mapPinSelectedTitle
-                      : cs.addPub.currentLocationSelectedTitle}
+                      ? t.addPub.mapPinSelectedTitle
+                      : t.addPub.currentLocationSelectedTitle}
                   </Text>
                   <Text
                     style={styles.suggestionLocation}
@@ -438,30 +438,30 @@ export default function AddPubScreen() {
         </View>
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
+          <Text style={styles.label}>{t.addPub.cityLabel}</Text>
           <TextInput
             style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
             value={city}
             onChangeText={setCity}
             editable={!isEditing || locationCorrectionSelected}
-            placeholder={cs.addPub.cityPlaceholder}
+            placeholder={t.addPub.cityPlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={128}
-            accessibilityLabel={cs.a11y.addPubCityInput}
+            accessibilityLabel={t.a11y.addPubCityInput}
           />
         </View>
 
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
+          <Text style={styles.label}>{t.addPub.addressLabel}</Text>
           <TextInput
             style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
             value={address}
             onChangeText={setAddress}
             editable={!isEditing || locationCorrectionSelected}
-            placeholder={cs.addPub.addressPlaceholder}
+            placeholder={t.addPub.addressPlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={255}
-            accessibilityLabel={cs.a11y.addPubAddressInput}
+            accessibilityLabel={t.a11y.addPubAddressInput}
           />
         </View>
 
@@ -473,10 +473,10 @@ export default function AddPubScreen() {
 
         <View style={styles.submitButton}>
           <GlowButton
-            label={submitted ? cs.addPub.saving : isEditing ? cs.addPub.editSave : cs.addPub.save}
+            label={submitted ? t.addPub.saving : isEditing ? t.addPub.editSave : t.addPub.save}
             onPress={handleSubmit}
             glow="none"
-            accessibilityLabel={cs.a11y.addPubSaveButton}
+            accessibilityLabel={t.a11y.addPubSaveButton}
           />
           {!canSubmit && <View style={styles.submitDisabledOverlay} />}
         </View>

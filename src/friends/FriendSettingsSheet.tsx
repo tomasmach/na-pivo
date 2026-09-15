@@ -34,7 +34,7 @@ import { XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { updateFriendSettings, type FriendSocialSettings } from '@/data/friendsClient';
 import { disableFriendPush, registerFriendPush } from '@/notifications/friendPush';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -124,7 +124,7 @@ function FriendSettingsSheet({
           // Server disable failed → revert so the toggle reflects reality.
           setFriendPushEnabled(true);
           setFriendPushOptedOut(false);
-          showToast(cs.friends.pushDisableError, {
+          showToast(t.friends.pushDisableError, {
             icon: <XIcon size={18} color={Colors.closed} />,
           });
         }
@@ -136,7 +136,7 @@ function FriendSettingsSheet({
       if (!mountedRef.current) return;
       setPushBusy(false);
       if (!result.ok) {
-        showToast(cs.friends.pushDeniedHint, {
+        showToast(t.friends.pushDeniedHint, {
           icon: <XIcon size={18} color={Colors.amber} />,
         });
       }
@@ -180,7 +180,7 @@ function FriendSettingsSheet({
         });
         setDraft(restored);
         onSaved(restored);
-        showToast(cs.friends.settingsError, {
+        showToast(t.friends.settingsError, {
           icon: <XIcon size={18} color={Colors.closed} />,
         });
       });
@@ -297,7 +297,7 @@ function FriendSettingsSheet({
           style={StyleSheet.absoluteFill}
           onPress={onClose}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.settingsClose}
+          accessibilityLabel={t.friends.settingsClose}
         />
 
         <Animated.View
@@ -318,7 +318,7 @@ function FriendSettingsSheet({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              {cs.friends.settingsTitle}
+              {t.friends.settingsTitle}
             </Text>
           </View>
 
@@ -327,7 +327,7 @@ function FriendSettingsSheet({
             hitSlop={12}
             style={({ pressed }) => [styles.closeBtn, pressed && styles.pressedDim]}
             accessibilityRole="button"
-            accessibilityLabel={cs.friends.settingsClose}
+            accessibilityLabel={t.friends.settingsClose}
           >
             <XIcon size={18} color={Colors.foamMuted} />
           </Pressable>
@@ -345,19 +345,19 @@ function FriendSettingsSheet({
                     style={styles.settingTitle}
                     maxFontSizeMultiplier={FontScaleCap.heading}
                   >
-                    {cs.friends.ghostTitle}
+                    {t.friends.ghostTitle}
                   </Text>
                   <Text
                     style={styles.settingSubtitle}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.friends.ghostSubtitle}
+                    {t.friends.ghostSubtitle}
                   </Text>
                 </View>
                 <Toggle
                   value={draft.ghostMode}
                   onToggle={handleGhostToggle}
-                  accessibilityLabel={cs.friends.ghostTitle}
+                  accessibilityLabel={t.friends.ghostTitle}
                 />
               </View>
             </HairlineRow>
@@ -372,20 +372,20 @@ function FriendSettingsSheet({
                     style={styles.settingTitle}
                     maxFontSizeMultiplier={FontScaleCap.heading}
                   >
-                    {cs.friends.shareDrinksTitle}
+                    {t.friends.shareDrinksTitle}
                   </Text>
                   <Text
                     style={styles.settingSubtitle}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.friends.shareDrinksSubtitle}
+                    {t.friends.shareDrinksSubtitle}
                   </Text>
                 </View>
                 <Toggle
                   value={draft.shareDrinksWithParta && !draft.ghostMode}
                   onToggle={handleShareDrinksToggle}
                   disabled={draft.ghostMode}
-                  accessibilityLabel={cs.friends.shareDrinksTitle}
+                  accessibilityLabel={t.friends.shareDrinksTitle}
                 />
               </View>
             </HairlineRow>
@@ -398,19 +398,19 @@ function FriendSettingsSheet({
                     style={styles.settingTitle}
                     maxFontSizeMultiplier={FontScaleCap.heading}
                   >
-                    {cs.friends.quietTitle}
+                    {t.friends.quietTitle}
                   </Text>
                   <Text
                     style={styles.settingSubtitle}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.friends.quietSubtitle}
+                    {t.friends.quietSubtitle}
                   </Text>
                 </View>
                 <Toggle
                   value={draft.quietHoursEnabled}
                   onToggle={handleQuietToggle}
-                  accessibilityLabel={cs.friends.quietTitle}
+                  accessibilityLabel={t.friends.quietTitle}
                 />
               </View>
 
@@ -420,7 +420,7 @@ function FriendSettingsSheet({
                     style={styles.quietSummary}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.friends.quietRange(draft.quietHoursStart, draft.quietHoursEnd)}
+                    {t.friends.quietRange(draft.quietHoursStart, draft.quietHoursEnd)}
                   </Text>
 
                   <View style={styles.stepperLine}>
@@ -428,12 +428,12 @@ function FriendSettingsSheet({
                       style={styles.stepperCaption}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.contribute.from}
+                      {t.contribute.from}
                     </Text>
                     <HourStepper
                       value={draft.quietHoursStart}
                       onChange={handleStartChange}
-                      accessibilityLabel={cs.contribute.from}
+                      accessibilityLabel={t.contribute.from}
                     />
                   </View>
 
@@ -442,12 +442,12 @@ function FriendSettingsSheet({
                       style={styles.stepperCaption}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {cs.contribute.to}
+                      {t.contribute.to}
                     </Text>
                     <HourStepper
                       value={draft.quietHoursEnd}
                       onChange={handleEndChange}
-                      accessibilityLabel={cs.contribute.to}
+                      accessibilityLabel={t.contribute.to}
                     />
                   </View>
                 </View>
@@ -462,19 +462,19 @@ function FriendSettingsSheet({
                     style={styles.settingTitle}
                     maxFontSizeMultiplier={FontScaleCap.heading}
                   >
-                    {cs.friends.pushToggleTitle}
+                    {t.friends.pushToggleTitle}
                   </Text>
                   <Text
                     style={styles.settingSubtitle}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.friends.pushToggleSub}
+                    {t.friends.pushToggleSub}
                   </Text>
                 </View>
                 <Toggle
                   value={friendPushEnabled}
                   onToggle={handlePushToggle}
-                  accessibilityLabel={cs.friends.pushToggleTitle}
+                  accessibilityLabel={t.friends.pushToggleTitle}
                 />
               </View>
             </HairlineRow>

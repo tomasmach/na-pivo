@@ -40,7 +40,7 @@ import {
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -162,7 +162,7 @@ function CheersPillBase({
       pendingRef.current = false;
       if (res.ok) {
         trackUiInteraction('parta_reaction_add', 'success');
-        showToast(turningOn ? cs.friends.cheersDone : cs.friends.cheersUndone, {
+        showToast(turningOn ? t.friends.cheersDone : t.friends.cheersUndone, {
           icon: <BeerIcon size={20} color={Colors.amber} />,
         });
         onChanged?.();
@@ -181,7 +181,7 @@ function CheersPillBase({
             turningOn ? { op: 'cheer', activityId } : { op: 'cheer-clear', activityId },
           );
         }
-        showToast(cs.friends.reactQueued, {
+        showToast(t.friends.reactQueued, {
           icon: <BeerIcon size={20} color={Colors.amber} />,
         });
         return;
@@ -190,7 +190,7 @@ function CheersPillBase({
       // Hard reject: revert.
       setActive(prevActive);
       setDisplayCount(prevCount);
-      showToast(cs.friends.reactError, { icon: <BeerIcon size={20} color={Colors.amber} /> });
+      showToast(t.friends.reactError, { icon: <BeerIcon size={20} color={Colors.amber} /> });
     });
   }, [active, busy, displayCount, activityId, target, showToast, onChanged]);
 
@@ -199,8 +199,8 @@ function CheersPillBase({
     displayCount > 0
       ? compact
         ? String(displayCount)
-        : cs.friends.cheersCount(displayCount)
-      : cs.friends.cheers;
+        : t.friends.cheersCount(displayCount)
+      : t.friends.cheers;
 
   return (
     <Pressable
@@ -208,7 +208,7 @@ function CheersPillBase({
       hitSlop={HIT_SLOP}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={cs.friends.cheersA11y(ownerName ?? cs.friends.cheers)}
+      accessibilityLabel={t.friends.cheersA11y(ownerName ?? t.friends.cheers)}
       style={({ pressed }) => [
         compact ? styles.pillCompact : styles.pill,
         active && styles.pillActive,

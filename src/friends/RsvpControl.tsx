@@ -34,7 +34,7 @@ import {
   type FriendPubActivity,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -80,9 +80,9 @@ function fireSuccess(): void {
 }
 
 function labelFor(kind: ActivityResponseKind): string {
-  if (kind === 'going') return cs.friends.rsvpGoing;
-  if (kind === 'maybe') return cs.friends.rsvpMaybe;
-  return cs.friends.rsvpCant;
+  if (kind === 'going') return t.friends.rsvpGoing;
+  if (kind === 'maybe') return t.friends.rsvpMaybe;
+  return t.friends.rsvpCant;
 }
 
 function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) {
@@ -170,7 +170,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
       if (prev === kind) {
         fireLight();
         setSelected(null);
-        showToast(cs.friends.rsvpClearedToast);
+        showToast(t.friends.rsvpClearedToast);
         pendingRef.current = true;
         const seq = ++seqRef.current;
         void clearActivityResponse(activityId).then((res) => {
@@ -181,11 +181,11 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
           } else {
             if (isRetriableFriendError(res)) {
               void enqueueFriendOp({ op: 'rsvp-clear', activityId });
-              showToast(cs.friends.rsvpQueued);
+              showToast(t.friends.rsvpQueued);
               return;
             }
             setSelected(prev);
-            showToast(cs.friends.rsvpError);
+            showToast(t.friends.rsvpError);
           }
         });
         return;
@@ -206,11 +206,11 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
         } else {
           if (isRetriableFriendError(res)) {
             void enqueueFriendOp({ op: 'rsvp', activityId, response: kind });
-            showToast(cs.friends.rsvpQueued);
+            showToast(t.friends.rsvpQueued);
             return;
           }
           setSelected(prev);
-          showToast(cs.friends.rsvpError);
+          showToast(t.friends.rsvpError);
         }
       });
     },
@@ -236,7 +236,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
       style={styles.track}
       onLayout={onTrackLayout}
       accessibilityRole="radiogroup"
-      accessibilityLabel={cs.a11y.rsvpGroup}
+      accessibilityLabel={t.a11y.rsvpGroup}
     >
       <Animated.View
         pointerEvents="none"
@@ -264,7 +264,7 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
             accessibilityRole="radio"
             accessibilityState={{ selected: isSelected }}
             accessibilityLabel={label}
-            accessibilityHint={isSelected ? cs.mapPub.clearHint : undefined}
+            accessibilityHint={isSelected ? t.mapPub.clearHint : undefined}
           >
             <Text
               style={[styles.segmentText, { color: labelColorFor(kind) }]}

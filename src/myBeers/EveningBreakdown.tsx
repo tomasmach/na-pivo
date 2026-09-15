@@ -11,7 +11,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
-import { cs, formatVolume } from '@/i18n/cs';
+import { formatVolume, t } from '@/i18n';
 import { type PriceCurrency } from '@/utils/currency';
 import { eveningPriceLabel, type BreakdownLine } from '@/myBeers/eveningModel';
 
@@ -35,10 +35,10 @@ export function EveningBreakdown({
         >
           <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {line.volumeMl ? `${line.name} · ${formatVolume(line.volumeMl)}` : line.name}
-            {line.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(line.drinkType)}` : ''}
+            {line.drinkType !== 'beer' ? ` · ${t.counter.drinkTypeLabel(line.drinkType)}` : ''}
           </Text>
           <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.myBeers.breakdownLine(line.count, eveningPriceLabel([line], priceCurrency))}
+            {t.myBeers.breakdownLine(line.count, eveningPriceLabel([line], priceCurrency))}
           </Text>
         </View>
       ))}
@@ -46,7 +46,7 @@ export function EveningBreakdown({
       {showTotal && (
         <View style={[styles.row, styles.totalRow]}>
           <Text style={styles.totalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.myBeers.totalLabel}
+            {t.myBeers.totalLabel}
           </Text>
           <Text style={styles.totalValue} maxFontSizeMultiplier={FontScaleCap.heading}>
             {eveningPriceLabel(lines, priceCurrency)}

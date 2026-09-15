@@ -6,6 +6,7 @@ import type * as ExpoTaskManager from 'expo-task-manager';
 
 import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
+import { t } from '@/i18n';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
   clearPendingPubReminder,
@@ -98,7 +99,7 @@ Notifications?.setNotificationHandler({
 async function setAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android' || !Notifications) return;
   await Notifications.setNotificationChannelAsync(PUB_REMINDER_CHANNEL_ID, {
-    name: 'Připomínky v hospodě',
+    name: t.notifications.pubReminderChannel,
     importance: Notifications.AndroidImportance.DEFAULT,
     vibrationPattern: [0, 180, 120, 180],
     lightColor: '#f6c45c',
@@ -157,8 +158,8 @@ async function schedulePubReminder(pubName: string, pubId: string, fireAtMs: num
   if (!Notifications) return null;
   return Notifications.scheduleNotificationAsync({
     content: {
-      title: `Sedíš v ${pubName}?`,
-      body: 'Naťukni počítadlo a sečti dnešní rundy.',
+      title: t.notifications.pubReminderTitle(pubName),
+      body: t.notifications.pubReminderBody,
       data: { kind: PUB_REMINDER_NOTIFICATION_KIND, pubId, fireAtMs },
     },
     trigger: {
