@@ -28,7 +28,7 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import CodeSheet from '@/friends/CodeSheet';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
-import { t , beerCountLabel, intlLocale } from '@/i18n';
+import { t, intlLocale, beerCountLabel } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import {
   dailyBeerAverage,
@@ -53,7 +53,7 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { formatPrice } from '@/utils/currency';
 
@@ -214,23 +214,8 @@ export default function ProfileScreen() {
         pubCacheKey: failedPhoto.pubCacheKey || undefined,
         pubName: failedPhoto.pubName || undefined,
         pubCity: failedPhoto.pubCity || undefined,
-        partyCode: failedPhoto.partyCode,
-        partyDrinkingDay: failedPhoto.partyDrinkingDay,
         visibility: failedPhoto.visibility,
         takenAt: failedPhoto.takenAt,
-      }).then((queued) => {
-        // A failed durable write must not look like a successful one-tap retry.
-        // Keep the failed tile and open its detail, where the error remains
-        // visible and the user can retry again.
-        const photoStillBelongsToCurrentStore = useBeerPhotosStore
-          .getState()
-          .photos.some((photo) => photo.clientId === failedPhoto.clientId);
-        if (!queued.persisted && photoStillBelongsToCurrentStore) {
-          router.push({
-            pathname: '/photo/[key]',
-            params: { key: failedPhoto.clientId },
-          } as Href);
-        }
       });
       return;
     }
@@ -534,14 +519,14 @@ const styles = StyleSheet.create({
   },
   identityNick: {
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
   },
   identityCaption: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

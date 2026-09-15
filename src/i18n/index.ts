@@ -1,28 +1,18 @@
 /**
  * Public entry point for UI copy. Import `t` (never `cs` or `en` directly)
- * so every screen follows the device language picked in locale.ts.
+ * so every screen follows the language picked in settings.
  */
-
-import { getLocales } from 'expo-localization';
 
 import { cs, formatVolume as formatVolumeCs, type Strings } from './cs';
 import { en } from './en';
 import * as csCounts from './plural';
 import * as enCounts from './enHelpers';
-import { intlLocaleFor, resolveLocale, type Locale } from './locale';
-import { readLanguagePreference, type LanguagePreference } from './languagePreference';
+import { intlLocaleFor, readStoredLocale, type Locale } from './locale';
 
-export type { Locale, Strings, LanguagePreference };
-export { resolveLocale } from './locale';
-export { applyLanguagePreference } from './languagePreference';
+export type { Locale, Strings };
+export { SUPPORTED_LOCALES } from './locale';
 
-/** What the user picked in Settings; 'system' follows the phone. */
-export const languagePreference: LanguagePreference = readLanguagePreference();
-
-export const locale: Locale =
-  languagePreference === 'system'
-    ? resolveLocale(getLocales().map((l) => l.languageCode))
-    : languagePreference;
+export const locale: Locale = readStoredLocale();
 
 /** Pass to Intl.DateTimeFormat / toLocaleDateString instead of a literal 'cs-CZ'. */
 export const intlLocale = intlLocaleFor(locale);
@@ -35,8 +25,6 @@ export const formatVolume = locale === 'en' ? enCounts.formatVolume : formatVolu
 export const beerNoun = counts.beerNoun;
 export const beerCountLabel = counts.beerCountLabel;
 export const peopleCountLabel = counts.peopleCountLabel;
-export const pubCountLabel = counts.pubCountLabel;
-export const gameCountLabel = counts.gameCountLabel;
 export const softDrinkCountLabel = counts.softDrinkCountLabel;
 export const shotCountLabel = counts.shotCountLabel;
 export const wineCountLabel = counts.wineCountLabel;

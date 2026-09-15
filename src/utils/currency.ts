@@ -2,9 +2,6 @@ import { intlLocale, t } from '@/i18n';
 
 export type PriceCurrency = string;
 
-/** Prices are Czech-pub prices, so the crown keeps its Czech symbol in English too. */
-const CZK_SYMBOL = 'Kč';
-
 export const DEFAULT_PRICE_CURRENCY: PriceCurrency = 'CZK';
 
 /** CZK paid for one unit of currency. Updated by locationCurrency at runtime. */
@@ -34,7 +31,6 @@ export function currencyFractionDigits(currency: PriceCurrency): number {
 }
 
 export function currencySuffix(currency: PriceCurrency): string {
-  if (currency.toUpperCase() === 'CZK') return CZK_SYMBOL;
   try {
     const parts = new Intl.NumberFormat(intlLocale, {
       style: 'currency',
@@ -48,7 +44,7 @@ export function currencySuffix(currency: PriceCurrency): string {
 }
 
 export function pricePlaceholder(currency: PriceCurrency): string {
-  return t.currency.pricePlaceholder(currencySuffix(currency));
+  return t.common.pricePlaceholder(currencySuffix(currency));
 }
 
 function formatDecimal(value: number, maxFractionDigits: number): string {
@@ -62,11 +58,6 @@ function formatDecimal(value: number, maxFractionDigits: number): string {
 export function formatPrice(czk: number, currency: PriceCurrency): string {
   const rate = getCurrencyRate(currency) ?? 1;
   const amount = czk / rate;
-  // The crown is formatted by hand so the symbol stays "Kč" in both languages;
-  // en-GB would otherwise print "CZK 45".
-  if (currency.toUpperCase() === 'CZK') {
-    return `${formatDecimal(amount, 0)} ${CZK_SYMBOL}`;
-  }
   try {
     return new Intl.NumberFormat(intlLocale, {
       style: 'currency',

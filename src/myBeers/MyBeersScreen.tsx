@@ -16,10 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
-import { intlLocale, t } from '@/i18n';
+import { t, intlLocale } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
 import {
   ChevronRightIcon,
@@ -32,11 +32,10 @@ import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
-  sessionTotalCzk,
   type TallySession,
 } from '@/stores/tallyStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
-import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
+import { eveningPriceLabel, sessionBreakdown, sessionDrinkSummary, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
@@ -67,7 +66,6 @@ function CurrentEveningCard({
   priceCurrency: PriceCurrency;
   now: Date;
 }) {
-  const totalCzk = sessionTotalCzk(session);
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
   const lastText = lastDrinkText(session, now);
 
@@ -86,7 +84,7 @@ function CurrentEveningCard({
         {session.pubName}
       </Text>
       <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-        {t.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency))}
+        {t.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency))}
       </Text>
       {lastText && (
         <Text style={styles.lastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -97,7 +95,6 @@ function CurrentEveningCard({
       <View style={styles.divider} />
       <EveningBreakdown
         lines={breakdown}
-        totalCzk={totalCzk}
         priceCurrency={priceCurrency}
         showTotal={false}
       />
@@ -122,31 +119,30 @@ function CurrentEveningCard({
 
 // ─── Past evening row ──────────────────────────────────────────────────────────
 
-const PastEveningRow = React.memo(function PastEveningRow({
+function PastEveningRow({
   session,
   priceCurrency,
-  nowMinuteMs,
-  onOpen,
+  now,
+  onPress,
 }: {
   session: TallySession;
   priceCurrency: PriceCurrency;
-  nowMinuteMs: number;
-  onOpen: (session: TallySession) => void;
+  now: Date;
+  onPress: () => void;
 }) {
-  const totalCzk = sessionTotalCzk(session);
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
-  const summary = t.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency));
+  const summary = t.myBeers.summary(sessionDrinkSummary(session), eveningPriceLabel(sessionBreakdown(session), priceCurrency));
 
   return (
     <Pressable
-      onPress={() => onOpen(session)}
+      onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={t.a11y.myBeersEvening(session.pubName, summary)}
     >
       <View style={styles.rowText}>
         <Text style={styles.rowDate} maxFontSizeMultiplier={FontScaleCap.body}>
-          {eveningDateLabel(session.startedAt, new Date(nowMinuteMs))}
+          {eveningDateLabel(session.startedAt, now)}
         </Text>
         <Text style={styles.rowPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
           {session.pubName}
@@ -159,7 +155,7 @@ const PastEveningRow = React.memo(function PastEveningRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-});
+}
 
 function shortDateTime(iso: string): string {
   const ms = Date.parse(iso);
@@ -207,14 +203,14 @@ function checkInAmountLabel(checkIn: BeerCheckIn, priceCurrency: PriceCurrency):
   return parts.join(' · ');
 }
 
-const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
+function HistoricalCheckInRow({
   checkIn,
   priceCurrency,
-  onOpen,
+  onPress,
 }: {
   checkIn: BeerCheckIn;
   priceCurrency: PriceCurrency;
-  onOpen: (checkIn: BeerCheckIn) => void;
+  onPress: () => void;
 }) {
   const meta = [
     checkInAmountLabel(checkIn, priceCurrency),
@@ -226,7 +222,7 @@ const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
 
   return (
     <Pressable
-      onPress={() => onOpen(checkIn)}
+      onPress={onPress}
       style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
       accessibilityRole="button"
       accessibilityLabel={t.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
@@ -245,7 +241,7 @@ const HistoricalCheckInRow = React.memo(function HistoricalCheckInRow({
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
-});
+}
 
 function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
   return (
@@ -322,7 +318,6 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
     return () => clearInterval(timer);
   }, []);
   const now = useMemo(() => new Date(nowMs), [nowMs]);
-  const nowMinuteMs = Math.floor(nowMs / 60_000) * 60_000;
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -370,24 +365,6 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const isEmpty = !currentEvening && pastEvenings.length === 0 && visibleDiaryEntries.length === 0;
 
   const openHistorical = useCallback(() => setHistoricalOpen(true), []);
-  const openEvening = useCallback(
-    (session: TallySession) => {
-      router.push({
-        pathname: '/evening',
-        params: { startedAt: session.startedAt },
-      });
-    },
-    [router],
-  );
-  const openHistoricalCheckIn = useCallback(
-    (checkIn: BeerCheckIn) => {
-      router.push({
-        pathname: '/beer-detail',
-        params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
-      });
-    },
-    [router],
-  );
   const handleHistoricalSaved = useCallback(
     (entries: BeerCheckInInput[]) => {
       const optimistic = entries.map(optimisticCheckIn);
@@ -458,8 +435,13 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <PastEveningRow
                       session={session}
                       priceCurrency={priceCurrency}
-                      nowMinuteMs={nowMinuteMs}
-                      onOpen={openEvening}
+                      now={now}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/evening',
+                          params: { startedAt: session.startedAt },
+                        })
+                      }
                     />
                   </View>
                 ))}
@@ -481,7 +463,12 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
                     <HistoricalCheckInRow
                       checkIn={checkIn}
                       priceCurrency={priceCurrency}
-                      onOpen={openHistoricalCheckIn}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/beer-detail',
+                          params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+                        })
+                      }
                     />
                   </View>
                 ))}
@@ -514,7 +501,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   headerTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     color: Colors.foam,
   },
@@ -545,29 +532,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardSectionHeaderText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
   },
   dateLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     marginBottom: 4,
   },
   summary: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
   },
   lastDrink: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 4,
@@ -580,7 +567,7 @@ const styles = StyleSheet.create({
 
   // — Past list —
   listHeader: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -607,19 +594,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowDate: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,
     textTransform: 'uppercase',
   },
   rowPub: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
   rowSummary: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
   },
@@ -650,12 +637,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   addHistoryTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
   addHistorySubtitle: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -680,12 +667,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   diaryTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.foam,
   },
   diaryMeta: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -703,13 +690,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
   },
   emptyBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',

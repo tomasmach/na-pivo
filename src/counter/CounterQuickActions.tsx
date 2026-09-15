@@ -18,7 +18,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MapPinnedIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 export interface CounterQuickActionsProps {
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flexShrink: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,

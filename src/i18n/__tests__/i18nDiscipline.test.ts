@@ -10,8 +10,13 @@ const ROOT = path.join(__dirname, '..', '..', '..');
 const SCAN_DIRS = ['app', 'src'];
 const SKIP = [/__tests__/, /__mocks__/, /__diag__/, /\/src\/i18n\//, /\.d\.ts$/];
 
-/** Fixed Czech normalization for identity keys and the shared wearable protocol. */
-const FIXED_LOCALE_ALLOWLIST = new Set(['src/data/pubIdentity.ts', 'src/wearables/protocol.ts']);
+/** Files that must keep a fixed Czech collation on purpose (identity keys). */
+const FIXED_LOCALE_ALLOWLIST = new Set([
+  'src/data/pubIdentity.ts',
+  'src/stores/partyGroupsStore.ts',
+  'src/map/mapModel.ts',
+  'src/friends/AddFriendTools.tsx',
+]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

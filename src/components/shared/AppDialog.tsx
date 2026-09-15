@@ -6,15 +6,15 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { useIsFocused } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { useModalPresentation } from '@/stores/launchModalMutex';
 
 export type AppDialogButtonStyle = 'default' | 'cancel' | 'destructive';
 
@@ -33,9 +33,8 @@ export interface AppDialogOptions {
 
 type AppDialogPresenter = (options: AppDialogOptions) => void;
 
-// Full-screen native routes live in their own presentation layer. They may
-// mount a local host so dialogs appear above that layer; the newest mounted
-// host wins, while the root host remains available after the route unmounts.
+// Each focused native screen owns its presenter, so dialogs appear above
+// full-screen routes and cannot leak into a screen underneath.
 const presenters: AppDialogPresenter[] = [];
 let pendingDialog: AppDialogOptions | null = null;
 
@@ -48,15 +47,15 @@ export function showAppDialog(options: AppDialogOptions): void {
   pendingDialog = options;
 }
 
+export function AppDialogScreen({ children }: { children: React.ReactNode }) {
+  const focused = useIsFocused();
+  return <>{children}{focused ? <AppDialogHost /> : null}</>;
+}
+
 export function AppDialogHost() {
   const [dialog, setDialog] = useState<AppDialogOptions | null>(null);
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
-  // Hosts can be nested by full-screen routes. Each needs its own identity so
-  // an inactive root host cannot share a native presentation slot with the
-  // newest route-local host.
-  const { visible: presentationVisible, onDismiss: completePresentationDismiss } =
-    useModalPresentation(dialog !== null);
 
   useEffect(() => {
     const ownPresenter: AppDialogPresenter = (options) => setDialog(normalizeDialog(options));
@@ -73,13 +72,13 @@ export function AppDialogHost() {
   }, []);
 
   useEffect(() => {
-    if (presentationVisible) {
+    if (dialog) {
       progress.value = 0;
       progress.value = withSpring(1, { damping: 16, stiffness: 160, mass: 0.9 });
     } else {
       progress.value = withTiming(0, { duration: 120 });
     }
-  }, [presentationVisible, progress]);
+  }, [dialog, progress]);
 
   const cardAnim = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -122,11 +121,10 @@ export function AppDialogHost() {
   );
 
   const runPendingAction = useCallback(() => {
-    completePresentationDismiss();
     const action = pendingAction.current;
     pendingAction.current = null;
     action?.();
-  }, [completePresentationDismiss]);
+  }, []);
 
   const closeFromBackdrop = useCallback(() => {
     if (!canCancel) return;
@@ -237,7 +235,7 @@ export function AppDialogHost() {
 
   return (
     <Modal
-      visible={presentationVisible}
+      visible={dialog !== null}
       transparent
       animationType="fade"
       statusBarTranslucent
@@ -245,7 +243,6 @@ export function AppDialogHost() {
       onDismiss={runPendingAction}
     >
       <Pressable
-        accessible={false}
         style={[styles.backdrop, !isActionMenu && styles.centerBackdrop]}
         onPress={closeFromBackdrop}
       >
@@ -258,9 +255,7 @@ export function AppDialogHost() {
             { marginBottom: isActionMenu ? Math.max(insets.bottom, Spacing.lg) : 0 },
           ]}
         >
-          <Pressable accessible={false} onPress={(event) => event.stopPropagation()}>
-            {content}
-          </Pressable>
+          <Pressable onPress={(event) => event.stopPropagation()}>{content}</Pressable>
         </Animated.View>
       </Pressable>
     </Modal>
@@ -318,7 +313,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.14),
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 27,
     lineHeight: 32,
     color: Colors.foam,
@@ -326,7 +321,7 @@ const styles = StyleSheet.create({
   },
   message: {
     marginTop: Spacing.sm,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -348,7 +343,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amberLight,
   },
   primaryText: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     lineHeight: 22,
     color: Colors.stout,
@@ -365,7 +360,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.05),
   },
   secondaryText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     lineHeight: 19,
     color: Colors.foam,
@@ -387,7 +382,7 @@ const styles = StyleSheet.create({
     borderBottomColor: withAlpha(Colors.border, 0.75),
   },
   menuTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     lineHeight: 29,
     color: Colors.foam,
@@ -407,7 +402,7 @@ const styles = StyleSheet.create({
     borderBottomColor: withAlpha(Colors.border, 0.55),
   },
   menuButtonText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 16,
     lineHeight: 21,
     color: Colors.foam,
@@ -425,7 +420,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   cancelMenuText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 16,
     lineHeight: 21,
     color: Colors.foamMuted,

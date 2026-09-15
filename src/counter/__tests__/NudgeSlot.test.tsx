@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { cs as copy } from '@/i18n/cs';
+import { t as copy } from '@/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -26,11 +26,11 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: jest.fn(() => null),
 }));
 
-const TestRenderer = jest.requireActual('react-test-renderer');
+const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
-const { NudgeSlot } = jest.requireActual('../NudgeSlot');
-const { CounterCta, CounterSecondary } = jest.requireActual('../CounterCta');
+const { NudgeSlot } = require('../NudgeSlot');
+const { CounterCta } = require('../CounterCta');
 
 type AnyInstance = { props: Record<string, any> };
 
@@ -276,26 +276,6 @@ describe('CounterCta — rendering', () => {
     expect(cta.props.disabled).toBe(true);
     expect(cta.props.accessibilityState).toEqual({ disabled: true });
     act(() => cta.props.onPress());
-    expect(onPress).not.toHaveBeenCalled();
-  });
-});
-
-describe('CounterSecondary — disabled state', () => {
-  it('exposes its disabled state and never forwards the press', () => {
-    const onPress = jest.fn();
-    const renderer = render(
-      React.createElement(CounterSecondary, {
-        label: 'Pracuji…',
-        onPress,
-        accessibilityLabel: 'Pracuji…',
-        disabled: true,
-      }),
-    );
-    const secondary = pressableWithLabel(renderer, 'Pracuji…');
-
-    expect(secondary.props.disabled).toBe(true);
-    expect(secondary.props.accessibilityState).toEqual({ disabled: true });
-    act(() => secondary.props.onPress());
     expect(onPress).not.toHaveBeenCalled();
   });
 });

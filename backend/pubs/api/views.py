@@ -1203,7 +1203,9 @@ def _single_friend_shared(account: Account, friend: Account) -> tuple[list[dict]
     return shared_evenings, shared_dates
 
 
-def _send_friend_push(account_ids: list[int], title, body, data: dict) -> None:
+def _send_friend_push(
+    account_ids: list[int], title, body, data: dict, *, app_version_prefix: str | None = None
+) -> None:
     """Best-effort Expo push fanout.
 
     Push tokens are secrets. This helper never logs token values, request bodies
@@ -1233,12 +1235,20 @@ def _send_friend_push(account_ids: list[int], title, body, data: dict) -> None:
     if not deliver_ids:
         return
 
-    tokens_by_locale: dict[str, list[str]] = {}
-    for push_token, device_locale in PushDevice.objects.filter(
+    devices = PushDevice.objects.filter(
         account_id__in=deliver_ids,
         enabled=True,
         permission_status=PushDevice.PermissionStatus.GRANTED,
-    ).values_list("push_token", "locale"):
+    )
+    if app_version_prefix is not None:
+        # Released clients register display labels such as "v2.0.0 (1)".
+        devices = devices.filter(
+            Q(app_version__startswith=app_version_prefix)
+            | Q(app_version__startswith=f"v{app_version_prefix}")
+        )
+
+    tokens_by_locale: dict[str, list[str]] = {}
+    for push_token, device_locale in devices.values_list("push_token", "locale"):
         tokens_by_locale.setdefault(normalize_locale(device_locale), []).append(push_token)
     if not tokens_by_locale:
         return

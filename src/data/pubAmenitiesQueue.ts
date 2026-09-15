@@ -26,11 +26,6 @@
  *   - 'ok' (2xx)              → reached backend → drop from queue.
  *   - 'permanent-error' (4xx) → will never succeed → drop from queue.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
- *   - 'consent-blocked' (428) → keep, like 'retry', but the client stops sending:
- *     missing UGC consent is a user decision, not a transport hiccup, so
- *     retrying on each launch/foreground only burned requests and logged
- *     amenity_vote_failed forever. The consent sheet flushes the queue the
- *     moment the user accepts. Retractions keep flowing meanwhile.
  *
  * We do NOT flush per enqueue: enqueue debounces a single flush (~250ms microtask)
  * after the subscriber settles, so mapping one pub doesn't fire 16 serial 8s-timeout
@@ -42,11 +37,11 @@ import {
   type SubmitAmenityResult,
   type WireAmenityVote,
 } from './pubAmenitiesClient';
-import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
-import { preserveDurableQueue } from './durableQueuePolicy';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
-/** Historical queue limit retained as migration context; durable writes are never dropped. */
+/** Hard cap — one item per (pub, amenity). A realistic offline crawl (~10 pubs ×
+ *  16 ≈ 160) is far under this; dropping the oldest beats unbounded growth. */
 const MAX_QUEUE_LENGTH = 500;
 /** Debounce window for the post-enqueue flush. */
 const FLUSH_DEBOUNCE_MS = 250;
@@ -90,13 +85,10 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<AmenityQueueItem
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
 const runLocked = createQueueLock();
 
-async function deliver(
-  item: AmenityQueueItem,
-  signal?: AbortSignal,
-): Promise<SubmitAmenityResult> {
+async function deliver(item: AmenityQueueItem): Promise<SubmitAmenityResult> {
   // Both ops are PUTs of the snapshot payload (a delete carries a value:null
   // tombstone) so the backend can apply the same last-write-wins rule.
-  return submitAmenityVotes([item.payload], signal);
+  return submitAmenityVotes([item.payload]);
 }
 
 /** Pending tombstones that restore must not hydrate back into local state. Keyed
@@ -115,8 +107,8 @@ function signature(item: AmenityQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushUnlocked(signal: AbortSignal): Promise<void> {
-  const queue = await runLocked(loadQueue);
+async function flushLocked(): Promise<void> {
+  const queue = await loadQueue();
   if (queue.length === 0) return;
 
   // Snapshot the exact op (by content) we attempt per (pubKey, amenityKey), plus
@@ -125,37 +117,23 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   // content changed under us is kept regardless of the stale result.
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
-  let consentBlocked = false;
   for (const item of queue) {
-    if (signal.aborted) break;
-    // Once the server has refused one public vote for missing consent, every
-    // other public vote in this pass gets the same answer — one refused request
-    // per flush, not one per vote. A RETRACTION still goes out: the server lets
-    // a null-only batch through without consent, and leaving it queued would
-    // keep a vote the user just deleted public.
-    if (consentBlocked && item.payload.value !== null) continue;
     const key = dedupKey(item);
     attempted.set(key, signature(item));
-    const result = await deliver(item, signal);
-    // 'consent-blocked' keeps the vote exactly like 'retry'.
-    if (result === 'consent-blocked') consentBlocked = true;
-    else if (result !== 'retry') settled.add(key);
+    const result = await deliver(item);
+    if (result !== 'retry') settled.add(key);
   }
 
-  await runLocked(async () => {
-    const current = await loadQueue();
-    const remaining = current.filter((item) => {
-      const key = dedupKey(item);
-      const sig = attempted.get(key);
-      // A different/newer op for this pair arrived during the flush → keep it.
-      if (sig === undefined || sig !== signature(item)) return true;
-      return !settled.has(key);
-    });
-    await saveQueue(remaining);
+  const current = await loadQueue();
+  const remaining = current.filter((item) => {
+    const key = dedupKey(item);
+    const sig = attempted.get(key);
+    // A different/newer op for this pair arrived during the flush → keep it.
+    if (sig === undefined || sig !== signature(item)) return true;
+    return !settled.has(key);
   });
+  await saveQueue(remaining);
 }
-
-const amenityDelivery = createCoalescingFlush(flushUnlocked);
 
 /** Pending debounced-flush timer, so rapid enqueues coalesce into one flush. */
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -165,7 +143,7 @@ function scheduleFlush(): void {
   if (_flushTimer) return;
   _flushTimer = setTimeout(() => {
     _flushTimer = null;
-    void flushPubAmenitiesQueue();
+    void runLocked(flushLocked);
   }, FLUSH_DEBOUNCE_MS);
 }
 
@@ -181,18 +159,16 @@ export function enqueueAmenityOp(item: AmenityQueueItem): Promise<void> {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => dedupKey(existing) !== key);
     deduped.push(item);
-    return saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
-  }).then((persisted) => {
-    if (persisted) scheduleFlush();
+    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    scheduleFlush();
   });
 }
 
 /** Drop all pending amenity sync operations without attempting delivery. */
 export function clearPubAmenitiesQueue(): Promise<void> {
-  amenityDelivery.abortInFlight();
   return runLocked(async () => {
     await saveQueue([]);
-  }, { allowDuringPrivateTransition: true });
+  });
 }
 
 /**
@@ -205,5 +181,5 @@ export function flushPubAmenitiesQueue(): Promise<void> {
     clearTimeout(_flushTimer);
     _flushTimer = null;
   }
-  return amenityDelivery.flush();
+  return runLocked(flushLocked);
 }

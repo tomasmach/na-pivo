@@ -15,9 +15,8 @@ import {
 
 import { normalizeEditableHhMm } from '@/data/communityHours';
 import { t } from '@/i18n';
-import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 function sanitizeTimePart(raw: string): string {
@@ -65,7 +64,7 @@ export function SplitTimeInput({
         onChangeText={(part) => onChange(withTimePart(value, 0, part))}
         onBlur={normalize}
         placeholder="11"
-        placeholderTextColor={MockColors.fieldHint}
+        placeholderTextColor={Colors.mutedText}
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus
@@ -81,7 +80,7 @@ export function SplitTimeInput({
         onChangeText={(part) => onChange(withTimePart(value, 1, part))}
         onBlur={normalize}
         placeholder="00"
-        placeholderTextColor={MockColors.fieldHint}
+        placeholderTextColor={Colors.mutedText}
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus
@@ -108,8 +107,8 @@ const styles = StyleSheet.create({
   part: {
     height: '100%',
     color: Colors.foam,
-    fontWeight: '600',
-    fontSize: 14.5,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
     // Android TextInput ships default internal padding that eats the tight
     // width and clips digits — zero it explicitly on every side.
     padding: 0,
@@ -120,8 +119,8 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   colon: {
-    fontWeight: '600',
-    fontSize: 14.5,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
     color: Colors.foamMuted,
     includeFontPadding: false,
     marginHorizontal: -1,

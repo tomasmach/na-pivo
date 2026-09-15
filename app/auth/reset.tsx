@@ -8,19 +8,20 @@
  * to the tabs; on error we surface `detail`.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   Pressable,
   TextInput,
+  ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
@@ -48,18 +49,17 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const operationInFlight = useRef(false);
 
   const leave = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)' as Href);
+      router.replace('/(tabs)');
     }
   }, [router]);
 
   const handleSubmit = useCallback(async () => {
-    if (operationInFlight.current) return;
+    if (busy) return;
     const token = linkToken || code.trim();
     if (!token) {
       setError(t.account.errorResetCodeMissing);
@@ -69,22 +69,20 @@ export default function ResetPasswordScreen() {
       setError(t.account.errorPasswordShort);
       return;
     }
-    operationInFlight.current = true;
     setError('');
     setBusy(true);
     try {
       const result = await resetPassword({ token, password });
       if (result.ok) {
         showToast(t.account.resetDoneToast);
-        router.replace('/(tabs)' as Href);
+        router.replace('/(tabs)');
         return;
       }
       setError(result.detail || t.account.errorGeneric);
     } finally {
-      operationInFlight.current = false;
       setBusy(false);
     }
-  }, [code, linkToken, password, resetPassword, showToast, router]);
+  }, [busy, code, linkToken, password, resetPassword, showToast, router]);
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -97,9 +95,7 @@ export default function ResetPasswordScreen() {
       >
         <ChevronLeftIcon size={22} color={Colors.foam} />
       </Pressable>
-      <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {t.account.resetTitle}
-      </Text>
+      <Text style={styles.headerTitle}>{t.account.resetTitle}</Text>
       <View style={styles.headerSpacer} />
     </View>
   );
@@ -118,9 +114,7 @@ export default function ResetPasswordScreen() {
       >
           {!linkToken && (
             <View style={styles.fieldGroup}>
-              <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.account.resetCodeLabel}
-              </Text>
+              <Text style={styles.label}>{t.account.resetCodeLabel}</Text>
               <TextInput
                 style={styles.input}
                 value={code}
@@ -141,9 +135,7 @@ export default function ResetPasswordScreen() {
           )}
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.account.resetNewPasswordLabel}
-            </Text>
+            <Text style={styles.label}>{t.account.resetNewPasswordLabel}</Text>
             <TextInput
               style={styles.input}
               value={password}
@@ -174,9 +166,13 @@ export default function ResetPasswordScreen() {
               label={busy ? t.account.loading : t.account.resetSubmit}
               onPress={handleSubmit}
               glow={busy ? 'none' : 'soft'}
-              loading={busy}
               accessibilityLabel={t.account.resetSubmit}
             />
+            {busy && (
+              <View style={styles.buttonSpinner} pointerEvents="none">
+                <ActivityIndicator color={Colors.stout} />
+              </View>
+            )}
           </View>
       </KeyboardAwareScrollView>
     </View>
@@ -212,7 +208,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
@@ -231,7 +227,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   label: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 12,
     color: Colors.mutedText,
     textTransform: 'uppercase',
@@ -244,12 +240,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
@@ -258,4 +254,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginTop: Spacing.xs,
   },
+  buttonSpinner: {
+    position: 'absolute',
+    top: 0,
+    right: 24,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+
 });

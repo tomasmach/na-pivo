@@ -9,21 +9,30 @@
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { MenuIcon } from '@/components/shared/IconGlyph';
-import type { PublishedNight } from '@/data/nightsClient';
-import { useNightActions } from '@/feed/useNightActions';
+import { reportProfileContent } from '@/data/auth';
 import {
-  beerCountLabel,
+  isRetriableNightError,
+  unpublishNight,
+  type PublishedNight,
+} from '@/data/nightsClient';
+import { enqueueNightOp } from '@/data/nightsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
+import {
+  t,
   intlLocale,
+  beerCountLabel,
   shotCountLabel,
   softDrinkCountLabel,
-  t,
   wineCountLabel,
 } from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { Avatar } from '@/profile/Avatar';
+import { useToastStore } from '@/stores/toastStore';
+import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { TallyMarks } from '@/vycep/TallyMarks';
 import RoundPill from '@/vycep/RoundPill';
@@ -43,6 +52,8 @@ function authorLabel(night: PublishedNight): string {
 }
 
 function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
+  const showToast = useToastStore((s) => s.show);
+  const markUnpublished = useVycepStore((s) => s.markUnpublished);
   const now = useMemo(() => new Date(), []);
 
   const metaLine = useMemo(
@@ -73,14 +84,69 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
     ],
   );
 
-  const removed = useCallback(
-    (value: PublishedNight) => {
-      if (value.clientId) onRemoved?.(value.clientId);
-    },
-    [onRemoved],
-  );
-  const openNightActions = useNightActions(removed);
-  const openMenu = useCallback(() => openNightActions(night), [night, openNightActions]);
+  const handleUnpublish = useCallback(() => {
+    showAppDialog({
+      title: t.vycep.unpublishCta,
+      message: t.vycep.publishBody,
+      buttons: [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.vycep.unpublishCta,
+          style: 'destructive',
+          onPress: () => {
+            const clientId = night.clientId;
+            if (!clientId) return;
+            trackUiInteraction('night_unpublish', 'submit');
+            void unpublishNight(clientId).then((res) => {
+              if (!res.ok) {
+                if (isRetriableNightError(res)) {
+                  // Offline / transient: keep the removal intent in the durable
+                  // queue so the night really comes down once we're back online.
+                  void enqueueNightOp({ op: 'unpublish', clientId });
+                } else {
+                  trackUiInteraction('night_unpublish', 'failure');
+                  showToast(t.vycep.roundErrorToast);
+                  return;
+                }
+              }
+              trackUiInteraction('night_unpublish', 'success');
+              markUnpublished(clientId);
+              showToast(t.vycep.unpublishedToast);
+              onRemoved?.(clientId);
+            });
+          },
+        },
+      ],
+    });
+  }, [markUnpublished, night.clientId, onRemoved, showToast]);
+
+  const handleReport = useCallback(() => {
+    showAppDialog({
+      title: t.vycep.reportTitle,
+      message: t.vycep.reportBody,
+      buttons: [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.vycep.reportConfirm,
+          style: 'destructive',
+          onPress: () => {
+            void reportProfileContent({
+              targetAccountId: night.author.id,
+              reason: 'spam',
+              nightId: night.id,
+            }).then((res) => {
+              showToast(res.ok ? t.vycep.reportSentToast : t.vycep.reportErrorToast);
+            });
+          },
+        },
+      ],
+    });
+  }, [night.author.id, night.id, showToast]);
+
+  const openMenu = useCallback(() => {
+    if (night.isMine) handleUnpublish();
+    else handleReport();
+  }, [handleReport, handleUnpublish, night.isMine]);
 
   const owner = authorLabel(night);
   const dateCaption = [
@@ -183,14 +249,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   author: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   date: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -209,13 +275,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tallyLabel: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
   metaText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -226,7 +292,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mineRoundsText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,

@@ -20,7 +20,7 @@ import {
 } from '@/data/pubs';
 import type { HoursStatus, Pub, VenueKind } from '@/data/pubs';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
-import { persistPubReport } from '@/data/pubReportQueue';
+import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
@@ -28,12 +28,12 @@ import { geohash8 } from '@/data/geohash';
 import { pubMatchesPriceFilter } from '@/data/pubSearchFilters';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 import { computeOpenState } from '@/data/communityHours';
+import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import {
   isBeerListOverrideCurrent,
   isBeerMenuTypeOverrideCurrent,
-  isHoursOverrideCurrent,
   useCommunityStore,
 } from '@/stores/communityStore';
 import { useFocusedPubStore, type FocusedPub } from '@/stores/focusedPubStore';
@@ -147,8 +147,6 @@ export interface UseCompassResult {
   isLoading: boolean;
   searchFailed: boolean;
   currentPosition: { lat: number; lng: number; accuracyMeters: number } | null;
-  /** Changes whenever a nearby-pubs request replaces the shared catalogue. */
-  pubDataRevision: number;
   /** A friend's coarse pub the needle is pointing at ("Ukaž na kompasu", §F2). */
   focusedPub: FocusedPub | null;
   /** Drop the friend focus and return to the normal nearest/surprise target. */
@@ -156,7 +154,7 @@ export interface UseCompassResult {
 }
 
 export function useCompass(
-  beerBrandFilter: string | readonly string[] | null = null,
+  beerBrandKey: string | null = null,
   amenityKeys: readonly string[] = [],
   priceMinCzk: number | null = null,
   priceMaxCzk: number | null = null,
@@ -202,7 +200,7 @@ export function useCompass(
   );
 
   // — Position / heading —
-  const { position, retry: retryPosition } = useDevicePosition(
+  const { position } = useDevicePosition(
     focused && sensorsEnabled && permissionState === 'granted',
   );
   const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(
@@ -211,8 +209,9 @@ export function useCompass(
   const positionLat = position?.lat;
   const positionLng = position?.lng;
 
-  // Walking telemetry is fed from the raw watcher stream inside
-  // useDevicePosition; published positions are deduped and would under-sample.
+  useEffect(() => {
+    if (position) recordWalkingSample(position);
+  }, [position]);
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());
@@ -228,7 +227,7 @@ export function useCompass(
   // is a network lookup. Debouncing here, the layer that actually sees the
   // churn, coalesces a drag into a single fetch.
   const lastFetchedMaxKmRef = useRef<number | null | undefined>(undefined);
-  const lastFetchedBeerFilterKeyRef = useRef<string>("");
+  const lastFetchedBeerBrandKeyRef = useRef<string>("");
   const lastFetchedAmenityKeyRef = useRef<string>("");
   const lastFetchedIncludeOtherPlacesRef = useRef(false);
   const filterRequestInFlightKeyRef = useRef<string | null>(null);
@@ -236,19 +235,9 @@ export function useCompass(
   const mountedRef = useRef(true);
   const radiusDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const RADIUS_DEBOUNCE_MS = 700;
-  const activeBeerBrandKeyList = Array.isArray(beerBrandFilter)
-    ? Array.from(new Set(beerBrandFilter.map((key) => key.trim()).filter(Boolean))).sort().join(',')
-    : '';
-  const activeBeerBrandKey =
-    typeof beerBrandFilter === 'string' ? beerBrandFilter.trim() : '';
-  const usesMultiBeerFilter = activeBeerBrandKeyList.length > 0;
-  const activeBeerFilterKey = usesMultiBeerFilter
-    ? `multi:${activeBeerBrandKeyList}`
-    : activeBeerBrandKey
-      ? `scalar:${activeBeerBrandKey}`
-      : '';
+  const activeBeerBrandKey = (beerBrandKey ?? "").trim();
   const activeAmenityKey = Array.from(new Set(amenityKeys)).sort().join(',');
-  const activeFilterKey = `${activeBeerFilterKey}|${activeAmenityKey}|${includeOtherPlaces ? 'other' : ''}`;
+  const activeFilterKey = `${activeBeerBrandKey}|${activeAmenityKey}|${includeOtherPlaces ? 'other' : ''}`;
   const [fetchedFilterKey, setFetchedFilterKey] = useState('|');
   const [selectedFilterKey, setSelectedFilterKey] = useState('|');
   const filterLookupPending = activeFilterKey !== selectedFilterKey;
@@ -275,7 +264,7 @@ export function useCompass(
 
     const runFetch = () => {
       if (cancelled) return;
-      const brandFilterChanged = activeBeerFilterKey !== lastFetchedBeerFilterKeyRef.current;
+      const brandFilterChanged = activeBeerBrandKey !== lastFetchedBeerBrandKeyRef.current;
       const amenityFilterChanged = activeAmenityKey !== lastFetchedAmenityKeyRef.current;
       const otherPlacesChanged =
         includeOtherPlaces !== lastFetchedIncludeOtherPlacesRef.current;
@@ -291,16 +280,14 @@ export function useCompass(
       const radiusKm = maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM;
       forceNextSearchRef.current = false;
       lastFetchedMaxKmRef.current = maxDistanceKm;
-      lastFetchedBeerFilterKeyRef.current = activeBeerFilterKey;
+      lastFetchedBeerBrandKeyRef.current = activeBeerBrandKey;
       lastFetchedAmenityKeyRef.current = activeAmenityKey;
       lastFetchedIncludeOtherPlacesRef.current = includeOtherPlaces;
 
       fetchPubsNear(positionLat, positionLng, undefined, {
         force,
         radiusKm,
-        ...(usesMultiBeerFilter
-          ? { beerBrandKeys: activeBeerBrandKeyList.split(',') }
-          : { beerBrandKey: activeBeerBrandKey || null }),
+        beerBrandKey: activeBeerBrandKey || null,
         amenityKeys: activeAmenityKey ? activeAmenityKey.split(',') : [],
         includeOtherPlaces,
       })
@@ -343,7 +330,7 @@ export function useCompass(
     const radiusOnlyChange =
       lastFetchedMaxKmRef.current !== undefined &&
       maxDistanceKm !== lastFetchedMaxKmRef.current &&
-      activeBeerFilterKey === lastFetchedBeerFilterKeyRef.current &&
+      activeBeerBrandKey === lastFetchedBeerBrandKeyRef.current &&
       activeAmenityKey === lastFetchedAmenityKeyRef.current &&
       includeOtherPlaces === lastFetchedIncludeOtherPlacesRef.current &&
       !forceNextSearchRef.current;
@@ -370,9 +357,6 @@ export function useCompass(
     positionLng,
     maxDistanceKm,
     activeBeerBrandKey,
-    activeBeerBrandKeyList,
-    activeBeerFilterKey,
-    usesMultiBeerFilter,
     activeAmenityKey,
     activeFilterKey,
     includeOtherPlaces,
@@ -448,7 +432,7 @@ export function useCompass(
   const lastReportedPubIdsRef = useRef<string[]>(reportedPubIds);
   const lastReportedCacheKeysRef = useRef<string[]>(reportedCacheKeys);
   const lastCatalogRevisionRef = useRef<number>(catalogRevision);
-  const lastBeerFilterKeyRef = useRef<string>(activeBeerFilterKey);
+  const lastBeerBrandKeyRef = useRef<string>(activeBeerBrandKey);
   const lastAmenityKeyRef = useRef<string>(activeAmenityKey);
   const lastIncludeOtherPlacesRef = useRef(includeOtherPlaces);
   // The price range is applied locally at selection time (no backend request), so
@@ -505,7 +489,7 @@ export function useCompass(
       reportedPubIds !== lastReportedPubIdsRef.current ||
       reportedCacheKeys !== lastReportedCacheKeysRef.current;
     const catalogChanged = catalogRevision !== lastCatalogRevisionRef.current;
-    const beerBrandChanged = activeBeerFilterKey !== lastBeerFilterKeyRef.current;
+    const beerBrandChanged = activeBeerBrandKey !== lastBeerBrandKeyRef.current;
     const amenityFilterChanged = activeAmenityKey !== lastAmenityKeyRef.current;
     const otherPlacesChanged = includeOtherPlaces !== lastIncludeOtherPlacesRef.current;
     const priceFilterChanged =
@@ -544,7 +528,7 @@ export function useCompass(
       lastReportedPubIdsRef.current = reportedPubIds;
       lastReportedCacheKeysRef.current = reportedCacheKeys;
       lastCatalogRevisionRef.current = catalogRevision;
-      lastBeerFilterKeyRef.current = activeBeerFilterKey;
+      lastBeerBrandKeyRef.current = activeBeerBrandKey;
       lastAmenityKeyRef.current = activeAmenityKey;
       lastIncludeOtherPlacesRef.current = includeOtherPlaces;
       lastPriceMinRef.current = priceMinCzk;
@@ -614,7 +598,7 @@ export function useCompass(
     reportedPubIds,
     reportedCacheKeys,
     excludeRevision,
-    activeBeerFilterKey,
+    activeBeerBrandKey,
     activeAmenityKey,
     includeOtherPlaces,
     priceMinCzk,
@@ -751,15 +735,18 @@ export function useCompass(
   // stability for memoized consumers and avoiding render churn.
   //
   // Merge precedence:
-  //   • The newest timestamp wins between the backend and local optimistic edit.
-  //     That keeps a fresh offline correction visible even if the pub already
-  //     had community hours, then lets the confirmed server copy replace it.
-  //   • For a local winner we
+  //   • Backend data whose source is "community" is the canonical, public truth
+  //     → it WINS over the local optimistic override (the override has been
+  //     accepted and round-tripped, so prefer the server copy).
+  //   • Otherwise (firmy / unknown / no backend hours) the user's local override
+  //     WINS, so their just-submitted edit shows immediately. For hours we
   //     compute isOpenNow / nextChange locally from the structured WeeklyHours so
   //     the OpenStatusChip stays correct before the backend round-trips.
   const hoursForCurrent = currentPubId ? hoursById.get(currentPubId) : undefined;
   const enrichedPub = useMemo<Pub | null>(() => {
     if (!currentPub) return null;
+
+    const backendIsCommunity = hoursForCurrent?.source === 'community';
 
     // — Hours —
     let openingHours = hoursForCurrent?.openingHours ?? currentPub.openingHours;
@@ -769,12 +756,8 @@ export function useCompass(
     let hoursSource = hoursForCurrent?.source ?? undefined;
     let communityHours = hoursForCurrent?.communityHours ?? undefined;
 
-    const backendHoursUpdatedAt = hoursForCurrent?.hoursUpdatedAt ?? currentPub.hoursUpdatedAt;
-    if (
-      overrideForCurrent?.hours &&
-      isHoursOverrideCurrent(overrideForCurrent, backendHoursUpdatedAt)
-    ) {
-      // A fresh local override wins — compute the live state locally.
+    if (overrideForCurrent?.hours && !backendIsCommunity) {
+      // Local override wins over firmy/unknown — compute the live state locally.
       const local = computeOpenState(overrideForCurrent.hours);
       communityHours = overrideForCurrent.hours;
       isOpenNow = local.isOpenNow;
@@ -1144,9 +1127,6 @@ export function useCompass(
     const pub = currentPub;
     if (!pub) return false;
 
-    const persisted = await persistPubReport(pub, reason);
-    if (!persisted) return false;
-
     // Hide locally by both signals: the Mapy.cz id (exact match) and the
     // geohash-8 cell (still matches when a later fetch re-ids the place).
     addReportedPub(pub.id, geohash8(pub.lat, pub.lng));
@@ -1154,7 +1134,9 @@ export function useCompass(
     setRevealedPub(null);
     setExcludeRevision((revision) => revision + 1);
 
-    return true;
+    // Persisted queue with retry — a failed send is re-attempted on the next
+    // launch/foreground instead of being dropped silently.
+    return enqueuePubReport(pub, reason);
   }, [addReportedPub, currentPub, setRevealedPub]);
 
   const renameCurrentPub = useCallback(async (suggestedName: string): Promise<boolean> => {
@@ -1170,15 +1152,7 @@ export function useCompass(
     void clearPubsSnapshot();
 
     const entry = buildPubNameCorrectionEntry(pub, trimmedName);
-    try {
-      return await enqueuePubNameCorrection(entry);
-    } catch (error) {
-      setCurrentPub(pub);
-      setRevealedPub(pub);
-      renameLocalPub(pub.id, pub.name);
-      bumpCatalogRevision();
-      throw error;
-    }
+    return enqueuePubNameCorrection(entry);
   }, [bumpCatalogRevision, currentPub, setRevealedPub]);
 
   const retrySearch = useCallback(() => {
@@ -1189,7 +1163,7 @@ export function useCompass(
     lastMaxKmRef.current = undefined;
     lastSeedRef.current = null;
     lastCatalogRevisionRef.current = catalogRevision;
-    lastBeerFilterKeyRef.current = activeBeerFilterKey;
+    lastBeerBrandKeyRef.current = activeBeerBrandKey;
     // Clear accumulated skip / auto-closed exclusions so the retry starts fresh.
     // The selection effect will re-run via the state resets below; align the
     // tracked revision so it does not also fire an extra excludeChanged pass.
@@ -1200,19 +1174,15 @@ export function useCompass(
     setSearchFailed(false);
     setPubsLoaded(false);
     setSearchRetryNonce((nonce) => nonce + 1);
-  }, [activeBeerFilterKey, catalogRevision, excludeRevision, resetExclusions]);
+  }, [activeBeerBrandKey, catalogRevision, excludeRevision, resetExclusions]);
 
   const requestPermission = useCallback(async () => {
     const state = await ensureLocationPermission();
     setPermissionState(state);
     if (state === 'denied') {
       await openSystemSettings();
-      return;
     }
-    if (state === 'granted') {
-      await retryPosition();
-    }
-  }, [retryPosition]);
+  }, []);
 
   return {
     arrowRotation,
@@ -1237,7 +1207,6 @@ export function useCompass(
     isLoading,
     searchFailed,
     currentPosition: position,
-    pubDataRevision,
     focusedPub,
     clearFocusedPub,
   };

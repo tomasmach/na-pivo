@@ -34,8 +34,7 @@ def _compile_messages_if_stale() -> None:
         text=True,
     )
     if result.returncode != 0:
-        # A broken .po must be loud, but it must not stop the rest of the suite.
-        print(f"compilemessages failed:\n{result.stderr}")
+        raise pytest.UsageError(f"compilemessages failed:\n{result.stderr}")
 
 
 _compile_messages_if_stale()

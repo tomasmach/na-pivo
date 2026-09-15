@@ -30,4 +30,8 @@ internal class BeerLiveActivityPayload : Record {
 
   @Field
   var repeatBeerServingType: String? = null
+
+  /** UI language picked in the app ("cs" or "en"); the notification follows it, not the device. */
+  @Field
+  var locale: String = "cs"
 }

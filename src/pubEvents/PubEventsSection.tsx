@@ -1,15 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { intlLocale, t } from '@/i18n';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import type { PubInfoContext } from '@/components/amenities/pubInfoContext';
 import { BadgeCheckIcon, ChevronRightIcon, ClockIcon } from '@/components/shared/IconGlyph';
 import { fetchActivePubEvents, isPubEventActive, type PubEvent } from '@/data/pubEventsClient';
-import { intlLocale, t } from '@/i18n';
-import { SectionBreak } from '@/mocks/SectionBreak';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Colors } from '@/theme/colors';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 interface PubEventsSectionProps {
@@ -17,7 +16,6 @@ interface PubEventsSectionProps {
   pubKey: string;
   pubName: string;
   info?: PubInfoContext;
-  showSuggestion?: boolean;
 }
 
 function twoDigits(value: number): string {
@@ -44,13 +42,7 @@ function formatEventValidity(event: PubEvent, now = new Date()): string {
     : `${date(start)} ${time(start)} - ${date(end)} ${time(end)}`;
 }
 
-export function PubEventsSection({
-  visible,
-  pubKey,
-  pubName,
-  info,
-  showSuggestion = true,
-}: PubEventsSectionProps) {
+export function PubEventsSection({ visible, pubKey, pubName, info }: PubEventsSectionProps) {
   const router = useRouter();
   const isSignedIn = useAccountStore(selectIsSignedIn);
   const [eventState, setEventState] = useState<{
@@ -95,7 +87,7 @@ export function PubEventsSection({
     }, delay);
     return () => clearTimeout(timeout);
   }, [activeEvents, eventState.checkedAt, visible]);
-  if (!info || (!showSuggestion && activeEvents.length === 0)) return null;
+  if (!info) return null;
 
   const handleSuggest = () => {
     if (!isSignedIn) {
@@ -117,13 +109,9 @@ export function PubEventsSection({
 
   return (
     <View>
-      {showSuggestion ? (
-        <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.pubDetail.eventsTitle}
-        </Text>
-      ) : (
-        <SectionBreak title={t.pubDetail.eventsTitle} />
-      )}
+      <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+        Aktuální akce
+      </Text>
       {activeEvents.map((event) => (
         <View key={event.id} style={styles.eventRow} accessibilityLabel={`${event.title}. ${formatEventValidity(event)}`}>
           <ClockIcon size={24} color={Colors.amber} />
@@ -142,35 +130,31 @@ export function PubEventsSection({
             <View style={styles.verifiedRow}>
               <BadgeCheckIcon size={14} color={Colors.success} />
               <Text style={styles.verified} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.pubDetail.eventVerified}
+                Ověřeno
               </Text>
             </View>
           </View>
         </View>
       ))}
-      {showSuggestion ? (
-        <Pressable
-          onPress={handleSuggest}
-          style={({ pressed }) => [styles.suggestRow, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut
-          }
-        >
-          <View style={styles.suggestIcon}>
-            <ClockIcon size={19} color={Colors.amber} />
-          </View>
-          <View style={styles.eventCopy}>
-            <Text style={styles.suggestTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-              {isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut}
-            </Text>
-            <Text style={styles.details} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.pubDetail.eventSuggestHint}
-            </Text>
-          </View>
-          <ChevronRightIcon size={20} color={Colors.mutedText} />
-        </Pressable>
-      ) : null}
+      <Pressable
+        onPress={handleSuggest}
+        style={({ pressed }) => [styles.suggestRow, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut}
+      >
+        <View style={styles.suggestIcon}>
+          <ClockIcon size={19} color={Colors.amber} />
+        </View>
+        <View style={styles.eventCopy}>
+          <Text style={styles.suggestTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+            {isSignedIn ? t.pubDetail.eventSuggest : t.pubDetail.eventSuggestSignedOut}
+          </Text>
+          <Text style={styles.details} maxFontSizeMultiplier={FontScaleCap.body}>
+            {t.pubDetail.eventSuggestHint}
+          </Text>
+        </View>
+        <ChevronRightIcon size={20} color={Colors.mutedText} />
+      </Pressable>
     </View>
   );
 }
@@ -179,7 +163,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     marginTop: Spacing.xl,
     marginBottom: Spacing.sm,
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 12,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
@@ -191,31 +175,31 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     paddingVertical: Spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.foam, 0.1),
+    borderBottomColor: Colors.border,
   },
   eventCopy: { flex: 1 },
   eventTitle: {
     color: Colors.foam,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     lineHeight: 20,
   },
   validity: {
     marginTop: 2,
     color: Colors.amberLight,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
   },
   details: {
     marginTop: 3,
     color: Colors.mutedText,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 18,
   },
   verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: Spacing.sm },
-  verified: { color: Colors.success, fontWeight: '500', fontSize: 12 },
+  verified: { color: Colors.success, fontFamily: Fonts.ui.medium, fontSize: 12 },
   suggestRow: {
     minHeight: HitArea.min,
     flexDirection: 'row',
@@ -233,6 +217,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
   },
-  suggestTitle: { color: Colors.foam, fontWeight: '600', fontSize: 14 },
+  suggestTitle: { color: Colors.foam, fontFamily: Fonts.ui.semibold, fontSize: 14 },
   pressed: { opacity: 0.7 },
 });

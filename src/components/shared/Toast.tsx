@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { BeerIcon } from '@/components/shared/IconGlyph';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useToastStore } from '@/stores/toastStore';
@@ -88,7 +88,7 @@ export function Toast() {
         accessibilityRole="button"
       >
         {/* Leading visual: a caller-supplied IconGlyph, or a drawn beer glyph.
-            It used to fall back to an emoji — emoji are banned in UI chrome
+            It used to fall back to a 🍺 emoji — emoji are banned in UI chrome
             (§12), and a toast is chrome. */}
         <View style={styles.iconSlot}>
           {icon ?? <BeerIcon size={18} color={Colors.amber} />}
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   },
   text: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },

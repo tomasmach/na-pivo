@@ -10,10 +10,10 @@ import { FriendMini } from '@/friends/FriendMini';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { intlLocale, t } from '@/i18n';
+import { t, intlLocale } from '@/i18n';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { HitArea, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 function shortDate(iso: string): string {
@@ -105,13 +105,7 @@ export default function BeerDetailScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
       <View style={styles.header}>
-        <Pressable
-          onPress={goBack}
-          hitSlop={10}
-          style={styles.headerBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t.a11y.backButton}
-        >
+        <Pressable onPress={goBack} hitSlop={10} style={styles.headerBtn} accessibilityRole="button">
           <ChevronLeftIcon size={26} color={Colors.foam} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -128,15 +122,7 @@ export default function BeerDetailScreen() {
         </View>
       ) : failed ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerCheckins.detailLoadError}</Text>
-          <Pressable
-            onPress={load}
-            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={t.beerCheckins.detailRetry}
-          >
-            <Text style={styles.retryText} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerCheckins.detailRetry}</Text>
-          </Pressable>
+          <Text style={styles.emptyText}>{t.friends.profileError}</Text>
         </View>
       ) : detail ? (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}>
@@ -159,16 +145,16 @@ export default function BeerDetailScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue} allowFontScaling={false}>{detail.myCount}</Text>
-              <Text style={styles.statLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerDetail.statMine}</Text>
+              <Text style={styles.statValue}>{detail.myCount}</Text>
+              <Text style={styles.statLabel}>moje</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue} allowFontScaling={false}>{formatAverage(detail.myAverageRating)}</Text>
-              <Text style={styles.statLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerDetail.statMyAverage}</Text>
+              <Text style={styles.statValue}>{formatAverage(detail.myAverageRating)}</Text>
+              <Text style={styles.statLabel}>můj průměr</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue} allowFontScaling={false}>{formatAverage(detail.partyAverageRating)}</Text>
-              <Text style={styles.statLabel} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerDetail.statParty}</Text>
+              <Text style={styles.statValue}>{formatAverage(detail.partyAverageRating)}</Text>
+              <Text style={styles.statLabel}>parta</Text>
             </View>
           </View>
 
@@ -181,7 +167,7 @@ export default function BeerDetailScreen() {
 
           {detail.partyDrinkers.length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader label={t.beerDetail.partyDrinkersHeader} />
+              <SectionHeader label="KDO Z PARTY PIL" />
               {detail.partyDrinkers.map((profile, i) => (
                 <HairlineRow key={profile.id} first={i === 0}>
                   <FriendMini profile={profile} />
@@ -216,12 +202,12 @@ export default function BeerDetailScreen() {
                 </HairlineRow>
               ))
             ) : (
-              <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerDetail.recentEmpty}</Text>
+              <Text style={styles.emptyText}>Zatím žádný zápis.</Text>
             )}
           </View>
 
           <View style={styles.section}>
-            <SectionHeader label={t.beerDetail.myHistoryHeader} />
+            <SectionHeader label="MOJE HISTORIE" />
             {detail.myHistory.length > 0 ? (
               detail.myHistory.map((checkIn, i) => (
                 <HairlineRow key={checkIn.id} first={i === 0}>
@@ -246,7 +232,7 @@ export default function BeerDetailScreen() {
                 </HairlineRow>
               ))
             ) : (
-              <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>{t.beerDetail.myHistoryEmpty}</Text>
+              <Text style={styles.emptyText}>Tohle pivo sis ještě nezapsal.</Text>
             )}
           </View>
         </ScrollView>
@@ -276,7 +262,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
   },
@@ -289,17 +275,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.md,
   },
-  retryButton: {
-    minHeight: HitArea.min,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-  },
-  retryText: { fontSize: 15, fontWeight: '700', color: Colors.stout },
-  pressed: { opacity: 0.65 },
   content: {
     paddingTop: Spacing.lg,
     gap: Spacing.lg,
@@ -309,20 +285,20 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 30,
     lineHeight: 36,
     color: Colors.foam,
     textAlign: 'center',
   },
   subtitle: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.foamMuted,
   },
   relationship: {
     marginTop: 2,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     color: Colors.amber,
   },
@@ -344,13 +320,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   statValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.amber,
   },
   statLabel: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -367,18 +343,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 14,
     color: Colors.foam,
   },
   rowMeta: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   emptyText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.mutedText,
     textAlign: 'center',

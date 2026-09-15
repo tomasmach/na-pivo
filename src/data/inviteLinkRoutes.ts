@@ -1,0 +1,35 @@
+/** Only links issued by Na pivo may become friend invitations. */
+function parseAppUrl(value: string | null | undefined): { url: URL; path: string } | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.port) return null;
+    if (url.protocol === 'napivo:') {
+      return { url, path: url.hostname ? `/${url.hostname}${url.pathname}` : url.pathname };
+    }
+    if (url.protocol === 'https:' && url.hostname === 'na-pivo.cz') {
+      return { url, path: url.pathname };
+    }
+  } catch {
+    // Malformed external links must not crash startup.
+  }
+  return null;
+}
+
+export function parseInviteCodeFromUrl(value: string | null | undefined): string | null {
+  const parsed = parseAppUrl(value);
+  if (!parsed) return null;
+  const { url, path } = parsed;
+  const candidate = path === '/parta/pozvanka'
+    ? url.searchParams.get('code')
+    : /^\/p\/([A-Za-z0-9_-]+)\/?$/.exec(path)?.[1];
+  const code = candidate?.trim();
+  return code && /^[A-Za-z0-9_-]+$/.test(code) ? code : null;
+}
+
+export function isLegacyTableInviteUrl(value: string | null | undefined): boolean {
+  const parsed = parseAppUrl(value);
+  return !!parsed && (
+    parsed.path === '/party-live' || /^\/party\/[^/]+\/?$/.test(parsed.path)
+  );
+}

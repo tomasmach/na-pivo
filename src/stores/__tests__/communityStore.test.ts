@@ -1,7 +1,6 @@
 import {
   isBeerListOverrideCurrent,
   isBeerMenuTypeOverrideCurrent,
-  isHoursOverrideCurrent,
   type CommunityOverride,
   useCommunityStore,
 } from '@/stores/communityStore';
@@ -22,13 +21,11 @@ const LOCAL_AT = Date.parse('2026-07-22T12:00:02.000Z');
 
 function staleOverride(withFieldTimestamps = true): CommunityOverride {
   return {
-    hours: { mo: [], tu: [], we: [], th: [], fr: [], sa: [], su: [] },
     beers: [{ name: 'Staré pivo' }],
     historicalBeers: [{ name: 'Ještě starší pivo' }],
     beerMenuRotates: true,
     ...(withFieldTimestamps ? { beersOverrideUpdatedAt: STALE_AT } : {}),
     ...(withFieldTimestamps ? { beerMenuRotatesOverrideUpdatedAt: STALE_AT } : {}),
-    ...(withFieldTimestamps ? { hoursOverrideUpdatedAt: STALE_AT } : {}),
     updatedAt: STALE_AT,
   };
 }
@@ -58,13 +55,6 @@ describe('community beer override precedence', () => {
     expect(isBeerMenuTypeOverrideCurrent(override, SERVER_AT)).toBe(false);
   });
 
-  it('keeps fresh offline hours until a newer server snapshot confirms them', () => {
-    const override = staleOverride();
-
-    expect(isHoursOverrideCurrent(override, '2026-07-22T11:59:59.000Z')).toBe(true);
-    expect(isHoursOverrideCurrent(override, SERVER_AT)).toBe(false);
-  });
-
   it('does not revive a stale list or menu type after an hours-only patch', () => {
     useCommunityStore.setState({ overrides: { [CELL]: staleOverride(false) } });
     useCommunityStore.getState().setOverride(CELL, {
@@ -73,7 +63,6 @@ describe('community beer override precedence', () => {
 
     const override = useCommunityStore.getState().overrides[CELL];
     expect(override.updatedAt).toBe(LOCAL_AT);
-    expect(override.hoursOverrideUpdatedAt).toBe(LOCAL_AT);
     expect(override.beersOverrideUpdatedAt).toBe(STALE_AT);
     expect(override.beerMenuRotatesOverrideUpdatedAt).toBe(STALE_AT);
     expect(isBeerListOverrideCurrent(override, SERVER_AT)).toBe(false);
@@ -98,16 +87,5 @@ describe('community beer override precedence', () => {
     expect(override.beerMenuRotates).toBe(false);
     expect(override.beerMenuRotatesOverrideUpdatedAt).toBe(LOCAL_AT);
     expect(isBeerMenuTypeOverrideCurrent(override, SERVER_AT)).toBe(true);
-  });
-
-  it('never treats a brand-new hours-only override as a beer menu override', () => {
-    useCommunityStore.setState({ overrides: {} });
-    useCommunityStore.getState().setOverride(CELL, {
-      hours: { mo: [], tu: [], we: [], th: [], fr: [], sa: [], su: [] },
-    });
-
-    const override = useCommunityStore.getState().overrides[CELL];
-    expect(isBeerListOverrideCurrent(override, SERVER_AT)).toBe(false);
-    expect(isBeerMenuTypeOverrideCurrent(override, SERVER_AT)).toBe(false);
   });
 });

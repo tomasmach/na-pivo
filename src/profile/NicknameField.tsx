@@ -18,9 +18,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, ActivityIndicator, StyleSheet, type TextStyle } from 'react-native';
 
-import { MockColors } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
 import { CheckIcon } from '@/components/shared/IconGlyph';
@@ -176,7 +175,7 @@ export const NicknameField = memo(function NicknameField({
           value={value}
           onChangeText={onChangeText}
           placeholder={t.profile.form.nicknamePlaceholder}
-          placeholderTextColor={MockColors.fieldHint}
+          placeholderTextColor={Colors.mutedText}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"
@@ -225,26 +224,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     minHeight: 52,
-    borderRadius: Radius.card,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
   },
   at: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 18,
     color: Colors.amber,
   },
   input: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
     paddingVertical: 12,
   },
   hint: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     marginLeft: 2,

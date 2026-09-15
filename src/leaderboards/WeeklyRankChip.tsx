@@ -20,7 +20,7 @@ import { optimisticRankAfter } from '@/leaderboards/rankMath';
 import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number }) {
@@ -103,12 +103,12 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   label: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
   },
   rank: {
     color: Colors.amber,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
   },
 });

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import {
   ChevronLeftIcon,
@@ -17,7 +17,6 @@ import { AchievementGrid } from '@/profile/AchievementGrid';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper } from '@/data/auth';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
 
 function MapperStat({
   icon,
@@ -115,7 +114,7 @@ export default function BadgesScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.back}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}
@@ -171,13 +170,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerText: { gap: 2 },
-  eyebrow: { fontWeight: '700', fontSize: 10, letterSpacing: 1.3, color: Colors.amber },
-  title: { fontWeight: '800', fontSize: 24, color: Colors.foam },
+  eyebrow: { fontFamily: Fonts.ui.bold, fontSize: 10, letterSpacing: 1.3, color: Colors.amber },
+  title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
   content: { paddingHorizontal: Spacing.lg, gap: Spacing.md },
   mapperSection: { gap: Spacing.sm },
   sectionHeader: {
     marginLeft: 4,
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -208,20 +207,20 @@ const styles = StyleSheet.create({
   },
   mapperValue: {
     marginTop: 6,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   mapperCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 10,
     letterSpacing: 1,
     color: Colors.mutedText,
   },
   mapperHint: {
     marginLeft: 4,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -248,13 +247,13 @@ const styles = StyleSheet.create({
   },
   mapperEmptyText: {
     flex: 1,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
   },
   intro: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,

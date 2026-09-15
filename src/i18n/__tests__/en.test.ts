@@ -18,12 +18,11 @@ function leaves(tree: unknown): Map<string, unknown> {
   return out;
 }
 
-// Proper nouns, the currency symbol and one quoted pub term keep their
-// diacritics in English on purpose.
-const KEEP_CZECH = ['Kč', 'Česky', 'Tomáš', 'Vinohradská', 'Mělník', 'Žatec', 'Plzeň', 'Rakovník', 'šnyt'];
+// Proper nouns, the currency symbol, the language names in the switch and one
+// quoted pub term keep their diacritics in English on purpose.
+const KEEP_CZECH = ['Kč', 'Tomáš', 'Vinohradská', 'Mělník', 'Žatec', 'Plzeň', 'Rakovník', 'šnyt', 'Čeština'];
 const CZECH = /[ěščřžýáíéúůňťď]/i;
-const stripCurrency = (text: string) =>
-  KEEP_CZECH.reduce((acc, word) => acc.split(word).join(''), text);
+const stripAllowed = (text: string) => KEEP_CZECH.reduce((acc, word) => acc.split(word).join(''), text);
 const DASHES = /[–—]/;
 
 function sample(fn: (...args: never[]) => unknown, arity: number): unknown[] {
@@ -62,7 +61,7 @@ describe('English strings mirror the Czech source', () => {
       const texts = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
       for (const text of texts) {
         if (typeof text !== 'string') continue;
-        if (CZECH.test(stripCurrency(text)) || DASHES.test(text)) offenders.push(`${path}: ${text}`);
+        if (CZECH.test(stripAllowed(text)) || DASHES.test(text)) offenders.push(`${path}: ${text}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -79,30 +78,41 @@ describe('English strings mirror the Czech source', () => {
         continue; // typed-union parameters, covered by typecheck instead
       }
       for (const text of outputs) {
-        if (typeof text === 'string' && (CZECH.test(stripCurrency(text)) || DASHES.test(text)))
+        if (typeof text === 'string' && (CZECH.test(stripAllowed(text)) || DASHES.test(text)))
           offenders.push(`${path}: ${text}`);
       }
     }
     expect(offenders).toEqual([]);
   });
+});
 
-  it('keeps the Czech source free of em and en dashes too', () => {
+describe('Czech strings', () => {
+  it('contain no em or en dashes either', () => {
     const offenders: string[] = [];
-    for (const [path, value] of csLeaves) {
-      if (typeof value === 'string' && DASHES.test(value)) offenders.push(`${path}: ${value}`);
+    for (const [path, value] of leaves(cs)) {
+      const texts = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+      for (const text of texts) if (typeof text === 'string' && DASHES.test(text)) offenders.push(`${path}: ${text}`);
+      if (typeof value === 'function') {
+        try {
+          for (const out of sample(value as never, value.length))
+            if (typeof out === 'string' && DASHES.test(out)) offenders.push(`${path}: ${out}`);
+        } catch {
+          // typed-union parameters
+        }
+      }
     }
     expect(offenders).toEqual([]);
   });
 });
 
 describe('resolveLocale', () => {
-  it('maps Czech and Slovak to cs, everything else to en', () => {
-    expect(resolveLocale(['cs'])).toBe('cs');
-    expect(resolveLocale(['sk-SK'])).toBe('cs');
-    expect(resolveLocale(['en-US'])).toBe('en');
-    expect(resolveLocale(['de-DE', 'cs-CZ'])).toBe('cs');
-    expect(resolveLocale(['de-DE'])).toBe('en');
-    expect(resolveLocale([null, undefined, ''])).toBe('en');
+  it('accepts the two supported languages and falls back to Czech', () => {
+    expect(resolveLocale('cs')).toBe('cs');
+    expect(resolveLocale('en')).toBe('en');
+    expect(resolveLocale('sk')).toBe('cs');
+    expect(resolveLocale(null)).toBe('cs');
+    expect(resolveLocale(undefined)).toBe('cs');
+    expect(resolveLocale('')).toBe('cs');
   });
 
   it('pairs each locale with an Intl tag', () => {

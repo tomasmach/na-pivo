@@ -1,67 +1,51 @@
 /**
- * Evening detail — the full breakdown of one evening, plus the private pub
- * rating and the public mapping entry. Reached from the diary by the session's
- * `startedAt` (a stable per-session identity). Drinks can be corrected, removed
- * or added back into the same evening while the personal rating stays editable.
- *
- * 3.0 pass. The screen used to be six bordered cards stacked on top of each
- * other, each opened by an amber 11pt uppercase kicker, with three filled amber
- * controls competing on one scroll. It is now the same content on the stout
- * ground, split by `SectionBreak` (§4.1), with exactly one filled amber surface
- * — "Vyvěsit na Výčep", the only action here that leaves the phone.
- *
- * The one structural change: "CO PADLO" and "ZAPSANÉ NÁPOJE" were two lists of
- * the same drinks, one read-only and one editable, differing only in whether
- * draft and bottled collapsed into one row. That is the duplicate surface §0.6
- * asks you to merge, so there is now one list — what you drank, what it cost,
- * and the two controls that fix it — with the total under it.
- *
- * Nothing moved off the screen: the rename dialog, the per-drink retract, the
- * back-dated add, publishing, sharing, rating and mapping are all still here.
+ * Evening detail — the full breakdown of one drinking evening plus the private
+ * pub rating. Reached from the "Moje piva" list by the session's `startedAt`
+ * (a stable per-session identity). Drinks can be corrected, removed or added
+ * back into the same evening while the personal pub rating stays editable.
  */
 
-import React, { useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
-import { MockLayout } from '@/mocks/mockTheme';
-import { SectionBreak } from '@/mocks/SectionBreak';
-import { StatGrid, type Stat } from '@/mocks/StatGrid';
-import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { t, formatVolume } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
+import { Colors } from '@/theme/colors';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
+import { formatVolume, t } from '@/i18n';
 import { formatPrice } from '@/utils/currency';
 import {
+  enqueueDrink,
   updateQueuedDrinkBeerName,
+  removeQueuedDrink,
   flushDrinksQueue,
-  isDrinkQueued,
 } from '@/data/drinksQueue';
 import { buildDrinkEntry } from '@/data/drinksClient';
-import { enqueueDrinkUpdate } from '@/data/updateDrinksQueue';
-import { prepareDrinkDeletion } from '@/data/drinkDeletion';
-import { prepareDrinkAddition } from '@/data/drinkAddition';
+import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { flushVisitsQueue } from '@/data/visitsQueue';
-import {
-  isPrivateAccountMutationScopeCurrent,
-  PrivateAccountMutationFrozenError,
-  runPrivateAccountMutation,
-} from '@/data/privateAccountBoundary';
 import {
   BeerIcon,
   ChevronLeftIcon,
   HandPlatterIcon,
   HouseIcon,
+  MapPinIcon,
   MinusIcon,
   PencilIcon,
   PlusIcon,
   Share2Icon,
   TreePineIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
-import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import {
   contextFromPubKey,
   isContextPubKey,
@@ -72,8 +56,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
   findSessionByStart,
-  sessionDrinkTypeCounts,
-  sessionTotalCzk,
   drinkingDayKey,
   type TallyDrink,
   type TallySession,
@@ -83,22 +65,23 @@ import { buildNightSummary, sessionsOfNight } from '@/vycep/nightModel';
 import { PublishNightSheet } from '@/vycep/PublishNightSheet';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
 import {
+  sessionBreakdown,
+  eveningPriceLabel,
   sessionDrinkActionGroups,
+  sessionDrinkSummary,
   eveningDateLabel,
   type DrinkActionGroup,
 } from '@/myBeers/eveningModel';
+import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { RenamePromptSheet } from '@/components/shared/RenamePromptSheet';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
-import { trackDrinkAdded } from '@/data/counterTelemetry';
+import { trackClientEvent } from '@/data/telemetryClient';
 import { useToastStore } from '@/stores/toastStore';
-import { useAccountStore } from '@/stores/accountStore';
-import { deriveReconciledDiarySessions } from '@/data/diarySync';
 
 function latestDrinkAt(session: TallySession): string {
   let latest = session.startedAt;
@@ -113,26 +96,13 @@ function latestDrinkAt(session: TallySession): string {
   return latest;
 }
 
-/** How long the evening ran, measured between its first and last drink. */
-function sessionSpanMs(session: TallySession): number {
-  const stamps = session.drinks
-    .map((drink) => Date.parse(drink.at))
-    .filter((ms) => Number.isFinite(ms))
-    .sort((a, b) => a - b);
-  return stamps.length > 1 ? stamps[stamps.length - 1] - stamps[0] : 0;
-}
-
 export default function EveningDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const now = new Date();
 
-  const params = useLocalSearchParams<{
-    startedAt?: string;
-    visitClientId?: string;
-  }>();
+  const params = useLocalSearchParams<{ startedAt?: string }>();
   const startedAt = typeof params.startedAt === 'string' ? params.startedAt : '';
-  const visitClientId = typeof params.visitClientId === 'string' ? params.visitClientId : '';
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -142,70 +112,29 @@ export default function EveningDetailScreen() {
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
-  const diarySnapshot = useAccountStore((state) => {
-    const snapshot = state.diarySnapshot;
-    if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
-    return snapshot.data;
-  });
   const [editingGroup, setEditingGroup] = useState<DrinkActionGroup | null>(null);
   const [addingDrink, setAddingDrink] = useState(false);
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
   const [publishSheetVisible, setPublishSheetVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
-  const savingDrinkNamesRef = useRef(false);
-  const deletingDrinkIdsRef = useRef(new Set<string>());
-  const addingDrinkActionRef = useRef(false);
-  const addDrinkTicketRef = useRef<{ key: string; id: string; drankAt: string } | null>(null);
 
-  const localSession = useMemo(
+  const session = useMemo(
     () => findSessionByStart(current, history, startedAt),
     [current, history, startedAt],
   );
-  const remoteSession = useMemo(() => {
-    if (!visitClientId || !diarySnapshot) return null;
-    const localSessions = current && current.drinks.length > 0 ? [current, ...history] : history;
-    return (
-      deriveReconciledDiarySessions(diarySnapshot, localSessions).find(
-        (item) => item.source === 'remote' && item.session.clientId === visitClientId,
-      )?.session ?? null
-    );
-  }, [current, diarySnapshot, history, visitClientId]);
-  const session = localSession ?? remoteSession;
-  const isEditable = localSession !== null;
 
+  const breakdown = useMemo(() => sessionBreakdown(session), [session]);
   // The Výčep publishes the whole drinking day (a pub crawl is one night), so
   // the summary re-groups every session sharing this evening's drinking day.
   const nightSummary = useMemo(() => {
-    if (!session || !isEditable) return null;
+    if (!session) return null;
     const dayKey = drinkingDayKey(new Date(session.startedAt));
     return buildNightSummary(sessionsOfNight(current, history, dayKey));
-  }, [session, isEditable, current, history]);
+  }, [session, current, history]);
   const publishedRecord = useVycepStore((s) =>
     nightSummary ? s.published[nightSummary.clientKey] : undefined,
   );
   const drinkActionGroups = useMemo(() => sessionDrinkActionGroups(session), [session]);
-
-  // The hero numbers. Beers lead because beers are what this app counts; the
-  // rest of the glasses get one honest column rather than four.
-  const heroStats: Stat[] = useMemo(() => {
-    if (!session) return [];
-    const counts = sessionDrinkTypeCounts(session);
-    const others = counts.wine + counts.shot + counts.soft_drink;
-    const spentCzk = sessionTotalCzk(session);
-    const spanMs = sessionSpanMs(session);
-    const stats: Stat[] = [{ label: t.myBeers.statBeers, value: String(counts.beer) }];
-    if (others > 0) stats.push({ label: t.myBeers.statOther, value: String(others) });
-    stats.push({
-      label: t.diary.factSpent,
-      value: spentCzk > 0 ? formatPrice(spentCzk, priceCurrency) : t.diary.factEmpty,
-    });
-    stats.push({
-      label: t.diary.factSpan,
-      value: spanMs > 0 ? t.stats.span(spanMs) : t.diary.factEmpty,
-    });
-    return stats;
-  }, [priceCurrency, session]);
-
   const addDrinkSeed = useMemo(() => {
     if (!session?.drinks.length) return null;
     const drink = session.drinks[session.drinks.length - 1];
@@ -216,7 +145,7 @@ export default function EveningDetailScreen() {
     };
   }, [session]);
 
-  const handleSaveDrinkName = async (group: DrinkActionGroup, beerName: string) => {
+  const handleSaveDrinkName = (group: DrinkActionGroup, beerName: string) => {
     if (!session) return;
     const trimmed = beerName.trim();
     if (!trimmed) {
@@ -227,39 +156,26 @@ export default function EveningDetailScreen() {
       return;
     }
     const changedDrinks = group.drinks.filter((drink) => drink.beerName !== trimmed);
+    setEditingGroup(null);
     if (changedDrinks.length === 0) return;
-    if (savingDrinkNamesRef.current) return;
-    savingDrinkNamesRef.current = true;
-    try {
-      for (const drink of changedDrinks) {
-        const state = await updateQueuedDrinkBeerName(drink.id, trimmed);
-        if (state !== 'queued') {
-          await flushDrinksQueue();
-          if (
-            (await enqueueDrinkUpdate({
-              client_id: drink.id,
-              beer_name: trimmed,
-            })) === 'storage-error'
-          ) {
-            showToast(t.friends.queueSaveError);
-            return;
-          }
+
+    for (const drink of changedDrinks) {
+      updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
+    }
+
+    const nextSession = findSessionByStart(
+      useTallyStore.getState().current,
+      useTallyStore.getState().history,
+      session.startedAt,
+    );
+    if (nextSession) syncVisit(nextSession, new Date().toISOString());
+
+    for (const drink of changedDrinks) {
+      void updateQueuedDrinkBeerName(drink.id, trimmed).then((updateState) => {
+        if (updateState !== 'queued') {
+          void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
         }
-      }
-      for (const drink of changedDrinks) {
-        updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
-      }
-      const nextSession = findSessionByStart(
-        useTallyStore.getState().current,
-        useTallyStore.getState().history,
-        session.startedAt,
-      );
-      if (nextSession) void syncVisit(nextSession, new Date().toISOString());
-      setEditingGroup(null);
-    } catch {
-      showToast(t.friends.queueSaveError);
-    } finally {
-      savingDrinkNamesRef.current = false;
+      });
     }
   };
 
@@ -274,28 +190,29 @@ export default function EveningDetailScreen() {
           text: t.myBeers.deleteDrinkConfirm,
           style: 'destructive',
           onPress: () => {
-            if (deletingDrinkIdsRef.current.has(drink.id)) return;
-            deletingDrinkIdsRef.current.add(drink.id);
-            void (async () => {
-              if ((await prepareDrinkDeletion(drink.id)) === 'storage-error') {
-                showToast(t.friends.queueSaveError);
-                return;
+            const removed = removeDrinkFromSession(session.startedAt, drink.id);
+            if (!removed) return;
+            if (removed.remainingDrinks > 0) {
+              const nextSession = findSessionByStart(
+                useTallyStore.getState().current,
+                useTallyStore.getState().history,
+                session.startedAt,
+              );
+              syncVisit(nextSession, new Date().toISOString());
+            } else {
+              deleteVisitByClientId(removed.sessionClientId);
+            }
+            void removeQueuedDrinkUpdate(removed.drinkId);
+            void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
+              // Already delivered (or its POST is in flight): wait for the active
+              // flush to settle before the DELETE so it can't race ahead of an
+              // in-flight POST and recreate the drink after we deleted it.
+              if (!pulledFromQueue) {
+                void flushDrinksQueue()
+                  .then(() => enqueueDelete(removed.drinkId))
+                  .catch(() => undefined);
               }
-              const removed = removeDrinkFromSession(session.startedAt, drink.id);
-              if (!removed) return;
-              if (removed.remainingDrinks > 0) {
-                const nextSession = findSessionByStart(
-                  useTallyStore.getState().current,
-                  useTallyStore.getState().history,
-                  session.startedAt,
-                );
-                void syncVisit(nextSession, new Date().toISOString());
-              } else {
-                void deleteVisitByClientId(removed.sessionClientId);
-              }
-            })()
-              .catch(() => showToast(t.friends.queueSaveError))
-              .finally(() => deletingDrinkIdsRef.current.delete(drink.id));
+            });
           },
         },
       ],
@@ -309,31 +226,15 @@ export default function EveningDetailScreen() {
 
   const handleAddDrink = (result: BeerFormResult) => {
     if (!session) return;
-    if (addingDrinkActionRef.current) return;
+    setAddingDrink(false);
+
+    const id = generateUuidV4();
     const isCurrentEvening = current?.clientId === session.clientId;
-    const actionKey = JSON.stringify([
-      session.clientId,
-      result.name,
-      result.drinkType,
-      result.priceCzk ?? null,
-      result.volumeMl ?? null,
-      result.servingType ?? null,
-    ]);
-    const ticket =
-      addDrinkTicketRef.current?.key === actionKey
-        ? addDrinkTicketRef.current
-        : {
-            key: actionKey,
-            id: generateUuidV4(),
-            drankAt: isCurrentEvening ? new Date().toISOString() : latestDrinkAt(session),
-          };
-    addDrinkTicketRef.current = ticket;
-    addingDrinkActionRef.current = true;
-    const { id, drankAt } = ticket;
+    const drankAt = isCurrentEvening ? new Date().toISOString() : latestDrinkAt(session);
     const placeContext = normalizePlaceContext(
       session.placeContext ?? contextFromPubKey(session.pubKey),
     );
-    const tallyDrink = {
+    const updatedSession = addDrinkToSession(session.clientId, {
       id,
       beerName: result.name,
       drinkType: result.drinkType,
@@ -341,8 +242,10 @@ export default function EveningDetailScreen() {
       volumeMl: result.volumeMl,
       servingType: result.servingType,
       at: drankAt,
-    };
-    const prospectiveSession = { ...session, drinks: [...session.drinks, tallyDrink] };
+    });
+    if (!updatedSession) return;
+
+    syncVisit(updatedSession, new Date().toISOString());
     const pubIdentity =
       placeContext === 'pub'
         ? {
@@ -366,68 +269,47 @@ export default function EveningDetailScreen() {
       },
       id,
     );
-    void runPrivateAccountMutation(async (scope) => {
-      if ((await prepareDrinkAddition(entry, prospectiveSession)) === 'storage-error') {
-        showToast(t.friends.queueSaveError);
-        return;
-      }
-      if (!isPrivateAccountMutationScopeCurrent(scope)) {
-        throw new PrivateAccountMutationFrozenError();
-      }
-      const updatedSession = addDrinkToSession(session.clientId, tallyDrink);
-      if (!updatedSession) return;
-      addDrinkTicketRef.current = null;
-      setAddingDrink(false);
-      void flushDrinksQueue().then(async () => {
-        if (!(await isDrinkQueued(id))) markDrinkSynced(id);
-      });
-      void flushVisitsQueue();
-      trackDrinkAdded('evening_detail', {
-        hadActiveSession: isCurrentEvening,
+    void enqueueDrink(entry).then((delivered) => {
+      if (delivered) markDrinkSynced(id);
+    });
+    void trackClientEvent({
+      event: 'drink_added',
+      context: {
+        had_active_session: isCurrentEvening,
         backdated: !isCurrentEvening,
-        drinkType: result.drinkType,
-        placeContext: placeContext === 'pub' ? null : placeContext,
-      });
-      showToast(t.myBeers.addDrinkToEveningSaved, {
-        icon: <BeerIcon size={20} color={Colors.amber} />,
-      });
-    })
-      .catch((error) => {
-        if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(t.friends.queueSaveError);
-        }
-      })
-      .finally(() => {
-        addingDrinkActionRef.current = false;
-      });
+        source: 'evening_detail',
+        ...(result.drinkType === 'beer' ? {} : { drink_type: result.drinkType }),
+        ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
+      },
+    });
+    showToast(t.myBeers.addDrinkToEveningSaved, {
+      icon: <BeerIcon size={20} color={Colors.amber} />,
+    });
   };
-
-  const context = session ? contextFromPubKey(session.pubKey) : 'pub';
-  // An icon in a detail usually decorates a title that already said everything
-  // (§19) — but "Doma" and "Venku" are the two cases where the place is not a
-  // pub name and the glyph carries what the words cannot.
-  const ContextIcon =
-    context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : null;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      {/* The bar carries the way out and nothing else: the date and the place
-          are the page's own title block, where a name too long for a centred
-          header still gets the whole width. */}
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
-        <GlassIconButton
-          size={HitArea.min}
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}
-          onPress={() => leaveRoute(router)}
+          hitSlop={4}
         >
-          <ChevronLeftIcon size={20} color={Colors.foam} />
-        </GlassIconButton>
+          <ChevronLeftIcon size={22} color={Colors.foam} />
+        </Pressable>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {session ? eveningDateLabel(session.startedAt, now) : t.myBeers.title}
+        </Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       {!session ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {t.myBeers.eveningGoneTitle}
+            {t.myBeers.emptyTitle}
           </Text>
         </View>
       ) : (
@@ -437,120 +319,113 @@ export default function EveningDetailScreen() {
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"
         >
-          <Text style={styles.eyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
-            {eveningDateLabel(session.startedAt, now)}
-          </Text>
-          <View style={styles.titleRow}>
-            {ContextIcon ? <ContextIcon size={20} color={Colors.mutedText} /> : null}
-            <Text
-              style={styles.title}
-              numberOfLines={2}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {session.pubName || t.diary.noPub}
+          {/* Place + summary (an outside evening shows its context icon) */}
+          <View style={styles.card}>
+            <View style={styles.pubRow}>
+              {(() => {
+                const context = contextFromPubKey(session.pubKey);
+                const Icon =
+                  context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : MapPinIcon;
+                return <Icon size={18} color={Colors.amber} />;
+              })()}
+              <Text style={styles.pubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {session.pubName}
+              </Text>
+            </View>
+            <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
+              {t.myBeers.summary(
+                sessionDrinkSummary(session),
+                eveningPriceLabel(breakdown, priceCurrency),
+              )}
             </Text>
           </View>
-          {/* Four columns only when there genuinely is a fourth number —
-              `StatGrid` does not space a wrapped row, so the four-stat evening
-              has to fit on one line rather than fold under itself. */}
-          <View style={styles.heroStats}>
-            <StatGrid
-              columns={heroStats.length > 3 ? 4 : 3}
-              compact={heroStats.length > 3}
-              stats={heroStats}
+
+          {/* Breakdown */}
+          <View style={styles.card}>
+            <View style={styles.cardSectionHeader}>
+              <Text style={styles.cardSectionHeaderText}>{t.myBeers.breakdownHeader}</Text>
+            </View>
+            <EveningBreakdown
+              lines={breakdown}
+              priceCurrency={priceCurrency}
             />
           </View>
 
-          {/* One list, not two. Each row is what you drank, how many and what it
-              cost, and carries the two controls that fix it. */}
-          <SectionBreak title={t.myBeers.breakdownTitle} inset={MockLayout.screenPad} />
-          {drinkActionGroups.map((group, index) => (
-            <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowDivider]}>
-              <View style={styles.drinkInfo}>
-                <Text
-                  style={styles.drinkName}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
-                  {group.drinkType !== 'beer'
-                    ? ` · ${t.counter.drinkTypeLabel(group.drinkType)}`
-                    : ''}
-                  {group.count > 1 ? ` · ${group.count}×` : ''}
-                </Text>
-                <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {[
-                    group.servingType ? t.counter.servingTypeLabel(group.servingType) : null,
-                    group.pricedCount === group.count
-                      ? group.count > 1
-                        ? t.myBeers.drinkGroupTotal(formatPrice(group.totalCzk, priceCurrency))
-                        : formatPrice(group.totalCzk, priceCurrency)
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ') || t.diary.factEmpty}
-                </Text>
-              </View>
-              {/* Bare glyphs on 44pt targets. Two bordered discs inside a
-                  bordered card was a frame on a frame on a frame (§14.10).
-                  Remote evenings are factual records, so they render without
-                  the controls that would mutate local state. */}
-              {isEditable ? (
+          <View style={styles.card}>
+            <View style={styles.cardSectionHeader}>
+              <Text style={styles.cardSectionHeaderText}>{t.myBeers.drinkActionsHeader}</Text>
+              <View style={styles.headerFlex} />
+              <Pressable
+                onPress={openAddDrink}
+                style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
+              >
+                <PlusIcon size={15} color={Colors.stout} />
+                <Text style={styles.addDrinkButtonText}>{t.myBeers.addDrinkToEvening}</Text>
+              </Pressable>
+            </View>
+            {drinkActionGroups.map((group, index) => (
+              <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
+                <View style={styles.drinkInfo}>
+                  <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
+                    {group.drinkType !== 'beer' ? ` · ${t.counter.drinkTypeLabel(group.drinkType)}` : ''}
+                    {group.count > 1 ? ` · ${group.count}×` : ''}
+                  </Text>
+                  <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {[
+                      group.servingType
+                        ? t.counter.servingTypeLabel(group.servingType)
+                        : null,
+                      group.pricedCount === group.count
+                        ? group.count > 1
+                          ? t.myBeers.drinkGroupTotal(
+                              formatPrice(group.totalCzk, priceCurrency),
+                            )
+                          : formatPrice(group.totalCzk, priceCurrency)
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '-'}
+                  </Text>
+                </View>
                 <View style={styles.drinkActions}>
                   <Pressable
                     onPress={() => setEditingGroup(group)}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                    hitSlop={6}
                     accessibilityRole="button"
                     accessibilityLabel={t.myBeers.editDrink}
                   >
-                    <PencilIcon size={18} color={Colors.foamMuted} />
+                    <PencilIcon size={17} color={Colors.amber} />
                   </Pressable>
                   <Pressable
                     onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
-                    style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+                    hitSlop={6}
                     accessibilityRole="button"
                     accessibilityLabel={t.myBeers.deleteDrink}
                   >
-                    <MinusIcon size={18} color={Colors.mutedText} />
+                    <MinusIcon size={17} color={Colors.mutedText} />
                   </Pressable>
                 </View>
-              ) : null}
-            </View>
-          ))}
-
-          <View style={[styles.drinkRow, styles.totalRow]}>
-            <Text style={styles.totalLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.myBeers.totalLabel}
-            </Text>
-            <Text style={styles.totalValue} allowFontScaling={false}>
-              {formatPrice(sessionTotalCzk(session), priceCurrency)}
-            </Text>
+              </View>
+            ))}
           </View>
-
-          {isEditable ? (
-            <Pressable
-              onPress={openAddDrink}
-              style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={t.a11y.myBeersAddDrinkToEvening}
-            >
-              <PlusIcon size={16} color={Colors.amber} />
-              <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {t.myBeers.addDrinkToEvening}
-              </Text>
-            </Pressable>
-          ) : null}
 
           {/* Výčep — hang the night on the feed and/or share it as a story.
               Only a night with something on it qualifies. */}
           {nightSummary ? (
-            <>
-              <SectionBreak title={t.vycep.sectionTitle} inset={MockLayout.screenPad} />
-              <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+            <View style={styles.card}>
+              <View style={styles.cardSectionHeader}>
+                <Text style={styles.cardSectionHeaderText}>{t.vycep.sectionHeader}</Text>
+              </View>
+              <Text style={styles.vycepBody} maxFontSizeMultiplier={FontScaleCap.body}>
                 {t.vycep.publishEntryBody}
               </Text>
               {publishedRecord ? (
-                <Text style={styles.publishedState} maxFontSizeMultiplier={FontScaleCap.body}>
+                <Text style={styles.vycepState} maxFontSizeMultiplier={FontScaleCap.body}>
                   {t.vycep.publishedState(
                     publishedRecord.visibility === 'public'
                       ? t.vycep.visibilityChipWorld
@@ -558,52 +433,51 @@ export default function EveningDetailScreen() {
                   )}
                 </Text>
               ) : null}
-              {/* The one filled amber surface on this screen (§2.2): the single
-                  action that takes the evening off this phone. */}
-              <Pressable
-                onPress={() => setPublishSheetVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.publishNightButton}
-                style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
-              >
-                <HandPlatterIcon size={17} color={Colors.stout} />
-                <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {publishedRecord ? t.vycep.updateCta : t.vycep.publishEntryTitle}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setShareModalVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel={t.a11y.shareNightButton}
-                style={({ pressed }) => [
-                  styles.secondary,
-                  styles.secondaryTight,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Share2Icon size={16} color={Colors.amber} />
-                <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {t.vycep.shareNightCta}
-                </Text>
-              </Pressable>
-            </>
+              <View style={styles.vycepActions}>
+                <Pressable
+                  onPress={() => setPublishSheetVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.a11y.publishNightButton}
+                  style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
+                >
+                  <HandPlatterIcon size={16} color={Colors.stout} />
+                  <Text style={styles.vycepPrimaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {publishedRecord ? t.vycep.updateCta : t.vycep.publishEntryTitle}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShareModalVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.a11y.shareNightButton}
+                  style={({ pressed }) => [styles.vycepGhost, pressed && styles.iconButtonPressed]}
+                >
+                  <Share2Icon size={16} color={Colors.foamMuted} />
+                  <Text style={styles.vycepGhostText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {t.vycep.shareNightCta}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
           ) : null}
 
           {/* Rating + public mapping are pub concepts — an outside evening
-              ("Doma / na chatě") has nothing to rate or map. The band between
-              them keeps the private/public split obvious now that neither of
-              them is a card of its own. */}
+              ("Doma / na chatě") has nothing to rate or map. */}
           {!isContextPubKey(session.pubKey) ? (
             <>
-              <SectionBreak inset={MockLayout.screenPad} />
-              <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
+              {/* Rating */}
+              <View style={styles.card}>
+                <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
+              </View>
 
-              <SectionBreak inset={MockLayout.screenPad} />
-              <View style={styles.mapEntry}>
+              {/* Public community mapping — separate card so the public/private
+                  split is visually obvious next to the private rating above. */}
+              <View style={styles.card}>
                 <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
               </View>
             </>
           ) : null}
+
+          <View style={{ height: Spacing.lg }} />
         </KeyboardAwareScrollView>
       )}
       {nightSummary ? (
@@ -629,7 +503,9 @@ export default function EveningDetailScreen() {
         visible={addingDrink}
         mode="add"
         beer={addDrinkSeed}
-        initialDrinkType={normalizeDrinkType(session?.drinks[session.drinks.length - 1]?.drinkType)}
+        initialDrinkType={normalizeDrinkType(
+          session?.drinks[session.drinks.length - 1]?.drinkType,
+        )}
         placeContext={normalizePlaceContext(
           session?.placeContext ?? contextFromPubKey(session?.pubKey ?? ''),
         )}
@@ -653,9 +529,23 @@ function EditDrinkNameModal({
   onCancel: () => void;
   onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
-  return group ? (
-    <EditDrinkNameForm key={group.key} group={group} onCancel={onCancel} onSave={onSave} />
-  ) : null;
+  return (
+    <Modal visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
+      <KeyboardAvoidingView
+        style={styles.modalBackdrop}
+        behavior="padding"
+      >
+        {group ? (
+          <EditDrinkNameForm
+            key={group.key}
+            group={group}
+            onCancel={onCancel}
+            onSave={onSave}
+          />
+        ) : null}
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
 function EditDrinkNameForm({
@@ -668,184 +558,317 @@ function EditDrinkNameForm({
   onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
   const [name, setName] = useState(group.name);
-  const canSubmit = name.trim().length > 0 && name.trim() !== group.name.trim();
 
   return (
-    <RenamePromptSheet
-      visible
-      title={t.myBeers.editDrinkGroupTitle(group.count)}
-      value={name}
-      placeholder={t.myBeers.editDrinkPlaceholder}
-      inputLabel={t.myBeers.editDrinkPlaceholder}
-      cancelLabel={t.myBeers.editDrinkCancel}
-      saveLabel={t.myBeers.editDrinkSave}
-      maxLength={80}
-      canSubmit={canSubmit}
-      onChange={setName}
-      onCancel={onCancel}
-      onSubmit={() => onSave(group, name)}
-    />
+    <View style={styles.modalCard}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {t.myBeers.editDrinkGroupTitle(group.count)}
+        </Text>
+        <Pressable
+          onPress={onCancel}
+          style={({ pressed }) => [styles.modalClose, pressed && styles.iconButtonPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={t.myBeers.editDrinkCancel}
+        >
+          <XIcon size={18} color={Colors.mutedText} />
+        </Pressable>
+      </View>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        placeholder={t.myBeers.editDrinkPlaceholder}
+        placeholderTextColor={Colors.mutedText}
+        style={styles.nameInput}
+        autoCapitalize="words"
+        autoCorrect
+        maxLength={80}
+        returnKeyType="done"
+        onSubmitEditing={() => onSave(group, name)}
+      />
+      <View style={styles.modalActions}>
+        <Pressable onPress={onCancel} style={styles.modalSecondaryButton} accessibilityRole="button">
+          <Text style={styles.modalSecondaryText}>{t.myBeers.editDrinkCancel}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onSave(group, name)}
+          style={styles.modalPrimaryButton}
+          accessibilityRole="button"
+        >
+          <Text style={styles.modalPrimaryText}>{t.myBeers.editDrinkSave}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: Colors.stout },
-  pressed: { opacity: 0.65 },
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.stout,
+  },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingBottom: 12,
+    paddingHorizontal: 20,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 24,
+    color: Colors.foam,
+  },
+  headerSpacer: {
+    width: 44,
+    height: 44,
   },
 
   scroll: { flex: 1 },
-  // One width through the whole app (§20.1). The sections bleed past exactly
-  // this much, so no host may add a second padding on top of it.
   scrollContent: {
-    paddingHorizontal: MockLayout.screenPad,
-    paddingBottom: Spacing.xxl,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm + 2,
   },
 
-  eyebrow: {
-    fontWeight: '500',
-    fontSize: 14,
-    color: Colors.mutedText,
-    includeFontPadding: false,
+  card: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 18,
   },
-  titleRow: {
+  pubRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    marginTop: 2,
+    gap: 8,
+    marginBottom: 6,
   },
-  title: {
-    flexShrink: 1,
-    fontWeight: '800',
-    fontSize: 28,
-    letterSpacing: -0.5,
+  pubName: {
+    flex: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
-    includeFontPadding: false,
   },
-  heroStats: { marginTop: MockLayout.controlGap },
-
-  // 60 is the reading minimum for a one-line row; 44 is the minimum for
-  // touching it, and a list packed to the touch minimum reads as a table (§4.1).
+  summary: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.amber,
+  },
+  cardSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  cardSectionHeaderText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    color: Colors.amber,
+  },
+  headerFlex: { flex: 1 },
+  addDrinkButton: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    paddingHorizontal: 11,
+  },
+  addDrinkButtonText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 12,
+    color: Colors.stout,
+  },
   drinkRow: {
-    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 10,
   },
-  drinkRowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.08),
+  drinkRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
-  drinkInfo: { flex: 1, minWidth: 0 },
+  drinkInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
   drinkName: {
-    fontWeight: '600',
-    fontSize: 16,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
     color: Colors.foam,
-    includeFontPadding: false,
   },
   drinkMeta: {
     marginTop: 2,
-    fontWeight: '400',
-    fontSize: 13,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.amber,
   },
-  drinkActions: { flexDirection: 'row', alignItems: 'center' },
+  drinkActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   iconButton: {
-    width: HitArea.min,
-    height: HitArea.min,
+    width: 36,
+    height: 36,
     borderRadius: Radius.pill,
+    backgroundColor: Colors.stout,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  totalRow: {
-    justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
-  totalLabel: {
-    fontWeight: '600',
-    fontSize: 16,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  totalValue: {
-    fontWeight: '800',
-    fontSize: 20,
-    color: Colors.foam,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
+  iconButtonPressed: {
+    opacity: 0.75,
   },
 
-  body: {
-    fontWeight: '400',
-    fontSize: 15,
-    lineHeight: 21,
+  vycepBody: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    lineHeight: 19,
     color: Colors.foamMuted,
   },
-  publishedState: {
+  vycepState: {
     marginTop: 6,
-    fontWeight: '600',
-    fontSize: 13,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12.5,
     color: Colors.amber,
   },
-
-  primary: {
-    marginTop: MockLayout.controlGap,
-    height: MockLayout.buttonHeight,
+  vycepActions: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  vycepPrimary: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
+    gap: 7,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
+    paddingHorizontal: 16,
   },
-  primaryText: {
-    fontWeight: '700',
-    fontSize: 16,
+  vycepPrimaryText: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 14,
     color: Colors.stout,
-    includeFontPadding: false,
   },
-  // Outline, never filled (§6.2).
-  secondary: {
-    marginTop: MockLayout.controlGap,
-    minHeight: MockLayout.buttonHeight,
+  vycepGhost: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    gap: 7,
     borderRadius: Radius.pill,
+    backgroundColor: Colors.stout,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.18),
-    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
   },
-  secondaryTight: { marginTop: Spacing.sm },
-  secondaryText: {
-    fontWeight: '600',
-    fontSize: 15,
-    color: Colors.amber,
-    includeFontPadding: false,
+  vycepGhostText: {
+    fontFamily: Fonts.display.semibold,
+    fontSize: 14,
+    color: Colors.foamMuted,
   },
 
-  mapEntry: { marginTop: Spacing.lg },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.lg,
+    backgroundColor: 'rgba(12, 8, 5, 0.72)',
+  },
+  modalCard: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 18,
+    gap: 14,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitle: {
+    flex: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
+    color: Colors.foam,
+  },
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nameInput: {
+    minHeight: 50,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout,
+    paddingHorizontal: 14,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalSecondaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSecondaryText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
+    color: Colors.mutedText,
+  },
+  modalPrimaryButton: {
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrimaryText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
+    color: Colors.stout,
+  },
 
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: 36,
     paddingBottom: 60,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     textAlign: 'center',

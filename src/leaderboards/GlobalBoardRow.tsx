@@ -13,7 +13,7 @@ import type { BoardEntry } from '@/data/leaderboardsClient';
 import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface GlobalBoardRowProps {
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankMedal: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 16,
     lineHeight: 16 * 1.24,
     color: Colors.foamMuted,
@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   rankPlain: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 15,
     lineHeight: 15 * 1.24,
     color: Colors.mutedText,
@@ -176,13 +176,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   friendLine: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   score: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     lineHeight: 18 * 1.24,
     color: Colors.foam,

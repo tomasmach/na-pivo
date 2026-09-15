@@ -1,5 +1,9 @@
 import React from 'react';
 import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -8,14 +12,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlowButton } from '@/components/shared/GlowButton';
-import { CloseButton } from '@/components/shared/CloseButton';
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 
 interface PasswordSheetProps {
@@ -46,99 +47,138 @@ export function PasswordSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <BottomSheetModal visible={visible} onClose={onClose} keyboardLift>
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
-        <View style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}>
-          <View style={styles.grabber} />
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.backdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
 
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.account.setPasswordHeader}
-            </Text>
-            <CloseButton onPress={onClose} label={t.a11y.counterCloseModal} />
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          pointerEvents="box-none"
+        >
+          <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+            <Pressable
+              style={[styles.card, { paddingBottom: insets.bottom + Spacing.lg }]}
+              onPress={() => undefined}
+            >
+              <View style={styles.grabber} />
+
+              <View style={styles.header}>
+                <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {t.account.setPasswordHeader}
+                </Text>
+                <Pressable
+                  onPress={onClose}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.a11y.counterCloseModal}
+                >
+                  <XIcon size={20} color={Colors.foamMuted} />
+                </Pressable>
+              </View>
+
+              <View style={styles.body}>
+                {!hasProfileEmail ? (
+                  <TextInput
+                    style={styles.input}
+                    value={email}
+                    onChangeText={onChangeEmail}
+                    placeholder={t.account.emailPlaceholder}
+                    placeholderTextColor={Colors.mutedText}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    accessibilityLabel={t.a11y.authEmailInput}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  />
+                ) : null}
+
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={onChangePassword}
+                  placeholder={t.account.passwordPlaceholder}
+                  placeholderTextColor={Colors.mutedText}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  accessibilityLabel={t.a11y.authNewPasswordInput}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                />
+
+                {error ? (
+                  <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {error}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.footer}>
+                <GlowButton
+                  label={busy ? t.account.loading : t.account.setPasswordSave}
+                  onPress={onSave}
+                  glow="none"
+                  height={52}
+                  accessibilityLabel={t.a11y.accountSetPassword}
+                />
+              </View>
+            </Pressable>
           </View>
-
-          <KeyboardAwareScrollView
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            keyboardAvoidedExternally
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {!hasProfileEmail ? (
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={onChangeEmail}
-                placeholder={t.account.emailPlaceholder}
-                placeholderTextColor={MockColors.fieldHint}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                autoComplete="email"
-                textContentType="emailAddress"
-                accessibilityLabel={t.a11y.authEmailInput}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              />
-            ) : null}
-
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={onChangePassword}
-              placeholder={t.account.passwordPlaceholder}
-              placeholderTextColor={MockColors.fieldHint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              autoComplete="new-password"
-              textContentType="newPassword"
-              accessibilityLabel={t.a11y.authNewPasswordInput}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            {error ? (
-              <Text style={styles.error} maxFontSizeMultiplier={FontScaleCap.body}>
-                {error}
-              </Text>
-            ) : null}
-          </KeyboardAwareScrollView>
-
-          <View style={styles.footer}>
-            <GlowButton
-              label={busy ? t.account.loading : t.account.setPasswordSave}
-              onPress={onSave}
-              glow="none"
-              height={52}
-              loading={busy}
-              accessibilityLabel={t.a11y.accountSetPassword}
-            />
-          </View>
-        </View>
+        </KeyboardAvoidingView>
       </View>
-    </BottomSheetModal>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+  },
+  keyboardWrap: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   cardWrap: {
     width: '100%',
+    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
+    flex: 1,
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.lg,
     ...softDrop(),
   },
   grabber: {
-    width: 44,
+    width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -150,15 +190,23 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
-  body: {
-    flexGrow: 0,
-    flexShrink: 1,
+  closeButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  bodyContent: {
+  body: {
+    flex: 1,
     gap: 12,
   },
   input: {
@@ -166,15 +214,15 @@ const styles = StyleSheet.create({
     borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: MockColors.field,
+    backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
     includeFontPadding: false,
   },
   error: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.amberLight,
     includeFontPadding: false,
@@ -184,5 +232,8 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  pressed: {
+    opacity: 0.6,
   },
 });

@@ -24,7 +24,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { LockKeyholeIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 
 const STROKE = 6;
 /** Below a full turn the arc needs a visible start, so it never reads as empty. */
@@ -127,13 +127,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   level: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   title: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 11,
     letterSpacing: 1.6,
     color: Colors.foamMuted,

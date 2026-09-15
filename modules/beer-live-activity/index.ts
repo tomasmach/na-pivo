@@ -14,6 +14,8 @@ export type BeerLiveActivityPayload = {
   repeatBeerPriceCzk?: number;
   repeatBeerVolumeMl?: number;
   repeatBeerServingType?: string;
+  /** UI language picked in the app; the native notification follows it. */
+  locale?: 'cs' | 'en';
 };
 
 export type BeerLiveActivityPresentation = 'live-update' | 'notification' | 'none';
@@ -47,7 +49,6 @@ type BeerLiveActivityNativeModule = {
   getStatus?(): Promise<BeerLiveActivityStatus>;
   getPendingAdds?(): Promise<BeerLiveActivityPendingAdd[]>;
   ackPendingAdds?(ids: string[]): Promise<void>;
-  clearPendingAdds?(): Promise<void>;
 };
 
 const nativeModule =
@@ -90,11 +91,4 @@ export async function getPendingAdds(): Promise<BeerLiveActivityPendingAdd[]> {
 /** Removes only events that JS has already committed to the tally and queue. */
 export async function ackPendingAdds(ids: string[]): Promise<void> {
   await nativeModule?.ackPendingAdds?.(ids);
-}
-
-/** Removes every uncommitted native action at a strict account boundary. */
-export async function clearPendingAdds(): Promise<boolean> {
-  if (!nativeModule?.clearPendingAdds) return false;
-  await nativeModule.clearPendingAdds();
-  return true;
 }

@@ -875,3 +875,9 @@ msgstr "There is room at the table."
 
 msgid "Otevři Na pivo, potvrď kód a přisedni ke kámošům."
 msgstr "Open Na pivo, confirm the code and sit down with your mates."
+
+msgid "Omlouvám se za dvojku"
+msgstr "Sorry about 2.0"
+
+msgid "Nová verze se nepovedla. Stará appka je zpátky, stačí aktualizovat."
+msgstr "The new version missed the mark. The old app is back, just update."

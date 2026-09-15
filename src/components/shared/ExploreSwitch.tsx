@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CompassIcon, MapIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 type ExploreView = 'compass' | 'map';
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   label: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     color: Colors.foamMuted,
     fontSize: 13,
   },

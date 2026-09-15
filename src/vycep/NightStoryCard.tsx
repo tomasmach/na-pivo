@@ -20,7 +20,7 @@ import Svg, { Defs, G, Path, Text as SvgText, TextPath } from 'react-native-svg'
 
 import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
-
+import { Fonts } from '@/theme/fonts';
 import type { NightSummary } from '@/vycep/nightModel';
 
 /** Logical sticker width; capture upscales 3x to ~1080px. */
@@ -50,16 +50,15 @@ function OutlinedText(props: {
   fill: string;
   strokeWidth: number;
   letterSpacing?: number;
-  /** System weight; the app has no custom families any more (§3.1). */
-  weight?: string;
+  family?: string;
   children: string;
 }) {
-  const { x, y, size, fill, strokeWidth, letterSpacing, weight, children } = props;
+  const { x, y, size, fill, strokeWidth, letterSpacing, family, children } = props;
   const common = {
     x,
     y,
     fontSize: size,
-    fontWeight: weight ?? '800',
+    fontFamily: family ?? Fonts.display.extrabold,
     letterSpacing,
     textAnchor: 'middle' as const,
   };
@@ -93,7 +92,7 @@ function OutlinedArcText(props: {
   const { href, size, fill, strokeWidth, letterSpacing, children } = props;
   const common = {
     fontSize: size,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     letterSpacing,
     textAnchor: 'middle' as const,
   };
@@ -259,7 +258,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
                 size={17}
                 fill={INK}
                 strokeWidth={6}
-                weight="700"
+                family={Fonts.display.bold}
               >
                 {extras}
               </OutlinedText>
@@ -273,7 +272,7 @@ export const NightStoryCard = forwardRef<View, NightStoryCardProps>(
                 size={21}
                 fill={INK}
                 strokeWidth={7}
-                weight="700"
+                family={Fonts.display.bold}
               >
                 {i > 0 ? `→ ${name}` : name}
               </OutlinedText>

@@ -1,6 +1,6 @@
 # Na pivo
 
-Na pivo je česká mobilní appka pro lidi, kteří mají rádi hospody, pivo a večery s kamarády. Začala jako kompas na nejbližší hospodu, dnes je to pivní deníček a verze 3.0 z něj dělá společníka celého večera: pět tabů, večer jako jádro, parta a hry u stolu. Zhruba: něco jako Untappd, ale české, hospodské a pro partu u jednoho stolu — míň katalog, víc večer.
+Na pivo je česká mobilní appka pro lidi, kteří mají rádi hospody, pivo a večery s kamarády. Začala jako kompas na nejbližší hospodu, dnes je to pivní deníček: kompas, počítadlo, deník a parta ve čtyřech tabech. Verze 2.0.0 z ní zkusila udělat společníka celého večera (pět tabů, večer jako jádro, hry u stolu) a lidem to přišlo nepřehledné, takže 2.1.0 vrátila appku 1.5.1. Kód 2.0 žije v tagu `v2.0.0`; když se k některé jeho části vracíme, jde o vrstvu nad jednoduchou appkou, ne o přestavbu hlavní obrazovky.
 
 Monorepo: Expo / React Native appka v kořeni, Django backend v `backend/`. Designový zákon je `DESIGN.md`, produktová rozhodnutí `docs/decisions/`, serverový deploy runbook `backend/README.md`. Tenhle soubor je jediný AGENTS.md v repu a říká, jak se tady mění věci.
 
@@ -67,7 +67,7 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 - **Nativní hranice.** Nový modul, config plugin nebo nativní dependency = rebuild, ne OTA. Napiš to.
 - **Persisted data.** Změna tvaru lokálně uložených dat musí načíst starý tvar (validovaná storage v `createQueue`) a přežít malformed obsah.
 - **Globální destruktivní akce nad komunitními daty** (skrytí/smazání hospody) jedou přes potvrzení a práh hlasů — jedno klepnutí na vlaječku už jednou mazalo hospody všem. Vlastní obsah si uživatel maže rovnou, s potvrzením.
-- **Texty.** Appka běží česky (i pro Slováky) a anglicky podle jazyka telefonu. Každý text pro lidi patří do `src/i18n/cs.ts` **a zároveň** do `src/i18n/en.ts` (stejný tvar, typecheck a `src/i18n/__tests__/en.test.ts` to hlídají); obrazovky čtou jen `t` z `@/i18n`, datumy a čísla formátují přes `intlLocale`, plurály přes `plural(...)`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi zkontroluj podle unslop; humanizer použij jako referenci pro rozsáhlejší přepis; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
+- **Texty.** Appka běží česky (i pro Slováky) a anglicky; jazyk se přepíná v Nastavení (`src/i18n/locale.ts`, výchozí čeština, přepnutí restartuje JS bundle). Každý text pro lidi patří do `src/i18n/cs.ts` a jeho zrcadlo do `src/i18n/en.ts` (test `en.test.ts` hlídá shodu klíčů); obrazovky čtou jen `t` z `@/i18n`, plurály přes `plural(...)`, data a čísla formátují přes `intlLocale`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi zkontroluj podle unslop; humanizer použij jako referenci pro rozsáhlejší přepis; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
 
 ## Dev prostředí
 
@@ -101,11 +101,10 @@ Backend je jedna Django app `pubs`. DRF má `DEFAULT_AUTHENTICATION_CLASSES` pr�
 
 - `src/data/` — síťová a sync vrstva (klienti, fronty, auth, `privateAccountBoundary`); i těžiště testů (`src/data/__tests__`).
 - `src/components/shared/` — sdílené komponenty; scrollovatelný formulář s inputy = `KeyboardAwareScrollView`.
-- `src/i18n/cs.ts` + `src/i18n/en.ts` — UI texty (cs je zdroj, en zrcadlo), `src/i18n/locale.ts` volba jazyka; `src/theme/` + `src/mocks/mockTheme.ts` — designové tokeny.
-- `src/games/` + `npm run build:games` — party hry jako WebView bundly v `assets/games/`.
-- `modules/beer-live-activity/`, `plugins/` — nativní modul a config pluginy; sahat na ně = rebuild.
+- `src/i18n/cs.ts` — UI texty; `src/theme/` — designové tokeny.
+- `modules/beer-live-activity/` — nativní modul Live Activity; sahat na něj = rebuild.
 - `backend/pubs/` — modely, `api/` (routy pod `/v1/`), `migrations/`, `management/commands/`, `enrichment/` (Firmy.cz scraping — právně citlivé, nezvyšuj objem ani neobcházej ochrany; denní capy jsou v env).
-- Jest jede bez jest-expo presetu, ruční mocky v `src/__mocks__/`. Pozor: `src/mocks/` (bez podtržítek) jsou designové mocky 3.0, ne testovací.
+- Jest jede bez jest-expo presetu, ruční mocky v `src/__mocks__/`.
 
 ## Design
 

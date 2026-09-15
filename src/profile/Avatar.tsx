@@ -11,7 +11,7 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 
 import { UserIcon } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 
 interface AvatarProps {
   /** Absolute, loadable avatar URL, or null for the fallback. */
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   initial: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     textAlign: 'center',
     includeFontPadding: false,

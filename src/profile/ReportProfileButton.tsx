@@ -7,7 +7,7 @@ import { t } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import type { ContentReportReason } from '@/data/auth';
 
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.35),
   },
   label: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
   },

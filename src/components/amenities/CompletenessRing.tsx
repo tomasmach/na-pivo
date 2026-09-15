@@ -19,7 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { t } from '@/i18n';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -114,14 +114,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   percent: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   caption: {
     marginTop: 4,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.mutedText,
   },

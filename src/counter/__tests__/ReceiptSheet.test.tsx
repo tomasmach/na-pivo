@@ -14,31 +14,13 @@ import React from 'react';
 import TestRenderer, { act, ReactTestInstance } from 'react-test-renderer';
 
 import { ReceiptSheet, type ReceiptItem, type ReceiptSheetProps } from '@/counter/ReceiptSheet';
-import { cs } from '@/i18n/cs';
+import { t as strings } from '@/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
-
-// This suite owns the receipt's pure content contract. Native presentation and
-// cross-sheet serialization are covered by BottomSheetModal's lifecycle tests.
-jest.mock('@/components/shared/BottomSheetModal', () => {
-  const ReactModule = jest.requireActual('react') as typeof import('react');
-  const { Pressable } = jest.requireActual('react-native') as typeof import('react-native');
-  return {
-    BottomSheetModal: ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
-      <>
-        {ReactModule.createElement(Pressable, {
-          importantForAccessibility: 'no',
-          onPress: onClose,
-        })}
-        {children}
-      </>
-    ),
-  };
-});
 
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
@@ -70,16 +52,8 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   MinusIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
 }));
-jest.mock('@/components/shared/CloseButton', () => ({
-  CloseButton: ({ onPress, label }: { onPress: () => void; label: string }) =>
-    jest.requireActual('react').createElement(jest.requireActual('react-native').Pressable, {
-      onPress,
-      accessibilityRole: 'button',
-      accessibilityLabel: label,
-    }),
-}));
 
-const t = cs.counter;
+const t = strings.counter;
 
 const PILSNER: ReceiptItem = {
   key: 'beer:pilsner-urquell:500',
@@ -224,7 +198,7 @@ describe('ReceiptSheet — minus', () => {
   it('calls onRemove with the item that owns the pressed minus', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterRemoveIdentity(KOZEL.name)));
+    press(buttonWithLabel(renderer, strings.a11y.counterRemoveIdentity(KOZEL.name)));
 
     expect(props.onRemove).toHaveBeenCalledTimes(1);
     expect(props.onRemove).toHaveBeenCalledWith(KOZEL);
@@ -233,8 +207,8 @@ describe('ReceiptSheet — minus', () => {
   it('gives every line its own minus, including the non-beer ones', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterRemoveIdentity(KOFOLA.name)));
-    press(buttonWithLabel(renderer, cs.a11y.counterRemoveIdentity(PILSNER.name)));
+    press(buttonWithLabel(renderer, strings.a11y.counterRemoveIdentity(KOFOLA.name)));
+    press(buttonWithLabel(renderer, strings.a11y.counterRemoveIdentity(PILSNER.name)));
 
     expect((props.onRemove as jest.Mock).mock.calls.map(([item]) => item)).toEqual([
       KOFOLA,
@@ -292,7 +266,7 @@ describe('ReceiptSheet — controls', () => {
   it('fires onDone from the close-the-evening button, not onClose', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterDone));
+    press(buttonWithLabel(renderer, strings.a11y.counterDone));
 
     expect(props.onDone).toHaveBeenCalledTimes(1);
     expect(props.onClose).not.toHaveBeenCalled();
@@ -301,7 +275,7 @@ describe('ReceiptSheet — controls', () => {
   it('fires onClose from the X button, not onDone', () => {
     const { renderer, props } = renderSheet();
 
-    press(buttonWithLabel(renderer, cs.a11y.counterCloseModal));
+    press(buttonWithLabel(renderer, strings.a11y.counterCloseModal));
 
     expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(props.onDone).not.toHaveBeenCalled();
@@ -312,14 +286,12 @@ describe('ReceiptSheet — controls', () => {
 
     // The backdrop dismisses but is hidden from screen readers — only the real
     // close button announces itself, so VoiceOver hears "Zavřít" exactly once.
-    // The first one is the scrim: `BottomSheetModal` renders it before the card,
-    // and the card has a hidden press-swallower of its own further down.
-    const backdrop = renderer.root.findAll(
+    const backdrop = renderer.root.find(
       (node) =>
         typeof node.type === 'string' &&
         node.props.importantForAccessibility === 'no' &&
         typeof node.props.onPress === 'function',
-    )[0];
+    );
     press(backdrop);
 
     expect(props.onClose).toHaveBeenCalledTimes(1);
@@ -337,7 +309,7 @@ describe('ReceiptSheet — the mirror rule', () => {
       .map((node) => node.props?.accessibilityLabel)
       .filter((label): label is string => typeof label === 'string');
 
-    expect(labels).not.toContain(cs.a11y.counterAddBeer);
+    expect(labels).not.toContain(strings.a11y.counterAddBeer);
     expect(labels).not.toContain(t.pickAddBeer);
   });
 

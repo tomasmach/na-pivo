@@ -19,7 +19,7 @@ import { ChevronRightIcon, EyeOffIcon, TrophyIcon } from '@/components/shared/Ic
 import { fetchLeaderboard, type Leaderboard } from '@/data/leaderboardsClient';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** The chase target: the visible cut the subtitle races the user toward. */
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12.5,
     color: Colors.foamMuted,
   },

@@ -27,7 +27,7 @@ import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { PartyTable } from '@/friends/PartyTable';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 
 /** The numeral shrinks as the party grows so "12" never crowds the card. */
@@ -151,7 +151,7 @@ export function PartyCard({
               </Text>
             ) : null}
             {factMuted !== null ? (
-              <Text style={styles.factMuted} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              <Text style={styles.factMuted} maxFontSizeMultiplier={FontScaleCap.body}>
                 {factMuted}
               </Text>
             ) : null}
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   count: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     includeFontPadding: false,
     // Tabular figures so the digit never shifts sideways as people nod.
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   countLabel: {
     marginTop: -8,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   headline: {
     marginTop: 12,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -280,14 +280,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   factStrong: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   factMuted: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
   // A shade louder than a plain card door: on Parta this text IS the screen's
   // primary action, and it has no glow behind it to help it get noticed.
   linkLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     color: Colors.amber,
     includeFontPadding: false,

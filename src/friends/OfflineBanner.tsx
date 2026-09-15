@@ -13,7 +13,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Undo2Icon, WifiIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface OfflineBannerProps {
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   retryLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
   },

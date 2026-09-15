@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import AddPubScreen from '../add-pub';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -21,9 +21,6 @@ const mockPubIdForCoords: jest.Mock = jest.fn((lat: number, lng: number) => `loc
 const mockUpsertLocalPub: jest.Mock = jest.fn();
 const mockFireSuccessHaptic: jest.Mock = jest.fn(async () => undefined);
 const mockResetBeerMapLayerForAddedPub: jest.Mock = jest.fn();
-const mockReverseGeocodePubLocation: jest.Mock = jest.fn(async () => null);
-const mockSuggestPubLocations: jest.Mock = jest.fn(async () => []);
-const mockGeocodePubLocation: jest.Mock = jest.fn(async () => null);
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -105,12 +102,6 @@ jest.mock('@/data/addedPubsQueue', () => ({
   enqueueAddedPubEdit: (entry: unknown) => mockEnqueueAddedPubEdit(entry),
 }));
 
-jest.mock('@/data/mapyClient', () => ({
-  reverseGeocodePubLocation: (...args: unknown[]) => mockReverseGeocodePubLocation(...args),
-  suggestPubLocations: (...args: unknown[]) => mockSuggestPubLocations(...args),
-  geocodePubLocation: (...args: unknown[]) => mockGeocodePubLocation(...args),
-}));
-
 jest.mock('@/data/pubs', () => ({
   clearPubsSnapshot: () => mockClearPubsSnapshot(),
   pubIdForCoords: (...args: [number, number]) => mockPubIdForCoords(...args),
@@ -150,13 +141,9 @@ describe('AddPubScreen', () => {
     mockGetCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 48.1486, longitude: 17.1077 },
     });
-    mockReverseGeocodePubLocation.mockResolvedValue(null);
-    mockSuggestPubLocations.mockResolvedValue([]);
-    mockGeocodePubLocation.mockResolvedValue(null);
   });
 
   afterEach(() => {
-    jest.useRealTimers();
     if (!renderer) return;
 
     act(() => {
@@ -174,9 +161,7 @@ describe('AddPubScreen', () => {
 
   async function submit() {
     const saveButton = renderer!.root.findByProps({
-      accessibilityLabel: mockSearchParams.clientId
-        ? cs.addPub.editSave
-        : cs.a11y.addPubSaveButton,
+      accessibilityLabel: t.a11y.addPubSaveButton,
     });
 
     await act(async () => {
@@ -189,13 +174,13 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     act(() => {
@@ -245,18 +230,18 @@ describe('AddPubScreen', () => {
     // The pin arrives selected — no location tap needed before submitting.
     expect(
       renderer!.root.findAllByProps({
-        accessibilityLabel: cs.a11y.addPubMapPinSelected,
+        accessibilityLabel: t.a11y.addPubMapPinSelected,
       }).length,
     ).toBeGreaterThan(0);
 
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     act(() => {
@@ -281,274 +266,11 @@ describe('AddPubScreen', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('prefills city and address by reverse geocoding the selected map pin', async () => {
-    mockSearchParams = {
-      lat: '50.080123',
-      lng: '16.510616',
-      source: 'map',
-    };
-    mockReverseGeocodePubLocation.mockResolvedValue({
-      lat: 50.080123,
-      lng: 16.510616,
-      city: 'Líšnice',
-      address: 'Líšnice ev. č. 7',
-      type: 'regional.address',
-    });
-
-    await act(async () => {
-      renderer = TestRenderer.create(<AddPubScreen />);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockReverseGeocodePubLocation).toHaveBeenCalledWith(
-      { lat: 50.080123, lng: 16.510616 },
-      expect.any(Object),
-    );
-    expect(
-      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubCityInput }).props.value,
-    ).toBe('Líšnice');
-    expect(
-      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput }).props.value,
-    ).toBe('Líšnice ev. č. 7');
-  });
-
-  it('suggests a missing Google place by name and fills its resolved location', async () => {
-    jest.useFakeTimers();
-    mockSearchParams = {
-      lat: '50.080123',
-      lng: '16.510616',
-      source: 'map',
-    };
-    mockSuggestPubLocations.mockResolvedValue([
-      {
-        id: 'google:place-smrk',
-        name: 'Občerstvení U Smrku',
-        location: 'Líšnice ev. č. 7, Líšnice',
-        provider: 'google',
-        placeId: 'place-smrk',
-      },
-    ]);
-    mockGeocodePubLocation.mockResolvedValue({
-      lat: 50.080123,
-      lng: 16.510616,
-      city: 'Líšnice',
-      address: 'Líšnice ev. č. 7',
-      type: 'regional.address',
-    });
-    renderScreen();
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
-    });
-
-    act(() => {
-      nameInput.props.onChangeText('Občerstvení U Smrku');
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(400);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    const suggestion = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubSuggestion('Občerstvení U Smrku'),
-    });
-    expect(renderer!.root.findAllByProps({ children: 'Google Maps' }).length).toBeGreaterThan(0);
-
-    await act(async () => {
-      await suggestion.props.onPress();
-    });
-
-    expect(mockGeocodePubLocation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Občerstvení U Smrku',
-        placeId: 'place-smrk',
-        near: expect.objectContaining({ lat: 50.080123, lng: 16.510616 }),
-      }),
-    );
-    expect(
-      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubCityInput }).props.value,
-    ).toBe('Líšnice');
-    expect(
-      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput }).props.value,
-    ).toBe('Líšnice ev. č. 7');
-  });
-
-  it('keeps a failed place lookup on screen and recovers on retry', async () => {
-    jest.useFakeTimers();
-    // From the map, a pin is already confirmed — the failed lookup still has to
-    // be visible, otherwise this entry point is back to "nothing happened".
-    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
-    mockSuggestPubLocations.mockResolvedValue([
-      {
-        id: 'google:place-dawu',
-        name: 'Bar Dawu',
-        location: 'Vinohradská 12, Praha',
-        provider: 'google',
-        placeId: 'place-dawu',
-      },
-    ]);
-    // The geocoder is down (503 → null), then recovers on the retry.
-    mockGeocodePubLocation.mockResolvedValueOnce(null).mockResolvedValueOnce({
-      lat: 50.0781,
-      lng: 14.4374,
-      city: 'Praha',
-      address: 'Vinohradská 12',
-      type: 'poi',
-    });
-    renderScreen();
-
-    act(() => {
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubNameInput })
-        .props.onChangeText('Bar Dawu');
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(400);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    const suggestion = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubSuggestion('Bar Dawu'),
-    });
-    await act(async () => {
-      await suggestion.props.onPress();
-    });
-
-    // The failure has to stay on screen — a toast behind the keyboard is not
-    // an answer to "nothing happened".
-    expect(
-      renderer!.root.findAllByProps({ children: cs.addPub.placeLookupUnavailable }).length,
-    ).toBeGreaterThan(0);
-    const retry = renderer!.root.findByProps({ accessibilityLabel: cs.addPub.retry });
-
-    await act(async () => {
-      await retry.props.onPress();
-    });
-
-    expect(mockGeocodePubLocation).toHaveBeenCalledTimes(2);
-    expect(
-      renderer!.root.findAllByProps({ children: cs.addPub.placeLookupUnavailable }),
-    ).toHaveLength(0);
-    expect(
-      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubCityInput }).props.value,
-    ).toBe('Praha');
-    expect(
-      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput }).props.value,
-    ).toBe('Vinohradská 12');
-  });
-
-  it('drops the failed lookup once the user confirms a location and saves that point', async () => {
-    jest.useFakeTimers();
-    mockSearchParams = { lat: '50.087', lng: '14.421' };
-    mockSuggestPubLocations.mockResolvedValue([
-      {
-        id: 'google:place-dawu',
-        name: 'Bar Dawu',
-        location: 'Vinohradská 12, Praha',
-        provider: 'google',
-        placeId: 'place-dawu',
-      },
-    ]);
-    mockGeocodePubLocation.mockResolvedValue(null);
-    renderScreen();
-
-    act(() => {
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubNameInput })
-        .props.onChangeText('Bar Dawu');
-    });
-    await act(async () => {
-      jest.advanceTimersByTime(400);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubSuggestion('Bar Dawu') })
-        .props.onPress();
-    });
-    expect(
-      renderer!.root.findAllByProps({ children: cs.addPub.placeLookupUnavailable }).length,
-    ).toBeGreaterThan(0);
-
-    // Confirming a location answers the failure: the strip (and its live retry,
-    // which would overwrite the typed fields) has to go.
-    await act(async () => {
-      await renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton })
-        .props.onPress();
-    });
-
-    expect(
-      renderer!.root.findAllByProps({ children: cs.addPub.placeLookupUnavailable }),
-    ).toHaveLength(0);
-    expect(
-      renderer!.root.findAllByProps({ accessibilityLabel: cs.addPub.retry }),
-    ).toHaveLength(0);
-
-    act(() => {
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubCityInput })
-        .props.onChangeText('Praha');
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput })
-        .props.onChangeText('Vinohradská 12');
-    });
-    await submit();
-
-    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Bar Dawu',
-        lat: 50.087,
-        lng: 14.421,
-        city: 'Praha',
-        address: 'Vinohradská 12',
-      }),
-    );
-    expect(mockBack).toHaveBeenCalledTimes(1);
-  });
-
-  it('says what is missing while the save button is blocked', async () => {
-    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
-    renderScreen();
-
-    expect(
-      renderer!.root.findAllByProps({ children: cs.addPub.missingName }).length,
-    ).toBeGreaterThan(0);
-
-    act(() => {
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubNameInput })
-        .props.onChangeText('Bar Dawu');
-    });
-
-    // The map pin is already confirmed, so only the address fields are left.
-    expect(
-      renderer!.root.findAllByProps({ children: cs.addPub.missingAddress }).length,
-    ).toBeGreaterThan(0);
-
-    act(() => {
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubCityInput })
-        .props.onChangeText('Praha');
-      renderer!.root
-        .findByProps({ accessibilityLabel: cs.a11y.addPubAddressInput })
-        .props.onChangeText('Vinohradská 12');
-    });
-
-    expect(renderer!.root.findAllByProps({ children: cs.addPub.missingAddress })).toHaveLength(0);
-    await submit();
-    expect(mockEnqueueAddedPub).toHaveBeenCalledTimes(1);
-  });
-
   it('lets the user clear the current location selection', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
 
     act(() => {
@@ -557,7 +279,7 @@ describe('AddPubScreen', () => {
 
     const selectedCurrentLocationButton = renderer!.root
       .findAllByProps({
-        accessibilityLabel: cs.a11y.addPubCurrentLocationSelected,
+        accessibilityLabel: t.a11y.addPubCurrentLocationSelected,
       })
       .find((node) => typeof node.props.onPress === 'function');
 
@@ -569,12 +291,12 @@ describe('AddPubScreen', () => {
 
     expect(
       renderer!.root.findAllByProps({
-        accessibilityLabel: cs.a11y.addPubCurrentLocationSelected,
+        accessibilityLabel: t.a11y.addPubCurrentLocationSelected,
       }),
     ).toHaveLength(0);
     expect(
       renderer!.root.findAllByProps({
-        accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+        accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
       }).filter((node) => typeof node.props.onPress === 'function').length,
     ).toBeGreaterThan(0);
   });
@@ -584,16 +306,16 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     await act(async () => {
@@ -630,7 +352,7 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
 
     act(() => {
@@ -665,10 +387,10 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
 
     await act(async () => {
@@ -692,13 +414,13 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubAddressInput,
+      accessibilityLabel: t.a11y.addPubAddressInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
 
     act(() => {
@@ -717,13 +439,13 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
     const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubNameInput,
+      accessibilityLabel: t.a11y.addPubNameInput,
     });
     const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubCityInput,
+      accessibilityLabel: t.a11y.addPubCityInput,
     });
 
     act(() => {
@@ -744,7 +466,7 @@ describe('AddPubScreen', () => {
     renderScreen();
 
     const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
     });
 
     await act(async () => {
@@ -753,6 +475,6 @@ describe('AddPubScreen', () => {
 
     expect(mockOpenSystemSettings).toHaveBeenCalledTimes(1);
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
-    expect(mockShowToast).toHaveBeenCalledWith(cs.addPub.locationPermissionDenied);
+    expect(mockShowToast).toHaveBeenCalledWith(t.addPub.locationPermissionDenied);
   });
 });

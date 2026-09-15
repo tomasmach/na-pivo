@@ -21,7 +21,7 @@ import type { PartaFeedSitting } from '@/data/partaFeedClient';
 import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 import CheersPill from './CheersPill';
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   // The count and the beer are what the row is for; everything else is context.
   headline: {
     marginTop: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 16,
     lineHeight: 21,
     color: Colors.foam,
@@ -183,28 +183,28 @@ const styles = StyleSheet.create({
   },
   detail: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   where: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
   rating: {
     marginTop: 6,
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,
   },
   note: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foam,

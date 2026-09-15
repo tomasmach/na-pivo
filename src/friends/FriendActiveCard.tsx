@@ -21,14 +21,15 @@ import { CompassIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import type { FriendProfile, FriendPubActivity } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 import { t } from '@/i18n';
 import CheersPill from './CheersPill';
 import { focusPubFromActivity } from './focusPubHandoff';
 import { useFriendSafety } from './friendSafety';
-import GoingRosterView from './GoingRoster';
-import LiveDotView from './LiveDot';
+import GoingRoster from './GoingRoster';
+import LiveDot from './LiveDot';
 import RsvpControl from './RsvpControl';
 import { formatRelative, useNowTick } from './useNowTick';
 
@@ -100,7 +101,7 @@ function FriendActiveCard({ activity, onResponded, stale = false }: FriendActive
         </Pressable>
 
         <View style={styles.headerMeta}>
-          <LiveDotView stale={stale} />
+          <LiveDot stale={stale} />
           {relative ? (
             <Text
               style={styles.relativeTime}
@@ -153,7 +154,7 @@ function FriendActiveCard({ activity, onResponded, stale = false }: FriendActive
       </View>
 
       <View style={styles.roster}>
-        <GoingRosterView
+        <GoingRoster
           profiles={responses.goingProfiles}
           goingCount={responses.going}
           maybeCount={responses.maybe}
@@ -199,9 +200,13 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.1),
+    borderWidth: 1,
+    // A crisp amber edge so the live card lifts off the bare stout — but still
+    // deliberately cooler than MyActivityCard's 0.6, and with NO glow (the lone
+    // halo belongs to my own broadcast).
+    borderColor: withAlpha(Colors.amber, 0.42),
     padding: Spacing.lg,
+    ...softDrop(),
   },
   header: {
     flexDirection: 'row',
@@ -221,7 +226,7 @@ const styles = StyleSheet.create({
   },
   identityName: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },
@@ -232,13 +237,13 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   relativeTime: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
     marginTop: Spacing.md,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 21,
     lineHeight: 25,
     color: Colors.foam,
@@ -251,13 +256,13 @@ const styles = StyleSheet.create({
   },
   cityText: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
   message: {
     marginTop: Spacing.sm,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -283,7 +288,7 @@ const styles = StyleSheet.create({
   },
   compassLabel: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
   },

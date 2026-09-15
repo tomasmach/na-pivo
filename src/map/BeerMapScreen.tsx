@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   FlatList,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -37,12 +38,9 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
-import { useAfterModalDismiss } from '@/components/shared/useAfterModalDismiss';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
@@ -63,11 +61,10 @@ import { useAccountStore } from '@/stores/accountStore';
 import { openPubInMaps } from '@/utils/maps';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { intlLocale, t } from '@/i18n';
-import { MockType } from '@/mocks/mockTheme';
+import { t, intlLocale } from '@/i18n';
 import {
   buildMapPubPoints,
   clusterCoordinates,
@@ -85,6 +82,7 @@ const DEFAULT_REGION: Region = {
 };
 
 const PUB_DETAIL_LOADING_TIMEOUT_MS = 3_000;
+const SHEET_DISMISS_MS = 260;
 
 type Layer = 'all' | 'visited' | 'friends';
 type MapSelection =
@@ -546,7 +544,14 @@ export default function BeerMapScreen({
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
   const didAutoLocate = useRef(Boolean(initialPub || rememberedRegion));
-  const afterModalDismiss = useAfterModalDismiss();
+  const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     loadRegion(initialRegion);
@@ -1086,8 +1091,12 @@ export default function BeerMapScreen({
 
   const runAfterMoreClose = useCallback((action: () => void) => {
     setMoreOpen(false);
-    afterModalDismiss(action);
-  }, [afterModalDismiss]);
+    if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
+    sheetActionTimer.current = setTimeout(() => {
+      sheetActionTimer.current = null;
+      action();
+    }, SHEET_DISMISS_MS);
+  }, []);
 
   const moreRows = useMemo<MoreRow[]>(() => {
     const rows: MoreRow[] = [
@@ -1163,12 +1172,9 @@ export default function BeerMapScreen({
         {showCities && layer !== 'friends'
           ? visitedCities.map((city) => (
               <Marker
-                // visitCount in the key: with tracksViewChanges off the marker
-                // never re-rasterizes, so a changed count must remount it.
-                key={`city:${city.key}:${city.visitCount}`}
+                key={`city:${city.key}`}
                 stopPropagation
                 coordinate={{ latitude: city.lat, longitude: city.lng }}
-                tracksViewChanges={false}
                 onPress={() => {
                   const next: MapSelection = { kind: 'city', key: city.key, accountId };
                   rememberedSelection = next;
@@ -1410,13 +1416,30 @@ export default function BeerMapScreen({
         )}
       </View>
 
-      <BottomSheetModal visible={listOpen} onClose={() => setListOpen(false)}>
-          <View style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}>
-            <View
+      <Modal
+        visible={listOpen}
+        transparent
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+        animationType="fade"
+        onRequestClose={() => setListOpen(false)}
+      >
+        <View style={styles.listBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setListOpen(false)}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <View
+            style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}
+          >
+            <Pressable
               style={[
                 styles.listCard,
                 { paddingBottom: insets.bottom + Spacing.lg },
               ]}
+              onPress={() => undefined}
             >
               <View style={styles.listGrabber} />
               <View style={styles.listHeader}>
@@ -1427,7 +1450,17 @@ export default function BeerMapScreen({
                 >
                   {layer === 'friends' ? t.map.layerFriends : t.map.listTitle}
                 </Text>
-                <CloseButton onPress={() => setListOpen(false)} label={t.map.closeList} />
+                <Pressable
+                  onPress={() => setListOpen(false)}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.pressedSoft,
+                  ]}
+                  accessibilityLabel={t.map.closeList}
+                  accessibilityRole="button"
+                >
+                  <XIcon size={20} color={Colors.foamMuted} />
+                </Pressable>
               </View>
               {layer === 'friends' ? (
                 <FlatList
@@ -1557,9 +1590,10 @@ export default function BeerMapScreen({
                   }
                 />
               )}
-            </View>
+            </Pressable>
           </View>
-      </BottomSheetModal>
+        </View>
+      </Modal>
 
       <MoreSheet
         visible={moreOpen}
@@ -1567,13 +1601,15 @@ export default function BeerMapScreen({
         onClose={() => setMoreOpen(false)}
       />
 
-      <PubFilterSheet
-        visible={filterSheetOpen}
-        value={filters}
-        nearbyPrices={nearbyPrices}
-        onClose={() => setFilterSheetOpen(false)}
-        onApply={onApplyFilters}
-      />
+      {filterSheetOpen ? (
+        <PubFilterSheet
+          visible
+          value={filters}
+          nearbyPrices={nearbyPrices}
+          onClose={() => setFilterSheetOpen(false)}
+          onApply={onApplyFilters}
+        />
+      ) : null}
 
       {selectedPub ? (
         <MapPubSheet
@@ -1590,7 +1626,7 @@ export default function BeerMapScreen({
           onClose={() => setDetailOpen(false)}
           onReport={() => {
             setDetailOpen(false);
-            afterModalDismiss(() => setReportOpen(true));
+            setTimeout(() => setReportOpen(true), 250);
           }}
         />
       ) : null}
@@ -1690,7 +1726,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   pinHintText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foam,
   },
@@ -1773,7 +1809,7 @@ const styles = StyleSheet.create({
   },
   clusterPinVisited: { borderColor: Colors.amber, borderWidth: 2.5 },
   clusterText: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1799,7 +1835,7 @@ const styles = StyleSheet.create({
   livePinSelected: { transform: [{ scale: 1.14 }], borderColor: Colors.neon },
   liveAvatar: { width: '100%', height: '100%' },
   liveInitial: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 19,
     color: Colors.stout,
     includeFontPadding: false,
@@ -1819,7 +1855,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveCountText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 10,
     color: Colors.stout,
     includeFontPadding: false,
@@ -1839,13 +1875,13 @@ const styles = StyleSheet.create({
   },
   cityMarkerText: {
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 15,
     color: Colors.stout,
     includeFontPadding: false,
   },
   cityMarkerCount: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 12,
     color: withAlpha(Colors.stout, 0.72),
     includeFontPadding: false,
@@ -1893,7 +1929,7 @@ const styles = StyleSheet.create({
   placeTitle: {
     flexShrink: 1,
     minWidth: 0,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1913,14 +1949,14 @@ const styles = StyleSheet.create({
   placeMeta: {
     flex: 1,
     minWidth: 0,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   placeFact: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1941,7 +1977,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   placeDoorLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1974,7 +2010,7 @@ const styles = StyleSheet.create({
   },
   layerLabel: {
     flexShrink: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1983,33 +2019,41 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   layerBadge: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 12,
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
 
+  listBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: withAlpha(Colors.black, 0.6),
+  },
   listCardWrap: {
     width: '100%',
+    minHeight: '56%',
     maxHeight: '92%',
   },
   listCard: {
-    flexShrink: 1,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    backgroundColor: Colors.stout,
+    flex: 1,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     ...softDrop(),
   },
   listGrabber: {
     alignSelf: 'center',
-    width: 44,
+    width: 40,
     height: 4,
     marginBottom: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
   },
   listHeader: {
     flexDirection: 'row',
@@ -2020,12 +2064,23 @@ const styles = StyleSheet.create({
   },
   listTitle: {
     flexShrink: 1,
-    ...MockType.titleS,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
     color: Colors.foam,
+    includeFontPadding: false,
+  },
+  closeButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   list: {
-    flexGrow: 0,
-    flexShrink: 1,
+    flex: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
@@ -2044,14 +2099,14 @@ const styles = StyleSheet.create({
   },
   listRowCopy: { flex: 1, minWidth: 0 },
   listRowTitle: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   listRowMeta: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -2059,7 +2114,7 @@ const styles = StyleSheet.create({
   emptyList: {
     paddingVertical: 40,
     textAlign: 'center',
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

@@ -40,14 +40,14 @@ import {
   Undo2Icon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import type { FriendPubActivity } from '@/data/friendsClient';
-import { endFriendActivityDurably } from '@/data/friendsQueue';
-import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
+import { endFriendPubActivity, type FriendPubActivity } from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { t } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { amberGlow, softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 import { GoingRoster } from './GoingRoster';
@@ -120,29 +120,29 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
     // Optimistically hide the card, but hold the "ukončené" toast until the DELETE
     // actually resolves (§H4 — kills the "hotovo… vlastně ne" sequence).
     setEnding(true);
-    void endFriendActivityDurably(activity.id)
-      .then((result) => {
-        if (!mountedRef.current) return;
-        if (result.state === 'delivered' || result.state === 'queued') {
-          showToast(
-            result.state === 'delivered' ? t.friends.endedToast : t.friends.endQueued,
-            { icon: <Undo2Icon size={20} color={Colors.amber} /> },
-          );
-          onEnded();
-          return;
-        }
-        setEnding(false);
-        showToast(
-          result.state === 'storage-error' ? t.friends.queueSaveError : result.error.detail,
-        );
-      })
-      .catch((error) => {
-        if (!mountedRef.current) return;
-        setEnding(false);
-        if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(t.friends.queueSaveError);
-        }
-      });
+    void endFriendPubActivity(activity.id).then((res) => {
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        showToast(t.friends.endedToast, {
+          icon: <Undo2Icon size={20} color={Colors.amber} />,
+        });
+        onEnded();
+        return;
+      }
+      if (isRetriableFriendError(res)) {
+        // Offline / transient: queue the end so it lands on the next flush and
+        // keep the card hidden (honest — it WILL end).
+        void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
+        showToast(t.friends.endQueued, {
+          icon: <Undo2Icon size={20} color={Colors.amber} />,
+        });
+        onEnded();
+        return;
+      }
+      // Hard reject: bring the card back and explain.
+      setEnding(false);
+      showToast(res.detail);
+    });
   }, [activity.id, onEnded, showToast]);
 
   const handleEndPress = useCallback(() => {
@@ -284,14 +284,19 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
 
 const styles = StyleSheet.create({
   glowLayer: {
-    borderRadius: Radius.card,
+    borderRadius: Radius.cardLarge,
+    backgroundColor: Colors.stout2,
+    // The lone halo on the whole screen — spread it wide enough to actually read
+    // as warmth bleeding off my live table, not a tight 8pt shadow nobody sees.
+    ...amberGlow(22),
   },
   card: {
     backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.1),
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.6),
     padding: Spacing.lg,
+    ...softDrop(),
   },
   kicker: {
     flexDirection: 'row',
@@ -315,8 +320,9 @@ const styles = StyleSheet.create({
   },
   kickerLabel: {
     flexShrink: 1,
-    fontWeight: '800',
-    fontSize: 14,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 12,
+    letterSpacing: 1,
     color: Colors.amber,
   },
   expiry: {
@@ -325,13 +331,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   expiryText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
     marginTop: Spacing.md,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     lineHeight: 26,
     color: Colors.foam,
@@ -344,7 +350,7 @@ const styles = StyleSheet.create({
   },
   cityText: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -354,7 +360,7 @@ const styles = StyleSheet.create({
   },
   cheersLine: {
     marginTop: Spacing.sm,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -379,7 +385,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   endLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
