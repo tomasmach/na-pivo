@@ -14,6 +14,16 @@ expo-env.d.ts.bak
 # Native
 /ios/
 /android/
+# Gradle build output of local Expo native modules (e.g. beer-live-activity).
+modules/*/android/build/
+/wearables/wear-os/.gradle/
+/wearables/wear-os/.kotlin/
+/wearables/wear-os/.idea/
+/wearables/wear-os/local.properties
+/wearables/wear-os/**/build/
+/wearables/shared/mobile-bridge/android/.gradle/
+/wearables/shared/mobile-bridge/android/.kotlin/
+/wearables/shared/mobile-bridge/android/build/
 *.xcworkspace
 *.xcodeproj
 *.jks
@@ -25,9 +35,20 @@ AuthKey.p8
 google-service-account.json
 *-service-account*.json
 
+# Local screenshots and generated design renders
+/output/
+/screenshots*/
+/Simulator Screenshot*.png
+/*-preview.png
+/*.jpg
+/*.jpeg
+/design/*-concept.png
+/na-pivo-feature-graphic-*.png
+/store-assets/reference/
+
 # Local environment
-.env
-.env.local
+.env*
+!.env.example
 .codex/
 
 # macOS
@@ -52,10 +73,47 @@ yarn-error.log*
 
 expo-env.d.ts
 # @end expo-cli
-# The backend is server-side and is not part of the mobile bundle.
-/backend
+store-assets/logs/
+.pubmatch/
 
-# Repo-only docs and assets that are not part of the mobile bundle.
+# Compiled gettext catalogues: the .po sources are checked in, the .mo files
+# are built by compilemessages (Docker image build, and on demand for tests).
+backend/locale/**/*.mo
+
+# ImageMagick scratch from store-assets/compose-appstore-2.0.sh
+store-assets/.work-*/
+# 2.0 style exploration; only background-B.png is a build input
+store-assets/variants-2.0/*
+!store-assets/variants-2.0/background-B.png
+
+# EAS uses this file instead of .gitignore. Keep the rules above in sync.
+# Mobile builds retain app/, src/, assets/, locales/, modules/, vendor/,
+# scripts/ (including postinstall patches), and root build configuration.
+
+# Server, documentation, design sources, and store marketing assets.
+/backend/
 /docs/
+/design/
 /store-assets/
 /artifacts/
+/*.md
+/*.pen
+/.preview-label.html
+
+# Local tooling, CI, and agent state.
+/.git
+/.agents/
+/.claude/
+/.github/
+/.pubmatch/
+/t3.json
+/skills-lock.json
+/.env*
+
+# Tests and reports are not inputs to the mobile build.
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+/jest.config.js
+/jest.setup.ts
+/coverage/
