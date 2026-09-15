@@ -449,7 +449,7 @@ export const cs = {
       verified: 'E-mail ověřen',
       verifiedInline: 'e-mail ověřen',
       ctaSignedIn: 'Můj účet',
-      ctaSignedOutSubtitle: 'Piva, odznaky i partu ti přenesu na každý telefon',
+      ctaSignedOutSubtitle: 'Deník i parta v novém mobilu',
       signedOutTitle: 'Přihlásit se',
       signedOutSubtitle: 'Sync piv, hodnocení a odznaků na všech zařízeních',
     },
@@ -2285,9 +2285,9 @@ export const cs = {
     undo: 'Vrátit',
     // The rapid-drink guard is inline now: the tap does NOT count until this is
     // confirmed, and letting it time out means "no".
-    rapidInline: (minutes: number) => `Poslední pivo před ${minutes} min. Ještě jedno?`,
-    rapidInlineJustNow: 'Pivo máš zapsané před chvilkou. Ještě jedno?',
-    rapidInlineConfirm: 'Jo, dej to tam',
+    rapidInline: (minutes: number) => `Pivo před ${minutes} min.`,
+    rapidInlineJustNow: 'Pivo před chvilkou.',
+    rapidInlineConfirm: 'Ještě jedno',
     checkinNudge: 'Stálo za to?',
     checkinNudgeCta: 'Ohodnotit',
     dopitoNudge: 'Dopito?',
@@ -2390,7 +2390,7 @@ export const cs = {
     servingTypeLabel: (serving: ServingType) =>
       ({
         unknown: 'Nevím',
-        draft: 'Točené',
+        draft: 'Čepované',
         bottle: 'Lahváč',
         can: 'Plechovka',
         plastic_bottle: 'PETka',

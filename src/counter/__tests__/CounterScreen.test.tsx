@@ -669,7 +669,7 @@ describe('CounterScreen rapid-drink guard', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
     expect(enqueueDrink).toHaveBeenCalledTimes(1);
-    expect(surfaceText(renderer)).not.toContain(copy.counter.rapidInlineConfirm);
+    expect(surface(renderer, copy.a11y.counterRapidConfirm)).toBeUndefined();
   });
 
   it('letting the inline confirmation time out means no', async () => {
@@ -681,14 +681,14 @@ describe('CounterScreen rapid-drink guard', () => {
       surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
       await Promise.resolve();
     });
-    expect(surfaceText(renderer)).toContain(copy.counter.rapidInlineConfirm);
+    expect(surface(renderer, copy.a11y.counterRapidConfirm)).toBeDefined();
 
     await act(async () => {
       jest.advanceTimersByTime(5000);
       await Promise.resolve();
     });
 
-    expect(surfaceText(renderer)).not.toContain(copy.counter.rapidInlineConfirm);
+    expect(surface(renderer, copy.a11y.counterRapidConfirm)).toBeUndefined();
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
     expect(enqueueDrink).not.toHaveBeenCalled();
   });
@@ -718,7 +718,7 @@ describe('CounterScreen rapid-drink guard', () => {
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
-    expect(surfaceText(renderer)).not.toContain(copy.counter.rapidInlineConfirm);
+    expect(surface(renderer, copy.a11y.counterRapidConfirm)).toBeUndefined();
   });
 });
 

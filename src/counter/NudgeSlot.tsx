@@ -57,11 +57,11 @@ const ICON_SIZE = 14;
 const PILL_HEIGHT = 36;
 const PILL_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 } as const;
 
-function StripText({ text }: { text: string }) {
+function StripText({ text, numberOfLines = 1 }: { text: string; numberOfLines?: number }) {
   return (
     <Text
       style={styles.stripText}
-      numberOfLines={1}
+      numberOfLines={numberOfLines}
       maxFontSizeMultiplier={FontScaleCap.body}
     >
       {text}
@@ -98,7 +98,7 @@ function RapidStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'rapid' }> }) {
   return (
     <View style={[styles.strip, styles.stripRapidBorder]}>
       <Icon size={ICON_SIZE} color={Colors.amber} />
-      <StripText text={nudge.text} />
+      <StripText text={nudge.text} numberOfLines={2} />
       <Pressable
         onPress={nudge.onConfirm}
         style={({ pressed }) => [styles.filledPill, pressed && styles.pressed]}

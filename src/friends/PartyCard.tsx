@@ -151,7 +151,7 @@ export function PartyCard({
               </Text>
             ) : null}
             {factMuted !== null ? (
-              <Text style={styles.factMuted} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              <Text style={styles.factMuted} maxFontSizeMultiplier={FontScaleCap.body}>
                 {factMuted}
               </Text>
             ) : null}
