@@ -83,7 +83,7 @@ it('moves the evening reminder after every newly counted beer', async () => {
   expect(mockScheduleNotificationAsync).toHaveBeenCalledWith(
     expect.objectContaining({
       content: expect.objectContaining({
-        title: 'Nezapomněl sis zapsat pivko?',
+        title: 'Nezapisuješ si pivo?',
         data: expect.objectContaining({
           kind: BEER_COUNT_REMINDER_KIND,
           sessionId: SESSION.clientId,

@@ -38,7 +38,7 @@ export function dailyBeerAverage(
 }
 
 export function formatDailyBeerAverage(value: number | null): string {
-  if (value == null) return '—';
+  if (value == null) return '-';
   return value
     .toLocaleString(intlLocale, { minimumFractionDigits: 0, maximumFractionDigits: 1 })
     .replace(/ /g, ' ');

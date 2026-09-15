@@ -2,7 +2,7 @@
   "ios": {
     "CFBundleDisplayName": "Na pivo",
     "NSLocationWhenInUseUsageDescription": "Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru; GPS trasu ani historii neukládáme.",
-    "NSLocationAlwaysAndWhenInUseUsageDescription": "Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv — i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládáme.",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv, i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládáme.",
     "NSMotionUsageDescription": "Pomocí senzorů otáčíme šipku, když se otočíš.",
     "NSMicrophoneUsageDescription": "Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.",
     "NSPhotoLibraryUsageDescription": "Otevřu ti galerii, ať si vybereš profilovku, fotku pivního menu nebo fotku piva do deníčku.",

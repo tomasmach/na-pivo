@@ -387,7 +387,7 @@ export default function EveningDetailScreen() {
                         : null,
                     ]
                       .filter(Boolean)
-                      .join(' · ') || '—'}
+                      .join(' · ') || '-'}
                   </Text>
                 </View>
                 <View style={styles.drinkActions}>

@@ -86,6 +86,25 @@ describe('English strings mirror the Czech source', () => {
   });
 });
 
+describe('Czech strings', () => {
+  it('contain no em or en dashes either', () => {
+    const offenders: string[] = [];
+    for (const [path, value] of leaves(cs)) {
+      const texts = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+      for (const text of texts) if (typeof text === 'string' && DASHES.test(text)) offenders.push(`${path}: ${text}`);
+      if (typeof value === 'function') {
+        try {
+          for (const out of sample(value as never, value.length))
+            if (typeof out === 'string' && DASHES.test(out)) offenders.push(`${path}: ${out}`);
+        } catch {
+          // typed-union parameters
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('resolveLocale', () => {
   it('accepts the two supported languages and falls back to Czech', () => {
     expect(resolveLocale('cs')).toBe('cs');

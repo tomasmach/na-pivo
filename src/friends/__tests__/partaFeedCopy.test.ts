@@ -117,7 +117,7 @@ describe('sittingHeadline', () => {
       total: 7,
       items: [drink({ drinkType: 'shot', count: 1, name: 'Fernet' }), drink({ count: 6 })],
     });
-    expect(sittingHeadline(row)).toBe('6 piv Pilsner Urquell + 1 dalších');
+    expect(sittingHeadline(row)).toBe('6 piv Pilsner Urquell + 1 další');
     expect(sittingDetail(row)).toBe('1 panák Fernet');
   });
 

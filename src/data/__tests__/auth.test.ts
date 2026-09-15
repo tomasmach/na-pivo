@@ -482,7 +482,7 @@ describe('signInWithGoogle', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected failure');
     expect(result.code).toBe('unsupported');
-    expect(result.detail).toBe('Tato možnost není na tomto zařízení dostupná.');
+    expect(result.detail).toBe('Tohle na tvém telefonu nejde.');
   });
 
   it('surfaces and records a release OAuth configuration error', async () => {
