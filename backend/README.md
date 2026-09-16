@@ -229,6 +229,10 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUBLIC_API_ORIGIN` | `http://localhost:8012` (dev), `https://api.na-pivo.cz` (prod) | Bare API origin (`scheme://host`, no path/query) used when the backend links to itself |
 | `ANDROID_APP_LINK_CERT_FINGERPRINTS` | _(unset)_ | Comma-separated SHA-256 fingerprints served via `/.well-known/assetlinks.json`; production value is the Play App Signing cert from Google Play Console > App integrity > App signing key certificate (EAS/local `keytool` show the upload cert and may differ). Extra entries cover preview/internal/direct-distribution builds. Unset/malformed serves no association (fail closed) and the production deploy check refuses to pass |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
+| `DB_POOL_MAX_SIZE` | `20` | Postgres connections one process may hold. Every process has its own pool (2 gunicorn workers, the worker container, any manual `manage.py`), so the sum has to stay under the db container's `max_connections` (100); the defaults leave the two web workers up to 40. Ignored on SQLite |
+| `DB_POOL_MIN_SIZE` | `2` | Connections kept warm per process; clamped into `0..DB_POOL_MAX_SIZE` |
+| `DB_POOL_TIMEOUT` | `10` | Seconds a request waits for a free pooled connection; past this it fails with HTTP 500 (`psycopg_pool.PoolTimeout`), which the app's offline queues retry rather than drop |
+| `DB_POOL_MAX_IDLE` | `60` | Seconds unused before the pool retires a connection. It retires at most one per window, so psycopg's 600 s default would keep a peak's connections open for hours |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |

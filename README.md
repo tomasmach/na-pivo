@@ -60,39 +60,37 @@ cp .env.example .env.local
 
 Native builds need a Google Maps SDK key for the platform you use. Put your own restricted key in `.env.local`. Google Sign-In is optional. [.env.example](.env.example) documents every mobile setting.
 
-On macOS, the following command installs the Python packages, runs migrations, starts Django, generates the native iOS project and opens the simulator. Ctrl+C stops Django and closes the simulator it started.
+On macOS, start the local backend, Metro and the iOS simulator:
 
 ```bash
 npm run dev
 ```
 
-`npm run dev` uses port `8012`, a small nod to a Czech 12-degree lager. It stays out of the way of 8000, 8080 and Metro's 8081. Set `EXPO_PUBLIC_BACKEND_PORT` to use a different one. If Django is already running there, the command reuses it and leaves it running when you quit.
+The runner reuses a verified, compatible simulator client for JavaScript and ordinary asset changes. Expo's native fingerprint detects configuration, plugin, dependency and native asset changes. Only a changed fingerprint, missing client or unknown installed build triggers clean prebuild, CocoaPods and a local Xcode build. The first run records the installed client; that record is shared across this repository's worktrees. Force a rebuild with `npm run dev -- --rebuild`. Check generated `ios/` for manual changes before rebuilding.
 
-The backend uses SQLite and safe development defaults when `backend/.env` is missing. Copy `backend/.env.example` to `backend/.env` only when you need to change an integration or backend setting. Regular development never needs production credentials.
+The API uses port `8012`, Metro uses `8081`. Override them with `EXPO_PUBLIC_BACKEND_PORT` and `EXPO_METRO_PORT`. Repeated starts reuse a healthy session only when the checkout, configuration and owning processes match. An occupied port from another or unverified session is an error; that process is left running. `EXPO_IOS_DEVICE` selects a simulator by UDID or name.
 
-On exit it also shuts the simulator down, which is what you want after Ctrl+C and
-not what you want when something else supervises the process — an agent's
-background shell, a detached terminal, tmux. There the runner exits for reasons
-unrelated to you being finished, and the simulator vanishing mid-session looks
-exactly like the app crashing. Set `NAPIVO_KEEP_SIM=1` to leave it running:
+The runner forces local API mode and the SQLite database at this checkout's `backend/db.sqlite3`, even if `DATABASE_URL` points elsewhere. `backend/.env` can configure optional integrations; ordinary development does not need production credentials.
+
+On Linux, or when using an existing compatible client on a device, start only ASGI and Metro:
 
 ```bash
-NAPIVO_KEEP_SIM=1 npm run dev
+npm run dev -- --metro
 ```
 
-That keeps the simulator, but **Metro and the backend still die** with the
-runner, because they are its children and the shell's teardown signals the whole
-process group. The app then sits on a booted simulator with no bundler, which
-looks exactly like "Metro stopped working". To survive that, run it in its own
-session:
+This mode does not build, open or verify a native client. Use the LAN URL from Metro on a physical device; the app derives its local API host from Metro unless `EXPO_PUBLIC_BACKEND_HOST` is set.
+
+Ctrl+C stops only backend and Metro processes started by this invocation. It leaves reused services and simulators running. To keep the dev session alive after closing the terminal:
 
 ```bash
-npm run dev:detached   # logs to /tmp/napivo-dev.log
-npm run dev:stop
+npm run dev:detached               # .expo/dev-detached.log in this checkout
+npm run dev:detached -- --metro    # same, without iOS tools
+npm run dev:stop                   # stops only this checkout's matching runner
 ```
 
-Interactively, prefer plain `npm run dev` — you want Ctrl+C to tidy up.
+A repeated detached start validates the requested ports and settings without replacing the original stop PID. Opening iOS or an explicit `--rebuild` then finishes in the current terminal. Changed backend configuration or migrations require stopping this checkout's session before restarting.
 
+For diagnostics of an individual layer, the separate commands remain available.
 
 Start the Django ASGI backend on the LAN interface:
 

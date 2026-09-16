@@ -9,10 +9,12 @@ import {
   sittingPlace,
 } from '../partaFeedCopy';
 
-const BEERS = {
-  cs: { one: 'pivo', few: 'piva', many: 'piv' },
-  en: { one: 'beer', other: 'beers' },
-};
+const BEERS: CzechCounts = { one: 'pivo', few: 'piva', many: 'piv' };
+interface CzechCounts {
+  one: string;
+  few: string;
+  many: string;
+}
 
 function drink(partial: Partial<PartaFeedDrink> = {}): PartaFeedDrink {
   return {

@@ -21,7 +21,7 @@ import { t } from '@/i18n';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
 import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 export function ContestTeaser() {
@@ -53,9 +53,9 @@ export function ContestTeaser() {
 
   const contest = snapshot?.contest ?? null;
   const entries = snapshot?.entries ?? [];
-  const myEntry = snapshot?.myEntry ?? (entries.find((e) => e.isMine) ?? null);
+  const myEntry = entries.find((e) => e.isMine) ?? null;
   const voted = snapshot?.myVoteEntryId != null;
-  const foreignCount = Math.max(0, (snapshot?.entryCount ?? entries.length) - (myEntry ? 1 : 0));
+  const foreignCount = entries.length - (myEntry ? 1 : 0);
 
   // Fresh, unseen results outrank every running-round state for a few days:
   // opening the contest (or dismissing the celebration) marks them seen.
@@ -146,13 +146,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   subtitle: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12.5,
     color: Colors.foamMuted,
   },

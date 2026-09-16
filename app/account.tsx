@@ -15,7 +15,7 @@ import React, {
   useState,
 } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LoginMethodsSheet } from '@/account/LoginMethodsSheet';
@@ -24,12 +24,11 @@ import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import {
   ChevronLeftIcon,
   MenuIcon,
-  Share2Icon,
+  MailIcon,
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { QuietPill } from '@/components/shared/QuietPill';
-import { CounterCta } from '@/counter/CounterCta';
+import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { isAppleSignInSupported } from '@/data/socialAuth';
 import type { AuthProvider } from '@/data/auth';
@@ -37,13 +36,12 @@ import { t } from '@/i18n';
 import { Avatar } from '@/profile/Avatar';
 import {
   selectAvatarUrl,
-  selectIsSignedIn,
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const MIN_PASSWORD = 8;
@@ -62,7 +60,6 @@ export default function AccountScreen() {
   const showToast = useToastStore((state) => state.show);
 
   const profile = useAccountStore((state) => state.profile);
-  const signedIn = useAccountStore(selectIsSignedIn);
   const nickname = useAccountStore(selectNickname);
   const avatarUrl = useAccountStore(selectAvatarUrl);
   const linkGoogle = useAccountStore((state) => state.linkGoogle);
@@ -77,7 +74,6 @@ export default function AccountScreen() {
   const requestEmailVerification = useAccountStore(
     (state) => state.requestEmailVerification,
   );
-  const refreshProfile = useAccountStore((state) => state.refreshProfile);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [methodsOpen, setMethodsOpen] = useState(false);
@@ -87,40 +83,14 @@ export default function AccountScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [passwordEmail, setPasswordEmail] = useState(profile?.email ?? '');
   const [passwordError, setPasswordError] = useState('');
-  const [profileRetrying, setProfileRetrying] = useState(false);
   const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const busyRef = useRef<string | null>(null);
-  const profileRetryingRef = useRef(false);
-
-  const startBusy = useCallback((operation: string): boolean => {
-    if (busyRef.current) return false;
-    busyRef.current = operation;
-    setBusy(operation);
-    return true;
-  }, []);
-
-  const finishBusy = useCallback((operation: string) => {
-    if (busyRef.current !== operation) return;
-    busyRef.current = null;
-    setBusy(null);
-  }, []);
-
-  const leave = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)' as Href);
-    }
-  }, [router]);
 
   const providers = useMemo(
     () => profile?.providers ?? [],
     [profile?.providers],
   );
   const hasEmail = providers.includes('email');
-  const isClaimed = providers.length > 0;
   const appleSupported = isAppleSignInSupported();
-  const logoutBusy = busy === 'logout';
 
   const runAfterSheetClose = useCallback((action: () => void) => {
     setMethodsOpen(false);
@@ -146,7 +116,8 @@ export default function AccountScreen() {
   }, [profile?.email]);
 
   const handleVerifyEmail = useCallback(async () => {
-    if (!startBusy('verify')) return;
+    if (busy) return;
+    setBusy('verify');
     try {
       const result = await requestEmailVerification();
       showToast(
@@ -155,14 +126,14 @@ export default function AccountScreen() {
           : result.detail || t.account.errorGeneric,
       );
     } finally {
-      finishBusy('verify');
+      setBusy(null);
     }
-  }, [finishBusy, requestEmailVerification, showToast, startBusy]);
+  }, [busy, requestEmailVerification, showToast]);
 
   const handleLink = useCallback(
     async (provider: 'google' | 'apple') => {
-      const operation = `link_${provider}`;
-      if (!startBusy(operation)) return;
+      if (busy) return;
+      setBusy(`link_${provider}`);
       try {
         const result =
           provider === 'google' ? await linkGoogle() : await linkApple();
@@ -176,16 +147,16 @@ export default function AccountScreen() {
           showToast(result.detail || t.account.errorGeneric);
         }
       } finally {
-        finishBusy(operation);
+        setBusy(null);
       }
     },
-    [finishBusy, linkApple, linkGoogle, showToast, startBusy],
+    [busy, linkApple, linkGoogle, showToast],
   );
 
   const handleUnlink = useCallback(
     async (provider: AuthProvider) => {
-      const operation = `unlink_${provider}`;
-      if (!startBusy(operation)) return;
+      if (busy) return;
+      setBusy(`unlink_${provider}`);
       try {
         const result = await unlink(provider);
         showToast(
@@ -194,10 +165,10 @@ export default function AccountScreen() {
             : result.detail || t.account.errorGeneric,
         );
       } finally {
-        finishBusy(operation);
+        setBusy(null);
       }
     },
-    [finishBusy, showToast, startBusy, unlink],
+    [busy, showToast, unlink],
   );
 
   const confirmUnlink = useCallback(
@@ -223,7 +194,7 @@ export default function AccountScreen() {
   );
 
   const handleSetPassword = useCallback(async () => {
-    if (busyRef.current) return;
+    if (busy) return;
     if (newPassword.length < MIN_PASSWORD) {
       setPasswordError(t.account.errorPasswordShort);
       return;
@@ -236,8 +207,8 @@ export default function AccountScreen() {
       return;
     }
 
-    if (!startBusy('setPassword')) return;
     setPasswordError('');
+    setBusy('setPassword');
     try {
       const result = await setPassword({
         password: newPassword,
@@ -251,58 +222,37 @@ export default function AccountScreen() {
         setPasswordError(result.detail || t.account.errorGeneric);
       }
     } finally {
-      finishBusy('setPassword');
+      setBusy(null);
     }
   }, [
-    finishBusy,
+    busy,
     newPassword,
     passwordEmail,
     profile?.email,
     setPassword,
     showToast,
-    startBusy,
   ]);
 
   const handleLogout = useCallback(async () => {
-    if (!startBusy('logout')) return;
-    try {
-      const result = await logout();
-      if (!result.ok) {
-        showToast(result.detail || t.account.errorGeneric);
-        return;
-      }
-      leave();
-    } finally {
-      finishBusy('logout');
-    }
-  }, [finishBusy, leave, logout, showToast, startBusy]);
-
-  const handleRetryProfile = useCallback(async () => {
-    if (profileRetryingRef.current) return;
-    profileRetryingRef.current = true;
-    setProfileRetrying(true);
-    try {
-      await refreshProfile();
-    } finally {
-      profileRetryingRef.current = false;
-      setProfileRetrying(false);
-    }
-  }, [refreshProfile]);
+    if (busy) return;
+    setBusy('logout');
+    await logout();
+    setBusy(null);
+    router.back();
+  }, [busy, logout, router]);
 
   const handleDelete = useCallback(() => {
-    if (busyRef.current) return;
     showAppDialog({
       title: t.account.deleteConfirmTitle,
-      message: isClaimed
-        ? t.account.deleteConfirmBody
-        : t.account.deleteAnonymousConfirmBody,
+      message: t.account.deleteConfirmBody,
       buttons: [
         { text: t.account.deleteConfirmCancel, style: 'cancel' },
         {
           text: t.account.deleteConfirmConfirm,
           style: 'destructive',
           onPress: async () => {
-            if (!startBusy('delete')) return;
+            if (busy) return;
+            setBusy('delete');
             try {
               const result = await deleteAccount();
               showToast(
@@ -310,20 +260,21 @@ export default function AccountScreen() {
                   ? t.account.deleteToast
                   : result.detail || t.account.errorGeneric,
               );
-              if (result.ok) leave();
+              if (result.ok) router.back();
             } finally {
-              finishBusy('delete');
+              setBusy(null);
             }
           },
         },
       ],
       cancelable: true,
     });
-  }, [deleteAccount, finishBusy, isClaimed, leave, showToast, startBusy]);
+  }, [busy, deleteAccount, router, showToast]);
 
   const handleExportData = useCallback(async () => {
-    if (!startBusy('export')) return;
+    if (busy) return;
     setMoreOpen(false);
+    setBusy('export');
     try {
       const result = await exportAccountData();
       showToast(
@@ -332,9 +283,9 @@ export default function AccountScreen() {
           : result.detail || t.account.errorGeneric,
       );
     } finally {
-      finishBusy('export');
+      setBusy(null);
     }
-  }, [exportAccountData, finishBusy, showToast, startBusy]);
+  }, [busy, exportAccountData, showToast]);
 
   const nudge = useMemo<Nudge | null>(() => {
     if (
@@ -398,7 +349,7 @@ export default function AccountScreen() {
       {
         key: 'export',
         label: t.account.exportData,
-        icon: Share2Icon,
+        icon: MailIcon,
         onPress: () => void handleExportData(),
         accessibilityLabel: t.a11y.accountExportData,
       },
@@ -427,7 +378,7 @@ export default function AccountScreen() {
   const header = (
     <View style={styles.header}>
       <Pressable
-        onPress={leave}
+        onPress={() => router.back()}
         style={({ pressed }) => [
           styles.backButton,
           pressed && styles.pressed,
@@ -476,48 +427,6 @@ export default function AccountScreen() {
         ]}
       >
         {header}
-        <View style={styles.unavailableState}>
-          <Text
-            style={styles.unavailableText}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {t.account.accountLoadError}
-          </Text>
-          <CounterCta
-            label={profileRetrying ? t.account.loading : t.account.accountRetry}
-            subLabel={null}
-            onPress={() => void handleRetryProfile()}
-            accessibilityLabel={
-              profileRetrying ? t.account.loading : t.a11y.accountRetry
-            }
-            disabled={profileRetrying || busy === 'logout'}
-          />
-          <QuietPill
-            label={
-              logoutBusy
-                ? t.account.loading
-                : signedIn
-                  ? t.account.logout
-                  : t.account.resetInvalidCta
-            }
-            onPress={() => {
-              if (logoutBusy) return;
-              if (signedIn) {
-                void handleLogout();
-              } else {
-                leave();
-              }
-            }}
-            accessibilityLabel={
-              logoutBusy
-                ? t.account.loading
-                : signedIn
-                  ? t.a11y.accountLogout
-                  : t.a11y.backButton
-            }
-            disabled={logoutBusy}
-          />
-        </View>
       </View>
     );
   }
@@ -597,25 +506,21 @@ export default function AccountScreen() {
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {isClaimed ? linkedMethods : t.account.anonymousName}
+            {linkedMethods}
           </Text>
           <Text
             style={styles.verification}
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {!isClaimed
-              ? t.account.anonymousDataNote
-              : profile.email
-                ? profile.emailVerified
-                  ? t.account.emailVerified
-                  : t.account.emailUnverified
-                : t.account.emailMissing}
+            {profile.email
+              ? profile.emailVerified
+                ? t.account.emailVerified
+                : t.account.emailUnverified
+              : t.account.emailMissing}
           </Text>
         </View>
       </View>
-
-      <View style={styles.spacer} />
 
       <NudgeSlot nudge={nudge} />
 
@@ -626,16 +531,11 @@ export default function AccountScreen() {
         accessibilityLabel={t.a11y.accountMethods}
       />
 
-      {isClaimed ? (
-        <QuietPill
-          label={logoutBusy ? t.account.loading : t.account.logout}
-          onPress={() => void handleLogout()}
-          accessibilityLabel={
-            logoutBusy ? t.account.loading : t.a11y.accountLogout
-          }
-          disabled={logoutBusy}
-        />
-      ) : null}
+      <CounterSecondary
+        label={busy === 'logout' ? t.account.loading : t.account.logout}
+        onPress={() => void handleLogout()}
+        accessibilityLabel={t.a11y.accountLogout}
+      />
 
       <LoginMethodsSheet
         visible={methodsOpen}
@@ -681,7 +581,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     gap: 12,
   },
   header: {
@@ -703,7 +603,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     marginLeft: 12,
     flexShrink: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
@@ -718,15 +618,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   accountCard: {
+    flex: 1,
     overflow: 'hidden',
     backgroundColor: Colors.stout2,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.07),
     paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingTop: 24,
+    paddingBottom: 8,
   },
   cardBody: {
+    flex: 1,
+    minHeight: 132,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
@@ -737,49 +641,35 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   identityName: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
   identityMeta: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
   },
   cardFooter: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
+    marginTop: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   linkedMethods: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   verification: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
-  },
-  spacer: {
-    flex: 1,
-  },
-  unavailableState: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: Spacing.md,
-  },
-  unavailableText: {
-    fontWeight: '500',
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.foamMuted,
-    textAlign: 'center',
   },
   pressed: {
     opacity: 0.6,

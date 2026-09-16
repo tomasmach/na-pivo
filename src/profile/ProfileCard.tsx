@@ -2,10 +2,7 @@
  * ProfileCard — the hero of the "Profil" screen: your beer calling card.
  *
  * Direct sibling of `NightCard` and `PartyCard`, and through them of the etalon
- * Deliberately NOT on `CardSurface.card` any more: the hero numbers sit on the
- * page itself. A panel wrapped around the one thing the screen exists to show
- * reads as packaging, and stacked with the nudge strip and the buttons below it
- * turned the profile into a column of boxes. Same four-step type
+ * `CoasterCard`: same card surface (`CardSurface.card`), same four-step type
  * scale (display numeral / 20 title / 15 body / 13 caption), same hairline
  * footer with one quiet fact and one amber door.
  *
@@ -33,11 +30,11 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { CardSurface } from '@/components/shared/CardSurface';
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { LevelRing } from '@/profile/LevelRing';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 
 /**
@@ -96,6 +93,7 @@ export function ProfileCard({
 
   return (
     <View style={styles.card} accessibilityRole="text" accessibilityLabel={accessibilityLabel}>
+      <CardSheen />
 
       <View style={styles.body} onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}>
         <View style={styles.countColumn}>
@@ -196,14 +194,9 @@ const styles = StyleSheet.create({
   // the leftover space gets a card that fills it instead of a hole in the
   // middle. It clips itself: the ring is sized from the card, never the other
   // way round.
-  // No panel. The numbers ARE the screen — a container around them says "the
-  // content is in here", which is the thing a profile least needs. Keeps the
-  // card's horizontal rhythm so nothing else on the screen has to move.
   card: {
+    ...CardSurface.card,
     flex: 1,
-    paddingHorizontal: 4,
-    paddingTop: 4,
-    paddingBottom: 8,
   },
   pressed: {
     opacity: 0.85,
@@ -227,7 +220,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   count: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     includeFontPadding: false,
     // Tabular figures so the digits never shift sideways as the total grows.
@@ -238,7 +231,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   caption: {
     marginTop: -8,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -265,14 +258,14 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   statValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 17,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   statLabel: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     letterSpacing: 1.2,
     color: Colors.mutedText,
@@ -284,7 +277,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   levelHint: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -297,7 +290,7 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
   linkLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

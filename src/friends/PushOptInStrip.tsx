@@ -18,7 +18,7 @@ import { BellRingIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { t } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface PushOptInStripProps {
@@ -125,13 +125,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 16,
     color: Colors.foam,
   },
   body: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dismissText: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 14,
     color: Colors.mutedText,
   },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   deniedText: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   deniedCtaText: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 13,
     color: Colors.amber,
   },

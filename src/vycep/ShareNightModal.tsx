@@ -9,9 +9,8 @@
  * same PNG to the system share sheet (messengers, photo library).
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Modal,
   Pressable,
   Share,
@@ -24,25 +23,23 @@ import {
 import { captureRef } from 'react-native-view-shot';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Svg, {
   Defs,
   LinearGradient as SvgLinearGradient,
+  RadialGradient,
   Rect,
   Stop,
 } from 'react-native-svg';
 
-import { CloseButton } from '@/components/shared/CloseButton';
-import { CopyIcon, Share2Icon } from '@/components/shared/IconGlyph';
+import { CopyIcon, Share2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { useToastStore } from '@/stores/toastStore';
-import { useModalPresentation } from '@/stores/launchModalMutex';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { MockLayout } from '@/mocks/mockTheme';
+import { amberGlow } from '@/theme/shadows';
 import {
   NightStoryCard,
   STICKER_WIDTH,
@@ -69,38 +66,9 @@ function ShareNightModalBase({
   mode = 'recap',
 }: ShareNightModalProps) {
   const showToast = useToastStore((s) => s.show);
-  const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const cardRef = useRef<RNView>(null);
-  const exportBusyRef = useRef(false);
-  const exportGenerationRef = useRef(0);
-  const requestedVisibleRef = useRef(visible);
-  const [exportState, setExportState] = useState<{
-    action: 'copy' | 'share' | null;
-    visible: boolean;
-  }>(() => ({ action: null, visible }));
-  let exportAction = exportState.action;
-  if (exportState.visible !== visible) {
-    const next = { action: null, visible };
-    setExportState(next);
-    exportAction = next.action;
-  }
-  const presentation = useModalPresentation(visible);
-  const busy = exportAction !== null;
-
-  useEffect(() => {
-    requestedVisibleRef.current = visible;
-    exportGenerationRef.current += 1;
-    exportBusyRef.current = false;
-  }, [visible]);
-
-  useEffect(
-    () => () => {
-      exportGenerationRef.current += 1;
-      exportBusyRef.current = false;
-    },
-    [],
-  );
+  const [busy, setBusy] = useState(false);
 
   const dateLabel = useMemo(
     () => formatEveningDate(night.startedAt, new Date()),
@@ -134,55 +102,29 @@ function ShareNightModalBase({
   );
 
   const handleCopy = useCallback(() => {
-    if (exportBusyRef.current) return;
-    exportBusyRef.current = true;
-    const generation = ++exportGenerationRef.current;
-    setExportState((current) => ({ ...current, action: 'copy' }));
+    if (busy) return;
+    setBusy(true);
     void (async () => {
       try {
         const base64 = await capture('base64');
-        if (
-          generation !== exportGenerationRef.current ||
-          !requestedVisibleRef.current
-        ) return;
         await Clipboard.setImageAsync(base64);
-        if (
-          generation === exportGenerationRef.current &&
-          requestedVisibleRef.current
-        ) showToast(t.vycep.storyCopied);
+        showToast(t.vycep.storyCopied);
       } catch {
-        if (
-          generation === exportGenerationRef.current &&
-          requestedVisibleRef.current
-        ) showToast(t.vycep.storyShareError);
+        showToast(t.vycep.storyShareError);
       } finally {
-        if (generation === exportGenerationRef.current) {
-          exportBusyRef.current = false;
-          setExportState((current) => ({ ...current, action: null }));
-        }
+        setBusy(false);
       }
     })();
-  }, [capture, showToast]);
+  }, [busy, capture, showToast]);
 
   const handleShare = useCallback(() => {
-    if (exportBusyRef.current) return;
-    exportBusyRef.current = true;
-    const generation = ++exportGenerationRef.current;
-    setExportState((current) => ({ ...current, action: 'share' }));
+    if (busy) return;
+    setBusy(true);
     void (async () => {
       try {
         const uri = await capture('tmpfile');
-        if (
-          generation !== exportGenerationRef.current ||
-          !requestedVisibleRef.current
-        ) return;
         const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
-        const sharingAvailable = await Sharing.isAvailableAsync();
-        if (
-          generation !== exportGenerationRef.current ||
-          !requestedVisibleRef.current
-        ) return;
-        if (sharingAvailable) {
+        if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(fileUri, {
             mimeType: 'image/png',
             UTI: 'public.png',
@@ -192,53 +134,39 @@ function ShareNightModalBase({
           await Share.share({ url: fileUri, message: '' });
         }
       } catch {
-        if (
-          generation === exportGenerationRef.current &&
-          requestedVisibleRef.current
-        ) showToast(t.vycep.storyShareError);
+        showToast(t.vycep.storyShareError);
       } finally {
-        if (generation === exportGenerationRef.current) {
-          exportBusyRef.current = false;
-          setExportState((current) => ({ ...current, action: null }));
-        }
+        setBusy(false);
       }
     })();
-  }, [capture, showToast]);
-
-  const handleClose = useCallback(() => {
-    // Closing always wins, even over a hung capture or share sheet: bumping
-    // the generation invalidates every late side effect of the in-flight
-    // export, so a slow capture can neither toast nor unblock after close.
-    exportGenerationRef.current += 1;
-    exportBusyRef.current = false;
-    setExportState((current) => ({ ...current, action: null }));
-    onClose();
-  }, [onClose]);
+  }, [busy, capture, showToast]);
 
   return (
     <Modal
-      visible={presentation.visible}
+      visible={visible}
       transparent
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={handleClose}
-      onDismiss={presentation.onDismiss}
+      onRequestClose={onClose}
     >
-      <View
-        style={[
-          styles.backdrop,
-          {
-            paddingTop: insets.top + Spacing.md,
-            paddingBottom: insets.bottom + Spacing.md,
-          },
-        ]}
-      >
+      <View style={styles.backdrop}>
         <View style={styles.topRow}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
             {t.vycep.storyModalTitle}
           </Text>
-          <CloseButton onPress={handleClose} label={t.common.cancel} />
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t.common.cancel}
+            hitSlop={6}
+          >
+            <XIcon size={20} color={Colors.foam} />
+          </Pressable>
         </View>
+        <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.vycep.storyStickerHint}
+        </Text>
 
         <View style={styles.previewArea}>
           <View style={[styles.photoFrame, { width: frameWidth, height: frameHeight }]}>
@@ -249,8 +177,13 @@ function ShareNightModalBase({
                   <Stop offset="0" stopColor="#2B1A0E" />
                   <Stop offset="1" stopColor="#120A04" />
                 </SvgLinearGradient>
+                <RadialGradient id="frameGlow" cx="50%" cy="42%" r="62%">
+                  <Stop offset="0" stopColor={Colors.glow} stopOpacity={0.22} />
+                  <Stop offset="1" stopColor={Colors.glow} stopOpacity={0} />
+                </RadialGradient>
               </Defs>
               <Rect width={frameWidth} height={frameHeight} fill="url(#frameBg)" />
+              <Rect width={frameWidth} height={frameHeight} fill="url(#frameGlow)" />
             </Svg>
             <View
               style={{
@@ -287,19 +220,14 @@ function ShareNightModalBase({
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={t.vycep.storyCopyCta}
-            accessibilityState={{ disabled: busy, busy: exportAction === 'copy' }}
             style={({ pressed }) => [
               styles.primaryButton,
               (pressed || busy) && styles.buttonPressed,
             ]}
           >
-            {exportAction === 'copy' ? (
-              <ActivityIndicator size="small" color={Colors.stout} />
-            ) : (
-              <CopyIcon size={18} color={Colors.stout} />
-            )}
-            <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.display}>
-              {exportAction === 'copy' ? t.vycep.storyPreparing : t.vycep.storyCopyCta}
+            <CopyIcon size={18} color={Colors.stout} />
+            <Text style={styles.primaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.vycep.storyCopyCta}
             </Text>
           </Pressable>
           <Pressable
@@ -307,19 +235,14 @@ function ShareNightModalBase({
             disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={t.a11y.shareNightButton}
-            accessibilityState={{ disabled: busy, busy: exportAction === 'share' }}
             style={({ pressed }) => [
               styles.secondaryButton,
               (pressed || busy) && styles.buttonPressed,
             ]}
           >
-            {exportAction === 'share' ? (
-              <ActivityIndicator size="small" color={Colors.foam} />
-            ) : (
-              <Share2Icon size={17} color={Colors.foam} />
-            )}
+            <Share2Icon size={17} color={Colors.foam} />
             <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {exportAction === 'share' ? t.vycep.storyPreparing : t.vycep.storyShareCta}
+              {t.vycep.storyShareCta}
             </Text>
           </Pressable>
         </View>
@@ -333,19 +256,40 @@ const styles = StyleSheet.create({
     flex: 1,
     // Fully opaque: the screen behind showing through made the transparent
     // sticker preview read as broken layout instead of an overlay.
-    backgroundColor: Colors.stout,
+    backgroundColor: '#0E0803',
+    paddingTop: 64,
+    paddingBottom: 40,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
   },
   title: {
     flex: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
+  },
+  subtitle: {
+    marginTop: 2,
+    paddingHorizontal: Spacing.lg,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: Colors.mutedText,
+  },
+  close: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.foam, 0.08),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.6,
   },
   previewArea: {
     flex: 1,
@@ -359,7 +303,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    borderColor: withAlpha(Colors.border, 0.6),
   },
   cardHost: {
     width: STICKER_WIDTH,
@@ -367,7 +311,7 @@ const styles = StyleSheet.create({
   bottom: {
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.xl,
   },
   primaryButton: {
     minHeight: 52,
@@ -379,6 +323,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
+    ...amberGlow(16),
   },
   secondaryButton: {
     minHeight: 46,
@@ -388,18 +333,19 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingHorizontal: Spacing.xl,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.25),
   },
   buttonPressed: {
     opacity: 0.8,
   },
   primaryText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.stout,
   },
   secondaryText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },

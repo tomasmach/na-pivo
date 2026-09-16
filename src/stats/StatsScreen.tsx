@@ -18,9 +18,9 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { t , beerCountLabel, beerNoun, intlLocale } from '@/i18n';
+import { beerCountLabel, beerNoun, intlLocale, t } from '@/i18n';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { formatPrice } from '@/utils/currency';
 import {
@@ -620,7 +620,7 @@ const styles = StyleSheet.create({
 
   // — Header (non-embedded only) —
   header: { paddingBottom: 12, paddingHorizontal: Spacing.lg },
-  headerTitle: { fontWeight: '800', fontSize: 28, color: Colors.foam },
+  headerTitle: { fontFamily: Fonts.display.extrabold, fontSize: 28, color: Colors.foam },
 
   // — ScrollView —
   scroll: { flex: 1 },
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
 
   // — Section label —
   sectionLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -658,14 +658,14 @@ const styles = StyleSheet.create({
   },
   heroEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroEyebrow: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
   },
   heroCountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 },
   heroCount: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 64,
     lineHeight: 82,
     paddingTop: 6,
@@ -674,18 +674,18 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   heroCountNoun: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 22,
     color: Colors.amberLight,
   },
   heroPub: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.foam,
     marginTop: 2,
   },
   heroTone: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
     marginTop: 4,
@@ -695,20 +695,20 @@ const styles = StyleSheet.create({
   heroMicroSep: { width: 1, alignSelf: 'stretch', backgroundColor: Colors.border, marginHorizontal: 4 },
   microStat: { flex: 1, alignItems: 'center', gap: 4, paddingHorizontal: 2 },
   microValue: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   microCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 9,
     letterSpacing: 0.8,
     color: Colors.mutedText,
     textAlign: 'center',
   },
   heroSpent: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: Spacing.md,
@@ -735,14 +735,14 @@ const styles = StyleSheet.create({
   recordLabel: {
     width: 112,
     flexShrink: 0,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
   recordValue: {
     flex: 1,
     minWidth: 0,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.amber,
     textAlign: 'right',
@@ -772,7 +772,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroStatValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 44,
     lineHeight: 56,
     color: Colors.foam,
@@ -780,7 +780,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   heroStatCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.2,
     color: Colors.mutedText,
@@ -807,14 +807,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
     marginTop: 6,
     fontVariant: ['tabular-nums'],
   },
   statCaption: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 10,
     letterSpacing: 0.8,
     color: Colors.mutedText,
@@ -830,25 +830,25 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   periodCurrentRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  periodTitle: { fontWeight: '700', fontSize: 18, color: Colors.foam },
-  periodMeta: { fontWeight: '400', fontSize: 12, color: Colors.mutedText, marginTop: 3 },
+  periodTitle: { fontFamily: Fonts.display.bold, fontSize: 18, color: Colors.foam },
+  periodMeta: { fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText, marginTop: 3 },
   periodCurrentValueWrap: { alignItems: 'flex-end' },
   periodCurrentValue: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 32,
     lineHeight: 38,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
   },
-  periodCurrentUnit: { fontWeight: '700', fontSize: 10, color: Colors.mutedText },
-  periodAverage: { fontWeight: '600', fontSize: 13, color: Colors.foamMuted, marginTop: 8 },
+  periodCurrentUnit: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.mutedText },
+  periodAverage: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted, marginTop: 8 },
   chartDivider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.md },
-  chartTitle: { fontWeight: '700', fontSize: 11, color: Colors.mutedText, marginBottom: 10 },
+  chartTitle: { fontFamily: Fonts.ui.bold, fontSize: 11, color: Colors.mutedText, marginBottom: 10 },
   monthChart: { height: 112, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
   monthColumn: { flex: 1, alignItems: 'center', height: 112 },
   monthValue: {
     height: 18,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 9,
     color: Colors.foamMuted,
     fontVariant: ['tabular-nums'],
@@ -856,18 +856,18 @@ const styles = StyleSheet.create({
   monthBarTrack: { flex: 1, width: '70%', justifyContent: 'flex-end' },
   monthBar: { width: '100%', backgroundColor: Colors.amber, borderRadius: 3 },
   monthBarEmpty: { backgroundColor: Colors.border },
-  monthLabel: { fontWeight: '600', fontSize: 9, color: Colors.mutedText, marginTop: 5 },
+  monthLabel: { fontFamily: Fonts.ui.semibold, fontSize: 9, color: Colors.mutedText, marginTop: 5 },
   yearRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   yearRowBorder: { borderTopWidth: 1, borderTopColor: Colors.border },
   yearLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   yearMeta: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.foamMuted,
     textAlign: 'right',
@@ -876,7 +876,7 @@ const styles = StyleSheet.create({
   // — Top pubs —
   pubsHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   pubsSubtitle: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
     marginRight: 4,
@@ -898,19 +898,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pubRankText: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 12,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
   },
   pubName: {
     flex: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   pubBeers: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 13,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
@@ -937,13 +937,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
   },
   emptyBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',

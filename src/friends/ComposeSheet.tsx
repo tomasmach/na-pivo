@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -26,13 +27,17 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
-import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-import { CloseButton } from '@/components/shared/CloseButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -43,20 +48,15 @@ import {
   type FriendProfile,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
-import {
-  PrivateAccountMutationFrozenError,
-  runPrivateAccountMutation,
-} from '@/data/privateAccountBoundary';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { t } from '@/i18n';
-import { MockLayout, MockColors } from '@/mocks/mockTheme';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -67,6 +67,7 @@ import SectionHeader from './SectionHeader';
 import SegmentedControl from './SegmentedControl';
 import SkeletonBlock from './SkeletonBlock';
 
+const SLIDE_SPRING = { damping: 18, stiffness: 180, mass: 0.9 } as const;
 const MESSAGE_MAX = 80;
 const HOUR_PRESETS = [18, 19, 20, 21, 22] as const;
 const RECENT_LIMIT = 6;
@@ -78,10 +79,6 @@ interface ComposeSheetProps {
   onSubmitted: () => void;
   /** Fired once the sheet has finished sliding out (parent then unmounts it). */
   onClose: () => void;
-  /** A hub action has one intent; the legacy combined picker remains the default. */
-  intent?: 'live' | 'plan' | 'choose';
-  /** Locks the audience to exactly these IDs and hides the KOMU picker. */
-  fixedRecipientIds?: string[];
 }
 
 interface PubOption {
@@ -103,11 +100,7 @@ function PubRow({
   return (
     <Pressable
       onPress={onSelect}
-      style={({ pressed }) => [
-        styles.pubRow,
-        selected && styles.pubRowSelected,
-        pressed && styles.dim,
-      ]}
+      style={({ pressed }) => [styles.pubRow, selected && styles.pubRowSelected, pressed && styles.dim]}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={option.pub.name}
@@ -194,19 +187,11 @@ function FriendRecipientRow({
         {selected ? <CheckIcon size={14} color={Colors.stout} /> : null}
       </View>
       <View style={styles.recipientNameWrap}>
-        <Text
-          style={styles.recipientName}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
+        <Text style={styles.recipientName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {name}
         </Text>
         {friend.displayName && friend.nickname ? (
-          <Text
-            style={styles.recipientSub}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
+          <Text style={styles.recipientSub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {friend.displayName}
           </Text>
         ) : null}
@@ -215,13 +200,7 @@ function FriendRecipientRow({
   );
 }
 
-function ComposeSheet({
-  friends,
-  onSubmitted,
-  onClose,
-  intent = 'choose',
-  fixedRecipientIds,
-}: ComposeSheetProps): React.ReactElement {
+function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // Modals host their own window, so KeyboardAvoidingView is unreliable here —
@@ -236,7 +215,7 @@ function ComposeSheet({
   const pruneMemberIds = usePartyGroupsStore((s) => s.pruneMemberIds);
 
   const [placeTab, setPlaceTab] = useState<0 | 1>(0);
-  const [timeTab, setTimeTab] = useState<0 | 1>(intent === 'plan' ? 1 : 0);
+  const [timeTab, setTimeTab] = useState<0 | 1>(0);
   const [audienceMode, setAudienceMode] = useState<'all' | 'custom'>('all');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
@@ -245,7 +224,6 @@ function ComposeSheet({
   const [selectedPub, setSelectedPub] = useState<Pub | null>(null);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const submittingRef = useRef(false);
 
   // Lazy-read the clock once (a useState initializer is not a render-time impure
   // call). The plan can only target a future hour today.
@@ -299,31 +277,17 @@ function ComposeSheet({
   }, [tallyCurrent, tallyHistory]);
 
   const options = placeTab === 0 ? nearbyOptions : recentOptions;
-  const fixedIds = useMemo(
-    () => (fixedRecipientIds ?? []).filter((id) => typeof id === 'string' && id.trim() !== ''),
-    [fixedRecipientIds],
-  );
-  const audienceIsFixed = fixedRecipientIds !== undefined;
   const friendIds = useMemo(() => new Set(friends.map((friend) => friend.id)), [friends]);
   const selectedRecipientIdsValid = useMemo(
     () => selectedRecipientIds.filter((id) => friendIds.has(id)),
     [friendIds, selectedRecipientIds],
   );
-  const selectedCount = audienceIsFixed
-    ? fixedIds.length
-    : audienceMode === 'all'
-      ? friends.length
-      : selectedRecipientIdsValid.length;
-  const targetRecipientIds = audienceIsFixed
-    ? fixedIds
-    : audienceMode === 'custom'
-      ? selectedRecipientIdsValid
-      : undefined;
+  const selectedCount = audienceMode === 'all' ? friends.length : selectedRecipientIdsValid.length;
+  const targetRecipientIds = audienceMode === 'custom' ? selectedRecipientIdsValid : undefined;
 
   useEffect(() => {
-    if (audienceIsFixed) return;
     pruneMemberIds(friends.map((friend) => friend.id));
-  }, [friends, audienceIsFixed, pruneMemberIds]);
+  }, [friends, pruneMemberIds]);
 
   // Effective selection: an explicit pick, else the first option in the current
   // tab (so the CTA lights up without a tap, and the default follows the tab).
@@ -341,17 +305,14 @@ function ComposeSheet({
     setSelectedRecipientIds([]);
   }, []);
 
-  const selectGroup = useCallback(
-    (groupId: string) => {
-      const group = usePartyGroupsStore.getState().groups.find((item) => item.id === groupId);
-      if (!group) return;
-      setAudienceMode('custom');
-      setActiveGroupId(group.id);
-      setSelectedRecipientIds(group.memberIds.filter((id) => friendIds.has(id)));
-      setGroupName(group.name);
-    },
-    [friendIds],
-  );
+  const selectGroup = useCallback((groupId: string) => {
+    const group = usePartyGroupsStore.getState().groups.find((item) => item.id === groupId);
+    if (!group) return;
+    setAudienceMode('custom');
+    setActiveGroupId(group.id);
+    setSelectedRecipientIds(group.memberIds.filter((id) => friendIds.has(id)));
+    setGroupName(group.name);
+  }, [friendIds]);
 
   const startCustomSelection = useCallback(() => {
     setAudienceMode('custom');
@@ -388,28 +349,39 @@ function ComposeSheet({
     [minHour],
   );
 
+  // ── Slide-up + owned slide-out. Shared value written ONLY in the effect. ──
   const [closing, setClosing] = useState(false);
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    if (closing) {
+      progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
+    } else {
+      progress.value = reduceMotion ? withTiming(1, { duration: 0 }) : withSpring(1, SLIDE_SPRING);
+    }
+  }, [closing, reduceMotion, progress]);
 
   const requestClose = useCallback(() => {
     if (closing) return;
     setClosing(true);
-    setTimeout(onClose, 280);
-  }, [closing, onClose]);
+    setTimeout(onClose, reduceMotion ? 0 : 150);
+  }, [closing, onClose, reduceMotion]);
 
-  const isPlan = intent === 'plan' || (intent === 'choose' && timeTab === 1);
+  const cardAnim = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * 48 }],
+  }));
+
+  const isPlan = timeTab === 1;
   // A plan needs a strictly-future hour today (minutes clamped to :00). Kept pure
   // (no render-time clock call) — the actual ISO is built in the submit handler.
   const isValidPlanTime = hour > nowHour;
-  const hasRecipients = audienceIsFixed
-    ? fixedIds.length > 0
-    : audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
+  const hasRecipients = audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
   const canSubmit = !!selectionPub && (!isPlan || isValidPlanTime) && hasRecipients && !submitting;
 
   const handleSubmit = useCallback(() => {
-    if (!selectionPub || submittingRef.current) return;
+    if (!selectionPub || submitting) return;
     if (isPlan && !isValidPlanTime) return;
     trackUiInteraction('parta_activity_share', 'submit');
-    submittingRef.current = true;
     setSubmitting(true);
 
     const clientId = generateUuidV4();
@@ -420,64 +392,40 @@ function ComposeSheet({
       d.setHours(hour, 0, 0, 0);
       scheduledForISO = d.toISOString();
     }
-    void runPrivateAccountMutation(async () => {
-      const res: FriendActionResult = isPlan
-        ? await createFriendPlan(
-            selectionPub,
-            scheduledForISO as string,
-            trimmed,
-            clientId,
-            targetRecipientIds,
-          )
-        : await shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds);
-      if (res.ok) return { state: 'delivered' as const };
-      if (!isRetriableFriendError(res)) return { state: 'rejected' as const, res };
-      const queued = await enqueueFriendOp({
-        op: 'activity',
-        clientId,
-        payload: {
-          pub: selectionPub,
-          message: trimmed,
-          scheduledFor: scheduledForISO,
-          recipientIds: targetRecipientIds,
-        },
-      });
-      return {
-        state: queued === 'storage-error' ? ('storage-error' as const) : ('queued' as const),
-      };
-    })
-      .then((result) => {
-        if (!mountedRef.current) return;
-        if (result.state === 'delivered' || result.state === 'queued') {
-          trackUiInteraction('parta_activity_share', 'success');
-          showToast(
-            isPlan
-              ? t.friends.planCreated
-              : result.state === 'queued'
-                ? t.friends.composeQueued
-                : t.friends.shareSuccess,
-          );
-          onSubmitted();
-          requestClose();
-          return;
-        }
-        trackUiInteraction('parta_activity_share', 'failure');
-        submittingRef.current = false;
-        setSubmitting(false);
-        showToast(
-          result.state === 'storage-error'
-            ? t.friends.queueSaveError
-            : result.res?.detail || t.friends.shareError,
-        );
-      })
-      .catch((error) => {
-        if (!mountedRef.current) return;
-        submittingRef.current = false;
-        setSubmitting(false);
-        if (!(error instanceof PrivateAccountMutationFrozenError)) showToast(t.friends.shareError);
-      });
+    const call: Promise<FriendActionResult> = isPlan
+      ? createFriendPlan(selectionPub, scheduledForISO as string, trimmed, clientId, targetRecipientIds)
+      : shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds);
+
+    void call.then((res) => {
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        trackUiInteraction('parta_activity_share', 'success');
+        showToast(isPlan ? t.friends.planCreated : t.friends.shareSuccess);
+        onSubmitted();
+        requestClose();
+        return;
+      }
+      if (isRetriableFriendError(res)) {
+        trackUiInteraction('parta_activity_share', 'success');
+        // Offline: queue the op (it WILL send) and close honestly.
+        void enqueueFriendOp({
+          op: 'activity',
+          clientId,
+          payload: { pub: selectionPub, message: trimmed, scheduledFor: scheduledForISO, recipientIds: targetRecipientIds },
+        });
+        showToast(isPlan ? t.friends.planCreated : t.friends.composeQueued);
+        onSubmitted();
+        requestClose();
+        return;
+      }
+      trackUiInteraction('parta_activity_share', 'failure');
+      // Hard reject: keep the sheet open with its data.
+      setSubmitting(false);
+      showToast(res.detail || t.friends.shareError);
+    });
   }, [
     selectionPub,
+    submitting,
     isPlan,
     isValidPlanTime,
     hour,
@@ -492,146 +440,123 @@ function ComposeSheet({
   const showNearbyLoading = placeTab === 0 && permissionState === 'granted' && loading;
 
   return (
-    <BottomSheetModal visible={!closing} onClose={requestClose}>
-      <View
-        style={[
-          styles.cardWrap,
-          {
-            marginBottom: keyboardHeight > 0 ? keyboardHeight : -insets.bottom,
-            maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
-          },
-        ]}
-      >
-        <View
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={requestClose}>
+      <View style={styles.backdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={requestClose}
+          accessibilityRole="button"
+          accessibilityLabel={t.friends.settingsClose}
+        />
+
+        <Animated.View
           style={[
             styles.card,
             softDrop(),
             {
-              paddingBottom: keyboardHeight > 0 ? Spacing.lg : insets.bottom + Spacing.lg,
+              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
+              marginBottom: keyboardHeight,
+              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
             },
+            cardAnim,
           ]}
         >
           <View style={styles.handle} />
 
           <View style={styles.headerRow}>
-            <Text
-              style={styles.title}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {isPlan ? t.friends.planComposeTitle : t.friends.composeTitle}
+            <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {t.friends.composeTitle}
             </Text>
           </View>
 
-          <View style={styles.closeBtn}>
-            <CloseButton onPress={requestClose} />
-          </View>
+          <Pressable
+            onPress={requestClose}
+            hitSlop={12}
+            style={({ pressed }) => [styles.closeBtn, pressed && styles.dim]}
+            accessibilityRole="button"
+            accessibilityLabel={t.friends.settingsClose}
+          >
+            <XIcon size={18} color={Colors.foamMuted} />
+          </Pressable>
 
           <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>
             {/* KOMU */}
-            {!audienceIsFixed ? (
-              <>
-                <SectionHeader label={t.friends.composeAudienceLabel} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.recipientChips}
-                >
-                  <RecipientChip
-                    label={t.friends.recipientAll}
-                    selected={audienceMode === 'all'}
-                    onPress={selectAllRecipients}
-                    icon={
-                      <UsersIcon
-                        size={16}
-                        color={audienceMode === 'all' ? Colors.stout : Colors.amber}
-                      />
-                    }
-                  />
-                  {groups.map((group) => (
-                    <RecipientChip
-                      key={group.id}
-                      label={group.name}
-                      selected={audienceMode === 'custom' && activeGroupId === group.id}
-                      onPress={() => selectGroup(group.id)}
+            <SectionHeader label={t.friends.composeAudienceLabel} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recipientChips}
+            >
+              <RecipientChip
+                label={t.friends.recipientAll}
+                selected={audienceMode === 'all'}
+                onPress={selectAllRecipients}
+                icon={<UsersIcon size={16} color={audienceMode === 'all' ? Colors.stout : Colors.amber} />}
+              />
+              {groups.map((group) => (
+                <RecipientChip
+                  key={group.id}
+                  label={group.name}
+                  selected={audienceMode === 'custom' && activeGroupId === group.id}
+                  onPress={() => selectGroup(group.id)}
+                />
+              ))}
+              <RecipientChip
+                label={t.friends.recipientCustom}
+                selected={audienceMode === 'custom' && activeGroupId == null}
+                onPress={startCustomSelection}
+                icon={<PlusIcon size={16} color={audienceMode === 'custom' && activeGroupId == null ? Colors.stout : Colors.amber} />}
+              />
+            </ScrollView>
+            <Text style={styles.recipientSummary} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+              {audienceMode === 'all'
+                ? t.friends.recipientAllSummary(selectedCount)
+                : t.friends.recipientCustomSummary(selectedCount)}
+            </Text>
+            {audienceMode === 'custom' ? (
+              <View style={styles.recipientPanel}>
+                {friends.length === 0 ? (
+                  <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {t.friends.recipientNoFriends}
+                  </Text>
+                ) : (
+                  friends.map((friend) => (
+                    <FriendRecipientRow
+                      key={friend.id}
+                      friend={friend}
+                      selected={selectedRecipientIdsValid.includes(friend.id)}
+                      onToggle={() => toggleRecipient(friend.id)}
                     />
-                  ))}
-                  <RecipientChip
-                    label={t.friends.recipientCustom}
-                    selected={audienceMode === 'custom' && activeGroupId == null}
-                    onPress={startCustomSelection}
-                    icon={
-                      <PlusIcon
-                        size={16}
-                        color={
-                          audienceMode === 'custom' && activeGroupId == null
-                            ? Colors.stout
-                            : Colors.amber
-                        }
-                      />
-                    }
+                  ))
+                )}
+                <View style={styles.groupSaveRow}>
+                  <TextInput
+                    value={groupName}
+                    onChangeText={setGroupName}
+                    placeholder={t.friends.recipientGroupPlaceholder}
+                    placeholderTextColor={Colors.mutedText}
+                    style={styles.groupNameInput}
+                    maxLength={28}
+                    maxFontSizeMultiplier={FontScaleCap.body}
                   />
-                </ScrollView>
-                <Text
-                  style={styles.recipientSummary}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {audienceMode === 'all'
-                    ? t.friends.recipientAllSummary(selectedCount)
-                    : t.friends.recipientCustomSummary(selectedCount)}
-                </Text>
-                {audienceMode === 'custom' ? (
-                  <View style={styles.recipientPanel}>
-                    {friends.length === 0 ? (
-                      <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {t.friends.recipientNoFriends}
-                      </Text>
-                    ) : (
-                      friends.map((friend) => (
-                        <FriendRecipientRow
-                          key={friend.id}
-                          friend={friend}
-                          selected={selectedRecipientIdsValid.includes(friend.id)}
-                          onToggle={() => toggleRecipient(friend.id)}
-                        />
-                      ))
-                    )}
-                    <View style={styles.groupSaveRow}>
-                      <TextInput
-                        value={groupName}
-                        onChangeText={setGroupName}
-                        placeholder={t.friends.recipientGroupPlaceholder}
-                        placeholderTextColor={MockColors.fieldHint}
-                        style={styles.groupNameInput}
-                        maxLength={28}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      />
-                      <Pressable
-                        onPress={saveCurrentGroup}
-                        disabled={selectedRecipientIdsValid.length === 0}
-                        style={({ pressed }) => [
-                          styles.groupSaveButton,
-                          selectedRecipientIdsValid.length === 0 && styles.groupSaveButtonDisabled,
-                          pressed && selectedRecipientIdsValid.length > 0 && styles.dim,
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          disabled: selectedRecipientIdsValid.length === 0,
-                        }}
-                        accessibilityLabel={t.friends.recipientGroupSave}
-                      >
-                        <Text
-                          style={styles.groupSaveText}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                        >
-                          {t.friends.recipientGroupSave}
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : null}
-              </>
+                  <Pressable
+                    onPress={saveCurrentGroup}
+                    disabled={selectedRecipientIdsValid.length === 0}
+                    style={({ pressed }) => [
+                      styles.groupSaveButton,
+                      selectedRecipientIdsValid.length === 0 && styles.groupSaveButtonDisabled,
+                      pressed && selectedRecipientIdsValid.length > 0 && styles.dim,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: selectedRecipientIdsValid.length === 0 }}
+                    accessibilityLabel={t.friends.recipientGroupSave}
+                  >
+                    <Text style={styles.groupSaveText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {t.friends.recipientGroupSave}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             ) : null}
 
             {/* KDE */}
@@ -659,13 +584,7 @@ function ComposeSheet({
               ) : showNearbyLoading ? (
                 <View style={styles.skeletonList}>
                   {[0, 1, 2].map((i) => (
-                    <SkeletonBlock
-                      key={i}
-                      width="100%"
-                      height={44}
-                      radius={Radius.medium}
-                      reduceMotion={reduceMotion}
-                    />
+                    <SkeletonBlock key={i} width="100%" height={44} radius={Radius.medium} reduceMotion={reduceMotion} />
                   ))}
                 </View>
               ) : options.length === 0 ? (
@@ -684,58 +603,50 @@ function ComposeSheet({
               )}
             </View>
 
-            {/* KDY — the hub opens a single-intent sheet, so no Teď/Na čas fork. */}
-            {intent !== 'live' ? (
-              <View style={styles.sectionGap}>
-                <SectionHeader label={t.friends.composeTimeLabel} />
-                {intent === 'choose' ? (
-                  <SegmentedControl
-                    options={[t.friends.composeNow, t.friends.composeLater]}
-                    value={timeTab}
-                    onChange={setTimeTab}
-                  />
-                ) : null}
-                {isPlan ? (
-                  <View style={styles.timePicker}>
-                    {availablePresets.length > 0 ? (
-                      <View style={styles.presetRow}>
-                        {availablePresets.map((h) => {
-                          const active = hour === h;
-                          return (
-                            <Pressable
-                              key={h}
-                              onPress={() => setHourClamped(h)}
-                              style={({ pressed }) => [
-                                styles.presetChip,
-                                active && styles.presetChipActive,
-                                pressed && styles.dim,
-                              ]}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected: active }}
-                              accessibilityLabel={`${h}:00`}
+            {/* KDY */}
+            <View style={styles.sectionGap}>
+              <SectionHeader label={t.friends.composeTimeLabel} />
+              <SegmentedControl
+                options={[t.friends.composeNow, t.friends.composeLater]}
+                value={timeTab}
+                onChange={setTimeTab}
+              />
+              {isPlan ? (
+                <View style={styles.timePicker}>
+                  {availablePresets.length > 0 ? (
+                    <View style={styles.presetRow}>
+                      {availablePresets.map((h) => {
+                        const active = hour === h;
+                        return (
+                          <Pressable
+                            key={h}
+                            onPress={() => setHourClamped(h)}
+                            style={({ pressed }) => [
+                              styles.presetChip,
+                              active && styles.presetChipActive,
+                              pressed && styles.dim,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: active }}
+                            accessibilityLabel={`${h}:00`}
+                          >
+                            <Text
+                              style={[styles.presetText, active && styles.presetTextActive]}
+                              allowFontScaling={false}
                             >
-                              <Text
-                                style={[styles.presetText, active && styles.presetTextActive]}
-                                allowFontScaling={false}
-                              >
-                                {`${h}:00`}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    ) : null}
-                    <View style={styles.stepperLine}>
-                      <HourStepper
-                        value={hour}
-                        onChange={setHourClamped}
-                        accessibilityLabel={t.friends.composeTimeLabel}
-                      />
+                              {`${h}:00`}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
+                  ) : null}
+                  <View style={styles.stepperLine}>
+                    <HourStepper value={hour} onChange={setHourClamped} accessibilityLabel={t.friends.composeTimeLabel} />
                   </View>
-                ) : null}
-              </View>
-            ) : null}
+                </View>
+              ) : null}
+            </View>
 
             {/* VZKAZ */}
             <View style={styles.sectionGap}>
@@ -744,7 +655,7 @@ function ComposeSheet({
                 value={message}
                 onChangeText={setMessage}
                 placeholder={t.friends.composeMsgPlaceholder}
-                placeholderTextColor={MockColors.fieldHint}
+                placeholderTextColor={Colors.mutedText}
                 style={styles.messageInput}
                 multiline
                 maxLength={MESSAGE_MAX}
@@ -770,9 +681,7 @@ function ComposeSheet({
               ]}
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSubmit }}
-              accessibilityLabel={
-                isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow
-              }
+              accessibilityLabel={isPlan ? t.friends.composeSubmitPlan : t.friends.composeSubmitNow}
             >
               {submitting ? (
                 <ActivityIndicator color={Colors.stout} size="small" />
@@ -783,30 +692,36 @@ function ComposeSheet({
               )}
             </Pressable>
           </View>
-        </View>
-      </View>
+        </Animated.View>
 
-      <Toast />
-    </BottomSheetModal>
+        <Toast />
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  cardWrap: { width: '100%' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
   card: {
-    flexShrink: 1,
-    backgroundColor: Colors.stout,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
+    maxHeight: '90%',
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
     paddingTop: Spacing.sm,
-    paddingHorizontal: MockLayout.screenPad,
+    paddingHorizontal: Spacing.lg,
   },
   handle: {
     alignSelf: 'center',
-    width: 44,
+    width: 40,
     height: 4,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.22),
+    backgroundColor: Colors.border,
     marginBottom: Spacing.md,
   },
   headerRow: {
@@ -816,7 +731,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
   },
@@ -833,7 +748,6 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   body: {
-    flexGrow: 0,
     flexShrink: 1,
     marginTop: Spacing.md,
   },
@@ -863,7 +777,7 @@ const styles = StyleSheet.create({
   },
   recipientChipText: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -872,7 +786,7 @@ const styles = StyleSheet.create({
   },
   recipientSummary: {
     marginTop: Spacing.sm,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -912,13 +826,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   recipientName: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   recipientSub: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -931,7 +845,7 @@ const styles = StyleSheet.create({
   groupNameInput: {
     flex: 1,
     minHeight: 44,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     color: Colors.foam,
     fontSize: 15,
     backgroundColor: Colors.stout2,
@@ -954,7 +868,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   groupSaveText: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 14,
     color: Colors.amber,
   },
@@ -966,7 +880,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   emptyText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.mutedText,
     paddingVertical: Spacing.md,
@@ -979,7 +893,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   permText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
   },
@@ -1002,18 +916,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   pubName: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 15,
     color: Colors.foam,
   },
   pubCity: {
     marginTop: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubDistance: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -1041,7 +955,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   presetText: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -1055,7 +969,7 @@ const styles = StyleSheet.create({
   messageInput: {
     marginTop: Spacing.sm,
     minHeight: 54,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     color: Colors.foam,
     fontSize: 16,
     backgroundColor: Colors.stout2,
@@ -1071,7 +985,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   hint: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1082,6 +996,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
     alignItems: 'center',
     justifyContent: 'center',
+    ...softDrop(),
   },
   submitDisabled: {
     opacity: 0.5,
@@ -1091,7 +1006,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   submitLabel: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     letterSpacing: 0.3,
     color: Colors.stout,

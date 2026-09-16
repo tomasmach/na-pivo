@@ -15,35 +15,9 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import {
-  PrivateAccountMutationFrozenError,
-  runPrivateAccountCleanupMutation,
-  runPrivateAccountMutation,
-} from './privateAccountBoundary';
-
-/**
- * Thrown by `load` when the first read of a storage key fails on the I/O level
- * (AsyncStorage itself is unavailable) and no previously validated snapshot is
- * cached yet. Parse/validation problems never throw — they degrade to an empty
- * snapshot instead.
- */
-export class QueueStorageReadError extends Error {
-  readonly code = 'queue_storage_read_unavailable';
-
-  constructor() {
-    super('Queue storage is unavailable and no validated snapshot is cached.');
-    this.name = 'QueueStorageReadError';
-  }
-}
-
 /** A validated, AsyncStorage-backed list of queue entries under one key. */
 export interface QueueStorage<T> {
-  /**
-   * Load the persisted queue, dropping anything that fails `isValid`. Throws
-   * `QueueStorageReadError` only when the first-ever read fails on the I/O
-   * level; once a snapshot has been validated, later I/O failures fall back to
-   * a fresh defensive copy of it.
-   */
+  /** Load the persisted queue, dropping anything that fails `isValid`. Never throws. */
   load(): Promise<T[]>;
   /**
    * Persist the queue (removes the key entirely when empty). Never throws.
@@ -55,51 +29,24 @@ export interface QueueStorage<T> {
 
 /**
  * Binds the load/parse/validate/save/remove pattern to one storage key and entry
- * guard. Each instance keeps the last successfully validated snapshot as
- * serialized JSON: reads return fresh defensive copies parsed from it, so caller
- * mutations can't reach the cache. A first I/O failure with nothing cached throws
- * `QueueStorageReadError` without touching writes; later ones fall back to the
- * cached snapshot. Malformed JSON / non-array values safely degrade to a
- * validated empty snapshot; arrays are filtered through `isValid`. A successful
- * `save` replaces the cached snapshot exactly with what was written; a failed
- * write leaves it untouched.
+ * guard. `load` returns `[]` on any read/parse error and filters out malformed
+ * entries; `save` removes the key when the queue is empty and silently leaves the
+ * previous snapshot in place if the write fails (the entry was already attempted
+ * once, so the worst case matches the pre-queue behavior).
  */
 export function createQueueStorage<T>(
   storageKey: string,
   isValid: (entry: unknown) => entry is T,
 ): QueueStorage<T> {
-  let cachedSnapshotJson: string | null = null;
-  const cacheSnapshot = (queue: T[]): void => {
-    cachedSnapshotJson = JSON.stringify(queue);
-  };
-  const snapshotCopy = (): T[] => {
-    const parsed = JSON.parse(cachedSnapshotJson as string) as unknown[];
-    return parsed.filter(isValid);
-  };
   return {
     load: async (): Promise<T[]> => {
-      let raw: string | null;
       try {
-        raw = await AsyncStorage.getItem(storageKey);
-      } catch {
-        if (cachedSnapshotJson === null) throw new QueueStorageReadError();
-        return snapshotCopy();
-      }
-      if (!raw) {
-        cacheSnapshot([]);
-        return [];
-      }
-      try {
+        const raw = await AsyncStorage.getItem(storageKey);
+        if (!raw) return [];
         const parsed = JSON.parse(raw) as unknown;
-        if (!Array.isArray(parsed)) {
-          cacheSnapshot([]);
-          return [];
-        }
-        const valid = parsed.filter(isValid);
-        cacheSnapshot(valid);
-        return snapshotCopy();
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(isValid);
       } catch {
-        cacheSnapshot([]);
         return [];
       }
     },
@@ -110,10 +57,9 @@ export function createQueueStorage<T>(
         } else {
           await AsyncStorage.setItem(storageKey, JSON.stringify(queue));
         }
-        cacheSnapshot(queue);
         return true;
       } catch {
-        // Storage failure leaves the previous validated snapshot in place.
+        // Storage failure leaves the previous snapshot in place.
         return false;
       }
     },
@@ -126,36 +72,12 @@ export function createQueueStorage<T>(
  * caller). Each queue owns its own instance, so its mutations never interleave
  * with a concurrent enqueue/flush of the same queue.
  */
-export interface QueueLockRunOptions {
-  /** Strict account cleanup is the only writer allowed after the global freeze. */
-  allowDuringPrivateTransition?: boolean;
-}
-
-export interface QueueLockOptions {
-  /** Photo/game queues own a stronger subsystem boundary and opt out explicitly. */
-  protectPrivateAccount?: boolean;
-}
-
-export function createQueueLock(
-  options: QueueLockOptions = {},
-): <T>(task: () => Promise<T>, runOptions?: QueueLockRunOptions) => Promise<T> {
+export function createQueueLock(): <T>(task: () => Promise<T>) => Promise<T> {
   let chain: Promise<unknown> = Promise.resolve();
-  return function runLocked<T>(
-    task: () => Promise<T>,
-    runOptions: QueueLockRunOptions = {},
-  ): Promise<T> {
-    const enqueue = (): Promise<T> => {
-      const next = chain.then(task, task);
-      chain = next.catch(() => undefined);
-      return next;
-    };
-    if (options.protectPrivateAccount === false) return enqueue();
-    // Capture the global lease NOW, before waiting behind this queue's local
-    // mutex. Otherwise an A task delayed here could wake after B is installed.
-    if (runOptions.allowDuringPrivateTransition) {
-      return runPrivateAccountCleanupMutation(enqueue);
-    }
-    return runPrivateAccountMutation(async () => enqueue());
+  return function runLocked<T>(task: () => Promise<T>): Promise<T> {
+    const next = chain.then(task, task);
+    chain = next.catch(() => undefined);
+    return next;
   };
 }
 
@@ -188,7 +110,6 @@ export interface CoalescingFlush {
  */
 export function createCoalescingFlush(
   run: (signal: AbortSignal) => Promise<void>,
-  options: QueueLockOptions = {},
 ): CoalescingFlush {
   let flushPromise: Promise<void> | null = null;
   let flushAgain: Promise<void> | null = null;
@@ -204,34 +125,7 @@ export function createCoalescingFlush(
       return flushAgain;
     }
     controller = new AbortController();
-    const localController = controller;
-    const execute = Promise.resolve(
-      options.protectPrivateAccount === false
-        ? run(localController.signal)
-        : runPrivateAccountMutation(async (scope) => {
-            const combined = new AbortController();
-            const abort = () => combined.abort();
-            for (const signal of [localController.signal, scope.signal]) {
-              if (signal.aborted) combined.abort();
-              else signal.addEventListener('abort', abort);
-            }
-            try {
-              await run(combined.signal);
-            } finally {
-              localController.signal.removeEventListener('abort', abort);
-              scope.signal.removeEventListener('abort', abort);
-            }
-          }),
-    ).catch((error) => {
-      // Two safe no-ops: a retry flush during the short credential freeze, and
-      // a cold queue storage read failure; both leave the durable queue intact
-      // for the next foreground pass.
-      if (
-        !(error instanceof PrivateAccountMutationFrozenError) &&
-        !(error instanceof QueueStorageReadError)
-      ) throw error;
-    });
-    flushPromise = execute.finally(() => {
+    flushPromise = run(controller.signal).finally(() => {
       flushPromise = null;
       controller = null;
     });

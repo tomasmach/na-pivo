@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { t } from '@/i18n';
 
 /**
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     letterSpacing: 0.2,
   },

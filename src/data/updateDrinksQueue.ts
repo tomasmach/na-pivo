@@ -1,63 +1,37 @@
 /**
- * Persistent retry queue for drink name UPDATES.
+ * Persistent retry queue for private drink edits.
  *
  * A corrected beer name should apply locally immediately and eventually reach
  * the backend. Updates are keyed by client_id and deduped last-write-wins so a
  * user can fix the same typo twice while offline without building a backlog.
  */
 
-import { updateDrink, updateDrinkName, type DrinkUpdate } from './drinksClient';
-import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
-import { preserveDurableQueue } from './durableQueuePolicy';
+import { updateDrink, type DrinkUpdate } from './drinksClient';
 import { isDrinkType, isServingType } from '@/drinks/drinkTypes';
+import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-update-drinks-queue';
 const MAX_QUEUE_LENGTH = 200;
-const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
-export type DrinkUpdateEnqueueResult = 'queued' | 'storage-error';
-
-export interface DrinkUpdateEntry {
+export interface DrinkUpdateEntry extends DrinkUpdate {
   client_id: string;
-  beer_name?: string;
-  drink_type?: DrinkUpdate['drink_type'];
-  price_czk?: DrinkUpdate['price_czk'];
-  volume_ml?: DrinkUpdate['volume_ml'];
-  serving_type?: DrinkUpdate['serving_type'];
 }
 
 function isDrinkUpdateEntry(entry: unknown): entry is DrinkUpdateEntry {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
   const e = entry as Record<string, unknown>;
-  const updateKeys = Object.keys(e).filter((key) => key !== 'client_id');
+  const keys = Object.keys(e).filter((key) => key !== 'client_id');
   if (
-    typeof e.client_id !== 'string' ||
-    !UUID_PATTERN.test(e.client_id) ||
-    updateKeys.length === 0 ||
-    updateKeys.some(
-      (key) =>
-        !['beer_name', 'drink_type', 'price_czk', 'volume_ml', 'serving_type'].includes(key),
-    )
-  ) {
-    return false;
-  }
+    typeof e.client_id !== 'string' || keys.length === 0 ||
+    keys.some((key) => !['beer_name', 'drink_type', 'price_czk', 'volume_ml', 'serving_type'].includes(key))
+  ) return false;
   if ('beer_name' in e && (typeof e.beer_name !== 'string' || !e.beer_name.trim())) return false;
   if ('drink_type' in e && !isDrinkType(e.drink_type)) return false;
-  if (
-    'price_czk' in e &&
-    e.price_czk !== null &&
-    (typeof e.price_czk !== 'number' || !Number.isFinite(e.price_czk) || e.price_czk < 0)
-  ) {
-    return false;
-  }
-  if (
-    'volume_ml' in e &&
-    e.volume_ml !== null &&
-    (typeof e.volume_ml !== 'number' || !Number.isFinite(e.volume_ml) || e.volume_ml <= 0)
-  ) {
-    return false;
-  }
   if ('serving_type' in e && !isServingType(e.serving_type)) return false;
+  if ('price_czk' in e && e.price_czk !== null &&
+    (typeof e.price_czk !== 'number' || !Number.isFinite(e.price_czk) || e.price_czk < 0)) return false;
+  if ('volume_ml' in e && e.volume_ml !== null &&
+    (typeof e.volume_ml !== 'number' || !Number.isFinite(e.volume_ml) || e.volume_ml <= 0)) return false;
   return true;
 }
 
@@ -76,13 +50,7 @@ function signature(entry: DrinkUpdateEntry): string {
 }
 
 async function flushUnlocked(signal: AbortSignal): Promise<void> {
-  const queue = await runMutation(async () => {
-    const validated = await loadQueue();
-    // Rewrite the validated snapshot so malformed persisted entries are
-    // actually discarded instead of being reparsed on every foreground retry.
-    await saveQueue(validated);
-    return validated;
-  });
+  const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const attempted = new Map<string, string>();
@@ -96,10 +64,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     if (signal.aborted) break;
     attempted.set(entry.client_id, signature(entry));
     const { client_id, ...update } = entry;
-    const result =
-      Object.keys(update).length === 1 && typeof update.beer_name === 'string'
-        ? await updateDrinkName(client_id, update.beer_name)
-        : await updateDrink(client_id, update);
+    const result = await updateDrink(client_id, update, signal);
     if (result !== 'retry') settled.add(entry.client_id);
   }
 
@@ -114,18 +79,16 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   });
 }
 
-export async function enqueueDrinkUpdate(
-  entry: DrinkUpdateEntry,
-): Promise<DrinkUpdateEnqueueResult> {
-  const persisted = await runMutation(async () => {
+export async function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void> {
+  await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
-    deduped.push(entry);
-    return saveQueue(preserveDurableQueue(deduped, MAX_QUEUE_LENGTH));
+    // A rename in the restored UI must preserve unsent price/type edits from 2.0.
+    const previous = queue.find((queued) => queued.client_id === entry.client_id);
+    deduped.push({ ...previous, ...entry });
+    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
   });
-  if (!persisted) return 'storage-error';
   await flushUpdateDrinksQueue();
-  return 'queued';
 }
 
 export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
@@ -133,7 +96,8 @@ export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
     const queue = await loadQueue();
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length === queue.length) return false;
-    return saveQueue(filtered);
+    await saveQueue(filtered);
+    return true;
   });
 }
 
@@ -144,12 +108,9 @@ export function clearUpdateDrinksQueue(): Promise<void> {
   // so without this it could keep sending the previous account's drink updates
   // under the session that replaces this one.
   abortInFlight();
-  return runMutation(
-    async () => {
-      await saveQueue([]);
-    },
-    { allowDuringPrivateTransition: true },
-  );
+  return runMutation(async () => {
+    await saveQueue([]);
+  });
 }
 
 /**

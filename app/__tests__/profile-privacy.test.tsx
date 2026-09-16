@@ -1,9 +1,5 @@
 import React from 'react';
 
-import { GlowButton } from '@/components/shared/GlowButton';
-import { useAccountStore } from '@/stores/accountStore';
-import ProfilePrivacyScreen from '../profile/privacy';
-
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockReplace = jest.fn();
@@ -20,8 +16,8 @@ jest.mock('@/components/shared/GlowButton', () => ({
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => {
-  const ReactModule = jest.requireActual('react');
-  const Native = jest.requireActual('react-native');
+  const ReactModule = require('react');
+  const Native = require('react-native');
   const Icon = () => ReactModule.createElement(Native.View);
   return {
     CheckIcon: Icon,
@@ -39,7 +35,11 @@ jest.mock('@/theme/fonts', () => ({
   FontScaleCap: { heading: 1.2, body: 1.3 },
 }));
 
-const TestRenderer = jest.requireActual('react-test-renderer');
+import { GlowButton } from '@/components/shared/GlowButton';
+import { useAccountStore } from '@/stores/accountStore';
+import ProfilePrivacyScreen from '../profile/privacy';
+
+const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
 const mockGlowButton = GlowButton as unknown as jest.Mock;

@@ -21,7 +21,7 @@ import {
 import { t } from '@/i18n';
 import { useAccountStore, selectIsPublic } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 interface PrivacyChoiceProps {
@@ -234,14 +234,14 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.14),
   },
   eyebrow: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     letterSpacing: 1.8,
     color: Colors.amber,
     marginBottom: Spacing.sm,
   },
   title: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 34,
     lineHeight: 39,
     letterSpacing: -0.5,
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     maxWidth: 330,
   },
   body: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 16,
     lineHeight: 24,
     color: Colors.foamMuted,
@@ -290,12 +290,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   choiceTitle: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 18,
     color: Colors.foam,
   },
   choiceBody: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13.5,
     lineHeight: 19,
     color: Colors.foamMuted,
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   },
   promiseText: {
     flex: 1,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13.5,
     lineHeight: 20,
     color: Colors.amberLight,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   skipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.mutedText,
   },

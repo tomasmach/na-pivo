@@ -19,12 +19,12 @@ import {
   type FeedbackInput,
 } from './feedbackClient';
 import { generateUuidV4 } from './account';
-import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
+import { createQueueStorage, createQueueLock } from './createQueue';
 import { Directory, File, Paths } from 'expo-file-system';
-import { preserveDurableQueue } from './durableQueuePolicy';
 
 const STORAGE_KEY = 'na-pivo-feedback-queue';
-/** Historical queue limit retained as migration context; durable reports are never dropped. */
+/** Hard cap — a queue this long means the backend has been unreachable for a
+ *  very long time; dropping the oldest entries beats unbounded growth. */
 const MAX_QUEUE_LENGTH = 20;
 const ATTACHMENTS_DIRECTORY = 'feedback-attachments';
 
@@ -81,29 +81,21 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<FeedbackEntry>(
 const enqueueTask = createQueueLock();
 
 /** Attempts to send every queued entry, keeping only the ones that failed. */
-async function flushUnlocked(signal: AbortSignal): Promise<void> {
-  const queue = await enqueueTask(loadQueue);
+async function flushLocked(): Promise<void> {
+  const queue = await loadQueue();
   if (queue.length === 0) return;
 
-  const settledIds = new Set<string>();
+  const remaining: FeedbackEntry[] = [];
   for (const entry of queue) {
-    if (signal.aborted) break;
-    const result = await submitFeedback(entry, signal);
-    if (result !== 'retry') settledIds.add(entry.client_id);
+    const result = await submitFeedback(entry);
+    if (result === 'retry') {
+      remaining.push(entry);
+    } else {
+      deleteAttachment(entry);
+    }
   }
-  if (settledIds.size === 0) return;
-
-  await enqueueTask(async () => {
-    const current = await loadQueue();
-    const removed = current.filter((entry) => settledIds.has(entry.client_id));
-    const persisted = await saveQueue(
-      current.filter((entry) => !settledIds.has(entry.client_id)),
-    );
-    if (persisted) removed.forEach(deleteAttachment);
-  });
+  await saveQueue(remaining);
 }
-
-const feedbackDelivery = createCoalescingFlush(flushUnlocked);
 
 /**
  * Persist the feedback (and any picked cache image) before resolving, then kick
@@ -118,10 +110,8 @@ export async function enqueueFeedback(input: FeedbackInput): Promise<void> {
     const entry = buildFeedbackEntry(input, clientId, attachmentUri);
     const queue = await loadQueue();
     queue.push(entry);
-    const kept = preserveDurableQueue(queue, MAX_QUEUE_LENGTH);
-    const keptIds = new Set(kept.map((item) => item.client_id));
-    const dropped = queue.filter((item) => !keptIds.has(item.client_id));
-    await saveQueue(kept);
+    const dropped = queue.slice(0, Math.max(0, queue.length - MAX_QUEUE_LENGTH));
+    await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
     dropped.forEach(deleteAttachment);
   });
   void flushFeedbackQueue();
@@ -132,12 +122,11 @@ export async function enqueueFeedback(input: FeedbackInput): Promise<void> {
  * foreground — both fire-and-forget. Never throws.
  */
 export function flushFeedbackQueue(): Promise<void> {
-  return feedbackDelivery.flush();
+  return enqueueTask(flushLocked);
 }
 
 /** Drops queued feedback containing free text/contact details at account boundary changes. */
 export function clearFeedbackQueue(): Promise<void> {
-  feedbackDelivery.abortInFlight();
   return enqueueTask(async () => {
     await saveQueue([]);
     try {
@@ -146,5 +135,5 @@ export function clearFeedbackQueue(): Promise<void> {
     } catch {
       // Best-effort privacy cleanup at account boundaries.
     }
-  }, { allowDuringPrivateTransition: true });
+  });
 }

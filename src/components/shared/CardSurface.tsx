@@ -104,22 +104,9 @@ export const CardSheen = memo(function CardSheen() {
           <Rect x="0" y="0" width={size.width} height={size.height} fill="url(#cardSheen)" />
         </Svg>
       ) : null}
-      {/* The specular line along the top curve. It fades out at both ends: a
-          hard-ended bar sitting at y=0 across the middle of a 22pt radius reads
-          as a stray line floating above the card, not as light catching the
-          edge. The gradient is the whole difference. */}
-      {size ? (
-        <Svg width={size.width} height={1} style={styles.topLight}>
-          <Defs>
-            <LinearGradient id="cardTopLight" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0" stopColor={Colors.foam} stopOpacity={0} />
-              <Stop offset="0.5" stopColor={Colors.foam} stopOpacity={0.22} />
-              <Stop offset="1" stopColor={Colors.foam} stopOpacity={0} />
-            </LinearGradient>
-          </Defs>
-          <Rect x="0" y="0" width={size.width} height={1} fill="url(#cardTopLight)" />
-        </Svg>
-      ) : null}
+      {/* The specular line along the top curve. Inset so it reads as light
+          catching the middle of the edge, not as a border. */}
+      <View style={styles.topLight} />
     </View>
   );
 });
@@ -137,6 +124,9 @@ const styles = StyleSheet.create({
   topLight: {
     position: 'absolute',
     top: 0,
-    left: 0,
+    left: '14%',
+    right: '14%',
+    height: 1,
+    backgroundColor: withAlpha(Colors.foam, 0.22),
   },
 });

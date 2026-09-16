@@ -1,4 +1,4 @@
-import AsyncStorage, { privateAccountCleanupStorage } from './privateAccountStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { WireVisit } from './visitsClient';
 
 export const VISITS_MAP_SNAPSHOT_KEY = 'na-pivo-visits-map-snapshot';
@@ -63,7 +63,7 @@ export async function clearVisitsSnapshot(): Promise<void> {
   boundaryGeneration += 1;
   for (const listener of boundaryListeners) listener();
   try {
-    await privateAccountCleanupStorage.removeItem(VISITS_MAP_SNAPSHOT_KEY);
+    await AsyncStorage.removeItem(VISITS_MAP_SNAPSHOT_KEY);
   } catch {
     // The generation guard still prevents stale in-flight writes.
   }

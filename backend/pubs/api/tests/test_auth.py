@@ -25,6 +25,8 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import psycopg
+import psycopg_pool
 import pytest
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -57,6 +59,7 @@ from pubs.models import (
     EmailCredential,
     FeedbackReport,
     Follow,
+    OfflineMutationTombstone,
     OneTimeToken,
     PartyEvening,
     PartyEveningDrink,
@@ -1180,6 +1183,99 @@ def test_login_merge_recounts_existing_amenity_aggregate(client, sent_emails):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("deleted_by_source", [False, True])
+def test_login_merge_keeps_removed_drinks_removed(client, sent_emails, deleted_by_source):
+    password = f"test-{uuid.uuid4().hex}"
+    _register(client, "merge-deletion@x.cz", password=password)
+    target = EmailCredential.objects.get(email="merge-deletion@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+    removed_account, stale_account = (source, target) if deleted_by_source else (target, source)
+    drink_id = uuid.uuid4()
+    OfflineMutationTombstone.objects.create(
+        account=removed_account,
+        resource=OfflineMutationTombstone.Resource.DRINK,
+        client_id=drink_id,
+    )
+    DrinkLog.objects.create(
+        account=stale_account,
+        client_id=drink_id,
+        beer_name="Plzeň",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+
+    login = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-deletion@x.cz", "password": password},
+        format="json",
+        **_auth(anon_token),
+    )
+    assert login.status_code == status.HTTP_200_OK, login.content
+    assert OfflineMutationTombstone.objects.filter(
+        account=target, resource=OfflineMutationTombstone.Resource.DRINK, client_id=drink_id,
+    ).exists()
+    assert not DrinkLog.objects.filter(account=target, client_id=drink_id).exists()
+    replay = client.post(
+        "/v1/drinks",
+        data={
+            "client_id": str(drink_id), "name": "Review pub", "lat": 50.08, "lng": 14.45,
+            "beer": {"name": "Plzeň", "price_czk": 55, "volume_ml": 500},
+            "drank_at": "2026-06-01T18:00:00Z",
+        },
+        format="json",
+        **_auth(login.json()["token"]),
+    )
+    assert replay.status_code == status.HTTP_200_OK, replay.content
+    assert replay.json()["removed"] is True
+    assert not DrinkLog.objects.filter(account=target, client_id=drink_id).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "visit_minute,source_minute,retained,target_closed",
+    [("00", None, False, False), ("10", None, False, False), ("20", None, True, False),
+     ("00", "20", True, False), ("00", "20", True, True)],
+)
+def test_login_merge_preserves_latest_visit_deletion_revision(client, sent_emails, visit_minute, source_minute, retained, target_closed):
+    password = f"test-{uuid.uuid4().hex}"
+    _register(client, "merge-visit-deletion@x.cz", password=password)
+    target = EmailCredential.objects.get(email="merge-visit-deletion@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    source = Account.objects.get(public_id=anon_id)
+    visit_id = uuid.uuid4()
+    for account, minute in [(target, "05"), (source, "10")]:
+        OfflineMutationTombstone.objects.create(
+            account=account, resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+            client_id=visit_id, client_updated_at=f"2026-06-12T19:{minute}:00Z",
+        )
+    PubVisit.objects.create(
+        account=target, client_id=visit_id, cache_key="u2fkbnhz", name="Review pub",
+        lat=50.08, lng=14.45, started_at="2026-06-12T19:00:00Z",
+        client_updated_at=f"2026-06-12T19:{visit_minute}:00Z",
+        closed_at="2026-06-12T19:05:00Z" if target_closed else None,
+    )
+    if source_minute is not None:
+        PubVisit.objects.create(
+            account=source, client_id=visit_id, cache_key="u2fkbnhz", name="Review pub",
+            lat=50.08, lng=14.45, started_at="2026-06-12T19:00:00Z",
+            client_updated_at=f"2026-06-12T19:{source_minute}:00Z",
+        )
+    login = client.post(
+        "/v1/auth/login", data={"email": "merge-visit-deletion@x.cz", "password": password},
+        format="json", **_auth(anon_token),
+    )
+    assert login.status_code == 200, login.content
+    marker = OfflineMutationTombstone.objects.get(account=target, client_id=visit_id)
+    assert marker.client_updated_at.isoformat() == "2026-06-12T19:10:00+00:00"
+    assert PubVisit.objects.filter(account=target, client_id=visit_id).exists() is retained
+    if retained:
+        assert PubVisit.objects.get(account=target, client_id=visit_id).client_updated_at.isoformat() == "2026-06-12T19:20:00+00:00"
+    if target_closed:
+        assert PubVisit.objects.get(account=target, client_id=visit_id).closed_at.isoformat() == "2026-06-12T19:05:00+00:00"
+
+
+@pytest.mark.django_db
 def test_login_merge_failure_rolls_back_source_token_and_can_retry(
     client, sent_emails, monkeypatch
 ):
@@ -1479,6 +1575,13 @@ def test_merge_participants_are_locked_in_primary_key_order(monkeypatch):
     assert locked_target.pk == first.pk
 
 
+def _as_django_error(cause: BaseException) -> DatabaseError:
+    """Rebuild how Django re-raises a driver error: wrapped, cause attached."""
+    error = DatabaseError(str(cause))
+    error.__cause__ = cause
+    return error
+
+
 @pytest.mark.django_db(transaction=True)
 def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeypatch):
     source = Account.objects.create(device_id="merge-nowait-source")
@@ -1496,7 +1599,9 @@ def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeyp
 
     def fail_new_account_lock(*args, **kwargs):
         if kwargs.get("nowait"):
-            raise DatabaseError("could not obtain lock")
+            raise _as_django_error(
+                psycopg.errors.LockNotAvailable("could not obtain lock on row")
+            )
         return original_select_for_update(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -1513,6 +1618,44 @@ def test_merge_returns_retryable_auth_when_a_new_party_account_is_locked(monkeyp
     assert raised.value.http_status == 409
     assert Account.objects.filter(pk=source.pk).exists()
     assert not AccountIdentityAlias.objects.filter(public_id=source.public_id).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_does_not_blame_the_account_when_the_pool_runs_out(monkeypatch):
+    """An exhausted connection pool is not "someone else changed your account".
+
+    ``PoolTimeout`` is an ``OperationalError``, so the wide ``except
+    DatabaseError`` around the NOWAIT lock used to turn a busy server into a
+    409 telling the user to log in again. It has to stay a server error, which
+    the client retries.
+    """
+    source = Account.objects.create(device_id="merge-pool-source")
+    target = Account.objects.create(device_id="merge-pool-target")
+    third = Account.objects.create(device_id="merge-pool-third")
+    evening = PartyEvening.objects.create(
+        host=source,
+        client_id=uuid.uuid4(),
+        join_code="POOLTO",
+        pub_name="U Zámku",
+    )
+    PartyEveningMember.objects.create(evening=evening, account=source)
+    PartyEveningMember.objects.create(evening=evening, account=third)
+    original_select_for_update = Account.objects.select_for_update
+
+    def fail_new_account_lock(*args, **kwargs):
+        if kwargs.get("nowait"):
+            raise _as_django_error(
+                psycopg_pool.PoolTimeout("couldn't get a connection after 10.00 sec")
+            )
+        return original_select_for_update(*args, **kwargs)
+
+    monkeypatch.setattr(Account.objects, "select_for_update", fail_new_account_lock)
+
+    with pytest.raises(DatabaseError):
+        with transaction.atomic():
+            accounts._merge_anonymous_account(source, target)
+
+    assert Account.objects.filter(pk=source.pk).exists()
 
 
 @pytest.mark.django_db

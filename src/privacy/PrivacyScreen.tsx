@@ -16,14 +16,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-
+import { Fonts } from '@/theme/fonts';
 import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
-
-// Same complete policy the auth screen links to (app/auth/index.tsx).
-const PRIVACY_POLICY_URL = 'https://tomasmach.github.io/na-pivo/privacy.html';
 
 export default function PrivacyScreen() {
   const router = useRouter();
@@ -33,18 +27,12 @@ export default function PrivacyScreen() {
     void Linking.openURL(`mailto:${t.privacy.contactEmail}`);
   }
 
-  // The complete policy lives on the same GitHub Pages site the auth screen
-  // links to; this summary is only the short in-app version.
-  const handleFullPolicy = () => {
-    void Linking.openURL(PRIVACY_POLICY_URL);
-  };
-
   return (
     <View style={[styles.root, { paddingTop: insets.top || 16 }]}>
       {/* Header row */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}
@@ -77,19 +65,6 @@ export default function PrivacyScreen() {
             <Text style={styles.contactEmail}>{t.privacy.contactEmail}</Text>
           </Pressable>
         </View>
-
-        {/* Complete policy */}
-        <Pressable
-          onPress={handleFullPolicy}
-          style={({ pressed }) => [styles.fullPolicyButton, pressed && styles.pressed]}
-          accessibilityRole="link"
-          accessibilityLabel={t.privacy.fullPolicyLink}
-          hitSlop={8}
-        >
-          <Text style={styles.fullPolicyText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {t.privacy.fullPolicyLink}
-          </Text>
-        </Pressable>
       </ScrollView>
     </View>
   );
@@ -116,13 +91,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backChevron: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 32,
     color: Colors.foam,
     lineHeight: 36,
   },
   headerTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
@@ -133,7 +108,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   paragraph: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.foamMuted,
     lineHeight: 15 * 1.5,
@@ -146,29 +121,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   contactLabel: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.foamMuted,
   },
   contactEmail: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     color: Colors.amber,
     textDecorationLine: 'underline',
-  },
-  fullPolicyButton: {
-    marginTop: Spacing.lg,
-    minHeight: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  pressed: { opacity: 0.65 },
-  fullPolicyText: {
-    fontWeight: '700',
-    fontSize: 14,
-    color: Colors.foam,
   },
 });

@@ -1,24 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import {
-  buildVisitEntry,
-  deleteVisitByClientId,
-  syncVisit,
-  seedVisitsFromHistory,
-} from '../visitsSync';
-import { geohash8 } from '../geohash';
-import { useTallyStore, type TallySession } from '@/stores/tallyStore';
-
 jest.mock('@react-native-async-storage/async-storage', () =>
-  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-const enqueueVisitOp: jest.Mock = jest.fn((_item?: unknown) => Promise.resolve('queued'));
+const enqueueVisitOp: jest.Mock = jest.fn((_item?: unknown) => Promise.resolve(undefined));
 const flushVisitsQueue: jest.Mock = jest.fn(() => Promise.resolve(undefined));
 jest.mock('../visitsQueue', () => ({
   enqueueVisitOp: (...args: unknown[]) => enqueueVisitOp(...(args as [])),
   flushVisitsQueue: () => flushVisitsQueue(),
 }));
+
+import {
+  buildVisitEntry,
+  syncVisit,
+  seedVisitsFromHistory,
+} from '../visitsSync';
+import { geohash8 } from '../geohash';
+import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 const PUB_KEY = geohash8(50.0876, 14.4214);
 
@@ -71,22 +70,6 @@ describe('buildVisitEntry', () => {
     expect(buildVisitEntry(session())?.updated_at).toBe('2026-06-14T20:30:00.000Z');
   });
 
-  it('marks an archived session explicitly closed and uses that as its newest update', () => {
-    const entry = buildVisitEntry(
-      session({
-        archivedReason: 'manual',
-        closedAt: '2026-06-14T21:15:00.000Z',
-      }),
-    );
-
-    expect(entry?.closed_at).toBe('2026-06-14T21:15:00.000Z');
-    expect(entry?.updated_at).toBe('2026-06-14T21:15:00.000Z');
-  });
-
-  it('keeps an active session explicitly unclosed', () => {
-    expect(buildVisitEntry(session())?.closed_at).toBeNull();
-  });
-
   it('returns null for an outside ("ctx:*") session — never a PubVisit', () => {
     expect(buildVisitEntry(session({ pubKey: 'ctx:private', pubName: 'Doma / na chatě' }))).toBeNull();
     expect(buildVisitEntry(session({ pubKey: 'ctx:outdoors' }))).toBeNull();
@@ -116,62 +99,19 @@ describe('buildVisitEntry', () => {
     );
     expect(entry).toEqual(expect.objectContaining({ city: 'Praha', external_id: 'mapy:pub-1' }));
   });
-
-  it('associates the visit with the shared table when supplied', () => {
-    expect(buildVisitEntry(session(), undefined, 'PIVOXY')?.party_code).toBe('PIVOXY');
-  });
 });
 
 describe('syncVisit', () => {
-  it('enqueues an upsert for a session', async () => {
-    await expect(syncVisit(session())).resolves.toBe('queued');
+  it('enqueues an upsert for a session', () => {
+    syncVisit(session());
     expect(enqueueVisitOp).toHaveBeenCalledWith(
       expect.objectContaining({ op: 'upsert', clientId: 'v1' }),
-    );
-  });
-
-  it('surfaces a storage failure to callers', async () => {
-    enqueueVisitOp.mockResolvedValueOnce('storage-error');
-
-    await expect(syncVisit(session())).resolves.toBe('storage-error');
-  });
-
-  it('surfaces a delete storage failure to callers', async () => {
-    enqueueVisitOp.mockResolvedValueOnce('storage-error');
-
-    await expect(deleteVisitByClientId('v1')).resolves.toBe('storage-error');
-    expect(enqueueVisitOp).toHaveBeenCalledWith({ op: 'delete', clientId: 'v1' });
-  });
-
-  it('keeps the party code in the queued visit entry', () => {
-    syncVisit(session(), '2026-06-14T21:00:00.000Z', 'PIVOXY');
-
-    expect(enqueueVisitOp).toHaveBeenCalledWith(
-      expect.objectContaining({ entry: expect.objectContaining({ party_code: 'PIVOXY' }) }),
-    );
-  });
-
-  it('can persist a first table visit without racing the table create', () => {
-    syncVisit(session(), '2026-06-14T21:00:00.000Z', 'PIVOXY', { deliver: false });
-
-    expect(enqueueVisitOp).toHaveBeenCalledWith(
-      expect.objectContaining({ entry: expect.objectContaining({ party_code: 'PIVOXY' }) }),
-      { deliver: false },
     );
   });
 
   it('is a no-op for a null session', () => {
     syncVisit(null);
     expect(enqueueVisitOp).not.toHaveBeenCalled();
-  });
-
-  it('keeps its never-throws contract when a frozen account boundary rejects enqueue', async () => {
-    enqueueVisitOp.mockRejectedValueOnce(new Error('account transition'));
-
-    syncVisit(session());
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    expect(enqueueVisitOp).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -192,7 +132,6 @@ describe('seedVisitsFromHistory', () => {
     useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });
     await seedVisitsFromHistory();
     expect(enqueueVisitOp).not.toHaveBeenCalled();
-    expect(flushVisitsQueue).toHaveBeenCalledTimes(1);
   });
 
   it('includes the current session when it holds drinks', async () => {
@@ -205,8 +144,8 @@ describe('seedVisitsFromHistory', () => {
   it('sets the guard only after visit ops have been queued', async () => {
     let resolveEnqueue!: () => void;
     enqueueVisitOp.mockReturnValueOnce(
-      new Promise<'queued'>((resolve) => {
-        resolveEnqueue = () => resolve('queued');
+      new Promise<void>((resolve) => {
+        resolveEnqueue = resolve;
       }),
     );
     useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });
@@ -226,15 +165,6 @@ describe('seedVisitsFromHistory', () => {
     useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });
 
     await expect(seedVisitsFromHistory()).resolves.toBeUndefined();
-
-    expect(await AsyncStorage.getItem('na-pivo-visits-seeded')).toBeNull();
-  });
-
-  it('does not set the guard when AsyncStorage rejected a queue write', async () => {
-    enqueueVisitOp.mockResolvedValueOnce('storage-error');
-    useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });
-
-    await seedVisitsFromHistory();
 
     expect(await AsyncStorage.getItem('na-pivo-visits-seeded')).toBeNull();
   });

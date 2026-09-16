@@ -78,13 +78,13 @@ cp .env.example .env.local
 
 Native builds need your own Google Maps SDK key for iOS or Android. Put it in `.env.local`. Restrict the iOS key to the bundle ID and the Android key to the package and signing certificate. You can find those identifiers in `app.config.ts`. OAuth is optional, and Google Sign-In stays off when its values are blank.
 
-On macOS, this command runs the backend migrations, starts Django, generates the iOS project and opens the simulator:
+On macOS, this command starts local ASGI and Metro and opens the simulator. It reuses a compatible client; native input changes or a missing client trigger a local rebuild:
 
 ```bash
 npm run dev
 ```
 
-For Android, start Django on the LAN and then run `npm run android:local`. [README.md](README.md) lists the separate commands and ports.
+On Linux, `npm run dev -- --metro` starts local ASGI and Metro without iOS tools. Use a compatible Android development client or build one with local backend settings. [README.md](README.md) lists native commands, ports and background operation.
 
 Git ignores `.env`, `.env.local`, generated `ios/` and `android/` projects, build output and credentials. Do not force-add any of them.
 

@@ -89,6 +89,7 @@ from .views import (
     FriendBlockView,
     FriendDetailView,
     FriendDrinkFeedView,
+    FriendDuelView,
     FriendInviteResolveView,
     FriendInviteView,
     FriendNotificationReadView,
@@ -423,6 +424,8 @@ urlpatterns = [
         FriendBeerPhotosView.as_view(),
         name="friend-beer-photos",
     ),
+    # Above friends/<uuid:account_id> so the duel suffix is not swallowed by it.
+    path("friends/<uuid:account_id>/duel", FriendDuelView.as_view(), name="friend-duel"),
     path("friends/<uuid:account_id>", FriendDetailView.as_view(), name="friend-detail"),
     path(
         "friends/pub-activity",

@@ -30,9 +30,14 @@ import {
   type SubmitRatingResult,
   type WireRatingUpsert,
 } from './pubRatingsClient';
-import { createCoalescingFlush, createQueueStorage, createQueueLock } from './createQueue';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-pub-ratings-queue';
+/** Hard cap — one item per pub, so this only bites with thousands of distinct
+ *  rated pubs while the backend is unreachable; dropping the oldest beats
+ *  unbounded growth. */
+const MAX_QUEUE_LENGTH = 500;
+
 /** One pending sync operation, keyed (and deduped) by pubKey. */
 export type RatingQueueItem =
   | { op: 'upsert'; pubKey: string; payload: WireRatingUpsert }
@@ -67,10 +72,10 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<RatingQueueItem>
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
 const runLocked = createQueueLock();
 
-async function deliver(item: RatingQueueItem, signal: AbortSignal): Promise<SubmitRatingResult> {
+async function deliver(item: RatingQueueItem): Promise<SubmitRatingResult> {
   // Deletes are timestamped tombstone PUTs (empty verdict/tag/note) so the
   // backend can apply the same last-write-wins conflict rule as normal upserts.
-  return submitRatingUpsert(item.payload, signal);
+  return submitRatingUpsert(item.payload);
 }
 
 /** Pending tombstones that restore must not hydrate back into local state. */
@@ -92,8 +97,8 @@ function signature(item: RatingQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushUnlocked(signal: AbortSignal): Promise<void> {
-  const queue = await runLocked(loadQueue);
+async function flushLocked(): Promise<void> {
+  const queue = await loadQueue();
   if (queue.length === 0) return;
 
   // Snapshot the exact op (by content) we attempt per pubKey, plus its result.
@@ -103,25 +108,20 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
   for (const item of queue) {
-    if (signal.aborted) break;
     attempted.set(item.pubKey, signature(item));
-    const result = await deliver(item, signal);
+    const result = await deliver(item);
     if (result !== 'retry') settled.add(item.pubKey);
   }
 
-  await runLocked(async () => {
-    const current = await loadQueue();
-    const remaining = current.filter((item) => {
-      const sig = attempted.get(item.pubKey);
-      // A different/newer op for this key arrived during the flush → keep it.
-      if (sig === undefined || sig !== signature(item)) return true;
-      return !settled.has(item.pubKey);
-    });
-    await saveQueue(remaining);
+  const current = await loadQueue();
+  const remaining = current.filter((item) => {
+    const sig = attempted.get(item.pubKey);
+    // A different/newer op for this key arrived during the flush → keep it.
+    if (sig === undefined || sig !== signature(item)) return true;
+    return !settled.has(item.pubKey);
   });
+  await saveQueue(remaining);
 }
-
-const ratingDelivery = createCoalescingFlush(flushUnlocked);
 
 /**
  * Enqueue (and dedup) one rating operation, then immediately try to flush the
@@ -133,18 +133,16 @@ export function enqueueRatingOp(item: RatingQueueItem): Promise<void> {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => existing.pubKey !== item.pubKey);
     deduped.push(item);
-    return saveQueue(deduped);
-  }).then(async (persisted) => {
-    if (persisted) await flushPubRatingsQueue();
+    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    await flushLocked();
   });
 }
 
 /** Drop all pending private rating sync operations without attempting delivery. */
 export function clearPubRatingsQueue(): Promise<void> {
-  ratingDelivery.abortInFlight();
   return runLocked(async () => {
     await saveQueue([]);
-  }, { allowDuringPrivateTransition: true });
+  });
 }
 
 /**
@@ -152,5 +150,5 @@ export function clearPubRatingsQueue(): Promise<void> {
  * the foreground — both fire-and-forget. Never throws.
  */
 export function flushPubRatingsQueue(): Promise<void> {
-  return ratingDelivery.flush();
+  return runLocked(flushLocked);
 }

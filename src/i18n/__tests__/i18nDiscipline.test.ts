@@ -11,7 +11,12 @@ const SCAN_DIRS = ['app', 'src'];
 const SKIP = [/__tests__/, /__mocks__/, /__diag__/, /\/src\/i18n\//, /\.d\.ts$/];
 
 /** Files that must keep a fixed Czech collation on purpose (identity keys). */
-const FIXED_LOCALE_ALLOWLIST = new Set(['src/data/pubIdentity.ts']);
+const FIXED_LOCALE_ALLOWLIST = new Set([
+  'src/data/pubIdentity.ts',
+  'src/stores/partyGroupsStore.ts',
+  'src/map/mapModel.ts',
+  'src/friends/AddFriendTools.tsx',
+]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

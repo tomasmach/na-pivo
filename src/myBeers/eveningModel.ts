@@ -14,7 +14,8 @@ import {
   type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
-import { t , beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n';
+import { formatPrice, type PriceCurrency } from '@/utils/currency';
+import { t, beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** A grouped line in an evening's breakdown: one row per beer + volume. */
@@ -25,6 +26,7 @@ export interface BreakdownLine {
   volumeMl?: number;
   count: number;
   totalCzk: number;
+  pricedCount: number;
 }
 
 /** One editable row in the evening detail. Unlike the compact breakdown, this
@@ -32,7 +34,6 @@ export interface BreakdownLine {
  * the remove action can still retract exactly one counted drink. */
 export interface DrinkActionGroup extends BreakdownLine {
   key: string;
-  pricedCount: number;
   servingType?: TallyDrink['servingType'];
   drinks: TallyDrink[];
 }
@@ -96,6 +97,7 @@ export function sessionBreakdown(session: TallySession | null): BreakdownLine[] 
     if (existing) {
       existing.count += 1;
       existing.totalCzk += priceCzk;
+      if (typeof drink.priceCzk === 'number') existing.pricedCount += 1;
     } else {
       order.push(key);
       const line: BreakdownLine = {
@@ -103,12 +105,25 @@ export function sessionBreakdown(session: TallySession | null): BreakdownLine[] 
         drinkType,
         count: 1,
         totalCzk: priceCzk,
+        pricedCount: typeof drink.priceCzk === 'number' ? 1 : 0,
       };
       if (typeof drink.volumeMl === 'number') line.volumeMl = drink.volumeMl;
       lines.set(key, line);
     }
   }
   return order.map((key) => lines.get(key) as BreakdownLine);
+}
+
+/** Unknown prices must never look like free drinks or a complete bill. */
+export function eveningPriceLabel(
+  lines: BreakdownLine[],
+  priceCurrency: PriceCurrency,
+): string {
+  const count = lines.reduce((sum, line) => sum + line.count, 0);
+  const pricedCount = lines.reduce((sum, line) => sum + line.pricedCount, 0);
+  if (pricedCount === 0) return t.myBeers.priceUnknown;
+  const price = formatPrice(lines.reduce((sum, line) => sum + line.totalCzk, 0), priceCurrency);
+  return pricedCount < count ? t.myBeers.pricePartial(price) : price;
 }
 
 /** Compact mixed-evening label with beer kept first and zero categories hidden. */

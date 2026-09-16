@@ -5,13 +5,8 @@ export interface HistoricalDateTimeResult {
   endedIso?: string | null;
 }
 
-/**
- * Reads back exactly what `formatHistoricalDate` writes into the field. Both
- * locales we ship put the day first, so the separator is the only difference:
- * "04. 07. 2026" in Czech, "04/07/2026" in English.
- */
-function parseEditableDate(value: string): { year: number; month: number; day: number } | null {
-  const match = /^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})$/.exec(value.trim());
+function parseCzechDate(value: string): { year: number; month: number; day: number } | null {
+  const match = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/.exec(value.trim());
   if (!match) return null;
   const day = Number(match[1]);
   const month = Number(match[2]);
@@ -61,7 +56,7 @@ export function buildHistoricalInterval(
   endTimeText: string,
   now: Date = new Date(),
 ): HistoricalDateTimeResult | null {
-  const parsedDate = parseEditableDate(dateText);
+  const parsedDate = parseCzechDate(dateText);
   const parsedStartTime = parseTime(startTimeText);
   const cleanEndTime = endTimeText.trim();
   const parsedEndTime = cleanEndTime ? parseTime(cleanEndTime) : null;

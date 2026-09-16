@@ -10,7 +10,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Avatar } from '@/profile/Avatar';
 import type { FriendProfile } from '@/data/friendsClient';
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { t } from '@/i18n';
 import { Spacing } from '@/theme/layout';
 
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
   },
   friendMiniText: {
     flexShrink: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     color: Colors.foam,
     fontSize: 15,
   },

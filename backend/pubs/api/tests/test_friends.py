@@ -1522,6 +1522,8 @@ def test_friend_settings_get_and_patch(client):
     assert initial.json() == {
         "ghost_mode": False,
         "share_drinks_with_parta": True,
+        # Spend is its own, stricter switch: off until the user says otherwise.
+        "share_spend_with_parta": False,
         "quiet_hours_enabled": True,
         "quiet_hours_start": 23,
         "quiet_hours_end": 9,
@@ -1537,6 +1539,7 @@ def test_friend_settings_get_and_patch(client):
     assert patched.json() == {
         "ghost_mode": True,
         "share_drinks_with_parta": True,
+        "share_spend_with_parta": False,
         "quiet_hours_enabled": True,
         "quiet_hours_start": 22,
         "quiet_hours_end": 7,
@@ -1640,6 +1643,47 @@ def test_dashboard_leaderboard_counts_recent_non_suspect_beers(client):
         row["account"]["nickname"]: row["beers_30d"] for row in resp.json()["leaderboard"]
     }
     assert beers_by_nickname == {"janek": 1, "petr": 0}
+
+
+@pytest.mark.django_db
+def test_leaderboard_hides_tallies_from_a_member_who_does_not_share(client):
+    """Being an accepted friend is not consent to be counted at somebody.
+
+    Null, not zero: the app draws "nesdílí" from a null and would draw a zero
+    as "they stopped drinking".
+    """
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    now = timezone.now()
+    _drink(account_a, drank_at=now - timedelta(days=1))
+    _drink(account_b, drank_at=now - timedelta(days=1))
+    _visit(account_b, day="2026-06-12")
+
+    account_b.share_drinks_with_parta = False
+    account_b.save(update_fields=["share_drinks_with_parta"])
+
+    rows = {row["account"]["nickname"]: row for row in client.get("/v1/friends", **_auth(token_a)).json()["leaderboard"]}
+
+    assert rows["petr"]["beers_30d"] is None
+    assert rows["petr"]["visits_30d"] is None
+    # Mine stay mine.
+    assert rows["janek"]["beers_30d"] == 1
+
+
+@pytest.mark.django_db
+def test_leaderboard_hides_tallies_in_ghost_mode(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    _drink(account_b, drank_at=timezone.now() - timedelta(days=1))
+
+    account_b.ghost_mode = True
+    account_b.save(update_fields=["ghost_mode"])
+
+    rows = {row["account"]["nickname"]: row for row in client.get("/v1/friends", **_auth(token_a)).json()["leaderboard"]}
+
+    assert rows["petr"]["beers_30d"] is None
 
 
 @pytest.mark.django_db

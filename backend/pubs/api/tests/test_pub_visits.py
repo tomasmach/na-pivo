@@ -22,7 +22,13 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
-from pubs.models import Account, PartyEvening, PartyEveningMember, PubVisit
+from pubs.models import (
+    Account,
+    OfflineMutationTombstone,
+    PartyEvening,
+    PartyEveningMember,
+    PubVisit,
+)
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11112222-3333-4444-5555-666677778888"
@@ -203,6 +209,47 @@ def test_post_with_ended_at(client):
     )
     assert resp.status_code == status.HTTP_201_CREATED
     assert PubVisit.objects.get().ended_at.isoformat() == "2026-06-12T21:30:00+00:00"
+
+
+@pytest.mark.django_db
+def test_explicit_closed_at_round_trips_without_changing_ended_at(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-visits",
+        data=_payload(closed_at="2026-06-12T23:45:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_201_CREATED
+    visit = PubVisit.objects.get()
+    assert visit.ended_at is None
+    assert visit.closed_at.isoformat() == "2026-06-12T21:45:00+00:00"
+
+    item = client.get("/v1/pub-visits", **_auth(token)).json()["visits"][0]
+    assert item["closed_at"] == "2026-06-12T21:45:00+00:00"
+
+    # A released client does not send closed_at. Its later routine visit upsert
+    # must not reopen an evening explicitly closed from a watch.
+    legacy_payload = _payload(updated_at="2026-06-13T00:00:00+02:00")
+    legacy_payload.pop("closed_at")
+    legacy_update = client.post(
+        "/v1/pub-visits",
+        data=legacy_payload,
+        format="json",
+        **_auth(token),
+    )
+    assert legacy_update.status_code == status.HTTP_200_OK
+    assert PubVisit.objects.get().closed_at.isoformat() == "2026-06-12T21:45:00+00:00"
+
+    resumed = client.post(
+        "/v1/pub-visits",
+        data=_payload(updated_at="2026-06-13T00:01:00+02:00", closed_at=None),
+        format="json",
+        **_auth(token),
+    )
+    assert resumed.status_code == status.HTTP_200_OK
+    assert PubVisit.objects.get().closed_at is None
+
 
 
 @pytest.mark.django_db
@@ -520,6 +567,32 @@ def test_get_empty_when_no_visits(client):
     assert resp.json() == {"visits": []}
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize("created_before_delete", [False, True])
+def test_released_client_can_count_again_after_removing_last_drink(client, created_before_delete):
+    """An empty pinned counter reuses its visit UUID for the next drink."""
+    token = _register(client)
+    if created_before_delete:
+        first = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+        assert first.status_code == status.HTTP_201_CREATED
+    deleted = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token))
+    assert deleted.status_code == status.HTTP_200_OK
+
+    counted_again = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            ended_at="2026-06-12T19:20:00+02:00",
+            updated_at="2026-06-12T19:20:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert counted_again.status_code == status.HTTP_201_CREATED, counted_again.json()
+    assert counted_again.json()["applied"] is True
+    listed = client.get("/v1/pub-visits", **_auth(token))
+    assert [visit["client_id"] for visit in listed.json()["visits"]] == [_CLIENT_ID]
+
+
 # ---------------------------------------------------------------------------
 # DELETE
 # ---------------------------------------------------------------------------
@@ -535,6 +608,10 @@ def test_delete_removes_visit(client):
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": True}
     assert PubVisit.objects.count() == 0
+    assert OfflineMutationTombstone.objects.filter(
+        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+        client_id=_CLIENT_ID,
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -543,6 +620,78 @@ def test_delete_unknown_client_id_is_idempotent_success(client):
     resp = client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token))
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json() == {"deleted": False}
+    assert not OfflineMutationTombstone.objects.filter(
+        resource=OfflineMutationTombstone.Resource.PUB_VISIT,
+        client_id=_CLIENT_ID,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_stale_visit_post_after_delete_is_successful_remove_wins_noop(client):
+    token = _register(client)
+    created = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+    assert client.delete(f"/v1/pub-visits/{_CLIENT_ID}", **_auth(token)).json() == {
+        "deleted": True
+    }
+
+    stale = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert stale.status_code == status.HTTP_200_OK
+    assert stale.json() == {
+        "accepted": True,
+        "duplicate": True,
+        "cache_key": _KEY,
+        "applied": False,
+        "removed": True,
+    }
+    assert PubVisit.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_visit_delete_before_first_post_is_remove_wins(client):
+    token = _register(client)
+    assert client.delete(
+        f"/v1/pub-visits/{_CLIENT_ID}",
+        data={"updated_at": "2026-06-12T19:10:00+02:00"},
+        format="json",
+        **_auth(token),
+    ).json() == {
+        "deleted": False
+    }
+
+    delayed = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert delayed.status_code == status.HTTP_200_OK
+    assert delayed.json()["removed"] is True
+    assert PubVisit.objects.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("minutes", ["00", "10"])
+def test_versioned_delete_blocks_older_and_equal_posts_but_allows_newer(client, minutes):
+    token = _register(client)
+    removed_at = "2026-06-12T19:10:00+02:00"
+    delete_data = {"updated_at": removed_at}
+    url = f"/v1/pub-visits/{_CLIENT_ID}"
+    assert client.delete(url, data=delete_data, format="json", **_auth(token)).status_code == 200
+    stale = client.post(
+        "/v1/pub-visits", data=_payload(updated_at=f"2026-06-12T19:{minutes}:00+02:00"),
+        format="json", **_auth(token),
+    )
+    assert stale.status_code == 200
+    assert stale.json()["removed"] is True
+    assert not PubVisit.objects.exists()
+
+    new_version = "2026-06-12T19:20:00+02:00"
+    fresh = client.post(
+        "/v1/pub-visits", data=_payload(ended_at=new_version, updated_at=new_version),
+        format="json", **_auth(token),
+    )
+    assert fresh.status_code == 201, fresh.json()
+    # Retried old DELETE and POST must not remove the newly resumed visit.
+    assert client.delete(url, data=delete_data, format="json", **_auth(token)).json() == {"deleted": False}
+    replay = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
+    assert replay.json()["removed"] is True
+    assert client.get("/v1/pub-visits", **_auth(token)).json()["visits"][0]["ended_at"] == "2026-06-12T17:20:00+00:00"
 
 
 @pytest.mark.django_db

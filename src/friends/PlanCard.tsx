@@ -20,20 +20,24 @@ import { useRouter, type Href } from 'expo-router';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { ClockIcon, CompassIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
-import { type FriendProfile, type FriendPubActivity } from '@/data/friendsClient';
-import { endFriendActivityDurably } from '@/data/friendsQueue';
-import { PrivateAccountMutationFrozenError } from '@/data/privateAccountBoundary';
+import {
+  endFriendPubActivity,
+  type FriendProfile,
+  type FriendPubActivity,
+} from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { Avatar } from '@/profile/Avatar';
-import { intlLocale, t } from '@/i18n';
+import { t, intlLocale } from '@/i18n';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 
 import CheersPill from './CheersPill';
 import { focusPubFromActivity } from './focusPubHandoff';
 import { useFriendSafety } from './friendSafety';
-import GoingRosterView from './GoingRoster';
+import GoingRoster from './GoingRoster';
 import RsvpControl from './RsvpControl';
 
 interface PlanCardProps {
@@ -90,29 +94,24 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
 
   const confirmCancel = useCallback(() => {
     setCancelling(true);
-    void endFriendActivityDurably(activity.id)
-      .then((result) => {
-        if (!mountedRef.current) return;
-        if (result.state === 'delivered' || result.state === 'queued') {
-          showToast(
-            result.state === 'delivered' ? t.friends.planCanceled : t.friends.planCancelQueued,
-            { icon: <XIcon size={20} color={Colors.amber} /> },
-          );
+    void endFriendPubActivity(activity.id).then((res) => {
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        showToast(t.friends.planCanceled, { icon: <XIcon size={20} color={Colors.amber} /> });
+        onCanceled();
+      } else {
+        if (isRetriableFriendError(res)) {
+          void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
+          showToast(t.friends.planCancelQueued, {
+            icon: <XIcon size={20} color={Colors.amber} />,
+          });
           onCanceled();
           return;
         }
         setCancelling(false);
-        showToast(
-          result.state === 'storage-error' ? t.friends.queueSaveError : result.error.detail,
-        );
-      })
-      .catch((error) => {
-        if (!mountedRef.current) return;
-        setCancelling(false);
-        if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(t.friends.queueSaveError);
-        }
-      });
+        showToast(res.detail);
+      }
+    });
   }, [activity.id, onCanceled, showToast]);
 
   const handleCancelPress = useCallback(() => {
@@ -200,7 +199,7 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
       ) : null}
 
       <View style={styles.roster}>
-        <GoingRosterView
+        <GoingRoster
           profiles={responses.goingProfiles}
           goingCount={responses.going}
           maybeCount={responses.maybe}
@@ -212,50 +211,55 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
         />
       </View>
 
-      {mine && activity.reactions.cheers > 0 ? (
-        <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.friends.cheersCount(activity.reactions.cheers)}
-        </Text>
-      ) : null}
-
       <View style={styles.footer}>
-        <Pressable
-          onPress={showOnCompass}
-          accessibilityRole="button"
-          accessibilityLabel={t.friends.showOnCompass}
-          hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
-          style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
-        >
-          <CompassIcon size={16} color={Colors.mutedText} />
-          <Text
-            style={styles.compassLabel}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {t.friends.showOnCompass}
-          </Text>
-        </Pressable>
         {mine ? (
-          <Pressable
-            onPress={handleCancelPress}
-            hitSlop={PILL_HIT_SLOP}
-            accessibilityRole="button"
-            accessibilityLabel={t.friends.planCancel}
-            style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
-          >
-            <XIcon size={15} color={Colors.foamMuted} />
-            <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {t.friends.planCancel}
-            </Text>
-          </Pressable>
+          <>
+            {activity.reactions.cheers > 0 ? (
+              <Text style={styles.cheersLine} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.friends.cheersCount(activity.reactions.cheers)}
+              </Text>
+            ) : (
+              <View />
+            )}
+            <Pressable
+              onPress={handleCancelPress}
+              hitSlop={PILL_HIT_SLOP}
+              accessibilityRole="button"
+              accessibilityLabel={t.friends.planCancel}
+              style={({ pressed }) => [styles.cancelPill, pressed && styles.cancelPillPressed]}
+            >
+              <XIcon size={15} color={Colors.foamMuted} />
+              <Text style={styles.cancelLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {t.friends.planCancel}
+              </Text>
+            </Pressable>
+          </>
         ) : (
-          <CheersPill
-            activityId={activity.id}
-            count={activity.reactions.cheers}
-            mine={activity.myReaction === 'cheers'}
-            ownerName={nameOf(account)}
-            onChanged={onResponded}
-          />
+          <>
+            <Pressable
+              onPress={showOnCompass}
+              accessibilityRole="button"
+              accessibilityLabel={t.friends.showOnCompass}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
+              style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
+            >
+              <CompassIcon size={16} color={Colors.mutedText} />
+              <Text
+                style={styles.compassLabel}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {t.friends.showOnCompass}
+              </Text>
+            </Pressable>
+            <CheersPill
+              activityId={activity.id}
+              count={activity.reactions.cheers}
+              mine={activity.myReaction === 'cheers'}
+              ownerName={nameOf(account)}
+              onChanged={onResponded}
+            />
+          </>
         )}
       </View>
     </View>
@@ -266,9 +270,11 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.1),
+    borderWidth: 1,
+    // Between hairline and live (0.42): warmer than a row, cooler than "alive".
+    borderColor: withAlpha(Colors.amber, 0.28),
     padding: Spacing.lg,
+    ...softDrop(),
   },
   header: {
     flexDirection: 'row',
@@ -278,8 +284,9 @@ const styles = StyleSheet.create({
   },
   mineKicker: {
     flexShrink: 1,
-    fontWeight: '800',
-    fontSize: 14,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 12,
+    letterSpacing: 1,
     color: Colors.amber,
   },
   identity: {
@@ -294,7 +301,7 @@ const styles = StyleSheet.create({
   },
   identityName: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },
@@ -307,7 +314,7 @@ const styles = StyleSheet.create({
   },
   compassLabel: {
     flexShrink: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -322,13 +329,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   timeChipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 12,
     color: Colors.amber,
   },
   pubName: {
     marginTop: Spacing.md,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 21,
     lineHeight: 25,
     color: Colors.foam,
@@ -341,13 +348,13 @@ const styles = StyleSheet.create({
   },
   cityText: {
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
   },
   message: {
     marginTop: Spacing.sm,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -365,9 +372,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   cheersLine: {
-    marginTop: Spacing.sm,
     flexShrink: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -387,7 +393,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   cancelLabel: {
-    fontWeight: '600',
+    fontFamily: Fonts.display.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },

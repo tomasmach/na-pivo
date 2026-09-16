@@ -1,5 +1,11 @@
 # Na pivo — DESIGN
 
+> **Stav od 2.1.0:** tenhle dokument popisuje vizuální jazyk verze 2.0 („3.0 mock“), kterou
+> jsme stáhli; vydaná appka je zpátky na obrazovkách 1.5.1 a tokeny se čtou z `src/theme/`
+> té verze. Kde se čísla tady liší od kódu, platí kód, dokud dokument nepřepíšeme.
+> Produktová část I a mockový jazyk 3.0 jsou reference pro případný návrat některé
+> funkce, ne zadání.
+
 Jeden dokument pro celý design Na pivo: **co produkt je** (Část I), **podle
 jakých pravidel se kreslí a staví** (Část II) a **co je rozpracované nebo
 nerozhodnuté** (Část III). Vznikl v srpnu 2026 sloučením `design-system.md`,
@@ -109,8 +115,12 @@ Pravidla, která jsou produktová, ne matematická:
 2. **Remíza je remíza.** MVP je `null`, když se o špičku dělí dva.
 3. **Prázdná hodina dostane sloupec.** Jinak se večer nakreslí klidnější, než byl.
 4. **Vyrovnat rekord není překonat rekord.**
-5. Ceny, útrata, promile a čas do řízení se v datech večera **neobjevují nikdy**
+5. **Promile a čas do řízení se neobjevují nikdy**
    (`docs/decisions/no-bac-or-driving-estimates.md`).
+6. **Útrata je moje vlastní.** Cenu nese jen pivo, které zapsal můj telefon, takže
+   sečíst jde jenom moje útrata (`nightSpend`). Celková útrata stolu by byla tiše
+   špatně: cena je nepovinná a kdo nesdílí pití, nemá ve večeru řádky. Do
+   zveřejněného večera se útrata nedostane.
 
 Zdroje jsou řádky, které už existují: `DrinkLog`, `PartyEveningMember`,
 `PubVisit`, `PartyGame`, `BeerPhoto`. Pro party se neukládá nic nového.
@@ -123,17 +133,21 @@ mluví sama se sebou. Když se pivo vezme zpátky, zmizí i z vlákna.
 
 ## Hry
 
-Devět her v katalogu. Hra je **obsah plus skořápka**, ne vlastní obrazovka —
-desátá hra má být řádek v `gameCatalog.ts`, ne nová složka.
+Nabídka má tři hry: Pub kvíz, Kostky a Kategorie. Pod nimi jsou oddělené sekce
+**Pomůcky ke stolu** (Flaška, Kdo platí rundu) a **Na celý večer** (Pravidlo večera).
+Palec je další volba pod Pravidlem večera; sdílený balíček pravidel se nemění.
+Nikdy jsem… a King's Cup se nově nenabízejí; existující večery si ponechávají původní hru i její výsledek.
 
-| hra | jak se hraje | skóre |
+Hra je **obsah plus skořápka**, ne vlastní obrazovka.
+
+| hra nebo pomůcka | jak se hraje | skóre |
 |---|---|---|
 | Pub kvíz | každý na svém telefonu | body |
 | Kostky | 3D, fyzika, telefon koluje | body → kdo platí |
-| Kdo platí rundu | nativní zpomalující buben se jmény | doušky |
-| Flaška | 3D láhev | doušky |
-| Nikdy jsem…, Kategorie, Palec, Pravidlo večera | balíček karet | doušky |
-| King's Cup | tažení karty | doušky |
+| Kategorie | kategorie pro slovní hru u stolu | bez bodů v appce |
+| Kdo platí rundu | nativní zpomalující buben se jmény | plátce rundy |
+| Flaška | SVG láhev na dřevěném stole | vybraný hráč |
+| Pravidlo večera | výběr pravidla včetně Palce | bez bodů |
 
 ### Platforma a hra
 
@@ -400,11 +414,18 @@ Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se t
 | `MockType.label` | 12 / 600 | — | Kapsle, caption |
 | `MockType.buttonLabel` | 16 / 700 | — | Label tlačítka |
 
-Displejové stupně nad škálou: hero číslice `34/42` (`StatGrid`), streak `40/50`, handle `24/800`,
-recap titulek `32/800`. Rodina je u číslic `Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
+Displejové stupně nad škálou: **počítadlo `76/94`** (`letterSpacing: -1`), hero číslice `34/42`
+(`StatGrid`), streak `40/50`, handle `24/800`, recap titulek `32/800`. Rodina je u číslic
+`Fonts.numeral` (Baloo 2 ExtraBold), jinak systémová.
+
+**Počítadlo `76/94` je jediné číslo na obrazovce, vycentrované, s popiskem pod sebou.** Používá se
+tam, kde je počet piv celá odpověď a kolem něj není co číst — idle Večer před prvním pivem
+(`PulsePanel hero`). Jakmile na obrazovce stojí čísla vedle sebe (běžící večer, recap, profil), platí
+`34/42` a mřížka; dvě velikosti velkého čísla vedle sebe jsou dva hrdinové. Povinné je `tabular-nums`,
+`allowFontScaling={false}` a `lineHeight` 1,24× (§3.2).
 
 **Negativní tracking roste s velikostí:** −0.2 u titulků sekcí a zvýrazněných názvů, přes
-−0.4/−0.5 u titulků obrazovek, po −0.7 u největších displejových stupňů. Běžný body text jede bez
+−0.4/−0.5 u titulků obrazovek a −0.7 u displejových stupňů, po −1 u počítadla. Běžný body text jede bez
 trackingu. Jediný **pozitivní** tracking mají verzálkové mikro-labely (+0.2 label tab baru a `PR`;
 caption typu „ODEHRÁNO“ až +1.2).
 
@@ -1617,6 +1638,42 @@ Idiomy z etalonu, které platí všude, kde se blok objeví:
 - **Live bar říká „běží to“ tikajícím časem, ne zelenou tečkou** (`LivePartyBar`: výška 58,
   pilulka nad tab barem, hodiny `Fonts.numeral` 20 s tabular-nums, vlastní `+1` CTA 44 pt).
 
+### 20.14 Souboj (poměřování s parťákem)
+
+Poměřování s kamarády je důvod, proč lidi appku otevírají ráno. Ve 3.0 zmizelo
+s žebříčkem party a vrací se jako **Souboj**: já proti jednomu parťákovi
+(`SoubojScreen`), nikdy tabulka celé party.
+
+Rozdíl není kosmetický. Tabulka má prvního a ten první je ten, kdo nejvíc vypil
+— přesně to, co §„Co nedělat“ zakazuje. Dvojice a víc disciplín dávají místo
+koruny větu „ty vedeš v hospodách, on ve večerech“.
+
+Pravidla:
+
+- **Žádný vítěz.** Nikde není slovo „vyhrál“ ani celkové skóre. Každý řádek říká
+  jen, kdo vede v tom jednom řádku; jinak se čísla nesčítají.
+- **Disciplíny jsou čtyři plus jedna.** Piva, Večery, Hospody, Piv na večer;
+  Zapsaná útrata přibude, jen když ji sdílejí oba.
+- **Kdo vede, má pěnové číslo, kdo ne, hnědé.** Jantar drží jen dráha mého
+  podílu — obarvit vedoucí číslo jantarem by z akcentu udělalo medaili.
+- **Večer je večer.** Stejná trojice (účet, pijácký den, hospoda) jako na Výkonu,
+  včetně čtvrté hodiny ranní. Souboj navíc počítá jen piva a vynechává řádky
+  označené anti-abuse příznakem, takže se od Výkonu o kus liší — piva proto, že
+  na ně jsou všechny disciplíny, příznak proto, že tahle čísla vidí někdo jiný.
+- **Bez souhlasu nejsou čísla.** Kdo nesdílí pití, nemá souboj vůbec; obrazovka
+  to řekne větou a nekreslí nuly. Nula čte jako „přestal pít“.
+- **Útrata má vlastní přepínač**, vypnutý, a čte se jen když ho mají zapnutý oba.
+- **Chybějící ceny nejsou nula.** Zapsaná útrata ukazuje součet známých cen;
+  při neúplných cenách uvede počet oceněných piv na obou stranách. Bez cen je
+  místo částky pomlčka. Srovnávací pruh a zvýraznění vedoucí částky se zobrazí
+  jen při vyplněných cenách všech piv na obou stranách.
+- **Graf je měsíční sloupce Výkonu se druhým sloupcem** (`DuelChart`): moje plný
+  jantar, jeho `amber 0.28`. Měsíc bez piva dostane sloupec.
+
+Vstupy dva: řádek **Souboje** na hubu Party (jeden řádek na parťáka, stav jednou
+větou, počítá se z `leaderboard` v dashboardu, který už chodí) a tichý řádek na
+profilu parťáka. Ani jeden není jantarové tlačítko — na obou plochách už jedno je.
+
 ## 21. Hry — pravidla stavby
 
 ### 21.1 Skořápky, ne obrazovky
@@ -1719,6 +1776,30 @@ Vinětace je **jediný** gradient, který na stole smí být, a existuje proto, 
 plocha četla jako nasvícený stůl, ne jako karta. Žádné glow, žádná druhá plná
 jantarová plocha uvnitř stolu — vybraná odpověď v kvízu je jantarový **tint
 s okrajem**, ne plná výplň (§2.2).
+
+### 21.3b Linorytové rekvizity
+
+Schválený směr B: pěnový papír, stoutový inkoust a druhá jantarová tisková barva.
+Každá z devíti her má vlastní SVG kresbu v `GameArtwork`; stejný motiv patří na
+cover, do lobby i rozehrané hry, kde se tiskne přímo na rekvizitu přes `GamePrints`.
+Kresba má pevnou siluetu, mírně nepravidelné hrany
+a několik řezaných tahů. Papírové karty mají nepravidelný obrys a dvě inkoustové
+linky. Text zůstává nativní. Runda losuje na papírové účtence, fyzické kostky
+zůstávají Three.js se slonovinovými plochami a inkoustovými puntíky.
+
+Flaška leží na statické kresbě dubového stolu: čtyři prkna, střídmá řezaná léta,
+otisky pivních kroužků a papírové tácky v barvách hráčů. Dřevo používá tiskové
+odstíny `#4E3320`, `#452B1A`, `#3F2718`, `#4B301D`; kresba je společná i pro
+režim omezeného pohybu. Otáčí se pouze SVG flaška na samostatné vrstvě prohlížeče,
+bez WebGL světel a stínového kotouče. Fyzikální dráha a výběr hráče zůstávají stejné.
+Tácky kreslí nativní `BottleSeats`: iniciála a jméno u každého místa, vybraný hráč
+má jantarový okraj i jmenovku. Jména nejdou do WebView. Do osmi hráčů jsou všechna
+jména na stole (do šesti při šířce stolu pod 320 nebo standardní výšce pod 380 bodů);
+větší parta má nativní posuvný seznam pod stolem a na stole jméno
+vybraného hráče. Její stůl zabírá 46 % výšky, aby zůstalo místo na seznam i akci.
+
+Akce ve hře je pilulka podle šířky textu (`StagePill`, horizontální padding 44),
+nikoli pruh přes celou obrazovku. Lobby si může výslovně ponechat širokou akci.
 
 ### 21.4 Fyzické hry žijí ve WebView
 
@@ -1957,9 +2038,16 @@ Zbývající dev-dluh mocků a kódu vůči dokumentu (opravuje se v kódu, ne v
 
 - **Světlý režim.** Odložený vědomě — zdvojil by práci na každé obrazovce.
 - **Grafy v běžícím večeru.** Patří do recapu (§20.2).
-- **Cokoliv, co počítá promile, útratu nebo čas do řízení.** Rozhodnuto
+- **Cokoliv, co počítá promile nebo čas do řízení.** Rozhodnuto
   a nediskutovatelné (`docs/decisions/no-bac-or-driving-estimates.md`).
-- **Žebříček, který korunuje toho, kdo nejvíc vypil.** Hra na pití nemá vítěze.
+- **Veřejný žebříček podle vypitých piv.** Hra na pití nemá vítěze. Celostátní
+  žebříčky měří objevené hospody a Mapér XP, nikdy litry.
+- **Podium nad partou.** Jedno pořadí od prvního k poslednímu je přesně ta
+  korunovace, které se vyhýbáme. Souboj (§20.14) je proto dvojice, ne tabulka.
+
+Útrata na seznamu není. Vlastní útratu appka počítá a ukazuje ti ji na profilu,
+na Výkonu i v účtence večera; parťákovi ji ukáže jen v Souboji a jen když si ji
+zapnete oba (§20.14).
 
 ## Jak předávat assety
 

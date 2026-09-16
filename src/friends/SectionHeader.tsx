@@ -7,14 +7,14 @@
  */
 
 import React, { memo } from 'react';
+import { intlLocale } from '@/i18n';
 import { StyleSheet, View, Text } from 'react-native';
 
-import { intlLocale } from '@/i18n';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
-import LiveDotView from './LiveDot';
+import LiveDot from './LiveDot';
 
 export interface SectionHeaderProps {
   /** Section title copy. */
@@ -30,7 +30,7 @@ function SectionHeaderComponent({ label, live = false, stale = false }: SectionH
 
   return (
     <View style={styles.row}>
-      {live ? <LiveDotView size={7} stale={stale} /> : null}
+      {live ? <LiveDot size={7} stale={stale} /> : null}
       <Text
         style={[styles.label, compactCaption && styles.labelCompact, live && styles.labelLive]}
         numberOfLines={1}
@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   label: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     lineHeight: 22,
     letterSpacing: -0.15,
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     color: Colors.amberLight,
   },
   labelCompact: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     lineHeight: 16,
     letterSpacing: 1.4,

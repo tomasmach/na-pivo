@@ -17,68 +17,52 @@
  * Pure functions only — every branch here is unit-tested.
  */
 
-import { intlLocale, plural, t } from '@/i18n';
-
 import type { PartaFeedDrink, PartaFeedSitting } from '@/data/partaFeedClient';
+import { intlLocale, locale, t } from '@/i18n';
 
-/**
- * A counted noun in both languages: Czech splits at 1 / 2–4 / 5+, English at
- * 1 / everything else. `plural` picks the shape for the language in use.
- */
-export interface DrinkNoun {
-  cs: { one: string; few: string; many: string };
-  en: { one: string; other: string };
+/** Czech counts split at 1 / 2–4 / 5+ (and 0 takes the 5+ form). */
+export interface CzechPlural {
+  one: string;
+  few: string;
+  many: string;
 }
 
-export function pluralize(count: number, forms: DrinkNoun): string {
-  return plural(Math.abs(Math.floor(count)), forms);
+export function pluralize(count: number, forms: CzechPlural): string {
+  const n = Math.abs(Math.floor(count));
+  if (n === 1) return forms.one;
+  if (n >= 2 && n <= 4) return forms.few;
+  return forms.many;
 }
 
-const BEER_PLAIN: DrinkNoun = {
-  cs: { one: 'pivo', few: 'piva', many: 'piv' },
-  en: { one: 'beer', other: 'beers' },
-};
+/** Pick the noun forms for the UI language; English reuses the Czech split (one / other). */
+function noun(cs: CzechPlural, en: { one: string; other: string }): CzechPlural {
+  return locale === 'en' ? { one: en.one, few: en.other, many: en.other } : cs;
+}
+
+const BEER_PLAIN = noun({ one: 'pivo', few: 'piva', many: 'piv' }, { one: 'beer', other: 'beers' });
 
 /**
  * Beer nouns by how it was served. Draft is deliberately absent: it is the
  * default in a Czech pub, so naming it would be noise on almost every row.
  */
-const BEER_BY_SERVING: Record<string, DrinkNoun> = {
-  bottle: {
-    cs: { one: 'lahváč', few: 'lahváče', many: 'lahváčů' },
-    en: { one: 'bottle', other: 'bottles' },
-  },
-  can: {
-    cs: { one: 'plechovka', few: 'plechovky', many: 'plechovek' },
-    en: { one: 'can', other: 'cans' },
-  },
-  plastic_bottle: {
-    cs: { one: 'petka', few: 'petky', many: 'petek' },
-    en: { one: 'plastic bottle', other: 'plastic bottles' },
-  },
+const BEER_BY_SERVING: Record<string, CzechPlural> = {
+  bottle: noun({ one: 'lahváč', few: 'lahváče', many: 'lahváčů' }, { one: 'bottle', other: 'bottles' }),
+  can: noun({ one: 'plechovka', few: 'plechovky', many: 'plechovek' }, { one: 'can', other: 'cans' }),
+  plastic_bottle: noun({ one: 'petka', few: 'petky', many: 'petek' }, { one: 'plastic bottle', other: 'plastic bottles' }),
 };
 
-const SHOT: DrinkNoun = {
-  cs: { one: 'panák', few: 'panáky', many: 'panáků' },
-  en: { one: 'shot', other: 'shots' },
-};
-const WINE: DrinkNoun = {
-  cs: { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' },
-  en: { one: 'glass of wine', other: 'glasses of wine' },
-};
-
-/** "+ 1 další" / "+ 3 další" / "+ 6 dalších" — the tail of a mixed sitting. */
-const MORE: DrinkNoun = {
-  cs: { one: 'další', few: 'další', many: 'dalších' },
-  en: { one: 'more', other: 'more' },
-};
+const SHOT = noun({ one: 'panák', few: 'panáky', many: 'panáků' }, { one: 'shot', other: 'shots' });
+const WINE = noun(
+  { one: 'sklenka vína', few: 'sklenky vína', many: 'sklenek vína' },
+  { one: 'glass of wine', other: 'glasses of wine' },
+);
 
 /**
  * The counted noun for one drink line, or null when the drink has no natural
  * Czech noun and the row should fall back to "3× Kofola". Soft drinks land here
  * on purpose — "3 nealka" is not a thing anyone says.
  */
-export function drinkNoun(drink: PartaFeedDrink): DrinkNoun | null {
+export function drinkNoun(drink: PartaFeedDrink): CzechPlural | null {
   if (drink.drinkType === 'beer') {
     return BEER_BY_SERVING[drink.servingType] ?? BEER_PLAIN;
   }
@@ -115,9 +99,7 @@ export function sittingHeadline(sitting: PartaFeedSitting): string {
   // `total` counts drinks the server truncated out of `items`, so trust it over
   // the visible sum whenever it is larger.
   const remainder = Math.max(others, sitting.total - first.count);
-  return remainder > 0
-    ? `${describeDrink(first)} + ${remainder} ${pluralize(remainder, MORE)}`
-    : describeDrink(first);
+  return remainder > 0 ? `${describeDrink(first)} ${t.partaFeed.othersSuffix(remainder)}` : describeDrink(first);
 }
 
 /** The quiet second line: everything that was not the headline. */

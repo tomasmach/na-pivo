@@ -20,7 +20,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 import { Colors } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, HitArea } from '@/theme/layout';
 import { t } from '@/i18n';
 import { MapPinnedIcon, BadgeCheckIcon } from '@/components/shared/IconGlyph';
@@ -131,12 +131,12 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
   suffix: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     color: Colors.amber,
   },
   dot: {

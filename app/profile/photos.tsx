@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { Colors } from '@/theme/colors';
 import { Radius, Spacing } from '@/theme/layout';
@@ -18,7 +17,7 @@ export default function ProfilePhotosScreen() {
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={({ pressed }) => [styles.back, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}

@@ -24,7 +24,7 @@ export function focusPubFromActivity(activity: {
   useFocusedPubStore.getState().setFocusedPub({
     lat,
     lng,
-    name: activity.name?.trim() || t.friends.pubFallback,
+    name: activity.name?.trim() || t.common.pubFallback,
     cacheKey: key,
   });
   return true;

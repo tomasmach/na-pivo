@@ -30,6 +30,8 @@ export interface ReleaseNote {
   version: string;
   title: string;
   items: ReleaseNoteItem[];
+  /** Bundled note rendered as a full-screen pager (see localReleaseNote). */
+  pager?: true;
 }
 
 export type FetchReleaseNoteResult =

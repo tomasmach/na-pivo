@@ -3,7 +3,7 @@
  *
  * A back-navigable "place" (matches /profile/edit, /settings) backed by
  * `GET /v1/friends/<id>`. It surfaces the shared history that makes the party
- * feel real — amber stat tiles (GoingRoster numeral idiom), "Naposledy
+ * feel real — three amber stat tiles (GoingRoster numeral idiom), "Naposledy
  * spolu", and the recent shared štace — plus the dead-end killers: a prominent
  * "Ukaž na kompasu" when the friend is live now (geohash-8 handoff, never raw
  * GPS), and an overflow menu that hosts the safety actions (block / report /
@@ -18,11 +18,11 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import {
-  CheckIcon,
   ChevronLeftIcon,
   CompassIcon,
   BeerIcon,
   MenuIcon,
+  FlameIcon,
   MapPinIcon,
   XIcon,
   UserPlusIcon,
@@ -31,10 +31,9 @@ import { fetchFriendBeerPhotos, type BeerPhoto } from '@/data/beerPhotosClient';
 import {
   blockFriend,
   fetchFriendProfile,
-  followAccount,
   removeFriend,
   respondFriendRequest,
-  unfollowAccount,
+  sendFriendRequest,
   type FriendProfile,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
@@ -45,12 +44,11 @@ import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { Avatar } from '@/profile/Avatar';
-import { intlLocale, t } from '@/i18n';
+import { t, intlLocale } from '@/i18n';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
-import { useModalPresentation } from '@/stores/launchModalMutex';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
@@ -61,9 +59,9 @@ const FRIEND_PHOTO_STRIP_LIMIT = 12;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return t.map.friendFallback;
+  if (!profile) return t.common.friendFallback;
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || t.map.friendFallback;
+  return profile.displayName || t.common.friendFallback;
 }
 
 /** "29. 6." short shared-visit stamp for the recent-together rows. */
@@ -76,13 +74,15 @@ function shortDate(iso: string): string {
 interface StatTileProps {
   value: number;
   label: string;
+  flame?: boolean;
 }
 
 /** One amber-numeral stat tile — the GoingRoster count idiom, not a card. */
-function StatTile({ value, label }: StatTileProps) {
+function StatTile({ value, label, flame }: StatTileProps) {
   return (
     <View style={styles.statTile}>
       <View style={styles.statNumeralRow}>
+        {flame ? <FlameIcon size={18} color={Colors.amber} /> : null}
         <Text style={styles.statNumeral} allowFontScaling={false} maxFontSizeMultiplier={FontScaleCap.display}>
           {value}
         </Text>
@@ -100,7 +100,6 @@ export default function FriendProfileScreen() {
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const reportProfileContent = useAccountStore((s) => s.reportProfileContent);
-  const viewerAccountId = useAccountStore((s) => s.session?.accountId ?? null);
 
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const accountId = useMemo(() => {
@@ -111,80 +110,48 @@ export default function FriendProfileScreen() {
 
   // Lazy init from the presence of an id so the effect never needs a synchronous
   // "loading" setState (would trip the cascading-render lint rule).
-  const [loadedState, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
+  const [state, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
   // Friends-visible diary photos; null (not allowed / failed) hides the section.
   const [friendPhotos, setFriendPhotos] = useState<BeerPhoto[] | null>(null);
   const [viewerPhoto, setViewerPhoto] = useState<BeerPhoto | null>(null);
-  const [loadedForViewer, setLoadedForViewer] = useState<string | null>(null);
-  const loadControllerRef = useRef<AbortController | null>(null);
-  const loadGenerationRef = useRef(0);
-  const ownerMatches =
-    viewerAccountId !== null && loadedForViewer === viewerAccountId;
-  const viewerPresentation = useModalPresentation(ownerMatches && viewerPhoto !== null);
-  const state: LoadState = ownerMatches
-    ? loadedState
-    : viewerAccountId && accountId
-      ? 'loading'
-      : 'error';
 
   const mountedRef = useRef(true);
   useEffect(
     () => () => {
       mountedRef.current = false;
-      loadGenerationRef.current += 1;
-      loadControllerRef.current?.abort();
     },
     [],
   );
 
   const load = useCallback(async () => {
-    if (!accountId || !viewerAccountId) return;
-    const requestedViewer = viewerAccountId;
-    const generation = ++loadGenerationRef.current;
-    loadControllerRef.current?.abort();
-    const controller = new AbortController();
-    loadControllerRef.current = controller;
+    if (!accountId) return; // state already 'error' from lazy init
     // The photo gallery is additive — its failure (404 for non-friends /
     // private diary) must never take down the profile, so both fetches run in
     // parallel and only the profile drives the load state.
     const [result, photos] = await Promise.all([
-      fetchFriendProfile(accountId, controller.signal),
-      fetchFriendBeerPhotos(accountId, controller.signal),
+      fetchFriendProfile(accountId),
+      fetchFriendBeerPhotos(accountId),
     ]);
-    if (
-      !mountedRef.current ||
-      controller.signal.aborted ||
-      generation !== loadGenerationRef.current ||
-      useAccountStore.getState().session?.accountId !== requestedViewer
-    ) return;
+    if (!mountedRef.current) return;
     setDetail(result);
     setFriendPhotos(photos);
     setState(result ? 'loaded' : 'error');
-    setViewerPhoto(null);
-    setLoadedForViewer(requestedViewer);
-  }, [accountId, viewerAccountId]);
+  }, [accountId]);
 
   useEffect(() => {
     void load();
-    return () => {
-      loadGenerationRef.current += 1;
-      loadControllerRef.current?.abort();
-    };
   }, [load]);
 
   // Retry is a user event, so setting "loading" here is safe.
   const retry = useCallback(() => {
     setState('loading');
-    setDetail(null);
-    setFriendPhotos(null);
-    setViewerPhoto(null);
     void load();
   }, [load]);
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back();
-    else router.replace('/friends/parta/people' as Href);
+    else router.replace('/friends' as Href);
   }, [router]);
 
   const name = nameOf(detail?.profile);
@@ -281,25 +248,22 @@ export default function FriendProfileScreen() {
     });
   }, [confirmBlock, confirmRemove, confirmReport, isFriend]);
 
-  // — CTA on a public (non-friend) profile — reached from Žebříčky.
-  // A stranger can be followed, not recruited: being in someone's party comes
-  // from sitting at their table, so there is no request to send from here.
+  // — Party CTA on a public (non-friend) profile — reached from Žebříčky.
   const [requestBusy, setRequestBusy] = useState(false);
-  const toggleFollow = useCallback(() => {
-    if (requestBusy || !detail) return;
-    const next = !detail.isFollowing;
+  const sendRequest = useCallback(() => {
+    if (requestBusy) return;
     setRequestBusy(true);
-    void (next ? followAccount(accountId) : unfollowAccount(accountId)).then((res) => {
+    void sendFriendRequest({ accountId }).then((res) => {
       if (!mountedRef.current) return;
       setRequestBusy(false);
       if (res.ok) {
-        showToast(next ? t.friends.followed : t.friends.unfollowed);
-        setDetail((prev) => (prev ? { ...prev, isFollowing: next } : prev));
+        showToast(t.friends.requestSentToast);
+        setDetail((prev) => (prev ? { ...prev, friendshipStatus: 'outgoing_pending' } : prev));
       } else {
         showToast(res.detail);
       }
     });
-  }, [accountId, detail, requestBusy, showToast]);
+  }, [accountId, requestBusy, showToast]);
 
   const acceptRequest = useCallback(() => {
     const requestId = detail?.incomingRequestId;
@@ -412,44 +376,43 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
-          {/* Follow — the one thing a stranger's profile offers. An incoming
-              request can still land here from a version in the store, and this
-              is the only place left to answer it. */}
+          {/* Party CTA — a public stranger found via Žebříčky can be recruited. */}
           {detail && !isFriend ? (
-            <View style={styles.compassWrap}>
-              <GlowButton
-                label={
-                  detail.friendshipStatus === 'incoming_pending'
-                    ? t.friends.acceptRequest
-                    : detail.isFollowing
-                      ? t.friends.unfollow
-                      : t.friends.follow
-                }
-                onPress={
-                  detail.friendshipStatus === 'incoming_pending' ? acceptRequest : toggleFollow
-                }
-                variant={detail.isFollowing ? 'secondary' : 'primary'}
-                glow="none"
-                loading={requestBusy}
-                icon={
-                  // A plus next to "Nesledovat" says the opposite of what the
-                  // button does; once I follow them, the icon is the state.
-                  detail.isFollowing ? (
-                    <CheckIcon size={20} color={Colors.foam} />
-                  ) : (
-                    <UserPlusIcon size={20} color={Colors.stout} />
-                  )
-                }
-              />
-            </View>
+            detail.friendshipStatus === 'outgoing_pending' ? (
+              <Text style={styles.pendingStrip} maxFontSizeMultiplier={FontScaleCap.body}>
+                {t.friends.requestPendingStrip}
+              </Text>
+            ) : (
+              <View style={styles.compassWrap}>
+                <GlowButton
+                  label={
+                    detail.friendshipStatus === 'incoming_pending'
+                      ? t.friends.acceptRequest
+                      : t.friends.addToParty
+                  }
+                  onPress={
+                    detail.friendshipStatus === 'incoming_pending' ? acceptRequest : sendRequest
+                  }
+                  variant="primary"
+                  glow="soft"
+                  loading={requestBusy}
+                  icon={<UserPlusIcon size={20} color={Colors.stout} />}
+                />
+              </View>
+            )
           ) : null}
 
           {/* Stat tiles — shared history for a friend, public diary numbers for
               a stranger (never location, never individual beers). */}
           {isFriend ? (
             <View style={styles.statsRow}>
+              <StatTile value={stats?.sharedPubCount ?? 0} label={t.friends.statSharedBeers} />
               <StatTile value={stats?.nightsTogether ?? 0} label={t.friends.statNightsTogether} />
-              <StatTile value={stats?.rituals.length ?? 0} label={t.friends.statRitualsTogether} />
+              <StatTile
+                value={stats?.streakWeeks ?? 0}
+                label={t.friends.statStreakTogether}
+                flame={(stats?.streakWeeks ?? 0) > 0}
+              />
             </View>
           ) : publicStats ? (
             <View style={styles.statsRow}>
@@ -593,12 +556,11 @@ export default function FriendProfileScreen() {
       {/* Fullscreen photo viewer — read-only (no actions apply to a friend's
           photo), so a plain modal beats reusing the own-photo detail route. */}
       <Modal
-        visible={viewerPresentation.visible}
+        visible={viewerPhoto != null}
         transparent
         animationType="fade"
         statusBarTranslucent
         onRequestClose={() => setViewerPhoto(null)}
-        onDismiss={viewerPresentation.onDismiss}
       >
         <View style={styles.viewerBackdrop}>
           <Pressable
@@ -614,7 +576,7 @@ export default function FriendProfileScreen() {
           >
             <XIcon size={22} color={Colors.foam} />
           </Pressable>
-          {ownerMatches && viewerPhoto ? (
+          {viewerPhoto ? (
             <>
               <Image
                 source={{ uri: viewerPhoto.imageUrl }}
@@ -666,7 +628,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
   },
@@ -692,7 +654,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,
@@ -710,12 +672,12 @@ const styles = StyleSheet.create({
   },
   heroName: {
     marginTop: Spacing.sm,
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
   heroDisplay: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -727,7 +689,7 @@ const styles = StyleSheet.create({
   pendingStrip: {
     marginTop: Spacing.xl,
     textAlign: 'center',
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontStyle: 'italic',
     fontSize: 13,
     color: Colors.mutedText,
@@ -752,7 +714,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.35),
   },
   showcaseChipText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.foam,
   },
@@ -775,13 +737,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   statNumeral: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 30,
     color: Colors.amber,
     includeFontPadding: false,
   },
   statLabel: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     lineHeight: 16,
     color: Colors.mutedText,
@@ -800,13 +762,13 @@ const styles = StyleSheet.create({
   },
   recentLead: {
     flex: 1,
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foam,
   },
   recentPub: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -816,19 +778,19 @@ const styles = StyleSheet.create({
   },
   latestBeerMeta: {
     marginTop: 2,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   recentDate: {
     flexShrink: 0,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
   emptyHistory: {
     marginTop: Spacing.sm,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontStyle: 'italic',
     fontSize: 14,
     lineHeight: 20,
@@ -878,7 +840,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   viewerCaption: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -890,7 +852,7 @@ const styles = StyleSheet.create({
   },
   viewerPub: {
     flex: 1,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
   },

@@ -26,3 +26,5 @@ export function getItem(key: string): string | null {
 export function setItem(key: string, value: string): void {
   store[key] = value;
 }
+
+export const AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY = 'AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY';

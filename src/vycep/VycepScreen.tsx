@@ -28,7 +28,6 @@ import {
 } from '@/data/nightsClient';
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   allSessionsNewestFirst,
@@ -37,7 +36,7 @@ import {
 } from '@/stores/tallyStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { NightCard } from '@/vycep/NightCard';
@@ -316,7 +315,7 @@ export default function VycepScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           hitSlop={8}
           style={({ pressed }) => [
             styles.backButton,
@@ -438,7 +437,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 14,
     letterSpacing: 0.2,
     includeFontPadding: false,
@@ -478,14 +477,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   emptyTitle: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 20,
     color: Colors.foam,
     textAlign: 'center',
     includeFontPadding: false,
   },
   emptyBody: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,

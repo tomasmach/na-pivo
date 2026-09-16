@@ -32,12 +32,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
 import { ChevronLeftIcon, Trash2Icon, PencilIcon } from '@/components/shared/IconGlyph';
-import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { Avatar } from '@/profile/Avatar';
@@ -107,7 +105,7 @@ export default function ProfileEditScreen() {
     }
   }, [avatarBusy, uploadAvatar]);
 
-  const performRemoveAvatar = useCallback(async () => {
+  const handleRemoveAvatar = useCallback(async () => {
     if (avatarBusy) return;
     setAvatarError('');
     setAvatarBusy(true);
@@ -118,22 +116,6 @@ export default function ProfileEditScreen() {
       setAvatarBusy(false);
     }
   }, [avatarBusy, removeAvatar]);
-
-  const handleRemoveAvatar = useCallback(() => {
-    if (avatarBusy) return;
-    showAppDialog({
-      title: t.profile.edit.removePhotoConfirmTitle,
-      message: t.profile.edit.removePhotoConfirmBody,
-      buttons: [
-        { text: t.profile.edit.removePhotoConfirmCancel, style: 'cancel' },
-        {
-          text: t.profile.edit.removePhotoConfirmAction,
-          style: 'destructive',
-          onPress: () => void performRemoveAvatar(),
-        },
-      ],
-    });
-  }, [avatarBusy, performRemoveAvatar]);
 
   // ── Save ──
   const handleSave = useCallback(async () => {
@@ -153,7 +135,7 @@ export default function ProfileEditScreen() {
 
     // Nothing changed → just close.
     if (!nicknameChanged && !nameChanged && !visibilityChanged) {
-      leaveRoute(router);
+      router.back();
       return;
     }
 
@@ -168,7 +150,7 @@ export default function ProfileEditScreen() {
       const result = await updateProfile(params);
       if (result.ok) {
         showToast(t.profile.edit.savedToast);
-        leaveRoute(router);
+        router.back();
         return;
       }
       // Nickname conflicts surface inline; anything else is a generic inline note.
@@ -206,7 +188,7 @@ export default function ProfileEditScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.profileClose}
@@ -394,7 +376,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
   },
@@ -412,7 +394,7 @@ const styles = StyleSheet.create({
 
   // ── Section header ──
   sectionHeader: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -420,14 +402,16 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // ── Avatar ──
-  // No card. A panel around a circle that is already a distinct shape is a
-  // frame around a frame (§14.10), and stacking one on the visibility panel and
-  // the inputs made the screen read as a pile of boxes rather than a form.
+  // ── Avatar card ──
   avatarCard: {
     alignItems: 'center',
-    gap: Spacing.md,
-    paddingVertical: Spacing.md,
+    gap: Spacing.lg,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
   },
   avatarTap: {
     position: 'relative',
@@ -442,8 +426,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
     borderWidth: 3,
-    // Rings against the page now that there is no card behind the avatar.
-    borderColor: Colors.stout,
+    borderColor: Colors.stout2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -470,55 +453,57 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   avatarBtnPrimaryText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.amber,
   },
   avatarBtnText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.mutedText,
   },
 
   // ── Input ──
   input: {
-    minHeight: 54,
-    // Bigger corner: the form is the screen now, so the fields carry the
-    // roundness the removed cards used to.
-    borderRadius: Radius.card,
+    minHeight: 52,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
   },
   errorText: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
     marginLeft: 2,
   },
 
-  // ── Visibility ──
+  // ── Visibility card ──
   consentCard: {
     gap: Spacing.md,
-    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
   },
   consentDivider: {
     height: 1,
     backgroundColor: Colors.border,
   },
   consentText: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 21,
     color: Colors.foamMuted,
   },
   consentPrivate: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.amber,

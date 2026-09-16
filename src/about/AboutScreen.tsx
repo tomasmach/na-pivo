@@ -28,11 +28,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-
+import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { t } from '@/i18n';
-import { leaveRoute } from '@/navigation/leaveRoute';
-import { BeerIcon, ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   fetchAllReleaseNotes,
@@ -76,7 +75,7 @@ export default function AboutScreen() {
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => leaveRoute(router)}
+          onPress={() => router.back()}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={t.a11y.backButton}
@@ -102,8 +101,7 @@ export default function AboutScreen() {
         {/* ── Brand hero ── */}
         <View style={styles.hero}>
           <View style={styles.medallion}>
-            {/* Drawn glyph, not an emoji (§19). */}
-            <BeerIcon size={44} color={Colors.amber} />
+            <Text style={styles.medallionEmoji}>🍺</Text>
           </View>
           <Text style={styles.appName}>{t.appName}</Text>
           <Text style={styles.tagline}>{t.about.tagline}</Text>
@@ -121,7 +119,7 @@ export default function AboutScreen() {
             accessibilityRole="link"
             accessibilityLabel={t.about.playStoreA11y}
           >
-            <Text style={styles.playStoreButtonText}>{t.about.playStore}</Text>
+            <Text style={styles.playStoreButtonText}>Na pivo v Google Play</Text>
             <ExternalLinkIcon size={17} color={Colors.amber} />
           </Pressable>
         ) : null}
@@ -227,7 +225,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
   },
@@ -264,7 +262,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   playStoreButtonText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
   },
@@ -280,14 +278,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.xs,
   },
+  medallionEmoji: {
+    fontSize: 44,
+    lineHeight: 52,
+  },
   appName: {
-    fontWeight: '800',
+    fontFamily: Fonts.display.extrabold,
     fontSize: 34,
     lineHeight: 40,
     color: Colors.foam,
   },
   tagline: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -304,7 +306,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   versionText: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     letterSpacing: 0.3,
     color: Colors.amberLight,
@@ -315,7 +317,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   sectionHeader: {
-    fontWeight: '700',
+    fontFamily: Fonts.ui.bold,
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -329,7 +331,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   statusText: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -351,12 +353,12 @@ const styles = StyleSheet.create({
   },
   noteTitle: {
     flex: 1,
-    fontWeight: '700',
+    fontFamily: Fonts.display.bold,
     fontSize: 18,
     color: Colors.foam,
   },
   noteVersion: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     letterSpacing: 0.4,
     fontVariant: ['tabular-nums'],
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
   },
   itemText: {
     flex: 1,
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -405,7 +407,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   emptyText: {
-    fontWeight: '400',
+    fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -414,7 +416,7 @@ const styles = StyleSheet.create({
 
   // ── Footer ──
   footer: {
-    fontWeight: '500',
+    fontFamily: Fonts.ui.medium,
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,

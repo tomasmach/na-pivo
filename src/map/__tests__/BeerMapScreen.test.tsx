@@ -2,11 +2,10 @@ import React, { forwardRef, useImperativeHandle } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import type { FriendPubActivity } from '@/data/friendsClient';
 import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
 import BeerMapScreen, { resetBeerMapLayerForAddedPub } from '../BeerMapScreen';
-import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
@@ -14,7 +13,6 @@ import { useBeerMap } from '../useBeerMap';
 let mockColorScheme: 'light' | 'dark' | null = 'dark';
 const mockAnimateCamera = jest.fn();
 const mockAnimateToRegion = jest.fn();
-const mockShowAppDialog = jest.fn();
 
 jest.mock('react-native', () => {
   const RN = jest.requireActual('react-native');
@@ -71,14 +69,6 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
-jest.mock('@/components/shared/BottomSheetModal', () => ({
-  BottomSheetModal: ({ visible, children }: { visible: boolean; children?: React.ReactNode }) =>
-    visible ? children : null,
-}));
-jest.mock('@/components/shared/CloseButton', () => ({ CloseButton: 'CloseButton' }));
-jest.mock('@/components/shared/AppDialog', () => ({
-  showAppDialog: (...args: unknown[]) => mockShowAppDialog(...args),
-}));
 
 jest.mock('../useBeerMap', () => ({ useBeerMap: jest.fn() }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn() }));
@@ -108,11 +98,11 @@ jest.mock('@/stores/settingsStore', () => ({
 jest.mock('@/stores/accountStore', () => ({
   useAccountStore: (selector: (state: { session: null }) => unknown) => selector({ session: null }),
 }));
-jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: jest.fn(() => null) }));
+jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: () => null }));
 jest.mock('@/components/compass/PubFilterSheet', () => ({ PubFilterSheet: () => null }));
 jest.mock('@/components/compass/OpenStatusChip', () => ({
   OpenStatusChip: ({ status }: { status?: string }) => (
-    <Text>{status === 'loading' || status === 'pending' ? cs.compass.detailsLoading : cs.compass.hoursUnknown}</Text>
+    <Text>{status === 'loading' || status === 'pending' ? t.compass.detailsLoading : t.compass.hoursUnknown}</Text>
   ),
 }));
 jest.mock('@/components/shared/ExploreSwitch', () => ({ ExploreSwitch: () => null }));
@@ -144,11 +134,6 @@ jest.mock('@/components/shared/IconGlyph', () => {
 const mockedUseBeerMap = useBeerMap as jest.MockedFunction<typeof useBeerMap>;
 const mockedFetchPubHours = fetchPubHours as jest.MockedFunction<typeof fetchPubHours>;
 const mockedEnqueuePubReport = enqueuePubReport as jest.MockedFunction<typeof enqueuePubReport>;
-const mockedMapPubSheet = MapPubSheet as jest.Mock;
-
-function latestProps(mock: jest.Mock) {
-  return mock.mock.calls.at(-1)?.[0];
-}
 
 function liveActivity(avatarUrl: string | null): FriendPubActivity {
   return {
@@ -225,7 +210,26 @@ describe('BeerMapScreen opening-hours loading', () => {
       loadRegion: jest.fn(),
       refresh: jest.fn(),
     });
-    mockedFetchPubHours.mockImplementation(() => new Promise(() => undefined));
+    mockedFetchPubHours.mockResolvedValue(new Map([
+      ['pub-1', {
+        status: 'pending',
+        openingHours: null,
+        isOpenNow: null,
+        nextChange: null,
+        source: null,
+        communityHours: null,
+        beers: [],
+        historicalBeers: [],
+        beersUpdatedAt: null,
+        beerMenuRotates: false,
+        hoursUpdatedAt: null,
+        rating: null,
+        ratingCount: null,
+        ratingLabel: null,
+        hasGarden: null,
+        venueKind: 'unknown',
+      }],
+    ]));
   });
 
   afterEach(() => {
@@ -240,12 +244,12 @@ describe('BeerMapScreen opening-hours loading', () => {
     };
     const screen = render(<BeerMapScreen {...props} />);
 
-    expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('dark');
+    expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('dark');
 
     mockColorScheme = 'light';
     screen.rerender(<BeerMapScreen {...props} />);
 
-    expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('light');
+    expect(screen.getByLabelText(t.a11y.beerMap).props.accessibilityValue.text).toBe('light');
   });
 
   it('recenters on the user without changing zoom or regrouping pub markers', () => {
@@ -280,7 +284,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       0,
     );
 
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapLocate));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapLocate));
 
     expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
       {
@@ -302,7 +306,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
 
     expect(mockAnimateCamera).toHaveBeenLastCalledWith(
       {
@@ -313,25 +317,6 @@ describe('BeerMapScreen opening-hours loading', () => {
       },
       { duration: 0 },
     );
-  });
-
-  it('waits for pub detail dismissal before opening its report sheet', () => {
-    const screen = render(
-      <BeerMapScreen
-        filters={EMPTY_PUB_SEARCH_FILTERS}
-        onApplyFilters={jest.fn()}
-        onShowCompass={jest.fn()}
-      />,
-    );
-
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
-    act(() => latestProps(mockedMapPubSheet).onReport());
-
-    expect(screen.queryByLabelText(cs.compass.reportNotPub)).toBeNull();
-    act(() => jest.advanceTimersByTime(259));
-    expect(screen.queryByLabelText(cs.compass.reportNotPub)).toBeNull();
-    act(() => jest.advanceTimersByTime(1));
-    expect(screen.getByLabelText(cs.compass.reportNotPub)).toBeTruthy();
   });
 
   it('shows a friend avatar in the live map marker', () => {
@@ -372,21 +357,21 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
     await act(async () => undefined);
 
-    expect(screen.getByText(cs.compass.detailsLoading)).toBeTruthy();
+    expect(screen.getByText(t.compass.detailsLoading)).toBeTruthy();
 
     act(() => {
       jest.advanceTimersByTime(2_999);
     });
-    expect(screen.getByText(cs.compass.detailsLoading)).toBeTruthy();
+    expect(screen.getByText(t.compass.detailsLoading)).toBeTruthy();
 
     act(() => {
       jest.advanceTimersByTime(1);
     });
-    expect(screen.queryByText(cs.compass.detailsLoading)).toBeNull();
-    expect(screen.getByText(cs.compass.hoursUnknown)).toBeTruthy();
+    expect(screen.queryByText(t.compass.detailsLoading)).toBeNull();
+    expect(screen.getByText(t.compass.hoursUnknown)).toBeTruthy();
   });
 
   it('renders the selected-pub dock as a fixed card, not a scroll view', () => {
@@ -398,7 +383,7 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
 
     expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
   });
@@ -413,22 +398,22 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
 
     // The switch is on the surface, all three slices at once.
-    expect(screen.getByLabelText(cs.map.layerAll)).toBeTruthy();
-    expect(screen.getByLabelText(cs.map.layerVisited)).toBeTruthy();
-    expect(screen.getByLabelText(cs.map.layerFriends)).toBeTruthy();
+    expect(screen.getByLabelText(t.map.layerAll)).toBeTruthy();
+    expect(screen.getByLabelText(t.map.layerVisited)).toBeTruthy();
+    expect(screen.getByLabelText(t.map.layerFriends)).toBeTruthy();
 
     // And the overflow sheet no longer offers the same three as rows.
-    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
-    expect(screen.queryAllByLabelText(cs.map.layerVisited)).toHaveLength(1);
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    expect(screen.queryAllByLabelText(t.map.layerVisited)).toHaveLength(1);
 
-    fireEvent.press(screen.getByLabelText(cs.map.layerVisited));
+    fireEvent.press(screen.getByLabelText(t.map.layerVisited));
     // "Moje stopy" is now the selected tab; the previous one became pressable.
     expect(
-      screen.getByLabelText(cs.map.layerVisited).props.accessibilityState,
+      screen.getByLabelText(t.map.layerVisited).props.accessibilityState,
     ).toMatchObject({ selected: true });
 
     act(() => resetBeerMapLayerForAddedPub());
-    expect(screen.getByLabelText(cs.map.layerAll).props.accessibilityState).toMatchObject({
+    expect(screen.getByLabelText(t.map.layerAll).props.accessibilityState).toMatchObject({
       selected: true,
     });
   });
@@ -442,34 +427,45 @@ describe('BeerMapScreen opening-hours loading', () => {
       />,
     );
 
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
-    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
-    fireEvent.press(screen.getByLabelText(cs.a11y.mapReportClosed('U Testu')));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed('U Testu')));
     act(() => {
       jest.advanceTimersByTime(260);
     });
 
     expect(mockedEnqueuePubReport).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByLabelText(cs.compass.reportNotPub));
-    act(() => {
-      jest.advanceTimersByTime(260);
-    });
-    expect(mockShowAppDialog).toHaveBeenCalledWith(expect.objectContaining({
-      title: cs.compass.reportConfirmTitle('U Testu'),
-    }));
-
-    const destructive = mockShowAppDialog.mock.calls[0][0].buttons.find(
-      (button: { style?: string }) => button.style === 'destructive',
-    );
-    act(() => {
-      destructive.onPress();
-    });
+    fireEvent.press(screen.getByLabelText(t.compass.reportNotPub));
 
     expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
       'not_pub',
     );
-    expect(screen.queryByLabelText(cs.a11y.mapReportClosed('U Testu'))).toBeNull();
+    expect(screen.queryByLabelText(t.a11y.mapReportClosed('U Testu'))).toBeNull();
+  });
+
+  it('sends a closed reason when a pub no longer operates', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText(t.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(t.a11y.compassMore));
+    fireEvent.press(screen.getByLabelText(t.a11y.mapReportClosed('U Testu')));
+    act(() => {
+      jest.advanceTimersByTime(260);
+    });
+
+    fireEvent.press(screen.getByLabelText(t.compass.reportClosed));
+
+    expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
+      'closed',
+    );
   });
 });

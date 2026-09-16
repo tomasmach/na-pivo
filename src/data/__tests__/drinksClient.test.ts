@@ -4,12 +4,11 @@ import {
   submitDrink,
   deleteDrink,
   updateDrinkName,
-  updateDrink,
   type DrinkInput,
 } from '../drinksClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 import { useToastStore } from '@/stores/toastStore';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
 // node test env; mock it so the module loads. We also stub ensureAccount so the
@@ -69,14 +68,6 @@ describe('buildDrinkEntry', () => {
       beer: { name: 'Pilsner Urquell', price_czk: 62, volume_ml: 500 },
       drank_at: '2026-06-12T19:45:00+02:00',
     });
-  });
-
-  it('tags the drink with the shared evening, and only when there is one', () => {
-    // One write, two readers: the beer still goes into the diary exactly once,
-    // the code only lets the evening show it. See
-    // docs/decisions/one-write-two-readers.md.
-    expect(buildDrinkEntry(INPUT, 'c').party_code).toBeUndefined();
-    expect(buildDrinkEntry({ ...INPUT, partyCode: 'STUL24' }, 'c').party_code).toBe('STUL24');
   });
 
   it('omits volume_ml when absent and trims/drops an empty city', () => {
@@ -257,7 +248,7 @@ describe('submitDrink', () => {
     })) as unknown as typeof fetch;
 
     await expect(submitDrink(entry)).resolves.toBe('permanent-error');
-    expect(useToastStore.getState().message).toBe(cs.counter.drinkLimitedToast);
+    expect(useToastStore.getState().message).toBe(t.counter.drinkLimitedToast);
 
     // A second rejection inside the toast gap stays quiet — a flush of several
     // over-limit drinks must not nag repeatedly.
@@ -457,22 +448,5 @@ describe('updateDrinkName', () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
     await expect(updateDrinkName('c', 'Kozel')).resolves.toBe('retry');
-  });
-});
-
-describe('updateDrink', () => {
-  it('PATCHes all private drink details', async () => {
-    setBackend('https://api.example.com');
-    const fetchSpy = jest.fn(async () => ({ ok: true, status: 200 }));
-    global.fetch = fetchSpy as unknown as typeof fetch;
-
-    await expect(updateDrink('client-1', {
-      beer_name: 'Ryzlink', drink_type: 'wine', price_czk: 85, volume_ml: 200,
-    })).resolves.toBe('ok');
-
-    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({
-      beer_name: 'Ryzlink', drink_type: 'wine', price_czk: 85, volume_ml: 200,
-    });
   });
 });

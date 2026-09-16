@@ -21,18 +21,10 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@/data/privateAccountStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { generateUuidV4 } from '@/data/account';
 import {
-  guardPrivateAccountStateCreator,
-  isPrivateAccountMutationFrozen,
-} from '@/data/privateAccountBoundary';
-import {
-  contextFromPubKey,
-  isDrinkType,
-  isContextPubKey,
-  isServingType,
   normalizeDrinkType,
   normalizePlaceContext,
   type DrinkType,
@@ -97,10 +89,6 @@ export interface TallySession {
   /** Set only on archived (history) sessions — why the evening was closed. The
    *  live `current` session never carries it. Drives the resume affordance. */
   archivedReason?: ArchivedReason;
-  /** ISO-8601 timestamp of the explicit local session closure. This is kept
-   *  separate from the last drink so Parta can stop showing the user as seated
-   *  immediately after "Dopito". */
-  closedAt?: string;
 }
 
 /** The minimal place identity a count needs. */
@@ -109,10 +97,6 @@ export interface TallyPub {
   pubName: string;
   pubCity?: string;
   pubExternalId?: string;
-  /** Existing explicit Party PubVisit identity, when the table picked this pub
-   * before its first drink. Reusing it prevents a second visit row. */
-  visitClientId?: string;
-  visitStartedAt?: string;
   /** Missing means pub. */
   placeContext?: PlaceContext;
 }
@@ -153,7 +137,7 @@ interface TallyState {
    * caller can sync the right visit). Used when a backdated timestamp would
    * otherwise roll over and clobber the active evening.
    */
-  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession | null;
+  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession;
   /**
    * Append a missed drink to one exact existing evening without reopening it or
    * routing by pub/day. The stable session clientId matters when somebody left
@@ -182,12 +166,6 @@ interface TallyState {
   removeDrinkFromSession: (startedAt: string, drinkId: string) => RemovedDrinkResult | null;
   /** Rename one logged beer in the selected evening. Used for typo fixes. */
   updateDrinkNameInSession: (startedAt: string, drinkId: string, beerName: string) => boolean;
-  /** Update the private details of one logged drink without moving its time or place. */
-  updateDrinkInSession: (
-    startedAt: string,
-    drinkId: string,
-    update: Pick<TallyBeerInput, 'beerName' | 'drinkType' | 'priceCzk' | 'volumeMl' | 'servingType'>,
-  ) => boolean;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
   markDrinkSynced: (id: string) => void;
   /** The pub was renamed from the mapping hub — keep the live session's display
@@ -199,7 +177,7 @@ interface TallyState {
    * sweeper). A no-op on an empty/absent session — except it clears an empty
    * pinned session object so the counter resets cleanly.
    */
-  archiveCurrent: (reason: ArchivedReason) => TallySession | null;
+  archiveCurrent: (reason: ArchivedReason) => void;
   /**
    * Auto-complete the current session IFF it has gone idle (no drink within
    * IDLE_TIMEOUT_MS). Archives it with reason 'timeout' so it stays resumable.
@@ -259,111 +237,12 @@ function sortSessionsNewestFirst(sessions: TallySession[]): TallySession[] {
   return sessions.slice().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function validIso(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && Number.isFinite(Date.parse(value));
-}
-
-const GEOHASH_8_PATTERN = /^[0-9bcdefghjkmnpqrstuvwxyz]{8}$/;
-
-/**
- * A persisted pubKey is a geohash-8 cell or a known synthetic `ctx:*` key.
- *
- * An UNKNOWN `ctx:*` key means a NEWER app version invented a context this
- * build doesn't know (a downgrade). The evening stays — remapped to
- * `ctx:other`, never decoded as GPS coordinates and never dropped with all
- * its drinks. Anything else malformed invalidates just that one session.
- */
-function sanitizePubKey(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  if (GEOHASH_8_PATTERN.test(value)) return value;
-  if (isContextPubKey(value)) return `ctx:${contextFromPubKey(value) ?? 'other'}`;
-  return null;
-}
-
-function sanitizeDrink(value: unknown): TallyDrink | null {
-  if (!isRecord(value)) return null;
-  if (
-    typeof value.id !== 'string' || !value.id ||
-    typeof value.beerName !== 'string' || !value.beerName.trim() ||
-    !validIso(value.at)
-  ) {
-    return null;
-  }
-  const drink: TallyDrink = {
-    id: value.id,
-    beerName: value.beerName.trim(),
-    at: value.at,
-  };
-  if (isDrinkType(value.drinkType) && value.drinkType !== 'beer') {
-    drink.drinkType = value.drinkType;
-  }
-  if (typeof value.priceCzk === 'number' && Number.isFinite(value.priceCzk) && value.priceCzk >= 0) {
-    drink.priceCzk = value.priceCzk;
-  }
-  if (typeof value.volumeMl === 'number' && Number.isFinite(value.volumeMl) && value.volumeMl > 0) {
-    drink.volumeMl = value.volumeMl;
-  }
-  if (isServingType(value.servingType) && value.servingType !== 'unknown') {
-    drink.servingType = value.servingType;
-  }
-  if (value.syncStatus === 'pending' || value.syncStatus === 'sent') {
-    drink.syncStatus = value.syncStatus;
-  }
-  return drink;
-}
-
-function sanitizeSession(value: unknown, archived: boolean): TallySession | null {
-  if (!isRecord(value)) return null;
-  const pubKey = sanitizePubKey(value.pubKey);
-  // An evening started outside a pub has no place name before the hub
-  // rerenders. Its ctx:* identity is sufficient; keep its durable drinks.
-  if (
-    !pubKey ||
-    typeof value.pubName !== 'string' ||
-    (!value.pubName.trim() && !isContextPubKey(pubKey)) ||
-    !validIso(value.startedAt) ||
-    !Array.isArray(value.drinks)
-  ) {
-    return null;
-  }
-  const seen = new Set<string>();
-  const drinks = value.drinks.flatMap((raw) => {
-    const drink = sanitizeDrink(raw);
-    if (!drink || seen.has(drink.id)) return [];
-    seen.add(drink.id);
-    return [drink];
-  });
-  const session: TallySession = {
-    clientId:
-      typeof value.clientId === 'string' && value.clientId
-        ? value.clientId
-        : generateUuidV4(),
-    pubKey,
-    pubName: value.pubName.trim(),
-    startedAt: value.startedAt,
-    drinks,
-  };
-  if (typeof value.pubCity === 'string' && value.pubCity.trim()) session.pubCity = value.pubCity.trim();
-  if (typeof value.pubExternalId === 'string' && value.pubExternalId) {
-    session.pubExternalId = value.pubExternalId;
-  }
-  if (isContextPubKey(session.pubKey)) {
-    session.placeContext = contextFromPubKey(session.pubKey) ?? 'other';
-  }
-  if (
-    archived &&
-    (value.archivedReason === 'timeout' ||
-      value.archivedReason === 'pub-change' ||
-      value.archivedReason === 'day-rollover' ||
-      value.archivedReason === 'manual')
-  ) {
-    session.archivedReason = value.archivedReason;
-  }
-  return session;
+/** Ensure a persisted session carries a stable `clientId`, minting one when an
+ *  older build wrote it without (v0 → v1). Exported for unit tests. */
+function ensureSessionClientId(session: TallySession | null): TallySession | null {
+  if (!session) return null;
+  if (typeof session.clientId === 'string' && session.clientId) return session;
+  return { ...session, clientId: generateUuidV4() };
 }
 
 /**
@@ -373,27 +252,22 @@ function sanitizeSession(value: unknown, archived: boolean): TallySession | null
  * the migration is unit-testable in isolation.
  */
 export function migrateTally(persisted: unknown, version: number): TallyState {
-  const base = isRecord(persisted) ? persisted : {};
-  // The same sanitizer runs for v1. Zustand only calls `migrate` when versions
-  // differ, so the explicit `merge` below also routes current-version blobs
-  // through here before they can reach selectors.
-  const current = base.current == null ? null : sanitizeSession(base.current, false);
+  const base = (persisted ?? {}) as Partial<TallyState>;
+  if (version >= 1) return base as TallyState;
+
+  const current = ensureSessionClientId((base.current as TallySession | null) ?? null);
   const history = Array.isArray(base.history)
-    ? base.history
-        .map((session) => sanitizeSession(session, true))
+    ? (base.history as TallySession[])
+        .map((session) => ensureSessionClientId(session))
         .filter((session): session is TallySession => session != null)
-        .slice(0, MAX_HISTORY)
     : [];
-  // Keep the version parameter meaningful for the documented v0 client-id
-  // migration. `sanitizeSession` already performs that backfill for every
-  // version so malformed v1 data gets the same safe treatment.
-  void version;
-  return { current, history } as TallyState;
+
+  return { ...(base as TallyState), current, history };
 }
 
 export const useTallyStore = create<TallyState>()(
   persist(
-    guardPrivateAccountStateCreator((set) => ({
+    (set) => ({
       current: null,
       history: [],
 
@@ -412,9 +286,7 @@ export const useTallyStore = create<TallyState>()(
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
           if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
 
-          const rollover =
-            shouldStartNewSession(state.current, pub.pubKey, atDate) ||
-            (!!pub.visitClientId && state.current?.clientId !== pub.visitClientId);
+          const rollover = shouldStartNewSession(state.current, pub.pubKey, atDate);
 
           if (rollover) {
             // Archive a non-empty current session before opening a fresh one,
@@ -424,14 +296,11 @@ export const useTallyStore = create<TallyState>()(
               state.current && state.current.pubKey !== pub.pubKey ? 'pub-change' : 'day-rollover';
             const history =
               state.current && state.current.drinks.length > 0
-                ? [
-                    { ...state.current, archivedReason: reason, closedAt: at },
-                    ...state.history,
-                  ].slice(0, MAX_HISTORY)
+                ? [{ ...state.current, archivedReason: reason }, ...state.history].slice(0, MAX_HISTORY)
                 : state.history;
             return {
               current: {
-                clientId: pub.visitClientId ?? generateUuidV4(),
+                clientId: generateUuidV4(),
                 pubKey: pub.pubKey,
                 pubName: pub.pubName,
                 ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
@@ -439,12 +308,7 @@ export const useTallyStore = create<TallyState>()(
                 ...(pub.placeContext && pub.placeContext !== 'pub'
                   ? { placeContext: pub.placeContext }
                   : {}),
-                startedAt:
-                  pub.visitStartedAt &&
-                  Number.isFinite(Date.parse(pub.visitStartedAt)) &&
-                  Date.parse(pub.visitStartedAt) <= Date.parse(at)
-                    ? pub.visitStartedAt
-                    : at,
+                startedAt: at,
                 drinks: [drink],
               },
               history,
@@ -470,7 +334,6 @@ export const useTallyStore = create<TallyState>()(
         }),
 
       addBackdatedDrink: (pub, beer) => {
-        if (isPrivateAccountMutationFrozen()) return null;
         const box: { session: TallySession | null } = { session: null };
         set((state) => {
           const at = beer.at ?? new Date().toISOString();
@@ -525,14 +388,13 @@ export const useTallyStore = create<TallyState>()(
             startedAt: at,
             drinks: [drink],
             archivedReason: 'manual',
-            closedAt: at,
           };
           box.session = created;
           return {
             history: sortSessionsNewestFirst([created, ...state.history]).slice(0, MAX_HISTORY),
           };
         });
-        return box.session;
+        return box.session as TallySession;
       },
 
       addDrinkToSession: (sessionClientId, beer) => {
@@ -676,40 +538,6 @@ export const useTallyStore = create<TallyState>()(
         return changed;
       },
 
-      updateDrinkInSession: (startedAt, drinkId, update) => {
-        const beerName = update.beerName.trim();
-        if (!beerName) return false;
-        let changed = false;
-        const replace = (session: TallySession): TallySession => {
-          const drinks = session.drinks.map((drink) => {
-            if (drink.id !== drinkId) return drink;
-            const next = {
-              ...drink,
-              beerName,
-              drinkType: update.drinkType,
-              priceCzk: update.priceCzk,
-              volumeMl: update.volumeMl,
-              servingType: update.servingType,
-            };
-            if (JSON.stringify(next) === JSON.stringify(drink)) return drink;
-            changed = true;
-            return next;
-          });
-          return changed ? { ...session, drinks } : session;
-        };
-        set((state) => {
-          if (state.current?.startedAt === startedAt) {
-            const current = replace(state.current);
-            return changed ? { current } : state;
-          }
-          const history = state.history.map((session) =>
-            session.startedAt === startedAt ? replace(session) : session,
-          );
-          return changed ? { history } : state;
-        });
-        return changed;
-      },
-
       markDrinkSynced: (id) =>
         set((state) => {
           let changed = false;
@@ -739,22 +567,14 @@ export const useTallyStore = create<TallyState>()(
           return { current: { ...state.current, pubName: trimmed } };
         }),
 
-      archiveCurrent: (reason) => {
-        let result: TallySession | null = null;
+      archiveCurrent: (reason) =>
         set((state) => {
           if (!state.current) return state;
           // An empty pinned session is not an evening — just drop it.
           if (state.current.drinks.length === 0) return { current: null };
-          const archived: TallySession = {
-            ...state.current,
-            archivedReason: reason,
-            closedAt: new Date().toISOString(),
-          };
-          result = archived;
+          const archived: TallySession = { ...state.current, archivedReason: reason };
           return { current: null, history: [archived, ...state.history].slice(0, MAX_HISTORY) };
-        });
-        return result;
-      },
+        }),
 
       maybeAutoArchive: (nowMs = Date.now()) => {
         let archived = false;
@@ -762,11 +582,7 @@ export const useTallyStore = create<TallyState>()(
           if (!state.current || state.current.drinks.length === 0) return state;
           if (nowMs - sessionLastActivityMs(state.current) < IDLE_TIMEOUT_MS) return state;
           archived = true;
-          const arch: TallySession = {
-            ...state.current,
-            archivedReason: 'timeout',
-            closedAt: new Date(sessionLastActivityMs(state.current) + IDLE_TIMEOUT_MS).toISOString(),
-          };
+          const arch: TallySession = { ...state.current, archivedReason: 'timeout' };
           return { current: null, history: [arch, ...state.history].slice(0, MAX_HISTORY) };
         });
         return archived;
@@ -785,7 +601,7 @@ export const useTallyStore = create<TallyState>()(
             return state;
           }
           resumed = true;
-          const { archivedReason: _reason, closedAt: _closedAt, ...restored } = last;
+          const { archivedReason: _omit, ...restored } = last;
           return { current: restored, history: state.history.slice(1) };
         });
         return resumed;
@@ -815,17 +631,13 @@ export const useTallyStore = create<TallyState>()(
           }
           return { current: null, history: [] };
         }),
-    })),
+    }),
     {
       name: 'na-pivo-tally',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ current: state.current, history: state.history }),
       migrate: migrateTally,
-      merge: (persisted, current) => ({
-        ...current,
-        ...migrateTally(persisted, 1),
-      }),
     },
   ),
 );

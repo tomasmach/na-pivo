@@ -11,7 +11,7 @@ import React, { memo } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 interface BetaBadgeProps {
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.2),
   },
   text: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 10,
     letterSpacing: 0.8,
     textTransform: 'uppercase',

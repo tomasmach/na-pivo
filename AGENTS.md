@@ -1,6 +1,6 @@
 # Na pivo
 
-Na pivo je česká mobilní appka pro lidi, kteří mají rádi hospody, pivo a večery s kamarády. Začala jako kompas na nejbližší hospodu, dnes je to pivní deníček a verze 3.0 z něj dělá společníka celého večera: pět tabů, večer jako jádro, parta a hry u stolu. Zhruba: něco jako Untappd, ale české, hospodské a pro partu u jednoho stolu — míň katalog, víc večer.
+Na pivo je česká mobilní appka pro lidi, kteří mají rádi hospody, pivo a večery s kamarády. Začala jako kompas na nejbližší hospodu, dnes je to pivní deníček: kompas, počítadlo, deník a parta ve čtyřech tabech. Verze 2.0.0 z ní zkusila udělat společníka celého večera (pět tabů, večer jako jádro, hry u stolu) a lidem to přišlo nepřehledné, takže 2.1.0 vrátila appku 1.5.1. Kód 2.0 žije v tagu `v2.0.0`; když se k některé jeho části vracíme, jde o vrstvu nad jednoduchou appkou, ne o přestavbu hlavní obrazovky.
 
 Monorepo: Expo / React Native appka v kořeni, Django backend v `backend/`. Designový zákon je `DESIGN.md`, produktová rozhodnutí `docs/decisions/`, serverový deploy runbook `backend/README.md`. Tenhle soubor je jediný AGENTS.md v repu a říká, jak se tady mění věci.
 
@@ -67,17 +67,17 @@ Nejčastější defekt v tomhle repu: změna funguje na cestě, kterou jsi testo
 - **Nativní hranice.** Nový modul, config plugin nebo nativní dependency = rebuild, ne OTA. Napiš to.
 - **Persisted data.** Změna tvaru lokálně uložených dat musí načíst starý tvar (validovaná storage v `createQueue`) a přežít malformed obsah.
 - **Globální destruktivní akce nad komunitními daty** (skrytí/smazání hospody) jedou přes potvrzení a práh hlasů — jedno klepnutí na vlaječku už jednou mazalo hospody všem. Vlastní obsah si uživatel maže rovnou, s potvrzením.
-- **Texty.** Appka běží česky (i pro Slováky) a anglicky podle jazyka telefonu. Každý text pro lidi patří do `src/i18n/cs.ts` **a zároveň** do `src/i18n/en.ts` (stejný tvar, typecheck a `src/i18n/__tests__/en.test.ts` to hlídají); obrazovky čtou jen `t` z `@/i18n`, datumy a čísla formátují přes `intlLocale`, plurály přes `plural(...)`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi zkontroluj podle unslop; humanizer použij jako referenci pro rozsáhlejší přepis; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
+- **Texty.** Appka běží česky (i pro Slováky) a anglicky; jazyk se přepíná v Nastavení (`src/i18n/locale.ts`, výchozí čeština, přepnutí restartuje JS bundle). Každý text pro lidi patří do `src/i18n/cs.ts` a jeho zrcadlo do `src/i18n/en.ts` (test `en.test.ts` hlídá shodu klíčů); obrazovky čtou jen `t` z `@/i18n`, plurály přes `plural(...)`, data a čísla formátují přes `intlLocale`. Backend má Czech msgid + `backend/locale/en/LC_MESSAGES/django.po`; nový serverový text obal do `gettext` a doplň anglický `msgstr`. Angličtina bez pomlček typu em dash. Text musí přesně popisovat akci a neměnit fakta ani čísla („přidali si kamarády“ není „našli kamarády“). Každý nový nebo změněný text pro lidi zkontroluj podle unslop; humanizer použij jako referenci pro rozsáhlejší přepis; netriviální texty mi navíc ukaž v chatu, než je commitneš — překlep tím neblokuj.
 
 ## Dev prostředí
 
-- Na macOS je `npm run dev` standardní cesta: migrace → lokální backend (uvicorn na portu 8012) → prebuild → iOS simulátor. Samostatné Metro, `expo run:ios` nebo ruční backend jen při cílené diagnostice jedné vrstvy.
-- Na Linuxu `npm run dev` ani `dev:detached` nepoužívej: spouštějí iOS nástroje. Backend a případný Android řeší projektový skill [run-na-pivo](.agents/skills/run-na-pivo/SKILL.md). Nativní iOS ověření patří na Mac; bez něj ho označ jako neověřené.
-- macOS background běh: `npm run dev:detached` / `npm run dev:stop`; `NAPIVO_KEEP_SIM=1` nechá simulátor žít.
-- `ios/` a `android/` jsou gitignorované, prebuild je pokaždé regeneruje. `postinstall` patchuje `node_modules` — instalace s `--ignore-scripts` je rozbitý build.
-- Backend potřebuje ASGI (party hry jedou přes SSE) — proto uvicorn, ne `runserver`.
-- Prázdná databáze je špatný test: `cd backend && uv run python manage.py seed_dev_3_0` naseje dev data.
-- Nespouštěj druhý simulátor ani druhý dev server vedle běžícího. Po práci **zastav všechno, co jsi sám spustil**; cizí procesy nech být. Když mi necháváš běžící appku k proklikání, napiš to do handoffu včetně stop příkazu. Pozor: `dev:stop` čte globální `/tmp/napivo-dev.pid` — v jiném worktree může zabít cizí běh, ověř si PID, než ho použiješ.
+- Na macOS je `npm run dev` standardní cesta: migrace → lokální ASGI backend na portu 8012 → Metro tohoto checkoutu → iOS simulátor. Pro JS a běžné asset změny použije kompatibilního instalovaného klienta. Expo fingerprint hlídá nativní nastavení, závislosti, pluginy a nativní assets; čistý prebuild a build proběhnou jen při změně těchto vstupů nebo chybějícím či dosud neověřeném klientu. `npm run dev -- --rebuild` vynutí nový lokální build.
+- Na Linuxu použij `npm run dev -- --metro` pro lokální backend a Metro. Tento režim nesestavuje klienta a nedokazuje jeho nativní kompatibilitu. Android a konkrétní ověření řeší projektový skill [run-na-pivo](.agents/skills/run-na-pivo/SKILL.md); iOS ověř na Macu.
+- Background běh: `npm run dev:detached` (na Linuxu přidej `-- --metro`), stop: `npm run dev:stop` ze stejného worktree. Stav i log leží v jeho `.expo/`; stop kontroluje totožnost procesu. Runner nikdy nevypíná simulátor a zastavuje jen vlastní backend a Metro.
+- Běžící prostředí použij až po ověření checkoutu, konfigurace a portů. Runner znovu použije vlastní ověřenou session; při cizím nebo neověřeném listeneru skončí bez zásahu. Pro nezávislou práci nastav volné `EXPO_PUBLIC_BACKEND_PORT` a `EXPO_METRO_PORT`. Konkrétní iPhone lze vybrat přes `EXPO_IOS_DEVICE`.
+- `ios/` a `android/` jsou generované a gitignorované. Před vynuceným rebuildem zkontroluj případné ruční nativní změny. `postinstall` patchuje `node_modules` — instalace s `--ignore-scripts` je rozbitý build.
+- Backend potřebuje ASGI kvůli SSE. Runner používá SQLite `backend/db.sqlite3` tohoto checkoutu i při jiném `DATABASE_URL` v prostředí. Prázdná databáze je špatný test: `cd backend && uv run python manage.py seed_dev_3_0` naseje dev data; před samostatným seedem ověř efektivní DB.
+- Nespouštěj zbytečně druhý simulátor ani druhý dev server vedle běžícího. Po práci zastav vlastní procesy. Když necháváš appku k proklikání, napiš checkout, porty a stop příkaz. Cizí procesy a session zachovej.
 
 ## Verifikace
 
@@ -101,11 +101,10 @@ Backend je jedna Django app `pubs`. DRF má `DEFAULT_AUTHENTICATION_CLASSES` pr�
 
 - `src/data/` — síťová a sync vrstva (klienti, fronty, auth, `privateAccountBoundary`); i těžiště testů (`src/data/__tests__`).
 - `src/components/shared/` — sdílené komponenty; scrollovatelný formulář s inputy = `KeyboardAwareScrollView`.
-- `src/i18n/cs.ts` + `src/i18n/en.ts` — UI texty (cs je zdroj, en zrcadlo), `src/i18n/locale.ts` volba jazyka; `src/theme/` + `src/mocks/mockTheme.ts` — designové tokeny.
-- `src/games/` + `npm run build:games` — party hry jako WebView bundly v `assets/games/`.
-- `modules/beer-live-activity/`, `plugins/` — nativní modul a config pluginy; sahat na ně = rebuild.
+- `src/i18n/cs.ts` — UI texty; `src/theme/` — designové tokeny.
+- `modules/beer-live-activity/` — nativní modul Live Activity; sahat na něj = rebuild.
 - `backend/pubs/` — modely, `api/` (routy pod `/v1/`), `migrations/`, `management/commands/`, `enrichment/` (Firmy.cz scraping — právně citlivé, nezvyšuj objem ani neobcházej ochrany; denní capy jsou v env).
-- Jest jede bez jest-expo presetu, ruční mocky v `src/__mocks__/`. Pozor: `src/mocks/` (bez podtržítek) jsou designové mocky 3.0, ne testovací.
+- Jest jede bez jest-expo presetu, ruční mocky v `src/__mocks__/`.
 
 ## Design
 
@@ -118,6 +117,7 @@ Netriviální nový návrh začíná statickými variantami A/B/C vedle sebe; pr
 ## Git a dopad změn
 
 - Hotovou koherentní změnu commitni a pushni bez ptaní. „Chceš to commitnout?“ je zakázaná věta. Napiš, kde práce leží (větev, worktree, PR), a nenechávej uncommitnuté soubory.
+- V `tomasmach/na-pivo` vlastní PR autora `tomasmach` nepotřebují lidské schválení. Pokud Mach zadá merge a jedinou překážkou je povinné GitHub review, použij bez dalšího dotazu `gh pr merge --admin --match-head-commit <ověřený SHA>`. Jde o trvalou výjimku tohoto repa z obecného zákazu admin merge ve skillu `finish-pr-batch`. Předtím dokonči přiměřené agentní review a ověření, zkontroluj aktuálnost vůči cílové větvi, všechny povinné CI kontroly na daném commitu a absenci konfliktů či nevyřešených blokujících nálezů. Pro PR ostatních autorů dál vyžaduj schválení code ownera `tomasmach`; ochrany větví ani povinné kontroly kvůli výjimce nevypínej.
 - Commity: jednořádkový conventional commit bez scope, anglicky (`fix: preserve queued drinks offline`).
 - Fix, který má vidět uživatel, patří na `dev`. Po dokončení ověř `git merge-base --is-ancestor <commit> origin/dev` — fix na odhlašování takhle ležel týdny v zapomenuté větvi.
 - `dev` je default pro všechnu práci. `main` je přesně to, co je ve storech — hýbe se jen releasem (merge `dev` → `main`) nebo hotfixem, nikdy přímým commitem. Backend se nasazuje z `api-*` tagů, nikdy z `main`; serverový runbook je v `backend/README.md`.

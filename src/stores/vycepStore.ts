@@ -12,9 +12,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@/data/privateAccountStorage';
-import { guardPrivateAccountStateCreator } from '@/data/privateAccountBoundary';
-import { persistedObject, persistedRecord } from '@/stores/persistedSchemas';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { NightVisibility } from '@/data/nightsClient';
 
@@ -35,7 +33,7 @@ interface VycepState {
 
 export const useVycepStore = create<VycepState>()(
   persist(
-    guardPrivateAccountStateCreator((set) => ({
+    (set) => ({
       published: {},
 
       markPublished: (clientId, visibility) =>
@@ -53,17 +51,10 @@ export const useVycepStore = create<VycepState>()(
           delete next[clientId];
           return { published: next };
         }),
-    })),
+    }),
     {
       name: 'na-pivo-vycep',
       storage: createJSONStorage(() => AsyncStorage),
-      merge: (persisted, current) => {
-        const state = persistedObject(persisted);
-        return {
-          ...current,
-          published: persistedRecord<PublishedNightRecord>(state.published),
-        };
-      },
     },
   ),
 );

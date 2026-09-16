@@ -29,20 +29,22 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
-import { clearBeerCheckInReaction, reactToBeerCheckIn } from '@/data/beerCheckinsClient';
-import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
-import { clearActivityReaction, reactToActivity } from '@/data/friendsClient';
-import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import {
-  PrivateAccountMutationFrozenError,
-  runPrivateAccountMutation,
-} from '@/data/privateAccountBoundary';
+  clearBeerCheckInReaction,
+  reactToBeerCheckIn,
+} from '@/data/beerCheckinsClient';
+import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
+import {
+  clearActivityReaction,
+  reactToActivity,
+} from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -114,10 +116,7 @@ function CheersPillBase({
   useEffect(() => {
     if (displayCount > prevCountRef.current && !reduceMotion) {
       countScale.value = withSequence(
-        withTiming(PULSE_PEAK, {
-          duration: 120,
-          easing: Easing.out(Easing.quad),
-        }),
+        withTiming(PULSE_PEAK, { duration: 120, easing: Easing.out(Easing.quad) }),
         withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) }),
       );
     }
@@ -126,12 +125,10 @@ function CheersPillBase({
 
   useEffect(() => () => cancelAnimation(countScale), [countScale]);
 
-  const numeralStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: countScale.value }],
-  }));
+  const numeralStyle = useAnimatedStyle(() => ({ transform: [{ scale: countScale.value }] }));
 
   const handlePress = useCallback(() => {
-    if (busy || pendingRef.current) return;
+    if (busy) return;
     const turningOn = !active;
     trackUiInteraction('parta_reaction_add', turningOn ? 'toggle_on' : 'toggle_off');
     const prevActive = active;
@@ -152,65 +149,49 @@ function CheersPillBase({
 
     pendingRef.current = true;
     const seq = ++seqRef.current;
-    void runPrivateAccountMutation(async () => {
-      const res =
-        target === 'beerCheckIn'
-          ? turningOn
-            ? await reactToBeerCheckIn(activityId, 'cheers')
-            : await clearBeerCheckInReaction(activityId)
-          : turningOn
-            ? await reactToActivity(activityId, 'cheers')
-            : await clearActivityReaction(activityId);
-      if (res.ok) return 'delivered' as const;
-      if (!isRetriableFriendError(res)) return 'rejected' as const;
-      const queued =
-        target === 'beerCheckIn'
-          ? await enqueueBeerCheckInOp(
-              turningOn
-                ? { op: 'cheer', checkInId: activityId }
-                : { op: 'cheer-clear', checkInId: activityId },
-            )
-          : await enqueueFriendOp(
-              turningOn ? { op: 'cheer', activityId } : { op: 'cheer-clear', activityId },
-            );
-      return queued === 'storage-error' ? ('storage-error' as const) : ('queued' as const);
-    })
-      .then((result) => {
-        if (seq !== seqRef.current) return;
-        pendingRef.current = false;
-        if (result === 'delivered') {
-          trackUiInteraction('parta_reaction_add', 'success');
-          showToast(turningOn ? t.friends.cheersDone : t.friends.cheersUndone, {
-            icon: <BeerIcon size={20} color={Colors.amber} />,
-          });
-          onChanged?.();
-          return;
-        }
-        if (result === 'queued') {
-          trackUiInteraction('parta_reaction_add', 'success');
-          showToast(t.friends.reactQueued, {
-            icon: <BeerIcon size={20} color={Colors.amber} />,
-          });
-          return;
-        }
-        trackUiInteraction('parta_reaction_add', 'failure');
-        setActive(prevActive);
-        setDisplayCount(prevCount);
-        showToast(t.friends.reactError, {
+    const call =
+      target === 'beerCheckIn'
+        ? turningOn
+          ? reactToBeerCheckIn(activityId, 'cheers')
+          : clearBeerCheckInReaction(activityId)
+        : turningOn
+          ? reactToActivity(activityId, 'cheers')
+          : clearActivityReaction(activityId);
+    void call.then((res) => {
+      if (seq !== seqRef.current) return;
+      pendingRef.current = false;
+      if (res.ok) {
+        trackUiInteraction('parta_reaction_add', 'success');
+        showToast(turningOn ? t.friends.cheersDone : t.friends.cheersUndone, {
           icon: <BeerIcon size={20} color={Colors.amber} />,
         });
-      })
-      .catch((error) => {
-        if (seq !== seqRef.current) return;
-        pendingRef.current = false;
-        setActive(prevActive);
-        setDisplayCount(prevCount);
-        if (!(error instanceof PrivateAccountMutationFrozenError)) {
-          showToast(t.friends.reactError, {
-            icon: <BeerIcon size={20} color={Colors.amber} />,
-          });
+        onChanged?.();
+        return;
+      }
+      if (isRetriableFriendError(res)) {
+        trackUiInteraction('parta_reaction_add', 'success');
+        // Offline / transient: keep the optimistic flip and queue the op so it
+        // lands on the next flush (honest — it WILL send).
+        if (target === 'beerCheckIn') {
+          void enqueueBeerCheckInOp(
+            turningOn ? { op: 'cheer', checkInId: activityId } : { op: 'cheer-clear', checkInId: activityId },
+          );
+        } else {
+          void enqueueFriendOp(
+            turningOn ? { op: 'cheer', activityId } : { op: 'cheer-clear', activityId },
+          );
         }
-      });
+        showToast(t.friends.reactQueued, {
+          icon: <BeerIcon size={20} color={Colors.amber} />,
+        });
+        return;
+      }
+      trackUiInteraction('parta_reaction_add', 'failure');
+      // Hard reject: revert.
+      setActive(prevActive);
+      setDisplayCount(prevCount);
+      showToast(t.friends.reactError, { icon: <BeerIcon size={20} color={Colors.amber} /> });
+    });
   }, [active, busy, displayCount, activityId, target, showToast, onChanged]);
 
   const glyphColor = active ? Colors.amber : Colors.mutedText;
@@ -279,7 +260,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   count: {
-    fontWeight: '600',
+    fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

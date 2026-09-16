@@ -1,5 +1,10 @@
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
 import {
   sessionBreakdown,
+  eveningPriceLabel,
   sessionDrinkActionGroups,
   drinkingDaysBetween,
   eveningDayRelation,
@@ -8,10 +13,6 @@ import {
   sessionDrinkSummary,
 } from '../eveningModel';
 import type { TallySession } from '@/stores/tallyStore';
-
-jest.mock('@react-native-async-storage/async-storage', () =>
-  jest.requireActual('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
 
 let idSeq = 0;
 function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string; drinkType: 'beer' | 'soft_drink' | 'shot'; servingType: 'draft' | 'bottle' }> = {}) {
@@ -186,5 +187,23 @@ describe('drinking-day date helpers', () => {
     expect(eveningDateLabel(today, now)).toBe('Dnes');
     expect(eveningDateLabel(yesterday, now)).toBe('Včera');
     expect(eveningDateLabel(older, now)).toBe('10. 6.');
+  });
+});
+
+
+describe('evening prices', () => {
+  it('distinguishes missing prices, a partial bill and a genuinely free drink', () => {
+    const unpriced = session([drink()]);
+    delete unpriced.drinks[0].priceCzk;
+    expect(eveningPriceLabel(sessionBreakdown(unpriced), 'CZK')).toBe('Cena chybí');
+
+    const mixed = { ...unpriced, drinks: [...unpriced.drinks, drink({ priceCzk: 60 })] };
+    const lines = sessionBreakdown(mixed);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].pricedCount).toBe(1);
+    expect(eveningPriceLabel(lines, 'CZK')).toBe('Nejméně 60 Kč');
+
+    expect(eveningPriceLabel(sessionBreakdown(session([drink({ priceCzk: 0 })])), 'CZK')).toBe('0 Kč');
+    expect(eveningPriceLabel(sessionBreakdown(session([drink({ priceCzk: 60 })])), 'CZK')).toBe('60 Kč');
   });
 });

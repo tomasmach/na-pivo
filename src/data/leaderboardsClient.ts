@@ -6,9 +6,10 @@
  * listed by the server; the caller's own standing arrives separately in `me`
  * so a private user still sees their rank (and the "ukaž se" nudge).
  *
- * Responses are cached in-memory per (account, category, period) so tab-flipping
- * between boards is instant; a hard refresh bypasses the cache. Nothing is
- * persisted to disk — rankings are ephemeral community data and would go stale.
+ * Responses are cached in-memory per (category, period) for the app session so
+ * tab-flipping between boards is instant; a hard refresh bypasses the cache.
+ * Nothing is persisted to disk — rankings are ephemeral community data and
+ * would go stale (and leak across account boundaries) in a snapshot.
  */
 
 import { clearCachedAnonymousAccount, ensureAccount } from './account';
@@ -130,11 +131,9 @@ export function parseLeaderboard(
 }
 
 const memoryCache = new Map<string, { at: number; board: Leaderboard }>();
-let accountBoundaryGeneration = 0;
 
 /** Drop all cached boards — call on logout/account switch. */
 export function clearLeaderboardsCache(): void {
-  accountBoundaryGeneration += 1;
   memoryCache.clear();
 }
 
@@ -145,7 +144,12 @@ export async function fetchLeaderboard(
 ): Promise<Leaderboard | null> {
   // Mapér has a single all-time window; normalise before hitting cache/server.
   const effectivePeriod: LeaderboardPeriod = category === 'mapper' ? 'all' : period;
-  const generation = accountBoundaryGeneration;
+  const cacheKey = `${category}:${effectivePeriod}`;
+
+  if (!options.force) {
+    const hit = memoryCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.board;
+  }
 
   const endpoint = getBackendEndpoint(
     `/v1/leaderboards?category=${category}&period=${effectivePeriod}`,
@@ -153,19 +157,7 @@ export async function fetchLeaderboard(
   if (!endpoint || options.signal?.aborted) return null;
 
   const session = await ensureAccount(options.signal);
-  if (
-    !session ||
-    options.signal?.aborted ||
-    generation !== accountBoundaryGeneration
-  ) {
-    return null;
-  }
-  const cacheKey = `${session.accountId}:${category}:${effectivePeriod}`;
-
-  if (!options.force) {
-    const hit = memoryCache.get(cacheKey);
-    if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.board;
-  }
+  if (!session || options.signal?.aborted) return null;
 
   const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
   try {
@@ -186,15 +178,6 @@ export async function fetchLeaderboard(
     }
     const data = (await resp.json()) as RawLeaderboard;
     const board = parseLeaderboard(data, category, effectivePeriod);
-    const currentSession = await ensureAccount(options.signal);
-    if (
-      !currentSession ||
-      currentSession.accountId !== session.accountId ||
-      options.signal?.aborted ||
-      generation !== accountBoundaryGeneration
-    ) {
-      return null;
-    }
     memoryCache.set(cacheKey, { at: Date.now(), board });
     return board;
   } catch (err) {

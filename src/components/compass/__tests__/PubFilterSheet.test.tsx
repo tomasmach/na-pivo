@@ -1,5 +1,5 @@
 import React from 'react';
-import { cs } from '@/i18n/cs';
+import { t } from '@/i18n';
 import { PubFilterSheet } from '../PubFilterSheet';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -8,22 +8,8 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
-jest.mock('@/components/shared/BottomSheetModal', () => {
-  const ReactModule: typeof import('react') = jest.requireActual('react');
-  return {
-    BottomSheetModal: (props: { children?: React.ReactNode }) =>
-      ReactModule.createElement('BottomSheetModal', props, props.children),
-  };
-});
-jest.mock('@/components/shared/CloseButton', () => {
-  const ReactModule: typeof import('react') = jest.requireActual('react');
-  return {
-    CloseButton: (props: Record<string, unknown>) => ReactModule.createElement('CloseButton', props),
-  };
-});
-
 jest.mock('react-native-reanimated', () => {
-  const ReactModule = jest.requireActual('react');
+  const ReactModule = require('react');
   return {
     __esModule: true,
     default: {
@@ -38,7 +24,7 @@ jest.mock('react-native-reanimated', () => {
 });
 
 jest.mock('@/components/shared/IconGlyph', () => {
-  const ReactModule = jest.requireActual('react');
+  const ReactModule = require('react');
   const icon = () => ReactModule.createElement('Icon');
   return {
     AccessibilityIcon: icon,
@@ -77,15 +63,10 @@ jest.mock('@/data/beerSuggestionsClient', () => ({
   suggestBeerBrands: jest.fn(async () => []),
 }));
 
-const TestRenderer = jest.requireActual('react-test-renderer');
+const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
-function renderSheet(
-  onApply = jest.fn(),
-  onClose = jest.fn(),
-  nearbyPrices: number[] = [],
-  props: Partial<React.ComponentProps<typeof PubFilterSheet>> = {},
-) {
+function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: number[] = []) {
   let renderer: ReturnType<typeof TestRenderer.create>;
   act(() => {
     renderer = TestRenderer.create(
@@ -95,7 +76,6 @@ function renderSheet(
         nearbyPrices={nearbyPrices}
         onClose={onClose}
         onApply={onApply}
-        {...props}
       />,
     );
   });
@@ -103,22 +83,14 @@ function renderSheet(
 }
 
 describe('PubFilterSheet', () => {
-  it('uses the shared keyboard-lifted intent sheet', () => {
-    const { renderer } = renderSheet();
-    expect(renderer.root.findByType('BottomSheetModal').props).toMatchObject({
-      visible: true,
-      keyboardLift: true,
-    });
-  });
-
   it('keeps other tap places off by default and applies the explicit opt-in', () => {
     const { renderer, onApply } = renderSheet();
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.toggleOtherTapPlaces }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.toggleOtherTapPlaces }).props.onPress();
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith(
@@ -131,19 +103,19 @@ describe('PubFilterSheet', () => {
 
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.togglePubAmenityFilter('Platba kartou'),
+        accessibilityLabel: t.a11y.togglePubAmenityFilter('Platba kartou'),
       }).props.onPress();
     });
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.togglePubAmenityFilter('Stolní fotbal'),
+        accessibilityLabel: t.a11y.togglePubAmenityFilter('Stolní fotbal'),
       }).props.onPress();
     });
 
     expect(onApply).not.toHaveBeenCalled();
 
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith({
@@ -161,16 +133,16 @@ describe('PubFilterSheet', () => {
 
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.selectBeerBrand('Pilsner Urquell'),
+        accessibilityLabel: t.a11y.selectBeerBrand('Pilsner Urquell'),
       }).props.onPress();
     });
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.togglePubAmenityFilter('Šipky'),
+        accessibilityLabel: t.a11y.togglePubAmenityFilter('Šipky'),
       }).props.onPress();
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith({
@@ -187,85 +159,32 @@ describe('PubFilterSheet', () => {
 
     act(() => {
       renderer.root.findByProps({
-        accessibilityLabel: cs.a11y.selectBeerBrand('Pilsner Urquell'),
+        accessibilityLabel: t.a11y.selectBeerBrand('Pilsner Urquell'),
       }).props.onPress();
     });
 
     const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
-    expect(text).toContain(cs.compass.beerFilterRotatingHint);
+    expect(text).toContain(t.compass.beerFilterRotatingHint);
   });
 
   it('renders only amenities marked as map-filterable', () => {
     const { renderer } = renderSheet();
 
     expect(renderer.root.findAllByProps({
-      accessibilityLabel: cs.a11y.togglePubAmenityFilter('Jukebox'),
+      accessibilityLabel: t.a11y.togglePubAmenityFilter('Jukebox'),
     })).toHaveLength(0);
     expect(renderer.root.findAllByProps({
-      accessibilityLabel: cs.a11y.togglePubAmenityFilter('Živá hudba'),
+      accessibilityLabel: t.a11y.togglePubAmenityFilter('Živá hudba'),
     })).toHaveLength(0);
-  });
-
-  it('hides the duplicate beer picker and preserves the tank filter for the pub list', () => {
-    const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [], {
-      showBeerFilter: false,
-      showTankFilter: true,
-      tankOnly: false,
-    });
-
-    expect(renderer.root.findAllByProps({ accessibilityLabel: cs.a11y.beerBrandFilterInput })).toHaveLength(0);
-    act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.pubList.tankChipA11y }).props.onPress();
-    });
-    act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
-    });
-
-    expect(onApply).toHaveBeenCalledWith(
-      expect.objectContaining({ beerBrand: null }),
-      { tankOnly: true },
-    );
-  });
-
-  it('counts tank toward the five-property backend limit', () => {
-    const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [], {
-      value: {
-        beerBrand: null,
-        amenityKeys: [
-          'payment_card',
-          'seating_garden',
-          'seating_barrier_free',
-          'game_darts',
-          'game_billiards',
-        ],
-        priceMinCzk: null,
-        priceMaxCzk: null,
-      },
-      showBeerFilter: false,
-      showTankFilter: true,
-      tankOnly: false,
-    });
-
-    act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.pubList.tankChipA11y }).props.onPress();
-    });
-    expect(
-      renderer.root.findAllByProps({ children: cs.compass.pubFilterLimit(5) }).length,
-    ).toBeGreaterThan(0);
-
-    act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
-    });
-    expect(onApply).toHaveBeenCalledWith(expect.any(Object), { tankOnly: false });
   });
 
   it('applies a price range through two independent slider thumbs', () => {
     const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [35, 42, 48, 55, 69]);
     const minSlider = renderer.root.findByProps({
-      accessibilityLabel: cs.a11y.priceFilterMinSlider,
+      accessibilityLabel: t.a11y.priceFilterMinSlider,
     });
     const maxSlider = renderer.root.findByProps({
-      accessibilityLabel: cs.a11y.priceFilterMaxSlider,
+      accessibilityLabel: t.a11y.priceFilterMaxSlider,
     });
 
     act(() => {
@@ -275,7 +194,7 @@ describe('PubFilterSheet', () => {
       maxSlider.props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
     });
     act(() => {
-      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+      renderer.root.findByProps({ accessibilityLabel: t.a11y.applyPubFilters }).props.onPress();
     });
 
     expect(onApply).toHaveBeenCalledWith({
@@ -285,24 +204,5 @@ describe('PubFilterSheet', () => {
       priceMaxCzk: 70,
       includeOtherPlaces: false,
     });
-  });
-
-  it('keeps section labels in sentence case and every text Dynamic Type-safe', () => {
-    const { renderer } = renderSheet(jest.fn(), jest.fn(), [35, 42, 48, 55, 69]);
-    const texts = renderer.root.findAllByType('Text');
-
-    expect(texts.map((node: any) => node.props.children)).toEqual(
-      expect.arrayContaining([
-        cs.compass.beerFilterSection,
-        cs.compass.priceFilterLabel,
-        cs.compass.otherPlacesSection,
-        cs.compass.amenityFilterSections.fun,
-      ]),
-    );
-    for (const node of texts) {
-      expect(
-        node.props.maxFontSizeMultiplier !== undefined || node.props.allowFontScaling === false,
-      ).toBe(true);
-    }
   });
 });

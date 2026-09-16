@@ -13,19 +13,13 @@
  * reconstruct a representative coordinate from the cell centre via
  * decodeGeohash8 — the server re-derives the SAME cache_key from it. `name` is
  * the session's pubName; `started_at` is the session start; `ended_at` is the
- * timestamp of the last counted beer, while `closed_at` marks an explicit local
- * session closure independently of that last sign of activity.
+ * timestamp of the last counted beer (or null for an empty/just-opened session).
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { decodeGeohash8 } from './geohash';
-import { runPrivateAccountMutation } from './privateAccountBoundary';
-import {
-  enqueueVisitOp,
-  flushVisitsQueue,
-  type VisitEnqueueResult,
-} from './visitsQueue';
+import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
@@ -53,11 +47,7 @@ function lastDrinkAt(session: TallySession): string | null {
  *  an outside evening — a `ctx:*` session is not a pub visit: decoding its key
  *  would fabricate coordinates, and drinking at home must never become a
  *  PubVisit (pub stats, párty rituals) server-side. */
-export function buildVisitEntry(
-  session: TallySession,
-  updatedAt?: string,
-  partyCode?: string | null,
-): VisitEntry | null {
+export function buildVisitEntry(session: TallySession, updatedAt?: string): VisitEntry | null {
   if (!session.clientId) return null;
   if (isContextPubKey(session.pubKey)) return null;
   const { lat, lng } = decodeGeohash8(session.pubKey);
@@ -69,41 +59,29 @@ export function buildVisitEntry(
     lng,
     ...(session.pubCity ? { city: session.pubCity } : {}),
     ...(session.pubExternalId ? { external_id: session.pubExternalId } : {}),
-    ...(partyCode ? { party_code: partyCode } : {}),
     started_at: session.startedAt,
     ended_at: endedAt,
-    closed_at: session.closedAt ?? null,
-    updated_at: updatedAt ?? session.closedAt ?? endedAt ?? session.startedAt,
+    updated_at: updatedAt ?? endedAt ?? session.startedAt,
   };
   return entry;
 }
 
 /**
  * Enqueue an upsert for one session. Call after each beer is counted (the
- * current session) so the backend tracks the evening as it grows. Resolves to
- * `storage-error` when the operation was not durably accepted; never throws.
+ * current session) so the backend tracks the evening as it grows. Fire-and-
+ * forget, never throws.
  */
-export type VisitSyncResult = VisitEnqueueResult | 'skipped';
-
-export function syncVisit(
-  session: TallySession | null,
-  updatedAt?: string,
-  partyCode?: string | null,
-  options?: { deliver?: boolean },
-): Promise<VisitSyncResult> {
-  if (!session) return Promise.resolve('skipped');
-  const entry = buildVisitEntry(session, updatedAt, partyCode);
-  if (!entry) return Promise.resolve('skipped');
-  const item = { op: 'upsert' as const, clientId: entry.client_id, entry };
-  return (options ? enqueueVisitOp(item, options) : enqueueVisitOp(item)).catch(
-    () => 'storage-error',
-  );
+export function syncVisit(session: TallySession | null, updatedAt?: string): void {
+  if (!session) return;
+  const entry = buildVisitEntry(session, updatedAt);
+  if (!entry) return;
+  void enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry });
 }
 
-/** Enqueue a delete for a removed evening. The result exposes storage failure and never throws. */
-export function deleteVisitByClientId(clientId: string): Promise<VisitSyncResult> {
-  if (!clientId) return Promise.resolve('skipped');
-  return enqueueVisitOp({ op: 'delete', clientId }).catch(() => 'storage-error');
+/** Enqueue a delete for a removed evening. Fire-and-forget, never throws. */
+export function deleteVisitByClientId(clientId: string): void {
+  if (!clientId) return;
+  void enqueueVisitOp({ op: 'delete', clientId });
 }
 
 /**
@@ -114,7 +92,7 @@ export function deleteVisitByClientId(clientId: string): Promise<VisitSyncResult
  * client_id, so even if the guard is lost this only re-sends, never duplicates.
  * Best-effort, never throws.
  */
-async function seedVisitsFromHistoryWithinBoundary(): Promise<void> {
+export async function seedVisitsFromHistory(): Promise<void> {
   try {
     const already = await AsyncStorage.getItem(SEEDED_KEY);
     if (already) return;
@@ -127,15 +105,14 @@ async function seedVisitsFromHistoryWithinBoundary(): Promise<void> {
   if (current && current.drinks.length > 0) sessions.push(current);
   sessions.push(...history);
 
-  const enqueueOps: ReturnType<typeof enqueueVisitOp>[] = [];
+  const enqueueOps: Promise<void>[] = [];
   for (const session of sessions) {
     const entry = buildVisitEntry(session);
     if (entry) enqueueOps.push(enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry }));
   }
 
   try {
-    const results = await Promise.all(enqueueOps);
-    if (results.some((result) => result === 'storage-error')) return;
+    await Promise.all(enqueueOps);
   } catch {
     // Do not mark the seed as complete unless the visit ops were durably queued.
     return;
@@ -147,14 +124,5 @@ async function seedVisitsFromHistoryWithinBoundary(): Promise<void> {
     // Guard persist failed — worst case we re-seed next launch (idempotent).
   }
 
-}
-
-export async function seedVisitsFromHistory(): Promise<void> {
-  try {
-    await runPrivateAccountMutation(async () => seedVisitsFromHistoryWithinBoundary());
-  } catch {
-    // An account transition owns the seed marker/queues; its next-account
-    // hydration can retry after the boundary reopens.
-  }
-  await flushVisitsQueue().catch(() => undefined);
+  await flushVisitsQueue();
 }

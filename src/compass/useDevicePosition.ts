@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
-import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 
 export interface DevicePosition {
@@ -16,81 +15,19 @@ export interface DevicePosition {
 
 export interface UseDevicePositionResult {
   position: DevicePosition | null;
-  retry: () => Promise<void>;
 }
 
 /** A recent OS-cached fix is accurate enough to choose an initial nearby pub.
- * The live high-accuracy watcher keeps running and replaces it as soon as a
+ * The live BestForNavigation watcher keeps running and replaces it as soon as a
  * fresh sample arrives. A tight age cap prevents a fix from a previous journey
  * from briefly pointing the compass at the wrong city. */
-/**
- * Is the app in front of the user right now?
- *
- * Every guard here used to compare `AppState.currentState === 'active'`, and
- * after a JS reload that read can still be `'unknown'` — the app has never
- * reported a state to this fresh runtime. The watcher then refused to start,
- * and the ONLY way back was an AppState `change` event, which never arrives
- * because the app is already in the foreground: the pub list sat on "Zkusit
- * polohu znovu" with no distances until the app was relaunched.
- *
- * `'unknown'` therefore counts as foreground. Backgrounded and inactive still
- * do not — those are the states the guard actually exists for.
- */
-function isForeground(): boolean {
-  const state = AppState.currentState;
-  return state === 'active' || state === 'unknown';
-}
-
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 100;
 
-/** GPS jitter below these thresholds is invisible to every consumer (distance
- * labels round to meters, retargeting has its own gate), but each published
- * object re-runs the pub-list derivation pipeline. Dedup at the source. */
-const MIN_PUBLISH_MOVEMENT_M = 3;
-const MIN_PUBLISH_ACCURACY_DELTA_M = 5;
-
-const METERS_PER_DEGREE_LAT = 111_320;
-
-/**
- * The last fix this PROCESS saw, shared by every consumer of the hook.
- *
- * Position used to be private state per hook instance, so a screen that mounted
- * mid-session started from `null` and waited for a fresh GPS sample: the pub
- * picker opened over the Hospody tab with no distances and a "no location" empty
- * state, and the party hub drew a black rectangle where its map belongs — both
- * while the phone knew perfectly well where it was.
- *
- * In memory only. Never persisted, never logged, dropped with the process.
- */
-let processPosition: DevicePosition | null = null;
-
-/** Where the phone last was, for a caller that cannot wait for its own fix. */
-export function lastKnownDevicePosition(): DevicePosition | null {
-  return processPosition;
-}
-
-/** Test seam: the module cache must not leak between test cases. */
-export function clearLastKnownDevicePosition(): void {
-  processPosition = null;
-}
-
-function approxDistanceMeters(a: DevicePosition, b: DevicePosition): number {
-  const dLat = (b.lat - a.lat) * METERS_PER_DEGREE_LAT;
-  const dLng =
-    (b.lng - a.lng) *
-    METERS_PER_DEGREE_LAT *
-    Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180));
-  return Math.sqrt(dLat * dLat + dLng * dLng);
-}
-
 export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
-  const [position, setPosition] = useState<DevicePosition | null>(() => processPosition);
-  const [startRequestNonce, setStartRequestNonce] = useState(0);
-  const lastPublishedRef = useRef<DevicePosition | null>(processPosition);
+  const [position, setPosition] = useState<DevicePosition | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const startingRef = useRef(false);
-  const retryQueuedRef = useRef(false);
   const seedingRef = useRef(false);
   const hasPositionRef = useRef(false);
   const isMountedRef = useRef(true);
@@ -106,30 +43,12 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       const { latitude, longitude, accuracy } = location.coords;
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
 
-      const next: DevicePosition = {
+      hasPositionRef.current = true;
+      setPosition({
         lat: latitude,
         lng: longitude,
         accuracyMeters: accuracy ?? 999,
-      };
-      // Walking telemetry consumes the RAW sample stream (pre-dedup) so the
-      // recorded distances keep the exact cadence and values they had when
-      // every sample was published to React state.
-      recordWalkingSample(next);
-      const last = lastPublishedRef.current;
-      if (
-        last &&
-        approxDistanceMeters(last, next) < MIN_PUBLISH_MOVEMENT_M &&
-        Math.abs(last.accuracyMeters - next.accuracyMeters) <
-          MIN_PUBLISH_ACCURACY_DELTA_M
-      ) {
-        hasPositionRef.current = true;
-        return;
-      }
-
-      hasPositionRef.current = true;
-      lastPublishedRef.current = next;
-      processPosition = next;
-      setPosition(next);
+      });
     },
     [],
   );
@@ -144,7 +63,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       });
       if (
         cached &&
-        isForeground() &&
+        AppState.currentState === 'active' &&
         isMountedRef.current &&
         enabledRef.current
       ) {
@@ -169,10 +88,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       void seedFromLastKnownPosition();
       const sub = await Location.watchPositionAsync(
         {
-          // High (~10 m) is enough for "which pub am I at" and the compass
-          // needle; BestForNavigation kept the GPS chip at turn-by-turn duty
-          // cycle for a whole evening at the table.
-          accuracy: Location.Accuracy.High,
+          accuracy: Location.Accuracy.BestForNavigation,
           distanceInterval: 0,
           timeInterval: 1000,
         },
@@ -189,7 +105,7 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
         !isMountedRef.current ||
         !enabledRef.current ||
         subscriptionRef.current ||
-        !isForeground()
+        AppState.currentState !== 'active'
       ) {
         sub.remove();
         return;
@@ -199,18 +115,6 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       // ignore — no permission or GPS unavailable
     } finally {
       startingRef.current = false;
-      const shouldRunQueuedRetry =
-        retryQueuedRef.current &&
-        !subscriptionRef.current &&
-        isMountedRef.current &&
-        enabledRef.current &&
-        isForeground();
-      retryQueuedRef.current = false;
-      if (shouldRunQueuedRetry) {
-        // Re-enter through the effect after this attempt has fully settled.
-        // One nonce coalesces any number of taps and cannot loop by itself.
-        setStartRequestNonce((nonce) => nonce + 1);
-      }
     }
   }, [publishPosition, seedFromLastKnownPosition]);
 
@@ -219,33 +123,17 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     subscriptionRef.current = null;
   }, []);
 
-  const retry = useCallback(async (): Promise<void> => {
-    if (
-      !isMountedRef.current ||
-      !enabledRef.current ||
-      !isForeground()
-    ) {
-      return;
-    }
-    if (startingRef.current) {
-      retryQueuedRef.current = true;
-      return;
-    }
-    stopWatching();
-    await startWatching();
-  }, [startWatching, stopWatching]);
-
   useEffect(() => {
     enabledRef.current = enabled;
 
-    if (enabled && isForeground()) {
+    if (enabled && AppState.currentState === 'active') {
       // Run after the effect body so any cached/native callback updates state as
       // an external-system response, never as a cascading synchronous effect.
       void Promise.resolve().then(startWatching);
     } else {
       stopWatching();
     }
-  }, [enabled, startRequestNonce, startWatching, stopWatching]);
+  }, [enabled, startWatching, stopWatching]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -273,5 +161,5 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     };
   }, [startWatching, stopWatching]);
 
-  return { position, retry };
+  return { position };
 }
