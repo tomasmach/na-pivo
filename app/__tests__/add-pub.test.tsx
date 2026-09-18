@@ -20,6 +20,7 @@ const mockClearPubsSnapshot: jest.Mock = jest.fn(async () => undefined);
 const mockPubIdForCoords: jest.Mock = jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`);
 const mockUpsertLocalPub: jest.Mock = jest.fn();
 const mockFireSuccessHaptic: jest.Mock = jest.fn(async () => undefined);
+const mockLookupAddedPubLocation: jest.Mock = jest.fn();
 const mockResetBeerMapLayerForAddedPub: jest.Mock = jest.fn();
 
 jest.mock('expo-router', () => ({
@@ -126,355 +127,249 @@ jest.mock('@/utils/haptics', () => ({
   fireSuccessHaptic: () => mockFireSuccessHaptic(),
 }));
 
-describe('AddPubScreen', () => {
+jest.mock('@/data/addedPubLocationClient', () => ({
+  lookupAddedPubLocation: (...args: unknown[]) => mockLookupAddedPubLocation(...args),
+}));
+
+jest.mock('@/data/uxTelemetry', () => ({ trackUiInteraction: jest.fn() }));
+
+const resolvedAddress = { lat: 49.1951, lng: 16.6068, city: 'Brno', address: 'Česká 12' };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe('AddPubScreen location confirmation', () => {
   let renderer: ReactTestRenderer | undefined;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSearchParams = {
-      lat: '50.087',
-      lng: '14.421',
-      city: 'Praha',
-    };
+    mockSearchParams = { lat: '50.087', lng: '14.421', city: 'Praha' };
     mockEnsureLocationPermission.mockResolvedValue('granted');
-    mockOpenSystemSettings.mockResolvedValue(undefined);
     mockGetCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 48.1486, longitude: 17.1077 },
     });
+    mockLookupAddedPubLocation.mockResolvedValue(resolvedAddress);
+    mockEnqueueAddedPub.mockResolvedValue('queued');
   });
 
   afterEach(() => {
-    if (!renderer) return;
-
-    act(() => {
-      renderer?.unmount();
-    });
+    act(() => renderer?.unmount());
     renderer = undefined;
   });
 
   function renderScreen() {
-    act(() => {
-      renderer = TestRenderer.create(<AddPubScreen />);
-    });
-    return renderer!;
+    act(() => { renderer = TestRenderer.create(<AddPubScreen />); });
   }
 
-  async function submit() {
-    const saveButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubSaveButton,
-    });
+  function button(label: string) {
+    return renderer!.root.findAllByProps({ accessibilityLabel: label })
+      .find((node) => typeof node.props.onPress === 'function')!;
+  }
 
+  function change(label: string, value: string) {
+    act(() => renderer!.root.findByProps({ accessibilityLabel: label }).props.onChangeText(value));
+  }
+
+  async function press(label: string) {
     await act(async () => {
-      saveButton.props.onPress();
+      button(label).props.onPress();
       await Promise.resolve();
     });
   }
 
-  it('saves with current GPS coordinates when the user explicitly selects current location', async () => {
+  const confirmLabel = `${t.addPub.confirmAddress}: ${resolvedAddress.address}, ${resolvedAddress.city}`;
+  const submit = () => press(t.a11y.addPubSaveButton);
+
+  function fillAddress() {
+    change(t.a11y.addPubNameInput, 'Hospoda U Testu');
+    change(t.a11y.addPubCityInput, 'Brno');
+    change(t.a11y.addPubAddressInput, 'Česká 12');
+  }
+
+  function expectNoWrite() {
+    expect(mockEnqueueAddedPub).not.toHaveBeenCalled();
+    expect(mockEnqueueAddedPubEdit).not.toHaveBeenCalled();
+    expect(mockUpsertLocalPub).not.toHaveBeenCalled();
+    expect(mockBack).not.toHaveBeenCalled();
+  }
+
+  it('saves the explicitly confirmed address instead of route GPS in a different city', async () => {
     renderScreen();
-
-    const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-    });
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubNameInput,
-    });
-    const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubAddressInput,
-    });
-
-    act(() => {
-      currentLocationButton.props.onPress();
-      nameInput.props.onChangeText('Hospoda Bez Mapy');
-      addressInput.props.onChangeText('Dlouhá 33');
-    });
+    fillAddress();
+    await press(t.addPub.findAddress);
+    expect(mockLookupAddedPubLocation).toHaveBeenCalledWith(
+      { address: 'Česká 12', city: 'Brno' }, expect.any(AbortSignal),
+    );
     await submit();
-
-    expect(mockEnsureLocationPermission).not.toHaveBeenCalled();
+    expectNoWrite();
+    await press(confirmLabel);
+    await submit();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
+      client_id: 'uuid-fixed', name: 'Hospoda U Testu', ...resolvedAddress,
+    }));
+    expect(mockUpsertLocalPub).toHaveBeenCalledWith(expect.objectContaining({
+      ...resolvedAddress, userAddedClientId: 'uuid-fixed',
+    }));
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
-    expect(mockUpsertLocalPub).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'local:50.087:14.421',
-        name: 'Hospoda Bez Mapy',
-        lat: 50.087,
-        lng: 14.421,
-        city: 'Praha',
-        address: 'Dlouhá 33',
-        userAddedClientId: 'uuid-fixed',
-      }),
-    );
-    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(
-      expect.objectContaining({
-        client_id: 'uuid-fixed',
-        name: 'Hospoda Bez Mapy',
-        lat: 50.087,
-        lng: 14.421,
-        city: 'Praha',
-        address: 'Dlouhá 33',
-      }),
-    );
-    expect(mockUpsertLocalPub.mock.calls[0][0].userAddedClientId).toBe(
-      mockEnqueueAddedPub.mock.calls[0][0].client_id,
-    );
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('pre-selects the map pin and saves its coordinates without touching GPS', async () => {
-    mockSearchParams = {
-      lat: '50.087',
-      lng: '14.421',
-      source: 'map',
-    };
+  it('takes a fresh GPS fix and requires confirmation of its reverse-geocoded address', async () => {
     renderScreen();
-
-    // The pin arrives selected — no location tap needed before submitting.
-    expect(
-      renderer!.root.findAllByProps({
-        accessibilityLabel: t.a11y.addPubMapPinSelected,
-      }).length,
-    ).toBeGreaterThan(0);
-
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubNameInput,
-    });
-    const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubCityInput,
-    });
-    const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubAddressInput,
-    });
-
-    act(() => {
-      nameInput.props.onChangeText('Hospoda Ze Špendlíku');
-      cityInput.props.onChangeText('Praha');
-      addressInput.props.onChangeText('Dlouhá 33');
-    });
-    await submit();
-
-    expect(mockEnsureLocationPermission).not.toHaveBeenCalled();
-    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
-    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Hospoda Ze Špendlíku',
-        lat: 50.087,
-        lng: 14.421,
-        city: 'Praha',
-        address: 'Dlouhá 33',
-      }),
-    );
-    expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
-    expect(mockBack).toHaveBeenCalledTimes(1);
-  });
-
-  it('lets the user clear the current location selection', () => {
-    renderScreen();
-
-    const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-    });
-
-    act(() => {
-      currentLocationButton.props.onPress();
-    });
-
-    const selectedCurrentLocationButton = renderer!.root
-      .findAllByProps({
-        accessibilityLabel: t.a11y.addPubCurrentLocationSelected,
-      })
-      .find((node) => typeof node.props.onPress === 'function');
-
-    expect(selectedCurrentLocationButton).toBeDefined();
-
-    act(() => {
-      selectedCurrentLocationButton!.props.onPress();
-    });
-
-    expect(
-      renderer!.root.findAllByProps({
-        accessibilityLabel: t.a11y.addPubCurrentLocationSelected,
-      }),
-    ).toHaveLength(0);
-    expect(
-      renderer!.root.findAllByProps({
-        accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-      }).filter((node) => typeof node.props.onPress === 'function').length,
-    ).toBeGreaterThan(0);
-  });
-
-  it('gets a fresh GPS fix when opened without route coordinates', async () => {
-    mockSearchParams = {};
-    renderScreen();
-
-    const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-    });
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubNameInput,
-    });
-    const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubCityInput,
-    });
-    const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubAddressInput,
-    });
-
-    await act(async () => {
-      await currentLocationButton.props.onPress();
-      nameInput.props.onChangeText('Hospoda Bez Geokódu');
-      cityInput.props.onChangeText('Bratislava');
-      addressInput.props.onChangeText('Obchodná 10');
-    });
-    await submit();
-
+    fillAddress();
+    await press(t.a11y.addPubUseCurrentLocationButton);
     expect(mockEnsureLocationPermission).toHaveBeenCalledTimes(1);
     expect(mockGetCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 4 });
-    expect(mockUpsertLocalPub).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'Hospoda Bez Geokódu',
-        lat: 48.1486,
-        lng: 17.1077,
-        city: 'Bratislava',
-        address: 'Obchodná 10',
-      }),
+    expect(mockLookupAddedPubLocation).toHaveBeenCalledWith(
+      { lat: 48.1486, lng: 17.1077 }, expect.any(AbortSignal),
     );
-    expect(mockBack).toHaveBeenCalledTimes(1);
+    await submit();
+    expectNoWrite();
+    await press(confirmLabel);
+    await submit();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining(resolvedAddress));
   });
+
+  it.each(['address', 'GPS'])('does not save or insert GPS after a failed/offline %s lookup', async (source) => {
+    mockLookupAddedPubLocation.mockResolvedValue(null);
+    renderScreen();
+    fillAddress();
+    await press(source === 'address' ? t.addPub.findAddress : t.a11y.addPubUseCurrentLocationButton);
+    await submit();
+    expectNoWrite();
+    expect(JSON.stringify(renderer!.toJSON())).toContain(t.addPub.addressLookupFailed);
+  });
+
+  it('does not save typed text without looking up and confirming the address', async () => {
+    renderScreen();
+    fillAddress();
+    await submit();
+    expectNoWrite();
+  });
+
+  it.each([t.a11y.addPubAddressInput, t.a11y.addPubCityInput])(
+    'invalidates confirmation after changing %s', async (field) => {
+      renderScreen();
+      fillAddress();
+      await press(t.addPub.findAddress);
+      await press(confirmLabel);
+      change(field, 'Jiná adresa');
+      await submit();
+      expectNoWrite();
+    },
+  );
+
+  it('discards an in-flight lookup when its address changes, even if the service resolves late', async () => {
+    const pending = deferred<typeof resolvedAddress>();
+    mockLookupAddedPubLocation.mockReturnValue(pending.promise);
+    renderScreen();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    const signal = mockLookupAddedPubLocation.mock.calls[0][1] as AbortSignal;
+    change(t.a11y.addPubAddressInput, 'Jiná 9');
+    expect(signal.aborted).toBe(true);
+    await act(async () => { pending.resolve(resolvedAddress); });
+    expect(button(confirmLabel)).toBeUndefined();
+    await submit();
+    expectNoWrite();
+  });
+
+  it('preserves an explicitly aimed map pin while offline and marks its origin', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
+    mockLookupAddedPubLocation.mockResolvedValue(null);
+    renderScreen();
+    fillAddress();
+    await submit();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(expect.objectContaining({
+      lat: 50.087, lng: 14.421, location_source: 'map_pin', address: 'Česká 12', city: 'Brno',
+    }));
+    expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
+    expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the user deselect a map pin and blocks saving', async () => {
+    mockSearchParams = { lat: '50.087', lng: '14.421', source: 'map' };
+    renderScreen();
+    fillAddress();
+    await press(t.a11y.addPubMapPinSelected);
+    await submit();
+    expectNoWrite();
+  });
+
+  it.each<Record<string, string>>([{ lng: '14.421' }, { lat: '50.087' }])(
+    'does not turn a missing map coordinate into zero (%j)', async (coordinates) => {
+      mockSearchParams = { ...coordinates, source: 'map' };
+      renderScreen();
+      fillAddress();
+      await submit();
+      expectNoWrite();
+      expect(button(t.a11y.addPubMapPinSelected)).toBeUndefined();
+    },
+  );
 
   it('sends a name-only edit without asking for location again', async () => {
     mockSearchParams = {
-      clientId: 'existing-client-id',
-      name: 'Hospoda U Poutníka',
-      city: 'Praha',
-      address: 'Stará 1',
-      lat: '50.087',
-      lng: '14.421',
+      clientId: 'existing-client-id', name: 'Původní jméno', city: 'Praha',
+      address: 'Stará 1', lat: '50.087', lng: '14.421',
     };
     renderScreen();
-
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubNameInput,
-    });
-
-    act(() => {
-      nameInput.props.onChangeText('Hospoda U Pocestného');
-    });
+    change(t.a11y.addPubNameInput, 'Nové jméno');
     await submit();
-
-    expect(mockEnsureLocationPermission).not.toHaveBeenCalled();
-    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
-      client_id: 'existing-client-id',
-      name: 'Hospoda U Pocestného',
+      client_id: 'existing-client-id', name: 'Nové jméno',
     });
+    expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockUpsertLocalPub).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'Hospoda U Pocestného',
-      lat: 50.087,
-      lng: 14.421,
-      city: 'Praha',
-      address: 'Stará 1',
+      name: 'Nové jméno', lat: 50.087, lng: 14.421, city: 'Praha', address: 'Stará 1',
     }));
   });
 
-  it('requires a fresh GPS fix only when correcting an existing pub location', async () => {
+  it('blocks an edit with changed name and address until the new location is confirmed', async () => {
     mockSearchParams = {
-      clientId: 'existing-client-id',
-      name: 'Hospoda U Poutníka',
-      city: 'Praha',
-      address: 'Stará 1',
-      lat: '50.087',
-      lng: '14.421',
+      clientId: 'existing-client-id', name: 'Původní jméno', city: 'Praha',
+      address: 'Stará 1', lat: '50.087', lng: '14.421',
     };
     renderScreen();
-
-    const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-    });
-    const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubAddressInput,
-    });
-
-    await act(async () => {
-      addressInput.props.onChangeText('Opravená 9');
-      await currentLocationButton.props.onPress();
-    });
+    fillAddress();
     await submit();
-
-    expect(mockEnsureLocationPermission).toHaveBeenCalledTimes(1);
-    expect(mockGetCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 4 });
+    expectNoWrite();
+    await press(t.addPub.findAddress);
+    await submit();
+    expectNoWrite();
+    await press(confirmLabel);
+    await submit();
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
-      client_id: 'existing-client-id',
-      city: 'Praha',
-      address: 'Opravená 9',
-      lat: 48.1486,
-      lng: 17.1077,
+      client_id: 'existing-client-id', name: 'Hospoda U Testu', ...resolvedAddress,
     });
   });
 
-  it('does not treat a typed address as a location without GPS confirmation', async () => {
+  it('queues only one pub when save is tapped twice before a render', async () => {
     renderScreen();
-
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubNameInput,
-    });
-    const addressInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubAddressInput,
-    });
-    const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubCityInput,
-    });
-
-    act(() => {
-      nameInput.props.onChangeText('Hospoda Bez Polohy');
-      addressInput.props.onChangeText('Neznámá 123');
-      cityInput.props.onChangeText('Praha');
-    });
-    await submit();
-
-    expect(mockUpsertLocalPub).not.toHaveBeenCalled();
-    expect(mockEnqueueAddedPub).not.toHaveBeenCalled();
-    expect(mockBack).not.toHaveBeenCalled();
+    fillAddress();
+    await press(t.addPub.findAddress);
+    await press(confirmLabel);
+    const save = button(t.a11y.addPubSaveButton).props.onPress;
+    await act(async () => { save(); save(); });
+    expect(mockEnqueueAddedPub).toHaveBeenCalledTimes(1);
+    expect(mockUpsertLocalPub).toHaveBeenCalledTimes(1);
+    expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('requires both city and address before saving a GPS-confirmed pub', async () => {
-    renderScreen();
-
-    const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-    });
-    const nameInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubNameInput,
-    });
-    const cityInput = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubCityInput,
-    });
-
-    act(() => {
-      currentLocationButton.props.onPress();
-      nameInput.props.onChangeText('Hospoda Bez Adresy');
-      cityInput.props.onChangeText('Praha');
-    });
-    await submit();
-
-    expect(mockUpsertLocalPub).not.toHaveBeenCalled();
-    expect(mockEnqueueAddedPub).not.toHaveBeenCalled();
-    expect(mockBack).not.toHaveBeenCalled();
-  });
-
-  it('opens settings when location permission is denied', async () => {
-    mockSearchParams = {};
+  it('shows permission failure and offers settings without selecting stale route GPS', async () => {
     mockEnsureLocationPermission.mockResolvedValue('denied');
     renderScreen();
-
-    const currentLocationButton = renderer!.root.findByProps({
-      accessibilityLabel: t.a11y.addPubUseCurrentLocationButton,
-    });
-
-    await act(async () => {
-      await currentLocationButton.props.onPress();
-    });
-
+    fillAddress();
+    await press(t.a11y.addPubUseCurrentLocationButton);
+    await submit();
     expect(mockOpenSystemSettings).toHaveBeenCalledTimes(1);
     expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
-    expect(mockShowToast).toHaveBeenCalledWith(t.addPub.locationPermissionDenied);
+    expect(mockLookupAddedPubLocation).not.toHaveBeenCalled();
+    expect(JSON.stringify(renderer!.toJSON())).toContain(t.addPub.locationPermissionDenied);
+    expectNoWrite();
   });
 });

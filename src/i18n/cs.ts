@@ -795,14 +795,19 @@ export const cs = {
   },
 
   addPub: {
+    findAddress: 'Najít podle adresy',
+    confirmAddress: 'Použít tuto adresu',
+    addressConfirmed: 'Potvrzená adresa',
+    addressLookupFailed: 'Adresu se nepodařilo ověřit. Zkontroluj připojení a zkus to znovu.',
+
     title: 'Přidat hospodu',
     editTitle: 'Opravit hospodu',
     intro:
       'Vyplň název, město a adresu a potvrď, kde hospoda stojí. Po odeslání ji uvidí i ostatní.',
     editIntro:
-      'Název můžeš opravit hned. Pro změnu adresy potvrď nový bod přímo u hospody.',
+      'Název můžeš opravit hned. Při změně adresy najdi a potvrď její polohu.',
     locationHeader: 'Poloha',
-    locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložím jen tenhle bod, žádnou trasu ani historii polohy.',
+    locationBody: 'Najdi hospodu podle adresy nebo si nech zjistit adresu místa, kde stojíš.',
     editLocationHeader: 'Změna polohy (nepovinná)',
     editLocationBody: 'Původní bod zůstane beze změny. Novou adresu a polohu potvrď jen tehdy, když opravdu nesedí.',
     useCurrentLocation: 'Použít moji aktuální polohu',
@@ -813,7 +818,7 @@ export const cs = {
     mapPinSelectedTitle: 'Použije se špendlík z mapy',
     mapPinSelectedBody: 'Bod, kam míří špendlík. Doplň k němu adresu a město.',
     editUseCurrentLocation: 'Opravit adresu a polohu',
-    editUseCurrentLocationHint: 'Zapni přímo u hospody, pak uprav město a adresu.',
+    editUseCurrentLocationHint: 'Zjistím adresu místa, kde právě stojíš.',
     locating: 'Zjišťuju polohu…',
     nameLabel: 'Název',
     namePlaceholder: 'Např. Hospoda U Komunity',
