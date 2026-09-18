@@ -1604,6 +1604,18 @@ class PubNameCorrectionView(APIView):
         )
 
 
+def _user_added_pub_location_error(*, not_found: bool = False) -> Response:
+    # Released clients permanently discard queued writes on 400/422. Keep an
+    # unverified address retryable without publishing the device's coordinates.
+    return Response(
+        {
+            "detail": gettext("Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."),
+            "code": "location_not_found" if not_found else "geocoding_unavailable",
+        },
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
 class UserAddedPubView(APIView):
     """
     POST /v1/pubs
@@ -1685,29 +1697,19 @@ class UserAddedPubView(APIView):
                         "user-added-pub: create location verification unavailable: %s",
                         type(exc).__name__,
                     )
-                    resolved = None
+                    return _user_added_pub_location_error()
+                if resolved is None:
+                    return _user_added_pub_location_error(not_found=True)
 
-                verify_max_km = max(
-                    0.05,
-                    float(
-                        getattr(
-                            settings,
-                            "USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS",
-                            500,
-                        )
-                    )
-                    / 1000,
-                )
-                if (
-                    resolved is not None
-                    and _haversine_km(lat, lng, resolved.lat, resolved.lng)
-                    > verify_max_km
-                ):
-                    lat = resolved.lat
-                    lng = resolved.lng
-                    location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
-                    google_place_id = resolved.place_id
-                    location_synced_at = dj_timezone.now()
+                # Legacy clients send device GPS alongside an entered address.
+                # Even a nearby GPS point may belong to a different building.
+                lat = resolved.lat
+                lng = resolved.lng
+                city = resolved.city
+                address = resolved.address
+                location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
+                google_place_id = resolved.place_id
+                location_synced_at = dj_timezone.now()
         elif address and city:
             try:
                 resolved = resolve_user_added_pub_location(
@@ -1717,26 +1719,14 @@ class UserAddedPubView(APIView):
                     lat=data.get("lat"),
                     lng=data.get("lng"),
                 )
-            except GoogleGeocodingUnavailableError as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "user-added-pub: Google geocoding unavailable: %s",
                     type(exc).__name__,
                 )
-                return Response(
-                    {
-                        "detail": "Geocoding is temporarily unavailable.",
-                        "code": "geocoding_unavailable",
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+                return _user_added_pub_location_error()
             if resolved is None:
-                return Response(
-                    {
-                        "detail": "The address could not be located precisely.",
-                        "code": "location_not_found",
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
+                return _user_added_pub_location_error(not_found=True)
             lat = resolved.lat
             lng = resolved.lng
             city = resolved.city
@@ -1840,26 +1830,14 @@ class UserAddedPubView(APIView):
                     lat=data["lat"],
                     lng=data["lng"],
                 )
-            except GoogleGeocodingUnavailableError as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "user-added-pub: edit geocoding unavailable: %s",
                     type(exc).__name__,
                 )
-                return Response(
-                    {
-                        "detail": "Geocoding is temporarily unavailable.",
-                        "code": "geocoding_unavailable",
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
-                )
+                return _user_added_pub_location_error()
             if resolved is None:
-                return Response(
-                    {
-                        "detail": "The address could not be located precisely.",
-                        "code": "location_not_found",
-                    },
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                )
+                return _user_added_pub_location_error(not_found=True)
 
             verify_max_km = max(
                 0.05,
@@ -10183,8 +10161,11 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
     max_items = 3
 
     def _lookup_response(self, data: dict) -> Response:
-        place_id = data.get("place_id") or ""
-        if not place_id:
+        # Address lookup must not return a similarly named pub or a place-id
+        # result that bypasses the provider's rooftop precision requirement.
+        address_lookup = data["address_lookup"]
+        place_id = "" if address_lookup else data.get("place_id") or ""
+        if not place_id and not address_lookup:
             local_items = self._local_items(
                 data["query"],
                 data.get("lat"),
@@ -10256,6 +10237,7 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
             "type": "regional.address",
             "regionalStructure": regional_structure,
             "attributions": ["Google Maps"],
+            **({"precise": True} if address_lookup else {}),
         }
         return Response({"items": [item]}, status=status.HTTP_200_OK)
 
@@ -10291,7 +10273,9 @@ class PubLocationReverseGeocodeView(APIView):
                     cap=daily_cap,
                 ),
             ) as source:
-                candidate = source.reverse_geocode(lat=data["lat"], lng=data["lng"])
+                candidate = source.reverse_geocode(
+                    lat=data["lat"], lng=data["lng"], require_precise=data["require_precise"],
+                )
         except GoogleGeocodingUnavailableError as exc:
             logger.warning(
                 "pubs-reverse-geocode: Google lookup unavailable: %s: %s",
@@ -10338,6 +10322,7 @@ class PubLocationReverseGeocodeView(APIView):
                         "type": "regional.address",
                         "regionalStructure": regional_structure,
                         "attributions": ["Google Maps"],
+                        **({"precise": True} if data["require_precise"] else {}),
                     }
                 ]
             },
