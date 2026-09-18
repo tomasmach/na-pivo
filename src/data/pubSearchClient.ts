@@ -171,7 +171,7 @@ export function localPubSearch(query: string): PubSearchResult[] {
 
 async function postItems(
   path: '/v1/pubs/suggest' | '/v1/pubs/geocode',
-  body: Record<string, string>,
+  body: Record<string, string | boolean>,
   signal?: AbortSignal,
 ): Promise<{ items: WireSearchItem[]; failed: boolean }> {
   const endpoint = getBackendEndpoint(path);
@@ -214,7 +214,7 @@ export async function searchPubNames(
     // The in-memory catalogue remains useful when persisted storage is malformed.
   }
   const local = localPubSearch(trimmed);
-  const response = await postItems('/v1/pubs/suggest', { query: trimmed }, signal);
+  const response = await postItems('/v1/pubs/suggest', { query: trimmed, pub_search: true }, signal);
   const remote = response.items
     .map((item) => resultFromWire(item))
     .filter((item): item is PubSearchResult => item !== null);
@@ -243,7 +243,7 @@ export async function resolvePubSearchResult(
 
   const response = await postItems(
     '/v1/pubs/geocode',
-    { query: result.name, place_id: result.providerPlaceId },
+    { query: result.name, place_id: result.providerPlaceId, pub_search: true },
     signal,
   );
   if (response.failed) return null;

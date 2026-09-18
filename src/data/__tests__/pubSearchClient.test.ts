@@ -79,6 +79,10 @@ describe('pubSearchClient', () => {
     expect(result.pubs.map((pub) => pub.id)).toEqual(['directory-1', 'old-2', 'google:abc']);
     expect(result.pubs[0].pub).toBe(local);
     expect(result.pubs[2]).toEqual(expect.objectContaining({ providerPlaceId: 'abc', location: 'Znojmo' }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/v1/pubs/suggest'),
+      expect.objectContaining({ body: JSON.stringify({ query: 'jelen', pub_search: true }) }),
+    );
   });
 
   it('returns local matches and failed true for HTTP, network and abort failures', async () => {
@@ -176,7 +180,17 @@ describe('pubSearchClient', () => {
       }),
     );
     const init = (fetchMock.mock.calls[0] as unknown[])[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ query: 'U Zlatého jelena', place_id: 'abc' });
+    expect(JSON.parse(String(init.body))).toEqual({ query: 'U Zlatého jelena', place_id: 'abc', pub_search: true });
+  });
+
+  it('does not open a Google suggestion rejected by the pub-search geocoder', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ items: [] }),
+    })) as unknown as typeof fetch;
+    await expect(resolvePubSearchResult({
+      id: 'google:closed', name: 'Closed pub', providerPlaceId: 'closed',
+    })).resolves.toBeNull();
   });
 
   it('never throws and rejects malformed coordinates while resolving', async () => {

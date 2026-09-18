@@ -2607,6 +2607,7 @@ class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers
     """Query params for local-first pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
+    pub_search = serializers.BooleanField(required=False, default=False)
     place_id = serializers.CharField(
         max_length=255,
         required=False,
