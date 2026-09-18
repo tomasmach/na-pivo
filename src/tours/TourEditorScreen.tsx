@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Keyboard, Modal, PanResponder, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useNavigation, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,13 +27,17 @@ function dateValue(value: string): string | null | false {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? iso : false;
 }
 function DragHandle({ onDrop, onDrag }: { onDrop: (dy: number) => void; onDrag: (active: boolean, dy: number) => void }) {
+  const callbacks = useRef({ onDrop, onDrag });
+  useLayoutEffect(() => { callbacks.current = { onDrop, onDrag }; }, [onDrop, onDrag]);
+  // PanResponder invokes these callbacks on touch events, never during render.
+  // eslint-disable-next-line react-hooks/refs
   const pan = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => onDrag(true, 0),
-    onPanResponderMove: (_, state) => onDrag(true, state.dy),
-    onPanResponderRelease: (_, state) => { onDrag(false, 0); onDrop(state.dy); },
-    onPanResponderTerminate: () => onDrag(false, 0),
-  }), [onDrop, onDrag]);
+    onPanResponderGrant: () => callbacks.current.onDrag(true, 0),
+    onPanResponderMove: (_, state) => callbacks.current.onDrag(true, state.dy),
+    onPanResponderRelease: (_, state) => { callbacks.current.onDrag(false, 0); callbacks.current.onDrop(state.dy); },
+    onPanResponderTerminate: () => callbacks.current.onDrag(false, 0),
+  }), []);
   return <View {...pan.panHandlers} style={ui.iconButton} accessible accessibilityRole="adjustable" accessibilityLabel={t.tours.reorder} accessibilityHint={t.tours.dragHint}>
     <GripVerticalIcon size={20} color={Colors.foamMuted} />
   </View>;
