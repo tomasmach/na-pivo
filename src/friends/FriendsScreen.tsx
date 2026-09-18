@@ -91,7 +91,6 @@ import {
   type FriendPubActivity,
   type FriendsDashboard,
   type Friendship,
-  type LeaderboardEntry,
 } from '@/data/friendsClient';
 import {
   enqueueFriendOp,
@@ -138,6 +137,7 @@ import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
 import { LeaderboardRow } from './LeaderboardRow';
+import { partyLeaderboard, partyLeaderboardEmptyMessage } from './partyLeaderboard';
 import MyActivityCard from './MyActivityCard';
 import SegmentedControl from './SegmentedControl';
 import { PartaPlans } from './PartaPlans';
@@ -988,29 +988,16 @@ export default function FriendsScreen() {
   // sorts by visits; the beer order is this screen's own cut of the same rows.
   // An older backend omits beers_30d → the toggle hides and visits stand alone.
   const partyBoard = useMemo(() => d?.leaderboard ?? [], [d?.leaderboard]);
-  const boardHasBeers =
-    partyBoard.length > 0 && partyBoard.every((entry) => entry.beers30d != null);
-  const activeBoardMetric: 0 | 1 = boardHasBeers ? boardMetric : 1;
-  const rankedBoard = useMemo(() => {
-    if (activeBoardMetric === 1) return partyBoard;
-    return [...partyBoard].sort(
-      (a, b) =>
-        (b.beers30d ?? 0) - (a.beers30d ?? 0) ||
-        b.visits30d - a.visits30d ||
-        b.sharedCount - a.sharedCount,
-    );
-  }, [activeBoardMetric, partyBoard]);
+  const { hasBeers: boardHasBeers, metric: activeBoardMetric, rows: rankedBoard } = useMemo(
+    () => partyLeaderboard(partyBoard, boardMetric),
+    [partyBoard, boardMetric],
+  );
   // Top rows + a tappable "+N dalších" expand, but ALWAYS pin my row while
   // collapsed (expanding shows everyone, me included).
   const visibleBoard = showAllBoard ? rankedBoard : rankedBoard.slice(0, LEADERBOARD_CAP);
   const hiddenBoardCount = rankedBoard.length - visibleBoard.length;
   const myBoardIndex = rankedBoard.findIndex((entry) => entry.isMe);
   const myBoardPinned = !showAllBoard && hiddenBoardCount > 0 && myBoardIndex >= LEADERBOARD_CAP;
-  const boardValue = useCallback(
-    (entry: LeaderboardEntry) =>
-      activeBoardMetric === 0 ? (entry.beers30d ?? 0) : entry.visits30d,
-    [activeBoardMetric],
-  );
   const boardCaption = useCallback(
     (value: number) =>
       activeBoardMetric === 0
@@ -1371,27 +1358,27 @@ export default function FriendsScreen() {
             {t.friends.leaderboardHeader}
           </Text>
 
+          {partyBoard.length > 1 && boardHasBeers ? (
+            <View style={styles.boardSwitch}>
+              <SegmentedControl
+                options={[t.friends.leaderboardMetricBeers, t.friends.leaderboardMetricVisits]}
+                value={activeBoardMetric}
+                onChange={setBoardMetric}
+                accessibilityLabel={t.a11y.partyLeaderboardMetric}
+              />
+            </View>
+          ) : null}
+
           {rankedBoard.length > 1 ? (
             <>
-              {boardHasBeers ? (
-                <View style={styles.boardSwitch}>
-                  <SegmentedControl
-                    options={[t.friends.leaderboardMetricBeers, t.friends.leaderboardMetricVisits]}
-                    value={activeBoardMetric}
-                    onChange={setBoardMetric}
-                    accessibilityLabel={t.a11y.partyLeaderboardMetric}
-                  />
-                </View>
-              ) : null}
-
               <View style={styles.card}>
                 {visibleBoard.map((entry, index) => (
                   <LeaderboardRow
                     key={entry.account.id || `rank-${index}`}
                     entry={entry}
                     rank={index + 1}
-                    value={boardValue(entry)}
-                    caption={boardCaption(boardValue(entry))}
+                    value={entry.value}
+                    caption={boardCaption(entry.value)}
                     divided={index > 0}
                     onPress={
                       entry.isMe || !entry.account.id
@@ -1414,8 +1401,8 @@ export default function FriendsScreen() {
                       key="me-pinned"
                       entry={rankedBoard[myBoardIndex]}
                       rank={myBoardIndex + 1}
-                      value={boardValue(rankedBoard[myBoardIndex])}
-                      caption={boardCaption(boardValue(rankedBoard[myBoardIndex]))}
+                      value={rankedBoard[myBoardIndex].value}
+                      caption={boardCaption(rankedBoard[myBoardIndex].value)}
                     />
                   </>
                 ) : null}
@@ -1436,7 +1423,7 @@ export default function FriendsScreen() {
             </>
           ) : loading && !d ? null : (
             <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {t.friends.leaderboardEmpty}
+              {t.friends[partyLeaderboardEmptyMessage(partyBoard.length, friendCount)]}
             </Text>
           )}
 

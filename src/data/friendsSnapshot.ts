@@ -20,6 +20,7 @@ import type { FriendsDashboard } from './friendsClient';
 export const FRIENDS_DASHBOARD_SNAPSHOT_KEY = 'na-pivo-friends-dashboard';
 
 interface StoredSnapshot {
+  leaderboardVersion: 1;
   savedAt: number;
   dashboard: FriendsDashboard;
 }
@@ -58,7 +59,7 @@ export async function saveFriendsDashboardSnapshot(
 ): Promise<void> {
   if (generation !== boundaryGeneration) return;
   try {
-    const payload: StoredSnapshot = { savedAt: Date.now(), dashboard };
+    const payload: StoredSnapshot = { savedAt: Date.now(), dashboard, leaderboardVersion: 1 };
     await AsyncStorage.setItem(FRIENDS_DASHBOARD_SNAPSHOT_KEY, JSON.stringify(payload));
     // A boundary clear that landed while we were writing would otherwise leave our
     // just-written blob behind — undo it if the generation moved mid-write.
@@ -92,6 +93,10 @@ export async function loadFriendsDashboardSnapshot(): Promise<FriendsDashboardSn
         // the screen reads them unconditionally. Backfill rather than reject —
         // a cold start offline should still show the last-known graph.
         ...dashboard,
+        // Older parsers collapsed private visits to zero. Those counts cannot
+        // be recovered offline; refresh only the leaderboard from the API.
+        leaderboard: parsed.leaderboardVersion === 1 && Array.isArray(dashboard.leaderboard)
+          ? dashboard.leaderboard : [],
         presence: Array.isArray(dashboard.presence) ? dashboard.presence : [],
         myPresence: dashboard.myPresence ?? null,
       },

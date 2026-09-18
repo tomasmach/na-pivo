@@ -1453,6 +1453,8 @@ export const cs = {
     leaderboardMetricBeers: 'Piva',
     leaderboardMetricVisits: 'Návštěvy',
     leaderboardMe: 'Ty',
+    leaderboardUnavailable: 'Žebříček zatím není načtený.',
+    leaderboardPrivateEmpty: 'V tomhle žebříčku zatím nemáš s kým soupeřit.',
     leaderboardEmpty: 'Zatím nemáš s kým soupeřit. Přiber parťáky.',
     leaderboardMore: (n: number) =>
       n === 1 ? '+1 další' : n >= 2 && n <= 4 ? `+${n} další` : `+${n} dalších`,

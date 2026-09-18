@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { partyLeaderboardEmptyMessage } from '@/friends/partyLeaderboard';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -79,4 +80,26 @@ it('persists a write made under the post-clear generation (guard is not permanen
   await saveFriendsDashboardSnapshot(withFriend('bob'), snapshotGeneration());
   const snap = await loadFriendsDashboardSnapshot();
   expect(snap?.dashboard.friends[0].id).toBe('bob');
+});
+
+it('drops ambiguous legacy leaderboard counts while keeping the offline friend list', async () => {
+  const legacy = withFriend('private');
+  legacy.leaderboard = [{ account: legacy.friends[0], visits30d: 0, beers30d: null, sharedCount: 0, isMe: false }];
+  await AsyncStorage.setItem('na-pivo-friends-dashboard', JSON.stringify({ savedAt: Date.now(), dashboard: legacy }));
+  const snap = await loadFriendsDashboardSnapshot();
+  expect(snap?.dashboard.friends).toEqual(legacy.friends);
+  expect(snap?.dashboard.leaderboard).toEqual([]);
+  expect(partyLeaderboardEmptyMessage(snap!.dashboard.leaderboard.length, snap!.dashboard.friends.length))
+    .toBe('leaderboardUnavailable');
+});
+
+it('round-trips private, zero and omitted counts without changing their meaning', async () => {
+  const current = withFriend('private');
+  current.leaderboard = [
+    { account: current.friends[0], visits30d: null, beers30d: null, sharedCount: 0, isMe: false },
+    { account: current.friends[0], visits30d: 0, beers30d: 0, sharedCount: 0, isMe: false },
+    { account: current.friends[0], visits30d: 2, sharedCount: 0, isMe: false },
+  ];
+  await saveFriendsDashboardSnapshot(current, snapshotGeneration());
+  expect((await loadFriendsDashboardSnapshot())?.dashboard.leaderboard).toEqual(current.leaderboard);
 });
