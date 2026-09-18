@@ -41,7 +41,19 @@ def _generous_throttle(settings):
             "added_pubs": "10000/min",
         },
     }
-    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=None):
+
+    def resolved_location(**data):
+        return ResolvedPubLocation(
+            name=data["name"],
+            lat=data["lat"],
+            lng=data["lng"],
+            city=data["city"],
+            address=data["address"],
+            result_type="street_address",
+            place_id="verified-test-pub",
+        )
+
+    with patch("pubs.api.views.resolve_user_added_pub_location", side_effect=resolved_location):
         yield
     cache.clear()
 
@@ -95,14 +107,14 @@ def test_add_pub_creates_live_row(client):
     assert pub.cache_key == _KEY
     assert pub.city == "Praha"
     assert pub.address == "Testovací 12"
-    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
-    assert pub.google_place_id == ""
-    assert pub.location_synced_at is None
+    assert pub.location_source == UserAddedPub.LocationSource.GOOGLE_GEOCODE
+    assert pub.google_place_id == "verified-test-pub"
+    assert pub.location_synced_at is not None
     assert "location_source" not in body
 
 
 @pytest.mark.django_db
-def test_add_pub_keeps_submitted_coords_when_location_cannot_be_resolved(client):
+def test_add_pub_retries_without_publishing_when_location_cannot_be_resolved(client):
     token = _register(client)
 
     with patch(
@@ -111,7 +123,8 @@ def test_add_pub_keeps_submitted_coords_when_location_cannot_be_resolved(client)
     ) as resolver:
         resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
-    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert resp.json()["code"] == "location_not_found"
     resolver.assert_called_once_with(
         name=_NAME,
         address="Testovací 12",
@@ -119,31 +132,91 @@ def test_add_pub_keeps_submitted_coords_when_location_cannot_be_resolved(client)
         lat=_LAT,
         lng=_LNG,
     )
-    pub = UserAddedPub.objects.get()
-    assert pub.lat == _LAT
-    assert pub.lng == _LNG
-    assert pub.cache_key == _KEY
-    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
-    assert pub.google_place_id == ""
-    assert pub.location_synced_at is None
-    assert resp.json()["cache_key"] == _KEY
+    assert not UserAddedPub.objects.exists()
 
 
 @pytest.mark.django_db
-def test_add_pub_keeps_submitted_coords_when_verification_errors(client):
+@pytest.mark.parametrize(
+    "error", [GoogleGeocodingUnavailableError("unavailable"), RuntimeError("failure")]
+)
+def test_add_pub_retries_without_publishing_when_verification_errors(client, error):
     token = _register(client)
 
     with patch(
         "pubs.api.views.resolve_user_added_pub_location",
-        side_effect=GoogleGeocodingUnavailableError("unavailable"),
+        side_effect=error,
     ):
         resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
-    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert resp.json()["code"] == "geocoding_unavailable"
+    assert not UserAddedPub.objects.exists()
+
+
+@pytest.mark.django_db
+def test_legacy_add_pub_retry_publishes_only_verified_location_once(client):
+    token = _register(client)
+    payload = _payload(city="Brno", address="Opravená 9")
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=49.1951,
+        lng=16.6068,
+        city="Brno",
+        address="Opravená 9",
+        result_type="street_address",
+        place_id="verified-brno",
+    )
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location", side_effect=[None, resolved]
+    ) as resolver:
+        first = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
+        assert first.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert client.get("/v1/pubs", **_auth(token)).json() == []
+        assert not UserAddedPub.objects.exists()
+        retry = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
+        duplicate = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
+    assert retry.status_code == status.HTTP_201_CREATED
+    assert duplicate.status_code == status.HTTP_200_OK
+    assert resolver.call_count == 2
+    assert UserAddedPub.objects.count() == 1
     pub = UserAddedPub.objects.get()
-    assert pub.lat == _LAT
-    assert pub.lng == _LNG
-    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+    assert (pub.lat, pub.lng) == (resolved.lat, resolved.lng)
+    assert client.get("/v1/pubs", **_auth(token)).json()[0]["lat"] == resolved.lat
+
+
+@pytest.mark.django_db
+def test_add_pub_without_address_keeps_legacy_coordinate_contract(client):
+    token = _register(client)
+    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+        response = client.post(
+            "/v1/pubs", data=_payload(address="", city=""), format="json", **_auth(token)
+        )
+    assert response.status_code == status.HTTP_201_CREATED
+    resolver.assert_not_called()
+    pub = UserAddedPub.objects.get()
+    assert (pub.lat, pub.lng) == (_LAT, _LNG)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "language,detail",
+    [
+        ("cs", "Polohu podle adresy se nepodařilo ověřit. Zkus to znovu."),
+        ("en", "The address location could not be verified. Try again."),
+    ],
+)
+def test_unverified_location_error_is_translated(client, language, detail):
+    token = _register(client)
+    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=None):
+        response = client.post(
+            "/v1/pubs",
+            data=_payload(),
+            format="json",
+            HTTP_ACCEPT_LANGUAGE=language,
+            **_auth(token),
+        )
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json()["detail"] == detail
 
 
 @pytest.mark.django_db
@@ -180,15 +253,15 @@ def test_add_pub_snaps_legacy_coords_to_distant_resolved_address(client, setting
 
 
 @pytest.mark.django_db
-def test_add_pub_keeps_legacy_coords_near_resolved_address(client, settings):
+def test_add_pub_uses_address_even_when_legacy_gps_is_only_212_meters_away(client, settings):
     settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
     token = _register(client)
     resolved = ResolvedPubLocation(
         name=_NAME,
-        lat=_LAT + 0.0001,
-        lng=_LNG + 0.0001,
+        lat=_LAT + 0.0019,
+        lng=_LNG,
         city="Praha",
-        address="Testovací 12",
+        address="Ověřená 12",
         result_type="street_address",
         place_id="ChIJ-nearby-pub",
     )
@@ -201,12 +274,13 @@ def test_add_pub_keeps_legacy_coords_near_resolved_address(client, settings):
 
     assert resp.status_code == status.HTTP_201_CREATED
     pub = UserAddedPub.objects.get()
-    assert pub.lat == _LAT
-    assert pub.lng == _LNG
-    assert pub.cache_key == _KEY
-    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
-    assert pub.google_place_id == ""
-    assert pub.location_synced_at is None
+    assert pub.lat == resolved.lat
+    assert pub.lng == resolved.lng
+    assert pub.cache_key == resolved.cache_key
+    assert pub.location_source == UserAddedPub.LocationSource.GOOGLE_GEOCODE
+    assert pub.google_place_id == "ChIJ-nearby-pub"
+    assert pub.location_synced_at is not None
+    assert pub.address == "Ověřená 12"
 
 
 @pytest.mark.django_db
@@ -270,7 +344,7 @@ def test_add_pub_geocodes_only_when_coordinates_are_missing(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_returns_422_when_address_is_not_precise(client):
+def test_add_pub_retries_address_only_when_address_is_not_precise(client):
     token = _register(client)
     payload = _payload()
     payload.pop("lat")
@@ -282,12 +356,16 @@ def test_add_pub_returns_422_when_address_is_not_precise(client):
     ):
         resp = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
 
-    assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert resp.json()["code"] == "location_not_found"
+    assert not UserAddedPub.objects.exists()
 
 
 @pytest.mark.django_db
-def test_add_pub_returns_503_when_google_is_unavailable(client):
+@pytest.mark.parametrize(
+    "error", [GoogleGeocodingUnavailableError("unavailable"), RuntimeError("failure")]
+)
+def test_add_pub_returns_503_when_google_is_unavailable(client, error):
     token = _register(client)
     payload = _payload()
     payload.pop("lat")
@@ -295,7 +373,7 @@ def test_add_pub_returns_503_when_google_is_unavailable(client):
 
     with patch(
         "pubs.api.views.resolve_user_added_pub_location",
-        side_effect=GoogleGeocodingUnavailableError("unavailable"),
+        side_effect=error,
     ):
         resp = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
 
@@ -594,6 +672,34 @@ def test_location_correction_rejects_pin_far_from_verified_address(client, setti
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "error", [None, GoogleGeocodingUnavailableError("unavailable"), RuntimeError("failure")]
+)
+def test_location_correction_stays_retryable_and_preserves_original_on_lookup_failure(
+    client, error
+):
+    token = _register(client)
+    assert (
+        client.post("/v1/pubs", data=_payload(), format="json", **_auth(token)).status_code == 201
+    )
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location", return_value=None, side_effect=error
+    ):
+        response = client.patch(
+            f"/v1/pubs/{_CLIENT_ID}",
+            data={"address": "Opravená 9", "city": "Brno", "lat": 49.1951, "lng": 16.6068},
+            format="json",
+            **_auth(token),
+        )
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json()["code"] == (
+        "location_not_found" if error is None else "geocoding_unavailable"
+    )
+    pub = UserAddedPub.objects.get()
+    assert (pub.lat, pub.lng, pub.address) == (_LAT, _LNG, "Testovací 12")
+
+
+@pytest.mark.django_db
 def test_foreign_location_correction_is_hidden_and_does_not_geocode(client):
     owner_token = _register(client)
     foreign_token = _register(client, "11111111-2222-3333-4444-555555555555")
@@ -641,9 +747,7 @@ def test_add_pub_validation(client):
 
 
 def _policy_header() -> dict[str, str]:
-    return {
-        "HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION
-    }
+    return {"HTTP_" + UGC_POLICY_HEADER.replace("-", "_").upper(): settings.UGC_POLICY_VERSION}
 
 
 def _accept_ugc(client: APIClient, token: str) -> None:
