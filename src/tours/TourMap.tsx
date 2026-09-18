@@ -7,7 +7,7 @@ import type { Pub } from '@/data/pubs';
 import { t } from '@/i18n';
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import type { TourStop } from './model';
 
 export const DEFAULT_TOUR_REGION: Region = {
@@ -98,12 +98,12 @@ export function TourMap({ stops, selectedId, onSelect, height, region, onRegionC
         {stops.length > 1 && <Polyline coordinates={stops.map((stop) => ({ latitude: stop.lat, longitude: stop.lon }))} strokeColor={Colors.foamMuted} strokeWidth={2} lineDashPattern={[6, 6]} />}
         {candidates.map((pub) => (
           <Marker key={`candidate:${pub.id}`} identifier={`candidate:${pub.id}`} anchor={{ x: 0.5, y: 0.5 }} coordinate={{ latitude: pub.lat, longitude: pub.lng }} zIndex={pub.id === selectedCandidateId ? 4 : 1} onPress={(event) => { event.stopPropagation(); onCandidate?.(pub); }} accessibilityLabel={pub.name}>
-            <View style={[styles.candidate, pub.id === selectedCandidateId && styles.selectedCandidate]}><PlusIcon size={pub.id === selectedCandidateId ? 21 : 17} color={pub.id === selectedCandidateId ? Colors.amber : Colors.foam} /></View>
+            <View collapsable={false} style={styles.markerTarget}><View style={[styles.candidate, pub.id === selectedCandidateId && styles.selectedCandidate]}><PlusIcon size={pub.id === selectedCandidateId ? 15 : 13} color={pub.id === selectedCandidateId ? Colors.amber : Colors.foam} /></View></View>
           </Marker>
         ))}
         {stops.map((stop, index) => (
           <Marker anchor={{ x: 0.5, y: 0.5 }} key={stop.id} identifier={stop.id} coordinate={{ latitude: stop.lat, longitude: stop.lon }} onPress={(event) => { event.stopPropagation(); select(stop); }} zIndex={stop.id === selectedId ? 3 : 2} accessibilityLabel={`${index + 1}. ${stop.name}`}>
-            <View style={[styles.marker, stop.id === selectedId && styles.selected]}><Text allowFontScaling={false} style={styles.number}>{index + 1}</Text></View>
+            <View collapsable={false} style={styles.markerTarget}><View style={[styles.marker, stop.id === selectedId && styles.selected]}><Text allowFontScaling={false} style={styles.number}>{index + 1}</Text></View></View>
           </Marker>
         ))}
       </MapView>}
@@ -122,11 +122,12 @@ const styles = StyleSheet.create({
   fallbackText: { color: Colors.foamMuted, fontFamily: Fonts.ui.medium, fontSize: 13, lineHeight: 19 },
   retry: { minHeight: 44, justifyContent: 'center' },
   frame: { backgroundColor: Colors.stout2, overflow: 'hidden' },
-  marker: { height: 44, minWidth: 44, paddingHorizontal: 6, borderRadius: Radius.card, backgroundColor: Colors.foam, borderWidth: 3, borderColor: Colors.stout },
+  markerTarget: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
+  marker: { width: 24, height: 24, borderRadius: Radius.pill, backgroundColor: Colors.foam, borderWidth: 1.5, borderColor: Colors.stout, alignItems: 'center', justifyContent: 'center' },
   selected: { borderColor: Colors.amber },
-  number: { color: Colors.stout, fontFamily: Fonts.display.bold, fontSize: 22, lineHeight: 38, textAlign: 'center' },
-  candidate: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.stout2, borderWidth: 1, borderColor: Colors.foamMuted, justifyContent: 'center', alignItems: 'center' },
-  selectedCandidate: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: Colors.amber },
+  number: { color: Colors.stout, fontFamily: Fonts.display.bold, fontSize: 14, lineHeight: 20, includeFontPadding: false, textAlign: 'center' },
+  candidate: { width: 20, height: 20, borderRadius: Radius.pill, backgroundColor: Colors.stout2, borderWidth: 1, borderColor: Colors.foamMuted, justifyContent: 'center', alignItems: 'center' },
+  selectedCandidate: { width: 24, height: 24, borderWidth: 2, borderColor: Colors.amber },
   expand: { position: 'absolute', top: Spacing.md, right: Spacing.md, width: 44, height: 44, borderRadius: Radius.pill, backgroundColor: Colors.stout, alignItems: 'center', justifyContent: 'center' },
   captionText: { fontFamily: Fonts.ui.medium, fontSize: 11, color: Colors.foamMuted, paddingTop: Spacing.xs, lineHeight: 16 },
 });
