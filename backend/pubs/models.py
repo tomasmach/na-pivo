@@ -4919,3 +4919,65 @@ from .community_events import (  # noqa: E402,F401
     CommunityEventTeamMembership,
 )
 from .pub_events import PubEvent  # noqa: E402,F401
+
+
+class TourPlan(models.Model):
+    """Explicitly published itinerary. Private progress never reaches the server."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="tours")
+    title = models.CharField(max_length=60)
+    scheduled_date = models.DateField(null=True, blank=True)
+    scheduled_time = models.TimeField(null=True, blank=True)
+    timezone = models.CharField(max_length=64, default="Europe/Prague")
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+
+class TourStop(models.Model):
+    plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="stops")
+    client_id = models.UUIDField()
+    position = models.PositiveSmallIntegerField()
+    pub_id = models.CharField(max_length=256)
+    cache_key = models.CharField(max_length=32, null=True, blank=True)
+    name = models.CharField(max_length=255)
+    address = models.CharField(max_length=500, blank=True)
+    lat = models.FloatField()
+    lon = models.FloatField()
+
+    class Meta:
+        ordering = ["position"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "client_id"], name="tour_stop_identity"),
+            models.UniqueConstraint(fields=["plan", "position"], name="tour_stop_position"),
+            models.UniqueConstraint(fields=["plan", "pub_id"], name="tour_stop_pub"),
+        ]
+
+
+class TourShare(models.Model):
+    plan = models.OneToOneField(TourPlan, on_delete=models.CASCADE, related_name="share")
+    # A random operation UUID is the nonce for an HMAC under SECRET_KEY. A DB
+    # leak alone cannot recover the capability; authenticated owners can recover
+    # the same URL on another device. SECRET_KEY rotation revokes all old URLs.
+    operation_id = models.UUIDField()
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField(db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class TourOperation(models.Model):
+    result_revision = models.PositiveIntegerField(default=0)
+    result_share_operation_id = models.UUIDField(null=True, blank=True)
+    plan = models.ForeignKey(TourPlan, on_delete=models.CASCADE, related_name="operations")
+    operation_id = models.UUIDField()
+    kind = models.CharField(max_length=8)
+    fingerprint = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "operation_id"], name="tour_operation_identity"),
+        ]

@@ -1,0 +1,14 @@
+{% load i18n %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">
+<title>{% if tour %}{{ tour.title }} | {% endif %}Tour de pub | Na pivo</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#1F1308;color:#FBF3E0;font:17px/1.5 system-ui,sans-serif}main{max-width:600px;margin:auto;padding:36px 20px 56px}.brand{color:#E8A317;font-weight:800;}h1{font-size:clamp(30px,8vw,44px);line-height:1.15;margin:28px 0 24px;overflow-wrap:anywhere}ol{list-style:none;padding:0;margin:28px 0}li{display:flex;gap:14px;padding:20px 0;border-bottom:1px solid #49301c}.number{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:50%;background:#3A2515;color:#FBF3E0;font-weight:800}.pub{min-width:0;overflow-wrap:anywhere}strong{display:block;font-size:19px}.address,.date{color:#E8DCC0}.actions{display:flex;flex-wrap:wrap;gap:12px}.actions a{display:flex;min-height:48px;align-items:center;justify-content:center;padding:12px 20px;border-radius:999px;text-decoration:none;font-weight:750;background:#E8A317;color:#1F1308}.actions a.secondary{background:#3A2515;color:#FBF3E0}a:focus-visible{outline:3px solid #FBF3E0;outline-offset:4px}.privacy{font-size:14px;color:#E8DCC0;margin-top:28px}
+</style></head><body><main><div class="brand">Na pivo / Tour de pub</div>
+{% if unavailable %}<h1>{% translate "Tenhle odkaz už neplatí." %}</h1><p>{% translate "Požádej autora o nový odkaz." %}</p>
+{% else %}<h1>{{ tour.title }}</h1>
+{% if tour.scheduled_date %}<div class="date">{% translate "Sraz" %}: {{ meeting_date|date:"DATE_FORMAT" }}{% if tour.scheduled_time %} · {{ tour.scheduled_time }}{% endif %} · {{ tour.timezone }}</div>{% endif %}
+<ol>{% for stop in tour.stops %}<li><span class="number">{{ forloop.counter }}</span><div class="pub"><strong>{{ stop.name }}</strong>{% if stop.address %}<div class="address">{{ stop.address }}</div>{% endif %}</div></li>{% endfor %}</ol>
+<div class="actions"><a href="{{ deep_link }}">{% translate "Otevřít v Na pivo" %}</a><a class="secondary" href="{{ navigation_url }}" rel="noreferrer">{% translate "Navigovat na sraz" %}</a></div>
+<p class="privacy">{% translate "Tohle je plán hospod. Poloha lidí ani jejich průchod se nesdílí." %}</p>
+{% endif %}</main></body></html>

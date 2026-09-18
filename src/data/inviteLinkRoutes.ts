@@ -33,3 +33,10 @@ export function isLegacyTableInviteUrl(value: string | null | undefined): boolea
     parsed.path === '/party-live' || /^\/party\/[^/]+\/?$/.test(parsed.path)
   );
 }
+
+/** A tour token is opaque; accept only our own domains and exact path. */
+export function parseTourTokenFromUrl(value: string | null | undefined): string | null {
+  const parsed = parseAppUrl(value);
+  if (!parsed) return null;
+  return /^\/t\/([A-Za-z0-9_-]{20,128})\/?$/.exec(parsed.path)?.[1] ?? null;
+}

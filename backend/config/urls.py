@@ -11,9 +11,11 @@ from pubs.web_views import (
     invite_asset,
     invite_landing,
     party_invite_landing,
+    tour_invite_landing,
 )
 
 urlpatterns = [
+    path("t/<slug:token>", tour_invite_landing, name="tour-invite-landing"),
     path("p/<slug:code>", invite_landing, name="friend-invite-landing"),
     path("party/<slug:code>", party_invite_landing, name="party-invite-landing"),
     path(

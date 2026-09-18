@@ -12,6 +12,7 @@ from pubs.models import (
     ApiRateLimitBucket,
     ContentReport,
     FeedbackReport,
+    TourShare,
 )
 
 
@@ -24,6 +25,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options) -> None:
         now = timezone.now()
         batch_size = max(1, min(int(options["batch_size"]), 10_000))
+        expired_shares = list(TourShare.objects.filter(
+            expires_at__lte=now, revoked_at__isnull=True,
+        ).values_list("pk", flat=True)[:batch_size])
+        TourShare.objects.filter(pk__in=expired_shares).update(revoked_at=now)
         bucket_cutoff = now - timedelta(days=settings.API_RATE_LIMIT_RETENTION_DAYS)
         export_cutoff = now - timedelta(days=settings.ACCOUNT_EXPORT_JOB_RETENTION_DAYS)
         buckets = self._delete_batch(
